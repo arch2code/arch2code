@@ -103,11 +103,13 @@ clocks:
     clk:     { desc: "the default clock", default: true, period: 1, timeUnit: ns }
     clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
     clkPico: { desc: "a clock declared in a unit other than ns", period: 500, timeUnit: ps }
+    ipClk:   { desc: "this assembler's own testbench entry for top_tb's ipClk port, carried down to uIpLeaf by name at every level", period: 7, timeUnit: ns }
 
 resets:
     rst_n:     { desc: "the default reset", default: true, clock: clk }
     rstSlow_n: { desc: "the slow-domain reset", clock: clkSlow, releaseCycles: 5 }
     rstPico_n: { desc: "the pico-domain reset", clock: clkPico }
+    ipRst_n:   { desc: "this assembler's own testbench entry for top_tb's ipRst_n port", clock: ipClk }
 
 dirs:
     root: ../..
@@ -357,12 +359,10 @@ projectFiles:
     - ../../yaml/top.yaml
 
 clocks:
-    clk:     { desc: "the default clock", default: true, period: 1, timeUnit: ns }
-    clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }
+    clk:     {{ desc: "the default clock", default: true, period: 1, timeUnit: ns }}{clkSlowDecl}
 
 resets:
-    rstMain_n: { desc: "the default reset, deliberately not spelled rst_n", default: true, clock: clk }
-    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", clock: clkSlow }
+    rstMain_n: {{ desc: "the default reset, deliberately not spelled rst_n", default: true, clock: clk }}{rstBusDecl}
 
 dirs:
     root: ../..
@@ -373,8 +373,8 @@ instanceGroups:
         enumPrefix: INST_TOP_
 
 addressObjects:
-    memories:  { alignment: memsize, sizeRoundUpPowerOf2: true, sortDescending: true }
-    registers: { alignment: 8, sortDescending: true }
+    memories:  {{ alignment: memsize, sizeRoundUpPowerOf2: true, sortDescending: true }}
+    registers: {{ alignment: 8, sortDescending: true }}
 
 fileGeneration:
     layout: hierarchical
@@ -424,8 +424,8 @@ blocks:
 instances:
     uTop:         {{ container: top, instanceType: top }}
     uCPU:         {{ container: top, instanceType: cpu }}
-    uAPBDecode:   {{ container: top, instanceType: apbDecode }}
-    uLeafA:       {{ container: top, instanceType: leafA, addressGroup: top, variant: wide }}
+    uAPBDecode:   {{ container: top, instanceType: apbDecode{routerMap} }}
+    uLeafA:       {{ container: top, instanceType: leafA, addressGroup: top, variant: wide{leafMap} }}
     uRegAccessor: {{ container: top, instanceType: regAccessor }}
 
 connections:
@@ -436,8 +436,8 @@ registers:
     - {{ register: cfgWide, regType: rw, block: leafA, structure: wideRegSt, desc: "leafA parameterizable configuration" }}
 
 memories:
-    - {{ memory: tbl, block: leafA, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA parameterizable table" }}
-    - {{ memory: tblFixed, block: leafA, structure: fixedMemSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA fixed-width table" }}
+    - {{ memory: tbl, block: leafA, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA parameterizable table"{memClock} }}
+    - {{ memory: tblFixed, block: leafA, structure: fixedMemSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA fixed-width table"{memClock} }}
 
 registerConnections:
     - {{ register: cfgA, block: leafA, instance: uRegAccessor }}
@@ -472,12 +472,9 @@ projectFiles:
 clocks:
     mainClk: { desc: "default clock, not named clk", default: true, period: 1, timeUnit: ns }
     clk: { desc: "non-default clock literally named clk", period: 2, timeUnit: ns }
-    periphClk: { desc: "periphLeaf's domain; a distinct alias RHS", period: 3, timeUnit: ns }
 
 resets:
     rst_n:      { desc: "the default reset, clk domain", default: true, clock: mainClk }
-    clkRst_n:   { desc: "the reset for the non-default clk domain", clock: clk }
-    periphRst_n: { desc: "the reset for the periphClk domain", clock: periphClk }
 
 dirs:
     root: ../..
@@ -611,29 +608,114 @@ def _build_regs(feed_clock, router_clocks=None):
     fixture = tempfile.mkdtemp(prefix='regsemit_')
     os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
     os.makedirs(os.path.join(fixture, 'yaml'))
-    routerLines = f"        clocks: [{', '.join(router_clocks)}]\n" if router_clocks else ''
+    # The short list form admits only one clock (a multi-clock block has
+    # nowhere to mark the default, spec §4.2); more than one entry needs the
+    # mapping form, with the first marked default so the block builds at all.
+    if router_clocks and len(router_clocks) > 1:
+        routerLines = '        clocks:\n' + ''.join(
+            f"            {c}: {{ default: true }}\n" if i == 0 else f"            {c}: {{ }}\n"
+            for i, c in enumerate(router_clocks))
+    elif router_clocks:
+        routerLines = f"        clocks: [{', '.join(router_clocks)}]\n"
+    else:
+        routerLines = ''
     # 'top' also declares leafA's own reset name (rstMain_n), so uLeafA's
-    # non-rst_n-named reset binds by name match with no instance map.
-    topLines = ('        resets:\n'
-                '            rst_n:     { default: true }\n'
-                '            rstMain_n: { }\n')
+    # non-rst_n-named reset binds by name match with no instance map. In the
+    # non-default-domain case 'top' additionally declares the bus clock and
+    # its own reset (a container clock exists only where some block declares
+    # it, spec R5): the router's instance map binds onto it directly, and
+    # leafA's registerPorts: entry names it as the register port's own clock
+    # (rule 1), with leafA declaring that same clock itself and an instance
+    # map placing it on the same container net as the router.
+    # 'top' also declares clkSlow whenever the router's OWN extra clocks:
+    # name it (router_clocks), independently of feed_clock: a router
+    # declaring clkSlow needs a container clock of that name to bind to by
+    # name match, or it is a plain V3 unbound-clock error rather than the
+    # single-domain-router rejection these cases are actually testing.
+    needsClkSlow = bool(feed_clock) or 'clkSlow' in (router_clocks or [])
+    if needsClkSlow:
+        topLines = ('        clocks:\n'
+                    '            clk:     { default: true }\n'
+                    '            clkSlow: { }\n'
+                    '        resets:\n'
+                    '            rst_n:     { default: true }\n'
+                    '            rstMain_n: { }\n'
+                    '            rstBus_n:  { clock: clkSlow }\n')
+    else:
+        topLines = ('        resets:\n'
+                    '            rst_n:     { default: true }\n'
+                    '            rstMain_n: { }\n')
+    if feed_clock:
+        leafClockLines = ('        clocks:\n'
+                         '            clk: { default: true }\n'
+                         f'            {feed_clock}: {{ }}\n'
+                         '        resets:\n'
+                         '            rstMain_n: { clock: clk }\n'
+                         f'            rstBus_n:  {{ clock: {feed_clock} }}\n')
+        leafPortExtra = f', clock: {feed_clock}, reset: rstBus_n'
+        routerMap = f", clocks: {{ clk: {feed_clock} }}, resets: {{ rst_n: rstBus_n }}"
+        leafMap = ''
+        # The memories are regAccess (firmware-only, reached through the
+        # generated handler); a memory's own clock: is otherwise the owning
+        # block's default (spec §4.3), which would put it in a different
+        # domain than the handler's bus and needs the R20 bridge, not yet
+        # implemented; declaring it on the bus clock directly
+        # sidesteps that here, since nothing in this fixture reaches it from
+        # leafA's own datapath.
+        memClock = f", clock: {feed_clock}"
+    else:
+        leafClockLines = ('        clocks:\n'
+                         '            clk: { }\n'
+                         '        resets:\n'
+                         '            rstMain_n: { clock: clk }\n')
+        leafPortExtra = ''
+        # A router whose FIRST (so default, absent an explicit mark - here
+        # each of router_clocks bar the first is marked default: true only
+        # via routerLines' own construction) declared clock is clkSlow gets
+        # no name match for its own implicit rst_n against 'top's rst_n (on
+        # clk): only an explicit map reaches rstBus_n instead. This is
+        # authoring a router on a non-default clock, the same shape a real
+        # design uses, not a fixture artifact these two rejection cases
+        # need to avoid.
+        # leafA (a reusable IP, registerPorts: unstated here) takes its own
+        # default clock, 'clk'; when the router's own bus clock is clkSlow
+        # instead, leafA's instance needs the same explicit map, or its
+        # register port genuinely sits in a different domain than the
+        # router's bus (V8) - a real mismatch these two cases are not
+        # testing.
+        if router_clocks and router_clocks[0] == 'clkSlow':
+            routerMap = ", resets: { rst_n: rstBus_n }"
+            leafMap = ", clocks: { clk: clkSlow }, resets: { rstMain_n: rstBus_n }"
+        else:
+            routerMap = ''
+            leafMap = ''
+        memClock = ''
     blocks = (render_plain_block('top', extra_block_lines=topLines) + render_plain_block('cpu')
               + render_router('apbDecode', 'top', extra_block_lines=routerLines)
               + render_leaf('leafA',
-                            extra_block_lines='        params: [CFG_WIDTH]\n'
-                                              '        clocks:\n'
-                                              '            clk: { }\n'
-                                              '        resets:\n'
-                                              '            rstMain_n: { clock: clk }\n')
+                            extra_block_lines='        params: [CFG_WIDTH]\n' + leafClockLines,
+                            port_extra=leafPortExtra)
               + render_plain_block('regAccessor'))
     with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
         f.write(APB_PREAMBLE)
     with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(REGS_DESIGN.format(
-            blocks=blocks,
-            feed_clock=f", clock: {feed_clock}" if feed_clock else ""))
+        # The feed connection itself states no clock:: 'cpu' stays on the
+        # default clock (rule 3, each end takes its own default
+        # independently), and the router's instance map alone is what puts
+        # the bus in a non-default domain - a connection clock: states the
+        # SAME container clock for both ends, which 'cpu' and the bus would
+        # not agree on here, and is not what this fixture is testing.
+        f.write(REGS_DESIGN.format(blocks=blocks, feed_clock="", routerMap=routerMap,
+                                   memClock=memClock, leafMap=leafMap))
     with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(REGS_PROJECT)
+        # 'top' only declares clkSlow (and thus needs a testbench binding
+        # for it, V10) when needsClkSlow says so; the testbench declares it
+        # to match, never unconditionally.
+        clkSlowDecl = ('\n    clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }'
+                      if needsClkSlow else '')
+        rstBusDecl = ('\n    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", clock: clkSlow }'
+                     if needsClkSlow else '')
+        f.write(REGS_PROJECT.format(clkSlowDecl=clkSlowDecl, rstBusDecl=rstBusDecl))
 
     db = os.path.join(fixture, 'regs.db')
     built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
@@ -705,11 +787,6 @@ def _run_case(label, fn):
         return False
     print(f"{'PASS' if ok else 'FAIL'}: {label}")
     return ok
-
-
-def _skip_case(label, reason):
-    print(f"SKIP: {label}: {reason}")
-    return True
 
 
 def _expect(text, needle, why, where):
@@ -1234,7 +1311,7 @@ def check_release_counts_own_clock(emitted):
             raise AssertionError(
                 f"{name} is released after {driver.group(2)} edges of "
                 f"{driver.group(1)}, expected {cycles} edges of {clock}")
-    if text.count('wait(clk.posedge_event());') != 1:
+    if text.count('wait(reset_driver_clk.posedge_event());') != 1:
         raise AssertionError(
             "fastProd SC wrapper must count release edges in the one shared "
             "reset_driver body")
@@ -1869,16 +1946,17 @@ def check_regs_handler_default_domain(emitted):
     whenever the clock happens to be named `clk` would leave two forms in the
     tree and the domain-correct one exercised by nothing shipped.
 
-    leafA_regs is synthesised with no clocks:/resets: of its own (its bus
-    domain is derived from the register-bus feed elsewhere; §3.4), so absent
-    that derivation it takes the implicit clk/rst_n floor - not leafA's own
-    rstMain_n, which only leafA itself declares."""
+    leafA_regs is synthesised with no clocks:/resets: of its own; its domain
+    is leafA's own registerPorts: entry, which names no clock:/reset: here,
+    so it takes leafA's own block default clock and ITS selected reset (spec
+    §4.3 rule 1) - leafA's own rstMain_n, not the generic rst_n floor, since
+    rstMain_n is leafA's sole declared candidate on its default clock."""
     text = emitted[REGS_HANDLER]
     lines = _sv_wrapper_input_lines(text, 'default-domain leafA_regs module')
-    if lines != ['input clk,', 'input rst_n']:
+    if lines != ['input clk,', 'input rstMain_n']:
         raise AssertionError(f"leafA_regs declares {lines}, expected "
-                             f"['input clk,', 'input rst_n']")
-    _assert_flops_clocked_by(text, 'clk', 'rst_n', 'default-domain leafA_regs')
+                             f"['input clk,', 'input rstMain_n']")
+    _assert_flops_clocked_by(text, 'clk', 'rstMain_n', 'default-domain leafA_regs')
     return True
 
 
@@ -1943,7 +2021,7 @@ def check_router_default_domain(emitted):
     tree and the domain-correct one exercised by nothing shipped.
 
     apbDecode declares no clocks:/resets: of its own here (its bus domain is
-    derived from the register-bus feed elsewhere; §3.4), so absent that
+    derived from the register-bus feed elsewhere), so absent that
     derivation it takes the implicit clk/rst_n floor - not leafA's
     rstMain_n, which only leafA itself declares."""
     text = emitted[REGS_ROUTER]
@@ -1991,19 +2069,23 @@ def _assert_router_rejected(feed_clock, router_clocks, expected_clocks):
 
 
 def check_router_extra_clock_rejected():
-    """The measured wrong-domain shape: the bus is on clkSlow and the router also
-    declares the default clock, which canonical order puts FIRST."""
-    return _assert_router_rejected('clkSlow', ['clk'], ('clk', 'clkSlow'))
+    """A router explicitly declaring two clocks is rejected: a block's own
+    clocks: declaration is now exhaustive (spec R5), so nothing but the
+    block's own YAML can widen its set past one domain any more, and
+    declaring a second clock: entry is the measured shape of that."""
+    return _assert_router_rejected(None, ['clk', 'clkSlow'], ('clk', 'clkSlow'))
 
 
 def check_router_extra_clock_rejected_bus_first():
-    """The same rejection when canonical order happens to put the BUS clock first.
+    """The same rejection when declaration order happens to put a DIFFERENT
+    clock first than the register bus's own.
 
-    Here the emitter's index would pick the right clock, so this is the case that
-    pins the rule as being about the CARDINALITY of the router's set rather than
-    about the order within it: the router still declares a second clock port that
-    nothing clocks, and the supported shape is one domain."""
-    return _assert_router_rejected(None, ['clkSlow'], ('clk', 'clkSlow'))
+    Here the emitter's index would still pick a real clock, so this is the
+    case that pins the rule as being about the CARDINALITY of the router's
+    set rather than about the order within it: the router still declares a
+    second clock port that nothing clocks, and the supported shape is one
+    domain."""
+    return _assert_router_rejected(None, ['clkSlow', 'clk'], ('clk', 'clkSlow'))
 
 
 def check_release_cycles_default():
@@ -2016,38 +2098,6 @@ def check_release_cycles_default():
             f"resets.releaseCycles is {schema['resets']['releaseCycles']!r}, "
             f"expected 'optional(3)'")
     return True
-
-
-# Not called: each needs machinery this module does not implement yet (the
-# router/handler domain derivation the reason strings name, or the resolved
-# testbench-reset attribute the releaseCycles one names). Held as function
-# objects, not label strings, so a rename or deletion of any of these breaks
-# the module instead of silently dropping the case from view.
-# check_router_extra_clock_rejected(_bus_first) assert a router's own
-# clocks: being widened past its register-bus feed, which needs the bus's
-# own domain to compare against.
-SKIPPED = [
-    (check_router_extra_clock_rejected,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_router_extra_clock_rejected_bus_first,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_release_counts_own_clock,
-     "needs phase 4's resolved testbench-reset releaseCycles"),
-    (check_regs_handler_non_default_domain,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_regs_handler_reset_term,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_regs_handler_is_not_its_owning_block,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_leaf_binds_its_generated_handler,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_memory_instance_binds_the_accessor_domain,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_router_non_default_domain,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-    (check_router_and_handler_share_the_bus_domain,
-     "needs §3.4 router/handler domain derivation (phase 2)"),
-]
 
 
 def main():
@@ -2065,8 +2115,12 @@ def main():
           _run_case('A2C_RESET_NONE matches the pre-change file\'s FPGA default',
                     check_flops_none_matches_pre_change_fpga_default),
           _run_case('the default reset style matches the fork, unconditionally',
-                    check_flops_default_matches_fork)]
-    ok += [_skip_case(fn.__name__, reason) for fn, reason in SKIPPED]
+                    check_flops_default_matches_fork),
+          _run_case('a router explicitly declaring two clocks is rejected',
+                    check_router_extra_clock_rejected),
+          _run_case('a two-clock router is rejected however declaration order '
+                    'sorts the bus clock',
+                    check_router_extra_clock_rejected_bus_first)]
 
     fixture, emitted = _generate()
     try:
@@ -2101,6 +2155,8 @@ def main():
              check_one_clock_thread_per_clock),
             ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
+            ('each reset releases after its own releaseCycles edges of its '
+             'own clock', check_release_counts_own_clock),
             ('no wrapper releases a reset at an absolute time',
              check_release_is_not_absolute_time),
             ('one driver thread per reset, distinctly named',
@@ -2133,6 +2189,27 @@ def main():
              check_memory_instance_default_domain),
             ('a renamed default reset aliases rst_n independently of the clock',
              check_alias_reset_independent_of_clock),
+        )]
+    finally:
+        shutil.rmtree(fixture)
+
+    fixture, emitted = _generate_regs('clkSlow')
+    try:
+        ok += [_run_case(label, lambda fn=fn: fn(emitted)) for label, fn in (
+            ('a non-default-domain register handler uses the same '
+             'parameterized macro', check_regs_handler_non_default_domain),
+            ('the handler qualifies its select terms with its own resolved reset',
+             check_regs_handler_reset_term),
+            ("a routed leaf binds its generated handler's own clock/reset names",
+             check_leaf_binds_its_generated_handler),
+            ('a memory primitive is clocked by the domain of the channels '
+             'reaching it', check_memory_instance_binds_the_accessor_domain),
+            ('the handler carries the bus domain, not the served block\'s set',
+             check_regs_handler_is_not_its_owning_block),
+            ('a non-default-domain router uses the same parameterized macro',
+             check_router_non_default_domain),
+            ('the router and its handler share one bus domain',
+             check_router_and_handler_share_the_bus_domain),
         )]
     finally:
         shutil.rmtree(fixture)

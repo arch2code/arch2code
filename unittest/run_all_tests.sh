@@ -3,13 +3,6 @@
 
 FAILED=0
 
-# Tee the whole run to a temp log so the final banner can report how many
-# cases a suite printed as SKIP: (a case this build does not implement yet),
-# without changing every individual test invocation below.
-RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/a2c_unittest_run.XXXXXX")"
-trap 'rm -f "$RUN_LOG"' EXIT
-exec > >(tee "$RUN_LOG") 2>&1
-
 echo "========================================================================"
 echo "Running All Unit Tests"
 echo "========================================================================"
@@ -414,6 +407,12 @@ python3 test_clock_reset_emission.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: clock/reset local nets, exports, and ~ bindings"
+echo "------------------------------------------------------------------------"
+python3 test_clock_local_nets.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: interface definition data contracts"
 echo "------------------------------------------------------------------------"
 python3 test_interface_def_contracts.py || FAILED=1
@@ -435,11 +434,15 @@ echo ""
 echo "Test Suite ${idx}: Q_ASSERT exit path per context"
 echo "------------------------------------------------------------------------"
 python3 test_assert_exit_path.py || FAILED=1
+idx=$((idx+1))
 
-SKIPPED_COUNT="$(grep -c '^SKIP: ' "$RUN_LOG")"
+echo ""
+echo "Test Suite ${idx}: combo-source diagnostics (missing/empty combo sources)"
+echo "------------------------------------------------------------------------"
+python3 test_error_combo_sources.py || FAILED=1
+
 echo ""
 echo "========================================================================"
-echo "Skipped cases: ${SKIPPED_COUNT}"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"
     echo "========================================================================"

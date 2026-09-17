@@ -28,8 +28,8 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `ports`: (Optional) Explicit port map keyed by port name. Each entry names an `interface` and `direction`.
         *   `addressBlock`: (Optional) Marks the block as a **register-bus router (decoder)**. Its RTL is generated from the `apbDecodeModule` template. Fields: `addressGroup` (the group this router serves), `addressIncrement`, `maxAddressSpaces`, `varType`, `enumPrefix`, `upstreamPort` (the addressBus interface feeding it), `registerDecoderPort` (canonical downstream register-bus port). A router must **not** also declare `registerPorts:`.
         *   `registerPorts`: (Optional, **reusable-IP leaves only**) Exactly one row declaring the block's own register-bus port, e.g. `registerPorts: { regs: { interface: ipReg } }`. Lets a reusable IP carry a self-contained register-bus surface. Plain top-down leaves omit it (they infer the bus from the serving router).
-        *   `clocks`: (Optional) List of project clock names the block carries **in addition to** those its connections imply. Use it for a block whose logic runs in a domain no connection reaches (a free-running counter, a block with no ports). See **Clocks and Resets** below.
-        *   `resets`: (Optional) The block's **complete** reset list. When absent the block takes one project reset per clock it carries. Every listed reset must be declared on a clock the block carries, and every carried clock must have a reset in the list.
+        *   `clocks`: (Optional) The block's clock ports, keyed by name: `{desc, direction, default, period, timeUnit}`. A block that declares none gets one implicit input clock, `clk`. See **Clocks and Resets** below.
+        *   `resets`: (Optional) The block's reset ports, keyed by name: `{desc, direction, default, clock, async}`. A block that declares none, and has a default clock, gets one implicit reset, `rst_n`, on it; an explicit `resets: {}` means the block has no reset at all.
     *   **RTL hierarchy rule:** If a block has `hasRtl: true`, every block it instantiates must also have `hasRtl: true`. A model-only subblock (`hasRtl: false`) is only valid under a model-only parent.
     *   **Decode-position rule (registers/memories):** A block that owns `registers` or `regAccess: true` memories (or `registerPorts:`) is a *routed leaf* and must be served by a decoder in the **same container** (a sibling router) or by a parent decoder (the block is then a routed leaf of that parent). A router never decodes its own container block. A **container block MAY own registers** — provided none of its contained leaves needs its own decode block — and forwards them to children via `registerConnections`. For the full decision rule, nested routers, the upstream feed, and worked examples, use the **Register/Memory Decode** skill (`design-register-decode.md`).
     *   **File placement:** A block's generated files (`base/`, `model/`, `rtl/`, `tb/`, `verif/vl_wrap/`) are placed in a subdirectory that mirrors the location of the YAML file defining the block, relative to `arch/yaml/`. This is automatic — do not set `blockDir:`/`dir:` to reproduce it. A top-level `blockDir:` (whole file) or per-block `dir:` field overrides this only for genuine exceptions. See `setup-project.md` (Directory Mirroring).
@@ -86,7 +86,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `name`: (Optional) Disambiguation name if multiple connections exist.
         *   `srcport` / `dstport`: (Optional) Override port names.
         *   `interfaceName`: (Optional) Override channel instance name.
-        *   `clock`: (Optional) Project clock this wire runs in. **Default: the project's default clock.** Both endpoint blocks then carry that clock. Also accepted on `connectionMaps`, `memoryConnections`, and `registerConnections`.
+        *   `clock`: (Optional) Container clock both ends of this wire run on. **Default: the block default clock of each end.** Declared only on `connections:`; `connectionMaps:`, `memoryConnections:`, and `registerConnections:` carry no `clock:` because their domains derive from the ports they reach. See **Clocks and Resets** below.
 
     ```yaml
     connections:
@@ -96,22 +96,34 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     ```
 
     ### Clocks and Resets
-    *   Clocks and resets are **declared in `project.yaml`** (`clocks:` / `resets:`, see `setup-project.md`), never in design YAML. A project that declares neither gets a built-in `clk` (1 ns) and active-low `rst_n`, so existing projects build unchanged.
-    *   **A clock belongs to a connection.** Set `clock:` on the connection; both endpoint blocks carry that clock. A block's clock set is the union of its connections' clocks, its own `clocks:` list, and every child's clocks. A leaf with no connections and no `clocks:` list takes the default clock.
-    *   **A reset belongs to a block** and is released on the clock it is declared with. A block with no `resets:` list takes one project reset per clock it carries, so every clock a block declares has a matching reset.
-    *   **Emitted ports.** Every generated module, wrapper, and register handler declares exactly the block's clocks then resets, in project declaration order with the default first. A container binds each child's clock and reset ports to its own signal for the same domain, so the container carries every domain its children do.
-    *   **Register decode** follows the bus: a generated router and `<block>Regs` handler run on the clock of the register-bus feed reaching the router. A router must resolve to exactly one clock; a `clocks:` entry, child instance, or connection that adds a second domain to it is rejected.
-    *   **Crossings are the designer's responsibility.** The generator neither rejects, reports, nor synchronises a connection between blocks in different domains. A memory reached from two clocks, and a register bus reached from two clocks, are rejected.
-    *   **Hand-written RTL** uses the bare `` `DFF `` family in any domain. When a block carries no clock named `clk` or no reset named `rst_n`, its generated region declares `wire clk = <first clock>;` / `wire rst_n = <first reset>;`, so the bare macros land on the block's first clock. The explicit `_CLK` family (`` `DFF_CLK(clkSlow, q, d) ``, `` `DFF_INST_CLK(clkSlow, type, name) ``) is needed only to place a flop on a second clock of a multi-clock block. See `rtl-core.md`.
-    *   **Composition.** Clock names are per project. A child IP's clock resolves in the child's own project; the assembler drives the child's clock port from its own clock of the same name, or its default clock when it declares none of that name. The child's declared `period` therefore governs only its standalone co-simulation wrapper.
+    *   **A block declares its clocks and resets completely.** Nothing is inferred from its connections or its children; a container whose children use two clocks declares both itself. `clocks:`/`resets:` are keyed maps, not references to anything outside the block:
 
     ```yaml
     blocks:
-      slow_counter:
-        desc: "Free-running counter with no ports, wholly in clkSlow"
-        clocks: [clkSlow]
-        resets: [rstSlow_n]
+      uart:
+        desc: "UART with a generated baud clock"
+        clocks:
+          clk:     { desc: "register and datapath clock" }   # sole input, so the default
+          baudClk: { desc: "generated baud clock", direction: output }
+        resets:
+          rst_n:   { desc: "datapath reset", clock: clk }    # baudClk has no reset
     ```
+
+    *   `direction` is `input` (default) or `output`. `default: true` marks the block default clock (implied with one input clock) and, on a reset, that clock's **selected reset** (implied with one candidate). `period`/`timeUnit` on an input clock set the rate a *standalone* simulation of the block uses when nothing else determines one; an assembled design never reads them. `async: true` on a reset marks an input the block samples in none of its own clocks, such as a synchroniser's raw input; it may bind to any container reset.
+    *   **Instances bind by map.** An instance's `clocks:`/`resets:` mapping is `<block port>: <container net>`. An input entry the map omits binds to the container net of the same name, or, for the reserved names `clk`/`rst_n` only, to the container's default clock and its selected reset when the container has no net of that name. Every `output` entry must appear in the map, bound to a container net or to `~` to leave it unconnected — a name match never creates a supplier:
+
+    ```yaml
+    instances:
+      uSlowTick: { container: twoClk, instanceType: twoClkSlowTick,
+                   clocks: { clkTick: clkSlow }, resets: { rstTick_n: rstSlow_n } }
+    ```
+
+    *   **Local nets.** Binding a child's `output` to a name the container has not declared creates a local net, driven by that child and consumed by name inside the container (at least one input must consume it). `clkDiv`/`rstDivRaw_n` in `examples/clkGen/yaml/clkGen.yaml` are local nets of `clkGen` until `clkGen` re-declares `clkDiv` as its own `output` and `uDivider`'s map binds `clkDiv` onto it — that binding is the export.
+    *   **A top-down port's domain is authored on the connection.** A block with no `ports:` gets each port's domain from the connection reaching it: `clock:` on `connections:` names a container clock and states the domain of both ends, so such a connection is never a crossing. Left unstated, a port sits on its block's default clock, mapped through the instance.
+    *   **`ports:`/`registerPorts:` `clock:`** is how a reusable IP or parameterized block declares a port's domain instead, naming one of the block's own clocks (`clock: baudClk`). Where a port is both declared this way and reached by a connection carrying `clock:`, the two must agree. `connectionMaps:`, `memoryConnections:`, and `registerConnections:` carry no `clock:` field of their own; their domains derive from the ports they reach.
+    *   **Register decode** follows the bus: a router's domain is its `addressBlock:` `clock:`, else its feed connection's, else the block default; the handler it serves runs on the same clock. A top-down leaf's register port takes whichever of its own declared clocks the instance map binds to that bus clock (R25) — see `design-register-decode.md`.
+    *   **Crossings are the designer's responsibility.** The generator neither rejects, reports, nor synchronises a connection between two container clocks. A memory reached by more than one clock, and a register bus reached from two clocks, are rejected.
+    *   **The project file is the testbench**, not a namespace design YAML references. Its `clocks:`/`resets:` bind the top block's inputs by name; a `period` defaults to 1 ns. See `setup-project.md`.
 
 6.  **Connection Maps (`connectionMaps` list):**
     *   **Properties:**

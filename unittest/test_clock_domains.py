@@ -85,7 +85,18 @@ interfaces:
             - {{ structure: dataSt, structureType: data_t }}
 
 blocks:
-    top_tb: {{ desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     {{ default: true }}
+            clkSlow: {{ }}
+        resets:
+            rst_n:     {{ clock: clk }}
+            rstSlow_n: {{ clock: clkSlow }}
     dut:
         desc: "container of the producer and consumer"
         hasVl: false
@@ -182,6 +193,15 @@ def _build(project_path, db_path):
          '--yaml', project_path, '--db', db_path],
         capture_output=True, text=True, timeout=300, env=env, cwd=test_dir)
     return completed.returncode, completed.stdout + completed.stderr
+
+
+def _arch2code(*args, cwd):
+    """Run one arch2code.py invocation (newmodule scaffolding, or rendering
+    a single file) in a subprocess. Returns the completed process."""
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    return subprocess.run([sys.executable, os.path.join(base_dir, 'arch2code.py'), *args],
+                          capture_output=True, text=True, timeout=120, cwd=cwd, env=env)
 
 
 def _expect_diagnostic(label, needles, **fixtureKwargs):
@@ -368,7 +388,20 @@ instances:
 connections:
     - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
 """
-    fixture, project_path, db_path = _make_fixture(design=design)
+    # A dedicated projectDomains matching top_tb's own third reset
+    # (rstAlt_n, on clk): PROJECT_DOMAINS declares only rst_n/rstSlow_n, and
+    # every input reset of the top block must bind to something (V3).
+    projectDomains = """
+clocks:
+    clk:     { desc: "the default clock", default: true, period: 1, timeUnit: ns }
+    clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:     { desc: "the default reset", default: true, clock: clk }
+    rstAlt_n:  { desc: "a second clk-domain reset", clock: clk }
+    rstSlow_n: { desc: "the slow-domain reset", clock: clkSlow }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=projectDomains)
     try:
         code, output = _build(project_path, db_path)
         if code != 0:
@@ -472,7 +505,12 @@ blocks:
 instances:
     top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
 """
-    fixture, project_path, db_path = _make_fixture(design=design)
+    # projectDomains='': 'leaf' is never instantiated (a zero-instance
+    # library leaf, R7 in isolation from any binding) and top_tb declares
+    # nothing of its own, so the default single implicit clk/rst_n is all
+    # the testbench needs to bind (V10) - PROJECT_DOMAINS' extra clkSlow
+    # would have nothing in this design to consume it.
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
     try:
         code, output = _build(project_path, db_path)
         if code != 0:
@@ -496,23 +534,479 @@ instances:
         shutil.rmtree(fixture)
 
 
+def run_declared_port_connection_mismatch_v14_rejected():
+    """V14 (pysrc/clockTree.py build()): a declared port's clock: (its own,
+    or the block default when it names none) and a connection reaching it
+    are not read as a precedence; where both are present they must agree.
+    Checked in projectCreate now, against the container binding
+    clockTree.build() itself computed, so a disagreeing design fails the
+    database build, not just a later view render."""
+    design = """types:
+    dataT: { width: 8, desc: "payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cons:
+        desc: "consumer; declares 'in' on clkSlow explicitly"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+        ports:
+            in: { interface: dataIf, direction: dst, clock: clkSlow }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,   instGroup: top }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in, clock: clk }
+"""
+    return _expect_diagnostic(
+        "a declared port's clock: disagreeing with the reaching "
+        "connection's clock: is rejected",
+        ['V14'], design=design)
+
+
+def run_connectionmaps_boundary_derives_inside_out_v16():
+    """V16 (pysrc/clockTree.py build()): a connectionMaps: boundary port
+    derives its domain inside-out from the inner port it routes to, not from
+    the block default an unstated outer connection would otherwise give it.
+    'dut' declares clk (default) and apbClk; its own 'apbReg' boundary port
+    names no clock: and is reached by an outer connection naming none either
+    (rule 3 would give it clk), but connectionMaps: bridges it inward to
+    'uInner', whose own declared port 'regs' names clock: apbClk explicitly
+    (rule 1) - so the boundary port's derived domain must be apbClk, not
+    clk. The fact is computed once in projectCreate and persisted (the
+    non-schema portDomains table); getBlockData()'s view reads it back
+    rather than re-deriving it, so this is checked the same way as before -
+    through getBDPortDomain, after open.
+
+    A second boundary port ('apbReg2', bridged to 'uInner2') covers a
+    TOP-DOWN inner port: 'inner2' declares no ports:/registerPorts: at all
+    for 'regs2', so it takes its own block's default clock (clkTick, not
+    dut's), renamed onto dut's apbClk by uInner2's own instance map (the
+    uSlowTick shape, examples/twoClk/yaml/twoClk.yaml: a reusable IP's own
+    clock renamed at its assembler). Before the fix the view fell to dut's
+    OUTER default clock (clk) whenever the inner port declared nothing,
+    silently wrong for exactly this renamed case."""
+    design = """types:
+    dataT: { width: 8, desc: "payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "container: its own boundary port names no clock:"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+        ports:
+            apbReg: { interface: dataIf, direction: dst }
+            apbReg2: { interface: dataIf, direction: dst }
+    inner:
+        desc: "inner instance: its own declared port names clock: apbClk explicitly"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+        ports:
+            regs: { interface: dataIf, direction: dst, clock: apbClk }
+    inner2:
+        desc: "inner2 instance: a TOP-DOWN port (regs2), declared nowhere on this block, so it takes the block's own default clkTick - renamed onto dut's apbClk by uInner2's own instance map"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkTick: { default: true }
+        resets:
+            rstTick_n: { clock: clkTick }
+
+instances:
+    top_tb:  { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:   { container: top_tb, instanceType: prod,   instGroup: top }
+    uProd2:  { container: top_tb, instanceType: prod,   instGroup: top }
+    uDut:    { container: top_tb, instanceType: dut,    instGroup: top }
+    uInner:  { container: dut,    instanceType: inner,  instGroup: top }
+    uInner2: { container: dut,    instanceType: inner2, instGroup: top,
+              clocks: { clkTick: apbClk }, resets: { rstTick_n: apbRst_n } }
+
+connections:
+    - { interface: dataIf, src: uProd,  srcport: out, dst: uDut, dstport: apbReg }
+    - { interface: dataIf, src: uProd2, srcport: out, dst: uDut, dstport: apbReg2 }
+
+connectionMaps:
+    - { interface: dataIf, block: dut, direction: dst, instance: uInner,  port: apbReg,  instancePort: regs }
+    - { interface: dataIf, block: dut, direction: dst, instance: uInner2, port: apbReg2, instancePort: regs2 }
+"""
+    # A dedicated projectDomains: this design's own top_tb names its clocks
+    # clk/apbClk (not PROJECT_DOMAINS' clk/clkSlow), so the testbench must
+    # match those names for V10 to bind them.
+    projectDomains = """
+clocks:
+    clk:    { desc: "the default clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus clock", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=projectDomains)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the connectionMaps boundary fixture builds\n{output}")
+            return False
+        print("PASS: the connectionMaps boundary fixture builds")
+        prj = projectOpen(db_path)
+        dutKey = next(key for key, row in prj.data['blocks'].items()
+                     if row['block'] == 'dut')
+        view = prj.getBlockData(dutKey)
+        domain = view['ports']['connections']['apbReg']['domainClock']
+        if domain != 'apbClk':
+            raise AssertionError(
+                f"'apbReg' reports domainClock {domain!r}, expected 'apbClk': "
+                f"a connectionMaps: boundary port derives inside-out from the "
+                f"inner port it routes to (V16), not from the block default "
+                f"an unstated outer connection would otherwise give it")
+        domain2 = view['ports']['connections']['apbReg2']['domainClock']
+        if domain2 != 'apbClk':
+            raise AssertionError(
+                f"'apbReg2' reports domainClock {domain2!r}, expected 'apbClk': "
+                f"a TOP-DOWN inner port (declared nowhere) takes its own "
+                f"block's default clock, mapped outward through its "
+                f"instance's own rename (V16), not dut's own default clock")
+        # The SAME connectionMaps: row, read from the ROUTED-TO block's own
+        # self-render (getBlockData(innerKey), where ret['instances'] is
+        # every instance OF 'inner' itself, not dut's children): getBDPorts'
+        # connectionMapPorts-sourced view keys this port by instancePortName
+        # ('regs'), not the boundary's own port: name ('apbReg' - `port:`
+        # and `instancePort:` differ on this very row). getBDPortDomain's
+        # own rule-2 gate must still find the row's boundary domain here,
+        # not fall through to rule 3 (the block default), by reading the
+        # matching ret['connectionMaps'] entry's own parentPortName rather
+        # than comparing the instancePortName argument against it directly.
+        innerKey = next(key for key, row in prj.data['blocks'].items()
+                       if row['block'] == 'inner')
+        innerView = prj.getBlockData(innerKey)
+        innerDomain = innerView['ports']['connectionMaps']['regs']['domainClock']
+        if innerDomain != 'apbClk':
+            raise AssertionError(
+                f"'regs' (instancePort:, differing from the row's own port: "
+                f"'apbReg'), read from inner's own self-render, reports "
+                f"domainClock {innerDomain!r}, expected 'apbClk'")
+        return _run_case(
+            "a connectionMaps: boundary port derives its domain inside-out "
+            "from the inner port it routes to, declared or top-down", lambda: True)
+    finally:
+        shutil.rmtree(fixture)
+
+
+# --------------------------------------------------------- derived tables --
+
+def _grouped_table(cur, table, groupKey, orderBy=None):
+    """A table's rows grouped by groupKey, in the given ORDER BY - the same
+    shape projectOpen._loadDerivedTables() builds, computed independently by
+    direct SQL so the loader's output can be checked against it."""
+    sql = f"SELECT * FROM {table}"
+    if orderBy:
+        sql += f" ORDER BY {orderBy}"
+    cur.execute(sql)
+    grouped = {}
+    for row in cur.fetchall():
+        grouped.setdefault(row[groupKey], []).append(dict(row))
+    return grouped
+
+
+def run_derived_tables_loader_cases():
+    """projectOpen._loadDerivedTables() loads the four non-schema tables
+    persisted by projectCreate into self.data, grouped by the column each
+    getBD* helper keys on, in place of a per-key SELECT. A fixture with a
+    container (blockClocksResets, instanceClockResetBinds across more than
+    one block/instance), a memory (memoryClocks) and a parameterizable
+    block whose only consumer is a module-local structure (blockParameterizedDecls)
+    exercises all four with more than one row, so a grouping-key mistake
+    would show up as a mismatch rather than a vacuous empty-dict comparison.
+    """
+    design = """ipParameters:
+    constants:
+        SHARED_WIDTH: { value: 8, maxValue: 16, desc: "shared exposed param" }
+    types:
+        sharedDataT:
+            width: SHARED_WIDTH
+            maxBitwidth: 16
+            desc: "parameterizable type referenced only by hand-written code"
+
+constants:
+    TBL_WORDS: { value: 4, desc: "memory word count" }
+
+types:
+    dataT: { width: 8, desc: "payload word" }
+    memAddrT: { width: 3, desc: "memory address" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+    memAddrSt:
+        address: { varType: memAddrT, generator: address, desc: "memory address" }
+    memSt:
+        data: { varType: dataT, generator: memory, desc: "memory payload" }
+    sharedDataSt:
+        payload: { varType: sharedDataT }
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "container of the producer and consumer"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true, period: 1, timeUnit: ns }
+        resets:
+            rst_n: { clock: clk, default: true }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cons:
+        desc: "consumer, holds a memory and the sole consumer of the parameterizable decl set"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        params: [SHARED_WIDTH]
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    u_dut:  { container: top_tb, instanceType: dut,    instGroup: top }
+    uProd:  { container: dut,    instanceType: prod,   instGroup: top }
+    uCons:  { container: dut,    instanceType: cons,   instGroup: top, variant: v0 }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+memories:
+    - { memory: tbl, block: cons, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], desc: "consumer table" }
+
+parameters:
+    cons:
+        v0:
+            SHARED_WIDTH: 12
+"""
+    # projectDomains='': top_tb declares nothing of its own (implicit
+    # clk/rst_n only); PROJECT_DOMAINS' extra clkSlow would have nothing in
+    # this design to consume it (V10).
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the derived-tables fixture builds\n{output}")
+            return False
+        print("PASS: the derived-tables fixture builds")
+
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        expected = {
+            'blockClocksResets': _grouped_table(cur, 'blockClocksResets', 'blockKey', 'kind, orderIndex'),
+            'instanceClockResetBinds': _grouped_table(cur, 'instanceClockResetBinds', 'instanceKey', 'orderIndex'),
+            'memoryClocks': _grouped_table(cur, 'memoryClocks', 'memoryBlockKey'),
+            'blockParameterizedDecls': _grouped_table(cur, 'blockParameterizedDecls', 'blockKey', 'orderIndex'),
+        }
+        con.close()
+
+        def nonTrivialFixture():
+            if len(expected['blockClocksResets']) < 2:
+                raise AssertionError(
+                    f"fixture has only {len(expected['blockClocksResets'])} "
+                    f"block(s) with clocks/resets, expected several, so a "
+                    f"grouping mistake could pass unnoticed")
+            if not expected['instanceClockResetBinds']:
+                raise AssertionError("fixture has no instance clock/reset binds")
+            if not expected['memoryClocks']:
+                raise AssertionError("fixture has no memory clock rows")
+            if not expected['blockParameterizedDecls']:
+                raise AssertionError("fixture has no parameterized decl rows")
+            return True
+
+        def helpersMatchPerKeySelect():
+            """Each of the four getBD* helpers' OWN output, for one concrete
+            key the fixture provides, against an independent per-key `SELECT
+            ... WHERE key = ? ORDER BY ...` - the query shape each helper ran
+            directly before the loader existed - rather than the loader's own
+            groupby-everything algorithm repeated (which `expected` above is,
+            so a mistake in that shared grouping logic could pass unnoticed
+            against it)."""
+            con = sqlite3.connect(db_path)
+            con.row_factory = sqlite3.Row
+            cur = con.cursor()
+            consBlockKey = cur.execute(
+                "SELECT blockKey FROM blocks WHERE block = 'cons'").fetchone()['blockKey']
+            consInstanceKey = cur.execute(
+                "SELECT instanceKey FROM instances WHERE instance = 'uCons'").fetchone()['instanceKey']
+            memoryBlockKey = cur.execute(
+                "SELECT memoryBlockKey FROM memories WHERE memory = 'tbl'").fetchone()['memoryBlockKey']
+
+            clocksResetsRows = [dict(row) for row in cur.execute(
+                "SELECT * FROM blockClocksResets WHERE blockKey = ? ORDER BY kind, orderIndex",
+                (consBlockKey,)).fetchall()]
+            bindRows = [dict(row) for row in cur.execute(
+                "SELECT * FROM instanceClockResetBinds WHERE instanceKey = ? ORDER BY orderIndex",
+                (consInstanceKey,)).fetchall()]
+            memoryRow = cur.execute(
+                "SELECT * FROM memoryClocks WHERE memoryBlockKey = ?",
+                (memoryBlockKey,)).fetchone()
+            declRows = [dict(row) for row in cur.execute(
+                "SELECT * FROM blockParameterizedDecls WHERE blockKey = ? ORDER BY orderIndex",
+                (consBlockKey,)).fetchall()]
+            con.close()
+
+            prj = projectOpen(db_path)
+
+            retClocksResets = {'qualBlock': consBlockKey}
+            prj.getBDClocksResets(retClocksResets)
+            expectedClockNames = [r['itemKey'] for r in clocksResetsRows if r['kind'] == 'clock']
+            expectedResetNames = [r['itemKey'] for r in clocksResetsRows if r['kind'] == 'reset']
+            gotClockNames = [c['clock'] for c in retClocksResets['clocks']]
+            gotResetNames = [r['reset'] for r in retClocksResets['resets']]
+            if (gotClockNames, gotResetNames) != (expectedClockNames, expectedResetNames):
+                raise AssertionError(
+                    f"getBDClocksResets({consBlockKey!r}) gave clocks "
+                    f"{gotClockNames}/resets {gotResetNames}, expected "
+                    f"{expectedClockNames}/{expectedResetNames} per a direct "
+                    f"per-key SELECT")
+
+            gotBinds = prj.getBDInstanceClockResetBinds(consInstanceKey)
+            expectedBinds = [{'port': r['childPort'], 'signal': r['parentSignal']}
+                             for r in bindRows]
+            if gotBinds != expectedBinds:
+                raise AssertionError(
+                    f"getBDInstanceClockResetBinds({consInstanceKey!r}) gave "
+                    f"{gotBinds}, expected {expectedBinds} per a direct "
+                    f"per-key SELECT")
+
+            gotMemoryClock = prj.getBDMemoryClock(memoryBlockKey)
+            expectedMemoryClock = {'memoryBlockKey': memoryRow['memoryBlockKey'],
+                                   'clock': memoryRow['clock'], 'reset': memoryRow['reset']}
+            if gotMemoryClock != expectedMemoryClock:
+                raise AssertionError(
+                    f"getBDMemoryClock({memoryBlockKey!r}) gave "
+                    f"{gotMemoryClock!r}, expected {expectedMemoryClock!r} per "
+                    f"a direct per-key SELECT")
+
+            retDecls = {'qualBlock': consBlockKey}
+            prj.getBDParameterizedDecls(retDecls)
+            gotDeclKeys = [d['declKey'] for d in retDecls['parameterizedDecls']]
+            expectedDeclKeys = [r['declKey'] for r in declRows]
+            if gotDeclKeys != expectedDeclKeys:
+                raise AssertionError(
+                    f"getBDParameterizedDecls({consBlockKey!r}) gave "
+                    f"{gotDeclKeys}, expected {expectedDeclKeys} per a direct "
+                    f"per-key SELECT")
+            return True
+
+        return all([
+            _run_case("the fixture exercises all four tables with more than "
+                      "one row", nonTrivialFixture),
+            _run_case("getBDClocksResets, getBDInstanceClockResetBinds, "
+                      "getBDMemoryClock and getBDParameterizedDecls each "
+                      "match a direct per-key SELECT", helpersMatchPerKeySelect)])
+    finally:
+        shutil.rmtree(fixture)
+
+
 # ------------------------------------------------------------- validation --
 
 def run_reference_cases():
-    """A connection clock: naming a clock the project does not declare is
-    rejected. A block's own clocks:/resets: entry needs no such check: it is
-    a fresh declaration, not a reference, so there is no name to misspell
-    (spec R5)."""
+    """A connection clock: naming a clock no relevant block resolves to is
+    rejected (V13, clockTree.build()). A connection's clock: is a container
+    reference validated against the container's own nets, not a project-scoped
+    name (spec §4.3): unlike the baseline, there is no project 'clocks:'
+    section to check it against first. A block's own clocks:/resets: entry
+    needs no reference check at all: it is a fresh declaration, not a
+    reference, so there is no name to misspell (spec R5)."""
     return _expect_diagnostic(
         "a connection clock: naming an undeclared clock is rejected",
-        ('noSuchClock', 'clocks:'),
+        ('noSuchClock', 'V13'),
         connectionClock=', clock: noSuchClock')
 
 
 def run_connection_clock_endpoint_cases():
-    """V13, phase 1 form: a connection's clock: must name a clock BOTH
-    endpoint blocks declare (name match only - there is no instance map
-    yet). 'clkSlow' is a real project clock (PROJECT_DOMAINS), so this is
+    """V13: a connection's clock: must name a clock BOTH endpoint blocks
+    declare (name match only - this fixture has no instance map). 'clkSlow'
+    is a real project clock (PROJECT_DOMAINS), so this is
     not the reference check above: an undeclared BLOCK clock silently
     landed on the block default before this check existed, discarding the
     author's stated domain with no diagnostic."""
@@ -572,7 +1066,16 @@ instances:
 connections:
     - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in, clock: clkSlow }
 """
-    fixture, project_path, db_path = _make_fixture(design=design)
+    # A dedicated projectDomains: top_tb here declares only clkSlow (no
+    # clk), so PROJECT_DOMAINS' clk/rst_n would have nothing to bind (V10).
+    projectDomains = """
+clocks:
+    clkSlow: { desc: "the block's only clock", default: true, period: 3, timeUnit: ns }
+
+resets:
+    rstSlow_n: { desc: "the block's only reset", default: true, clock: clkSlow }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=projectDomains)
     try:
         code, output = _build(project_path, db_path)
         if code != 0:
@@ -587,41 +1090,685 @@ connections:
 
 
 def run_unsupported_direction_cases():
-    """`direction: output` on a clock and `async: true` on a reset are
-    declared shapes the schema accepts (spec §4.2) but neither is bindable
-    yet, so each is rejected with a diagnostic naming the field and the
-    block."""
-    results = [_expect_diagnostic(
-        "a clock declaring direction: output is rejected",
-        ('cons', 'clkOut', 'direction', 'output'),
-        consumerDomains="        clocks:\n"
-                        "            clkOut: { direction: output }\n")]
-    results.append(_expect_diagnostic(
-        "a reset declaring async: true is rejected",
-        ('cons', 'rstA_n', 'async'),
+    """`async: true` on a reset is bindable (spec §4.2): an asynchronous
+    reset input takes no default fallback (R10), only a map entry or a name
+    match, so 'cons' declaring one with no matching name in its container
+    'dut' (which declares no resets: of its own) is a V4 error naming the
+    reset and the block, not an "unsupported" rejection. `direction: output`
+    on a clock is bindable too (run_output_clock_bindable_cases)."""
+    return _expect_diagnostic(
+        "an unbound async reset input is rejected (V4), not the shape itself",
+        ('cons', 'rstA_n', 'V4'),
         consumerDomains="        resets:\n"
-                        "            rstA_n: { async: true }\n"))
-    return all(results)
+                        "            rstA_n: { async: true }\n")
+
+
+ASYNC_NAME_DESIGN = """blocks:
+    top_tb:
+        desc: "testbench container: declares rstA_n directly, one level from cons"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        resets:
+            rst_n:  { default: true }
+            rstA_n: { }
+    cons:
+        desc: "consumer with an async reset input, implicit clk"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        resets:
+            rstA_n: { async: true }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top }
+"""
+
+
+def run_async_reset_bound_by_name_cases():
+    """An asynchronous reset input binds by an ordinary name match (spec
+    §4.4) when its container declares a reset of the same name: 'top_tb'
+    declares 'rstA_n' and 'cons' consumes it as an async input, with no
+    instance map at all. One level, top_tb directly containing 'cons',
+    keeps 'rstA_n' from also needing a SECOND, outer binding of its own
+    (spec R9: the input clock/reset the map or name match resolves is a
+    net of the child's OWN container only, not chased further up)."""
+    # A dedicated projectDomains: top_tb IS the topInstance here, so its own
+    # extra reset rstA_n must also bind to a matching testbench entry (V3).
+    projectDomains = """
+resets:
+    rst_n:  { desc: "the default reset", default: true }
+    rstA_n: { desc: "a second reset on the implicit default clock" }
+"""
+    fixture, project_path, db_path = _make_fixture(design=ASYNC_NAME_DESIGN,
+                                                    projectDomains=projectDomains)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: an async reset input bound by name match builds\n{output}")
+            return False
+        print("PASS: an async reset input bound by name match builds")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+ASYNC_MAP_DESIGN = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    dut:
+        desc: "container with two clocks/resets"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    cons:
+        desc: "consumer with an async reset input, implicit clk"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        resets:
+            rstA_n: { async: true }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    u_dut:  { container: top_tb, instanceType: dut,    instGroup: top }
+    uCons:  { container: dut,    instanceType: cons,   instGroup: top,
+              resets: { rstA_n: rstSlow_n } }
+"""
+
+
+def run_async_reset_bound_by_map_cases():
+    """An asynchronous reset input binds by an explicit instance map (spec
+    §4.4), and is exempt from V6 clock membership (spec §4.2): 'uCons' maps
+    its async 'rstA_n' onto 'rstSlow_n', which belongs to 'clkSlow', while
+    'cons' itself runs on the implicit 'clk' (bound to 'dut's 'clk' by name
+    match) - a mismatch V6 would reject for a SYNCHRONOUS reset, but an
+    asynchronous reset input belongs to no clock of its own, so it builds."""
+    fixture, project_path, db_path = _make_fixture(design=ASYNC_MAP_DESIGN)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: an async reset input mapped across clocks builds\n{output}")
+            return False
+        print("PASS: an async reset input mapped across clocks builds, exempt from V6")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_output_clock_bindable_cases():
+    """`direction: output` on a clock is bindable (spec §4.5): an output's
+    map entry is required (V3) and its value is `~` to leave it
+    unconnected, a new local net name, or a declared output of the
+    container (export)."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    gen:
+        desc: "clock generator"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            genClk: { direction: output }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uGen:   { container: top_tb, instanceType: gen, instGroup: top,
+              clocks: { genClk: ~ } }
+"""
+    # projectDomains='': top_tb declares nothing of its own (implicit
+    # clk/rst_n only); PROJECT_DOMAINS' extra clkSlow would have nothing in
+    # this design to consume it (V10).
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: an output clock bound to \\`~\\` builds clean\n{output}")
+            return False
+        print("PASS: an output clock bound to `~` builds clean")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+# ----------------------------------------------------------------- V21 --
+
+V21_PROJECT_TWO_CLOCKS = """
+clocks:
+    clkA: { desc: "default testbench clock", default: true, period: 7, timeUnit: ns }
+    clkB: { desc: "second testbench clock", period: 9, timeUnit: ns }
+
+resets:
+    rst_n:  { desc: "clkA's reset", default: true, clock: clkA }
+    rstB_n: { desc: "clkB's reset", clock: clkB }
+"""
+
+V21_TOP_TWO_CLOCKS = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkA: { default: true }
+            clkB: { }
+        resets:
+            rst_n:  { clock: clkA }
+            rstB_n: { clock: clkB }
+"""
+
+
+def run_v21_agrees_through_both_instances():
+    """V21 positive: 'leaf' declares no period:, but both of its instances
+    bind clk to the same testbench clock clkA - the design determines its
+    period (7 ns), read back from the generated standalone wrapper."""
+    design = V21_TOP_TWO_CLOCKS + """    leaf:
+        desc: "hasVl leaf with no declared period, instantiated twice on the same clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeafA: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkA }, resets: { rst_n: rst_n } }
+    uLeafB: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkA }, resets: { rst_n: rst_n } }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=V21_PROJECT_TWO_CLOCKS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: V21 agreement through two instances builds\n{output}")
+            return False
+        made = _arch2code('--db', db_path, '-r', '--newmodule', cwd=fixture)
+        if made.returncode != 0:
+            print(f"FAIL: newmodule failed:\n{made.stdout}\n{made.stderr}")
+            return False
+        rel = 'verif/leaf_hdl_sc_wrapper.h'
+        gen = _arch2code('--db', db_path, '-r', '--systemc',
+                         '--file', os.path.join(fixture, rel), cwd=fixture)
+        if gen.returncode != 0:
+            print(f"FAIL: generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+            return False
+        with open(os.path.join(fixture, rel)) as f:
+            text = f.read()
+        if 'sc_time(7, SC_NS) / 2' not in text:
+            print(f"FAIL: leaf's resolved period is not clkA's 7 ns:\n{text}")
+            return False
+        print("PASS: V21 resolves through two agreeing instances to clkA's own period")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v21_declared_period_wins_over_disagreement():
+    """V21 positive: 'leaf' declares its own period:, so a disagreement
+    between its two instances' resolved clocks is immaterial - the
+    declaration wins outright."""
+    design = V21_TOP_TWO_CLOCKS + """    leaf:
+        desc: "hasVl leaf with its own declared period, instantiated on two different clocks"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { period: 5, timeUnit: ns }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeafA: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkA }, resets: { rst_n: rst_n } }
+    uLeafB: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkB }, resets: { rst_n: rstB_n } }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=V21_PROJECT_TWO_CLOCKS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: V21 declared period wins builds\n{output}")
+            return False
+        made = _arch2code('--db', db_path, '-r', '--newmodule', cwd=fixture)
+        if made.returncode != 0:
+            print(f"FAIL: newmodule failed:\n{made.stdout}\n{made.stderr}")
+            return False
+        rel = 'verif/leaf_hdl_sc_wrapper.h'
+        gen = _arch2code('--db', db_path, '-r', '--systemc',
+                         '--file', os.path.join(fixture, rel), cwd=fixture)
+        if gen.returncode != 0:
+            print(f"FAIL: generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+            return False
+        with open(os.path.join(fixture, rel)) as f:
+            text = f.read()
+        if 'sc_time(5, SC_NS) / 2' not in text:
+            print(f"FAIL: leaf's own declared period (5 ns) did not win:\n{text}")
+            return False
+        print("PASS: V21 a declared period wins even though the two instances disagree")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v21_rejects_disagreement():
+    """V21 negative: 'leaf' declares no period: and its two instances
+    resolve to different testbench clocks - an error naming both instances
+    (spec V21 "an error naming the instances that disagree")."""
+    design = V21_TOP_TWO_CLOCKS + """    leaf:
+        desc: "hasVl leaf with no declared period, instantiated on two different clocks"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeafA: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkA }, resets: { rst_n: rst_n } }
+    uLeafB: { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkB }, resets: { rst_n: rstB_n } }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=V21_PROJECT_TWO_CLOCKS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code == 0:
+            print(f"FAIL: V21 disagreeing instances built successfully\n{output}")
+            return False
+        ok = all(needle in output for needle in ('V21', 'uLeafA', 'uLeafB'))
+        print(f"{'PASS' if ok else 'FAIL'}: V21 rejects two instances resolving to "
+              f"different testbench clocks, naming both{'' if ok else chr(10) + output}")
+        return ok
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v21_rejects_supplier_output():
+    """V21 negative: 'leaf' declares no period: and its instance resolves to
+    a supplier's output (a local net a divider drives), not a testbench
+    net - an error naming the cause."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    gen:
+        desc: "clock generator: produces a local, non-testbench clock and reset"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            genClk: { direction: output }
+        resets:
+            rst_n:    { clock: clk }
+            genRst_n: { clock: genClk, direction: output }
+    leaf:
+        desc: "hasVl leaf with no declared period, resolving to gen's output"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uGen:   { container: top_tb, instanceType: gen, instGroup: top,
+              clocks: { genClk: clkLocal }, resets: { genRst_n: rstLocal_n } }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk: clkLocal }, resets: { rst_n: rstLocal_n } }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code == 0:
+            print(f"FAIL: V21 resolving to a supplier's output built successfully\n{output}")
+            return False
+        ok = all(needle in output for needle in ('V21', 'uLeaf', "supplier"))
+        print(f"{'PASS' if ok else 'FAIL'}: V21 rejects a clock resolving to a supplier's "
+              f"output with no declared period{'' if ok else chr(10) + output}")
+        return ok
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v21_rejects_zero_instance():
+    """V21 negative: 'leaf' declares no period: and is never instantiated at
+    all in its own declaring project - an error naming that cause."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf, never instantiated"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code == 0:
+            print(f"FAIL: V21 on a zero-instance hasVl block built successfully\n{output}")
+            return False
+        ok = all(needle in output for needle in ('V21', 'leaf', 'no instance'))
+        print(f"{'PASS' if ok else 'FAIL'}: V21 rejects a zero-instance hasVl block with no "
+              f"declared period{'' if ok else chr(10) + output}")
+        return ok
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v21_cases():
+    return all([
+        run_v21_agrees_through_both_instances(),
+        run_v21_declared_period_wins_over_disagreement(),
+        run_v21_rejects_disagreement(),
+        run_v21_rejects_supplier_output(),
+        run_v21_rejects_zero_instance(),
+    ])
+
+
+# ------------------------------------------------------------------ V9 --
+
+def run_v9_top_rejects_reset_on_unbound_clock():
+    """V9 negative, at the design top: top_tb's own INPUT reset 'rstOut_n'
+    belongs to 'clkOut', an OUTPUT clock of top_tb. 'rstOut_n' itself binds
+    fine (the testbench declares a matching name), but its own clock never
+    does - clkOut is an output, never bound to a testbench net at all - so
+    the testbench would be releasing a reset of a clock it does not
+    generate."""
+    design = """blocks:
+    top_tb:
+        desc: "testbench container with an output clock and a reset on it"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            clkOut: { direction: output }
+        resets:
+            rst_n:    { clock: clk }
+            rstOut_n: { clock: clkOut }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+    projectDomains = """
+clocks:
+    clk: { desc: "the default clock", default: true, period: 1, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    rstOut_n: { desc: "same name as top_tb's own reset on its output clock", clock: clk }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains=projectDomains)
+    try:
+        code, output = _build(project_path, db_path)
+        if code == 0:
+            print(f"FAIL: a top reset on an unbound (output) clock built successfully\n{output}")
+            return False
+        ok = 'V9' in output
+        print(f"{'PASS' if ok else 'FAIL'}: V9 rejects a top input reset whose own clock is "
+              f"never bound to a testbench net{'' if ok else chr(10) + output}")
+        return ok
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v9_standalone_rejects_reset_on_output_clock():
+    """V9 for a standalone hasVl block (spec §4.8): 'leaf' is hasVl and its
+    reset 'rst2_n' belongs to 'clk2', an OUTPUT clock of 'leaf' itself - a
+    standalone build cannot count release cycles on an observed output
+    clock, which may not run before its own release."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf whose second reset belongs to its own output clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:  { default: true, period: 10, timeUnit: ns }
+            clk2: { direction: output }
+        resets:
+            rst_n:  { clock: clk }
+            rst2_n: { clock: clk2 }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clk2: ~ }, resets: { rst2_n: rst_n } }
+"""
+    # rst2_n is mapped directly onto top_tb's own rst_n so the ordinary
+    # instance binding succeeds cleanly (clk2 has no clockBindNet entry - an
+    # output is never bound as an input clock - so V6's membership check is
+    # not reached either); the ONLY diagnostic this fixture can raise is the
+    # standalone-specific V9 check under test.
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code == 0:
+            print(f"FAIL: a standalone reset on an output clock built successfully\n{output}")
+            return False
+        ok = all(needle in output for needle in ('V9', 'leaf', 'rst2_n'))
+        print(f"{'PASS' if ok else 'FAIL'}: V9 rejects a standalone hasVl block's reset "
+              f"belonging to its own output clock{'' if ok else chr(10) + output}")
+        return ok
+    finally:
+        shutil.rmtree(fixture)
+
+
+# ------------------------------------------------------- end-of-run report --
+
+def run_end_of_run_report_cases():
+    """R23 end-of-run report (spec §4.8): a hasVl block with an output clock
+    and an output reset gets an end_of_simulation() override reporting both
+    (plan item 4); a hasVl block with no outputs at all gets no override,
+    so the fix that scoped the override does not regress into emitting an
+    empty one everywhere."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    gen:
+        desc: "produces an output clock and an output reset"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            genClk: { direction: output }
+        resets:
+            rst_n:    { clock: clk }
+            genRst_n: { clock: genClk, direction: output }
+    plainVl:
+        desc: "hasVl leaf with no outputs at all"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uGen:   { container: top_tb, instanceType: gen, instGroup: top,
+              clocks: { genClk: ~ }, resets: { genRst_n: ~ } }
+    uPlain: { container: top_tb, instanceType: plainVl, instGroup: top }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: end-of-run report fixture builds\n{output}")
+            return False
+        made = _arch2code('--db', db_path, '-r', '--newmodule', cwd=fixture)
+        if made.returncode != 0:
+            print(f"FAIL: newmodule failed:\n{made.stdout}\n{made.stderr}")
+            return False
+
+        def render(rel):
+            gen = _arch2code('--db', db_path, '-r', '--systemc',
+                             '--file', os.path.join(fixture, rel), cwd=fixture)
+            if gen.returncode != 0:
+                raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+            with open(os.path.join(fixture, rel)) as f:
+                return f.read()
+
+        genText = render('verif/gen_hdl_sc_wrapper.h')
+        plainText = render('verif/plainVl_hdl_sc_wrapper.h')
+    except AssertionError as exc:
+        print(f"FAIL: {exc}")
+        return False
+    finally:
+        shutil.rmtree(fixture)
+
+    ok = True
+    for needle in ('void end_of_simulation() override', "produced no edge",
+                  'never released by end of run'):
+        if needle not in genText:
+            print(f"FAIL: end-of-run report: {needle!r} missing from gen's own wrapper")
+            ok = False
+    if 'end_of_simulation' in plainText:
+        print("FAIL: end-of-run report: plainVl (no outputs at all) must get no override")
+        ok = False
+    print(f"{'PASS' if ok else 'FAIL'}: the end-of-run report is emitted only for a block "
+          f"with an output clock or reset, omitted entirely otherwise")
+    return ok
 
 
 # ------------------------------------------------------- domain agreement --
 
+# A memory on a consumer that declares its own clocks and resets, so the
+# memory's clock:/reset: have declared rows to be checked against. top_tb
+# declares nothing (projectDomains='' pairs with it); the memory domain
+# fields are appended to the memory entry.
+MEMORY_DESIGN = """constants:
+    TBL_WORDS: {{ value: 4, desc: "memory word count" }}
+
+types:
+    dataT: {{ width: 8, desc: "payload word" }}
+    memAddrT: {{ width: 3, desc: "memory address" }}
+
+structures:
+    dataSt:
+        data: {{ varType: dataT, desc: "payload word" }}
+    memAddrSt:
+        address: {{ varType: memAddrT, generator: address, desc: "memory address" }}
+    memSt:
+        data: {{ varType: dataT, generator: memory, desc: "memory payload" }}
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - {{ structure: dataSt, structureType: data_t }}
+
+blocks:
+    top_tb: {{ desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    dut:
+        desc: "container of the producer and consumer"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: {{ default: true }}
+        resets:
+            rst_n: {{ clock: clk }}
+    prod: {{ desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    cons:
+        desc: "consumer holding a memory"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: {{ default: true }}
+        resets:
+            rst_n: {{ clock: clk }}
+
+instances:
+    top_tb: {{ container: top_tb, instanceType: top_tb, instGroup: top }}
+    u_dut:  {{ container: top_tb, instanceType: dut,    instGroup: top }}
+    uProd:  {{ container: dut,    instanceType: prod,   instGroup: top }}
+    uCons:  {{ container: dut,    instanceType: cons,   instGroup: top }}
+
+connections:
+    - {{ interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }}
+
+memories:
+    - {{ memory: tbl, block: cons, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], desc: "consumer table"{memoryDomain} }}
+"""
+
+
 def run_domain_agreement_cases():
     """V1: a block reset's clock: names a block clock of the same block.
-    V2: a declared port's clock: does too."""
+    V2: a port's, registerPorts:, addressBlock: or memory's clock:/reset:
+    does too. The existence part of both is the schema's blockClock/
+    blockReset combo foreign key (schema.yaml), so the diagnostic is the
+    parser's "not valid in context" form naming the block and the stated
+    name; a block declaring no clocks: has no rows for the key to find, so
+    a stated clock: on one is rejected the same way (its only clock is the
+    implicit clk, so stating it is redundant at best)."""
     results = [_expect_diagnostic(
         "a block reset's clock: naming a clock the block does not declare "
         "is rejected",
-        ('cons', 'rst_n', 'noSuchClock', 'V1'),
-        consumerDomains="        resets:\n"
+        ('cons', 'rst_n', 'noSuchClock', 'not valid in context'),
+        consumerDomains="        clocks:\n"
+                        "            clk: { default: true }\n"
+                        "        resets:\n"
                         "            rst_n: { clock: noSuchClock }\n")]
     results.append(_expect_diagnostic(
         "a declared port's clock: naming a clock the block does not "
         "declare is rejected",
-        ('cons', 'regs', 'noSuchClock', 'clk', 'V2'),
-        consumerDomains="        ports:\n"
+        ('cons', 'regs', 'noSuchClock', 'not valid in context'),
+        consumerDomains="        clocks:\n"
+                        "            clk: { default: true }\n"
+                        "        ports:\n"
                         "            regs: { interface: dataIf, direction: dst, "
                         "clock: noSuchClock }\n"))
+    results.append(_expect_diagnostic(
+        "a stated clock: on a block declaring no clocks: is rejected, even "
+        "as 'clk': the block has no clock rows, its one clock is implicit",
+        ('cons', 'rst_n', 'clk', 'not valid in context'),
+        consumerDomains="        resets:\n"
+                        "            rst_n: { clock: clk }\n"))
+    results.append(_expect_diagnostic(
+        "a memory's clock: naming a clock its block does not declare is "
+        "rejected",
+        ('cons', 'noSuchClock', 'not valid in context'),
+        design=MEMORY_DESIGN.format(memoryDomain=', clock: noSuchClock'),
+        projectDomains=''))
+    results.append(_expect_diagnostic(
+        "a memory's reset: naming a reset its block does not declare is "
+        "rejected",
+        ('cons', 'noSuchReset', 'not valid in context'),
+        design=MEMORY_DESIGN.format(memoryDomain=', reset: noSuchReset'),
+        projectDomains=''))
     return all(results)
 
 
@@ -680,6 +1827,370 @@ instances:
         design=design)
 
 
+# --------------------------------------------------------- instance maps --
+
+def run_instance_map_bad_key_rejected():
+    """V4: a map key must name a block clock of the instantiated block."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cons:
+        desc: "consumer"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top,
+              clocks: { clkBogus: clk } }
+"""
+    return _expect_diagnostic(
+        "a map key naming a clock the instantiated block does not declare "
+        "is rejected",
+        ('uCons', 'clkBogus', 'cons', 'V4'),
+        design=design)
+
+
+def run_instance_map_bad_value_rejected():
+    """V4: a map value must name a declared clock/reset of the container (a
+    local net or `~` is covered by the local-net tests)."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cons:
+        desc: "consumer"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top,
+              clocks: { clk: noSuchNet } }
+"""
+    return _expect_diagnostic(
+        "a map value naming a net the container does not declare is "
+        "rejected",
+        ('uCons', 'cons', 'top_tb', 'noSuchNet', 'V4'),
+        design=design)
+
+
+def run_instance_map_kind_mismatch_rejected():
+    """V4: a clock map entry must bind a clock net, not a reset net (and a
+    reset entry a reset net), even when the name exists in the container."""
+    design = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+        resets:
+            rst_n: { clock: clk }
+    cons:
+        desc: "consumer"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top,
+              clocks: { clk: rst_n } }
+"""
+    return _expect_diagnostic(
+        "a clock map entry naming a container RESET is rejected: a clock "
+        "entry binds a clock net, not a reset net",
+        ('uCons', 'cons', 'top_tb', 'rst_n', 'V4'),
+        design=design)
+
+
+def run_instance_map_renamed_v13_accepted():
+    """V13 through a renamed instance map: a connection's clock: derives to
+    exactly one input clock of the instance, even though the block's own
+    clock name (clkC) differs from the container's (clkSlow) - the exact
+    composition-and-renaming shape spec §4.4 exists for."""
+    design = """types:
+    dataT: { width: 8, desc: "payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cons:
+        desc: "consumer; declares its clock as clkC, not clkSlow"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkC: { default: true }
+        resets:
+            rstC_n: { clock: clkC }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,   instGroup: top,
+              clocks: { clk: clkSlow }, resets: { rst_n: rstSlow_n } }
+    uCons:  { container: top_tb, instanceType: cons,   instGroup: top,
+              clocks: { clkC: clkSlow }, resets: { rstC_n: rstSlow_n } }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in, clock: clkSlow }
+"""
+    fixture, project_path, db_path = _make_fixture(design=design)
+    try:
+        code, output = _build(project_path, db_path)
+    finally:
+        shutil.rmtree(fixture)
+    if code != 0:
+        print(f"FAIL: a renamed instance map still resolves V13 to the "
+              f"one renamed input clock\n{output}")
+        return False
+    print("PASS: a renamed instance map still resolves V13 to the one "
+          "renamed input clock")
+    return True
+
+
+def run_instance_maps_cases():
+    return all([
+        run_instance_map_bad_key_rejected(),
+        run_instance_map_bad_value_rejected(),
+        run_instance_map_kind_mismatch_rejected(),
+        run_instance_map_renamed_v13_accepted(),
+    ])
+
+
+# --------------------------------------------------------------- local nets --
+
+# A generator with an output clock, and a consumer, both inside 'dut': the
+# generator's output binding names 'clkGen', a name 'dut' does not declare,
+# creating a local net; the consumer's own 'clk' binds to it by an explicit
+# map (spec §4.5).
+LOCAL_NET_DESIGN = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "container: the generated clock is a local net of this block"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            sysClk: { default: true }
+    gen:
+        desc: "clock generator"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            genClk: { direction: output }
+        resets: {}
+    cons:
+        desc: "consumer of the generated clock"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        resets: {}
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uDut:   { container: top_tb, instanceType: dut,    instGroup: top,
+              clocks: { sysClk: clk } }
+    uGen:   { container: dut,    instanceType: gen,    instGroup: top,
+              clocks: { clk: sysClk, genClk: clkGen } }
+    uCons:  { container: dut,    instanceType: cons,   instGroup: top,
+              clocks: { clk: clkGen } }
+"""
+
+
+def run_local_net_positive_case():
+    """A child output bound to a name the container does not declare
+    creates a local net (spec §4.5): kind 'local', driven by the output
+    ('childOutput'), consumed by the other child's own map entry."""
+    # projectDomains='': top_tb declares nothing of its own (implicit
+    # clk/rst_n only); PROJECT_DOMAINS' extra clkSlow would have nothing in
+    # this design to consume it (V10).
+    fixture, project_path, db_path = _make_fixture(design=LOCAL_NET_DESIGN, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the local-net fixture builds\n{output}")
+            return False
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        dutKey = cur.execute("SELECT blockKey FROM blocks WHERE block = 'dut'").fetchone()['blockKey']
+        genInstanceKey = cur.execute(
+            "SELECT instanceKey FROM instances WHERE instance = 'uGen'").fetchone()['instanceKey']
+        consInstanceKey = cur.execute(
+            "SELECT instanceKey FROM instances WHERE instance = 'uCons'").fetchone()['instanceKey']
+        localNets = cur.execute(
+            "SELECT * FROM containerLocalNets WHERE blockKey = ?", (dutKey,)).fetchall()
+        genBinds = cur.execute(
+            "SELECT * FROM instanceClockResetBinds WHERE instanceKey = ?", (genInstanceKey,)).fetchall()
+        consBinds = cur.execute(
+            "SELECT * FROM instanceClockResetBinds WHERE instanceKey = ?", (consInstanceKey,)).fetchall()
+        con.close()
+
+        failed = False
+        if len(localNets) != 1 or localNets[0]['netName'] != 'clkGen':
+            print(f"FAIL: containerLocalNets for 'dut' is {[dict(r) for r in localNets]}, "
+                  f"expected one 'clkGen' net")
+            failed = True
+        genOutputBinds = [(r['childPort'], r['parentSignal']) for r in genBinds]
+        if ('genClk', 'clkGen') not in genOutputBinds:
+            print(f"FAIL: uGen's own binds are {genOutputBinds}, expected "
+                  f"('genClk', 'clkGen') among them")
+            failed = True
+        consInputBinds = [(r['childPort'], r['parentSignal']) for r in consBinds]
+        if ('clk', 'clkGen') not in consInputBinds:
+            print(f"FAIL: uCons's own binds are {consInputBinds}, expected "
+                  f"('clk', 'clkGen') among them")
+            failed = True
+        print(f"{'FAIL' if failed else 'PASS'}: a child output bound to a new name "
+              f"creates a local net, consumed by a sibling's own map entry")
+        return not failed
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_local_net_no_consumer_rejected():
+    """V22: a local net with no child input consumer is an error naming the
+    driving binding."""
+    design = LOCAL_NET_DESIGN.replace(
+        "    uCons:  { container: dut,    instanceType: cons,   instGroup: top,\n"
+        "              clocks: { clk: clkGen } }\n",
+        "    uCons:  { container: dut,    instanceType: cons,   instGroup: top }\n")
+    assert design != LOCAL_NET_DESIGN, "the uCons replacement did not match"
+    return _expect_diagnostic(
+        "a local net with no consumer is rejected",
+        ('dut', 'clkGen', 'uGen', 'genClk', 'V22'),
+        design=design, projectDomains='')
+
+
+def run_output_bound_to_container_input_rejected():
+    """V5: an output may not bind to a container INPUT, which already has a
+    driver (its own parent)."""
+    design = LOCAL_NET_DESIGN.replace(
+        "clocks: { clk: sysClk, genClk: clkGen }", "clocks: { clk: sysClk, genClk: sysClk }")
+    assert design != LOCAL_NET_DESIGN, "the genClk replacement did not match"
+    return _expect_diagnostic(
+        "an output bound to a container input is rejected",
+        ('uGen', 'genClk', 'sysClk', 'V5'),
+        design=design)
+
+
+def run_two_outputs_one_net_rejected():
+    """V5: two child outputs bound to the same local net name is a second
+    driver on one net."""
+    design = LOCAL_NET_DESIGN.replace(
+        "    cons:\n",
+        "    gen2:\n"
+        "        desc: \"a second clock generator\"\n"
+        "        hasVl: false\n"
+        "        hasMdl: false\n"
+        "        hasTb: false\n"
+        "        hasRtl: false\n"
+        "        clocks:\n"
+        "            clk:    { default: true }\n"
+        "            genClk: { direction: output }\n"
+        "    cons:\n"
+    ).replace(
+        "    uCons:  { container: dut,    instanceType: cons,   instGroup: top,\n"
+        "              clocks: { clk: clkGen } }\n",
+        "    uCons:  { container: dut,    instanceType: cons,   instGroup: top,\n"
+        "              clocks: { clk: clkGen } }\n"
+        "    uGen2:  { container: dut,    instanceType: gen2,   instGroup: top,\n"
+        "              clocks: { clk: sysClk, genClk: clkGen } }\n")
+    assert design != LOCAL_NET_DESIGN, "the uCons/uGen2 replacement did not match"
+    return _expect_diagnostic(
+        "two child outputs bound to the same local net is a second driver",
+        ('dut', 'clkGen', 'V5'),
+        design=design)
+
+
+def run_declared_output_undriven_gets_own_implementation():
+    """spec §4.6 table: a declared output no child drives is driven by the
+    container's own implementation."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "container: exports a clock its own body produces"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            outClk: { direction: output }
+    cons: { desc: "plain child", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uDut:   { container: top_tb, instanceType: dut,    instGroup: top,
+              clocks: { outClk: ~ } }
+    uCons:  { container: dut,    instanceType: cons,   instGroup: top }
+"""
+    # projectDomains='': top_tb declares nothing of its own (implicit
+    # clk/rst_n only); PROJECT_DOMAINS' extra clkSlow would have nothing in
+    # this design to consume it (V10).
+    fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: a declared output with no driving child builds\n{output}")
+            return False
+        print("PASS: a declared output with no driving child builds clean "
+              "(its own implementation is the driver)")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_local_net_cases():
+    return all([
+        run_local_net_positive_case(),
+        run_local_net_no_consumer_rejected(),
+        run_output_bound_to_container_input_rejected(),
+        run_two_outputs_one_net_rejected(),
+        run_declared_output_undriven_gets_own_implementation(),
+    ])
+
+
 # --------------------------------------------- single-domain object rules --
 
 class _StubDiag:
@@ -704,158 +2215,110 @@ class _StubDiag:
         return yamlFile
 
 
-def _orderedUniqueClocks(rows):
-    """The distinct clocks of a set of connection rows, first-seen order -
-    matches clockTree.build()'s own grouping so a message's clock order
-    here matches what production would emit."""
-    seen = OrderedDict()
-    for row in rows:
-        seen[row['clock']] = None
-    return tuple(seen.keys())
-
-
-def _validateSingleDomain(memories, memoryConnections, registerConnections,
-                          routerClocks=None):
-    """Run ClockTree.check() over synthetic BlockDomains.
+def _validateRouterDomain(routerClocks):
+    """Run ClockTree.check() over one synthetic router BlockDomains.
 
     THIS EXERCISES THE CHECK IN ISOLATION, not a build: BlockDomains built by
     hand, not by BlockDomains.build(), so a multi-clock router needs no
     default-clock marking of its own (V18, irrelevant to this rule) to reach
-    the check.
-
-    Driven directly rather than through a built fixture: the memory and register
-    rules read only the RESOLVED clock of each connection row, and authoring a
-    memory decode hierarchy around them would exercise the decode machinery rather
-    than these rules. The router rule is covered end to end as well, by
-    run_router_domain_cases, because its reachability scoping has no synthetic
-    equivalent.
-
-    routerClocks, when given, adds a ROUTER block (one carrying `addressBlock:`)
-    whose derived clock set holds those clocks. The router rule reads the derived
-    set the caller hands in, not a connection row, so this is where that set
-    enters. Every synthetic block is instantiated at the top so it is reachable;
-    the pruning of unreachable routers is what the end-to-end cases cover.
+    the check. Every synthetic block is instantiated at the top so it is
+    reachable; the pruning of unreachable routers is what the end-to-end
+    cases cover (run_router_domain_cases).
     """
-    memoryDomains = [
-        clockTree.MemoryDomain(
-            memoryBlockKey, memRow['memory'], memRow['memoryType'],
-            _orderedUniqueClocks(row for row in memoryConnections.values()
-                                if row['memoryBlockKey'] == memoryBlockKey))
-        for memoryBlockKey, memRow in memories.items()]
-    registerConnectionClocks = _orderedUniqueClocks(
-        row for row in registerConnections.values() if row['blockKey'] == 'blockA/top.yaml')
+    clocks = OrderedDict(
+        (name, clockTree.ClockDecl(desc='', direction='input',
+                                   default=(index == 0), period='', timeUnit='ns'))
+        for index, name in enumerate(routerClocks))
     domains = {
-        'blockA/top.yaml': clockTree.BlockDomains(
-            'blockA/top.yaml', 'blockA',
-            OrderedDict([('clk', clockTree.ClockDecl(desc='', direction='input',
-                                                     default=True, period='', timeUnit='ns'))]),
-            OrderedDict(), 'clk', {}, False, memoryDomains, registerConnectionClocks),
-    }
-    if routerClocks is not None:
-        clocks = OrderedDict(
-            (name, clockTree.ClockDecl(desc='', direction='input',
-                                       default=(index == 0), period='', timeUnit='ns'))
-            for index, name in enumerate(routerClocks))
-        domains['router/top.yaml'] = clockTree.BlockDomains(
+        'router/top.yaml': clockTree.BlockDomains(
             'router/top.yaml', 'router', clocks, OrderedDict(), routerClocks[0], {},
-            True, [], ())
-    # Every synthetic block is instantiated directly at the top (spec §4.8),
-    # recorded on the root container exactly as clockTree.build() records a
-    # topInstance.
+            True, False, [], {}),
+    }
     root = clockTree.Container(clockTree.ClockTree.ROOT_KEY)
-    for blockKey, domain in domains.items():
-        root.instances[f'u_{domain.block}/top.yaml'] = blockKey
+    root.instances['u_router/top.yaml'] = 'router/top.yaml'
     diag = _StubDiag()
-    tree = clockTree.ClockTree(domains, {}, root, diag)
+    tree = clockTree.ClockTree(domains, {}, root, diag, [])
     tree.check()
     return diag.messages
 
 
-def _memoryConnection(clock, port):
-    return {'memoryBlockKey': 'tbl/blockA/top.yaml', 'clock': clock, 'port': port,
-            'memory': 'tbl', 'block': 'blockA'}
+# A memory owner (implicit clk) and one hardware accessor, so V8 (spec §4.3,
+# §4.3 "Memories": a hardware accessor via memoryConnections: must be in the
+# memory's own domain) can be driven through a real build rather than by hand:
+# unlike the OLD project-scoped `clock:` literal this rule reads instead the
+# accessor's own resolved container clock, which only a real instance bind
+# produces.
+MEMORY_ACCESS_DESIGN = """types:
+    dataT: {{ width: 8, desc: "payload word" }}
+    memAddrT: {{ width: 3, desc: "memory address" }}
 
+structures:
+    memSt:
+        data: {{ varType: dataT, desc: "memory payload" }}
+    memAddrSt:
+        address: {{ varType: memAddrT, desc: "memory address" }}
 
-def _memory(memoryType):
-    return {'tbl/blockA/top.yaml': {'memory': 'tbl', 'block': 'blockA',
-                                    'memoryType': memoryType}}
+blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     {{ default: true }}
+            clkSlow: {{ }}
+        resets:
+            rst_n:     {{ clock: clk }}
+            rstSlow_n: {{ clock: clkSlow }}
+    memOwner: {{ desc: "memory owner", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    accessor:
+        desc: "hardware accessor"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+{accessorClocks}
+instances:
+    top_tb:    {{ container: top_tb, instanceType: top_tb,   instGroup: top }}
+    uMemOwner: {{ container: top_tb, instanceType: memOwner, instGroup: top }}
+    uAccessor: {{ container: top_tb, instanceType: accessor, instGroup: top }}
+
+memories:
+    - {{ memory: tbl, block: memOwner, structure: memSt, addressStruct: memAddrSt, wordLines: 4, ports: [p], desc: "table" }}
+
+memoryConnections:
+    - {{ memory: tbl, block: memOwner, instance: uAccessor, port: p }}
+"""
 
 
 def run_single_domain_cases():
     results = []
 
-    def one_domain_accepted():
-        messages = _validateSingleDomain(
-            _memory('dualPort'),
-            {'a': _memoryConnection('clk', 'port1'),
-             'b': _memoryConnection('clk', 'port2')},
-            {})
-        if messages:
+    def memory_accessor_same_domain_accepted():
+        design = MEMORY_ACCESS_DESIGN.format(accessorClocks='')
+        fixture, project_path, db_path = _make_fixture(design=design)
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code != 0:
             raise AssertionError(
-                f"a memory whose ports agree on a clock was rejected: {messages}. "
-                f"A single-domain memory is the supported case.")
+                f"a memory accessor in the memory's own domain (both implicit "
+                f"clk) was rejected:\n{output}")
         return True
 
-    def dual_clock_memory_named_as_unsupported():
-        messages = _validateSingleDomain(
-            _memory('dualPort'),
-            {'a': _memoryConnection('clk', 'port1'),
-             'b': _memoryConnection('clkSlow', 'port2')},
-            {})
-        if len(messages) != 1:
-            raise AssertionError(
-                f"expected exactly one diagnostic, got {messages}")
-        for needle in ('dualPort', 'Dual-clock memory is not supported',
-                       "'clk'", "'clkSlow'"):
-            if needle not in messages[0]:
-                raise AssertionError(
-                    f"the message does not mention '{needle}', so it does not "
-                    f"explain why this is rejected rather than supported: "
-                    f"{messages[0]}")
-        return True
-
-    def single_port_memory_gets_the_generic_message():
-        messages = _validateSingleDomain(
-            _memory('singlePort'),
-            {'a': _memoryConnection('clk', 'port1'),
-             'b': _memoryConnection('clkSlow', 'port1')},
-            {})
-        if len(messages) != 1 or 'single-domain primitive' not in messages[0]:
-            raise AssertionError(
-                f"expected the generic single-domain message, got {messages}")
-        if 'dualPort' in messages[0]:
-            raise AssertionError(
-                f"a singlePort memory was told dual-clock memory is unsupported, "
-                f"which is not its problem: {messages[0]}")
-        return True
-
-    def register_bus_must_be_one_domain():
-        messages = _validateSingleDomain(
-            {}, {},
-            {'a': {'blockKey': 'blockA/top.yaml', 'clock': 'clk'},
-             'b': {'blockKey': 'blockA/top.yaml', 'clock': 'clkSlow'}})
-        if len(messages) != 1:
-            raise AssertionError(
-                f"expected exactly one diagnostic, got {messages}")
-        for needle in ('blockA', 'register decoder', "'clk'", "'clkSlow'"):
-            if needle not in messages[0]:
-                raise AssertionError(
-                    f"the message does not mention '{needle}': {messages[0]}")
-        return True
-
-    def register_bus_one_domain_accepted():
-        messages = _validateSingleDomain(
-            {}, {},
-            {'a': {'blockKey': 'blockA/top.yaml', 'clock': 'clkSlow'},
-             'b': {'blockKey': 'blockA/top.yaml', 'clock': 'clkSlow'}})
-        if messages:
-            raise AssertionError(
-                f"a register bus wholly in one non-default domain was rejected: "
-                f"{messages}. Only a DISAGREEMENT is an error.")
-        return True
+    results.append(_expect_diagnostic(
+        "a memory accessor in a different domain than the memory is rejected",
+        ('uAccessor', 'tbl', 'memOwner', 'clkSlow', 'clk', 'V8'),
+        design=MEMORY_ACCESS_DESIGN.format(
+            accessorClocks="        clocks:\n"
+                          "            clkSlow: { }\n"
+                          "        resets:\n"
+                          "            rstSlow_n: { clock: clkSlow }\n")))
 
     def router_one_domain_accepted():
-        messages = _validateSingleDomain({}, {}, {}, routerClocks=['clkSlow'])
+        messages = _validateRouterDomain(['clkSlow'])
         if messages:
             raise AssertionError(
                 f"a router wholly in one non-default domain was rejected: "
@@ -864,8 +2327,7 @@ def run_single_domain_cases():
         return True
 
     def router_two_domains_rejected():
-        messages = _validateSingleDomain({}, {}, {},
-                                         routerClocks=['clk', 'clkSlow'])
+        messages = _validateRouterDomain(['clk', 'clkSlow'])
         if len(messages) != 1:
             raise AssertionError(
                 f"expected exactly one diagnostic, got {messages}")
@@ -889,8 +2351,7 @@ def run_single_domain_cases():
         The emitter reads the first entry, so this shape happens to emit the right
         clock - and is still rejected, because the router would declare a second
         clock port that nothing clocks."""
-        messages = _validateSingleDomain({}, {}, {},
-                                         routerClocks=['clkSlow', 'clkPico'])
+        messages = _validateRouterDomain(['clkSlow', 'clkPico'])
         if len(messages) != 1:
             raise AssertionError(
                 f"a two-clock router whose bus clock sorts first was accepted "
@@ -898,16 +2359,8 @@ def run_single_domain_cases():
         return True
 
     for label, fn in (
-            ("a memory whose ports agree on one clock is accepted",
-             one_domain_accepted),
-            ("a dualPort memory in two clock domains is named as unsupported",
-             dual_clock_memory_named_as_unsupported),
-            ("a non-dualPort memory in two clock domains gets the generic message",
-             single_port_memory_gets_the_generic_message),
-            ("a block whose register connections disagree on a clock is rejected",
-             register_bus_must_be_one_domain),
-            ("a register bus wholly in one non-default domain is accepted",
-             register_bus_one_domain_accepted),
+            ("a memory accessor in the memory's own domain is accepted",
+             memory_accessor_same_domain_accepted),
             ("a router wholly in one non-default domain is accepted",
              router_one_domain_accepted),
             ("a router resolving to two clocks is rejected by name",
@@ -916,6 +2369,248 @@ def run_single_domain_cases():
              router_rule_is_on_cardinality_not_order)):
         results.append(_run_case(label, fn))
     return all(results)
+
+
+# --------------------------------------- V24 (regAccess memory, R20 bridge) --
+
+# A router-served, TOP-DOWN leaf (no registerPorts:, so R25's top-down
+# selection resolves its register bus from the router dispatching to it) on
+# two clocks, with a regAccess memory the '%s' slot places on either one -
+# 'clk', the router's own bus clock, for the positive shape, or 'clkPix' for
+# the negative one. `%`-substituted rather than `.format()`-substituted: the
+# design otherwise reads as ordinary YAML, with none of `.format()`'s braces
+# to escape.
+V24_DESIGN = """constants:
+    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
+    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
+    TBL_WORDS:  { value: 4, desc: "memory word count" }
+
+types:
+    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
+    dataT:    { width: 8, desc: "payload word" }
+    memAddrT: { width: 3, desc: "memory address" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    memAddrSt:
+        address: { varType: memAddrT, generator: address, desc: "memory address" }
+    memSt:
+        data: { varType: dataT, generator: memory, desc: "memory payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            clkPix: { }
+        resets:
+            rst_n:    { clock: clk }
+            rstPix_n: { clock: clkPix }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leafA:
+        desc: "Top-down routed leaf owning a regAccess memory"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            clkPix: { }
+        resets:
+            rst_n:    { clock: clk }
+            rstPix_n: { clock: clkPix }
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }
+    uLeafA:     { container: top_tb, instanceType: leafA,     instGroup: top, addressGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+memories:
+    - { memory: tbl, block: leafA, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA regAccess table"%s }
+"""
+
+V24_PROJECT_DOMAINS = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    clkPix: { desc: "a second testbench clock", period: 2, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    rstPix_n: { desc: "clkPix's reset", clock: clkPix }
+"""
+
+
+def run_v24_regaccess_memory_domain_cases():
+    """V24 (spec R20/V24): until the register-handler bridge exists (plan
+    §6 phase 6), a regAccess memory on a clock other than its block's own
+    register bus clock is rejected at build, rather than silently generating
+    a handler whose memory-side flops are actually driven by the bus clock.
+
+    The positive shape - 'tbl' declared on 'clk', the same clock 'apbDecode'
+    dispatches leafA's register bus on - already builds in
+    test_clock_reset_emission.py (its own leafA fixture, ~438-439/657-665,
+    declares two regAccess memories on the feed clock for exactly this
+    reason), so it is not repeated here."""
+    return _expect_diagnostic(
+        "a regAccess memory on a clock other than its block's register bus "
+        "clock is rejected",
+        ('V24', 'tbl', 'leafA', 'clkPix', "'clk'"),
+        design=V24_DESIGN % ', clock: clkPix', projectDomains=V24_PROJECT_DOMAINS)
+
+
+# -------------------------------------------- V19, hasVl BFM port clause --
+
+# A hasVl leaf whose one declared interface port is reached by a real
+# connection (module_hdl_wrapper.py's BFM binds only a port something
+# actually produces), so the fixture can vary the port's own clock's
+# resets without touching connectivity.
+V19_HASVL_INTF = """types:
+    dataT: { width: 8, desc: "payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+
+interfaces:
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+"""
+
+
+def run_v19_hasvl_port_ambiguous_reset_rejected():
+    """V19 negative A: 'leaf's declared port 'in' is timed by 'clkB', which
+    carries two resets and neither is marked default: true - the co-
+    simulation wrapper has no reset to bind the port's BFM to."""
+    design = V19_HASVL_INTF + """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf whose declared port sits on a clock with two unmarked resets"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:  { default: true }
+            clkB: { }
+        resets:
+            rst_n:   { clock: clk }
+            rstB1_n: { clock: clkB }
+            rstB2_n: { clock: clkB }
+        ports:
+            in: { interface: dataIf, direction: dst, clock: clkB }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+    return _expect_diagnostic(
+        "a hasVl port's clock with two unmarked resets is rejected",
+        ('V19', 'leaf', 'in', 'clkB', 'rstB1_n', 'rstB2_n'),
+        design=design, projectDomains='')
+
+
+def run_v19_hasvl_port_no_reset_at_all_rejected():
+    """V19 negative B: 'leaf' declares resets: {} - a block with no reset at
+    all is otherwise legitimate (spec §4.2) - but its declared port 'in'
+    still needs one, since it is hasVl and the co-simulation wrapper's BFM
+    is generated logic under V19."""
+    design = V19_HASVL_INTF + """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf declaring resets: {} with one declared port"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        resets: {}
+        ports:
+            in: { interface: dataIf, direction: dst }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+    return _expect_diagnostic(
+        "a hasVl leaf declaring resets: {} still needs one for its declared port",
+        ('V19', 'leaf', 'in'),
+        design=design, projectDomains='')
+
+
+def run_v19_hasvl_port_positive():
+    """V19 positive: 'leaf's one declared port takes the block default
+    clock, whose sole (implicit) reset is its selected one - the ordinary
+    shape, which must not be rejected."""
+    design = V19_HASVL_INTF + """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    prod:   { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf whose declared port's clock has exactly one selected reset"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: dataIf, direction: dst }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,    instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf,    instGroup: top }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uLeaf, dstport: in }
+"""
+
+    def check():
+        fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code != 0:
+            raise AssertionError(
+                f"a hasVl leaf whose declared port's clock has exactly one "
+                f"selected reset was rejected:\n{output}")
+        return True
+
+    return _run_case(
+        "a hasVl port whose clock has exactly one selected reset is accepted",
+        check)
+
+
+def run_v19_hasvl_port_cases():
+    return all((run_v19_hasvl_port_ambiguous_reset_rejected(),
+                run_v19_hasvl_port_no_reset_at_all_rejected(),
+                run_v19_hasvl_port_positive()))
 
 
 # ------------------------------------------------------- name collisions --
@@ -951,13 +2646,12 @@ def run_clock_tree_shape_cases():
 
     Built directly through the constructors, the way _validateSingleDomain
     builds its fixtures, rather than through BlockDomains.build()/
-    clockTree.build(): an asynchronous reset input's own declaration is
-    itself rejected in phase 1 (run_unsupported_direction_cases), so a
-    design authoring one can never reach a real build without a diagnostic.
-    The bound shape a later phase gives such a reset - a Consumer like any
-    other, 'name' or 'map', never 'fallback' - is dead code today, reachable
-    only under continueOnError; asserting its shape here is what keeps that
-    dead code honest until phase 4 makes it reachable for real.
+    clockTree.build(): a graph-shape check on the model's own classes, not a
+    real project build (run_async_reset_bound_by_name_cases and
+    run_async_reset_bound_by_map_cases exercise a real build for that). An
+    asynchronous reset input binds as a Consumer like any other, 'name' or
+    'map', never 'fallback' (spec §4.4: it takes no clk/rst_n-style default
+    fallback).
     """
     def clockDecl(default=False):
         return clockTree.ClockDecl(desc='', direction='input', default=default,
@@ -973,18 +2667,18 @@ def run_clock_tree_shape_cases():
         OrderedDict([('rstSys_n', resetDecl(clock='clkSys', default=True)),
                     ('rstPeripheral_n', resetDecl(clock='clkPeripheral', default=True))]),
         'clkSys', {'clkSys': 'rstSys_n', 'clkPeripheral': 'rstPeripheral_n'},
-        False, [], ())
+        False, False, [], {})
     uartA = clockTree.BlockDomains(
         'uartA/top.yaml', 'uartA', OrderedDict([('clkPeripheral', clockDecl(default=True))]),
-        OrderedDict(), 'clkPeripheral', {}, False, [], ())
+        OrderedDict(), 'clkPeripheral', {}, False, False, [], {})
     plainDut = clockTree.BlockDomains(
         'plainDut/top.yaml', 'plainDut', OrderedDict([('clk', clockDecl(default=True))]),
         OrderedDict([('rst_n', resetDecl(clock='clk', default=True))]),
-        'clk', {'clk': 'rst_n'}, False, [], ())
+        'clk', {'clk': 'rst_n'}, False, False, [], {})
     asyncBlock = clockTree.BlockDomains(
         'asyncBlock/top.yaml', 'asyncBlock', OrderedDict([('clk', clockDecl(default=True))]),
         OrderedDict([('rstPeripheral_n', resetDecl(isAsync=True))]),
-        'clk', {}, False, [], ())
+        'clk', {}, False, False, [], {})
 
     container = clockTree.Container('soc/top.yaml')
     for name, isReset, clockNet in (('clkSys', False, None), ('clkPeripheral', False, None),
@@ -1012,7 +2706,7 @@ def run_clock_tree_shape_cases():
 
     domains = {domain.blockKey: domain for domain in (soc, uartA, plainDut, asyncBlock)}
     diag = _StubDiag()
-    tree = clockTree.ClockTree(domains, {'soc/top.yaml': container}, root, diag)
+    tree = clockTree.ClockTree(domains, {'soc/top.yaml': container}, root, diag, [])
 
     def net_shape():
         if set(container.nets) != {'clkSys', 'clkPeripheral', 'rstSys_n', 'rstPeripheral_n'}:
@@ -1103,15 +2797,29 @@ def _run():
     groups = (
         ("Declaration completeness", (run_declaration_completeness_cases,)),
         ("Template-facing view", (run_view_build,
-                                  run_default_clock_port_resolution_cases)),
+                                  run_default_clock_port_resolution_cases,
+                                  run_declared_port_connection_mismatch_v14_rejected,
+                                  run_connectionmaps_boundary_derives_inside_out_v16)),
+        ("Derived tables load at open", (run_derived_tables_loader_cases,)),
         ("Domain references", (run_reference_cases,
                                run_connection_clock_endpoint_cases,
-                               run_unsupported_direction_cases)),
+                               run_unsupported_direction_cases,
+                               run_async_reset_bound_by_name_cases,
+                               run_async_reset_bound_by_map_cases,
+                               run_output_clock_bindable_cases)),
         ("Domain agreement", (run_domain_agreement_cases,)),
         ("Instance bind pairs", (run_bind_pair_cases,)),
+        ("Instance maps", (run_instance_maps_cases,)),
+        ("Local nets", (run_local_net_cases,)),
         ("Single-domain objects", (run_single_domain_cases,)),
+        ("V24 regAccess memory on the register bus", (run_v24_regaccess_memory_domain_cases,)),
+        ("V19 hasVl BFM port clause", (run_v19_hasvl_port_cases,)),
         ("Name collisions", (run_collision_cases,)),
         ("Graph shape", (run_clock_tree_shape_cases,)),
+        ("V21 standalone attribute resolution", (run_v21_cases,)),
+        ("V9 reset-clock membership", (run_v9_top_rejects_reset_on_unbound_clock,
+                                       run_v9_standalone_rejects_reset_on_output_clock)),
+        ("End-of-run report", (run_end_of_run_report_cases,)),
     )
     results = []
     for title, runners in groups:

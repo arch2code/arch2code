@@ -278,13 +278,18 @@ def render_router(block_name, address_group, *,
 
 
 def render_leaf(block_name, *, port_name='regs',
-                interface='apbReg', extra_block_lines=''):
-    """Emit a YAML snippet declaring a routed leaf block."""
+                interface='apbReg', extra_block_lines='', port_extra=''):
+    """Emit a YAML snippet declaring a routed leaf block.
+
+    port_extra is appended inside the registerPorts: entry itself (e.g.
+    ', clock: clkSlow, reset: rstBus_n'), for a reusable IP whose register
+    port is not on the block default clock (spec §4.3 rule 1).
+    """
     return f"""    {block_name}:
         desc: "Routed leaf block '{block_name}'"
         hasMdl: true
 {extra_block_lines}        registerPorts:
-            {port_name}: {{ interface: {interface} }}
+            {port_name}: {{ interface: {interface}{port_extra} }}
 """
 
 

@@ -124,23 +124,29 @@ def render_sc(args, prj, data):
         return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks']) + ','
 
     def sec_clock_half_decl(args, prj, data):
-        return '\n'.join(f"sc_time {row['clock']}_half_;" for row in data['clocks'])
+        # An `output` block clock is produced by the DUT and observed, not
+        # generated (spec §4.8/§4.11): it needs no half-period to toggle on.
+        return '\n'.join(f"sc_time {row['clock']}_half_;"
+                         for row in data['clocks'] if row['direction'] == 'input')
 
     def sec_clock_half_ctor_init(args, prj, data):
         # Each clock runs at its own declared period; the half period is what the
         # generator toggles on.
         return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
-                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)' for row in data['clocks'])
+                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
+                          for row in data['clocks'] if row['direction'] == 'input')
 
     def sec_clock_start(args, prj, data):
-        return '\n'.join(f"{row['clock']}.write(true);" for row in data['clocks'])
+        return '\n'.join(f"{row['clock']}.write(true);"
+                         for row in data['clocks'] if row['direction'] == 'input')
 
     def sec_clock_threads(args, prj, data):
-        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});" for row in data['clocks'])
+        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});"
+                         for row in data['clocks'] if row['direction'] == 'input')
 
     def sec_clock_gens(args, prj, data):
         return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
-                         for row in data['clocks'])
+                         for row in data['clocks'] if row['direction'] == 'input')
 
     def sec_reset_decl(args, prj, data):
         return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
@@ -151,13 +157,60 @@ def render_sc(args, prj, data):
         return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
 
     def sec_reset_threads(args, prj, data):
-        return '\n'.join(f"SC_THREAD({resetDriverName(row)});" for row in data['resets'])
+        # An `output` block reset is produced by the DUT and observed, not
+        # driven (spec §4.8/§4.11): it gets no driver thread.
+        return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
+                         for row in data['resets'] if row['direction'] == 'input')
 
     def sec_reset_drivers(args, prj, data):
         # One thunk per reset, counting edges of THAT reset's own clock: two
         # resets in domains of different periods must not be released together.
         return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
-                         f'{row["clock"]}, {row["releaseCycles"]}); }}' for row in data['resets'])
+                         f'{row["clock"]}, {row["releaseCycles"]}); }}'
+                         for row in data['resets'] if row['direction'] == 'input')
+
+    def sec_edge_track_decl(args, prj, data):
+        # R23 end-of-run report: one edge counter per OUTPUT clock this
+        # wrapper observes (never drives, spec §4.8/§4.11), and one release
+        # flag per OUTPUT reset. The wrapper observes the block's own output
+        # clocks and resets; internal nets elsewhere in the design are not
+        # visible here.
+        s = [f"int {row['clock']}_edges_ = 0;"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"bool {row['reset']}_released_ = false;"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_edge_track_registrations(args, prj, data):
+        s = [f"SC_METHOD({row['clock']}_edge_count); sensitive << {row['clock']}.value_changed_event(); "
+            f"dont_initialize();"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"SC_METHOD({row['reset']}_release_track); sensitive << {row['reset']}.value_changed_event(); "
+             f"dont_initialize();"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_edge_track_methods(args, prj, data):
+        s = [f"void {row['clock']}_edge_count() {{ {row['clock']}_edges_++; }}"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"void {row['reset']}_release_track() {{ if ({row['reset']}.read()) "
+             f"{row['reset']}_released_ = true; }}"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_end_of_simulation(args, prj, data):
+        # R23 (spec §4.8): reported here rather than left to a silent,
+        # activity-free run. The wrapper observes the block's own output
+        # clocks and resets; internal nets are not visible here.
+        lines = [f'if (!{row["clock"]}_edges_) {{ std::cerr << "warning: '
+                f'clock \'{row["clock"]}\' produced no edge by end of run" '
+                f'<< std::endl; }}'
+                for row in data['clocks'] if row['direction'] == 'output']
+        lines += [f'if (!{row["reset"]}_released_) {{ std::cerr << "warning: '
+                 f'reset \'{row["reset"]}\' never released by end of run" '
+                 f'<< std::endl; }}'
+                 for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(lines)
 
     def sec_dut_connect(args, prj, data):
         s = []
@@ -217,8 +270,15 @@ def render_sc(args, prj, data):
         variants = data.get('variants', {})
         useOwnVariantTemplateArg = useOwnVariantConfig and bool(variants)
         baseCfg = f'<{wrapperCfgTemplateArg}>' if useOwnVariantTemplateArg else cfg
+        # R23's end-of-run report has nothing to say for a block with no
+        # OUTPUT clock or reset (there is nothing this wrapper observes
+        # rather than drives), so the override is emitted only then -
+        # otherwise every hasVl wrapper gets an empty override body.
+        has_edge_track = any(row['direction'] == 'output' for row in data['clocks']) \
+            or any(row['direction'] == 'output' for row in data['resets'])
         s = t.render(
             blockname=data['blockName'], variants=variants,
+            has_edge_track=has_edge_track,
             is_parameterizable=isParameterizable,
             concrete_sv_module=concrete['svModule'],
             concrete_dut_class=concrete['dutClass'],
@@ -241,7 +301,11 @@ def render_sc(args, prj, data):
             sec_reset_decl=sec_reset_decl(args, prj, data),
             sec_reset_ctor_init=sec_reset_ctor_init(args, prj, data),
             sec_reset_threads=sec_reset_threads(args, prj, data),
-            sec_reset_drivers=sec_reset_drivers(args, prj, data)
+            sec_reset_drivers=sec_reset_drivers(args, prj, data),
+            sec_edge_track_decl=sec_edge_track_decl(args, prj, data),
+            sec_edge_track_registrations=sec_edge_track_registrations(args, prj, data),
+            sec_edge_track_methods=sec_edge_track_methods(args, prj, data),
+            sec_end_of_simulation=sec_end_of_simulation(args, prj, data)
         )
         return(s)
 
@@ -371,6 +435,9 @@ public:
         {{ sec_clock_start | indent(8) }}
         {{ sec_clock_threads | indent(8) }}
         {{ sec_reset_threads | indent(8) }}
+{%- if has_edge_track %}
+        {{ sec_edge_track_registrations | indent(8) }}
+{%- endif %}
 
         end_ctor_init();
 
@@ -384,12 +451,24 @@ public:
     }
 #endif
 
+{%- if has_edge_track %}
+
+    // R23: reported at end of run rather than left to a silent,
+    // activity-free run (spec §4.8).
+    void end_of_simulation() override {
+        {{ sec_end_of_simulation | indent(8) }}
+    }
+{%- endif %}
+
 private:
 
     {{ sec_hdl_if_decl | indent(4) }}
 
     {{ sec_reset_decl | indent(4) }}
     {{ sec_clock_half_decl | indent(4) }}
+{%- if has_edge_track %}
+    {{ sec_edge_track_decl | indent(4) }}
+{%- endif %}
 
     // Free-run: toggle every half period. Gated lockstep: the quantum thread
     // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
@@ -417,7 +496,10 @@ private:
     // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
     // not advance before the first quantum. Otherwise assert, hold for the
     // declared releaseCycles edges of the reset's own clock, then release.
-    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
+    // The clock parameter is named reset_driver_clk, not clk: a block whose
+    // own default clock is literally named clk declares a same-named member,
+    // which a parameter named clk would otherwise shadow (-Wshadow).
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
         if (socketSyncLockstepActive()) {
             rst.write(socketSyncRstN());
             while (true) {
@@ -427,7 +509,7 @@ private:
         } else {
             rst.write(false);
             for (int cycle = 0; cycle < cycles; cycle++) {
-                wait(clk.posedge_event());
+                wait(reset_driver_clk.posedge_event());
             }
             rst.write(true);
         }
@@ -435,5 +517,8 @@ private:
 
     {{ sec_clock_gens | indent(4) }}
     {{ sec_reset_drivers | indent(4) }}
+{%- if has_edge_track %}
+    {{ sec_edge_track_methods | indent(4) }}
+{%- endif %}
 
 """

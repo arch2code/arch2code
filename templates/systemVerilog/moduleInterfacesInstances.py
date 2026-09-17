@@ -46,6 +46,14 @@ def render(args, prj, data):
         out.extend(f"{indent}{line}" for line in alias_lines)
         out.append("")
 
+    # Container clock/reset local nets (spec §4.5/§4.6, R18): one internal wire
+    # per net a child instance's output drives under a name this block itself
+    # does not declare.
+    if data['localNets']:
+        out.append(f"{indent}// Local clock/reset nets, driven by a child instance's output")
+        out.extend(f"{indent}wire {net['name']};" for net in data['localNets'])
+        out.append("")
+
     #// Interface Instances, needed for between instanced modules inside this module
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
     for channelType in data["connectDouble"]:

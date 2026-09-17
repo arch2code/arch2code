@@ -1,6 +1,8 @@
 # Plan: clocks and resets on the container model
 
-- **Status:** PROPOSED. Nothing here is scheduled or started.
+- **Status:** IMPLEMENTED (2026-09-15). Phases 1-5 and 7 land in this tree;
+  phase 6 (the register handler bridge, §7 item 6) is tracked as its own
+  plan. §8 holds one open follow-up (schema-owned clock references).
 - **Specification:** [`spec-clock-reset-requirements.md`](./spec-clock-reset-requirements.md).
   R and V numbers below refer to it. Where this plan and the specification
   disagree, the specification is right and this plan is stale.
@@ -208,7 +210,8 @@ Replaces `getBDPortDomain` (3081) inputs and `_validateSingleDomainObjects`
   same pair.
   No clock match is V8, no reset match is V25, and disagreement is V26.
 - Blocks with `hasVl`: every clock timing a port has a selected
-  reset, for the BFM (V19).
+  reset, for the BFM (V19; `clockTree.build()`,
+  `unittest/test_clock_domains.py`).
 
 ### 3.5 Testbench binding and resolution
 
@@ -350,7 +353,8 @@ with no base class and no framework:
 Decisions recorded:
 
 - Block declarations live inside the tree (`ClockTree.blocks`).
-- Resolution (phase 4, `Net.resolve()`) is computed on demand, not stored.
+- Resolution for V21 (`_resolveAllInstances`/`_resolveStandaloneAttrs`) is
+  computed during `build()` and is not persisted.
 - Persistence stays in `processYaml.py`: the tree returns rows and the existing
   SQL writes them; the module-level cursor (`g.cur`) never enters the model.
   The module does not import `processYaml`.
@@ -561,8 +565,15 @@ Language-neutral, DB-backed; templates consume fields, never `prj.data` walks.
 - New: testbench binding (V9, V10), fallback (R10, V11), resolved clock and
   V21 with `hasVl` on a twice-instantiated child block, local nets and V22,
   supply graph cycles (V20), alias emission with and without a selected reset.
+- As implemented: `test_clock_domains.py`, `test_clock_reset_emission.py`,
+  `test_register_decode_clock.py` and `test_project_scope.py` cover the
+  above; `test_clock_local_nets.py` is a new file added for local nets,
+  exports and `~` bindings. `unittest/run_all_tests.sh` runs 53 test files.
 - Generation gate is insufficient on its own (baseline §13.1): the clkGen
-  fixture runs under `make VL_DUT=1` and the end-of-run report is asserted.
+  fixture runs under `make VL_DUT=1`. The end-of-run report itself is not
+  asserted at run time: the example's `make VL_DUT=1` target streams its
+  output rather than capturing it, so there is nowhere in the example build
+  to check the report's text against.
 
 ### 6.3 Documentation
 
@@ -636,7 +647,10 @@ before the next phase starts.
    are in: handshake bridge in `moduleRegs.py`, memory-side reset from
    `reset:`, `pslverr` generation and router propagation, bridge behaviour
    with the memory side in reset. Until then a memory with `regAccess` whose
-   clock differs from its handler's bus clock is rejected (§3.4, V24).
+   clock differs from its handler's bus clock is rejected at build (§3.4,
+   V24; `clockTree.build()`, `unittest/test_clock_domains.py`). Of
+   phases 1-7, the bridge itself is the only one not implemented in this
+   tree.
 7. **Cleanup.** Once phases 1-5 are in, remove every plan-specific artefact
    phases 1-5 left in the tree; these markers are kept deliberately during
    development, so intermediate commits carry them, and removing them is the
@@ -681,18 +695,42 @@ before the next phase starts.
    - Verified by the same `make clean`, `make -j8 unittest`, `make -j8
      two-clk` sequence as every other phase.
 
-## 8. Open items for the implementer
+## 8. Open items, resolved
 
-- **Containers with own logic on local nets.** V22 requires a child consumer;
-  a container whose hand-written body is the only consumer of a local net is
-  rejected. Confirm with the owner whether that is acceptable for the first
-  drop or whether an authored statement is needed.
-- **End-of-run visibility.** Which internal nets the wrapper can observe for
-  R23 depends on the co-simulation topology; record the reachable set when
-  phase 4 starts.
-- **Pro library.** `../pro/common/systemVerilog` blocks (memArb, LMMI BFM)
-  use the bare macros; they need no change unless a block declares a clock
-  other than `clk`. Check at phase 1.
-- **Downstream flops fork.** The debayer reference design's `flops.sv` fork is
-  replaced by base's (memory: `a2c-flops-debayer-fork`); nothing in this plan
-  changes `flops.sv`, so that replacement is independent.
+- **Containers with own logic on local nets.** Resolved: no authored
+  statement was added. `ClockTree`'s V22 check counts only child input
+  bindings as consumers (`pysrc/clockTree.py`); a container's own
+  hand-written body registers no such binding, so a local net it alone
+  consumes is still rejected.
+- **End-of-run visibility.** Resolved: the wrapper's R23 report observes only
+  the block's own output clocks and resets
+  (`templates/systemc/module_hdl_wrapper.py`'s `sec_end_of_simulation`);
+  internal nets elsewhere in the design are not visible to it.
+- **Pro library.** Checked: `../pro/common/systemVerilog` blocks need no
+  change.
+- **Downstream flops fork.** Independent of this plan; unaffected.
+- **Schema-owned clock and reset references.** Resolved: the existence
+  part of V1 and V2 is now a schema combo foreign key. `resets.clock`,
+  `ports.clock`, `registerPorts.clock`/`reset`, `addressBlock.clock`/`reset`
+  and `memories.clock`/`reset` each carry a `blockClock`/`blockReset` combo
+  (block + name) validated against the sibling `blocksclocks.blockclock` /
+  `blocksresets.blockreset` storage key, the same shape
+  `parameters.variants.params.blockParam` already used against
+  `blocksparams`. The hand-written name checks left `pysrc/clockTree.py`;
+  the semantic rules (async, one default, direction, V15, selected reset)
+  stayed. Two parser changes made it fit: a non-key combo built from an
+  unstated optional source is itself unstated and skips its validator, and
+  a failing combo diagnostic names the components rather than their
+  concatenation. The memory `clock:`/`reset:` gap is closed by the same
+  key.
+  - Decision: no implicit rows. The implicit `clk`/`rst_n` of a block that
+    declares nothing stay a fact of `BlockDomains.build()` alone, so a
+    stated `clock:` on such a block is rejected whatever the name, `clk`
+    included: it is redundant there. No example or test stated one. The
+    normaliser option (materialise marked rows) was built, run and
+    withdrawn. The marker it needed served only a diagnostic label and the
+    "no default clock, no implicit reset" rule, and both would have moved
+    V18 logic into the parser.
+  - Not marked `flat`: a combo foreign key matches components in scope
+    order and needs no flat index (Foreign-Key Invariants rule 4); `flat`
+    is required of plain foreign-key targets only.

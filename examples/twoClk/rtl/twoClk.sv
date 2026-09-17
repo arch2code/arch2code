@@ -29,8 +29,8 @@ twoClk_twoClkSink uSink (
 
 twoClk_twoClkSlowTick uSlowTick (
     .out (out_1),
-    .clkSlow (clkSlow),
-    .rstSlow_n (rstSlow_n)
+    .clkTick (clkSlow),
+    .rstTick_n (rstSlow_n)
 );
 
 twoClk_twoClkSlowSink uSlowSink (

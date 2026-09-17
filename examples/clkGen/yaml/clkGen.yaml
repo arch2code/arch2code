@@ -1,0 +1,93 @@
+# clkGen - a fixture for output clocks, output resets, local nets, an
+# export and a `~` binding (spec-clock-reset-requirements.md §4.5/§4.6).
+#
+# clkDivider produces clkDiv (an output clock) and rstDivRaw_n, its own raw
+# output reset belonging to clkDiv (spec §4.2: an output reset belongs to the
+# clock it is released into, here the block's own output rather than an
+# input). clkGen re-declares clkDiv as its own output and binds uDivider's
+# clkDiv straight onto it: that binding is the export (spec §4.5) that lets
+# clkGen's own co-simulation wrapper observe clkDiv without generating it.
+# clkDivider's rstDivRaw_n is bound to a name clkGen does not declare
+# (rstDivRaw_n): a local net, visible only inside clkGen, wired as an
+# internal `wire` (R18). Rather than releasing the clkDiv domain directly off
+# that raw reset, uRstSync (spec §4.5's `rstSync` worked example) takes it in
+# as an asynchronous-assert input and releases rstDivInt_n synchronously to
+# clkDiv (R22/R23): the raw reset is asserted whenever uDivider's own
+# rstRef_n is asserted, which is exactly when clkDiv is invalid. clkDivider
+# also carries a second, deliberately unused output tap (clkDivBy2) bound to
+# `~` at uDivider (spec §4.5 "An output bound to `~` is left unconnected"),
+# covering R11's "never dropped silently, but explicit" rule in real
+# generated RTL. u_clkGen's own clkDiv output is left `~` one level up, in
+# clkGen_tb: nothing above clkGen consumes it once the wrapper observes it
+# directly at clkGen's own boundary.
+
+blocks:
+    clkGen_tb:
+        desc: "Testbench container for clkGen (root container); declares clkRef purely to pass it down to u_clkGen by name match"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkRef: { default: true }
+        resets:
+            rstRef_n: { clock: clkRef }
+    clkGen:
+        desc: "DUT: a clock divider exporting clkDiv, and a consumer running on the divided clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+        clocks:
+            clkRef: { default: true, period: 10, timeUnit: ns }
+            clkDiv: { direction: output, desc: "divided clock, exported from uDivider for the co-simulation wrapper to observe" }
+        resets:
+            rstRef_n: { clock: clkRef }
+    clkDivider:
+        desc: "Free-running clock divider: toggles clkDiv every N clkRef cycles and releases a raw, clkDiv-domain reset while rstRef_n is asserted; a second output tap (clkDivBy2) is left unused by every instance"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clkRef: { }
+            clkDiv: { direction: output }
+            clkDivBy2: { direction: output, desc: "second divided tap; unused in this fixture" }
+        resets:
+            rstRef_n: { clock: clkRef }
+            rstDivRaw_n: { clock: clkDiv, direction: output, desc: "asserted while rstRef_n is asserted; clkDiv's domain is invalid until it releases" }
+    rstSync:
+        desc: "Reset synchroniser: asynchronous assert, synchronous release (spec §4.5 worked example)"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { period: 20, timeUnit: ns, desc: "the divided clock it synchronises into; supplied, so its standalone rate must be declared (V21)" }
+        resets:
+            rstIn_n:  { async: true }
+            rstOut_n: { clock: clk, direction: output }
+    clkConsumer:
+        desc: "Free-running counter clocked by the divided clock it is handed"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { default: true, period: 40, timeUnit: ns }
+        resets:
+            rst_n: { clock: clk }
+
+instances:
+    clkGen_tb: { container: clkGen_tb, instanceType: clkGen_tb, instGroup: top, # self reference
+                 clocks: { clkRef: clkRef }, resets: { rstRef_n: rstRef_n } }
+    u_clkGen:  { container: clkGen_tb, instanceType: clkGen, instGroup: top,
+                 clocks: { clkRef: clkRef, clkDiv: ~ }, resets: { rstRef_n: rstRef_n } }
+    uDivider:  { container: clkGen, instanceType: clkDivider, instGroup: top,
+                 clocks: { clkRef: clkRef, clkDiv: clkDiv, clkDivBy2: ~ },
+                 resets: { rstRef_n: rstRef_n, rstDivRaw_n: rstDivRaw_n } }
+    uRstSync:  { container: clkGen, instanceType: rstSync, instGroup: top,
+                 clocks: { clk: clkDiv },
+                 resets: { rstIn_n: rstDivRaw_n, rstOut_n: rstDivInt_n } }
+    uConsumer: { container: clkGen, instanceType: clkConsumer, instGroup: top,
+                 clocks: { clk: clkDiv }, resets: { rst_n: rstDivInt_n } }

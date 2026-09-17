@@ -234,6 +234,8 @@ modports:
 - **Purpose**: Field created by concatenating other fields
 - **Defined**: Via `_combo` directive in schema
 - **Behavior**: Processed after constituent fields are populated
+- **Unstated source**: a `combo` field whose source is an unstated optional field, whether the yaml omits it or writes it as `~`, is itself unstated, so the parser sets it to the empty string and skips its validator, the same way it skips an unstated optional field. This is how a block-local reference such as `blocksresets.blockClock` (block + clock, validated against `blocksclocks.blockclock`) is checked only when the author names a clock; an unstated `clock:` means the block default and names nothing to look up. Key combos (`_key`) are exempt, since an empty component is part of the row's identity, as with a connection's optional `name`/`srcport`.
+- **Block-local reference**: a combo FK is how a row references a block's sub-table by pairing the block with the name; the parent key (`block`) is one component and the referenced name the other, so the match is confined to that block without a scope keyword. `parameters.variants.params.blockParam` against `blocksparams`, the block clock/reset references above, and `memories.blockClock` (a top-level row, not nested under the block, referencing the block's `clocks:` sub-table) are the examples.
 
 #### `dataGroup`
 - **Purpose**: Creates a 1-to-1 nested table that shares the parent's primary key

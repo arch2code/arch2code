@@ -516,6 +516,35 @@ class projectOpen:
 
             self.loadTable(table, self.schema.data['schema'][table], keyName)
 
+        self._loadDerivedTables()
+
+    def _loadDerivedTables(self):
+        """Load the six persisted-but-not-schema tables into self.data, grouped
+        by the column each getBD* helper keys on: blockClocksResets,
+        blockParameterizedDecls, portDomains and containerLocalNets by
+        blockKey, instanceClockResetBinds by instanceKey, memoryClocks by
+        memoryBlockKey. None of the six names collides with a schema table
+        (self.schema.tables) or an existing self.data key, so self.data is
+        the right home for them.
+        """
+        derivedTables = {
+            'blockClocksResets': ('blockKey', 'kind, orderIndex'),
+            'instanceClockResetBinds': ('instanceKey', 'orderIndex'),
+            'memoryClocks': ('memoryBlockKey', None),
+            'blockParameterizedDecls': ('blockKey', 'orderIndex'),
+            'portDomains': ('blockKey', 'orderIndex'),
+            'containerLocalNets': ('blockKey', 'orderIndex'),
+        }
+        for table, (groupKey, orderBy) in derivedTables.items():
+            sql = f"SELECT * FROM {table}"
+            if orderBy:
+                sql += f" ORDER BY {orderBy}"
+            g.cur.execute(sql)
+            grouped = OrderedDict()
+            for row in g.cur.fetchall():
+                grouped.setdefault(row[groupKey], []).append(dict(row))
+            self.data[table] = grouped
+
     def _loadSubTablesRecursive(self, parentTable, parentSchema, parentKeyName, parent_key_chain=None):
         """Recursively load all subtables depth-first
 
@@ -1343,6 +1372,8 @@ class projectOpen:
         # the block's clock and reset domains. Resolved before getBDPorts so each
         # boundary port can be annotated with the block clock it lies in.
         self.getBDClocksResets(ret)
+        self.getBDBusClockReset(ret)
+        ret['localNets'] = self.getBDLocalNets(qualBlock)
         # deduplicate the ports
         self.getBDPorts(ret)
         # module-local parameterized declaration set, derived and persisted by
@@ -1537,16 +1568,16 @@ class projectOpen:
     def getBDParameterizedDecls(self, ret):
         # Per-block module-local parameterized declaration set, derived and
         # persisted by projectCreate.deriveParameterizedDeclSets() into the
-        # non-schema blockParameterizedDecls table. Queried directly per block
-        # (the table is not loaded into prj.data) and joined to the types /
-        # structures rows for the declaration bodies. Emission order is the
-        # persisted orderIndex (types/sub-structures before the structures that
-        # use them) for emitters that declare these module-local.
+        # non-schema blockParameterizedDecls table, loaded into self.data by
+        # _loadDerivedTables() and joined here to the types / structures rows
+        # for the declaration bodies. A block with no parameterized decls is a
+        # legitimate optional relationship, so an absent key reads as none.
+        # Emission order is the persisted orderIndex (types/sub-structures
+        # before the structures that use them) for emitters that declare
+        # these module-local.
         qualBlock = ret['qualBlock']
-        g.cur.execute("SELECT declKind, declKey, orderIndex FROM blockParameterizedDecls "
-                      "WHERE blockKey = ? ORDER BY orderIndex", (qualBlock,))
         decls = list()
-        for row in g.cur.fetchall():
+        for row in self.data['blockParameterizedDecls'].get(qualBlock, []):
             declKey = row['declKey']
             if row['declKind'] == 'type':
                 body = self.data['types'][declKey]
@@ -1560,71 +1591,127 @@ class projectOpen:
     def getBDClocksResets(self, ret):
         # The block's own declared clock and reset sets, materialised by
         # clockTree.build() and persisted by projectCreate._persistClockTree()
-        # into the non-schema blockClocksResets table. Read in the persisted canonical
-        # order - declaration order, clocks before resets (R18) - so a consumer
-        # never re-walks the block's declarations. Each row carries every field
-        # a consumer needs (period / timeUnit / the reset's own clock / async)
-        # without a second lookup, since the block's clocks/resets are no
-        # longer project-scoped rows to join back to.
-        g.cur.execute("SELECT kind, itemKey, desc, direction, isDefault, period, "
-                      "timeUnit, clock, async, selectedReset FROM blockClocksResets "
-                      "WHERE blockKey = ? ORDER BY kind, orderIndex", (ret['qualBlock'],))
+        # into the non-schema blockClocksResets table, loaded into self.data by
+        # _loadDerivedTables() in the persisted canonical order - declaration
+        # order, clocks before resets (R18) - so a consumer never re-walks the
+        # block's declarations. Every block has at least one clock row (the
+        # implicit clk when none is declared), so the key is guaranteed here,
+        # unlike the optional relationships getBDInstanceClockResetBinds and
+        # getBDParameterizedDecls read (the other two derived-table helpers
+        # with a per-key `.get(key, [])`; getBDMemoryClock is guaranteed-key
+        # like this one).
+        # Each row carries every field a consumer needs (period / timeUnit /
+        # the reset's own clock / async) without a second lookup, since the
+        # block's clocks/resets are no longer project-scoped rows to join
+        # back to.
         ret['clocks'] = list()
         ret['resets'] = list()
         ret['defaultClock'] = None
         ret['defaultReset'] = None
-        for row in g.cur.fetchall():
+        for row in self.data['blockClocksResets'][ret['qualBlock']]:
+            # registerClock/registerReset (clockTree.py's R25/rule-1 result,
+            # spec §4.3) are a block-level fact repeated on every row of the
+            # block; read once here rather than a second table.
+            ret['registerClock'] = row['registerClock']
+            ret['registerReset'] = row['registerReset']
+            # busClockPort/busResetPort (clockTree.py's _routerBusPorts /
+            # the handler's own implicit clk/rst_n) are the router's or
+            # handler's OWN declared port name carrying the register bus -
+            # a block-level fact repeated on every row the same way, read
+            # by getBDBusClockReset so bus_clock_reset_port_data does not
+            # re-derive the addressBlock: override rule itself.
+            ret['busClockPort'] = row['busClockPort']
+            ret['busResetPort'] = row['busResetPort']
             if row['kind'] == 'clock':
-                # TODO phase 4: an undeclared clock's simulated period should
-                # come from the testbench clock it resolves to (spec
-                # §3.5/§4.8); 1 is the interim value until that resolution
-                # exists. timeUnit needs no such placeholder: every clock row,
-                # declared or the implicit clk, always carries one (ns by
-                # default).
+                # period/timeUnit are the RESOLVED standalone-simulation
+                # values clockTree._resolveStandaloneAttrs() persisted (spec
+                # §4.8, R24, V21): the clock's own declared value when
+                # present, else the value resolved from the testbench clock
+                # every instance of the block resolves to.
                 entry = {'clock': row['itemKey'], 'desc': row['desc'],
                          'direction': row['direction'], 'default': bool(row['isDefault']),
-                         'period': row['period'] or 1, 'timeUnit': row['timeUnit'],
+                         'period': row['period'], 'timeUnit': row['timeUnit'],
                          'selectedReset': row['selectedReset']}
                 ret['clocks'].append(entry)
                 if entry['default']:
                     ret['defaultClock'] = entry['clock']
                     ret['defaultReset'] = entry['selectedReset']
             else:
-                # TODO phase 4: a reset's simulated releaseCycles should come
-                # from the testbench reset it resolves to (spec §3.5/§4.8); 3,
-                # the schema default for a testbench reset, is the interim
-                # value until that resolution exists.
+                # releaseCycles is the same resolution for a reset. An
+                # asynchronous reset input belongs to no clock (row['clock']
+                # is empty, V1); it counts its release cycles on the block
+                # DEFAULT clock instead (spec §4.8), so the wrapper's
+                # reset_driver counts edges of that clock's own signal.
                 ret['resets'].append({'reset': row['itemKey'], 'desc': row['desc'],
                                       'direction': row['direction'],
                                       'default': bool(row['isDefault']),
-                                      'clock': row['clock'], 'async': bool(row['async']),
-                                      'releaseCycles': 3})
+                                      'clock': row['clock'] or ret['defaultClock'],
+                                      'async': bool(row['async']),
+                                      'releaseCycles': row['releaseCycles']})
+
+    def getBDBusClockReset(self, ret):
+        # A router or a synthesised <block>_regs handler is a register-bus
+        # endpoint: its own declaration is always the generic implicit
+        # clk/rst_n (config/postParseRegisterPorts.py's synthesiseRegHandler
+        # declares neither clocks: nor resets:, and a top-down router
+        # commonly declares nothing either), so the block's own default
+        # clock/reset NAME carries no domain meaning of its own here. The
+        # real domain is registerClock/registerReset (clockTree.py's
+        # _resolveRouterBusClockReset/_resolveRegisterHandlerBinds, spec
+        # §4.3 "Registers"/"Routers"), a block-level fact resolved once at
+        # build time from the block's sole instance and already read into
+        # `ret` by getBDClocksResets - no per-view instance scan. Only
+        # called for a router or a handler block, both of which always
+        # have exactly one instance (config/postParseRegisterPorts.py
+        # rejects zero or more than one before this can run), so a
+        # missing value here is a genuine contract violation, not an
+        # optional relationship.
+        ret['busClock'] = ret['registerClock']
+        ret['busReset'] = ret['registerReset']
 
     def getBDInstanceClockResetBinds(self, instanceKey):
         # The clock and reset binds a container emits for one child instance,
         # derived by clockTree.build() and persisted by
         # projectCreate._persistClockTree() into the
-        # non-schema instanceClockResetBinds table. 'port' is the child module's own
-        # port name and 'signal' is the container's signal for the same clock or
-        # reset; the two differ whenever the child's project and the container's
-        # project name that domain differently, or the container declares nothing of
-        # that name and its own default drives the port instead. Read in the
-        # persisted order - the CHILD's canonical order, clocks then resets - so the
-        # bind list reads position for position against the child's port list.
-        g.cur.execute("SELECT childPort, parentSignal FROM instanceClockResetBinds "
-                      "WHERE instanceKey = ? ORDER BY orderIndex", (instanceKey,))
+        # non-schema instanceClockResetBinds table, loaded into self.data by
+        # _loadDerivedTables(). 'port' is the child module's own port name and
+        # 'signal' is the container's signal for the same clock or reset; the
+        # two differ whenever the child's project and the container's project
+        # name that domain differently, or the container declares nothing of
+        # that name and its own default drives the port instead. An instance
+        # with no binds is a legitimate optional relationship, so an absent
+        # key reads as none. Read in the persisted order - the CHILD's
+        # canonical order, clocks then resets - so the bind list reads
+        # position for position against the child's port list.
         return [{'port': row['childPort'], 'signal': row['parentSignal']}
-                for row in g.cur.fetchall()]
+                for row in self.data['instanceClockResetBinds'].get(instanceKey, [])]
 
     def getBDMemoryClock(self, memoryBlockKey):
-        # The clock the memory primitive is instantiated on, derived by
+        # The clock the memory primitive is instantiated on, and the selected
+        # reset of that clock for the R20 bridge's memory side (spec §4.3
+        # "Memories"; the reset may be None, since a memory not served
+        # across a crossing needs one, V19), derived by clockTree.build()
+        # and persisted by projectCreate._persistClockTree() into the
+        # non-schema memoryClocks table, loaded into self.data by
+        # _loadDerivedTables(). The clock is always one the owning block
+        # declares, so the emitted bind names a port of the module the
+        # memory sits in. A memoryClocks row per memory is a contract:
+        # clockTree.rows() only skips one when the owning block has no
+        # default clock, which is already a logged error that exits before
+        # persist.
+        return self.data['memoryClocks'][memoryBlockKey][0]
+
+    def getBDLocalNets(self, blockKey):
+        # A container's own local nets (spec §4.5/§4.6): one internal wire
+        # per net a child instance's output drives under a name the
+        # container itself does not declare, in declaration order (R18's
+        # "one internal net per local net" wire declaration). Derived by
         # clockTree.build() and persisted by projectCreate._persistClockTree()
-        # into the non-schema memoryClocks table. Always a clock the owning
-        # block declares, so the emitted bind names a port of the module the
-        # memory sits in.
-        g.cur.execute("SELECT clock FROM memoryClocks WHERE memoryBlockKey = ?",
-                      (memoryBlockKey,))
-        return g.cur.fetchone()['clock']
+        # into the non-schema containerLocalNets table, loaded into
+        # self.data by _loadDerivedTables(). A block with no local nets is
+        # a legitimate optional relationship, so an absent key reads as none.
+        return [{'name': row['netName']}
+                for row in self.data['containerLocalNets'].get(blockKey, [])]
 
     def getBDSvWrapperNames(self, ret):
         # Verilated SV wrapper design-unit names, single-sourced from the fileMap
@@ -2276,6 +2363,13 @@ class projectOpen:
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
                 childTypeKey, instInfo['variant'], parentParamNames)
+            # A register-bus endpoint child (a router or a synthesised
+            # <block>_regs handler) declares its own module port under
+            # registerClock/registerReset (spec §4.3 "Registers"/"Routers"),
+            # not its raw declared clk/rst_n: clockTree.py's rows() already
+            # emits that bind row with childPort = registerClock/
+            # registerReset (whichever entry is the one that resolved to
+            # it), so this reads unmodified.
             instInfo['clockResetBinds'] = self.getBDInstanceClockResetBinds(inst)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
@@ -2373,7 +2467,9 @@ class projectOpen:
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
-                        data[obj]['domainClock'] = self.getBDMemoryClock(obj)
+                        memoryClock = self.getBDMemoryClock(obj)
+                        data[obj]['domainClock'] = memoryClock['clock']
+                        data[obj]['domainReset'] = memoryClock['reset']
                         if objInfo['regAccess']:
                             ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
                         else:
@@ -2717,6 +2813,10 @@ class projectOpen:
                 'interfaceType': intfInfo['interfaceType'],
                 'direction': direction,
                 'ends': {portName: end},
+                # No connections: row backs this synthesised entry, so there
+                # is no authored clock: to carry; empty matches an ordinary
+                # connection row's own unauthored value (spec V17).
+                'clock': '',
             }
             self.getBDGetIntfStructs(ret, intfKey=interfaceKey)
 
@@ -3089,8 +3189,14 @@ class projectOpen:
         # A connection-port row carries its connection's fields at the top level,
         # so the row itself is the connection-shaped row getBDPortDomain reads.
         for portRow in ports.values():
-            portRow['domainClock'] = self.getBDPortDomain(ret, portRow)
-            portRow['domainReset'] = self.getBDPortDomainReset(ret, portRow['domainClock'])
+            instanceKey = next(iter(portRow['instance']))
+            # A plain connections: row's own portName IS already the boundary
+            # name (getBDPortDomain's own docstring rule 2), so it doubles as
+            # boundaryPortName here.
+            domainClock = self.getBDPortDomain(ret, portRow['clock'], instanceKey,
+                                               portRow['name'], portRow['name'])
+            portRow['domainClock'] = domainClock
+            portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
         ret['ports']['connections'] = dict(ports)
         portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
                      'registerPorts': {'dest': 'registers', 'portName': 'register'},
@@ -3102,41 +3208,82 @@ class projectOpen:
             # For these three the connection-shaped source row is kept whole under
             # 'connection' rather than merged in, so that is what carries the clock.
             for portRow in newPorts.values():
-                portRow['domainClock'] = self.getBDPortDomain(ret, portRow['connection'])
-                portRow['domainReset'] = self.getBDPortDomainReset(ret, portRow['domainClock'])
+                instanceKey = portRow['connection'].get('instanceKey')
+                # connectionMapPorts/registerPorts/memoryPorts rows carry no
+                # clock: of their own (V17): a connectionMaps: port resolves
+                # through portDomains (rule 2 below) before this would ever
+                # matter, and register/memory rows have no such field at all.
+                # A connectionMapPorts row is keyed by instancePortName
+                # (portRow['name']), the ROUTED INSTANCE's own port name, not
+                # the boundary's; portDomains is keyed by the boundary name,
+                # which the row's own 'connection' (dict(connMap)) still
+                # carries under its own 'portName' field. registerPorts/
+                # memoryPorts have no such boundary/instance split, so their
+                # own name IS the boundary name already.
+                boundaryPortName = (portRow['connection']['portName']
+                                    if connType == 'connectionMapPorts' else portRow['name'])
+                domainClock = self.getBDPortDomain(ret, None, instanceKey, portRow['name'],
+                                                   boundaryPortName)
+                portRow['domainClock'] = domainClock
+                portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
 
-    def getBDPortDomain(self, ret, connRow):
-        """The block's OWN clock that a boundary port lies in, by name (R7).
+    def getBDPortDomain(self, ret, clockName, instanceKey, portName, boundaryPortName):
+        """The block's OWN clock that a boundary port lies in (spec §4.3),
+        in rule order:
 
-        A connection carrying `clock:` names a container clock at the far end,
-        respelled here into the block's own set by name; a name the block does
-        not declare falls back to the block default clock, since the connection
-        and the block are two independent authors naming the same domain and
-        only the block's own spelling is ever emitted as a port or an sc_clock.
-        Unstated means the block default clock (R7) - not the block's first
-        declared clock, which carries no meaning of its own (declaration order
-        is churn-avoidance, not domain selection).
+        1. `ret['qualBlock']`'s own `ports:`/`registerPorts:`/
+           `addressBlock:` row for `portName`, when it authors clock:
+           explicitly - block-local, authoritative over a reaching
+           connection's own clock: (V14).
+        2. A connectionMaps: boundary port (V16): the persisted inside-out
+           fact clockTree.build() computed (the non-schema portDomains
+           table), keyed by `boundaryPortName` - the container's own
+           boundary port name, which for a connectionMapPorts-sourced row
+           (dict(connMap), getBDConnectionMaps) differs from `portName`
+           itself (instancePortName, the routed instance's own port name);
+           the caller resolves which name is which.
+        3. The one INPUT block clock of the port's own instance whose
+           consumer edge resolves to `clockName` - only a connections: row
+           carries one (V17), and the caller passes None for every other
+           row shape - read back from the instance bind
+           (getBDInstanceClockResetBinds) rather than a name-equality
+           check, since an instance map may rename the block's own clock
+           away from the container's (§4.4). Unstated (`clockName` falsy,
+           or `instanceKey` None for a port synthesised from an object the
+           block itself owns, such as a register handler's implied
+           register/memory port) means the block default clock (R7).
 
-        A port row synthesised from an object the block itself owns carries no
-        connection clock either: a register handler's implied register or
-        regAccess memory port, and a zero-instance block's declared `ports:`
-        row. Those also take the block default clock.
-
-        A connection naming a clock: this block does not declare is rejected
-        at build time (V13, clockTree.build()), so that
-        case never reaches this view; reaching it here is an internal error,
+        A connection naming a clock: no input clock of the port's instance
+        resolves to, or that more than one resolves to, is rejected at
+        build time (V13); reaching that case here is an internal error,
         not a user-input one.
         """
-        clockName = connRow.get('clock')
-        if not clockName:
+        blockRow = self.data['blocks'][ret['qualBlock']]
+        declaredRow = clockTree.declaredPortRow(blockRow, portName)
+        if declaredRow is not None and declaredRow['clock']:
+            return declaredRow['clock']
+        # A connectionMaps: row's boundary port (V16): a direct index by the
+        # boundary's own name, no fallback - every connectionMaps port has a
+        # persisted row except where the inner block's own domain is
+        # undefined (V15/V18) or its bind never resolved (V3), both already
+        # reported elsewhere, so a genuinely reachable boundary port here
+        # always has one.
+        for row in self.data['portDomains'].get(ret['qualBlock'], []):
+            if row['portName'] == boundaryPortName:
+                return row['domainClock']
+        if instanceKey is None or not clockName:
             return ret['defaultClock']
-        if clockName in {row['clock'] for row in ret['clocks']}:
-            return clockName
+        clockNames = {row['clock'] for row in ret['clocks']}
+        matches = [bind['port'] for bind in self.getBDInstanceClockResetBinds(instanceKey)
+                  if bind['signal'] == clockName and bind['port'] in clockNames]
+        if len(matches) == 1:
+            return matches[0]
         raise AssertionError(
-            f"getBDPortDomain: connection clock '{clockName}' is not a "
-            f"member of block {ret['qualBlock']!r}'s own clock set; V13 "
-            f"should have rejected this at build time")
+            f"getBDPortDomain: connection clock '{clockName}' does not "
+            f"resolve to exactly one input clock of instance "
+            f"{instanceKey!r} (block {ret['qualBlock']!r}): got "
+            f"{matches}; V13 should have rejected this at build time")
 
     def getBDPortDomainReset(self, ret, clockName):
         """The selected reset of a boundary port's domain clock (spec V19).
@@ -3848,9 +3995,9 @@ class projectCreate:
         # all" versus "resets: omitted" (spec §4.2); transient to this
         # projectCreate.
         self._blocksDeclaringNoResets = set()
-        # Connections whose clock: was authored (not filled in from the
-        # project default by _post_resolveConnectionClock), keyed by
-        # (yamlFile, connection key). Populated by _process_connections and
+        # Connections whose clock: was authored (unstated is never filled in;
+        # spec §4.3 rule 3 leaves it to each endpoint's own block default),
+        # keyed by (yamlFile, connection key). Populated by _process_connections and
         # consumed by clockTree.build()'s V13 check, which applies only
         # to an authored clock: (spec §4.3 rule 3: unstated means each
         # endpoint's own block default, not a shared name). Transient to this
@@ -4013,9 +4160,10 @@ class projectCreate:
         tree = clockTree.build(
             self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
             self.flatData['memories'], self.flatData['memoryConnections'],
-            self.flatData['registerConnections'], self._blocksDeclaringNoResets,
-            self._connectionsWithAuthoredClock,
-            self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName], self)
+            self.flatData['connectionMaps'],
+            self._blocksDeclaringNoResets, self._connectionsWithAuthoredClock,
+            self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
+            self.contextOwningProject, rootProjectName, self)
         # objects that are one module in one domain must have connections that agree
         tree.check()
         if self.errorState:
@@ -5639,18 +5787,15 @@ class projectCreate:
             for orderIndex, info in enumerate(selected.values()):
                 rows.append((blockKey, info['declKind'], info['declKey'], orderIndex))
 
-        # Explicit non-schema table: create, bulk insert, then index on blockKey
-        # (the block-usage access path). Building the row list in memory and
-        # inserting via a single executemany keeps creation cheap; the index is
-        # added after the bulk load. getBlockData() queries this directly and
-        # joins to types/structures for bodies; it is never loaded into prj.data.
+        # Explicit non-schema table: create, then bulk insert. Building the row
+        # list in memory and inserting via a single executemany keeps creation
+        # cheap. projectOpen._loadDerivedTables() reads the whole table in one
+        # scan; no index.
         g.cur.execute("DROP TABLE IF EXISTS blockParameterizedDecls")
         g.cur.execute("CREATE TABLE blockParameterizedDecls "
                       "(blockKey TEXT, declKind TEXT, declKey TEXT, orderIndex INTEGER)")
         g.cur.executemany("INSERT INTO blockParameterizedDecls "
                           "(blockKey, declKind, declKey, orderIndex) VALUES (?, ?, ?, ?)", rows)
-        g.cur.execute("CREATE INDEX idx_blockParameterizedDecls_blockKey "
-                      "ON blockParameterizedDecls (blockKey)")
 
     def resolveProjectScopedName(self, section, projectName, name):
         """The row a project-scoped name denotes inside one project.
@@ -5669,27 +5814,29 @@ class projectCreate:
         return next(row for row in rows.values() if row['default'])
 
     def _persistClockTree(self, tree):
-        """Persist the clockTree's three tables: blockClocksResets,
-        instanceClockResetBinds, memoryClocks. The derivation and the
-        checks live in clockTree.py; this is the SQL boundary that module
-        never crosses (it does not touch g.cur).
+        """Persist the clockTree's five tables: blockClocksResets,
+        instanceClockResetBinds, memoryClocks, portDomains, containerLocalNets.
+        The derivation and the checks live in clockTree.py; this is the SQL
+        boundary that module never crosses (it does not touch g.cur).
         """
-        blockClocksResetsRows, instanceClockResetBindsRows, memoryClocksRows = tree.rows()
+        (blockClocksResetsRows, instanceClockResetBindsRows,
+        memoryClocksRows, portDomainsRows, containerLocalNetsRows) = tree.rows()
 
-        # Explicit non-schema table, in the manner of blockParameterizedDecls:
-        # bulk insert then index on the block access path. getBDClocksResets()
-        # queries it directly; it is never loaded into prj.data.
+        # Explicit non-schema tables, in the manner of blockParameterizedDecls:
+        # create, then bulk insert. projectOpen._loadDerivedTables() reads
+        # the whole table in one scan; no index.
         g.cur.execute("DROP TABLE IF EXISTS blockClocksResets")
         g.cur.execute("CREATE TABLE blockClocksResets "
                       "(blockKey TEXT, kind TEXT, itemKey TEXT, orderIndex INTEGER, "
                       "desc TEXT, direction TEXT, isDefault INTEGER, period INTEGER, "
-                      "timeUnit TEXT, clock TEXT, async INTEGER, selectedReset TEXT)")
+                      "timeUnit TEXT, clock TEXT, async INTEGER, selectedReset TEXT, "
+                      "registerClock TEXT, registerReset TEXT, "
+                      "busClockPort TEXT, busResetPort TEXT, releaseCycles INTEGER)")
         g.cur.executemany("INSERT INTO blockClocksResets (blockKey, kind, itemKey, "
                           "orderIndex, desc, direction, isDefault, period, timeUnit, "
-                          "clock, async, selectedReset) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
-        g.cur.execute("CREATE INDEX idx_blockClocksResets_blockKey "
-                      "ON blockClocksResets (blockKey)")
+                          "clock, async, selectedReset, registerClock, registerReset, "
+                          "busClockPort, busResetPort, releaseCycles) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
 
         g.cur.execute("DROP TABLE IF EXISTS instanceClockResetBinds")
         g.cur.execute("CREATE TABLE instanceClockResetBinds "
@@ -5698,15 +5845,29 @@ class projectCreate:
         g.cur.executemany("INSERT INTO instanceClockResetBinds "
                           "(instanceKey, childPort, parentSignal, orderIndex) "
                           "VALUES (?, ?, ?, ?)", instanceClockResetBindsRows)
-        g.cur.execute("CREATE INDEX idx_instanceClockResetBinds_instanceKey "
-                      "ON instanceClockResetBinds (instanceKey)")
 
         g.cur.execute("DROP TABLE IF EXISTS memoryClocks")
-        g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT)")
-        g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock) "
-                          "VALUES (?, ?)", memoryClocksRows)
-        g.cur.execute("CREATE INDEX idx_memoryClocks_memoryBlockKey "
-                      "ON memoryClocks (memoryBlockKey)")
+        g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT, reset TEXT)")
+        g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock, reset) "
+                          "VALUES (?, ?, ?)", memoryClocksRows)
+
+        g.cur.execute("DROP TABLE IF EXISTS portDomains")
+        g.cur.execute("CREATE TABLE portDomains (blockKey TEXT, portName TEXT, "
+                      "domainClock TEXT, orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO portDomains (blockKey, portName, domainClock, orderIndex) "
+                          "VALUES (?, ?, ?, ?)", portDomainsRows)
+
+        # containerLocalNets: one row per local net inside a container - a
+        # clock or reset a child
+        # instance's output binding drives under a name the container does
+        # not itself declare (spec §4.5). getBDLocalNets reads this back for
+        # the container's own wire declarations (R18).
+        g.cur.execute("DROP TABLE IF EXISTS containerLocalNets")
+        g.cur.execute("CREATE TABLE containerLocalNets "
+                      "(blockKey TEXT, netName TEXT, orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO containerLocalNets "
+                          "(blockKey, netName, orderIndex) "
+                          "VALUES (?, ?, ?)", containerLocalNetsRows)
 
     def _validateParameterizedConnectionEndpoints(self, declInfo, blockParams, blockIsParameterizable):
         # A parameterized interface implies both connected endpoints are
@@ -6911,6 +7072,7 @@ class projectCreate:
         # loop through the schema processing the input one field at a time
         for field, ftype in schema.items():
             comboField = comboSchema.get(field, None)
+            comboUnstated = False
             if isinstance(ftype, dict):
                 #if ftype is a dict, snap off the whole relevant piece as a dict depending on whether required or not
                 attrib = self.schema.data['attrib'][context+section+field]
@@ -6940,11 +7102,20 @@ class projectCreate:
                     raise RuntimeError(f"Schema validation incomplete: combo field '{field}' in section '{context+section}' missing qualified sources")
                 qualified_sources = field_obj.combo_sources_qualified
                 comboStr = ""
-                for source_field in qualified_sources:
-                    if source_field not in ret or ret[source_field] is None:
+                for unqualified_source, source_field in zip(field_obj.combo_sources, qualified_sources):
+                    value = ret.get(source_field)
+                    # An unstated optional source ("" if omitted, None for `~`) leaves a
+                    # reference combo unstated; the validator skips it below. A key combo
+                    # keeps an empty component as part of its identity (connections name).
+                    if (ftype == 'combo' and value in ("", None)
+                            and node.get_field(unqualified_source).field_type == 'optional'):
+                        comboStr = ""
+                        comboUnstated = True
+                        break
+                    if value is None:
                         self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, field:{field} is missing required combo source {source_field}")
                         exit(warningAndErrorReport())
-                    comboStr = comboStr + ret[source_field]
+                    comboStr = comboStr + value
                 ret[field] = comboStr
                 # Immediately populate the qualified field if it exists in schema
                 qualified_field = field + 'Key'
@@ -7119,8 +7290,9 @@ class projectCreate:
                         # just a single field
                         ret[field] = myAutoRet
             validator = self.schema.data['validator'].get(context+section+field, None)
-            if ftype=='optional' and ret[field]=="":
-                #if it was an optional field and there is no value, skip validation
+            if (ftype == 'optional' and ret[field]=="") or comboUnstated:
+                # an unstated optional field, or a reference combo built from
+                # one, has no value to validate
                 validator = None
                 # still need to add key field
                 if field+'Key' in schema:
@@ -7182,22 +7354,40 @@ class projectCreate:
                                 # as its valid we also need to capture the context key - ie what file did the referenced value come from
                                 ret[field+'Key'] = varInfo[validator['field']] + '/' + varContext
                             else:
-                                # Surface likely include-scope mistakes by naming
-                                # already-loaded contexts that define the symbol.
-                                foundElsewhere = []
-                                for qualification, group in self.data.get(targetSection, {}).items():
-                                    if isinstance(group, dict) and ret[field] in group:
-                                        foundElsewhere.append(qualification)
-                                if foundElsewhere:
-                                    whereDefined = ', '.join(sorted(foundElsewhere))
-                                    hint = (f" but is defined in {whereDefined}; "
-                                            f"add the defining file to the include: "
-                                            f"chain of {scope}")
+                                comboSources = self.schema.get_node(context+section).get_field(field).combo_sources
+                                if comboSources:
+                                    shown = ', '.join(f"{source}: {ret[source]}" for source in comboSources)
+                                    # A combo FK matches component by component (validateForeignKey), so
+                                    # name the components and list the target rows sharing all but the
+                                    # last one: the names the author could have written.
+                                    others = ', '.join(f"{c}: {ret[c]}" for c in comboSources[:-1])
+                                    last = comboSources[-1]
+                                    candidates = []
+                                    for row, _ in self._rowsInScope(targetSection, scope):
+                                        if all(row[c] == ret[c] for c in comboSources[:-1]):
+                                            candidates.append(row[last])
+                                    if candidates:
+                                        hint = f"; {targetSection} rows with {others} declare {last}: {', '.join(candidates)}"
+                                    else:
+                                        hint = f"; no {targetSection} row has {others} at all"
                                 else:
-                                    hint = (f"; no {targetSection} row named "
-                                            f"'{ret[field]}' was found in any "
-                                            f"context processed before this one")
-                                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} field {field}, value {ret[field]} was not valid in context {scope}{hint}")
+                                    shown = ret[field]
+                                    # Surface likely include-scope mistakes by naming
+                                    # already-loaded contexts that define the symbol.
+                                    foundElsewhere = []
+                                    for qualification, group in self.data.get(targetSection, {}).items():
+                                        if isinstance(group, dict) and ret[field] in group:
+                                            foundElsewhere.append(qualification)
+                                    if foundElsewhere:
+                                        whereDefined = ', '.join(sorted(foundElsewhere))
+                                        hint = (f" but is defined in {whereDefined}; "
+                                                f"add the defining file to the include: "
+                                                f"chain of {scope}")
+                                    else:
+                                        hint = (f"; no {targetSection} row named '{ret[field]}' "
+                                                f"was found in any context processed "
+                                                f"before this one")
+                                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} field {field}, value {shown} was not valid in context {scope}{hint}")
                                 # add anyway to prevent key error later
                                 ret[field+'Key'] = 'InvalidValueInYaml'
                     else:
@@ -8225,17 +8415,13 @@ class projectCreate:
             dirContext = dict()
             # use process simple with the data schema to extract the info and validate
             row = self.processSimple('connections_dataSchema', 'dummy', item, yamlFile, schema=self.schema.data['dataSchema']['connections'] )
-            # Recorded before _post_resolveConnectionClock fills an unstated
-            # clock: with the project default (spec §4.3 rule 3: unstated
-            # means each endpoint's OWN block default, not a name both
-            # endpoints must share) - clockTree.build()'s V13 check
-            # reads this to tell "authored" from "defaulted".
+            # An unstated clock: is exempt from V13, not defaulted to the
+            # project's clock (spec §4.3 rule 3: unstated means each
+            # endpoint's OWN block default independently, not a name both
+            # endpoints must share) - clockTree.build()'s V13 check reads
+            # this to tell "authored" from "unstated".
             if row['clock']:
                 self._connectionsWithAuthoredClock.add((yamlFile, row['connection']))
-            # connections parses through its _dataSchema, whose section name is not
-            # the storage section name, so the storage section's post() hook never
-            # fires; call the shared clock resolution directly.
-            row = self._post_resolveConnectionClock(row['connection'], row, yamlFile)
             # the base entry is based on this processing
             entry = row.copy()
             # every connection has a nested table with the source and destination of the connection saved in the ends field
@@ -8537,23 +8723,6 @@ class projectCreate:
         item['clockKey'] = default['clockKey']
         return item
 
-    def _post_resolveConnectionClock(self, itemkey, item, yamlFile):
-        # An unstated clock: on a connection-shaped row means the declaring
-        # project's own default clock. Resolved once here for every such section
-        # so no consumer sees an empty clock and none re-implements the rule.
-        # Also reached by the rows post-parse synthesis creates, since those are
-        # parsed through processSingleFile like authored ones.
-        if item['clock']:
-            return item
-        projectName = self.contextOwningProject[yamlFile]
-        default = next(row for row in self.data['clocks'][projectName].values()
-                       if row['default'])
-        item['clock'] = default['clock']
-        # The clocks row was parsed with the projectName as its context, so its own
-        # qualified key is what the scope: project validator would have built.
-        item['clockKey'] = default['clockKey']
-        return item
-
     def _resolveVariantBindingValue(self, row):
         # A binding value is either a literal int or the name of a constant the
         # user referenced; in the latter case valueKey is the qualified const key.
@@ -8612,6 +8781,20 @@ class projectCreate:
             return sysRows[name], '_a2csystem'
         return None, None
 
+    def _rowsInScope(self, targetSection, scope):
+        """(row, qualification) pairs of `targetSection` in scope order: every
+        qualification for 'global', else the include chain of `scope`, then
+        `_a2csystem`. validateForeignKey and its failure hint share the walk."""
+        if scope == 'global':
+            qualifications = list(self.data[targetSection])
+        else:
+            qualifications = list(self.yamlContext[scope])
+        if '_a2csystem' not in qualifications:
+            qualifications.append('_a2csystem')
+        for qualification in qualifications:
+            for row in self.data[targetSection].get(qualification, {}).values():
+                yield row, qualification
+
     def validateForeignKey(self, sourceRow, sourceSection, sourceField, context):
         """Validate a schema-declared foreign key on `sourceRow` against
         its declared target. The schema's plain/combo classification of
@@ -8639,16 +8822,9 @@ class projectCreate:
         if not sourceCombo:
             return self.lookupInScope(targetSection, context, sourceRow[sourceField])
 
-        if context == 'global':
-            qualifications = list(self.data[targetSection])
-        else:
-            qualifications = list(self.yamlContext[context])
-        if '_a2csystem' not in qualifications:
-            qualifications.append('_a2csystem')
-        for qualification in qualifications:
-            for row in self.data[targetSection].get(qualification, {}).values():
-                if all(row[source] == sourceRow[source] for source in sourceCombo):
-                    return row, qualification
+        for row, qualification in self._rowsInScope(targetSection, context):
+            if all(row[source] == sourceRow[source] for source in sourceCombo):
+                return row, qualification
         return None, None
 
     def _sectionKeyLc(self, sections, section):

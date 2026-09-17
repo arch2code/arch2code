@@ -28,6 +28,7 @@ IP_TEST_DIR = examples/ip_test
 SIMPLE_IP_DIR = examples/simple_ip
 
 TWO_CLK_DIR = examples/twoClk
+CLK_GEN_DIR = examples/clkGen
 
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
@@ -136,6 +137,17 @@ two-clk:
 	make -C $(TWO_CLK_DIR)/rundir -j run-vl
 	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
 	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
+
+.PHONY : clk-gen
+# Single self-contained project (no child project): output clocks/resets,
+# local nets, an export and a `~` binding (plan-clock-container-model.md
+# phase 3; spec-clock-reset-requirements.md §4.5/§4.6).
+clk-gen:
+	make -C $(CLK_GEN_DIR) gen
+	make -C $(CLK_GEN_DIR)/rundir -j run
+	make -C $(CLK_GEN_DIR)/rundir -j run-vl
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
 
 .PHONY : hello-world
 hello-world:
@@ -289,7 +301,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave xif in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip two-clk
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave xif in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip two-clk clk-gen
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

@@ -17,7 +17,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     *   **Safe Zones:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
     *   **Implementation:** Place all manual logic (FSMs, internal signals, sub-module instances) after the generated sections.
     *   Module ends with `endmodule: <module_name>` (named end).
-    *   The block's clocks and resets are always the last ports, clocks first. A block in the project's default domain gets `clk` and `rst_n` (active-low reset); a block in another domain gets that domain's declared clock and reset names instead, and a block reached from several domains gets one port per clock and per reset.
+    *   The block's clocks and resets are always the last ports, in declared order with the default first; a declared `output` clock or reset is an `output` port among them. A block that declares none gets `clk` and `rst_n` (active-low reset), both `input`; a multi-clock block gets one port per clock it declares and per reset.
 
     ```systemverilog
     // GENERATED_CODE_PARAM --block=<block_name>
@@ -135,9 +135,10 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
 
     Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
 
-    *   Use the bare macro for a flop on the block's first clock. That is the normal case in every block: when a block's ports carry no clock named `clk` (or no reset named `rst_n`), the generated region of its module declares `wire clk = <first clock>;` (and `wire rst_n = <first reset>;`), so the bare macros expand to a real net whatever the domain is called.
+    *   Use the bare macro for a flop on the block's default clock. That is the normal case in every block: when the block's default clock is not named `clk`, or its selected reset not named `rst_n`, the generated region of its module declares `wire clk = <default clock>;` (and/or `wire rst_n = <selected reset>;`) as an alias, so the bare macros expand to a real net whatever the domain is called. An alias is emitted only for the name that differs; a block that declares nothing needs neither.
     *   Use the `_CLK` form for a flop on another clock of a multi-clock block only when that clock shares the block's `rst_n`; otherwise use the `_DOM` form below, which names both the clock and the reset. Generated modules (`<block>_regs`, `apbDecode`) emit `_DOM` with their own resolved clock and reset.
     *   `_CLK` resets on `rst_n`, the block's own reset domain (a port or the generated default-domain alias). Every `_CLK` macro is one line onto its `_DOM` form, and every bare macro one line onto its `_CLK` form.
+    *   A reset **supplier**'s assertion path — a synchroniser's asynchronous input flop, a PLL wrapper's raw output reset — is written with explicit asynchronous flops outside this macro library, so the domain resets even while its clock is stopped (spec §4.9); the selected reset style governs ordinary flops, not a supplier's assertion path.
 
     **Reset Style:**
     *   Exactly one of `A2C_RESET_SYNC` (default), `A2C_RESET_ASYNC`, `A2C_RESET_NONE` is active per compilation, selected at the top of `flops.sv`. `ASIC` aliases to `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` aliases to `A2C_RESET_NONE`, for compatibility with existing defines. Defining more than one style is a compile error.

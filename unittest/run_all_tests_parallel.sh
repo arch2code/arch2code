@@ -63,9 +63,19 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 98 suites.
-if [[ ${#ALL[@]} -ne 98 ]]; then
-    echo "WARNING: expected 98 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping or missing suites: diff ALL by name against
+# the suites run_all_tests.sh invokes (direct python3 calls and the
+# ADDRCTL_TESTS script column; comment lines excluded).
+mapfile -t SERIAL_SUITES < <(grep -v '^[[:space:]]*#' run_all_tests.sh | grep -oE '\btest_[A-Za-z0-9_]+\.py\b' | sort -u)
+mapfile -t ONLY_SERIAL < <(comm -23 <(printf '%s\n' "${SERIAL_SUITES[@]}") <(printf '%s\n' "${ALL[@]}" | sort -u))
+mapfile -t ONLY_HERE   < <(comm -13 <(printf '%s\n' "${SERIAL_SUITES[@]}") <(printf '%s\n' "${ALL[@]}" | sort -u))
+if [[ ${#ONLY_SERIAL[@]} -gt 0 || ${#ONLY_HERE[@]} -gt 0 ]]; then
+    for f in ${ONLY_SERIAL[@]+"${ONLY_SERIAL[@]}"}; do
+        echo "WARNING: ${f} is run by run_all_tests.sh but not found here" >&2
+    done
+    for f in ${ONLY_HERE[@]+"${ONLY_HERE[@]}"}; do
+        echo "WARNING: ${f} exists but run_all_tests.sh never runs it" >&2
+    done
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 
@@ -145,10 +155,6 @@ done
 
 echo "------------------------------------------------------------------------"
 echo "Ran ${#ALL[@]} suites: ${PASS_COUNT} passed, ${FAIL_COUNT} failed"
-# Cases printed SKIP: (a case this build does not implement yet), aggregated
-# across every suite's own log.
-SKIPPED_COUNT="$(cat "$LOGDIR"/*.log | grep -c '^SKIP: ')"
-echo "Skipped cases: ${SKIPPED_COUNT}"
 echo "Total wall-clock: ${ELAPSED}s"
 
 if [[ ${#FAILED_SUITES[@]} -gt 0 ]]; then

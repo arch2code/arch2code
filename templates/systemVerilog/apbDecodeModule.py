@@ -36,18 +36,19 @@ def render(args, prj, data):
     out.append(importPackages(args, prj, startingContext, data))
     out.append("(")
 
-    # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+    # A router declares neither clocks: nor resets: of its own in the common
+    # case, so its declared set is the generic implicit clk/rst_n and carries
+    # no domain meaning (spec §4.3 "Routers"): busClock/busReset
+    # (getBDBusClockReset)
+    # is the container net its one instance's own map actually resolved to,
+    # and is what the module's own port and every flop below use.
+    decode_clk = data['busClock']
+    decode_rst = data['busReset']
 
-    # The router is a register-bus endpoint and its own block in the database, so
-    # the clock set reaching here is its own, derived and ordered by
-    # getBDClocksResets - the same set sv_gen_ports above declared, and the same
-    # bus domain the <block>_regs handler of this tree reads. A router's
-    # connectivity is the bus feed alone, so the first entry of the canonical
-    # order is that domain and clocks every flop below. The port list still
-    # declares the whole set, which an additive block clocks: entry can widen.
-    decode_clk = data['clocks'][0]['clock']
-    decode_rst = data['resets'][0]['reset']
+    # Ports
+    out.extend(intf_gen_utils.sv_gen_ports(
+        data, prj, indent,
+        dict(data, **intf_gen_utils.bus_clock_reset_port_data(data, decode_clk, decode_rst))))
 
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']

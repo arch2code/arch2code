@@ -13,8 +13,8 @@ module twoClkSlowTick_hdl_sv_wrapper
     output bit [7:0] out_data,
     input bit out_ack,
 
-    input clkSlow,
-    input rstSlow_n
+    input clkTick,
+    input rstTick_n
 );
     // push_ack_if.src
     push_ack_if #(.data_t(twoClkDataSt)) out();
@@ -25,8 +25,8 @@ module twoClkSlowTick_hdl_sv_wrapper
 
     twoClk_twoClkSlowTick dut (
         .out(out), // push_ack_if.src
-        .clkSlow(clkSlow),
-        .rstSlow_n(rstSlow_n)
+        .clkTick(clkTick),
+        .rstTick_n(rstTick_n)
     );
 
     `ifdef VCS

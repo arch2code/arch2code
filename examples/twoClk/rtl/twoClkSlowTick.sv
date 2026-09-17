@@ -8,12 +8,12 @@ module twoClk_twoClkSlowTick
 import twoClkIp_package::*;
 (
     push_ack_if.src out,
-    input clkSlow, rstSlow_n
+    input clkTick, rstTick_n
 );
 
     // Default-domain aliases: the bare flop macros expand to clk / rst_n
-    wire clk = clkSlow;
-    wire rst_n = rstSlow_n;
+    wire clk = clkTick;
+    wire rst_n = rstTick_n;
 
     // Interface Instances, needed for between instanced modules inside this module
 

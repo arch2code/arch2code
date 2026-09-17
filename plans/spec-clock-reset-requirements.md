@@ -1026,7 +1026,15 @@ line of the offending entry.
 
 - **V1.** A block reset's `clock` names a block clock of the same block. A
   reset declared `async: true` carries no `clock` and is an `input`.
-- **V2.** A port's `clock` names a block clock of the same block.
+- **V2.** A port's `clock` names a block clock of the same block. The same
+  holds for a `registerPorts:`, `addressBlock:` or memory `clock:`/`reset:`.
+  The existence part of V1 and V2 is the schema's `blockClock`/`blockReset`
+  combo foreign key (`config/schema.yaml`), matched against the block's own
+  `clocks:`/`resets:` rows at parse time. An unstated name is not checked;
+  it means the block default. A block declaring no `clocks:` has no rows,
+  so a stated `clock:` on it is rejected whatever the name: its only clock
+  is the implicit `clk`, and stating it is redundant. The `async` rules
+  stay in `clockTree.BlockDomains.build()`.
 - **V3.** Every `input` clock and reset of an instantiated block resolves to a
   container clock or reset, by map, name match, or the default fallback of
   §4.4. Every `output` appears in the map, bound to a container net, a new

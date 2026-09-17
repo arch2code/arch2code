@@ -1,13 +1,16 @@
 # Plan: Multiple clocks and resets
 
-- **Status:** Phase 1 derivation is landed, and so is the port-declaration half of
+- **Status:** Superseded by [`plan-clock-container-model.md`](./plan-clock-container-model.md) and
+  [`spec-clock-reset-requirements.md`](./spec-clock-reset-requirements.md);
+  kept as the record of the landed `_DOM` macro, alias and reset-style work
+  described below. Phase 1 derivation is landed, and so is the port-declaration half of
   §5 emission plus the cycle-based reset release. **The §6 clock-parameterized
   flop macros and the `<block>_regs` emission rows of §5 are now landed too, and
   so is the `apbDecode` router's — every flop any generator emits now names its
   own module's clock. The per-connection BFM binding of §5 is landed too, and so
   are the child-instance and memory-instance binding rows and §6.3's
-  default-domain alias.** Every §5 row is landed; what remains of Phase 1 is
-  §6.4's reset-style selector and the CDC primitive library.
+  default-domain alias.** Every §5 row is landed, including §6.4's reset-style
+  selector; what remains of Phase 1 is the CDC primitive library.
   - **Decisions:** none block phase 1. Decision 0 (tandem) is settled by §10.1;
     7 (boundary binding) is deferred to phase 3; 1 (flop macro spelling),
     3 (reset release count), 4 (port spelling), 5 (no crossing report) and

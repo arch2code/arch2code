@@ -120,7 +120,10 @@ private:
     // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
     // not advance before the first quantum. Otherwise assert, hold for the
     // declared releaseCycles edges of the reset's own clock, then release.
-    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
+    // The clock parameter is named reset_driver_clk, not clk: a block whose
+    // own default clock is literally named clk declares a same-named member,
+    // which a parameter named clk would otherwise shadow (-Wshadow).
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
         if (socketSyncLockstepActive()) {
             rst.write(socketSyncRstN());
             while (true) {
@@ -130,7 +133,7 @@ private:
         } else {
             rst.write(false);
             for (int cycle = 0; cycle < cycles; cycle++) {
-                wait(clk.posedge_event());
+                wait(reset_driver_clk.posedge_event());
             }
             rst.write(true);
         }

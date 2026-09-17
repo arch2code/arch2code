@@ -1,0 +1,59 @@
+# clkGen - a fixture for output clocks/resets and local nets
+# (spec-clock-reset-requirements.md §4.5/§4.6). Single self-contained
+# project, no child project: the whole
+# point is the container-internal wiring between a clock divider and its
+# consumer, which needs no reuse boundary to demonstrate.
+
+yamlFormat: 2
+projectName: clkGen
+
+projectFiles:
+    - ../../yaml/clkGen.yaml
+
+topInstance: clkGen_tb
+
+# The testbench's own clkRef/rstRef_n: bound to clkGen_tb's (and, through it,
+# clkGen's) declared clkRef/rstRef_n by name match (spec §4.4/§4.8).
+clocks:
+    clkRef:
+        desc: "reference clock the testbench generates"
+        default: true
+        period: 10
+        timeUnit: ns
+
+resets:
+    rstRef_n:
+        desc: "reference-domain reset"
+        default: true
+        clock: clkRef
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root must be supplied; the other segments and hierarchicalDirs inherit
+      # the base config defaults (dict_shallow merge)
+    root: ../.. # project root directory (examples/clkGen), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

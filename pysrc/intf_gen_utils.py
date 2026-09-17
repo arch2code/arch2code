@@ -258,6 +258,21 @@ def sv_clock_reset_input_lines(block_data):
     return ',\n'.join(f"{direction} {name}"
                       for name, direction in clock_reset_ports(block_data))
 
+# A router or handler's declared clock/reset port matching busClockPort/
+# busResetPort (getBDBusClockReset, the already-resolved port names, spec
+# §4.3 "Registers"/"Routers") is renamed to busClock/busReset for
+# sv_clock_reset_input_lines, without disturbing block_data's own declared
+# rows for other emission sites.
+def bus_clock_reset_port_data(block_data, bus_clock, bus_reset):
+    busClockPort = block_data['busClockPort']
+    busResetPort = block_data['busResetPort']
+    return {
+        'clocks': [dict(row, clock=bus_clock) if row['clock'] == busClockPort else row
+                  for row in block_data['clocks']],
+        'resets': [dict(row, reset=bus_reset) if row['reset'] == busResetPort else row
+                  for row in block_data['resets']],
+    }
+
 def sv_clock_reset_binds(block_data):
     return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
 
@@ -265,7 +280,7 @@ def sv_clock_reset_binds(block_data):
 # identifier `clk`, and hand-written RTL names `rst_n` directly. A block whose
 # own clock or reset port carries some other name still needs those two
 # identifiers to resolve, so the generated region aliases them onto the
-# block's default clock and its selected reset (spec §4.2/§5.2), only when
+# block's default clock and its selected reset (spec §4.2), only when
 # each exists and the block does not already declare a port of that name: a
 # block whose declared clocks are all direction: output has no default clock
 # and gets no clk alias, and a clock the block does declare - wherever it

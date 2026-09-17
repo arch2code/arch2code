@@ -24,6 +24,7 @@ block to back its registers.
     *   **Router (generated):** the `addressBlock:` block's RTL comes from the `apbDecodeModule` template (scaffolded by `make newmodule`). It routes the register bus to served instances. You never write it.
     *   **Block-level handler (generated):** each routed leaf block (e.g., `dma_controller`) gets an auto-generated `<block>_regs` instance that decodes registers/memories defined in YAML. You never write it.
     *   **Your RTL** only provides the storage/side-effects for `ext` registers and drives `ro` read data, as below.
+    *   **Domain.** The router and the handlers it serves run on the register bus's clock, not necessarily the block's default `clk`: a top-down leaf's register port is whichever of its own declared clocks the instance map binds to the bus (R25), and its reset the selected reset of that clock. The `clk`/`rst_n` used below is that domain's alias when the leaf declares nothing else. See `design-register-decode.md`.
 
     > For reusable-IP leaves that ship their own register-bus port, the IP block authors one `registerPorts:` row (e.g. `registerPorts: { regs: { interface: ipReg } }`) so its generated `<block>Base` stays self-contained. Plain top-down leaves omit it. See `design-register-decode.md`.
 

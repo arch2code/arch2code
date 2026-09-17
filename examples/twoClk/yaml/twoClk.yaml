@@ -7,14 +7,15 @@
 #
 # Every block below declares its own clocks:/resets: completely (spec R5,
 # spec-clock-reset-requirements.md): nothing is inferred from connections or
-# from a block's children. An instance binds to its container purely by name
-# match and the clk/rst_n default fallback, so a clock name other than
-# clk/rst_n binds only by every container up to the root declaring a clock of
-# that same name - which is why twoClk_tb, the design root, also declares
-# clkSlow even though it has no RTL of its own. clocks:/resets: at the
-# PROJECT level (prj/yaml/project.yaml) describe the testbench and are not
-# bound to the design; they exist here only to validate connections' clock:
-# references.
+# from a block's children. Every instance below binds explicitly through a
+# clocks:/resets: map (spec §4.4), the composition and renaming test this
+# fixture is for: twoClkSlowTick declares its own clock as clkTick, not
+# clkSlow, and uSlowTick's map is what binds clkTick to the container's
+# clkSlow - the shape of one IP's clock renamed at its assembler. uIpSrc's map
+# is the identity case, spelled out to show a plain rename-free bind through
+# the composition boundary. clocks:/resets: at the PROJECT level
+# (prj/yaml/project.yaml) describe the testbench and are not bound to the
+# design; they exist here only to validate connections' clock: references.
 
 include:
     # The include edge puts the child's definitions on this context's resolution
@@ -60,15 +61,15 @@ blocks:
         ports:
             in: { interface: twoClkDataIf, direction: dst }
     twoClkSlowTick:
-        desc: "clkSlow tick counter streaming its count out; declares its own clock as a block port, bound to the container's clkSlow by name match"
+        desc: "clkSlow tick counter streaming its count out; declares its own clock as a block port named clkTick, distinct from the container's clkSlow, bound to it by its instance map"
         hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
         clocks:
-            clkSlow: { period: 3, timeUnit: ns }
+            clkTick: { period: 3, timeUnit: ns }
         resets:
-            rstSlow_n: { clock: clkSlow }
+            rstTick_n: { clock: clkTick }
         ports:
             out: { interface: twoClkDataIf, direction: src }
     twoClkSlowSink:
@@ -85,12 +86,18 @@ blocks:
             in: { interface: twoClkDataIf, direction: dst }
 
 instances:
-    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top } # self reference
-    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,        instGroup: top }
-    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top }
-    uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top }
-    uSlowTick:  { container: twoClk,    instanceType: twoClkSlowTick, instGroup: top }
-    uSlowSink:  { container: twoClk,    instanceType: twoClkSlowSink, instGroup: top }
+    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top, # self reference
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,        instGroup: top,
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uSlowTick:  { container: twoClk,    instanceType: twoClkSlowTick, instGroup: top,
+                  clocks: { clkTick: clkSlow }, resets: { rstTick_n: rstSlow_n } }
+    uSlowSink:  { container: twoClk,    instanceType: twoClkSlowSink, instGroup: top,
+                  clocks: { clkSlow: clkSlow }, resets: { rstSlow_n: rstSlow_n } }
 
 connections:
     # Crosses the composition boundary: src block owned by twoClkIp, dst block

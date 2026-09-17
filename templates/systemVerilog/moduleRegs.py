@@ -25,14 +25,16 @@ def getParentStructures(prj, d):
 def render(args, prj, data):
     global regs_intf, regs_addr_t, regs_data_t, regs_clk, regs_rst
 
-    # <block>_regs is a register-bus endpoint, so its domain is the bus feed's,
-    # and it is its own block in the database: the clock and reset sets reaching
-    # here are this module's own, derived and ordered by getBDClocksResets. A
-    # generated decode tree inherits exactly one bus domain, so the first entry of
-    # each set is that domain and is what the flops and the reset term use. The
-    # port list still declares the whole set.
-    regs_clk = data['clocks'][0]['clock']
-    regs_rst = data['resets'][0]['reset']
+    # <block>_regs is a register-bus endpoint: it declares neither clocks: nor
+    # resets: of its own, so its declared set is always the generic implicit
+    # clk/rst_n and carries no domain meaning. busClock/busReset
+    # (getBDBusClockReset, spec §4.3 "Registers"/"Routers") is the container
+    # net its one instance's binds actually resolved to - a router's own
+    # instance map, or a leaf's registerPorts: clock/R25 selection for a
+    # handler - and is what the
+    # module's own port and every flop use.
+    regs_clk = data['busClock']
+    regs_rst = data['busReset']
 
     regs_intf = data['addressDecode'].get('registerBusPort', None)
     if not regs_intf:
@@ -106,7 +108,8 @@ def render(args, prj, data):
         needs_genvar=any(r.get('isParameterizable') for r in data['registers'].values())
                      or any(m.get('isParameterizable') for m in data['memories'].values()),
         interfaces_ports=section_intf_ports(prj, data),
-        clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(data),
+        clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(
+            intf_gen_utils.bus_clock_reset_port_data(data, regs_clk, regs_rst)),
         regs_clk=regs_clk,
         regs_rst=regs_rst,
         address_mask=section_address_mask(prj, data),
