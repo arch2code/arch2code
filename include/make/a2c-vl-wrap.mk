@@ -28,6 +28,17 @@ VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 VL_GEN_SV_FILES += $(call find_gen_sv_sources, $(VL_SRC_DIRS))
 VL_GEN_SC_FILES += $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
 
+# VERILATOR_OPTS already carries -MMD, so each verilate writes
+# obj_dir/<top>/V<top>__ver.d naming every source it read: the .f, the files it
+# lists, and anything they `include`. Its targets are the generated C++, so the
+# recipe below retargets it onto the object and that retargeted copy is what is
+# included here. Without it an edit under rtl/ did not invalidate the Verilated
+# object -- verilator never re-ran and the simulation kept exercising whatever
+# RTL was present at the last wrapper regeneration. Same shape as the
+# -include $(DEP) the C++ objects already use.
+VL_DEP_FILES := $(foreach t,$(A2C_VL_TOPS),obj_dir/$(t)/V$(t).dep)
+-include $(VL_DEP_FILES)
+
 # Verilated tops come from the build manifest's per-top records (A2C_VL_TOPS +
 # A2C_VL_SV_<top>), not from a filename scan. Each record names its design unit
 # and physical wrapper explicitly, so nothing is derived with $(notdir) and the
@@ -61,9 +72,10 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
 # trampoline finds the `include`d canonical `_hdl_sv_wrapper.svh` body wherever
 # it lives, including a reused child's own vl_wrap dir).
 define vl_top_rule
-obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES)
+obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES) $(A2C_VL_SV_$(1))
 	mkdir -p obj_dir/$(1)
 	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
+	@sed -e 's|^[^:]*:|obj_dir/$(1)/V$(1)__ALL.o:|' obj_dir/$(1)/V$(1)__ver.d > obj_dir/$(1)/V$(1).dep
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 
