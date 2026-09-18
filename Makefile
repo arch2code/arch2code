@@ -478,13 +478,13 @@ apbDecode:
 .PHONY : mixed
 mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
-	make -C $(MIXED_DIR)/rundir run
+	make -C $(MIXED_DIR)/rundir -j run
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket
 pySocket:
 	make -C $(PYSOCKET_DIR)/rundir -j all VL_DUT=1
-	make -C $(PYSOCKET_DIR)/rundir run
+	make -C $(PYSOCKET_DIR)/rundir -j run
 	make -C $(PYSOCKET_DIR)/rtl lint -j
 
 .PHONY : in-and-out
