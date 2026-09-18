@@ -50,14 +50,15 @@ endif
 # Verilated tops come from the build manifest's per-top records (A2C_VL_TOPS +
 # A2C_VL_SV_<top>), not from a filename scan. Each record names its design unit
 # and physical wrapper explicitly, so nothing is derived with $(notdir) and the
-# library is not globbed. The verilator object name follows verilator's
-# V<top>__ALL.o convention, reconstructed here rather than carried in the
-# manifest. The .svh body is never a record (a default-less parameterized module
+# library is not globbed. The per-top product is verilator's V<top>__ALL.a,
+# emitted in both of its build modes (a single V<top>__ALL.o exists only while
+# VM_PARALLEL_BUILDS is off, which verilator turns on for output-split models).
+# The .svh body is never a record (a default-less parameterized module
 # cannot be a Verilated top). Each top gets its OWN --Mdir (obj_dir/<top>) so
 # concurrent verilate runs never write a shared obj_dir; the per-assembler
 # VlRegistrar picks up each V<top>.h from its own Mdir on the SystemC include
 # path (a2c-systemc.mk drives that from A2C_VL_TOPS).
-VL_OBJ_FILES = $(foreach t,$(A2C_VL_TOPS),obj_dir/$(t)/V$(t)__ALL.o)
+VL_OBJ_FILES = $(foreach t,$(A2C_VL_TOPS),obj_dir/$(t)/V$(t)__ALL.a)
 
 VL_LIB_OBJ_FILES = obj_dir/vl_dummy/verilated.o obj_dir/vl_dummy/verilated_dpi.o obj_dir/vl_dummy/verilated_vcd_c.o obj_dir/vl_dummy/verilated_threads.o
 
@@ -82,14 +83,21 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 # trampoline finds the `include`d canonical `_hdl_sv_wrapper.svh` body wherever
 # it lives, including a reused child's own vl_wrap dir).
 define vl_top_rule
-obj_dir/$(1)/V$(1)__ALL.o: $(VL_SV_DEPS) $(call vl_dep_prereqs,$(1))
+obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
 	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 
+# One archive for the link: the runtime objects plus every member of every
+# per-top archive. ar cannot nest archives, so an MRI script adds the members
+# (ADDLIB); member names carry the top's prefix, so tops never collide.
 lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/vl_dummy/Vvl_dummy $(VL_OBJ_FILES)
-	ar -rcs $@ $(VL_LIB_OBJ_FILES) $(VL_OBJ_FILES)
+	{ echo "CREATE $@"; \
+	  $(foreach o,$(VL_LIB_OBJ_FILES),echo "ADDMOD $(o)";) \
+	  $(foreach a,$(VL_OBJ_FILES),echo "ADDLIB $(a)";) \
+	  echo "SAVE"; echo "END"; } | ar -M
+	ar -s $@
 
 #------------------------------------------------------------------------
 # Systemc build phony targets

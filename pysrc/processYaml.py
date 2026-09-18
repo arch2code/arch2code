@@ -4045,6 +4045,10 @@ class projectCreate:
 
         top = next((row['instanceTypeKey'] for row in self.flatData['instances'].values()
                     if row['container'] == '_topInstance'), None)
+        # The project whose harness this build runs; it owns the pairs whose
+        # internal Verilated tops are built here.
+        topOwner = self.contextOwningProject[blocks[top]['_context']] \
+            if top is not None else self.config.getConfig('PROJECTNAME')
         activeConfigs = {top: [{'variant': '', 'config': None, 'values': {}}]} \
             if top is not None else {}
         reachableBlocks = set(activeConfigs)
@@ -4145,6 +4149,11 @@ class projectCreate:
                     childConfigs = activeConfigs.setdefault(childKey, [])
                     for config in concrete:
                         appendConfig(childConfigs, config)
+                        # An integrator swaps a reused IP whole through its own
+                        # foreign top and never Verilates the IP's internal
+                        # pairs, whose trampolines only the owner generates.
+                        if config['pairSpecific'] and pairOwner != topOwner:
+                            continue
                         if child['hasVl']:
                             if paramsByBlock.get(childKey):
                                 suffix = sanitizeIdentifierToken(

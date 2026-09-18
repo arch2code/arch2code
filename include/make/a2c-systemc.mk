@@ -84,6 +84,9 @@ LD_FLAGS     += $(EXTRA_LD_FLAGS)
 # Find all .cpp files in the A2C_SRC_DIRS and PRJ_SRC_DIRS directories.
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
+# The manifest names the recorded .cpp this build must not compile: a reused
+# IP's VlRegistrar TUs, whose V<top>.h headers only the IP's own build generates.
+CPP_SRC := $(filter-out $(A2C_CPP_EXCLUDE_FILES),$(CPP_SRC))
 
 # C++20 module interface units include both generated files and user-authored
 # .cppm files in project source directories. EXTRA_CPP_MODULE_SRC covers modules

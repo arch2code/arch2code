@@ -312,7 +312,7 @@ RUNTIME_MDIR = 'vl_dummy'
 
 def verilated_object_stamps(rundir):
     """Modification time of every Verilated object, keyed by its top's Mdir."""
-    pattern = os.path.join(rundir, 'build', 'vl', 'obj_dir', '*', 'V*__ALL.o')
+    pattern = os.path.join(rundir, 'build', 'vl', 'obj_dir', '*', 'V*__ALL.a')
     return {os.path.basename(os.path.dirname(o)): os.stat(o).st_mtime_ns
             for o in glob.glob(pattern)}
 
