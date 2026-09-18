@@ -442,6 +442,13 @@ def postProcess(prj):
     # that needs a register bus must expose it under registerPorts:, not a plain
     # ports: entry; catch that misconfiguration here rather than letting it
     # surface as a cryptic C++ undeclared-identifier at compile time.
+
+    # {blockKey: first regAccess memory name}, so Check 3 can name the memory.
+    regAccessMemoryByBlock = dict()
+    for memoryData in prj.flatData['memories'].values():
+        if memoryData['regAccess'] and memoryData['blockKey'] not in regAccessMemoryByBlock:
+            regAccessMemoryByBlock[memoryData['blockKey']] = memoryData['memory']
+
     for blockKey, blockRow in blockInfo.items():
         isRouter = blockKey in routers
         hostsNestedRouter = blockKey in nestedRouterContainerBlockKeys
@@ -464,6 +471,21 @@ def postProcess(prj):
                 f"own register handler. Move those registers/memories onto a "
                 f"child leaf that the inner decoder serves (see the "
                 f"design-register-decode skill §1 nested-router case)."
+            )
+
+        # Check 3 (defensive fail-loud): a router that also owns a regAccess
+        # memory. Must precede Check 1's `if isRouter: continue`, which would
+        # otherwise let this slip through unreported. Without it, calcAddresses
+        # raises a KeyError (a router instance carries no addressGroup, so the
+        # space check's AddressGroups lookup on it fails), pre-empting the
+        # misleading V24 clock-port compare that would otherwise follow.
+        if isRouter and blockKey in regAccessMemoryByBlock:
+            _exit_with_error(
+                f"block '{blockRow['block']}' is a register-decode router "
+                f"(addressBlock:) but also owns regAccess memory "
+                f"'{regAccessMemoryByBlock[blockKey]}'. A router owns no "
+                f"firmware-accessible memories; declare it on a leaf the "
+                f"router serves."
             )
 
         # Check 1 (primary): a bounded register-requiring block that authors an

@@ -521,6 +521,60 @@ instances:
 CLK_MEMBER_LEAF = 'rtl/leaf.sv'
 CLK_MEMBER_PERIPH_LEAF = 'rtl/periphLeaf.sv'
 
+# A hasVl leaf with one clock, an explicitly empty resets: {} (opting out of
+# the derived reset, not merely omitting resets:), and no ports at all - the
+# shape in which the constructor's bfm and reset initialiser sections are both
+# empty and only the clock section has anything to say. Standalone from the
+# fixtures above: adding resets: {} or a portless block to any of them would
+# perturb checks those fixtures already pin.
+NO_RESET_PROJECT = """yamlFormat: 2
+projectName: noResetCtorInit
+topInstance: topInst
+
+projectFiles:
+    - ../../yaml/top.yaml
+
+dirs:
+    root: ../..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:  { alignment: memsize, sizeRoundUpPowerOf2: true, sortDescending: true }
+    registers: { alignment: 8, sortDescending: true }
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+"""
+
+NO_RESET_DESIGN = """blocks:
+    topBlock:
+        desc: "container instantiating the resetless leaf; declares no clocks:/resets: itself, so it derives the implicit clk/rst_n the testbench binds to (V10)"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: true
+    bareLeaf:
+        desc: "hasVl leaf with a clock, no resets, and no ports"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { }
+        resets: { }
+
+instances:
+    topInst:  { container: topBlock, instanceType: topBlock, instGroup: top }
+    uBareLeaf: { container: topBlock, instanceType: bareLeaf, instGroup: top }
+"""
+
+NO_RESET_WRAPPER = 'verif/bareLeaf_hdl_sc_wrapper.h'
+
 
 def _arch2code(*args, cwd):
     env = os.environ.copy()
@@ -777,6 +831,37 @@ def _generate_clk_member():
         with open(os.path.join(fixture, rel)) as f:
             emitted[rel] = f.read()
     return fixture, emitted
+
+
+def _generate_no_reset_ctor():
+    """Build the no-resets/no-ports fixture and render its SC wrapper header.
+
+    Returns (fixture_dir, {relative path: emitted text}).
+    """
+    fixture = tempfile.mkdtemp(prefix='noresetctor_')
+    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+    os.makedirs(os.path.join(fixture, 'yaml'))
+    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+        f.write(NO_RESET_PROJECT)
+    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+        f.write(NO_RESET_DESIGN)
+
+    db = os.path.join(fixture, 'noreset.db')
+    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                       '--db', db, cwd=fixture)
+    if built.returncode != 0:
+        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+    made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
+    if made.returncode != 0:
+        raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
+
+    gen = _arch2code('--db', db, '-r', '--systemc',
+                     '--file', os.path.join(fixture, NO_RESET_WRAPPER), cwd=fixture)
+    if gen.returncode != 0:
+        raise AssertionError(f"generating {NO_RESET_WRAPPER} failed:\n{gen.stdout}\n{gen.stderr}")
+    with open(os.path.join(fixture, NO_RESET_WRAPPER)) as f:
+        text = f.read()
+    return fixture, {NO_RESET_WRAPPER: text}
 
 
 def _run_case(label, fn):
@@ -1057,6 +1142,43 @@ def check_alias_value_is_not_a_shared_literal(emitted):
     for line in ('wire clk = periphClk;', 'wire rst_n = periphRst_n;'):
         _expect(region, line, "the alias names periphLeaf's own clock/reset",
                 'periphLeaf generated region')
+    return True
+
+
+def _ctor_init_list(text, blockname, where):
+    """The member-initialiser list text of the generated SC wrapper
+    constructor, from the ':' after the parameter list through the line
+    before the constructor body's opening brace."""
+    marker = f"{blockname}_hdl_sc_wrapper(sc_module_name modulename"
+    start = text.find(marker)
+    if start == -1:
+        raise AssertionError(f"{where} has no {blockname}_hdl_sc_wrapper constructor")
+    colon = text.find(':', start)
+    brace = text.find('\n    {', colon)
+    if colon == -1 or brace == -1:
+        raise AssertionError(f"{where} constructor has no initialiser list")
+    return text[colon + 1:brace]
+
+
+def check_ctor_init_no_stray_comma(emitted):
+    """A hasVl block with a clock but no resets and no ports must not render a
+    bare ',' element in the constructor's member-initialiser list.
+
+    bareLeaf carries one clock, an explicitly empty resets: {}, and no ports,
+    so of the four sections that feed the list only the clock section has
+    anything to say - the shape that used to leave the empty reset section's
+    still-comma'd slot as a bare ',' element between the clock section and the
+    (also empty) clock-half section."""
+    text = emitted[NO_RESET_WRAPPER]
+    init = _ctor_init_list(text, 'bareLeaf', 'bareLeaf SC wrapper')
+    lines = [line for line in _strip(init) if line]
+    if any(line == ',' for line in lines):
+        raise AssertionError(
+            f"bareLeaf constructor init list has a bare ',' element: {lines}")
+    if lines and lines[0].startswith(','):
+        raise AssertionError(
+            f"bareLeaf constructor init list has a leading comma right after "
+            f"':': {lines}")
     return True
 
 
@@ -2220,6 +2342,14 @@ def main():
                          lambda: check_alias_clk_member_not_first_skips_alias(emitted)),
               _run_case('the alias RHS is the block\'s own clock/reset, not a shared literal',
                          lambda: check_alias_value_is_not_a_shared_literal(emitted))]
+    finally:
+        shutil.rmtree(fixture)
+
+    fixture, emitted = _generate_no_reset_ctor()
+    try:
+        ok += [_run_case('a hasVl block with a clock, no resets, and no ports '
+                         'renders no stray comma in its constructor init list',
+                         lambda: check_ctor_init_no_stray_comma(emitted))]
     finally:
         shutil.rmtree(fixture)
 

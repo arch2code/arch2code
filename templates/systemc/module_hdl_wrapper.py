@@ -111,8 +111,9 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s.append(mp_sig[port]['bfm_ctor_init'])
-        s = (',\n'.join(s) + ',') if s else ''
-        return s
+        s = ',\n'.join(s)
+        # Standalone section keeps the old trailing-comma contract.
+        return s + ',' if s else ''
 
     def sec_clock_decl(args, prj, data):
         # A gated sc_signal, not an sc_clock: under socket lockstep every clock
@@ -121,7 +122,7 @@ def render_sc(args, prj, data):
         return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
 
     def sec_clock_ctor_init(args, prj, data):
-        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks']) + ','
+        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks'])
 
     def sec_clock_half_decl(args, prj, data):
         # An `output` block clock is produced by the DUT and observed, not
@@ -207,8 +208,8 @@ def render_sc(args, prj, data):
                 f'<< std::endl; }}'
                 for row in data['clocks'] if row['direction'] == 'output']
         lines += [f'if (!{row["reset"]}_released_) {{ std::cerr << "warning: '
-                 f'reset \'{row["reset"]}\' never released by end of run" '
-                 f'<< std::endl; }}'
+                 f'output reset \'{row["reset"]}\' was never observed to '
+                 f'release during the run" << std::endl; }}'
                  for row in data['resets'] if row['direction'] == 'output']
         return '\n'.join(lines)
 
@@ -276,6 +277,15 @@ def render_sc(args, prj, data):
         # otherwise every hasVl wrapper gets an empty override body.
         has_edge_track = any(row['direction'] == 'output' for row in data['clocks']) \
             or any(row['direction'] == 'output' for row in data['resets'])
+        # Each section below returns its joined entries with no trailing
+        # comma, so an empty section (e.g. no resets) drops out cleanly
+        # instead of leaving a bare ',' in the initialiser list.
+        sec_ctor_init = ',\n'.join(p for p in (
+            sec_clock_ctor_init(args, prj, data),
+            sec_bfm_ctor_init(args, prj, data),
+            sec_reset_ctor_init(args, prj, data),
+            sec_clock_half_ctor_init(args, prj, data),
+        ) if p)
         s = t.render(
             blockname=data['blockName'], variants=variants,
             has_edge_track=has_edge_track,
@@ -287,19 +297,16 @@ def render_sc(args, prj, data):
             use_own_variant_config=useOwnVariantTemplateArg,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
-            sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
+            sec_ctor_init=sec_ctor_init,
             sec_dut_connect=sec_dut_connect(args, prj, data),
             sec_bfm_connect=sec_bfm_connect(args, prj, data),
             sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
             sec_clock_decl=sec_clock_decl(args, prj, data),
-            sec_clock_ctor_init=sec_clock_ctor_init(args, prj, data),
             sec_clock_half_decl=sec_clock_half_decl(args, prj, data),
-            sec_clock_half_ctor_init=sec_clock_half_ctor_init(args, prj, data),
             sec_clock_start=sec_clock_start(args, prj, data),
             sec_clock_threads=sec_clock_threads(args, prj, data),
             sec_clock_gens=sec_clock_gens(args, prj, data),
             sec_reset_decl=sec_reset_decl(args, prj, data),
-            sec_reset_ctor_init=sec_reset_ctor_init(args, prj, data),
             sec_reset_threads=sec_reset_threads(args, prj, data),
             sec_reset_drivers=sec_reset_drivers(args, prj, data),
             sec_edge_track_decl=sec_edge_track_decl(args, prj, data),
@@ -412,11 +419,8 @@ public:
     {{blockname}}_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
-        {{blockname}}Base{{cfg}}(name(), variant),
-        {{ sec_clock_ctor_init | indent(8) }}
-        {{ sec_bfm_ctor_init | indent(8) }}
-        {{ sec_reset_ctor_init | indent(8) }},
-        {{ sec_clock_half_ctor_init | indent(8) }}
+        {{blockname}}Base{{cfg}}(name(), variant){% if sec_ctor_init %},
+        {{ sec_ctor_init | indent(8) }}{% endif %}
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)

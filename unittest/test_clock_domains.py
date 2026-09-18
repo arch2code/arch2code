@@ -1649,7 +1649,7 @@ instances:
 
     ok = True
     for needle in ('void end_of_simulation() override', "produced no edge",
-                  'never released by end of run'):
+                  'was never observed to release during the run'):
         if needle not in genText:
             print(f"FAIL: end-of-run report: {needle!r} missing from gen's own wrapper")
             ok = False
@@ -3188,6 +3188,290 @@ connections:
         check)
 
 
+# APB register-bus preamble (constants/types/structures/interfaces), the
+# same shape as V25_REGISTER_BUS_PORT_DESIGN's, reused here for a top-down
+# (registerPorts:-less) hasVl leaf instead of a reusable IP.
+V19_TOPDOWN_APB_PREAMBLE = """constants:
+    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
+    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
+    REG_WIDTH:  { value: 16, desc: "Register payload width" }
+
+types:
+    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
+    cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    cfgRegSt:
+        value: { varType: cfgT, generator: register, desc: "Register payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+"""
+
+# 'leafD' is a top-down hasVl leaf (no registerPorts:): its register bus
+# ('apbReg') is inferred from 'apbDecode's dispatch (R25), on 'apbClk', with
+# a clean single reset 'apbRst_n'. Its DEFAULT clock is 'clkD' (V18 forbids
+# an ambiguous reset there); a second, non-default clock literally named
+# 'clk' carries two unmarked resets instead - unrelated to the bus, but the
+# literal name a synthesised register handler's own implicit clock always
+# takes. The handler (leafD_regs) binds inside leafD's own body by plain
+# name match (comment at clockTree.py's BlockDomains.registerBusPort), so
+# the handler-bridged connectionMaps boundary guess for 'apbReg' lands on
+# 'clk', not on the leaf's real bus clock 'apbClk' - the guess this clause
+# must not blame the register-bus port for.
+V19_TOPDOWN_BUS_PORT_DESIGN = V19_TOPDOWN_APB_PREAMBLE + """blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leafD:
+        desc: "top-down hasVl leaf; owns a register, authors no registerPorts:"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        clocks:
+            clkD:   { default: true }
+            clk:    { }
+            apbClk: { }
+        resets:
+            rstD_n:   { clock: clkD }
+            rst_n:    { clock: clk }
+            rstAlt_n: { clock: clk }
+            apbRst_n: { clock: apbClk }
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+    uLeafD:     { container: top_tb, instanceType: leafD,     instGroup: top, addressGroup: top,
+                  clocks: { clkD: clk },
+                  resets: { rstD_n: rst_n, rstAlt_n: rst_n } }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgD, regType: rw, block: leafD, structure: cfgRegSt, desc: "leafD configuration" }
+"""
+
+V19_TOPDOWN_PROJECT_DOMAINS = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+"""
+
+
+def run_v19_hasvl_topdown_register_bus_port_excluded():
+    """V19 positive (clockTree.py's BlockDomains.registerBusPort
+    exclusion, spec §4.8): 'leafD's clock 'clk' has no selected reset, yet
+    the build must succeed, because the only port the hasVl clause would
+    otherwise blame 'clk' for is the register-bus port 'apbReg' - excluded
+    so the separate register-bus V19 pass (domain.registerClock/
+    registerReset) is the one that judges it, correctly, against
+    'apbClk'/'apbRst_n'."""
+    fixture, project_path, db_path = _make_fixture(
+        design=V19_TOPDOWN_BUS_PORT_DESIGN, projectDomains=V19_TOPDOWN_PROJECT_DOMAINS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the top-down hasVl register-bus port fixture builds\n{output}")
+            return False
+        print("PASS: the top-down hasVl register-bus port fixture builds")
+        if 'V19' in output:
+            print(f"FAIL: build succeeded but still reported a V19 diagnostic\n{output}")
+            return False
+        print("PASS: no V19 diagnostic")
+        prj = projectOpen(db_path)
+        blockKey = next(key for key, row in prj.data['blocks'].items()
+                        if row['block'] == 'leafD')
+        view = prj.getBlockData(blockKey)
+
+        def bus_port_matches_register_clock_reset():
+            busPortName = view['registerBusPort']
+            port = view['ports']['connections'][busPortName]
+            if port['domainClock'] != 'apbClk' or port['domainReset'] != 'apbRst_n':
+                raise AssertionError(
+                    f"'{busPortName}' reports domainClock/domainReset "
+                    f"{port['domainClock']!r}/{port['domainReset']!r}, "
+                    f"expected 'apbClk'/'apbRst_n'")
+            return True
+
+        return _run_case(
+            "a top-down hasVl leaf's register-bus port takes R25's own "
+            "registerClock/registerReset, not the handler's own guess",
+            bus_port_matches_register_clock_reset)
+    finally:
+        shutil.rmtree(fixture)
+
+
+# Same constants/types/structures/interfaces as V19_TOPDOWN_APB_PREAMBLE,
+# plus dataIf's, merged into single sections: two "types:"/"structures:"/
+# "interfaces:" top-level keys in one concatenated yaml file is a duplicate-
+# key parse error, not a merge.
+V19_TOPDOWN_APB_PLUS_DATA_PREAMBLE = """constants:
+    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
+    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
+    REG_WIDTH:  { value: 16, desc: "Register payload width" }
+
+types:
+    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
+    cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
+    dataT:    { width: 8, desc: "payload word" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    cfgRegSt:
+        value: { varType: cfgT, generator: register, desc: "Register payload" }
+    dataSt:
+        data: { varType: dataT, desc: "payload word" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+    dataIf:
+        desc: "producer to consumer stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+"""
+
+
+def run_v19_hasvl_topdown_extra_port_still_rejected():
+    """V19 negative twin: same 'leafD' as the positive above, plus one
+    extra, ordinary connection-derived port 'in' (no ports: - a top-down
+    register-owning leaf may declare none at all, or postParseRegisterPorts
+    exits with an error) on a second, non-bus, non-default clock 'clkX'
+    with two unmarked resets. The registerBusPort exclusion names only
+    'apbReg'; 'in' must still be rejected, proving the exclusion does not
+    blanket the whole block."""
+    design = V19_TOPDOWN_APB_PLUS_DATA_PREAMBLE + """blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+            clkY:   { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstY_n:   { clock: clkY }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    prod:
+        desc: "producer"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leafD:
+        desc: "top-down hasVl leaf; a register plus a second, non-bus connection-derived port"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        clocks:
+            clkD:   { default: true }
+            clk:    { }
+            apbClk: { }
+            clkX:   { }
+        resets:
+            rstD_n:   { clock: clkD }
+            rst_n:    { clock: clk }
+            rstAlt_n: { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstX1_n:  { clock: clkX }
+            rstX2_n:  { clock: clkX }
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uProd:      { container: top_tb, instanceType: prod,      instGroup: top,
+                  clocks: { clk: clkY }, resets: { rst_n: rstY_n } }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+    uLeafD:     { container: top_tb, instanceType: leafD,     instGroup: top, addressGroup: top,
+                  clocks: { clkD: clk, clkX: clkY },
+                  resets: { rstD_n: rst_n, rstAlt_n: rst_n, rstX1_n: rstY_n, rstX2_n: rstY_n } }
+
+connections:
+    - { interface: apbReg, src: uCPU,  dst: uAPBDecode }
+    - { interface: dataIf, src: uProd, srcport: out, dst: uLeafD, dstport: in, clock: clkY }
+
+registers:
+    - { register: cfgD, regType: rw, block: leafD, structure: cfgRegSt, desc: "leafD configuration" }
+"""
+    # top_tb declares clkY itself (uProd's own domain), so the testbench
+    # binding needs a same-named project clock too (spec §4.8, R3).
+    projectDomains = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+    clkY:   { desc: "a third testbench clock", period: 5, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+    rstY_n:   { desc: "clkY's reset", clock: clkY }
+"""
+    return _expect_diagnostic(
+        "a top-down hasVl leaf's non-bus connection-derived port on an "
+        "ambiguous clock is still rejected, unaffected by the register-bus "
+        "port's own exclusion",
+        ('V19', 'leafD', 'in', 'clkX', 'rstX1_n', 'rstX2_n'),
+        design=design, projectDomains=projectDomains)
+
+
 def run_v19_hasvl_port_cases():
     return all((run_v19_hasvl_port_ambiguous_reset_rejected(),
                 run_v19_hasvl_port_no_reset_at_all_rejected(),
@@ -3197,7 +3481,9 @@ def run_v19_hasvl_port_cases():
                 run_v19_hasvl_output_clock_port_rejected(),
                 run_v19_hasvl_output_clock_port_positive(),
                 run_v19_hasvl_port_positive(),
-                run_v19_hasvl_two_instances_same_port_not_duplicated()))
+                run_v19_hasvl_two_instances_same_port_not_duplicated(),
+                run_v19_hasvl_topdown_register_bus_port_excluded(),
+                run_v19_hasvl_topdown_extra_port_still_rejected()))
 
 
 # ------------------------------------------------------- name collisions --

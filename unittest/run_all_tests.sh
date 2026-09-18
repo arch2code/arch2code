@@ -265,6 +265,7 @@ ADDRCTL_TESTS=(
     "parameterized router upstream"             "test_addrctl_parameterized_router_upstream.py"
     "parent router variant interface"           "test_addrctl_parent_router_variant_interface.py"
     "addressBlock and registerPorts both"       "test_error_addr_and_register_ports.py"
+    "router owning a regAccess memory"          "test_error_router_regaccess_memory.py"
     "multi registerPorts rows"                  "test_error_multi_register_ports.py"
     "registerPort interface not addressBus"     "test_error_register_port_not_addressbus.py"
     "duplicate addressGroup"                    "test_error_duplicate_address_group.py"
@@ -398,6 +399,12 @@ echo ""
 echo "Test Suite ${idx}: generated register-decode clock domain"
 echo "------------------------------------------------------------------------"
 python3 test_register_decode_clock.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: connectionMap boundary port validation"
+echo "------------------------------------------------------------------------"
+python3 test_validate_ports.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

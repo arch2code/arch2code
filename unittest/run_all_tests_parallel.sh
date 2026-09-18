@@ -46,6 +46,7 @@ EXAMPLE_READERS=(
     test_boundary_signals.py          # reads examples/ip_test
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
+    test_validate_ports.py            # reads examples/nested
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

@@ -1516,8 +1516,10 @@ def build(blocks, instances, connections, memories, memoryConnections,
                 f"clock must have one.")
 
     # V24 (spec R20): a regAccess memory must sit on its block's register bus
-    # clock until the R20 bridge exists. Routers and handlers own no memories, so
-    # only served leaves reach the compare, in their own clock-port names.
+    # clock until the R20 bridge exists. postParseRegisterPorts rejects a
+    # router that owns a regAccess memory before this point, and handlers own
+    # no memories, so only served leaves reach the compare, in their own
+    # clock-port names.
     for domain in domains.values():
         if domain.registerClock is None:
             continue
