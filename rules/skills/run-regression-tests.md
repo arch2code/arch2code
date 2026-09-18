@@ -77,6 +77,8 @@ Regression files are JSON. The root containers are `session`, `build`, and `run`
 
 Use `command`, `args`, `timeout`, `rules`, `count`, `seed`, and `labels` at the highest hierarchy level where they apply. Child groups and tests inherit parent attributes.
 
+The `build` container also accepts `command+` (string or list, a list is joined with spaces) to append to `build.command`, for example to list simulator snapshot topologies one block per line.
+
 ## Adding Tests
 
 1. Read the existing regression JSON before editing and preserve its grouping style.

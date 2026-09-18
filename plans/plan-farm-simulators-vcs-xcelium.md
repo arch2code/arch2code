@@ -98,10 +98,9 @@
   SoC scale. Candidate fix: compile only the topology's wrapper from an instance-to-top mapping in the build manifest.
 - SystemC 3.0.1 convergence; pro RTL library items (`rdyVldBurstFifo.sv`,
   `flops.sv` FPGA macros under Xcelium); refresh `docs/vcs-build.md`.
-- Clean up `DUT_TOPOLOGIES` (owner request, 2026-09-17). The nine-entry hand-maintained list in `rundir/Makefile` duplicates
-  the `--vlInst/--vlType/--vlTandem` combinations already present in the regression JSON and must be kept in step by hand;
-  drift only surfaces as a `dutRun.py` "no snapshot" failure. Replace it with a derived list (from the regression file, or
-  from the manifest's instance-to-top mapping, which the idle-top item above also needs) so the project Makefile carries no
+- Resolved (2026-09-18): the `DUT_TOPOLOGIES` list moved out of `rundir/Makefile` into the regression files, as
+  `build.command+` entries, one `DUT_TOPOLOGIES+=<inst>:<cfg>,...` line per block. The launcher gained `+` append support
+  on the `build` container so `command+` resolves into `command` before the build runs; `rundir/Makefile` carries no
   topology list.
 
 ---

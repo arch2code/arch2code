@@ -21,15 +21,28 @@ def propagate_attributes(dictionary):
         dictionary[key] = propagate_attributes(value)
     return dictionary
 
+def append_attribute(base, value):
+    if isinstance(base, list) and isinstance(value, list):
+        return base + value
+    if isinstance(base, str) and isinstance(value, list):
+        return base + ' ' + ' '.join(value)
+    return str(base) + ' ' + str(value)
+
 def merge_parent_attributes(dictionary, attributes):
     for key_ in list(dictionary):
         key = key_[:-1] if key_[-1] == '+' else key_
         if key != key_ and key in attributes:
-            if isinstance(dictionary[key_], list):
-                dictionary[key] = attributes[key] + dictionary.pop(key_)
-            else:
-                dictionary[key] = str(attributes[key]) + ' ' + str(dictionary.pop(key_))
+            dictionary[key] = append_attribute(attributes[key], dictionary.pop(key_))
     return { **attributes, **dictionary }
+
+def merge_append_attributes(dictionary):
+    # The build container has no parent, so <attr>+ appends to the sibling
+    # <attr> of the same container; a list value is joined with spaces so a
+    # long command can be written one entry per line.
+    for key_ in list(dictionary):
+        if key_[-1] == '+':
+            key = key_[:-1]
+            dictionary[key] = append_attribute(dictionary[key], dictionary.pop(key_))
 
 def queue_run_commands(level, dictionary, test_commands):
     for key, value in dictionary.items():
@@ -147,6 +160,10 @@ def main():
     # Session db from json file
     with args.file as file:
         session_db = json.load(file)
+
+    # Resolve build.command+ before command line overrides so --attr build.command+=...
+    # still appends to the resolved command
+    merge_append_attributes(session_db['build'])
 
     # Number of concurrent jobs from command line
     if args.jobs is not None:

@@ -224,9 +224,15 @@ BIN = run_$(DUT_TOPOLOGY)
 # snapshot is later run with.
 DUT_TESTBENCH ?= $(HDL_TOP_MODULE)
 DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $(VL_TYPE)) $(if $(filter 1,$(VL_TANDEM)),--vlTandem)
-# Regression snapshots, <inst>:verif[:tandem] per entry; every test that
+# Regression snapshots, one entry per block: <inst>:<type>[:tandem][,<type>[:tandem]]...
+# e.g. debayer:verif,verif:tandem,model:tandem. Regression files pass one
+# DUT_TOPOLOGIES+=<entry> per block on the build command line. Every test that
 # instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
-DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif $(HDL_TOP_MODULE):verif:tandem
+DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
+comma := ,
+dut_topology_inst = $(firstword $(subst :, ,$(1)))
+dut_topology_expand = $(addprefix $(call dut_topology_inst,$(1)):,$(subst $(comma), ,$(patsubst $(call dut_topology_inst,$(1)):%,%,$(1))))
+DUT_TOPOLOGY_LIST = $(foreach t,$(DUT_TOPOLOGIES),$(call dut_topology_expand,$(t)))
 dut_topology_words = $(subst :, ,$(1))
 dut_topology_make = $(MAKE) VL_INST=$(word 1,$(call dut_topology_words,$(1))) VL_TYPE=$(word 2,$(call dut_topology_words,$(1))) VL_TANDEM=$(if $(word 3,$(call dut_topology_words,$(1))),1,0)
 endif

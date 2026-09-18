@@ -93,7 +93,7 @@ help::
 	@echo "  VL_INST / VL_TYPE / VL_TANDEM=1  - DUT topology of the VCS snapshot build/run_<inst>_<type>[_tandem];"
 	@echo "                                     repeat the same --vlInst/--vlType/--vlTandem when running it"
 
-# Regression snapshots: run_model plus one link per DUT_TOPOLOGIES entry
+# Regression snapshots: run_model plus one link per DUT_TOPOLOGY_LIST entry
 # (a2c-systemc.mk). The links share AN.DB and csrc, so they run in sequence;
 # the objects are compiled once. dutRun.py maps a test's arguments to the
 # snapshot with the same naming.
@@ -106,7 +106,8 @@ endif
 .PHONY: vcs_snapshots
 vcs_snapshots: gen
 	+$(MAKE) VL_INST= $(BIN_DIR)/run_model
-	+$(foreach t,$(DUT_TOPOLOGIES),$(call dut_topology_make,$(t)) all &&) true
+	+$(foreach t,$(DUT_TOPOLOGY_LIST),$(call dut_topology_make,$(t)) all &&) true
 
 help::
-	@echo "  vcs_snapshots                    - link build/run_model and one snapshot per DUT_TOPOLOGIES entry (<inst>:verif[:tandem])"
+	@echo "  vcs_snapshots                    - link build/run_model and one snapshot per DUT_TOPOLOGIES entry"
+	@echo "                                     (<inst>:<cfg>[,<cfg>]... with cfg = verif|model[:tandem]; normally set from the regression file build command)"

@@ -24,8 +24,8 @@ XRUN_R_OPTS ?= -64bit -nolog
 # xrun forwards each -Wld,<arg> to the linker as one argument, so a
 # comma-carrying -Wl,-rpath,<dir> cannot be expressed (each BOOST_LIBS token
 # must therefore carry no embedded space, e.g. -L$(dir) not -L $(dir));
-# runtime library paths come from LD_LIBRARY_PATH.
-comma := ,
+# runtime library paths come from LD_LIBRARY_PATH. comma is defined in
+# a2c-systemc.mk.
 XRUN_LD_LIBS = $(addprefix -Wld$(comma),$(BOOST_LIBS) -ldl -lrt -lpthread $(EXTRA_LD_FLAGS))
 
 XRUN_INCDIRS = $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS))
@@ -74,9 +74,10 @@ $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 help::
 	@echo "  XRUN_USER_OPTS / XRUN_R_OPTS     - extra options for the Xcelium snapshot build / each simulation (USE_XCELIUM=1)"
 	@echo "  XCELIUM_TOOLS / XRUN_GCC_VERS    - Xcelium install tools directory and -gcc_vers release (required with USE_XCELIUM=1)"
-	@echo "  xrun_snapshots                   - build run_model and one snapshot per DUT_TOPOLOGIES entry (<inst>:verif[:tandem])"
+	@echo "  xrun_snapshots                   - build run_model and one snapshot per DUT_TOPOLOGIES entry"
+	@echo "                                     (<inst>:<cfg>[,<cfg>]... with cfg = verif|model[:tandem]; normally set from the regression file build command)"
 
-# Regression snapshots: run_model plus one per DUT_TOPOLOGIES entry. Each
+# Regression snapshots: run_model plus one per DUT_TOPOLOGY_LIST entry. Each
 # snapshot has its own library directory and log, so they elaborate in parallel
 # once the model build has compiled the shared objects. dutRun.py maps a test's
 # arguments to the snapshot with the same naming.
@@ -85,7 +86,7 @@ ifneq ($(filter xrun_snapshots,$(MAKECMDGOALS)),)
 $(error xrun_snapshots builds the DUT snapshots; VL_DUT= selects the model-only snapshot)
 endif
 endif
-XRUN_SNAPSHOTS = $(addprefix xrun_snapshot+,$(subst :,+,$(DUT_TOPOLOGIES)))
+XRUN_SNAPSHOTS = $(addprefix xrun_snapshot+,$(subst :,+,$(DUT_TOPOLOGY_LIST)))
 
 .PHONY: xrun_snapshots
 xrun_snapshots: gen
