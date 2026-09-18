@@ -4,6 +4,7 @@ the path rule exists once."""
 
 import os
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.migrateCommon import userRegionLines
 from pysrc.variantSelection import standaloneVariantDescriptors
 
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk = False):
@@ -319,3 +320,25 @@ def getRetiredContextFiles(prj, rows):
             if 'GENERATED_CODE_BEGIN --template=config' in text:
                 stale.add(os.path.abspath(candidate))
     return sorted(stale)
+
+
+def getLegacyFwHeaders(prj, rows):
+    """Owned firmware headers whose scaffold still wraps the generated regions in
+    its own `namespace fw_ns {` block. The regions now open the context's own
+    namespace under fw_ns, which that block would nest a second time, so the
+    header is re-scaffolded. Returns absolute paths, sorted."""
+    projectName = prj.config.getConfig('PROJECTNAME')
+    legacy = set()
+    for row in rows:
+        if row['mode'] != 'context' or row['owner'] != projectName:
+            continue
+        if row['fileType'] != 'includeFW' or 'hdr' not in row['files']:
+            continue
+        path = row['files']['hdr']
+        if not os.path.isfile(path):
+            continue
+        with open(path, 'r', errors='replace') as f:
+            text = f.read()
+        if any(line.strip() == 'namespace fw_ns {' for _, line in userRegionLines(text)):
+            legacy.add(os.path.abspath(path))
+    return sorted(legacy)

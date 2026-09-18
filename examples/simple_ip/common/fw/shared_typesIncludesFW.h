@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=common --context=../../yaml/shared_types.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::common_shared_types {}
+namespace fw_ns { using namespace common_shared_types; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -15,28 +17,28 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::common_shared_types {
 //constants
 inline constexpr uint32_t DWORD = 32;  // Width of an APB dword
 
-} // namespace fw_ns
+} // namespace fw_ns::common_shared_types
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::common_shared_types {
 // types
 typedef uint32_t apbAddrT; // [32] APB address
 typedef uint32_t apbDataT; // [32] APB data
 
-} // namespace fw_ns
+} // namespace fw_ns::common_shared_types
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::common_shared_types {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::common_shared_types
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::common_shared_types {
 // structures
 struct apbAddrSt {
     apbAddrT address; //
@@ -84,7 +86,7 @@ struct apbDataSt {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::common_shared_types
 
 // GENERATED_CODE_END
 #endif //SHARED_TYPESINCLUDESFW_H_

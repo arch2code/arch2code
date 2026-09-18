@@ -666,15 +666,29 @@ def wrap_module_namespace(args, data, lines):
     namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
-def wrap_fw_namespace(args, lines):
-    # Each fw header region carries its own complete `namespace fw_ns { ... }`
-    # block rather than sharing one opened outside the regions, so a region that
-    # emits nothing leaves no unbalanced brace behind. Adjacent blocks reopen the
-    # same namespace, so later regions still see earlier regions' declarations.
+def cpp_fw_namespace_name(includeName):
+    # A context's firmware declarations live in their own namespace nested under
+    # fw_ns, so two contexts declaring the same type name stay distinct when one
+    # firmware header includes both.
+    return f'{FW_NAMESPACE}::{cpp_module_name(includeName)}'
+
+def fw_namespace_surface(data):
+    # Opens the context's firmware namespace and folds it into fw_ns, so firmware
+    # that opens `namespace fw_ns` reads the names unqualified.
+    own = cpp_module_name(data['contextModuleIdentity'])
+    return [f'namespace {FW_NAMESPACE}::{own} {{}}',
+            f'namespace {FW_NAMESPACE} {{ using namespace {own}; }}']
+
+def wrap_fw_namespace(args, data, lines):
+    # Each fw header region carries its own complete namespace block rather than
+    # sharing one opened outside the regions, so a region that emits nothing
+    # leaves no unbalanced brace behind. Adjacent blocks reopen the same
+    # namespace, so later regions still see earlier regions' declarations.
     # Emission mode is exclusive, so this and wrap_module_namespace never both fire.
     if args.mode != 'fw':
         return lines
-    return [f'namespace {FW_NAMESPACE} {{'] + lines + [f'}} // namespace {FW_NAMESPACE}']
+    namespaceName = cpp_fw_namespace_name(data['contextModuleIdentity'])
+    return [f'namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def wrap_module_test_namespace(args, data, lines):
     if args.mode != 'module':

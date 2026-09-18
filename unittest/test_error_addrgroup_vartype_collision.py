@@ -2,11 +2,9 @@
 """Two address groups resolving one firmware enum identity must error.
 
 Group NAMES are project-qualified; the emitted firmware enum is not. Firmware
-lives in one flat namespace (`fw_ns`) shared by every context and firmware headers
-include each other across project boundaries, so two groups sharing a `varType:`
-either collide as a C++ redefinition or, in separate translation units, bind the
-same enumerator to a different address ID - a wrong address, with no diagnostic
-required. The same applies to a shared `enumPrefix:`.
+reads every context's names unqualified through `fw_ns`, so two groups sharing a
+`varType:` make the enum ambiguous at every firmware use site. The same applies
+to a shared `enumPrefix:`.
 
 Narrowing the duplicate-group check without this gate would trade a loud
 database-time error for a possibly silent one, so both are asserted here.

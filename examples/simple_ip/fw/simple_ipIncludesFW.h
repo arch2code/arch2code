@@ -7,6 +7,8 @@
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
 #include "ipIncludesFW.h"
+namespace fw_ns::simple_ip {}
+namespace fw_ns { using namespace simple_ip; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
@@ -18,21 +20,21 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::simple_ip {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::simple_ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::simple_ip {
 // types
 typedef uint8_t simpleMarkerT; // [1] Boundary marker bit; matches ipDataSt::marker
 typedef uint8_t simpleData8T; // [8] 8-bit boundary payload; matches ipDataSt::data @variant0
 
-} // namespace fw_ns
+} // namespace fw_ns::simple_ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::simple_ip {
 // enums
 enum  addr_id_top {          //Generated type for addressing top instances
     ADDR_ID_TOP_UIP=0 };     // uIp instance address
@@ -45,10 +47,10 @@ inline const char* addr_id_top_prt( addr_id_top val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace fw_ns
+} // namespace fw_ns::simple_ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::simple_ip {
 // structures
 struct simpleData8St {
     simpleData8T data; //8-bit payload @variant0
@@ -80,7 +82,7 @@ struct simpleData8St {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::simple_ip
 
 // GENERATED_CODE_END
 #endif //SIMPLE_IPINCLUDESFW_H_

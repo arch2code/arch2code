@@ -6106,17 +6106,11 @@ class projectCreate:
         Each group emits `enum <varType>` with `<enumPrefix>`-prefixed members
         holding its address IDs. Group NAMES are project-qualified, so two
         independently authored projects may each declare a group 'top'; their
-        emitted enum identity is not qualified, because the generated firmware
-        surface is one flat namespace (fw_ns) shared by every context and
-        firmware headers include each other across project boundaries. Two groups
-        sharing a varType therefore either collide as a C++ redefinition or, in
-        separate translation units, silently bind the same enumerator to a
-        different address ID.
-
-        Build-wide rather than per-include-closure: the silent
-        separate-translation-unit case is not confined to one closure. It also
-        closes the pre-existing hole where two differently named groups share one
-        varType or enumPrefix, which was never checked.
+        emitted enum identity is not qualified, and firmware reads every
+        context's names unqualified through fw_ns, so two groups sharing a
+        varType or enumPrefix make the enum or its members ambiguous wherever
+        firmware names them. Checked build-wide so the collision is reported
+        once at database time rather than at each firmware use site.
         """
         for fieldName, description in (('varType', 'enum type name'),
                                        ('enumPrefix', 'enum member prefix')):

@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=ip_test --context=../../leaf/yaml/ipLeaf.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::ip_test_ipLeaf {}
+namespace fw_ns { using namespace ip_test_ipLeaf; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
@@ -16,29 +18,29 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::ip_test_ipLeaf {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_ipLeaf
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::ip_test_ipLeaf {
 // types
 template<uint32_t LEAF_MEM_DEPTH> using ipLeafMemAddrT_v = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
 template<typename Config> using ipLeafMemAddrT = ipLeafMemAddrT_v<Config::LEAF_MEM_DEPTH>;
 template<uint32_t LEAF_DATA_WIDTH> using ipLeafDataT_v = uint64_t; // [max:16] ipLeaf data word, parameterizable
 template<typename Config> using ipLeafDataT = ipLeafDataT_v<Config::LEAF_DATA_WIDTH>;
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_ipLeaf
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::ip_test_ipLeaf {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_ipLeaf
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::ip_test_ipLeaf {
 // structures
 template<uint32_t LEAF_DATA_WIDTH>
 struct ipLeafMemSt_v {
@@ -94,7 +96,7 @@ struct ipLeafMemAddrSt_v {
 
 };
 template<typename Config> using ipLeafMemAddrSt = ipLeafMemAddrSt_v<Config::LEAF_MEM_DEPTH>;
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_ipLeaf
 
 // GENERATED_CODE_END
 #endif //IPLEAFINCLUDESFW_H_

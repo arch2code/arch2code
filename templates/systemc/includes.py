@@ -89,7 +89,7 @@ def includeConstants(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 
@@ -180,7 +180,7 @@ def includeTypes(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 
@@ -211,7 +211,7 @@ def includeEnum(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 

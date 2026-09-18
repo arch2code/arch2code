@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import cpp_module_name, cpp_namespace_name
+from pysrc.intf_gen_utils import cpp_module_name, cpp_namespace_name, fw_namespace_surface
 
 # args from generator line
 # prj object
@@ -9,6 +9,8 @@ def render(args, prj, data):
     out = list()
     fileMapKey = _file_map_key(args)
     out.extend(_include_context_modules(fileMapKey, prj, data))
+    if fileMapKey == 'includeFW_hdr':
+        out.extend(fw_namespace_surface(data))
     # clog2() in a generated width expression needs bitTwiddling.h. A module unit
     # takes it from its global module fragment (moduleScaffold moduleHeader)
     # instead, since an #include here would sit in the module purview.

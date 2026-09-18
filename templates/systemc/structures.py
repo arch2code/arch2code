@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import FW_NAMESPACE, get_const, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, configType
+from pysrc.intf_gen_utils import FW_NAMESPACE, get_const, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, cpp_fw_namespace_name, configType
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from templates.systemc.includes import constReference_cpp, constReferenceValueKeyed_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
@@ -31,14 +31,18 @@ def render(args, prj, data):
         args.mode = resolveMode(args.mode)
         if args.section == '':
             args.section = 'header'
+        if args.section == 'cpp' and args.mode == 'fw':
+            # Out-of-line definitions name the context's own fw namespace; the
+            # scaffold's `--namespace=fw_ns` names only the outer one.
+            args.namespace = cpp_fw_namespace_name(data['contextModuleIdentity'])
         out.append("// structures")
         for struct, value in data['structures'].items():
             out.extend(oneStruct(args, prj, data, struct, value))
         out = wrap_module_namespace(args, data, out)
         if args.section == 'header':
-            # The cpp section spells its out-of-line definitions `fw_ns::<struct>::`
-            # from args.namespace, so only the declarations are wrapped.
-            out = wrap_fw_namespace(args, out)
+            # The cpp section qualifies its out-of-line definitions from
+            # args.namespace, so only the declarations are wrapped.
+            out = wrap_fw_namespace(args, data, out)
     # handle system includes
     if (args.section == 'headerIncludes' or args.section == 'cppIncludes'):
         fwCpp = args.section == 'cppIncludes' and args.mode == 'fw'

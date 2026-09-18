@@ -99,6 +99,17 @@ def create(prj):
         if instRow['containerKey'] in blockByKey:
             reachableBlockKeys.add(instRow['containerKey'])
 
+    # The testbenches this binary can run are those of the project whose harness
+    # it runs: the owner of the top instance's block. That is this project for a
+    # design of its own, or the child whose harness a composing project names as
+    # its topInstance. A reused child's harness inside a larger design stays in
+    # the database but is not a compile input.
+    topInst = next((inst for inst in prj.flatData['instances'].values()
+                    if inst['container'] == '_topInstance'), None)
+    harnessOwner = rootProject
+    if topInst is not None:
+        harnessOwner = prj.contextOwningProject[blockByKey[topInst['instanceTypeKey']]['_context']]
+
     def record(fileDef, filePath, objLayout, rootOwnedGen, svCompile=True):
         role = objLayout['segments'][fileDef['basePath']]['buildGroup']
         if role is None:
@@ -128,6 +139,8 @@ def create(prj):
     # per variant stem when the entry varies per variant.
     for row in rows:
         if row['mode'] != 'block':
+            continue
+        if row['fileDef'].get('dutVariant', False) and row['owner'] != harnessOwner:
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=row['blockKey'] in reachableBlockKeys)
@@ -180,6 +193,13 @@ def create(prj):
     if retiredFiles:
         printWarning("run 'make newmodule' to remove stale retired files; replace any "
                      "#include of them with `import <project>.<block>.config;`")
+
+    legacyFwHeaders = artifactPaths.getLegacyFwHeaders(prj, rows)
+    for legacyFile in legacyFwHeaders:
+        printWarning(f"firmware header {legacyFile} wraps its generated regions in a "
+                     f"scaffold-owned namespace fw_ns block, which nests the context namespace")
+    if legacyFwHeaders:
+        printWarning("run 'make newmodule' to re-scaffold legacy firmware headers")
 
     # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
     for row in rows:
@@ -235,8 +255,6 @@ def create(prj):
     # several variants, a Verilated sibling shares its name prefix, or several
     # direct children are Verilated.
     dutTopVariantByBlock = dict()
-    topInst = next((inst for inst in prj.flatData['instances'].values()
-                    if inst['container'] == '_topInstance'), None)
     if topInst is not None:
         topBlockKey = topInst['instanceTypeKey']
         dutInsts = list()
