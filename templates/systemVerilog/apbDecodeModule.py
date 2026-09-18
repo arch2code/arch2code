@@ -98,14 +98,22 @@ def render(args, prj, data):
     out.append(f"{indent*2}set_trans_active = 1'b1;")
     first = True
     for item in sorted_keys:
+        offset = int(inst_decode_info[item]['offset'])
         if first:
-            out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+            if (len(sorted_keys) == 1 and offset == 0):
+                # Sole address space in the whole group, at offset 0: there is
+                # nothing else it could be, so no range check is needed and
+                # '>= 0' on an unsigned address would only lint as a constant
+                # comparison.
+                out.append(f"{indent*2}begin")
+            else:
+                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{offset:_x})) begin")
             first = False
         else:
-            if (int(inst_decode_info[item]['offset']) == 0 ):
+            if (offset == 0):
                 out.append(f"{indent*2}end else begin")
             else:
-                out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+                out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{offset:_x})) begin")
         out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
     out.append(f"{indent*2}end")
     out.append(f"{indent}end")

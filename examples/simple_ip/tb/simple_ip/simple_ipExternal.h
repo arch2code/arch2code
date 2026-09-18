@@ -10,11 +10,9 @@
 
 #include "instanceFactory.h"
 import simple_ip.base;
+import common_cpu.base;
 import common_shared_types;
 using namespace common_shared_types_ns;
-
-//contained instances forward class declaration
-class cpuBase;
 
 class simple_ipExternal: public sc_module, public simple_ipInverted {
 

@@ -33,8 +33,8 @@ BURST_LEN = 3
 
 class socket_axi_rd_req_st(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("arid", ctypes.c_uint8),
-        ("pad0", ctypes.c_uint8 * 3),
+        ("arid", ctypes.c_uint16),
+        ("pad0", ctypes.c_uint8 * 2),
         ("araddr", ctypes.c_uint32),
         ("arlen", ctypes.c_uint8),
         ("arsize", ctypes.c_uint8),
@@ -45,17 +45,17 @@ class socket_axi_rd_req_st(ctypes.LittleEndianStructure):
 
 class socket_axi_rd_resp_st(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("rid", ctypes.c_uint8),
+        ("rid", ctypes.c_uint16),
         ("rresp", ctypes.c_uint8),
-        ("pad", ctypes.c_uint8 * 2),
+        ("pad", ctypes.c_uint8),
         ("data", ctypes.c_uint8 * SOCKET_AXI_BURST_BYTES),
     ]
 
 
 class socket_axi_wr_req_st(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("awid", ctypes.c_uint8),
-        ("pad0", ctypes.c_uint8 * 3),
+        ("awid", ctypes.c_uint16),
+        ("pad0", ctypes.c_uint8 * 2),
         ("awaddr", ctypes.c_uint32),
         ("awlen", ctypes.c_uint8),
         ("awsize", ctypes.c_uint8),
@@ -68,9 +68,9 @@ class socket_axi_wr_req_st(ctypes.LittleEndianStructure):
 
 class socket_axi_wr_resp_st(ctypes.LittleEndianStructure):
     _fields_ = [
-        ("bid", ctypes.c_uint8),
+        ("bid", ctypes.c_uint16),
         ("bresp", ctypes.c_uint8),
-        ("pad", ctypes.c_uint8 * 2),
+        ("pad", ctypes.c_uint8),
     ]
 
 

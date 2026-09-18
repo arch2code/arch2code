@@ -65,6 +65,13 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
+        # vl_trace() below calls dut_hdl->trace(tfp, ...), passing the
+        # VerilatedVcdC* it receives into a VerilatedTraceBaseC* parameter; that
+        # derived-to-base conversion needs the complete type, which blockBase.h
+        # deliberately only forward-declares (see the comment there).
+        s.append('#ifdef VERILATOR')
+        s.append('#include "verilated_vcd_c.h"')
+        s.append('#endif')
         # A module import does not propagate the base module's own context
         # imports / using-directives the way the old textual `<block>Base.h`
         # did. The Verilated SC wrapper class spells the DUT's interface struct
@@ -234,9 +241,9 @@ import {{basemodule}};
 """
 
 sec_hdl_sc_wrapper_class_template = """\
-{% if sec_bfm_includes %}
+
 {{ sec_bfm_includes }}
-{% endif %}
+
 #include "socketSync.h"
 {%- if variants %}
 {%- if use_own_variant_config %}

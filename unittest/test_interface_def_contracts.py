@@ -7,16 +7,16 @@ a malformed definition can only be introduced by editing the library, and this
 suite catches it at that moment at zero cost per generator run. No rule needs to
 see an interface that uses the definition, so none belongs in projectCreate.
 
-Rule 1 - optional struct parameters are declared last.
+Rule 1 - optional parameters are declared last.
 
-An interface's struct-typed parameters are spelled as positional C++ template
-arguments. Some hand-written templates splice another argument group into that
-list: a BFM inserts its whole Verilated bridge group, a thunker inserts the
-other side of a cross-interface bind. The generator produces those signatures by
-splitting the declared parameter list at its first optional parameter
-(`sc_split_payload_params` in pysrc/intf_gen_utils.py), which is only a split -
-and not a reorder of what the author declared - while every optional parameter
-is declared after every required one.
+An interface's parameters, struct- or type-typed alike, are spelled as
+positional C++ template arguments. Some hand-written templates splice another
+argument group into that list: a BFM inserts its whole Verilated bridge group,
+a thunker inserts the other side of a cross-interface bind. The generator
+produces those signatures by splitting the declared parameter list at its first
+optional parameter (`sc_split_payload_params` in pysrc/intf_gen_utils.py),
+which is only a split - and not a reorder of what the author declared - while
+every optional parameter is declared after every required one.
 
 Rule 2 - an isEval hdlparam evaluates a required struct parameter.
 
@@ -43,14 +43,26 @@ The generator reads an isEval `value:` as `key, data = value.split('.')`, so a
 value with any other number of separators aborts generation with a bare
 unpacking ValueError naming neither the interface nor its file.
 
-Rule 5 - every parameter declares `datatype: struct`.
+Rule 5 - every parameter declares `datatype: struct` or `datatype: type`.
 
-`struct` is the only parameter datatype the generator recognises. A parameter
-declaring anything else is skipped when the payload bindings are built
-(`getIntfParamBindings` in pysrc/processYaml.py), so it silently vanishes from
-the interface's positional C++ template arguments and from its SystemVerilog
-parameter binding, shifting every later argument one place. Generation succeeds,
-so nothing but this rule reports it.
+`struct` and `type` are the only parameter datatypes the generator recognises,
+naming a payload bound to a `structures` row or a `types` row respectively
+(`typeStruct` resolution in pysrc/processYaml.py). Unlike the other rules here,
+this one is a schema `_validate: values:` constraint (config/schema.yaml), so a
+project that misdeclares it never builds a database at all; there is nothing
+left for a test over already-loaded `interface_defs` rows to find. It is
+recorded here as a rule of the library anyway: the negative case below proves
+the constraint still exists and reads as an interface-definition-authoring
+error, not a bare schema failure.
+
+Rule 6 - defaultWidth other than 1 is declared only on an optional parameter.
+
+`defaultWidth` names the width the signals a parameter types fall back to when
+the parameter is left unbound (`getIntfParamBindings` in pysrc/processYaml.py,
+consumed by `sc_hdl_bridge_type` and the boundary blast in
+pysrc/intf_gen_utils.py). A required parameter is always bound by every
+declaring interface and so is never in that isNull state, so a `defaultWidth`
+on one is never read and misleads a reader into thinking it matters.
 
 Interface definition files are discovered by walking the interface trees, so a
 newly authored interface is validated without anyone adding it to a list.
@@ -221,6 +233,30 @@ BAD_DATATYPE_ARCH_YAML = """interface_defs:
 
 """ + ARCH_YAML
 
+# A definition that breaks the defaultWidth rule: p_a is a required parameter
+# but declares a defaultWidth other than 1, which the generator never reads
+# because a required parameter is never isNull.
+BAD_DEFAULT_WIDTH_ARCH_YAML = """interface_defs:
+  bad_default_width:
+    parameters:
+      p_a: {datatype: struct, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a']
+      dst:
+        inputs: ['valid', 'sig_a']
+        outputs: ['ready']
+    sc_channel:
+      type: 'bad_default_width'
+      multicycle_types: []
+
+""" + ARCH_YAML
+
 PROJECT_YAML = """projectName: {name}
 yamlFormat: 2
 topInstance: uTop
@@ -296,10 +332,10 @@ def order_error(sourceFile, interfaceType, requiredParam, optionalParam):
     must move ahead of, and why the order is load bearing.
     """
     return (
-        f"{sourceFile}: interface_defs '{interfaceType}' declares required struct "
-        f"parameter '{requiredParam}' after optional struct parameter "
-        f"'{optionalParam}'. Every optional struct parameter must be declared "
-        f"last, after every required one. An interface's struct parameters are "
+        f"{sourceFile}: interface_defs '{interfaceType}' declares required "
+        f"parameter '{requiredParam}' after optional parameter "
+        f"'{optionalParam}'. Every optional parameter must be declared "
+        f"last, after every required one. An interface's parameters are "
         f"emitted as positional C++ template arguments, and the generator builds "
         f"the BFM and thunker signatures by splitting that list at its first "
         f"optional parameter, so a required parameter declared after an optional "
@@ -360,21 +396,20 @@ def hdlparam_value_error(sourceFile, interfaceType, hdlparam, value, separators)
         f"{sourceFile}.")
 
 
-def parameter_datatype_error(sourceFile, interfaceType, param, datatype):
+def default_width_error(sourceFile, interfaceType, param, defaultWidth):
     """The message an author sees. It has to be enough on its own.
 
-    It names the file to edit, the parameter, the datatype it declares, and what
-    silently happens to a parameter the generator does not recognise.
+    It names the file to edit, the parameter, the defaultWidth it declares, and
+    why a required parameter never reaches the code that reads it.
     """
     return (
-        f"{sourceFile}: interface_defs '{interfaceType}' parameter '{param}' "
-        f"declares datatype '{datatype}'. Every interface_defs parameter must "
-        f"declare 'datatype: struct', the only parameter datatype the generator "
-        f"recognises: a parameter declaring anything else is skipped when the "
-        f"payload bindings are built, so it silently disappears from the "
-        f"interface's positional C++ template arguments and from its "
-        f"SystemVerilog parameter binding, and every argument declared after it "
-        f"shifts one place. Fix the datatype of '{param}' in {sourceFile}.")
+        f"{sourceFile}: interface_defs '{interfaceType}' required struct "
+        f"parameter '{param}' declares defaultWidth: {defaultWidth}. "
+        f"defaultWidth names the width a parameter's signals fall back to when "
+        f"the parameter is left unbound, and a required parameter is bound by "
+        f"every declaring interface, so it is never in that state and the "
+        f"generator never reads its defaultWidth. Remove defaultWidth from "
+        f"'{param}', or declare it optional, in {sourceFile}.")
 
 
 def check_modport_coverage(interfaceDefs, sourceFiles):
@@ -427,19 +462,22 @@ def check_hdlparam_values(interfaceDefs, sourceFiles):
     return errors
 
 
-def check_parameter_datatypes(interfaceDefs, sourceFiles):
-    """Parameter datatype errors for every interface definition in sourceFiles."""
+def check_default_widths(interfaceDefs, sourceFiles):
+    """defaultWidth errors for every interface definition in sourceFiles."""
     errors = []
     for row in interfaceDefs.values():
         interfaceType = row['interface_type']
         if interfaceType not in sourceFiles:
             continue
         for param, paramInfo in (row['parameters'] or {}).items():
-            if paramInfo['datatype'] == 'struct':
+            if paramInfo['optional']:
                 continue
-            errors.append(parameter_datatype_error(sourceFiles[interfaceType],
-                                                   interfaceType, param,
-                                                   paramInfo['datatype']))
+            defaultWidth = int(paramInfo['defaultWidth'])
+            if defaultWidth == 1:
+                continue
+            errors.append(default_width_error(sourceFiles[interfaceType],
+                                               interfaceType, param,
+                                               defaultWidth))
     return errors
 
 
@@ -489,8 +527,6 @@ def check_parameter_order(interfaceDefs, sourceFiles):
             continue
         optionalSeen = None
         for param, paramInfo in (row['parameters'] or {}).items():
-            if paramInfo['datatype'] != 'struct':
-                continue
             if paramInfo['optional']:
                 if optionalSeen is None:
                     optionalSeen = param
@@ -544,13 +580,14 @@ def test_shipped_interface_defs(interfaceDefs, sourceFiles):
           "no shipped interface has an isEval hdlparam value the generator "
           "cannot split")
 
-    print("\n[datatype] every parameter declares datatype struct")
-    errors = check_parameter_datatypes(interfaceDefs, sourceFiles)
+    print("\n[defaultWidth] defaultWidth other than 1 is declared only on an "
+          "optional parameter")
+    errors = check_default_widths(interfaceDefs, sourceFiles)
     for error in errors:
         print(f"  {error}")
     check(not errors,
-          "no shipped interface declares a parameter with a datatype the "
-          "generator does not recognise")
+          "no shipped interface declares a non-default defaultWidth on a "
+          "required parameter")
 
 
 def test_misdeclared_interface_is_reported():
@@ -671,30 +708,73 @@ def test_unsplittable_hdlparam_value_is_reported():
 
 
 def test_unrecognised_parameter_datatype_is_reported():
-    """The check fires, and its message stands on its own."""
+    """A parameter datatype other than struct/type fails the build.
+
+    This is a schema `_validate: values:` constraint, so unlike the other
+    negative cases here the fixture project is expected to fail to build; the
+    build's own console error is what a project author sees, not a
+    hand-rolled check run afterwards on already-loaded (and therefore already
+    valid) data.
+    """
     print("\n[negative] a parameter with an unrecognised datatype is reported")
+    tmpdir = tempfile.mkdtemp(prefix='intf_def_contract_')
     try:
-        dbPath, tmpdir = build_database(BAD_DATATYPE_ARCH_YAML, 'badDatatype')
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(BAD_DATATYPE_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'badDatatypeProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write(PROJECT_YAML.format(name='badDatatype'))
+        dbPath = os.path.join(tmpdir, 'badDatatype.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a parameter datatype other than struct/type must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("arch.yaml" in message, "the message names the file to edit")
+        check("p_b" in message, "the message names the parameter")
+        check("strcut" in message, "the message quotes the datatype it rejects")
+        check("allowed values" in message,
+              "the message states datatype is constrained to an allowed set")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_default_width_on_required_is_reported():
+    """The check fires, and its message stands on its own."""
+    print("\n[negative] a defaultWidth other than 1 on a required parameter is "
+          "reported")
+    try:
+        dbPath, tmpdir = build_database(BAD_DEFAULT_WIDTH_ARCH_YAML,
+                                        'badDefaultWidth')
     except RuntimeError as exc:
         check(False, f"mis-declared fixture must build a database: {exc}")
         return
     try:
         proj = projectOpen(dbPath)
         archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
-        errors = check_parameter_datatypes(proj.data['interface_defs'],
-                                           {'bad_datatype': archPath})
+        errors = check_default_widths(proj.data['interface_defs'],
+                                      {'bad_default_width': archPath})
         for error in errors:
             print(f"  {error}")
         if len(errors) != 1:
-            check(False, f"exactly one datatype error is reported, got {len(errors)}")
+            check(False, f"exactly one defaultWidth error is reported, got {len(errors)}")
             return
         message = errors[0]
         check(archPath in message, "the message names the file to edit")
-        check("'bad_datatype'" in message, "the message names the interface")
-        check("'p_b'" in message, "the message names the parameter")
-        check("'strcut'" in message, "the message quotes the datatype it rejects")
-        check("shifts one place" in message,
-              "the message states what a dropped parameter does to the arguments")
+        check("'bad_default_width'" in message, "the message names the interface")
+        check("'p_a'" in message, "the message names the parameter")
+        check("defaultWidth: 4" in message, "the message quotes the declared width")
+        check("never reads its defaultWidth" in message,
+              "the message states why a required parameter's defaultWidth is "
+              "dead data")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -720,6 +800,7 @@ def main():
     test_uncovered_signal_is_reported()
     test_unsplittable_hdlparam_value_is_reported()
     test_unrecognised_parameter_datatype_is_reported()
+    test_default_width_on_required_is_reported()
 
     print("\n" + "=" * 72)
     if FAILURES:

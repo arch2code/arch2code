@@ -1,5 +1,6 @@
 from pysrc.intf_gen_utils import wrap_module_namespace, wrap_module_test_namespace, cpp_namespace_name
-from templates.systemc.includes import constReference_cpp, typeWidthExpression_cpp
+from pysrc.emissionUtils import constReference_cpp
+from templates.systemc.includes import typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
     {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -137,7 +138,7 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
 def cppArraySize(vardata, prj, useConfig=False):
     arraySizeKey = vardata.get('arraySizeKey', '')
     if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey].get('isParameterizable', False):
-        return constReference_cpp(arraySizeKey, prj, useConfig=True)
+        return constReference_cpp(arraySizeKey, prj, 'Config')
     return vardata.get('arraySize', vardata.get('arraySizeValue', 1))
 
 

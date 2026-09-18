@@ -10,12 +10,10 @@
 
 #include "instanceFactory.h"
 import hierVlDemo.base;
+import hierVlDemo_axi4s_m_drv.base;
+import hierVlDemo_axi4s_s_drv.base;
 import hierVlDemo_tb;
 using namespace hierVlDemo_tb_ns;
-
-//contained instances forward class declaration
-class axi4s_m_drvBase;
-class axi4s_s_drvBase;
 
 class hierVlDemoExternal: public sc_module, public hierVlDemoInverted {
 

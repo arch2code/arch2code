@@ -389,9 +389,22 @@ python3 test_interface_def_contracts.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: typeStruct schema field type"
+echo "------------------------------------------------------------------------"
+python3 test_type_struct_field.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: arbitration trio compile-contract coverage"
 echo "------------------------------------------------------------------------"
 python3 test_arbitration_trio_coverage.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: multicycle channel constructor arguments"
+echo "------------------------------------------------------------------------"
+python3 test_multicycle_ctor_args.py || FAILED=1
+idx=$((idx+1))
 
 echo ""
 echo "========================================================================"
