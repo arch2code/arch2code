@@ -606,15 +606,15 @@ class ClockTree:
         blockClocksResetsRows = list()
         memoryClocksRows = list()
         for blockKey, domain in self.blocks.items():
-            # registerClock/registerReset and busClockPort/busResetPort are
-            # each a block-level fact (spec §4.3), repeated onto every row of
-            # the block so getBDClocksResets reads them off any one of them
-            # with no second table or per-key SELECT. period/timeUnit hold
-            # the RESOLVED standalone-simulation value (spec §4.8, R24,
-            # V21) for an input clock - the clock's own declared value when
-            # present, else the value resolved from the testbench clock
-            # every instance of the block resolves to - not the bare
-            # declared value; an output clock (which resolves to nothing)
+            # registerClock/registerReset/registerBusPort and
+            # busClockPort/busResetPort are each a block-level fact (spec
+            # §4.3), repeated onto every row of the block so getBDClocksResets
+            # reads them off any one of them with no second table or per-key
+            # SELECT. period/timeUnit hold the RESOLVED standalone-simulation
+            # value (spec §4.8, R24, V21) for an input clock - the clock's own
+            # declared value when present, else the value resolved from the
+            # testbench clock every instance of the block resolves to - not the
+            # bare declared value; an output clock (which resolves to nothing)
             # keeps its declared value (always empty, V18). releaseCycles is
             # the same resolution for a reset; unused (None) on a clock row.
             for orderIndex, (name, clockDecl) in enumerate(domain.clocks.items()):
@@ -625,7 +625,8 @@ class ClockTree:
                      domain.resolvedTimeUnit.get(name, clockDecl.timeUnit),
                      '', 0, domain.selectedReset.get(name),
                      domain.registerClock, domain.registerReset,
-                     domain.busClockPort, domain.busResetPort, None))
+                     domain.busClockPort, domain.busResetPort, None,
+                     domain.registerBusPort))
             for orderIndex, (name, resetDecl) in enumerate(domain.resets.items()):
                 blockClocksResetsRows.append(
                     (blockKey, 'reset', name, orderIndex, resetDecl.desc,
@@ -633,7 +634,8 @@ class ClockTree:
                      resetDecl.clock, int(resetDecl.isAsync), '',
                      domain.registerClock, domain.registerReset,
                      domain.busClockPort, domain.busResetPort,
-                     domain.resolvedReleaseCycles.get(name)))
+                     domain.resolvedReleaseCycles.get(name),
+                     domain.registerBusPort))
             for memDomain in domain.memories:
                 if memDomain.clock:
                     memoryClocksRows.append(

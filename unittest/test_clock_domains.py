@@ -37,6 +37,8 @@ import pysrc.arch2codeGlobals as g
 import pysrc.clockTree as clockTree
 from pysrc.processYaml import projectOpen
 
+import test_register_decode_clock as regdecode
+
 g.disableColors = True
 
 # Two non-commensurate clocks and one reset per domain, so a block can be placed
@@ -2485,6 +2487,196 @@ def run_v24_regaccess_memory_domain_cases():
         design=V24_DESIGN % ', clock: clkPix', projectDomains=V24_PROJECT_DOMAINS)
 
 
+# ---------------------- register-bus port domain override (getBDPorts) --
+
+# A reusable-IP hasVl leaf whose registerPorts: names its own clock and, to
+# pick between two unmarked resets on it, its own reset: too (spec ~388-390,
+# V19): neither reset is marked default: true, so apbClk's shared selectedReset
+# is None.
+V25_REGISTER_BUS_PORT_DESIGN = """constants:
+    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
+    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
+    REG_WIDTH:  { value: 16, desc: "Register payload width" }
+
+types:
+    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
+    cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    cfgRegSt:
+        value: { varType: cfgT, generator: register, desc: "Register payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:     { clock: clk }
+            apbRstA_n: { clock: apbClk }
+            apbRstB_n: { clock: apbClk }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leafC:
+        desc: "reusable IP leaf whose registerPorts: reset: disambiguates two unmarked resets"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:     { clock: clk }
+            apbRstA_n: { clock: apbClk }
+            apbRstB_n: { clock: apbClk }
+        registerPorts:
+            apbReg: { interface: apbReg, clock: apbClk, reset: apbRstA_n }
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRstA_n } }
+    uLeafC:     { container: top_tb, instanceType: leafC,     instGroup: top, addressGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgC, regType: rw, block: leafC, structure: cfgRegSt, desc: "leafC configuration" }
+"""
+
+V25_PROJECT_DOMAINS = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:     { desc: "the default reset", default: true, clock: clk }
+    apbRstA_n: { desc: "the register-bus reset A", clock: apbClk }
+    apbRstB_n: { desc: "the register-bus reset B", clock: apbClk }
+"""
+
+
+def run_registerports_reset_disambiguates_bus_port_domain():
+    """getBDPorts stamps a reusable IP's own register-bus port with
+    registerClock/registerReset (clockTree.py's BlockDomains.registerBusPort),
+    not the port clock's shared selectedReset, which registerPorts: reset:
+    cannot resolve for any other port sharing that clock."""
+    fixture, project_path, db_path = _make_fixture(
+        design=V25_REGISTER_BUS_PORT_DESIGN, projectDomains=V25_PROJECT_DOMAINS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the registerPorts reset: fixture builds\n{output}")
+            return False
+        print("PASS: the registerPorts reset: fixture builds")
+        prj = projectOpen(db_path)
+        blockKey = next(key for key, row in prj.data['blocks'].items()
+                        if row['block'] == 'leafC')
+        view = prj.getBlockData(blockKey)
+
+        def bus_port_takes_the_authored_reset():
+            busPortName = view['registerBusPort']
+            # The router-to-leaf dispatch is a synthesised ordinary
+            # connection (config/postParseRegisterPorts.py), so the port
+            # lands in the connections loop's row, not connectionMaps.
+            port = view['ports']['connections'][busPortName]
+            if port['domainClock'] != 'apbClk' or port['domainReset'] != 'apbRstA_n':
+                raise AssertionError(
+                    f"'{busPortName}' reports domainClock/domainReset "
+                    f"{port['domainClock']!r}/{port['domainReset']!r}, "
+                    f"expected 'apbClk'/'apbRstA_n'")
+            return True
+
+        def apbclk_selected_reset_stays_ambiguous():
+            apbClkEntry = next(row for row in view['clocks'] if row['clock'] == 'apbClk')
+            if apbClkEntry['selectedReset'] is not None:
+                raise AssertionError(
+                    f"apbClk's selectedReset is {apbClkEntry['selectedReset']!r}, "
+                    f"expected None: the register-bus port override must not "
+                    f"leak into the clock's own shared selection")
+            return True
+
+        return all([
+            _run_case("a reusable IP's register-bus port takes the authored "
+                      "registerPorts: reset:, not the clock's ambiguous shared "
+                      "selection", bus_port_takes_the_authored_reset),
+            _run_case("apbClk's own selectedReset stays None",
+                      apbclk_selected_reset_stays_ambiguous)])
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_topdown_leaf_bus_port_domain_matches_register_clock():
+    """getBDPorts stamps a top-down leaf's register-bus port (the router's
+    registerDecoderPort, reached by the synthesised router-to-leaf dispatch
+    connection) with registerClock/registerReset (R25's own selection), not
+    the domain a plain V16 connectionMaps boundary derivation would read off
+    the handler's initial name-match bind inside the leaf's own container.
+    """
+    fixture, project_path, db_path = regdecode._make_fixture(
+        regdecode._sampler_design("clocks: { clkCap: apbClk },\n"
+                                  "                  resets: { rstCap_n: apbRst_n }"))
+    try:
+        code, output = regdecode._build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the top-down sampler fixture builds\n{output}")
+            return False
+        print("PASS: the top-down sampler fixture builds")
+        prj = projectOpen(db_path)
+        blockKey = next(key for key, row in prj.data['blocks'].items()
+                        if row['block'] == 'sampler')
+        view = prj.getBlockData(blockKey)
+
+        def bus_port_takes_the_leaf_register_clock():
+            busPortName = view['registerBusPort']
+            # The router-to-leaf dispatch is a synthesised ordinary
+            # connection, so the port lands in the connections loop's row.
+            port = view['ports']['connections'][busPortName]
+            if port['domainClock'] != 'clkCap' or port['domainReset'] != 'rstCap_n':
+                raise AssertionError(
+                    f"'{busPortName}' reports domainClock/domainReset "
+                    f"{port['domainClock']!r}/{port['domainReset']!r}, "
+                    f"expected 'clkCap'/'rstCap_n': R25's own bus clock/reset "
+                    f"selection, not the handler's initial name-match bind")
+            return True
+
+        return _run_case(
+            "a top-down leaf's register-bus port takes R25's own "
+            "registerClock/registerReset selection",
+            bus_port_takes_the_leaf_register_clock)
+    finally:
+        shutil.rmtree(fixture)
+
+
 # -------------------------------------------- V19, hasVl BFM port clause --
 
 # A hasVl leaf whose one declared interface port is reached by a real
@@ -3208,6 +3400,9 @@ def _run():
         ("Local nets", (run_local_net_cases,)),
         ("Single-domain objects", (run_single_domain_cases,)),
         ("V24 regAccess memory on the register bus", (run_v24_regaccess_memory_domain_cases,)),
+        ("Register-bus port domain override (registerBusPort)",
+         (run_registerports_reset_disambiguates_bus_port_domain,
+          run_topdown_leaf_bus_port_domain_matches_register_clock)),
         ("V19 hasVl BFM port clause", (run_v19_hasvl_port_cases,)),
         ("Name collisions", (run_collision_cases,)),
         ("Graph shape", (run_clock_tree_shape_cases,)),

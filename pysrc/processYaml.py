@@ -1614,6 +1614,10 @@ class projectOpen:
             # block; read once here rather than a second table.
             ret['registerClock'] = row['registerClock']
             ret['registerReset'] = row['registerReset']
+            # registerBusPort is a served leaf's own port name carrying the
+            # register bus (clockTree.py's BlockDomains.registerBusPort);
+            # getBDPorts stamps it with registerClock/registerReset.
+            ret['registerBusPort'] = row['registerBusPort']
             # busClockPort/busResetPort (clockTree.py's _routerBusPorts /
             # the handler's own implicit clk/rst_n) are the router's or
             # handler's OWN declared port name carrying the register bus -
@@ -3195,8 +3199,7 @@ class projectOpen:
             # boundaryPortName here.
             domainClock = self.getBDPortDomain(ret, portRow['clock'], instanceKey,
                                                portRow['name'], portRow['name'])
-            portRow['domainClock'] = domainClock
-            portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
+            self._stampPortDomain(ret, portRow, domainClock)
         ret['ports']['connections'] = dict(ports)
         portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
                      'registerPorts': {'dest': 'registers', 'portName': 'register'},
@@ -3224,9 +3227,22 @@ class projectOpen:
                                     if connType == 'connectionMapPorts' else portRow['name'])
                 domainClock = self.getBDPortDomain(ret, None, instanceKey, portRow['name'],
                                                    boundaryPortName)
-                portRow['domainClock'] = domainClock
-                portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
+                self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
+
+    def _stampPortDomain(self, ret, portRow, domainClock):
+        """Stamp a boundary port's domainClock/domainReset. The block's own
+        register-bus port (ret['registerBusPort']) takes
+        registerClock/registerReset instead: a registerPorts: reset: picks
+        one of several unmarked resets on the bus clock (V19), which the
+        clock's shared selectedReset cannot express.
+        """
+        if portRow['name'] == ret['registerBusPort']:
+            portRow['domainClock'] = ret['registerClock']
+            portRow['domainReset'] = ret['registerReset']
+        else:
+            portRow['domainClock'] = domainClock
+            portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
 
     def getBDPortDomain(self, ret, clockName, instanceKey, portName, boundaryPortName):
         """The block's OWN clock that a boundary port lies in (spec §4.3),
@@ -3296,7 +3312,8 @@ class projectOpen:
         itself (getBDClocksResets). clockName is a member of the block's own
         clock set, because getBDPortDomain returns one; that clock may have no
         selected reset (a domain with no reset at all, spec §4.2), in which
-        case there is none to bind here either.
+        case there is none to bind here either. `_stampPortDomain` overrides
+        this result for the block's own register-bus port.
         """
         return next(row['selectedReset'] for row in ret['clocks']
                     if row['clock'] == clockName)
@@ -5831,12 +5848,13 @@ class projectCreate:
                       "desc TEXT, direction TEXT, isDefault INTEGER, period INTEGER, "
                       "timeUnit TEXT, clock TEXT, async INTEGER, selectedReset TEXT, "
                       "registerClock TEXT, registerReset TEXT, "
-                      "busClockPort TEXT, busResetPort TEXT, releaseCycles INTEGER)")
+                      "busClockPort TEXT, busResetPort TEXT, releaseCycles INTEGER, "
+                      "registerBusPort TEXT)")
         g.cur.executemany("INSERT INTO blockClocksResets (blockKey, kind, itemKey, "
                           "orderIndex, desc, direction, isDefault, period, timeUnit, "
                           "clock, async, selectedReset, registerClock, registerReset, "
-                          "busClockPort, busResetPort, releaseCycles) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
+                          "busClockPort, busResetPort, releaseCycles, registerBusPort) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
 
         g.cur.execute("DROP TABLE IF EXISTS instanceClockResetBinds")
         g.cur.execute("CREATE TABLE instanceClockResetBinds "
