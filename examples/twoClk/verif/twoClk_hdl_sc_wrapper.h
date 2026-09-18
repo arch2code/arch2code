@@ -47,7 +47,6 @@ public:
         twoClkBase(name(), variant),
         clk("clk"),
         clkSlow("clkSlow"),
-        
         rst_n("rst_n", true),
         rstSlow_n("rstSlow_n", true),
         clk_half_(sc_time(1, SC_NS) / 2),

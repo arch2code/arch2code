@@ -45,7 +45,6 @@ public:
         blockBase("simple_hdl_sc_wrapper", name(), bbMode),
         simpleBase(name(), variant),
         clk("clk"),
-        
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {

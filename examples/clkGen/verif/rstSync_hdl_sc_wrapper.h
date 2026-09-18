@@ -41,7 +41,6 @@ public:
         blockBase("rstSync_hdl_sc_wrapper", name(), bbMode),
         rstSyncBase(name(), variant),
         clk("clk"),
-        
         rstIn_n("rstIn_n", true),
         rstOut_n("rstOut_n", true),
         clk_half_(sc_time(20, SC_NS) / 2)
@@ -78,7 +77,7 @@ public:
     // R23: reported at end of run rather than left to a silent,
     // activity-free run (spec §4.8).
     void end_of_simulation() override {
-        if (!rstOut_n_released_) { std::cerr << "warning: reset 'rstOut_n' never released by end of run" << std::endl; }
+        if (!rstOut_n_released_) { std::cerr << "warning: output reset 'rstOut_n' was never observed to release during the run" << std::endl; }
     }
 
 private:

@@ -43,7 +43,6 @@ public:
         clkGenBase(name(), variant),
         clkRef("clkRef"),
         clkDiv("clkDiv"),
-        
         rstRef_n("rstRef_n", true),
         clkRef_half_(sc_time(10, SC_NS) / 2)
     {

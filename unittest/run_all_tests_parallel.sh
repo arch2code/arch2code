@@ -9,11 +9,10 @@
 #     mutually exclusive with any suite that reads an examples/ tree.
 #
 #   READERS of shared examples/ trees (read-only):
-#     The eval/addrctl ip_test parity suites, the boundary-signal suite, the
-#     nested-layout suite, and the layout-migration suite all READ an examples/
-#     tree (projectCreate/arch2code parse the shared YAML and write their DB to
-#     a unique temp path, or copytree the tree into a private tempdir). They are
-#     safe concurrently with each other (concurrent reads) but NOT concurrent
+#     EXAMPLE_READERS below all READ an examples/ tree (projectCreate/
+#     arch2code parse the shared YAML and write their DB to a unique temp
+#     path, or copytree the tree into a private tempdir). They are safe
+#     concurrently with each other (concurrent reads) but NOT concurrent
 #     with test_build_manifest.py.
 #
 #   ISOLATED (everything else):

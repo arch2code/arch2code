@@ -38,6 +38,7 @@ import pysrc.clockTree as clockTree
 from pysrc.processYaml import projectOpen
 
 import test_register_decode_clock as regdecode
+from _addrctl_helpers import APB_PREAMBLE
 
 g.disableColors = True
 
@@ -3188,48 +3189,32 @@ connections:
         check)
 
 
-# APB register-bus preamble (constants/types/structures/interfaces), the
-# same shape as V25_REGISTER_BUS_PORT_DESIGN's, reused here for a top-down
-# (registerPorts:-less) hasVl leaf instead of a reusable IP.
-V19_TOPDOWN_APB_PREAMBLE = """constants:
-    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
-    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
-    REG_WIDTH:  { value: 16, desc: "Register payload width" }
+# APB_PREAMBLE plus a producer/consumer dataIf: one preamble serves both
+# the register-bus-only positive fixture below (dataIf declared but unused)
+# and the negative twin, which needs it for its extra connection-derived
+# port. APB_PREAMBLE itself is shared with another module and stays as-is.
+V19_TOPDOWN_PREAMBLE = APB_PREAMBLE.replace(
+    '\ntypes:\n', '\ntypes:\n    dataT:    { width: 8, desc: "payload word" }\n'
+).replace(
+    '\nstructures:\n',
+    '\nstructures:\n'
+    '    dataSt:\n'
+    '        data: { varType: dataT, desc: "payload word" }\n'
+).replace(
+    '\ninterfaces:\n',
+    '\ninterfaces:\n'
+    '    dataIf:\n'
+    '        desc: "producer to consumer stream"\n'
+    '        interfaceType: push_ack\n'
+    '        structures:\n'
+    '            - { structure: dataSt, structureType: data_t }\n'
+)
 
-types:
-    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
-    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
-    cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
-
-structures:
-    apbAddrSt:
-        address: { varType: apbAddrT, generator: address }
-    apbDataSt:
-        data: { varType: apbDataT, generator: data }
-    cfgRegSt:
-        value: { varType: cfgT, generator: register, desc: "Register payload" }
-
-interfaces:
-    apbReg:
-        desc: "APB register bus"
-        interfaceType: apb
-        structures:
-            - { structure: apbAddrSt, structureType: addr_t }
-            - { structure: apbDataSt, structureType: data_t }
-"""
-
-# 'leafD' is a top-down hasVl leaf (no registerPorts:): its register bus
-# ('apbReg') is inferred from 'apbDecode's dispatch (R25), on 'apbClk', with
-# a clean single reset 'apbRst_n'. Its DEFAULT clock is 'clkD' (V18 forbids
-# an ambiguous reset there); a second, non-default clock literally named
-# 'clk' carries two unmarked resets instead - unrelated to the bus, but the
-# literal name a synthesised register handler's own implicit clock always
-# takes. The handler (leafD_regs) binds inside leafD's own body by plain
-# name match (comment at clockTree.py's BlockDomains.registerBusPort), so
-# the handler-bridged connectionMaps boundary guess for 'apbReg' lands on
-# 'clk', not on the leaf's real bus clock 'apbClk' - the guess this clause
-# must not blame the register-bus port for.
-V19_TOPDOWN_BUS_PORT_DESIGN = V19_TOPDOWN_APB_PREAMBLE + """blocks:
+# leafD's non-default clock is literally named 'clk': the synthesised
+# register handler's own implicit clock always binds by that name, so the
+# handler-bridged connectionMaps boundary guess for 'apbReg' lands on
+# 'clk' rather than the leaf's real bus clock 'apbClk'.
+V19_TOPDOWN_BUS_PORT_DESIGN = V19_TOPDOWN_PREAMBLE + """blocks:
     top_tb:
         desc: "design top"
         hasMdl: true
@@ -3284,27 +3269,13 @@ registers:
     - { register: cfgD, regType: rw, block: leafD, structure: cfgRegSt, desc: "leafD configuration" }
 """
 
-V19_TOPDOWN_PROJECT_DOMAINS = """
-clocks:
-    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
-    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
-
-resets:
-    rst_n:    { desc: "the default reset", default: true, clock: clk }
-    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
-"""
-
 
 def run_v19_hasvl_topdown_register_bus_port_excluded():
-    """V19 positive (clockTree.py's BlockDomains.registerBusPort
-    exclusion, spec §4.8): 'leafD's clock 'clk' has no selected reset, yet
-    the build must succeed, because the only port the hasVl clause would
-    otherwise blame 'clk' for is the register-bus port 'apbReg' - excluded
-    so the separate register-bus V19 pass (domain.registerClock/
-    registerReset) is the one that judges it, correctly, against
-    'apbClk'/'apbRst_n'."""
+    """V19 positive: 'clk' has no selected reset, but the registerBusPort
+    exclusion means only the register-bus V19 pass judges 'apbReg', against
+    'apbClk'/'apbRst_n', so the build succeeds."""
     fixture, project_path, db_path = _make_fixture(
-        design=V19_TOPDOWN_BUS_PORT_DESIGN, projectDomains=V19_TOPDOWN_PROJECT_DOMAINS)
+        design=V19_TOPDOWN_BUS_PORT_DESIGN, projectDomains=V19_APB_PROJECT_DOMAINS)
     try:
         code, output = _build(project_path, db_path)
         if code != 0:
@@ -3338,55 +3309,13 @@ def run_v19_hasvl_topdown_register_bus_port_excluded():
         shutil.rmtree(fixture)
 
 
-# Same constants/types/structures/interfaces as V19_TOPDOWN_APB_PREAMBLE,
-# plus dataIf's, merged into single sections: two "types:"/"structures:"/
-# "interfaces:" top-level keys in one concatenated yaml file is a duplicate-
-# key parse error, not a merge.
-V19_TOPDOWN_APB_PLUS_DATA_PREAMBLE = """constants:
-    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
-    DATA_WIDTH: { value: 32, desc: "Register bus data width" }
-    REG_WIDTH:  { value: 16, desc: "Register payload width" }
-
-types:
-    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
-    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
-    cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
-    dataT:    { width: 8, desc: "payload word" }
-
-structures:
-    apbAddrSt:
-        address: { varType: apbAddrT, generator: address }
-    apbDataSt:
-        data: { varType: apbDataT, generator: data }
-    cfgRegSt:
-        value: { varType: cfgT, generator: register, desc: "Register payload" }
-    dataSt:
-        data: { varType: dataT, desc: "payload word" }
-
-interfaces:
-    apbReg:
-        desc: "APB register bus"
-        interfaceType: apb
-        structures:
-            - { structure: apbAddrSt, structureType: addr_t }
-            - { structure: apbDataSt, structureType: data_t }
-    dataIf:
-        desc: "producer to consumer stream"
-        interfaceType: push_ack
-        structures:
-            - { structure: dataSt, structureType: data_t }
-"""
-
-
 def run_v19_hasvl_topdown_extra_port_still_rejected():
     """V19 negative twin: same 'leafD' as the positive above, plus one
-    extra, ordinary connection-derived port 'in' (no ports: - a top-down
-    register-owning leaf may declare none at all, or postParseRegisterPorts
-    exits with an error) on a second, non-bus, non-default clock 'clkX'
-    with two unmarked resets. The registerBusPort exclusion names only
-    'apbReg'; 'in' must still be rejected, proving the exclusion does not
-    blanket the whole block."""
-    design = V19_TOPDOWN_APB_PLUS_DATA_PREAMBLE + """blocks:
+    extra, ordinary connection-derived port 'in' on a second, non-bus,
+    non-default clock 'clkX' with two unmarked resets. The registerBusPort
+    exclusion names only 'apbReg'; 'in' must still be rejected, proving the
+    exclusion does not blanket the whole block."""
+    design = V19_TOPDOWN_PREAMBLE + """blocks:
     top_tb:
         desc: "design top"
         hasMdl: true
@@ -3451,8 +3380,10 @@ connections:
 registers:
     - { register: cfgD, regType: rw, block: leafD, structure: cfgRegSt, desc: "leafD configuration" }
 """
-    # top_tb declares clkY itself (uProd's own domain), so the testbench
-    # binding needs a same-named project clock too (spec §4.8, R3).
+    # Binding clkX onto the shared apbClk net instead of a distinct clkY
+    # collapses to a V13 (ambiguous block clock) diagnostic before V19 gets
+    # a look, so this keeps its own clkY/rstY_n and custom projectDomains
+    # rather than reusing V19_APB_PROJECT_DOMAINS.
     projectDomains = """
 clocks:
     clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }

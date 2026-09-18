@@ -111,9 +111,7 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s.append(mp_sig[port]['bfm_ctor_init'])
-        s = ',\n'.join(s)
-        # Standalone section keeps the old trailing-comma contract.
-        return s + ',' if s else ''
+        return ',\n'.join(s)
 
     def sec_clock_decl(args, prj, data):
         # A gated sc_signal, not an sc_clock: under socket lockstep every clock
@@ -353,7 +351,10 @@ def render_sc(args, prj, data):
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)
         case 'channel_decl': return sec_channel_decl(args, prj, data)
         case 'bfm_decl': return sec_bfm_decl(args, prj, data)
-        case 'bfm_ctor_init': return sec_bfm_ctor_init(args, prj, data)
+        case 'bfm_ctor_init':
+            # Standalone section keeps its old trailing-comma contract.
+            s = sec_bfm_ctor_init(args, prj, data)
+            return s + ',' if s else ''
         case 'dut_connect': return sec_dut_connect(args, prj, data)
         case 'bfm_connect': return sec_bfm_connect(args, prj, data)
         case 'hdl_if_decl': return sec_hdl_if_decl(args, prj, data)

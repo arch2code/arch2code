@@ -523,10 +523,10 @@ CLK_MEMBER_PERIPH_LEAF = 'rtl/periphLeaf.sv'
 
 # A hasVl leaf with one clock, an explicitly empty resets: {} (opting out of
 # the derived reset, not merely omitting resets:), and no ports at all - the
-# shape in which the constructor's bfm and reset initialiser sections are both
-# empty and only the clock section has anything to say. Standalone from the
-# fixtures above: adding resets: {} or a portless block to any of them would
-# perturb checks those fixtures already pin.
+# shape in which the constructor's bfm and reset initialiser sections are
+# both empty and only the clock section has anything to say. topBlock itself
+# declares no clocks:/resets:, so it derives the implicit clk/rst_n the
+# testbench binds to (V10).
 NO_RESET_PROJECT = """yamlFormat: 2
 projectName: noResetCtorInit
 topInstance: topInst
@@ -553,7 +553,7 @@ fileGeneration:
 
 NO_RESET_DESIGN = """blocks:
     topBlock:
-        desc: "container instantiating the resetless leaf; declares no clocks:/resets: itself, so it derives the implicit clk/rst_n the testbench binds to (V10)"
+        desc: "container for bareLeaf"
         hasVl: false
         hasMdl: false
         hasTb: false
@@ -800,20 +800,23 @@ def _generate_regs(feed_clock):
     return fixture, emitted
 
 
-def _generate_clk_member():
-    """Build the clk-member fixture and render its two leaves.
+def _generate_clk_member(project=CLK_MEMBER_PROJECT, design=CLK_MEMBER_DESIGN,
+                         files=(CLK_MEMBER_LEAF, CLK_MEMBER_PERIPH_LEAF),
+                         switch='--systemVerilog', prefix='clkmember_',
+                         db_name='clkmember.db'):
+    """Build a fixture and render the given files.
 
     Returns (fixture_dir, {relative path: emitted text}).
     """
-    fixture = tempfile.mkdtemp(prefix='clkmember_')
+    fixture = tempfile.mkdtemp(prefix=prefix)
     os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
     os.makedirs(os.path.join(fixture, 'yaml'))
     with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(CLK_MEMBER_PROJECT)
+        f.write(project)
     with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(CLK_MEMBER_DESIGN)
+        f.write(design)
 
-    db = os.path.join(fixture, 'clkmember.db')
+    db = os.path.join(fixture, db_name)
     built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
                        '--db', db, cwd=fixture)
     if built.returncode != 0:
@@ -823,45 +826,14 @@ def _generate_clk_member():
         raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
 
     emitted = dict()
-    for rel in (CLK_MEMBER_LEAF, CLK_MEMBER_PERIPH_LEAF):
-        gen = _arch2code('--db', db, '-r', '--systemVerilog',
+    for rel in files:
+        gen = _arch2code('--db', db, '-r', switch,
                          '--file', os.path.join(fixture, rel), cwd=fixture)
         if gen.returncode != 0:
             raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
         with open(os.path.join(fixture, rel)) as f:
             emitted[rel] = f.read()
     return fixture, emitted
-
-
-def _generate_no_reset_ctor():
-    """Build the no-resets/no-ports fixture and render its SC wrapper header.
-
-    Returns (fixture_dir, {relative path: emitted text}).
-    """
-    fixture = tempfile.mkdtemp(prefix='noresetctor_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(NO_RESET_PROJECT)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(NO_RESET_DESIGN)
-
-    db = os.path.join(fixture, 'noreset.db')
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    if built.returncode != 0:
-        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
-    made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
-    if made.returncode != 0:
-        raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
-
-    gen = _arch2code('--db', db, '-r', '--systemc',
-                     '--file', os.path.join(fixture, NO_RESET_WRAPPER), cwd=fixture)
-    if gen.returncode != 0:
-        raise AssertionError(f"generating {NO_RESET_WRAPPER} failed:\n{gen.stdout}\n{gen.stderr}")
-    with open(os.path.join(fixture, NO_RESET_WRAPPER)) as f:
-        text = f.read()
-    return fixture, {NO_RESET_WRAPPER: text}
 
 
 def _run_case(label, fn):
@@ -1162,23 +1134,13 @@ def _ctor_init_list(text, blockname, where):
 
 def check_ctor_init_no_stray_comma(emitted):
     """A hasVl block with a clock but no resets and no ports must not render a
-    bare ',' element in the constructor's member-initialiser list.
-
-    bareLeaf carries one clock, an explicitly empty resets: {}, and no ports,
-    so of the four sections that feed the list only the clock section has
-    anything to say - the shape that used to leave the empty reset section's
-    still-comma'd slot as a bare ',' element between the clock section and the
-    (also empty) clock-half section."""
+    bare ',' element in the constructor's member-initialiser list."""
     text = emitted[NO_RESET_WRAPPER]
     init = _ctor_init_list(text, 'bareLeaf', 'bareLeaf SC wrapper')
     lines = [line for line in _strip(init) if line]
     if any(line == ',' for line in lines):
         raise AssertionError(
             f"bareLeaf constructor init list has a bare ',' element: {lines}")
-    if lines and lines[0].startswith(','):
-        raise AssertionError(
-            f"bareLeaf constructor init list has a leading comma right after "
-            f"':': {lines}")
     return True
 
 
@@ -1487,6 +1449,17 @@ def check_bfm_binds_names_the_wrapper_declares(emitted):
             "the block's only clock is clkSlow", 'slowProd SC wrapper')
     _expect(text, 'out_bfm.rst_n(rstSlow_n);',
             "the block's only reset is rstSlow_n", 'slowProd SC wrapper')
+    # slowProd has both a BFM port and a reset, so its constructor joins
+    # sec_bfm_ctor_init and sec_reset_ctor_init: a stray trailing comma on
+    # either would show up here as ',,' or a bare ',' element.
+    if ',,' in text:
+        raise AssertionError(
+            "slowProd SC wrapper has a ',,' from a doubled ctor-init comma")
+    init = _ctor_init_list(text, 'slowProd', 'slowProd SC wrapper')
+    lines = [line for line in _strip(init) if line]
+    if any(line == ',' for line in lines):
+        raise AssertionError(
+            f"slowProd constructor init list has a bare ',' element: {lines}")
     return True
 
 
@@ -2345,7 +2318,10 @@ def main():
     finally:
         shutil.rmtree(fixture)
 
-    fixture, emitted = _generate_no_reset_ctor()
+    fixture, emitted = _generate_clk_member(
+        project=NO_RESET_PROJECT, design=NO_RESET_DESIGN,
+        files=(NO_RESET_WRAPPER,), switch='--systemc',
+        prefix='noresetctor_', db_name='noreset.db')
     try:
         ok += [_run_case('a hasVl block with a clock, no resets, and no ports '
                          'renders no stray comma in its constructor init list',

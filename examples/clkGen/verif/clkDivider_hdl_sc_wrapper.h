@@ -45,7 +45,6 @@ public:
         clkRef("clkRef"),
         clkDiv("clkDiv"),
         clkDivBy2("clkDivBy2"),
-        
         rstRef_n("rstRef_n", true),
         rstDivRaw_n("rstDivRaw_n", true),
         clkRef_half_(sc_time(10, SC_NS) / 2)
@@ -88,7 +87,7 @@ public:
     void end_of_simulation() override {
         if (!clkDiv_edges_) { std::cerr << "warning: clock 'clkDiv' produced no edge by end of run" << std::endl; }
         if (!clkDivBy2_edges_) { std::cerr << "warning: clock 'clkDivBy2' produced no edge by end of run" << std::endl; }
-        if (!rstDivRaw_n_released_) { std::cerr << "warning: reset 'rstDivRaw_n' never released by end of run" << std::endl; }
+        if (!rstDivRaw_n_released_) { std::cerr << "warning: output reset 'rstDivRaw_n' was never observed to release during the run" << std::endl; }
     }
 
 private:

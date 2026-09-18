@@ -37,7 +37,6 @@ public:
         blockBase("ipLeaf_hdl_sc_wrapper", name(), bbMode),
         ipLeafBase<Config>(name(), variant),
         clk("clk"),
-        
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
