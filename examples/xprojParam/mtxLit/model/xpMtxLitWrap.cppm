@@ -55,14 +55,14 @@ public:
     std::shared_ptr<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>> uDstPP;
 
     // cross-interface thunkers
-    push_ack_port_thunker<mlChSt, miSrcLitSt, true> thunker_out_0_uSrcLL;
-    push_ack_port_thunker<mlChSt, miDstLitSt, true> thunker_out_0_uDstLL;
-    push_ack_port_thunker<mlChSt, miSrcLitSt, true> thunker_out_1_uSrcLP;
-    push_ack_port_thunker<mlChSt, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, false> thunker_out_1_uDstLP;
-    push_ack_port_thunker<mlChSt, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, false> thunker_out_2_uSrcPL;
-    push_ack_port_thunker<mlChSt, miDstLitSt, true> thunker_out_2_uDstPL;
-    push_ack_port_thunker<mlChSt, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, false> thunker_out_3_uSrcPP;
-    push_ack_port_thunker<mlChSt, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, false> thunker_out_3_uDstPP;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miSrcLitSt, true> thunker_out_0_uSrcLL;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miDstLitSt, true> thunker_out_0_uDstLL;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miSrcLitSt, true> thunker_out_1_uSrcLP;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miDstParSt<xpMtxIp_xpMtxDstParV0Config>, false> thunker_out_1_uDstLP;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, false> thunker_out_2_uSrcPL;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miDstLitSt, true> thunker_out_2_uDstPL;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, false> thunker_out_3_uSrcPP;
+    push_ack_port_thunker<xpMtxLit_xpMtxLitTop_ns::mlChSt, xpMtxIp_ns::miDstParSt<xpMtxIp_xpMtxDstParV0Config>, false> thunker_out_3_uDstPP;
 
     xpMtxLitWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpMtxLitWrap() override = default;

@@ -58,10 +58,10 @@ public:
     std::shared_ptr<xpCstChkOwnBase<xpCstBind_xpCstChkOwnUseConfig>> uChkB;
 
     // cross-interface thunkers
-    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
-    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstChkIncDfltConfig>, true> thunker_out_1_uChkA;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstIp_xpCstDutDfltConfig>, xpCstBind_xpCstSup_ns::csIncSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstIp_xpCstDutDfltConfig>, xpCstBind_xpCstSup_ns::csIncSt<xpCstBind_xpCstChkIncDfltConfig>, true> thunker_out_1_uChkA;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstBind_xpCstDutUseConfig>, xpCstBind_xpCstSup_ns::csOwnSt<xpCstBind_xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstBind_xpCstDutUseConfig>, xpCstBind_xpCstSup_ns::csOwnSt<xpCstBind_xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
 
     xpCstBindWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstBindWrap() override = default;

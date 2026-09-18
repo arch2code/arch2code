@@ -62,14 +62,14 @@ public:
     std::shared_ptr<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>> uDstPP;
 
     // cross-interface thunkers
-    push_ack_port_thunker<mtChSt<Config>, miSrcLitSt, false> thunker_out_0_uSrcLL;
-    push_ack_port_thunker<mtChSt<Config>, miDstLitSt, false> thunker_out_0_uDstLL;
-    push_ack_port_thunker<mtChSt<Config>, miSrcLitSt, false> thunker_out_1_uSrcLP;
-    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_1_uDstLP;
-    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_2_uSrcPL;
-    push_ack_port_thunker<mtChSt<Config>, miDstLitSt, false> thunker_out_2_uDstPL;
-    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_3_uSrcPP;
-    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_3_uDstPP;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miSrcLitSt, false> thunker_out_0_uSrcLL;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miDstLitSt, false> thunker_out_0_uDstLL;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miSrcLitSt, false> thunker_out_1_uSrcLP;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_1_uDstLP;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_2_uSrcPL;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miDstLitSt, false> thunker_out_2_uDstPL;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_3_uSrcPP;
+    push_ack_port_thunker<xpMtxTpl_xpMtxTplTop_ns::mtChSt<Config>, xpMtxIp_ns::miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_3_uDstPP;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpMtxTplWrapBase<Config>::mtChPixelT;

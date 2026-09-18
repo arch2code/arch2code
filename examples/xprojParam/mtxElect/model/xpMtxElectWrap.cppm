@@ -44,8 +44,8 @@ public:
     std::shared_ptr<xpMtxDstLitBase> uDstPL;
 
     // cross-interface thunkers
-    push_ack_port_thunker<miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_0_uDstPP;
-    push_ack_port_thunker<miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, miDstLitSt, false> thunker_out_1_uDstPL;
+    push_ack_port_thunker<xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, xpMtxIp_ns::miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_0_uDstPP;
+    push_ack_port_thunker<xpMtxIp_ns::miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, xpMtxIp_ns::miDstLitSt, false> thunker_out_1_uDstPL;
 
     xpMtxElectWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpMtxElectWrap() override = default;

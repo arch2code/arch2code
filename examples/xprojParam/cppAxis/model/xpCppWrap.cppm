@@ -54,10 +54,10 @@ public:
     std::shared_ptr<xpCppLeafNestBase<xpCppAxis_xpCppLeafNestV0Config>> uLeafNest;
 
     // cross-interface thunkers
-    push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true> thunker_uLeafEq;
-    push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>, false> thunker_uLeafOrder;
-    push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppAxis_xpCppLeafSignV0Config>, false> thunker_uLeafSign;
-    push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppAxis_xpCppLeafNestV0Config>, false> thunker_uLeafNest;
+    push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapEqSt<Config>, xpCppLeaf_ns::leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true> thunker_uLeafEq;
+    push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapOrderSt<Config>, xpCppLeaf_ns::leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>, false> thunker_uLeafOrder;
+    push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapSignSt<Config>, xpCppLeaf_ns::leafSignSt<xpCppAxis_xpCppLeafSignV0Config>, false> thunker_uLeafSign;
+    push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapNestSt<Config>, xpCppLeaf_ns::leafNestSt<xpCppAxis_xpCppLeafNestV0Config>, false> thunker_uLeafNest;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpCppWrapBase<Config>::wrapPixelT;

@@ -46,10 +46,10 @@ public:
     std::shared_ptr<xpCppWrapBase<xpCppAxis_xpCppWrapV0Config>> uWrap;
 
     // cross-interface thunkers
-    push_ack_port_thunker<bndEqSt, wrapEqSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_eqOut_uWrap;
-    push_ack_port_thunker<bndOrderSt, wrapOrderSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_orderOut_uWrap;
-    push_ack_port_thunker<bndSignSt, wrapSignSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_signOut_uWrap;
-    push_ack_port_thunker<bndNestSt, wrapNestSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_nestOut_uWrap;
+    push_ack_port_thunker<xpCppAxis_xpCppAxisTop_ns::bndEqSt, xpCppAxis_xpCppWrap_ns::wrapEqSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_eqOut_uWrap;
+    push_ack_port_thunker<xpCppAxis_xpCppAxisTop_ns::bndOrderSt, xpCppAxis_xpCppWrap_ns::wrapOrderSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_orderOut_uWrap;
+    push_ack_port_thunker<xpCppAxis_xpCppAxisTop_ns::bndSignSt, xpCppAxis_xpCppWrap_ns::wrapSignSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_signOut_uWrap;
+    push_ack_port_thunker<xpCppAxis_xpCppAxisTop_ns::bndNestSt, xpCppAxis_xpCppWrap_ns::wrapNestSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_nestOut_uWrap;
 
     xpCppAxisTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCppAxisTop() override = default;

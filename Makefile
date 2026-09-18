@@ -566,10 +566,15 @@ clean :
 # Invocation contract: see unittest/README.md, "Invocation contract".
 .PHONY : unittest
 unittest:
-	cd unittest && ./run_all_tests.sh
+	cd unittest && ./run_all_tests_parallel.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
+# The example projects build in their own directories, so they run PIPELINE_JOBS
+# at a time; targets that share a project declare the order themselves.
+PIPELINE_JOBS ?= 8
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
+pipeline-test:
+	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).
