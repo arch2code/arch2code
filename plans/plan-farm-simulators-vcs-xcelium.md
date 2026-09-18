@@ -97,7 +97,8 @@
 - Xcelium elaborates the HDL wrappers a topology does not use as idle top-levels; harmless for debayer, a memory concern at
   SoC scale. Candidate fix: compile only the topology's wrapper from an instance-to-top mapping in the build manifest.
 - SystemC 3.0.1 convergence; pro RTL library items (`rdyVldBurstFifo.sv`,
-  `flops.sv` FPGA macros under Xcelium); refresh `docs/vcs-build.md`.
+  `flops.sv` FPGA macros under Xcelium); refresh `docs/vcs-build.md` (a status banner pointing at the current flow was
+  added 2026-09-18; the body is still the 2026-07 investigation record).
 - Resolved (2026-09-18): the `DUT_TOPOLOGIES` list moved out of `rundir/Makefile` into the regression files, as
   `build.command+` entries, one `DUT_TOPOLOGIES+=<inst>:<cfg>,...` line per block. The launcher gained `+` append support
   on the `build` container so `command+` resolves into `command` before the build runs; `rundir/Makefile` carries no

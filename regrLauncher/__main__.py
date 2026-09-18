@@ -161,8 +161,10 @@ def main():
     with args.file as file:
         session_db = json.load(file)
 
-    # Resolve build.command+ before command line overrides so --attr build.command+=...
-    # still appends to the resolved command
+    # Resolve build.command+ before the command line overrides: --attr
+    # build.command+=... appends after it and --attr build.command=... replaces
+    # the resolved command. --attr splits its value on commas, so a comma-
+    # separated topology entry must be given one configuration per --attr.
     merge_append_attributes(session_db['build'])
 
     # Number of concurrent jobs from command line

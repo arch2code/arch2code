@@ -90,7 +90,7 @@ The ``regression file`` defines, in JSON format, the attributes required to the 
 * Any attribute can be redefined or augmented at any level of hierarchy, inside the ``group`` or ``test`` containers.
 * An attribute is inherited from its parent ``group`` container top-down, across all levels of hierarchy, until redefined explicitly for a group or test container in the regression file
 * For session ``group`` or ``test`` attributes of string or list type, appending a ``+`` (append) flag to the attribute name appends the new value to the inherited attribute value.
-* Non ``string`` or ``list`` attribute types (such asinteger) do not support the ``+`` (append) flag
+* Non ``string`` or ``list`` attribute types (such as integer) do not support the ``+`` (append) flag
 * In the ``build`` container the ``+`` flag appends to the attribute of the same name in that container, since there is no parent. A list value is joined with spaces, so a long build command can be written one entry per line
 
 The rules above can be used to elaborate complex cases and partitioning of tests in categories and sub-categories, with multiple combinations of attributes.
@@ -112,7 +112,8 @@ All attributes are mandatory in their respective root container. Default for str
 |session.lrp |integer |Default log retention policy for the session
 |build.command |string |Command invoked by the session build executor of the regression session. +
 The build step is executed only when --build flag is set on the command line
-|build.command+ |string, list of strings |Appended to build.command after a space. A list is joined with spaces, one entry per line for readability, for example one ``DUT_TOPOLOGIES+=<inst>:<cfg>,<cfg>...`` entry per block for the simulator snapshot flows
+|build.command+ |string, list of strings |Appended to build.command after a space. A list is joined with spaces, one entry per line for readability, for example one ``DUT_TOPOLOGIES+=<inst>:<cfg>,<cfg>...`` entry per block for the simulator snapshot flows. +
+``--attr build.command+=<value>`` appends after the ``command+`` entries and ``--attr build.command=<value>`` replaces the resolved command, entries included. ``--attr`` splits its value on commas, so a comma-separated entry such as the topology example must be passed one configuration per ``--attr`` occurrence
 |build.timeout |integer |Build time timeout in seconds. The build job will be killed and the regression aborted if the duration of the build step, specified by the build.command attribute exceeds build.timeout seconds
 |run.command |string |Command invoked by the session run executor, for each individual run job scheduled in the worker queue
 |run.args |string a|

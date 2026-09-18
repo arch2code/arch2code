@@ -46,6 +46,13 @@ Guide the user on how to build, simulate, and manage the project using the `make
     *   Check the project's specific `Makefile` for verification targets (e.g., `test`, `regr`, `verif`).
     *   Commonly, `make all` builds everything including verification components.
 
+6.  **Simulator Flows (VCS, Xcelium):**
+    *   Source the site setup script first. The flows need `VCS_HOME` (VCS), `XCELIUM_TOOLS`, `XRUN_GCC_VERS`, and `LM_LICENSE_FILE` (Xcelium), and `A2C_CLANG` plus the SystemC and Boost roots for both; `make help USE_VCS=1` / `make help USE_XCELIUM=1` list the flow variables (`VCS_USER_OPTS`, `VCS_DEBUG=1`, `XRUN_USER_OPTS`, `XRUN_R_OPTS`).
+    *   Both simulators fix the SystemC/HDL topology when the snapshot is elaborated, so each DUT topology is its own binary named `run_<inst>_<type>[_tandem]`, or `run_model` when no RTL instance is elaborated. `make USE_VCS=1 -j8 all` links `build/run_<topology>` for the topology given by `VL_INST`, `VL_TYPE`, and `VL_TANDEM` (defaults: `HDL_TOP_MODULE`, `verif`, `0`); `make USE_XCELIUM=1 -j8 all` builds the equivalent `build_xrun/run_<topology>` script. Pass `VL_DUT=` for the model-only snapshot.
+    *   Run a snapshot with the same `--vlInst`, `--vlType`, and `--vlTandem` it was built with. The dispatcher `dutRun.py <base binary> <args>` selects the matching snapshot from the arguments, which is how the regressions keep one run command.
+    *   `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots` build `run_model` plus one snapshot per topology in `DUT_TOPOLOGIES` (`<inst>:<cfg>[,<cfg>]...`, cfg `verif|model[:tandem]`). Regression files pass that list on the build command line, one `DUT_TOPOLOGIES+=` entry per block; do not define it in the project `rundir/Makefile`. See `run-regression-tests` for the regression files and `run-tandem` for tandem runs on a snapshot.
+    *   Run `make clean` when switching between hosts or between container and host paths: the generated build makefile stores absolute paths.
+
 ## Workflow
 1.  **Edit YAML** (`arch/yaml/...`)
 2.  **`make db`** (Validate Schema)
