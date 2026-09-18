@@ -1074,6 +1074,15 @@ class Schema:
                     field.type_struct_kinds = self.typeStructKindsForMode('typeStruct')
 
                 if my_type == 'typeStruct':
+                    # processSimple identifies a row in its typeStruct
+                    # diagnostics through the storage key already gathered
+                    # into the row, so the section's key must be declared
+                    # before any typeStruct field -- the same
+                    # declare-before-use rule the typeStruct sibling obeys.
+                    # dataGroup tables have no per-row key to order against.
+                    if item_key_name is None and not node.is_data_group:
+                        printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} is a typeStruct field declared before the section's key field; declare the key field first.")
+                        exit(warningAndErrorReport())
                     # A typeStruct field names either a types row or a
                     # structures row (resolved in processSimple). It carries
                     # a qualified fieldKey like const/param, plus a fieldKind

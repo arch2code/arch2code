@@ -90,6 +90,15 @@ typeStructTest:
   modeWord2: required
 """
 
+# The section's key declared AFTER a typeStruct field: processSimple derives a
+# row's typeStruct diagnostics from the storage key already gathered into the
+# row, so the key must precede any typeStruct field.
+BAD_KEY_AFTER_SECTION = """
+typeStructTest:
+  dynBad: typeStruct(struct)
+  probe: key
+"""
+
 # typeStruct(field, <sibling>) naming a sibling that is not declared at all.
 BAD_SIBLING_MISSING_SECTION = """
 typeStructTest:
@@ -770,6 +779,15 @@ def _run():
                 and 'dynBad' in output \
                 and 'modeWord2' in output
 
+        def key_declared_after_typestruct_rejected():
+            # The section's key field declared after a typeStruct field.
+            raised, output = _schema_validation_error(
+                BAD_KEY_AFTER_SECTION,
+                'type_struct_bad_key_after_test')
+            return raised \
+                and 'dynBad' in output \
+                and 'key field' in output
+
         def sibling_missing_rejected():
             # typeStruct(field, noSuchSibling) naming an undeclared sibling.
             raised, output = _schema_validation_error(
@@ -837,6 +855,9 @@ def _run():
         results.append(_run_case(
             "typeStruct(field, sibling) declared after fails schema validation",
             sibling_declared_after_rejected))
+        results.append(_run_case(
+            "key declared after typeStruct field fails schema validation",
+            key_declared_after_typestruct_rejected))
         results.append(_run_case(
             "typeStruct(field, sibling) missing sibling fails schema validation",
             sibling_missing_rejected))
