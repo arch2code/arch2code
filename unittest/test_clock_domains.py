@@ -2507,11 +2507,26 @@ interfaces:
 
 """
 
+# clk/apbClk testbench domains, for a fixture whose top_tb itself declares an
+# apbClk (a register-bus-style second clock) rather than PROJECT_DOMAINS'
+# clkSlow.
+V19_APB_PROJECT_DOMAINS = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+"""
+
 
 def run_v19_hasvl_port_ambiguous_reset_rejected():
     """V19 negative A: 'leaf's declared port 'in' is timed by 'clkB', which
     carries two resets and neither is marked default: true - the co-
-    simulation wrapper has no reset to bind the port's BFM to."""
+    simulation wrapper has no reset to bind the port's BFM to. 'leaf' is
+    instantiated (bound onto 'top_tb's own clk/rst_n by name match) so V21's
+    zero-instance check does not also fire alongside V19."""
     design = V19_HASVL_INTF + """blocks:
     top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
     leaf:
@@ -2532,6 +2547,8 @@ def run_v19_hasvl_port_ambiguous_reset_rejected():
 
 instances:
     top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clkB: clk }, resets: { rstB1_n: rst_n, rstB2_n: rst_n } }
 """
     return _expect_diagnostic(
         "a hasVl port's clock with two unmarked resets is rejected",
@@ -2543,7 +2560,8 @@ def run_v19_hasvl_port_no_reset_at_all_rejected():
     """V19 negative B: 'leaf' declares resets: {} - a block with no reset at
     all is otherwise legitimate (spec §4.2) - but its declared port 'in'
     still needs one, since it is hasVl and the co-simulation wrapper's BFM
-    is generated logic under V19."""
+    is generated logic under V19. 'leaf' is instantiated so V21's
+    zero-instance check does not also fire alongside V19."""
     design = V19_HASVL_INTF + """blocks:
     top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
     leaf:
@@ -2558,11 +2576,327 @@ def run_v19_hasvl_port_no_reset_at_all_rejected():
 
 instances:
     top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top }
 """
     return _expect_diagnostic(
         "a hasVl leaf declaring resets: {} still needs one for its declared port",
         ('V19', 'leaf', 'in'),
         design=design, projectDomains='')
+
+
+def run_v19_hasvl_connection_derived_port_rejected():
+    """V19 negative, connection-derived port (a genuine defect fixed here):
+    'leaf' declares no ports: at all, so its one port 'in' is an ordinary
+    top-down port (spec §4.3), entirely defined by the connection reaching
+    it. The connection names clock: clkSlow, which 'uProd's own instance map
+    (clocks: { clk: clkSlow }) resolves 'uProd's clk onto - the consumer-edge
+    match V13 itself performs - so 'in' is timed by 'leaf's 'clkB' (bound
+    onto the same clkSlow net), which carries no selected reset."""
+    design = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    prod:   { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf with no declared ports: its one port is connection-derived"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:  { default: true }
+            clkB: { }
+        resets:
+            rst_n: { clock: clk }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,   instGroup: top,
+              clocks: { clk: clkSlow }, resets: { rst_n: rstSlow_n } }
+    uLeaf:  { container: top_tb, instanceType: leaf,   instGroup: top,
+              clocks: { clkB: clkSlow } }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uLeaf, dstport: in, clock: clkSlow }
+"""
+    return _expect_diagnostic(
+        "a connection-derived (top-down) port of a hasVl block needs a "
+        "selected reset on the clock the connection resolves it to",
+        ('V19', 'leaf', 'in', 'clkB'),
+        design=V19_HASVL_INTF + design, projectDomains=PROJECT_DOMAINS)
+
+
+def run_v19_hasvl_connectionmaps_boundary_port_rejected():
+    """V19 negative, connectionMaps boundary port (the portDomainsByBlock
+    branch): hasVl container 'dut' declares its own boundary port 'apbReg'
+    with no clock: of its own, bridged inward via connectionMaps to
+    'inner's 'regs' port, which does name clock: apbClk explicitly - the
+    inside-out V16 derivation gives 'apbReg' the domain 'apbClk', which
+    carries two unmarked resets on 'dut' itself."""
+    design = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "hasVl container whose connectionMaps boundary port derives to a clock with two unmarked resets"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:     { clock: clk }
+            apbRstA_n: { clock: apbClk }
+            apbRstB_n: { clock: apbClk }
+        ports:
+            apbReg: { interface: dataIf, direction: dst }
+    inner:
+        desc: "inner instance; its own declared port names clock: apbClk explicitly"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+        ports:
+            regs: { interface: dataIf, direction: dst, clock: apbClk }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,   instGroup: top }
+    uDut:   { container: top_tb, instanceType: dut,    instGroup: top,
+              resets: { apbRstA_n: apbRst_n, apbRstB_n: apbRst_n } }
+    uInner: { container: dut,    instanceType: inner,  instGroup: top,
+              resets: { apbRst_n: apbRstA_n } }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uDut, dstport: apbReg }
+
+connectionMaps:
+    - { interface: dataIf, block: dut, direction: dst, instance: uInner, port: apbReg, instancePort: regs }
+"""
+    return _expect_diagnostic(
+        "a hasVl container's connectionMaps boundary port deriving to a "
+        "clock with two unmarked resets is rejected",
+        ('V19', 'dut', 'apbReg', 'apbClk', 'apbRstA_n', 'apbRstB_n'),
+        design=V19_HASVL_INTF + design, projectDomains=V19_APB_PROJECT_DOMAINS)
+
+
+def run_v19_hasvl_connectionmaps_boundary_port_not_derived_twice():
+    """V19 positive (a genuine defect fixed here): as the negative above,
+    but 'dut' declares no ports: at all - 'apbReg' is a PURE connectionMaps
+    boundary port, reached ALSO by the outer connection (top-down). The
+    connection authors clock: clkX, which 'uDut's own instance map resolves
+    'dut's clkX onto - a THIRD clock, ambiguous on 'dut' (rstX1_n/rstX2_n,
+    neither default), entirely distinct from 'apbClk' (the connectionMaps
+    boundary row's own, correct domain, with a clean sole reset). Before the
+    fix, the connection-derived branch did not know 'apbReg' was already a
+    boundary port and derived it a second time, from clkX - spuriously
+    rejecting a build that must succeed, since the boundary row's own
+    'apbClk' has one reset."""
+    design = """blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+            clkX:   { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstX1_n:  { clock: clkX }
+            rstX2_n:  { clock: clkX }
+    prod: { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    dut:
+        desc: "hasVl container: apbReg is a pure connectionMaps boundary port, also reached by the outer connection"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+            clkX:   { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstX1_n:  { clock: clkX }
+            rstX2_n:  { clock: clkX }
+    inner:
+        desc: "inner instance; its own declared port names clock: apbClk explicitly"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+        ports:
+            regs: { interface: dataIf, direction: dst, clock: apbClk }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod,   instGroup: top,
+              clocks: { clk: clkX }, resets: { rst_n: rstX1_n } }
+    uDut:   { container: top_tb, instanceType: dut,    instGroup: top,
+              clocks: { clkX: clkX } }
+    uInner: { container: dut,    instanceType: inner,  instGroup: top }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uDut, dstport: apbReg, clock: clkX }
+
+connectionMaps:
+    - { interface: dataIf, block: dut, direction: dst, instance: uInner, port: apbReg, instancePort: regs }
+"""
+    projectDomains = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+    clkX:   { desc: "a third testbench clock", period: 5, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+    rstX1_n:  { desc: "clkX's first reset", clock: clkX }
+    rstX2_n:  { desc: "clkX's second reset", clock: clkX }
+"""
+
+    def check():
+        fixture, project_path, db_path = _make_fixture(
+            design=V19_HASVL_INTF + design, projectDomains=projectDomains)
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code != 0:
+            raise AssertionError(
+                f"a hasVl container's connectionMaps boundary port was "
+                f"spuriously derived a second time, from the outer "
+                f"connection's own clock, and rejected:\n{output}")
+        return True
+
+    return _run_case(
+        "a hasVl container's connectionMaps boundary port, also reached by "
+        "the outer connection, is not derived a second time",
+        check)
+
+
+def run_v19_hasvl_output_clock_port_rejected():
+    """V19 negative, direction: output clock: 'leaf' declares its port
+    'outp' on 'clkOut', a clock the block itself outputs rather than
+    receives - two unmarked resets on 'clkOut' still leave the BFM with
+    nothing to bind."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf whose declared port sits on a direction: output clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            clkOut: { direction: output }
+        resets:
+            rst_n:     { clock: clk }
+            rstOutA_n: { clock: clkOut, direction: output }
+            rstOutB_n: { clock: clkOut, direction: output }
+        ports:
+            outp: { interface: dataIf, direction: dst, clock: clkOut }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clkOut: ~ }, resets: { rstOutA_n: ~, rstOutB_n: ~ } }
+"""
+    return _expect_diagnostic(
+        "a hasVl port on a direction: output clock with two unmarked "
+        "resets is rejected",
+        ('V19', 'leaf', 'outp', 'clkOut', 'rstOutA_n', 'rstOutB_n'),
+        design=V19_HASVL_INTF + design, projectDomains='')
+
+
+def run_v19_hasvl_output_clock_port_positive():
+    """V19 positive, direction: output clock: as above, but 'clkOut's one
+    reset is its sole (auto-selected) candidate, and the port is actually
+    connected, so the build must succeed end to end."""
+    design = """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    prod:   { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf whose declared port sits on a direction: output clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:    { default: true }
+            clkOut: { direction: output }
+        resets:
+            rst_n:    { clock: clk }
+            rstOut_n: { clock: clkOut, direction: output }
+        ports:
+            outp: { interface: dataIf, direction: dst, clock: clkOut }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd:  { container: top_tb, instanceType: prod, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top,
+              clocks: { clkOut: ~ }, resets: { rstOut_n: ~ } }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uLeaf, dstport: outp }
+"""
+
+    def check():
+        fixture, project_path, db_path = _make_fixture(
+            design=V19_HASVL_INTF + design, projectDomains='')
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code != 0:
+            raise AssertionError(
+                f"a hasVl port on a direction: output clock whose sole "
+                f"reset is auto-selected was rejected:\n{output}")
+        return True
+
+    return _run_case(
+        "a hasVl port on a direction: output clock with exactly one "
+        "selected reset is accepted",
+        check)
 
 
 def run_v19_hasvl_port_positive():
@@ -2607,10 +2941,71 @@ connections:
         check)
 
 
+def run_v19_hasvl_two_instances_same_port_not_duplicated():
+    """V19 dedupe (a genuine defect fixed here): 'leaf' is instantiated
+    TWICE, each instance's port 'in' connected from its own producer, one
+    shared clock with no reset at all. Before the fix, portsByClock
+    appended one entry per connection end rather than per port name, so the
+    diagnostic listed 'in, in' - once for each instance - though a hasVl
+    BLOCK's ports are named once, regardless of instance count."""
+    design = V19_HASVL_INTF + """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    prod:   { desc: "producer", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf with no declared ports:, instantiated twice, each connected on its one port 'in'"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        resets: {}
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uProd1: { container: top_tb, instanceType: prod, instGroup: top }
+    uProd2: { container: top_tb, instanceType: prod, instGroup: top }
+    uLeaf1: { container: top_tb, instanceType: leaf, instGroup: top }
+    uLeaf2: { container: top_tb, instanceType: leaf, instGroup: top }
+
+connections:
+    - { interface: dataIf, src: uProd1, srcport: out, dst: uLeaf1, dstport: in }
+    - { interface: dataIf, src: uProd2, srcport: out, dst: uLeaf2, dstport: in }
+"""
+
+    def check():
+        fixture, project_path, db_path = _make_fixture(design=design, projectDomains='')
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code == 0:
+            raise AssertionError(f"build succeeded; it must fail.\n{output}")
+        needle = "port(s) in are timed by clock 'clk'"
+        if needle not in output:
+            raise AssertionError(
+                f"diagnostic does not mention '{needle}' - port 'in' should "
+                f"be listed exactly once, not once per instance.\n{output}")
+        if "in, in" in output:
+            raise AssertionError(
+                f"diagnostic lists port 'in' twice, once per instance, "
+                f"rather than once per port name.\n{output}")
+        return True
+
+    return _run_case(
+        "a hasVl port shared by two instances of the same block is listed "
+        "once, not once per instance",
+        check)
+
+
 def run_v19_hasvl_port_cases():
     return all((run_v19_hasvl_port_ambiguous_reset_rejected(),
                 run_v19_hasvl_port_no_reset_at_all_rejected(),
-                run_v19_hasvl_port_positive()))
+                run_v19_hasvl_connection_derived_port_rejected(),
+                run_v19_hasvl_connectionmaps_boundary_port_rejected(),
+                run_v19_hasvl_connectionmaps_boundary_port_not_derived_twice(),
+                run_v19_hasvl_output_clock_port_rejected(),
+                run_v19_hasvl_output_clock_port_positive(),
+                run_v19_hasvl_port_positive(),
+                run_v19_hasvl_two_instances_same_port_not_duplicated()))
 
 
 # ------------------------------------------------------- name collisions --

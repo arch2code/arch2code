@@ -195,7 +195,7 @@ TWO_CLOCK_CONSUMER_PREAMBLE = PREAMBLE.replace(
         ports:
             in: {{ interface: dataIf, direction: dst }}''',
     '''    consumer:
-        desc: "consumes the divided clock and its own reset; clkAlt is unused elsewhere. Declares no ports: at all, so 'in' is a true top-down port (spec §4.3 rule 2), letting the reaching connection's clock: select which of its two clocks the port lies in"
+        desc: "consumes the divided clock and its own reset; declares no ports: at all, so 'in' is a true top-down port (spec §4.3 rule 2), letting the reaching connection's clock: select which of its two clocks the port lies in"
         hasVl: true
         hasMdl: false
         hasTb: false
@@ -204,7 +204,8 @@ TWO_CLOCK_CONSUMER_PREAMBLE = PREAMBLE.replace(
             clk: {{ default: true }}
             clkAlt: {{ period: 40, timeUnit: ns }}
         resets:
-            rst_n: {{ clock: clk }}''')
+            rst_n: {{ clock: clk }}
+            rstAlt_n: {{ clock: clkAlt }}''')
 
 PROJECT = """yamlFormat: 2
 projectName: {name}
@@ -409,7 +410,8 @@ INSTANCES_V13POS = """    top_tb:    { container: top_tb, instanceType: top_tb, 
     uProducer: { container: dut, instanceType: producer, instGroup: top,
                  clocks: { clk: clkDiv }, resets: { rst_n: rstDivInt_n } }
     uConsumer: { container: dut, instanceType: consumer, instGroup: top,
-                 clocks: { clk: clkRef, clkAlt: clkDiv }, resets: { rst_n: rstRef_n } }
+                 clocks: { clk: clkRef, clkAlt: clkDiv },
+                 resets: { rst_n: rstRef_n, rstAlt_n: rstDivInt_n } }
 """
 
 
