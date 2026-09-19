@@ -202,9 +202,10 @@ Replaces `getBDPortDomain` (3081) inputs and `_validateSingleDomainObjects`
   declared `registerPorts:` entry, else the block default.
   The R25 selection for a top-down leaf runs after §3.2, per leaf instance:
   map match of the leaf's declared clock port to the container clock, in the
-  leaf's own container, of the far end of its synthesised feed (the router's
-  `addressBlock` port when the router is in the immediate parent, else the
-  parent's own synthesised register-bus port), and of its declared reset port
+  leaf's own container, of the far end of its synthesised feed: the router's
+  `addressBlock` port when the router is in the immediate parent, or the
+  parent's own synthesised register-bus port when the parent is itself a
+  single-consumer router-less container; and of its declared reset port
   to that clock's selected reset; two ports bound to the same net resolve by
   declaration order (tie); every instance of the block must resolve to the
   same pair.

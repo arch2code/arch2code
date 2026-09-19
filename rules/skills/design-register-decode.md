@@ -44,13 +44,15 @@ memories, **or** authors a `registerPorts:` row. The framework synthesises its
 
 The single most important fact:
 
-> **A router serves the other instances in its OWN container (its siblings) and
-> nested routers. It NEVER decodes its own container block.**
+> **A router serves the other instances in its OWN container (its siblings),
+> nested routers, and, through a chain of router-less single-consumer
+> containers, a leaf further down. It NEVER decodes its own container block.**
 
 So the decision is **not** "container vs leaf". It is: **is this block served by
-a sibling/parent decoder?** A block that owns registers is fine as long as some
-*other* decoder (a sibling in its container, or a parent decoder) dispatches to
-it.
+a sibling/parent decoder, directly or through a router-less container that
+passes the bus through to it alone?** A block that owns registers is fine as
+long as some *other* decoder (a sibling in its container, a parent decoder, or
+one reached through such a passthrough container) dispatches to it.
 
 ### The decision rule
 
@@ -135,7 +137,10 @@ Everything below the primary router is **synthesized** by
     leaf-to-handler `connectionMap`;
 *   the router→leaf dispatch connection;
 *   for nested routers, **both** the parent-router→child-container connection
-    **and** the child-container boundary `connectionMap` into the nested router.
+    **and** the child-container boundary `connectionMap` into the nested router;
+*   for a router-less container passing the bus through to its single register
+    consumer, the container's own boundary port and a `connectionMap` bridging
+    it to that consumer.
 
 So for nested routers you author **nothing** for the register bus below the
 primary feed. Over-authoring the nested boundary map is wrong.
@@ -149,9 +154,13 @@ does.
 
 ## 4. The four invariants (keep these)
 
-1.  **Co-location.** A routed leaf and its serving decoder share one container.
-    The leaf instance's `addressGroup:` must name the serving router's
-    `addressBlock.addressGroup`.
+1.  **Co-location.** A routed leaf and its serving decoder share one container,
+    or reach one another through a chain of router-less containers that each
+    pass the bus through to exactly one register consumer. The instance the
+    decoder actually dispatches to (the leaf itself, or the outermost such
+    passthrough container) carries `addressGroup:` naming the serving
+    router's `addressBlock.addressGroup`; a leaf fed through a passthrough
+    container carries none.
 2.  **Decoder-as-generated-block.** The decoder is a first-class block whose RTL
     is generated from `apbDecodeModule` (auto-selected by `make newmodule`
     because the block carries `addressBlock:`). Never hand-write it.
@@ -317,8 +326,10 @@ output.
 
 | Symptom / message | Root cause | Fix |
 | --- | --- | --- |
-| `Leaf instance '…' (block '…') is in container '…' which is not served by any router.` | Routed leaf has no decoder in its container (co-location). Classic: DUT-top owns registers but the only decoder is *inside* it. | Add a router as the leaf's sibling, or make the owning block a routed leaf of a parent decoder. Not a manual `connectionMap`. |
-| `Leaf block '…' needs a register handler but no router was found serving any of its instances.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container. |
+| `Leaf instance '…' (block '…') is in container '…' which is not served by any router, directly or through single-consumer containers.` | Routed leaf has no decoder in its container, and no chain of router-less single-consumer containers reaches one either (co-location). Classic: DUT-top owns registers but the only decoder is *inside* it. | Add a router as the leaf's sibling, place it under a chain of containers a router ultimately serves and that each hold no other register consumer, or make the owning block a routed leaf of a parent decoder. Not a manual `connectionMap`. |
+| `Container block '…' hosts N instances that need a register bus (…) but no register-decode router (addressBlock:).` | A router-less container has two or more register consumers; it can pass the bus through to only one. | Add an `addressBlock:` router to the container, or move all but one consumer under a routed container. |
+| `Container block '…' owns firmware-accessible registers/memories itself and also hosts register-bus consumer(s) (…) but no register-decode router (addressBlock:).` | A router-less container that owns registers/memories is already its own boundary's consumer; it cannot also pass the bus through to another. | Add an `addressBlock:` router to the container, or move its registers/memories onto a leaf the router serves. |
+| `Leaf block '…' needs a register handler but no router was found serving any of its instances, directly or through single-consumer containers.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container, or in a container that a router serves and that holds no other register consumer. |
 | `No primary router could be inferred …` | Every router is nested under another; no dispatch-tree root. | Ensure exactly one router is not contained in another router's served scope. |
 | `Multiple candidate primary routers: …` | Two+ routers are both un-nested. | Nest all but one under the primary (give the subsystem container an `addressGroup`). |
 | `Router block '…' has multiple instances … Multi-instance routers are not supported …` | A router block is instanced more than once. | Use one instance per router block; add distinct router blocks per scope (see `apbDecode` vs `bridgeApbDecode`). |

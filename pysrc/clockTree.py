@@ -179,16 +179,15 @@ class BlockDomains:
     declaration fact, so it is not carried here.
 
     `registerClock`/`registerReset` are the block-level R25/rule-1 result
-    (spec §4.3): for a router, the container net its own instance's
-    bus clock/reset port resolves to; for a leaf whose registers a
-    synthesised `<block>_regs` handler serves, the leaf's own clock/reset
-    PORT NAME that carries the register bus (a reusable IP's authored
-    `registerPorts:` clock/reset or its block default, else the top-down R25
-    selection). Both start unset and are filled in once binding has run
-    (`_resolveRouterBusClockReset`, `_resolveRegisterHandlerBinds`): neither
-    is knowable at `BlockDomains.build()` time, since a router's is an
-    instance fact and a top-down leaf's needs its outer instances' own
-    binds. A block that is neither keeps both `None`.
+    (spec §4.3). For a router: the container net its instance's bus
+    clock/reset port resolves to. For a served leaf or a passthrough
+    container: the block's own clock/reset port names carrying the register
+    bus, from an authored `registerPorts:` row or block default, else the
+    top-down R25 selection walked outward through any passthrough
+    containers. Both start unset and are filled in by
+    `_resolveRouterBusClockReset` and `_resolveRegisterHandlerBinds`;
+    neither is knowable at `BlockDomains.build()` time. Any other block
+    keeps both `None`.
     """
 
     def __init__(self, blockKey, block, clocks, resets, defaultClock, selectedReset,
@@ -226,10 +225,12 @@ class BlockDomains:
         # both `None`.
         self.busClockPort = None
         self.busResetPort = None
-        # A served leaf's own port carrying the register bus: the `registerPorts:` key,
-        # or the router's registerDecoderPort a top-down leaf infers. It is also a
-        # synthesised connectionMaps boundary port, so the V19 hasVl clause excludes it
-        # by name and leaves it to the register-bus V19 pass. None for other blocks.
+        # A served leaf's or passthrough container's own port carrying the
+        # register bus: the `registerPorts:` key, or the port
+        # postParseRegisterPorts synthesises for a top-down leaf or
+        # passthrough container. It is also a synthesised connectionMaps
+        # boundary port, so the V19 hasVl clause excludes it by name and
+        # leaves it to the register-bus V19 pass. None for other blocks.
         self.registerBusPort = None
         # Standalone simulation attributes (spec §4.8, R24, V21): per INPUT
         # clock, the period/timeUnit a standalone (`hasVl`) build of this
@@ -701,9 +702,9 @@ class ClockTree:
 
 
 def build(blocks, instances, connections, memories, memoryConnections,
-          connectionMaps, blocksDeclaringNoResets, connectionsWithAuthoredClock,
-          testbenchClocks, testbenchResets, contextOwningProject, rootProjectName,
-          diag):
+          connectionMaps, registerBusPassthroughs, blocksDeclaringNoResets,
+          connectionsWithAuthoredClock, testbenchClocks, testbenchResets,
+          contextOwningProject, rootProjectName, diag):
     """Build the project's ClockTree from parsed flatData sub-dicts.
 
     `blocks`, `instances`, `connections`, `memories`, `memoryConnections` and
@@ -711,6 +712,10 @@ def build(blocks, instances, connections, memories, memoryConnections,
     carries no domain field of its own (spec V17): a register value crossing
     into an accessor in another domain is an unchecked crossing like any
     other (R17), so this build() takes no argument for it.
+    `registerBusPassthroughs` is the `REGAPB_PASSTHROUGH` blob from
+    `config/postParseRegisterPorts.py`, keyed by passthrough container block
+    key: `boundaryPort`, `innerInstanceKey`, `innerPortName`, and
+    `slotInstanceKeys`. It is `{}` when the project declares no routers.
     `blocksDeclaringNoResets` and `connectionsWithAuthoredClock` are the
     parser-recorded facts projectCreate keeps on itself
     (`_blocksDeclaringNoResets`, `_connectionsWithAuthoredClock`).
@@ -1419,7 +1424,8 @@ def build(blocks, instances, connections, memories, memoryConnections,
     _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContainer,
                                reachableInstances)
     _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
-                                 consumerNetByContainer, reachableInstances, diag)
+                                 consumerNetByContainer, reachableInstances,
+                                 registerBusPassthroughs, diag)
     _checkMemoryAccessorDomains(domains, instances, memoryConnections, consumerNetByContainer,
                                 reachableInstances, diag)
 
@@ -1499,21 +1505,19 @@ def build(blocks, instances, connections, memories, memoryConnections,
                 f"co-simulation wrapper's BFM needs one; mark a reset on "
                 f"'{clockName}' default: true or declare one.")
 
-    # V19: a block clock hosting a register bus (a router's or a served
-    # leaf's own registerClock, spec §4.3) must have a selected reset - a
-    # router's own bus reset port left unbound, or a reusable IP declaring
-    # resets: {} with no registerPorts: reset: override, otherwise reaches
-    # generation with no reset to emit at all (registerReset stays None).
-    # registerClock/registerReset are set together only for a router or a
-    # served leaf (BlockDomains' own contract); a block that is neither
-    # keeps both None and is not this rule's concern.
+    # V19: a block clock hosting a register bus (a router's, a served
+    # leaf's, or a passthrough container's registerClock, spec §4.3) must
+    # have a selected reset. A router bus reset port left unbound, or a
+    # reusable IP with resets: {} and no registerPorts: reset:, would
+    # otherwise reach generation with registerReset None. Only those three
+    # block kinds set registerClock; every other block keeps both None.
     for domain in domains.values():
         if domain.registerClock is not None and domain.registerReset is None:
             diag.logError(
                 f"Block '{domain.block}' hosts its register bus on clock "
                 f"'{domain.registerClock}', but that clock has no selected "
-                f"reset (V19): a router's or a served leaf's register bus "
-                f"clock must have one.")
+                f"reset (V19): a router's, a served leaf's or a passthrough "
+                f"container's register bus clock must have one.")
 
     # V24 (spec R20): a regAccess memory must sit on its block's register bus
     # clock until the R20 bridge exists. postParseRegisterPorts rejects a
@@ -1876,7 +1880,8 @@ def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContain
 
 
 def _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
-                                 consumerNetByContainer, reachableInstances, diag):
+                                 consumerNetByContainer, reachableInstances,
+                                 registerBusPassthroughs, diag):
     """Resolve every routed leaf block's own register-port clock/reset
     (spec R25; rule 1 for a reusable IP's `registerPorts:`), storing the
     result on the leaf's own BlockDomains (spec §4.3: "a block-level
@@ -1889,25 +1894,63 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
     replaces that guess. A top-down leaf's selection needs the OUTER leaf
     instances' own binds, done above in every container before this runs.
 
-    Only reachable instances of the leaf block are resolved against: a
-    reusable IP shared with another project may have an instance in that
-    project's own standalone harness, which config/postParseRegisterPorts.py
-    itself never routes (its dispatch is scoped to this build's reachable
-    instances too), so such an instance has no router serving it in THIS
-    build and is not a V8/V25/V26 finding here.
+    `resolveBlock` applies the same rule-1-or-R25 resolution to a
+    passthrough container. `_servingRouterBusNets` calls it for the
+    container before matching a leaf fed through it, so a chain of
+    containers resolves outermost first.
+
+    Only reachable instances of a leaf or passthrough container block are
+    resolved against: a block shared with another project may have an
+    instance in that project's own standalone harness, which
+    config/postParseRegisterPorts.py itself never routes (its dispatch is
+    scoped to this build's reachable instances too), so such an instance
+    has no router serving it in THIS build and is not a V8/V25/V26 finding
+    here.
     """
     instancesByBlock = dict()
     for instanceKey, instRow in instances.items():
         if instanceKey in reachableInstances:
             instancesByBlock.setdefault(instRow['instanceTypeKey'], list()).append(instanceKey)
 
-    resolvedLeaves = set()
+    resolvedBlocks = set()
+
+    def resolveBlock(blockKey):
+        if blockKey in resolvedBlocks:
+            return
+        resolvedBlocks.add(blockKey)
+        block = blocks[blockKey]['block']
+        domain = domains[blockKey]
+        registerPorts = blocks[blockKey].get('registerPorts')
+        if registerPorts:
+            portName = next(iter(registerPorts))
+            regRow = registerPorts[portName]
+            authoredReset = regRow['reset']
+            domain.registerClock = regRow['clock'] or domain.defaultClock
+            domain.registerReset = authoredReset or domain.selectedReset.get(domain.registerClock)
+            domain.registerBusPort = portName
+            if domain.registerClock is not None:
+                # None means the block has no default clock and its
+                # registerPorts: row names none. V15 already reported
+                # that; a second diagnostic against a None clock adds
+                # nothing.
+                _checkRegisterPortsOnBus(
+                    blockKey, block, domain.registerClock,
+                    authoredReset, domain.registerReset,
+                    instancesByBlock.get(blockKey, []), instances,
+                    domains, connections, blocks, consumerNetByContainer,
+                    registerBusPassthroughs, resolveBlock, diag)
+        else:
+            _resolveTopDownRegisterPorts(
+                blockKey, block, domain,
+                instancesByBlock.get(blockKey, []), instances,
+                domains, connections, blocks, consumerNetByContainer,
+                registerBusPassthroughs, resolveBlock, diag)
+
     for instanceKey, instRow in instances.items():
         handlerBlockKey = instRow['instanceTypeKey']
         if not domains[handlerBlockKey].isRegHandler:
             continue
         leafBlockKey = instRow['containerKey']
-        leafBlock = blocks[leafBlockKey]['block']
         leafDomain = domains[leafBlockKey]
         leafContainer = containers[leafBlockKey]
         handlerDomain = domains[handlerBlockKey]
@@ -1919,32 +1962,7 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
         handlerDomain.busClockPort = handlerClockName
         handlerDomain.busResetPort = handlerResetName
 
-        if leafBlockKey not in resolvedLeaves:
-            registerPorts = blocks[leafBlockKey].get('registerPorts')
-            if registerPorts:
-                portName = next(iter(registerPorts))
-                regRow = registerPorts[portName]
-                authoredReset = regRow['reset']
-                leafDomain.registerClock = regRow['clock'] or leafDomain.defaultClock
-                leafDomain.registerReset = authoredReset or leafDomain.selectedReset.get(leafDomain.registerClock)
-                leafDomain.registerBusPort = portName
-                if leafDomain.registerClock is not None:
-                    # None here means the leaf has no default clock and its
-                    # registerPorts: entry names none either - already
-                    # logged (V15, BlockDomains.build()'s checkPortClock);
-                    # checking further against a clock of 'None' would only
-                    # add a nonsensical second diagnostic on top of it.
-                    _checkRegisterPortsOnBus(
-                        leafBlockKey, leafBlock, leafDomain.registerClock,
-                        authoredReset, leafDomain.registerReset,
-                        instancesByBlock.get(leafBlockKey, []), instances,
-                        domains, connections, blocks, consumerNetByContainer, diag)
-            else:
-                _resolveTopDownRegisterPorts(
-                    leafBlockKey, leafBlock, leafDomain,
-                    instancesByBlock.get(leafBlockKey, []), instances,
-                    domains, connections, blocks, consumerNetByContainer, diag)
-            resolvedLeaves.add(leafBlockKey)
+        resolveBlock(leafBlockKey)
 
         if leafDomain.registerClock is None:
             # Unresolved (V8/V25/V26 already reported): leave the plain
@@ -1973,13 +1991,18 @@ def _rebindConsumer(container, instanceKey, blockPort, newNet, kind):
 
 
 def _servingRouterBusNets(leafInstanceKey, instances, domains, connections, blocks,
-                          consumerNetByContainer):
-    """The (consumerNet index, busClockNet, busResetNet, routerBlockKey) for
-    the router-to-leaf feed reaching this leaf instance in its own
-    container, or None if no router there feeds it.
+                          consumerNetByContainer, registerBusPassthroughs, resolveBlock):
+    """Return (consumerNet, busClockNet, busResetNet, registerBusPort) for
+    the feed reaching this instance, or None. A router dispatching to it in
+    its own container is used first. Otherwise, if the container is a
+    passthrough whose `innerInstanceKey` is this instance, the container is
+    resolved via `resolveBlock` and its registerClock/registerReset are the
+    bus nets. `registerBusPort` is the port postParseRegisterPorts
+    synthesises for this instance's block.
     """
     instRow = instances[leafInstanceKey]
-    consumerNet = consumerNetByContainer[instRow['containerKey']]
+    containerKey = instRow['containerKey']
+    consumerNet = consumerNetByContainer[containerKey]
     routerInstanceKey = None
     for connRow in connections.values():
         if connRow['dstKey'] != leafInstanceKey:
@@ -1988,20 +2011,30 @@ def _servingRouterBusNets(leafInstanceKey, instances, domains, connections, bloc
         if domains[srcInstRow['instanceTypeKey']].isRouter:
             routerInstanceKey = connRow['srcKey']
             break
-    if routerInstanceKey is None:
-        return None
+    if routerInstanceKey is not None:
+        routerBlockKey = instances[routerInstanceKey]['instanceTypeKey']
+        routerClockPort, routerResetPort = _routerBusPorts(routerBlockKey, blocks, domains)
+        busClockNet = consumerNet.get((routerInstanceKey, routerClockPort))
+        busResetNet = (consumerNet.get((routerInstanceKey, routerResetPort))
+                       if routerResetPort else None)
+        registerBusPort = blocks[routerBlockKey]['addressBlock']['registerDecoderPort']
+        return consumerNet, busClockNet, busResetNet, registerBusPort
 
-    routerBlockKey = instances[routerInstanceKey]['instanceTypeKey']
-    routerClockPort, routerResetPort = _routerBusPorts(routerBlockKey, blocks, domains)
-    busClockNet = consumerNet.get((routerInstanceKey, routerClockPort))
-    busResetNet = (consumerNet.get((routerInstanceKey, routerResetPort))
-                   if routerResetPort else None)
-    return consumerNet, busClockNet, busResetNet, routerBlockKey
+    passthrough = registerBusPassthroughs.get(containerKey)
+    if passthrough is None or passthrough['innerInstanceKey'] != leafInstanceKey:
+        return None
+    resolveBlock(containerKey)
+    containerDomain = domains[containerKey]
+    if containerDomain.registerClock is None:
+        return None
+    return (consumerNet, containerDomain.registerClock,
+            containerDomain.registerReset, passthrough['innerPortName'])
 
 
 def _checkRegisterPortsOnBus(leafBlockKey, leafBlock, clockPortName, authoredReset, resetPortName,
                              leafInstanceKeys, instances, domains,
-                             connections, blocks, consumerNetByContainer, diag):
+                             connections, blocks, consumerNetByContainer,
+                             registerBusPassthroughs, resolveBlock, diag):
     """V8/V25 for a reusable-IP leaf: its own `registerPorts:`-declared (or
     block-default) clock stays authoritative (spec §4.3), but every instance
     of the block must still sit on the router's actual bus clock (a misbound
@@ -2014,20 +2047,19 @@ def _checkRegisterPortsOnBus(leafBlockKey, leafBlock, clockPortName, authoredRes
     to prefer, so a reset the leaf reaches by its own ordinary name match is
     legitimate even where it is not the router's selected one.
 
-    A leaf instance with no router serving its own container is reported
-    (V8): config/postParseRegisterPorts.py requires an authored router
-    instance in every routed leaf's own direct container, synthesising only
-    the dispatch connection between them, so this names a leaf outside this
-    build's routed scope.
+    A leaf instance with no router serving its own container, directly or
+    through a router-less passthrough container, is reported (V8).
     """
     for leafInstanceKey in leafInstanceKeys:
         instRow = instances[leafInstanceKey]
         found = _servingRouterBusNets(leafInstanceKey, instances, domains,
-                                      connections, blocks, consumerNetByContainer)
+                                      connections, blocks, consumerNetByContainer,
+                                      registerBusPassthroughs, resolveBlock)
         if found is None:
             diag.logError(
                 f"Instance '{instRow['instance']}' of block '{leafBlock}' "
                 f"needs a register-bus port, but no router serves its own "
+                f"container, directly or through a router-less passthrough "
                 f"container (V8).")
             continue
         consumerNet, busClockNet, busResetNet, _ = found
@@ -2049,24 +2081,18 @@ def _checkRegisterPortsOnBus(leafBlockKey, leafBlock, clockPortName, authoredRes
 
 def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstanceKeys,
                                  instances, domains, connections, blocks,
-                                 consumerNetByContainer, diag):
-    """R25 for a top-down leaf (one that authors no `registerPorts:`): the
-    leaf's own declared clock port bound, in its own container, to the same
-    net the serving router's own bus clock is bound to; the reset port
-    likewise against the bus's selected reset. Every instance of the leaf
-    block must agree (V26), and the result is stored on `leafDomain`
-    directly (the caller reads it back from there).
+                                 consumerNetByContainer, registerBusPassthroughs,
+                                 resolveBlock, diag):
+    """R25 for a top-down block with no `registerPorts:`, either a leaf
+    needing a register handler or a passthrough container. The block's
+    declared clock port must bind, in its own container, to the net the
+    serving router's bus clock binds to; the reset port likewise to the
+    bus's selected reset. Every instance must agree (V26). The result is
+    stored on `leafDomain`.
 
-    Only the case where the serving router sits in the leaf's own immediate
-    container is resolved (the shape of every routed leaf in this tree's
-    shipped examples, and the only shape config/postParseRegisterPorts.py
-    requires: an authored router instance in the leaf's own direct
-    container, with only the dispatch connection between them synthesised).
-    A leaf instance with no router serving its own container is reported
-    (V8) rather than silently skipped: an outward walk through a NESTED
-    router's own container (spec §4.3, "the parent's own synthesised
-    register-bus port") is not implemented, so this also covers that shape
-    today, as a reported gap rather than a silent one.
+    The serving router may sit in the immediate container or be reached
+    through passthrough containers via `_servingRouterBusNets`. An
+    instance with no serving router either way is reported (V8).
     """
     results = list()
     # The port name config/postParseRegisterPorts.py synthesises for THIS
@@ -2077,18 +2103,18 @@ def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstan
     for leafInstanceKey in leafInstanceKeys:
         instRow = instances[leafInstanceKey]
         found = _servingRouterBusNets(leafInstanceKey, instances, domains,
-                                      connections, blocks, consumerNetByContainer)
+                                      connections, blocks, consumerNetByContainer,
+                                      registerBusPassthroughs, resolveBlock)
         if found is None:
             diag.logError(
-                f"Instance '{instRow['instance']}' of block '{leafBlock}' owns "
-                f"firmware-accessible registers or memories, but no router "
-                f"serves its own container (V8): a top-down leaf's "
-                f"register-bus port is inferred from the router dispatching "
-                f"to it directly, and none was found there.")
+                f"Instance '{instRow['instance']}' of block '{leafBlock}' "
+                f"needs a register-bus port, but no router serves its own "
+                f"container, directly or through a router-less passthrough "
+                f"container (V8).")
             continue
-        consumerNet, busClockNet, busResetNet, routerBlockKey = found
+        consumerNet, busClockNet, busResetNet, servedRegisterBusPort = found
         if registerBusPort is None:
-            registerBusPort = blocks[routerBlockKey]['addressBlock']['registerDecoderPort']
+            registerBusPort = servedRegisterBusPort
 
         clockPortName = None
         if busClockNet is not None:
@@ -2098,12 +2124,12 @@ def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstan
                     break
         if clockPortName is None:
             diag.logError(
-                f"Instance '{instRow['instance']}' of block '{leafBlock}' owns "
-                f"firmware-accessible registers or memories, but none of its "
-                f"declared clock ports is bound to the register bus's clock "
-                f"(V8). Bind one of '{leafBlock}''s clock ports, in its "
-                f"clocks: map, to the same container clock the serving "
-                f"router's own bus clock is bound to.")
+                f"Instance '{instRow['instance']}' of block '{leafBlock}' "
+                f"needs a register-bus port, but none of its declared clock "
+                f"ports is bound to the register bus's clock (V8). Bind one "
+                f"of '{leafBlock}''s clock ports, in its clocks: map, to the "
+                f"same container clock the serving router's own bus clock "
+                f"is bound to.")
             continue
 
         resetPortName = None
@@ -2115,11 +2141,11 @@ def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstan
                     break
         if resetPortName is None:
             diag.logError(
-                f"Instance '{instRow['instance']}' of block '{leafBlock}' owns "
-                f"firmware-accessible registers or memories, but none of its "
-                f"declared reset ports is bound to the register bus's "
-                f"selected reset (V25). Bind one of '{leafBlock}''s reset "
-                f"ports, in its resets: map, to that same container reset.")
+                f"Instance '{instRow['instance']}' of block '{leafBlock}' "
+                f"needs a register-bus port, but none of its declared reset "
+                f"ports is bound to the register bus's selected reset (V25). "
+                f"Bind one of '{leafBlock}''s reset ports, in its resets: "
+                f"map, to that same container reset.")
             continue
 
         results.append((leafInstanceKey, clockPortName, resetPortName))

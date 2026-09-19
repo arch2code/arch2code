@@ -416,9 +416,11 @@ outstanding task. Read it once per leaf and move on.
   `Multiple candidate primary routers` or
   `No primary router could be inferred`. Adjust the router declarations
   so the migrated legacy hierarchy still has exactly one top router.
-- A routed leaf instance sits in a container
-  `not served by any router`. Place the leaf under a routed container, or add the serving
-  router for that container.
+- A routed leaf instance sits in a container `not served by any router,
+  directly or through single-consumer containers`. Place the leaf under a
+  routed container, under a chain of router-less containers that each hold
+  no other register consumer and that a router ultimately serves, or add the
+  serving router for that container.
 - `Router block '<name>' (file <file>) has no addressBus: true
   interface authored in its load-time scope.` The router block's
   YAML file does not see a register-bus interface. Move the interface

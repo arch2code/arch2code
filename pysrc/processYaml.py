@@ -4174,10 +4174,15 @@ class projectCreate:
         # block declarations and the per-instance and per-memory binds its
         # containers emit
         rootProjectName = self.config.getConfig('PROJECTNAME')
+        # Absent when no block declares addressBlock:; postParseRegisterPorts
+        # returns before persisting it.
+        registerBusPassthroughs = self.config.getConfig('REGAPB_PASSTHROUGH', failOk=True)
+        if registerBusPassthroughs is None:
+            registerBusPassthroughs = {}
         tree = clockTree.build(
             self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
             self.flatData['memories'], self.flatData['memoryConnections'],
-            self.flatData['connectionMaps'],
+            self.flatData['connectionMaps'], registerBusPassthroughs,
             self._blocksDeclaringNoResets, self._connectionsWithAuthoredClock,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)
@@ -5114,12 +5119,44 @@ class projectCreate:
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
+        # Absent when no block declares addressBlock:; postParseRegisterPorts
+        # returns before persisting it.
+        registerBusPassthroughs = self.config.getConfig('REGAPB_PASSTHROUGH', failOk=True)
+        if registerBusPassthroughs is None:
+            registerBusPassthroughs = {}
+        reachable = self.reachableInstanceKeys()
         for context in self.data['instances']:
             for instance, instData in self.data['instances'][context].items():
                 # not every instance has used any space, so only check the ones that do
-                if instData['instanceTypeKey'] in blockAddressCurrent:
+                if instData['instanceTypeKey'] not in blockAddressCurrent:
+                    continue
+                if instData['addressGroup'] is not None:
                     # available is based on the number of size of each address space in that group * addressMultiples
-                    availableSpace = self.addressControl['AddressGroups'][instData['addressGroup']]['addressIncrement'] * instData['addressMultiples']
+                    windows = [(instData['addressGroup'], instData['addressMultiples'])]
+                else:
+                    # unreachable instances of a referenced project are not in
+                    # the blob; a reachable one with no addressGroup is either
+                    # a passthrough inner consumer or an authoring error.
+                    if instData['instanceKey'] not in reachable:
+                        continue
+                    passthrough = registerBusPassthroughs.get(instData['containerKey'])
+                    if passthrough is None:
+                        printError(
+                            f"Instance '{instData['instance']}' (block "
+                            f"'{self.flatData['blocks'][instData['instanceTypeKey']]['block']}') "
+                            f"owns firmware-accessible registers/memories but "
+                            f"carries no addressGroup: and is not fed through "
+                            f"a single-consumer container; add addressGroup: "
+                            f"<router group> to the instance."
+                        )
+                        exit(warningAndErrorReport())
+                    windows = [
+                        (self.flatData['instances'][slotInstanceKey]['addressGroup'],
+                         self.flatData['instances'][slotInstanceKey]['addressMultiples'])
+                        for slotInstanceKey in passthrough['slotInstanceKeys']
+                    ]
+                for addressGroup, addressMultiples in windows:
+                    availableSpace = self.addressControl['AddressGroups'][addressGroup]['addressIncrement'] * addressMultiples
                     if blockAddressCurrent[instData['instanceTypeKey']] > availableSpace:
                         printError(f"Block {instData['instanceKey']} overflowed its address space. Used: {blockAddressCurrent[instData['instanceTypeKey']]}. Available: {availableSpace}")
                         exit(warningAndErrorReport())

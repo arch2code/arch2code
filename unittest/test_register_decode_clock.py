@@ -256,6 +256,52 @@ SAMPLER_REGISTER = ("registers:\n"
                     "    - { register: cfgS, regType: rw, block: sampler, structure: cfgRegSt, "
                     "desc: \"sampler configuration\" }\n")
 
+# A passthrough container: no addressBlock:, no registerPorts:. It
+# resolves its register bus top-down (R25) like a leaf, through the
+# `resolveBlock` path `_servingRouterBusNets` takes for its inner
+# consumer.
+WRAP_BLOCK = """    wrap:
+        desc: "router-less passthrough container"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            clkW:   { }
+        resets:
+            rst_n:    { clock: clk }
+            rstW_n:   { clock: clkW }
+"""
+
+
+def _passthrough_sampler_design(wrap_map, sampler_map):
+    """wrap (router-less passthrough container, served by uAPBDecode) holds
+    sampler (a top-down leaf) as its own single register consumer; sampler's
+    register bus is resolved through wrap's, not directly against the
+    router."""
+    return f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{WRAP_BLOCK}{SAMPLER_BLOCK}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uWrap:      {{ container: top, instanceType: wrap, addressGroup: top,
+                  {wrap_map} }}
+    uSampler:   {{ container: wrap, instanceType: sampler,
+                  {sampler_map} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+{SAMPLER_REGISTER}"""
+
+
+PASSTHROUGH_SAMPLER = _passthrough_sampler_design(
+    "clocks: { clkW: apbClk },\n                  resets: { rstW_n: apbRst_n }",
+    "clocks: { clkCap: clkW },\n                  resets: { rstCap_n: rstW_n }")
+
 
 def _sampler_design(sampler_map):
     return f"""include:
@@ -509,6 +555,23 @@ def _instanceBinds(db_path):
                                 'from instanceClockResetBinds'):
             binds[instances[row['instanceKey']]][row['childPort']] = row['parentSignal']
         return binds
+    finally:
+        conn.close()
+
+
+def _registerBusPort(db_path, block_name):
+    """The port name persisted on every one of a block's own
+    blockClocksResets rows (BlockDomains.registerBusPort): a served leaf's
+    or passthrough container's own port carrying the register bus."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        blockKey = conn.execute(
+            'select blockKey from blocks where block = ?', (block_name,)).fetchone()['blockKey']
+        row = conn.execute(
+            'select registerBusPort from blockClocksResets '
+            'where blockKey = ? limit 1', (blockKey,)).fetchone()
+        return row['registerBusPort']
     finally:
         conn.close()
 
@@ -1162,6 +1225,157 @@ def run_served_leaf_registerclock_name_coincidence_not_renamed():
         {'uLeafC': {'regClk': 'regClk', 'auxClk': 'regClk'}})
 
 
+def run_passthrough_container_resolves_bus_clock():
+    label = ("a router-less passthrough container and the leaf behind it "
+             "both resolve their register bus")
+    fixture, project_path, db_path = _make_fixture(PASSTHROUGH_SAMPLER)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: {label}\n{output}")
+            return False
+        failed = False
+        wrapBus = _registerBusDomain(db_path, 'wrap')
+        if wrapBus != ('clkW', 'rstW_n'):
+            print(f"FAIL: {label}: wrap's bus clock/reset is {wrapBus}, "
+                  f"expected ('clkW', 'rstW_n')")
+            failed = True
+        samplerBus = _registerBusDomain(db_path, 'sampler_regs')
+        if samplerBus != ('clkCap', 'rstCap_n'):
+            print(f"FAIL: {label}: sampler_regs's bus clock/reset is "
+                  f"{samplerBus}, expected ('clkCap', 'rstCap_n')")
+            failed = True
+        got = _instanceBinds(db_path).get('u_sampler_regs', {}).get('clkCap')
+        if got != 'clkCap':
+            print(f"FAIL: {label}: instance 'u_sampler_regs' port 'clkCap' "
+                  f"binds to {got!r}, expected 'clkCap'")
+            failed = True
+        print(f"{'FAIL' if failed else 'PASS'}: {label}")
+        return not failed
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_passthrough_inner_leaf_bus_mismatch_rejected():
+    design = _passthrough_sampler_design(
+        "clocks: { clkW: apbClk },\n                  resets: { rstW_n: apbRst_n }",
+        "clocks: { clkCap: clk },\n                  resets: { rstCap_n: rst_n }")
+    return _expect_diagnostic(
+        "a leaf behind a passthrough container whose clock does not sit on "
+        "the container's own resolved bus clock is rejected",
+        design,
+        ('sampler', 'V8'))
+
+
+def run_passthrough_container_bus_mismatch_rejected():
+    design = _passthrough_sampler_design(
+        "clocks: { clkW: clk },\n                  resets: { rstW_n: rst_n }",
+        "clocks: { clkCap: clkW },\n                  resets: { rstCap_n: rstW_n }")
+    return _expect_diagnostic(
+        "a passthrough container whose clock does not sit on the router's "
+        "actual bus clock is rejected",
+        design,
+        ('wrap', 'V8'))
+
+
+# A reusable-IP passthrough container: registerPorts: { regs: ... }, owns
+# no registers of its own, and hosts a top-down inner leaf. Its own
+# boundary port is 'regs' (its authored registerPorts: key); the inner
+# leaf's port is the one postParseRegisterPorts synthesises for it
+# (REGAPB_PASSTHROUGH's innerPortName), the router's registerDecoderPort
+# 'apbReg' - not the container's own key.
+WRAP_IP_BLOCK = render_leaf('wrapIP')
+
+PASSTHROUGH_REUSABLE_IP_SAMPLER = f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{WRAP_IP_BLOCK}{SAMPLER_BLOCK}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uWrapIP:    {{ container: top, instanceType: wrapIP, addressGroup: top,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uSampler:   {{ container: wrapIP, instanceType: sampler,
+                  clocks: {{ clkCap: clk }}, resets: {{ rstCap_n: rst_n }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+{SAMPLER_REGISTER}"""
+
+
+def run_passthrough_reusable_ip_container_inner_leaf_port():
+    """A reusable-IP passthrough container's own registerPorts: key and
+    its inner leaf's synthesised port name are distinct; both resolve
+    their register clock/reset through the container."""
+    label = ("a reusable-IP passthrough container and the top-down leaf "
+             "behind it keep separate register-bus port names")
+    fixture, project_path, db_path = _make_fixture(PASSTHROUGH_REUSABLE_IP_SAMPLER)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: {label}\n{output}")
+            return False
+        failed = False
+        containerPort = _registerBusPort(db_path, 'wrapIP')
+        if containerPort != 'regs':
+            print(f"FAIL: {label}: wrapIP's registerBusPort is "
+                  f"{containerPort!r}, expected 'regs'")
+            failed = True
+        leafPort = _registerBusPort(db_path, 'sampler')
+        if leafPort != 'apbReg':
+            print(f"FAIL: {label}: sampler's registerBusPort is "
+                  f"{leafPort!r}, expected 'apbReg'")
+            failed = True
+        containerBus = _registerBusDomain(db_path, 'wrapIP')
+        leafBus = _registerBusDomain(db_path, 'sampler')
+        if leafBus != containerBus:
+            print(f"FAIL: {label}: sampler's register clock/reset {leafBus} "
+                  f"does not match wrapIP's {containerBus}")
+            failed = True
+        print(f"{'FAIL' if failed else 'PASS'}: {label}")
+        return not failed
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_passthrough_container_instances_disagree_rejected():
+    """Two instances of a passthrough container that resolve to different
+    clock/reset pairs are rejected (V26); the container's registerClock is
+    a block-level fact."""
+    design = f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{WRAP_BLOCK}{SAMPLER_BLOCK}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uWrapA:     {{ container: top, instanceType: wrap, addressGroup: top,
+                  clocks: {{ clk: apbClk, clkW: apbClk }},
+                  resets: {{ rst_n: apbRst_n, rstW_n: apbRst_n }} }}
+    uWrapB:     {{ container: top, instanceType: wrap, addressGroup: top,
+                  clocks: {{ clk: clk, clkW: apbClk }},
+                  resets: {{ rst_n: rst_n, rstW_n: apbRst_n }} }}
+    uSampler:   {{ container: wrap, instanceType: sampler,
+                  clocks: {{ clkCap: clkW }}, resets: {{ rstCap_n: rstW_n }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+{SAMPLER_REGISTER}"""
+    return _expect_diagnostic(
+        "two instances of a passthrough container resolving to different "
+        "clock/reset pairs is rejected",
+        design,
+        ('wrap', 'V26'))
+
+
 def _run():
     print("=" * 72)
     print("TESTING GENERATED REGISTER-DECODE CLOCK DOMAIN")
@@ -1185,6 +1399,11 @@ def _run():
         run_served_leaf_registerclock_name_coincidence_not_renamed,
         run_register_port_reset_undeclared_rejected,
         run_router_addressblock_clock_undeclared_rejected,
+        run_passthrough_container_resolves_bus_clock,
+        run_passthrough_inner_leaf_bus_mismatch_rejected,
+        run_passthrough_container_bus_mismatch_rejected,
+        run_passthrough_reusable_ip_container_inner_leaf_port,
+        run_passthrough_container_instances_disagree_rejected,
     )]
     print()
     print("=" * 72)

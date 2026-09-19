@@ -365,7 +365,9 @@ router domain is derived by the "Routers" paragraph below. Concretely, the
 far end a leaf's map matches against is the router's `addressBlock` port
 when the router sits in the leaf's immediate parent, or the parent's own
 synthesised register-bus port otherwise, itself a block clock of the
-parent by this same outward derivation. This runs the opposite direction
+parent by this same outward derivation. A router-less container passes the
+bus through to exactly one register consumer; a router-less container
+holding several is rejected at build. This runs the opposite direction
 from a `connectionMaps:` row, whose boundary port derives its domain
 inside out from the inner port (V16); V16 governs authored rows, not a
 synthesised register-bus feed.

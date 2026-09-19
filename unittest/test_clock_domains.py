@@ -3403,6 +3403,209 @@ resets:
         design=design, projectDomains=projectDomains)
 
 
+# wrapV declares no addressBlock: or registerPorts:, so it is a
+# passthrough container. Its registerClock/registerReset come from R25
+# via `resolveBlock`; leafV infers its bus from wrapV's pair, not from
+# the router.
+V19_PASSTHROUGH_BUS_PORT_DESIGN = V19_TOPDOWN_PREAMBLE + """blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    wrapV:
+        desc: "router-less passthrough container, hasVl at the design boundary"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        clocks:
+            clkD:   { default: true }
+            clk:    { }
+            apbClk: { }
+        resets:
+            rstD_n:   { clock: clkD }
+            rst_n:    { clock: clk }
+            rstAlt_n: { clock: clk }
+            apbRst_n: { clock: apbClk }
+    leafV:
+        desc: "top-down leaf behind the passthrough container"
+        hasMdl: true
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+    uWrapV:     { container: top_tb, instanceType: wrapV,     instGroup: top, addressGroup: top,
+                  clocks: { clkD: clk },
+                  resets: { rstD_n: rst_n, rstAlt_n: rst_n } }
+    uLeafV:     { container: wrapV, instanceType: leafV,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgV, regType: rw, block: leafV, structure: cfgRegSt, desc: "leafV configuration" }
+"""
+
+
+def run_v19_hasvl_passthrough_register_bus_port_excluded():
+    """V19 positive for a passthrough container's own register-bus port:
+    'clk' has no selected reset, but the registerBusPort exclusion leaves
+    'apbClk' to the register-bus V19 pass, so the build succeeds."""
+    fixture, project_path, db_path = _make_fixture(
+        design=V19_PASSTHROUGH_BUS_PORT_DESIGN, projectDomains=V19_APB_PROJECT_DOMAINS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: the passthrough container hasVl register-bus port fixture builds\n{output}")
+            return False
+        print("PASS: the passthrough container hasVl register-bus port fixture builds")
+        if 'V19' in output:
+            print(f"FAIL: build succeeded but still reported a V19 diagnostic\n{output}")
+            return False
+        print("PASS: no V19 diagnostic")
+        prj = projectOpen(db_path)
+        blockKey = next(key for key, row in prj.data['blocks'].items()
+                        if row['block'] == 'wrapV')
+        view = prj.getBlockData(blockKey)
+
+        def bus_port_matches_register_clock_reset():
+            busPortName = view['registerBusPort']
+            port = view['ports']['connections'][busPortName]
+            if port['domainClock'] != 'apbClk' or port['domainReset'] != 'apbRst_n':
+                raise AssertionError(
+                    f"'{busPortName}' reports domainClock/domainReset "
+                    f"{port['domainClock']!r}/{port['domainReset']!r}, "
+                    f"expected 'apbClk'/'apbRst_n'")
+            return True
+
+        return _run_case(
+            "a router-less passthrough container's register-bus port takes "
+            "its own resolved registerClock/registerReset",
+            bus_port_matches_register_clock_reset)
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v19_hasvl_passthrough_extra_port_still_rejected():
+    """V19 negative twin: same 'wrapV' as the positive above, plus one
+    extra, ordinary connection-derived port 'in' on a second, non-bus,
+    non-default clock 'clkX' with two unmarked resets. The registerBusPort
+    exclusion names only 'apbClk'; 'in' must still be rejected, proving the
+    exclusion does not blanket the whole container block."""
+    design = V19_TOPDOWN_PREAMBLE + """blocks:
+    top_tb:
+        desc: "design top"
+        hasMdl: true
+        clocks:
+            clk:    { default: true }
+            apbClk: { }
+            clkY:   { }
+        resets:
+            rst_n:    { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstY_n:   { clock: clkY }
+    cpu:
+        desc: "register-bus master"
+        hasMdl: true
+    prod:
+        desc: "producer"
+        hasMdl: true
+    apbDecode:
+        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    wrapV:
+        desc: "router-less passthrough container, a second non-bus connection-derived port"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        clocks:
+            clkD:   { default: true }
+            clk:    { }
+            apbClk: { }
+            clkX:   { }
+        resets:
+            rstD_n:   { clock: clkD }
+            rst_n:    { clock: clk }
+            rstAlt_n: { clock: clk }
+            apbRst_n: { clock: apbClk }
+            rstX1_n:  { clock: clkX }
+            rstX2_n:  { clock: clkX }
+    leafV:
+        desc: "top-down leaf behind the passthrough container"
+        hasMdl: true
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
+    uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
+    uProd:      { container: top_tb, instanceType: prod,      instGroup: top,
+                  clocks: { clk: clkY }, resets: { rst_n: rstY_n } }
+    uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+    uWrapV:     { container: top_tb, instanceType: wrapV,     instGroup: top, addressGroup: top,
+                  clocks: { clkD: clk, clkX: clkY },
+                  resets: { rstD_n: rst_n, rstAlt_n: rst_n, rstX1_n: rstY_n, rstX2_n: rstY_n } }
+    uLeafV:     { container: wrapV, instanceType: leafV,
+                  clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }
+
+connections:
+    - { interface: apbReg, src: uCPU,  dst: uAPBDecode }
+    - { interface: dataIf, src: uProd, srcport: out, dst: uWrapV, dstport: in, clock: clkY }
+
+registers:
+    - { register: cfgV, regType: rw, block: leafV, structure: cfgRegSt, desc: "leafV configuration" }
+"""
+    # Binding clkX onto the shared apbClk net instead of a distinct clkY
+    # collapses to a V13 (ambiguous block clock) diagnostic before V19 gets
+    # a look, so this keeps its own clkY/rstY_n and custom projectDomains
+    # rather than reusing V19_APB_PROJECT_DOMAINS.
+    projectDomains = """
+clocks:
+    clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
+    apbClk: { desc: "the register-bus testbench clock", period: 3, timeUnit: ns }
+    clkY:   { desc: "a third testbench clock", period: 5, timeUnit: ns }
+
+resets:
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+    rstY_n:   { desc: "clkY's reset", clock: clkY }
+"""
+    return _expect_diagnostic(
+        "a passthrough container's non-bus connection-derived port on an "
+        "ambiguous clock is still rejected, unaffected by the register-bus "
+        "port's own exclusion",
+        ('V19', 'wrapV', 'in', 'clkX', 'rstX1_n', 'rstX2_n'),
+        design=design, projectDomains=projectDomains)
+
+
 def run_v19_hasvl_port_cases():
     return all((run_v19_hasvl_port_ambiguous_reset_rejected(),
                 run_v19_hasvl_port_no_reset_at_all_rejected(),
@@ -3414,7 +3617,9 @@ def run_v19_hasvl_port_cases():
                 run_v19_hasvl_port_positive(),
                 run_v19_hasvl_two_instances_same_port_not_duplicated(),
                 run_v19_hasvl_topdown_register_bus_port_excluded(),
-                run_v19_hasvl_topdown_extra_port_still_rejected()))
+                run_v19_hasvl_topdown_extra_port_still_rejected(),
+                run_v19_hasvl_passthrough_register_bus_port_excluded(),
+                run_v19_hasvl_passthrough_extra_port_still_rejected()))
 
 
 # ------------------------------------------------------- name collisions --
