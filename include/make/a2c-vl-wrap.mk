@@ -76,6 +76,14 @@ obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES) $(A2C_VL_SV_$(1))
 	mkdir -p obj_dir/$(1)
 	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
 	@sed -e 's|^[^:]*:|obj_dir/$(1)/V$(1)__ALL.o:|' obj_dir/$(1)/V$(1)__ver.d > obj_dir/$(1)/V$(1).dep
+
+# Bootstrap for a tree already built before the .dep existed. -include cannot
+# create a file nothing knows how to build, and the .dep is only a side effect
+# of the recipe above, whose prerequisites are just the generated wrappers. So
+# the object still looked up to date, that recipe never ran, and RTL edits
+# stayed invisible. verilator has already written __ver.d, so retarget that.
+obj_dir/$(1)/V$(1).dep: obj_dir/$(1)/V$(1)__ver.d
+	@sed -e 's|^[^:]*:|obj_dir/$(1)/V$(1)__ALL.o:|' $$< > $$@
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 
