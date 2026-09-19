@@ -2,7 +2,9 @@
 
 Status: proposal, 2026-09-18. Supersedes the `A2C_CPP_EXCLUDE_FILES` interim
 (base, uncommitted, fix 3 of the root VL_DUT unblock; hardened the same day to
-exclude every foreign-owned `blockVlRegistrar` TU). Keeps fix 1 (the
+exclude foreign-owned `blockVlRegistrar` TUs whose owner build has pair-specific
+registrations for the child, `ownerPairSpecific`; base's `ip_test` example
+shows a root may swap a reused project's literal-label internal instance). Keeps fix 1 (the
 `calcRegistrarPairs` ownership guard: pair-specific registrations are skipped
 when the pair owner is not the owner of the build's top block) and fix 2
 (`__ALL.a` archive merge in a2c-vl-wrap.mk), which are independent of this plan.
@@ -76,8 +78,8 @@ In `createBuildManifest.py`:
   source (`cpp` only; `h` is not a compile input, `cppm` already goes to
   `moduleFiles`). Rows of all four modes contribute (block, registrar, context,
   project), the same rows `record()` sees today.
-- Registrar rows: a foreign-owned `blockVlRegistrar` row is not recorded into
-  `scSrcFiles` (it is still recorded into `dirs`, so the compile of the
+- Registrar rows: a foreign-owned `blockVlRegistrar` row whose pair is
+  `ownerPairSpecific` is not recorded into `scSrcFiles` (it is still recorded into `dirs`, so the compile of the
   directory's Config modules is unaffected). This replaces `cppExcludeFiles`
   with the same ownership test the hardened interim uses.
 - Emit `A2C_SC_SRC_FILES := ...` and delete `A2C_CPP_EXCLUDE_FILES`.
@@ -169,7 +171,7 @@ build now and gives the proper fix a green baseline to diff against.
 
 1. `config/project.yaml`: add `userSources` segment flag (model, tb).
 2. `createBuildManifest.py`: `scSrcFiles`, `A2C_SC_USER_SRC_DIRS`, drop
-   `cppExcludeFiles`; the foreign-owned `blockVlRegistrar` test moves from
+   `cppExcludeFiles`; the `ownerPairSpecific` `blockVlRegistrar` test moves from
    "add to exclude" to "do not add to compile set".
 3. `a2c-systemc.mk`: compile-set change of 3.2; comment updates.
 4. Confirm on the root: regenerate (`rm -f isp_top.db && make db`), diff the

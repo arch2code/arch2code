@@ -4036,6 +4036,21 @@ class projectCreate:
             if entry not in entries:
                 entries.append(entry)
 
+        # (owner project, child) pairs that carry a pair-specific registration in
+        # the OWNER's build, over every instance (reachable here or not): the
+        # owner's VlRegistrar TU then #includes pair-top headers only that build
+        # generates, so a composing build must not compile it.
+        pairSpecificChildren = set()
+        for inst in self.flatData['instances'].values():
+            if inst['containerKey'] not in blocks:
+                continue
+            owner = self.contextOwningProject[blocks[inst['containerKey']]['_context']]
+            containerSourced = inst['inheritContainerParam'] or any(
+                d['variant'] == inst['variant'] and d['containerSourced']
+                for d in descriptors.get(inst['instanceTypeKey'], []))
+            if containerSourced:
+                pairSpecificChildren.add((owner, inst['instanceTypeKey']))
+
         pairs = dict()
         childrenByParent = dict()
         parentsByChild = dict()
@@ -4095,6 +4110,7 @@ class projectCreate:
                         'variantDescriptors': {},
                         'modelRegistrations': [],
                         'verifRegistrations': [],
+                        'ownerPairSpecific': (pairOwner, childKey) in pairSpecificChildren,
                     })
                     descriptor = None if inst['inheritContainerParam'] else \
                         selectedDescriptor(inst)
