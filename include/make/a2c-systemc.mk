@@ -175,6 +175,12 @@ CXX_FLAGS += $(CPP_INCLUDES)
 ifdef VL_DUT
 ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
+# main.cpp guards the coverage dump on VL_COV as well as VERILATOR. VL_COV only
+# added --coverage to the verilator options, so the model was instrumented but
+# the dump was compiled out and no coverage.dat was ever written.
+ifdef VL_COV
+CXX_FLAGS += -DVL_COV
+endif
 LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
