@@ -18,6 +18,12 @@ import a2c.endOfTest;
 
 #ifdef VERILATOR
 #include "vl_tracer.h"
+// coveragep() returns a VerilatedCovContext, which is only forward declared by
+// the headers vl_tracer.h pulls in. Without this the dump below fails to
+// compile with "member access into incomplete type 'VerilatedCovContext'".
+#ifdef VL_COV
+#include "verilated_cov.h"
+#endif
 #endif
 
 #ifdef VCS
