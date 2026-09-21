@@ -786,9 +786,9 @@ internal pipeline links between arch2code blocks.
 **Why it is problematic (even though supported):**
 1. No hardware backpressure — flow control cannot be expressed on the interface.
 2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
-3. Known channel hazard: `raw_channel` drives both handshake directions off one
-   `sc_event`; under some process orderings a value can be overwritten before it
-   is consumed.
+3. `raw_channel` drives both handshake directions off one `sc_event`. `write()`
+   returns only once the consumer has taken the value, so no beat is lost, but
+   each side is woken once more per beat than a two-event channel would need.
 4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
 5. Easy to misuse in place of `status` or a real streaming protocol.
 

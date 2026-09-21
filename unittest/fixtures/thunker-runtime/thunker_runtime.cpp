@@ -108,12 +108,10 @@ static std::uint32_t idVal( int i )   { return 0xCCC30000u | (std::uint32_t)( 0x
 static std::uint32_t destVal( int i ) { return 0xDDD40000u | (std::uint32_t)( 0x4000 + i ); }
 static std::uint32_t userVal( int i ) { return 0xEEE50000u | (std::uint32_t)( 0x5000 + i ); }
 
-// raw_channel drives both handshake directions off one event and write() waits
-// on the event it notifies, so a producer that writes again immediately can
-// overwrite a value the consumer has not taken. That is a raw_channel property,
-// not an adapter one - it reproduces with a hand-written forwarding thread and
-// no thunker whenever the forwarder's process is created before the producer's.
-// The raw harnesses therefore pace their producer instead of measuring it.
+// Spacing between beats for the publish/sample and request/response harnesses.
+// The raw harnesses write back to back on purpose: raw_channel::write() must not
+// return before the consumer has taken the value, and the thunker is the shape
+// that had the consumer parked at the moment of the write.
 static void pace() { sc_core::wait( 10, sc_core::SC_NS ); }
 
 // ===========================================================================
@@ -140,7 +138,6 @@ struct rawConsumerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             UpT v;
             v.value = dataVal( i );
             upChan.write( v, (std::uint64_t)-1 );
@@ -180,7 +177,6 @@ struct rawProducerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             DownT v;
             v.value = dataVal( i );
             childPort->write( v, (std::uint64_t)-1 );
@@ -225,7 +221,6 @@ struct rawUpPortConsumerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             UpT v;
             v.value = dataVal( i );
             upChan.write( v, (std::uint64_t)-1 );
@@ -267,7 +262,6 @@ struct rawUpPortProducerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             DownT v;
             v.value = dataVal( i );
             childPort->write( v, (std::uint64_t)-1 );

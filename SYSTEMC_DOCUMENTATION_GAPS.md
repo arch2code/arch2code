@@ -80,7 +80,7 @@ virtual void writeClocked(const T& data) = 0;
 **Remaining improvements:**
 - Add @param/@return Doxygen tags on `write`/`read`
 - Document `setExternalEvent` / multi-writer locking behavior in the header
-- Consider fixing the known single-`sc_event` lost-value hazard (recorded, not fixed)
+- Single-`sc_event` lost-value hazard: fixed (`write()` waits until the value is taken)
 
 #### ⚠️ NEEDS WORK: notify_ack_channel.h
 **Status:** Basic documentation

@@ -142,17 +142,11 @@ private:
             // The concrete raw_channel<T>::write override has no default
             // argument, so the magic value is passed explicitly here.
             //
-            // raw_channel drives both handshake directions off one event and
-            // write() waits on the same event it notifies, so a producer that
-            // writes again immediately can overwrite a value the consumer has
-            // not taken. That is a raw_channel property and not an adapter one
-            // — it reproduces with a hand-written forwarding thread and no
-            // thunker, whenever the forwarder's process is created before the
-            // producer's — but the adapter is the shape that makes the
-            // consumer reliably parked at the moment of the write, so it is
-            // the shape that meets it. Nothing here can prevent it; it is
-            // recorded so the loop is not read as offering a guarantee the
-            // channel does not.
+            // raw_channel drives both handshake directions off one event, so
+            // write() wakes with the consumer. The adapter keeps the consumer
+            // parked at the moment of the write, which is the ordering that
+            // made the pre-fix write() overwrite an untaken value; it now
+            // relies on write() waiting until the value has been taken.
             m_down_channel.write( outVal, (uint64_t)-1 );
         }
     }
