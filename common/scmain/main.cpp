@@ -239,7 +239,7 @@ int sc_main(int argc, char* argv[])
     }
     std::cout << endl;
 
-    std::cout << "Seed: 0x" << std::hex << randFactory::gSeed << endl;
+    std::cout << "Seed: 0x" << std::hex << randFactory::gSeed << std::dec << endl;
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     // If a valid verilated instance is provided from command line, register with factory
