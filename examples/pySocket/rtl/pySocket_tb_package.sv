@@ -7,6 +7,7 @@ package pySocket_tb_package;
 // types
 typedef logic[32-1:0] param_t; //Parameter type
 typedef logic[16-1:0] word16_t; //Parameter type
+typedef logic[8-1:0] axis_id_t; //AXI4-Stream TID/TDEST width
 
 // enums
 typedef enum logic[1-1:0] {     //Message ID
@@ -29,6 +30,14 @@ typedef struct packed {
 typedef struct packed {
     param_t response; //response
 } p2s_response_st;
+
+typedef struct packed {
+    axis_id_t id; //Stream TID
+} axis_tid_st;
+
+typedef struct packed {
+    axis_id_t id; //Stream TDEST
+} axis_tdest_st;
 
 endpackage : pySocket_tb_package
 // GENERATED_CODE_END

@@ -152,11 +152,17 @@ The regression launcher automatically adjust the number of queued run commands b
 | list of seeds | integer < num seeds | Queue one run commands per each seed in the truncated seed list [0:count] 
 |===
 
-==== Using seed attribute in run commands ====
-The individual run commands ``seed`` attribute can be referenced in the ``command`` and ``args`` attributes as the environment variable ``RL_SEED`` as in example below
+==== Substitution variables in run commands ====
+The following variables are expanded in ``command`` and ``args`` attributes when each run job is scheduled:
+
+* ``RL_SEED`` -- value of the run command ``seed`` attribute for the current job (see example below)
+* ``RL_RUN_ID`` -- unique run identifier for the current job (``run_0``, ``run_1``, ...), matching the ``run_<rid>`` directory created under the session ``runs/`` tree
+
 [source, text]
-"command" : "echo 'my seed is ' :", 
+"command" : "echo 'my seed is ' :",
 "args" : "${RL_SEED}"
+
+For cocotb-based run commands, the runner sets ``COCOTB_RESULTS_FILE`` to ``results.xml`` in each job's ``run_<rid>`` directory so parallel jobs do not share a results file under the testbench tree.
 
 
 === Log Failure Analysis Rules
@@ -268,7 +274,8 @@ The following example shows how the definition of the filter for the Q_ASSERT er
 │   │   └── <testname>
 │   │       └── >run_<rid>
 │   │           ├── <testname>.cmd
-│   │           └── <testname>.log
+│   │           ├── <testname>.log
+│   │           └── results.xml (cocotb, when used)
 │   └── run_<rid> -> ./<groupname>/<testname>/run_<rid>
 └── test-reports
     └── junit.xml

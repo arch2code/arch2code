@@ -46,6 +46,18 @@ def topMakefile(data):
 
 
 def sharedMk(data):
+    # A2C_PRJ_YAML is emitted only when the project file is not at the
+    # a2c-common.mk default (arch/yaml/project.yaml). newModule passes an empty
+    # string when the default already resolves, so functional-layout output is
+    # unchanged; every hierarchical project needs the explicit line.
+    prjYaml = ""
+    if data['prjYaml']:
+        prjYaml = (
+            "\n"
+            "# The project file is not at the arch/yaml/project.yaml default that\n"
+            "# a2c-common.mk assumes, so point the build at it explicitly.\n"
+            f"A2C_PRJ_YAML = $(REPO_ROOT)/{data['prjYaml']}\n"
+        )
     return (
         "REPO_ROOT = $(shell git rev-parse --show-toplevel)\n"
         "A2C_ROOT = $(REPO_ROOT)/builder\n"
@@ -57,6 +69,7 @@ def sharedMk(data):
         f"PROJECTNAME = {data['projectName']}\n"
         f"TB_TOP_MODULE = {data['tbTop']}\n"
         f"HDL_TOP_MODULE = {data['hdlTop']}\n"
+        f"{prjYaml}"
         "\n"
         "# User-hosted generated-region files: arch2code injects generated sections\n"
         "# into user-authored hosts it does not scaffold (e.g. address defines,\n"
@@ -72,10 +85,22 @@ def sharedMk(data):
 
 
 def rundirMk(data):
+    # A firmware project (one declaring the includeFW fileMap entry) compiles its
+    # firmware into the model binary: the hand-authored fw sources, plus the BSP
+    # that backs regRead32/regWrite32. The BSP is deliberately not in the default
+    # source set, so it is opted into here.
+    firmware = ""
+    if data['hasFirmware']:
+        firmware = (
+            "EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src\n"
+            "EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp\n"
+            "\n"
+        )
     return (
         "REPO_ROOT = $(shell git rev-parse --show-toplevel)\n"
         "include $(REPO_ROOT)/include/make/shared.mk\n"
         "\n"
+        f"{firmware}"
         "EXTRA_CPP_SRC      =\n"
         "EXTRA_CPP_INCLUDES =\n"
         "EXTRA_LD_FLAGS     =\n"

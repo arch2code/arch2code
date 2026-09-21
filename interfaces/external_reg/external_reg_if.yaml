@@ -2,7 +2,7 @@
 interface_defs:
   external_reg : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
     signals: 
       wdata : data_t
       rdata : data_t

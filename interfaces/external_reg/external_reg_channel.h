@@ -18,9 +18,12 @@
 // write(T)
 // |        ---T---> reg_read(T) where transaction is change of value event
 //
-//                   reg_write(T)
+//                   reg_write(T) / reg_write_cmd(T)
 // read(T) <---T---|
 //
+// APB readNonBlocking() returns m_mirror (architectural image).
+// CPU writes use reg_write_cmd (command mailbox only).
+// Engine/BFM publish architectural values with update_mirror (or reg_write).
 template <class T>
 class external_reg_in_if
 : virtual public sc_interface, virtual public portBase
@@ -35,7 +38,13 @@ public:
     virtual void setExternalEvent( sc_event *event ) = 0;
     // non-blocking
     virtual void write( const T& val_ ) = 0;
-    virtual void reg_write( const T& val_ ) = 0; // triggers event to reader
+    virtual void reg_write( const T& val_ ) = 0; // publish: update mirror + notify readers
+    // CPU write command: notify readers without changing APB read mirror.
+    virtual void reg_write_cmd( const T& val_ ) = 0;
+    // Update read mirror without notifying read() waiters (engine/BFM rdata publish).
+    virtual void update_mirror( const T& val_ ) = 0;
+    // Block until the architectural mirror is updated (tandem return path).
+    virtual void wait_mirror(void) = 0;
 
 protected:
     // constructor
@@ -55,9 +64,14 @@ public:
     // blocking read
     virtual void reg_read( T& ) = 0;             // waits on event
     virtual T reg_read() = 0;
+    // non-blocking variant
+    virtual void readNonBlocking( T& ) = 0;
+    virtual T readNonBlocking() = 0;
     // blocking write
     virtual void write( const T& val_ ) = 0;
-    virtual void reg_write( const T& val_ ) = 0; // triggers event to reader
+    virtual void reg_write( const T& val_ ) = 0; // publish: update mirror + notify readers
+    virtual void reg_write_cmd( const T& val_ ) = 0;
+    virtual void wait_mirror(void) = 0;
 
 protected:
     // constructor
@@ -86,12 +100,14 @@ public:
         m_channel_update_event( (std::string(name_) + "m_channel_update_event").c_str() ),
         m_channel_update_event_ptr(&m_channel_update_event),
         m_reg_write_event( (std::string(name_) + "m_reg_write_event").c_str() ),
+        m_mirror_event( (std::string(name_) + "m_mirror_event").c_str() ),
         m_reader(nullptr),
         m_writer(nullptr)
         {
             setTracker(T::getValueType());
             logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
             m_write_data.unpack(initialValue);
+            m_mirror.unpack(initialValue);
         }
     explicit external_reg_channel( const char* name_, std::string block_,
                                    const typename T::_packedSt& initialValue = typename T::_packedSt(0))
@@ -121,7 +137,10 @@ public:
     virtual void reg_read( T& ) override;             // waits on event
     virtual T reg_read() override;             // waits on event
     // blocking write
-    virtual void reg_write( const T& val_ ) override; // triggers event to reader
+    virtual void reg_write( const T& val_ ) override; // publish: mirror + notify
+    virtual void reg_write_cmd( const T& val_ ) override; // CPU cmd: notify only
+    virtual void update_mirror( const T& val_ ) override;
+    virtual void wait_mirror(void) override;
     // other methods
     operator T ()
         { return read(); }
@@ -151,18 +170,21 @@ public:
     virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
-    T    m_status_value;           // the data
-    T    m_write_data;
+    T    m_status_value;           // write()/reg_read path
+    T    m_write_data;             // last cmd payload for read() waiters
+    T    m_mirror;                 // APB readNonBlocking() value
 
     sc_event m_channel_update_event;
     sc_event* m_channel_update_event_ptr;
     sc_event m_reg_write_event;
+    sc_event m_mirror_event;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
 
     bool m_status_value_written = false; // m_value contain valid data when true
     bool m_external_arb = false;
+    bool m_mirror_valid = false;
 
 private:
     // disabled
@@ -231,8 +253,39 @@ template <class T>
 inline void external_reg_channel<T>::reg_write( const T& val_ )
 {
     m_write_data = val_;
+    const bool mirror_changed = !m_mirror_valid || !(m_mirror == val_);
+    m_mirror = val_;
+    m_mirror_valid = true;
     interfaceBase::delay(false);
     m_reg_write_event.notify(SC_ZERO_TIME);
+    if (mirror_changed) {
+        m_mirror_event.notify(SC_ZERO_TIME);
+    }
+}
+
+template <class T>
+inline void external_reg_channel<T>::reg_write_cmd( const T& val_ )
+{
+    m_write_data = val_;
+    interfaceBase::delay(false);
+    m_reg_write_event.notify(SC_ZERO_TIME);
+}
+
+template <class T>
+inline void external_reg_channel<T>::update_mirror( const T& val_ )
+{
+    if (m_mirror_valid && m_mirror == val_) {
+        return;
+    }
+    m_mirror = val_;
+    m_mirror_valid = true;
+    m_mirror_event.notify(SC_ZERO_TIME);
+}
+
+template <class T>
+inline void external_reg_channel<T>::wait_mirror(void)
+{
+    wait(m_mirror_event);
 }
 
 template <class T>
@@ -246,13 +299,13 @@ inline void external_reg_channel<T>::read( T& val_ )
 template <class T>
 inline void external_reg_channel<T>::readNonBlocking( T& val_ )
 {
-    val_ = m_write_data;
+    val_ = m_mirror;
 }
 
 template <class T>
 inline T external_reg_channel<T>::readNonBlocking( )
 {
-    return m_write_data;
+    return m_mirror;
 }
 
 template <class T>

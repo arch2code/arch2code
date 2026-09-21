@@ -671,11 +671,13 @@ struct externalRegProducerHarness : sc_core::sc_module
 
 // ===========================================================================
 // axi4_stream - the envelope is bridged member by member, one verdict per
-// struct parameter.
+// REQUIRED struct parameter (tdata_t, tid_t, tdest_t). tuser_t is an optional
+// payload: it carries no verdict and, when present on both sides, always takes
+// the packed arm, so the harness expects the packed value for it.
 // ===========================================================================
 template <class UpTDATA, class UpTID, class UpTDEST, class UpTUSER,
           class DownTDATA, class DownTID, class DownTDEST, class DownTUSER,
-          bool DirectTdata, bool DirectTid, bool DirectTdest, bool DirectTuser>
+          bool DirectTdata, bool DirectTid, bool DirectTdest>
 struct axi4StreamConsumerHarness : sc_core::sc_module
 {
     using UpInfo = axi4StreamInfoSt<UpTDATA, UpTID, UpTDEST, UpTUSER>;
@@ -683,9 +685,10 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
 
     axi4_stream_channel<UpTDATA, UpTID, UpTDEST, UpTUSER> upChan;
     axi4_stream_in<DownTDATA, DownTID, DownTDEST, DownTUSER> childPort;
-    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST, UpTUSER,
-                             DownTDATA, DownTID, DownTDEST, DownTUSER,
-                             DirectTdata, DirectTid, DirectTdest, DirectTuser> thunker;
+    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST,
+                             DownTDATA, DownTID, DownTDEST,
+                             DirectTdata, DirectTid, DirectTdest,
+                             UpTUSER, DownTUSER> thunker;
     const char* label;
     int beats = 0;
 
@@ -723,7 +726,8 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
             expectEqual( label, info.tdata.value, bridged( dataVal( i ), DirectTdata ) );
             expectEqual( label, info.tid.value, bridged( idVal( i ), DirectTid ) );
             expectEqual( label, info.tdest.value, bridged( destVal( i ), DirectTdest ) );
-            expectEqual( label, info.tuser.value, bridged( userVal( i ), DirectTuser ) );
+            // Optional tuser_t has no verdict: it always crosses packed.
+            expectEqual( label, info.tuser.value, bridged( userVal( i ), false ) );
             // tlast and the byte qualifiers carry no verdict and must cross
             // unchanged.
             expectEqual( label, info.tlast ? 1u : 0u, ( i == TRANSFERS - 1 ) ? 1u : 0u );
@@ -737,7 +741,7 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
 
 template <class UpTDATA, class UpTID, class UpTDEST, class UpTUSER,
           class DownTDATA, class DownTID, class DownTDEST, class DownTUSER,
-          bool DirectTdata, bool DirectTid, bool DirectTdest, bool DirectTuser>
+          bool DirectTdata, bool DirectTid, bool DirectTdest>
 struct axi4StreamProducerHarness : sc_core::sc_module
 {
     using UpInfo = axi4StreamInfoSt<UpTDATA, UpTID, UpTDEST, UpTUSER>;
@@ -745,9 +749,10 @@ struct axi4StreamProducerHarness : sc_core::sc_module
 
     axi4_stream_channel<UpTDATA, UpTID, UpTDEST, UpTUSER> upChan;
     axi4_stream_out<DownTDATA, DownTID, DownTDEST, DownTUSER> childPort;
-    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST, UpTUSER,
-                             DownTDATA, DownTID, DownTDEST, DownTUSER,
-                             DirectTdata, DirectTid, DirectTdest, DirectTuser> thunker;
+    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST,
+                             DownTDATA, DownTID, DownTDEST,
+                             DirectTdata, DirectTid, DirectTdest,
+                             UpTUSER, DownTUSER> thunker;
     const char* label;
     int beats = 0;
 
@@ -785,7 +790,8 @@ struct axi4StreamProducerHarness : sc_core::sc_module
             expectEqual( label, info.tdata.value, bridged( dataVal( i ), DirectTdata ) );
             expectEqual( label, info.tid.value, bridged( idVal( i ), DirectTid ) );
             expectEqual( label, info.tdest.value, bridged( destVal( i ), DirectTdest ) );
-            expectEqual( label, info.tuser.value, bridged( userVal( i ), DirectTuser ) );
+            // Optional tuser_t has no verdict: it always crosses packed.
+            expectEqual( label, info.tuser.value, bridged( userVal( i ), false ) );
             expectEqual( label, info.tlast ? 1u : 0u, ( i == TRANSFERS - 1 ) ? 1u : 0u );
             expectEqual( label, info.tstrb[0] == Q_TRUE ? 1u : 0u, 1u );
             expectEqual( label, info.tkeep[1] == Q_TRUE ? 1u : 0u, 1u );
@@ -809,12 +815,17 @@ template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, fa
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, true>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, false>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, true>;
-template class axi4_stream_port_thunker<maskASt, maskASt, maskASt, maskASt,
-                                        maskBSt, maskBSt, maskBSt, maskBSt,
-                                        true, false, true, false>;
-template class axi4_stream_port_thunker<maskASt, maskASt, maskASt, maskASt,
-                                        maskBSt, maskBSt, maskBSt, maskBSt,
-                                        false, true, false, true>;
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        true, false, true, maskASt, maskBSt>;
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        false, true, false, maskASt, maskBSt>;
+// The generator omits an absent optional payload: both tuser_t default to the
+// std::monostate sentinel and the tuser copy is compiled out.
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        true, true, true>;
 
 int sc_main( int, char*[] )
 {
@@ -841,10 +852,10 @@ int sc_main( int, char*[] )
 
     axi4StreamConsumerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              true, false, true, false> streamC0( "streamC0", "axi4_stream in tdata/tdest direct" );
+                              true, false, true> streamC0( "streamC0", "axi4_stream in tdata/tdest direct" );
     axi4StreamConsumerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              false, true, false, true> streamC1( "streamC1", "axi4_stream in tid/tuser direct" );
+                              false, true, false> streamC1( "streamC1", "axi4_stream in tid direct" );
 
     // -- producer-child shape: thunkOut() -----------------------------------
     rawProducerHarness<maskASt, maskBSt, false> rawP0( "rawP0", "raw out packed" );
@@ -861,10 +872,10 @@ int sc_main( int, char*[] )
         memP1( "memP1", "memory out data-only direct" );
     axi4StreamProducerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              true, false, true, false> streamP0( "streamP0", "axi4_stream out tdata/tdest direct" );
+                              true, false, true> streamP0( "streamP0", "axi4_stream out tdata/tdest direct" );
     axi4StreamProducerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              false, true, false, true> streamP1( "streamP1", "axi4_stream out tid/tuser direct" );
+                              false, true, false> streamP1( "streamP1", "axi4_stream out tid direct" );
 
     // -- port shapes: the lazily resolved up side, both directions ----------
     rawUpPortConsumerHarness<maskASt, maskBSt, false> rawUpC( "rawUpC", "raw in up-port packed" );

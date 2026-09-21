@@ -7,6 +7,7 @@
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <optional>
 #include <string>
+#include <type_traits>
 
 // axi_write_port_thunker
 //
@@ -82,16 +83,40 @@
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
 // member).
+// The thunker moves each transaction as packed bits, and the ID occupies
+// exactly IDW of them, so both ends must agree on UpIDW == DownIDW for the
+// ID to round-trip unchanged. The C++ spelling of the ID type may differ
+// (project validation pairs type payloads by width, and a parameterizable
+// type spells as a 64-bit alias). Template argument order matches the generator
+// (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
+// the direct-copy verdicts (DirectAddr, DirectData, DirectStrb), up-optional
+// (in interface_defs order: AWU, WU, BU, ID/IDW), down-optional (AWU, WU, BU,
+// ID/IDW). The verdicts cover the required payloads only; the optional
+// payloads correspond exactly when both sides spell the same C++ type, which
+// the class decides itself below.
 template <class UpA, class UpD, class UpS,
           class DownA, class DownD, class DownS,
-          bool DirectAddr = false, bool DirectData = false, bool DirectStrb = false>
+          bool DirectAddr = false, bool DirectData = false, bool DirectStrb = false,
+          class UpAWU = std::monostate, class UpWU = std::monostate, class UpBU = std::monostate, class UpID = _axiIdT, unsigned UpIDW = 4,
+          class DownAWU = std::monostate, class DownWU = std::monostate, class DownBU = std::monostate, class DownID = _axiIdT, unsigned DownIDW = 4>
 class axi_write_port_thunker
 {
+    static_assert(UpIDW == DownIDW, "a cross-interface bind must carry the same id_t width on both ends");
+    // Envelope-level direct-copy verdicts. The generator's verdicts cover the
+    // required payloads (the data envelope carries both data_t and strb_t, so
+    // it needs both); the envelope also corresponds only when the optional
+    // user-signal and id members are the same C++ type on both sides (the id
+    // width is already equal). The response envelope carries no required
+    // payload, so its verdict is decided from those members alone. A false
+    // verdict is always correct, only slower.
+    static constexpr bool kDirectAddr = DirectAddr && std::is_same_v<UpAWU, DownAWU> && std::is_same_v<UpID, DownID>;
+    static constexpr bool kDirectData = DirectData && DirectStrb && std::is_same_v<UpWU, DownWU> && std::is_same_v<UpID, DownID>;
+    static constexpr bool kDirectResp = std::is_same_v<UpBU, DownBU> && std::is_same_v<UpID, DownID>;
 public:
     // connectionMap shape: parent port reference.
     axi_write_port_thunker( const char* name_,
-                            axi_write_in<UpA, UpD, UpS>&     upPort,
-                            axi_write_in<DownA, DownD, DownS>& downPort,
+                            axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
+                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
@@ -105,8 +130,8 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     axi_write_port_thunker( const char* name_,
-                            axi_write_in_if<UpA, UpD, UpS>&    upInIface,
-                            axi_write_in<DownA, DownD, DownS>& downPort,
+                            axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&    upInIface,
+                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
@@ -122,8 +147,8 @@ public:
     // that drives the owned channel; the bridged payload is driven onto
     // the parent-side channel's axi_write_out_if<UpA, UpD, UpS>.
     axi_write_port_thunker( const char* name_,
-                            axi_write_out_if<UpA, UpD, UpS>&   upOutIface,
-                            axi_write_out<DownA, DownD, DownS>& downPort,
+                            axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&   upOutIface,
+                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -135,13 +160,14 @@ public:
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
     }
 
-    // producer (out) port shape: the up side is an unbound parent OUT port
-    // (axi_write_out<UpA, UpD, UpS>&), resolved lazily in thunkOut() once its
-    // interface binds during elaboration. Mirrors the connectionMap shape's
-    // lazy port handling for the producer direction.
+    // producer (out) port shape: the up side is an unbound parent port
+    // axi_write_out<UpA, UpD, UpS>& (e.g. a testbench External's inherited
+    // <DUT>Inverted boundary port), resolved lazily in thunkOut(). Used when
+    // a parameterized producer instance feeds a non-parameterized boundary at
+    // an excluded-instance (tb/DUT) boundary.
     axi_write_port_thunker( const char* name_,
-                            axi_write_out<UpA, UpD, UpS>&     upPort,
-                            axi_write_out<DownA, DownD, DownS>& downPort,
+                            axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
+                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -158,33 +184,34 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        axi_write_in_if<UpA, UpD, UpS>* upIn =
+        axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             // Address phase: upstream receives, downstream sends.
-            axiWriteAddressSt<UpA>   addrIn;
-            axiWriteAddressSt<DownA> addrOut;
+            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrIn;
+            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrOut;
             upIn->receiveAddr( addrIn );
-            static_assert( !DirectAddr || sizeof(axiWriteAddressSt<DownA>) == sizeof(axiWriteAddressSt<UpA>), "axi_write addr_t direct copy requires equal envelope size" );
-            copyPayload<DirectAddr>( addrOut, addrIn );
+            static_assert( !kDirectAddr || sizeof(decltype(addrOut)) == sizeof(decltype(addrIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectAddr>( addrOut, addrIn );
             // The channel's overridden sendAddr() drops the default
             // optional argument, so the std::nullopt is supplied
             // explicitly to satisfy the two-argument signature.
             m_down_channel.sendAddr( addrOut, std::nullopt );
 
             // Data phase: upstream receives, downstream sends.
-            axiWriteDataSt<UpD, UpS>     dataIn;
-            axiWriteDataSt<DownD, DownS> dataOut;
+            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataIn;
+            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataOut;
             upIn->receiveData( dataIn );
-            static_assert( !(DirectData && DirectStrb) || sizeof(axiWriteDataSt<DownD, DownS>) == sizeof(axiWriteDataSt<UpD, UpS>), "axi_write data_t/strb_t direct copy requires equal envelope size" );
-            copyPayload<DirectData && DirectStrb>( dataOut, dataIn );
+            static_assert( !kDirectData || sizeof(decltype(dataOut)) == sizeof(decltype(dataIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectData>( dataOut, dataIn );
             m_down_channel.sendData( dataOut );
 
             // Response phase: downstream returns, upstream answered.
-            axiWriteRespSt respIn;
-            axiWriteRespSt respOut;
+            axiWriteRespSt<DownBU, DownID, DownIDW> respIn;
+            axiWriteRespSt<UpBU, UpID, UpIDW>   respOut;
             m_down_channel.receiveResp( respIn );
-            copyPayload<false>( respOut, respIn );
+            static_assert( !kDirectResp || sizeof(decltype(respOut)) == sizeof(decltype(respIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectResp>( respOut, respIn );
             upIn->sendResp( respOut );
         }
     }
@@ -198,42 +225,43 @@ private:
         // (m_down_channel) replaced by m_up_out_iface, and every Up<->Down
         // type swapped. Resolve the up-side interface once, from the eager
         // channel iface or (port shape) the lazily-bound parent out port.
-        axi_write_out_if<UpA, UpD, UpS>* upOut =
+        axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upOut =
             m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             // Address phase: downstream receives, upstream sends.
-            axiWriteAddressSt<DownA> addrIn;
-            axiWriteAddressSt<UpA>   addrOut;
+            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrIn;
+            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrOut;
             m_down_channel.receiveAddr( addrIn );
-            static_assert( !DirectAddr || sizeof(axiWriteAddressSt<UpA>) == sizeof(axiWriteAddressSt<DownA>), "axi_write addr_t direct copy requires equal envelope size" );
-            copyPayload<DirectAddr>( addrOut, addrIn );
+            static_assert( !kDirectAddr || sizeof(decltype(addrOut)) == sizeof(decltype(addrIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectAddr>( addrOut, addrIn );
             // The out interface's sendAddr() carries a default optional
             // argument; the std::nullopt is supplied explicitly to mirror
             // thunkIn() and the channel's two-argument signature.
             upOut->sendAddr( addrOut, std::nullopt );
 
             // Data phase: downstream receives, upstream sends.
-            axiWriteDataSt<DownD, DownS> dataIn;
-            axiWriteDataSt<UpD, UpS>     dataOut;
+            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataIn;
+            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataOut;
             m_down_channel.receiveData( dataIn );
-            static_assert( !(DirectData && DirectStrb) || sizeof(axiWriteDataSt<UpD, UpS>) == sizeof(axiWriteDataSt<DownD, DownS>), "axi_write data_t/strb_t direct copy requires equal envelope size" );
-            copyPayload<DirectData && DirectStrb>( dataOut, dataIn );
+            static_assert( !kDirectData || sizeof(decltype(dataOut)) == sizeof(decltype(dataIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectData>( dataOut, dataIn );
             upOut->sendData( dataOut );
 
             // Response phase: upstream returns, downstream answered.
-            axiWriteRespSt respIn;
-            axiWriteRespSt respOut;
+            axiWriteRespSt<UpBU, UpID, UpIDW>   respIn;
+            axiWriteRespSt<DownBU, DownID, DownIDW> respOut;
             upOut->receiveResp( respIn );
-            copyPayload<false>( respOut, respIn );
+            static_assert( !kDirectResp || sizeof(decltype(respOut)) == sizeof(decltype(respIn)), "direct copy requires equal envelope size" );
+            copyPayload<kDirectResp>( respOut, respIn );
             m_down_channel.sendResp( respOut );
         }
     }
 
-    axi_write_in<UpA, UpD, UpS>*    m_up_port;
-    axi_write_in_if<UpA, UpD, UpS>* m_up_in_iface;
-    axi_write_out_if<UpA, UpD, UpS>* m_up_out_iface;
-    axi_write_out<UpA, UpD, UpS>* m_up_out_port;
-    axi_write_channel<DownA, DownD, DownS> m_down_channel;
+    axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>*    m_up_port;
+    axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_in_iface;
+    axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_iface;
+    axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_port;
+    axi_write_channel<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW> m_down_channel;
 };
 
 #endif // AXI_WRITE_PORT_THUNKER_H

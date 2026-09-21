@@ -10,11 +10,11 @@
 #
 #   READERS of shared examples/ trees (read-only):
 #     The eval/addrctl ip_test parity suites, the boundary-signal suite, the
-#     nested-layout suite, the layout-migration suite, and the db-failure suite
-#     all READ an examples/ tree (projectCreate/arch2code parse the shared YAML
-#     and write their DB to a unique temp path, or copytree the tree into a
-#     private tempdir). They are safe concurrently with each other (concurrent
-#     reads) but NOT concurrent with test_build_manifest.py.
+#     nested-layout suite, and the layout-migration suite all READ an examples/
+#     tree (projectCreate/arch2code parse the shared YAML and write their DB to
+#     a unique temp path, or copytree the tree into a private tempdir). They are
+#     safe concurrently with each other (concurrent reads) but NOT concurrent
+#     with test_build_manifest.py.
 #
 #   ISOLATED (everything else):
 #     Each isolates via TemporaryDirectory / mkdtemp / uniquely named
@@ -44,12 +44,9 @@ EXAMPLE_READERS=(
     test_eval_sv_emit.py              # reads examples/ip_test (copytree)
     test_addrctl_ip_test_view.py      # reads examples/ip_test
     test_boundary_signals.py          # reads examples/ip_test
-    test_payload_direct_copy.py       # reads examples/ip_test + simple_ip + xprojParam
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
-    test_db_failure_no_stale_artifact.py  # reads examples/simple + xprojParam/cpLayoutBad (copytree)
-    test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
-    test_tb_variant_plain_block.py     # reads examples/helloWorld (copytree)
+    test_validate_ports.py            # runs projectCreate on examples/nested
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
@@ -67,8 +64,12 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-if [[ ${#ALL[@]} -ne 132 ]]; then
-    echo "WARNING: expected 132 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
+# Guard against silently dropping or double-counting suites: ALL must contain
+# every test_*.py exactly once. Derived from the glob rather than a literal
+# count, so adding or removing a suite never requires editing this number.
+TOTAL_TEST_FILES=(test_*.py)
+if [[ ${#ALL[@]} -ne ${#TOTAL_TEST_FILES[@]} ]]; then
+    echo "WARNING: expected ${#TOTAL_TEST_FILES[@]} suites (all test_*.py), found ${#ALL[@]} in the bucketed set." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

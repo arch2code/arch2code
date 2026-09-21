@@ -76,6 +76,7 @@ parser.add_argument('--depth', type=int, help='Depth to document, 1=instance blo
 
 # systemc options
 parser.add_argument('--instances', type=str, help='A list of instances in the design to be used with --systemc or --systemVerilogGenerator. If omitted, all instance are used')
+parser.add_argument('--python', action='store_true', help='SystemC generator: target is a Python catalog (PY_GEN_FILES)')
 
 # newmodule options
 parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files')

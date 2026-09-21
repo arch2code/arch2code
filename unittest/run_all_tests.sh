@@ -350,6 +350,7 @@ ADDRCTL_TESTS=(
     "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
     "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
     "zero-instance exported leaf ports"         "test_zero_instance_ported_block.py"
+    "socket catalog view"                       "test_socket_catalog_view.py"
 )
 
 idx=20
@@ -514,6 +515,55 @@ echo ""
 echo "Test Suite ${idx}: two integrators declaring variants of one reusable IP"
 echo "------------------------------------------------------------------------"
 python3 test_variant_two_integrators.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: optional interface parameters"
+echo "------------------------------------------------------------------------"
+python3 test_optional_intf_params.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Error Handling (unresolvable interface hdlparam)"
+echo "------------------------------------------------------------------------"
+python3 test_error_intf_hdlparam_unresolved.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: interface definition data contracts"
+echo "------------------------------------------------------------------------"
+python3 test_interface_def_contracts.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: typeStruct schema field type"
+echo "------------------------------------------------------------------------"
+python3 test_type_struct_field.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: connectionMap boundary port validation"
+echo "------------------------------------------------------------------------"
+python3 test_validate_ports.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: socket shell on a parameterizable block is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_socket_parameterized.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: arbitration trio compile-contract coverage"
+echo "------------------------------------------------------------------------"
+python3 test_arbitration_trio_coverage.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: multicycle channel constructor arguments"
+echo "------------------------------------------------------------------------"
+python3 test_multicycle_ctor_args.py || FAILED=1
+idx=$((idx+1))
 
 echo ""
 echo "========================================================================"

@@ -1012,6 +1012,45 @@ class projectOpen:
                 return None
             members.append((extent, storage))
         return ('struct', tuple(members))
+    def datatypeRef(self, kind, key):
+        """Dereference a `typeStruct` field's stored (kind, key) pair.
+
+        `kind` is 'types' or 'structures', the value processSimple stored in
+        a schema field's `<field>Kind` column. `key` is that field's
+        `<field>Key` column, the qualified 'name/context' string.
+
+        Returns a dict:
+          kind              - as passed in
+          name              - the type/structure's storage key value
+          key               - the qualified key, unchanged
+          context           - row['_context'], the file that declares it
+          isParameterizable - the row's isParameterizable column
+          width             - the resolved bit width; only a plain int when
+                              isParameterizable is False
+          row               - the underlying types/structures row
+
+        This is the one sanctioned way a consumer dereferences a typeStruct
+        field; do not read self.data['types']/self.data['structures']
+        directly for one.
+        """
+        row = self.data[kind][key]
+        storageField = self.schema.data['key'][kind]
+        # A structures row's 'width' column is always the resolved integer
+        # (structWidth sums resolved field widths). A types row's 'width'
+        # column instead holds whatever the author wrote there verbatim - a
+        # named constant, or empty when widthLog2/widthLog2minus1 was used
+        # instead - so it is resolved here the same way any other type width
+        # is resolved (resolveTypeWidth), not read as a stored column.
+        width = row['width'] if kind == 'structures' else self.resolveTypeWidth(row)
+        return {
+            'kind': kind,
+            'name': row[storageField],
+            'key': key,
+            'context': row['_context'],
+            'isParameterizable': row['isParameterizable'],
+            'width': width,
+            'row': row,
+        }
 
     # based on a block get the sub hier tree
     def getSubHier(self, topBlock):
@@ -1250,8 +1289,7 @@ class projectOpen:
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
                         'classIncludeContext', 'configModules',
                         'containerTypedChildModules',
-                        'addressDecode', 'standaloneVariants', 'standaloneVariantConfigs', 'foreignVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
-                        'interface_type_mappings_qualified'}
+                        'addressDecode', 'standaloneVariants', 'standaloneVariantConfigs', 'foreignVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings'}
         ret = dict()
         # create some of the simple returns
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
@@ -1259,6 +1297,7 @@ class projectOpen:
         ret['blockInfo'] = self.data['blocks'][qualBlock]
         ret['temp'] = dict()
         ret['temp']['structs'] = dict()
+        ret['temp']['typeContexts'] = dict()
         ret['temp']['consts'] = dict()
         ret['temp']['registerInterfaceTypes'] = dict()
         # Variant LABELS this block's instances select. A label alone names no
@@ -1318,6 +1357,176 @@ class projectOpen:
         ret.pop('temp') # remove temp data
 
         return ret
+
+    def _socketRawInterfaceType(self, port_data):
+        # Connection ports store the qualified interfaceKey on the merged
+        # `connection` dict (and often also at the top level). Declared /
+        # register ports may only have one of those, or a raw interfaceType.
+        conn = port_data.get('connection') or {}
+        interface_key = conn.get('interfaceKey') or port_data.get('interfaceKey') or ''
+        if interface_key:
+            iface = self.data.get('interfaces', {}).get(interface_key)
+            if iface:
+                return iface.get('interfaceType')
+        return port_data.get('interfaceType') or conn.get('interfaceType')
+
+    def _socketCanonicalInterfaceType(self, port_data, block_data):
+        raw = self._socketRawInterfaceType(port_data)
+        if not raw:
+            return None
+        mappings = block_data.get('interface_type_mappings') or {}
+        return mappings.get(raw, raw)
+
+    def _blockRegisterWordDecode(self, block_key):
+        # Word offsets and APB address mask from the block's register map.
+        # Matches the SV decoder: one exact-offset case arm per 4-byte bus
+        # word (paddr masked to addressBits). Memory-mapped APB windows are
+        # range-decoded in RTL and are not listed here.
+        offsets = []
+        for reg in self.data['registers'].values():
+            if reg['blockKey'] != block_key:
+                continue
+            if reg['regType'] == 'memory':
+                continue
+            offset = int(reg['offset'])
+            decode_size = int(reg['decodeSize'])
+            for word in range(0, decode_size, 4):
+                offsets.append(offset + word)
+        if not offsets:
+            return None
+        offsets.sort()
+        max_address = self.data['blocks'][block_key]['maxAddress']
+        address_bits = int(max_address).bit_length()
+        if address_bits < 1:
+            address_bits = 1
+        return {
+            'mappedOffsets': offsets,
+            'addrMask': (1 << address_bits) - 1,
+        }
+
+    def _routerSoleRegisterBlockKey(self, router_block_key):
+        # When a router serves exactly one register-owning leaf in its
+        # address group, that leaf's map is the APB target for the router's
+        # upstream port. Multiple leaves keep distinct maps on the per-leaf
+        # dispatch ports; the upstream is then left without a single map.
+        address_block = self.data['blocks'][router_block_key].get('addressBlock')
+        if not address_block:
+            return None
+        group = address_block['addressGroup']
+        instance_with_regapb = self.config.getConfig('INSTANCES_WITH_REGAPB', failOk=True)
+        if instance_with_regapb is None:
+            return None
+        owners = []
+        for inst_key in instance_with_regapb:
+            inst = self.data['instances'][inst_key]
+            if inst['addressGroup'] != group:
+                continue
+            type_key = inst['instanceTypeKey']
+            if type_key not in owners:
+                owners.append(type_key)
+        if len(owners) == 1:
+            return owners[0]
+        return None
+
+    def _registerOwningBlockKey(self, type_key, inst_key):
+        if self._blockRegisterWordDecode(type_key) is not None:
+            return type_key
+        if self.data['blocks'][type_key].get('isRegHandler'):
+            container_key = self.data['instances'][inst_key]['containerKey']
+            if container_key in self.data['blocks']:
+                return container_key
+            return self.data['instances'][container_key]['instanceTypeKey']
+        if self.data['blocks'][type_key].get('addressBlock'):
+            return self._routerSoleRegisterBlockKey(type_key)
+        return type_key
+
+    def _socketApbTargetBlockKey(self, qualBlock, port, port_data, source_type):
+        # Destination block that owns the APB register map for this drive
+        # port: connectionMap instance, or the other end of a connection
+        # (a router collapses to its sole register leaf when there is one).
+        if source_type == 'connectionMaps':
+            inst_key = port_data['connection']['instanceKey']
+            type_key = self.data['instances'][inst_key]['instanceTypeKey']
+            return self._registerOwningBlockKey(type_key, inst_key)
+        if source_type != 'connections':
+            return None
+        for conn_val in self.data['connections'].values():
+            src_key = conn_val['srcKey']
+            dst_key = conn_val['dstKey']
+            src_inst = self.data['instances'][src_key]
+            dst_inst = self.data['instances'][dst_key]
+            src_port = conn_val['srcport'] if conn_val.get('srcport') else conn_val['interface']
+            dst_port = conn_val['dstport'] if conn_val.get('dstport') else conn_val['interface']
+            for end_val in (conn_val.get('ends') or {}).values():
+                if end_val['instanceKey'] == src_key:
+                    src_port = end_val['portName']
+                elif end_val['instanceKey'] == dst_key:
+                    dst_port = end_val['portName']
+            if src_inst['instanceTypeKey'] == qualBlock and src_port == port:
+                return self._registerOwningBlockKey(dst_inst['instanceTypeKey'], dst_key)
+            if dst_inst['instanceTypeKey'] == qualBlock and dst_port == port:
+                return self._registerOwningBlockKey(src_inst['instanceTypeKey'], src_key)
+        return None
+
+    def _socketApbRegisterDecode(self, qualBlock, port, port_data, source_type):
+        target = self._socketApbTargetBlockKey(qualBlock, port, port_data, source_type)
+        if target is None:
+            return None
+        return self._blockRegisterWordDecode(target)
+
+    def getSocketCatalogView(self, qualBlock, block_data=None):
+        # Per-block socket catalog: factory key `{block}.{port}`, drive vs
+        # observe role, and listen names (drive names plus `_obs` where the
+        # helper actually pushes observe traffic). pysocket_sync is not a YAML
+        # port; it is appended when any helper row has lockstep: true.
+        # APB drive rows also carry the selected target's register-map
+        # word offsets and address mask for PSLVERR on the socket ACK.
+        if block_data is None:
+            block_data = self.getBlockData(qualBlock)
+        block_name = block_data['blockName']
+        ports = []
+        uses_lockstep = False
+        for source_type in block_data.get('ports') or {}:
+            for port, port_data in (block_data['ports'][source_type] or {}).items():
+                interface_type = self._socketCanonicalInterfaceType(port_data, block_data)
+                direction = port_data.get('direction') or 'src'
+                helper = None
+                if interface_type:
+                    socket_rows = block_data['interface_defs'][interface_type].get('socket')
+                    if socket_rows:
+                        helper = socket_rows.get(direction)
+                name = f'{block_name}.{port}'
+                observe_name = f'{name}_obs' if helper and helper['observe'] else None
+                if helper and helper['lockstep']:
+                    uses_lockstep = True
+                apb_decode = None
+                if helper and helper['kind'] == 'drive' and interface_type == 'apb':
+                    apb_decode = self._socketApbRegisterDecode(
+                        qualBlock, port, port_data, source_type)
+                ports.append({
+                    'port': port,
+                    'name': name,
+                    'interfaceType': interface_type,
+                    'direction': direction,
+                    'role': helper['kind'] if helper else None,
+                    'hasPortSocket': helper is not None,
+                    'observeName': observe_name,
+                    'block': block_name,
+                    'sourceType': source_type,
+                    'apbMappedOffsets': None if apb_decode is None else apb_decode['mappedOffsets'],
+                    'apbAddrMask': None if apb_decode is None else apb_decode['addrMask'],
+                })
+        listen_names = [row['name'] for row in ports if row['role'] == 'drive']
+        listen_names.extend(row['observeName'] for row in ports if row['observeName'])
+        sync_names = ['pysocket_sync'] if uses_lockstep else []
+        return {
+            'block': block_name,
+            'qualBlock': qualBlock,
+            'ports': ports,
+            'listenNames': listen_names,
+            'syncNames': sync_names,
+            'usesLockstep': uses_lockstep,
+        }
 
     def getBDParameterizedDecls(self, ret):
         # Per-block module-local parameterized declaration set, derived and
@@ -1729,17 +1938,86 @@ class projectOpen:
             return data
         return recurse_block(qualBlock, trimRegLeafInstance, excludeInstances)
 
+    def getIntfParamBindings(self, intfDef, structures):
+        """Payload bindings for one interface, in interface_defs order.
+
+        `intfDef` is the interface_defs row the interface is typed by and
+        `structures` its declared payload list, the `structureType`-keyed rows an
+        interfaces row carries or the equivalent list a register or memory row
+        spells from its own fields.
+
+        Every parameter of the definition contributes exactly one entry, in the
+        order the parameter is declared, whatever its datatype (`struct`,
+        `type`, or `typeStruct`). A parameter the declaring interface leaves
+        unbound names no structure and is marked isNull; projectCreate's
+        interface-structure validation has already rejected an unbound
+        required parameter, so an isNull entry is always an unbound optional
+        one. A consumer that associates payloads by name drops every isNull
+        entry; a positional consumer keeps an isNull entry that still holds a
+        slot and spells it with that language's name for an absent payload.
+
+        Whether a parameter types an interface signal is a property of the
+        definition, not of any one language: the definition's `signals:` name it
+        as their signalType, so the HDL boundary carries a port for it whether or
+        not the declaring interface binds it. It is resolved here as typesSignal
+        so no rendering layer re-derives the set.
+
+        Contract, per entry:
+            structureType  parameter name from interface_defs
+            datatype       the parameter's declared datatype ('struct' |
+                           'type' | 'typeStruct'). Spelling arity follows this,
+                           not kind: a 'struct' payload is one positional
+                           argument; a 'type' or 'typeStruct' payload is two,
+                           name and width, bound or isNull alike.
+            structure      structure/type name to emit, '' for an isNull entry
+            structureKey   qualified datatypeRef key, '' for an isNull entry
+            kind           'structures' | 'types': the bound row's
+                           structureKind. Only meaningful when the entry is
+                           bound (picks which datatypeRef table names and
+                           widths a 'type'/'typeStruct' payload's second
+                           argument); '' for an isNull entry, which has no row
+                           to pick a table from.
+            isOptional     True when the parameter is declared optional
+            isNull         True when the parameter is optional and unbound
+            typesSignal    True when a signal of the definition is declared with
+                           this parameter as its signalType
+            defaultWidth   width the signals typed by this parameter carry when
+                           the entry is isNull (from interface_defs, schema
+                           default 1)
+        """
+        bound = {s['structureType']: s for s in (structures or [])}
+        signalTypes = {sig['signalType'] for sig in intfDef['signals'].values()}
+        bindings = []
+        for param, paramInfo in (intfDef['parameters'] or {}).items():
+            payload = bound.get(param)
+            bindings.append({'structureType': param,
+                             'datatype':      paramInfo['datatype'],
+                             'structure':     payload['structure'] if payload else '',
+                             'structureKey':  payload['structureKey'] if payload else '',
+                             'kind':          payload['structureKind'] if payload else '',
+                             'isOptional':    bool(paramInfo['optional']),
+                             'isNull':        payload is None,
+                             'typesSignal':   param in signalTypes,
+                             'defaultWidth':  int(paramInfo['defaultWidth'])})
+        return bindings
+
     def getBDGetIntfStructs(self, ret, intfData={}, intfKey=''):
         if not intfData:
             intfData = self.data['interfaces'][intfKey]
         if intfData['structures']:
             for structInfo in intfData['structures']:
-                ret['temp']['structs'][structInfo['structureKey']] = 0
-        # Store qualified interface type key for direct lookup later
-        # The parser already stores this as interfaceTypeKey after validation
+                # A type payload's context is not reachable through the
+                # extractContext walk below (it only knows how to recurse
+                # 'structures' rows), so its context is recorded directly.
+                if structInfo['structureKind'] == 'types':
+                    ret['temp']['typeContexts'][self.datatypeRef('types', structInfo['structureKey'])['context']] = 0
+                else:
+                    ret['temp']['structs'][structInfo['structureKey']] = 0
+        # Store qualified interface type key for direct lookup later. The parser
+        # validates interfaceType against interface_defs and writes the
+        # qualified key onto every interfaces row, so it is always present.
         intf_type = intfData['interfaceType']
-        intf_type_key = intfData.get('interfaceTypeKey', None)
-        ret['interfaceTypes'][intf_type] = intf_type_key
+        ret['interfaceTypes'][intf_type] = intfData['interfaceTypeKey']
 
     def getBDDeclaredPortInterfaceKey(self, instanceKey, portName):
         # The interface key the parser resolved in the declaring block's own
@@ -2278,7 +2556,7 @@ class projectOpen:
                 # Get interfaceTypeKey from the interfaces table (already has qualified key)
                 intfInfo = self.data['interfaces'][connVal['interfaceKey']]
                 intf_type = intfInfo['interfaceType']
-                ret['interfaceTypes'][intf_type] = intfInfo.get('interfaceTypeKey', None)
+                ret['interfaceTypes'][intf_type] = intfInfo['interfaceTypeKey']
         for conn, connVal in connections.items():
             # create jinja friendly names
             _, connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
@@ -2328,21 +2606,6 @@ class projectOpen:
             }
             self.getBDGetIntfStructs(ret, intfKey=interfaceKey)
 
-    def _structureMap(self, interfaceRow):
-        structs = dict()
-        structures = interfaceRow.get('structures', []) or []
-        if isinstance(structures, dict):
-            structures = structures.values()
-        for item in structures:
-            structureType = item.get('structureType')
-            if structureType is None:
-                continue
-            structs[structureType] = {
-                'structure': item.get('structure', ''),
-                'structureKey': item.get('structureKey', ''),
-            }
-        return structs
-
     def _paramValueAtEnd(self, configSelection, constantKey):
         # Resolved value of one root parameter at one connection end: a
         # resolved literal, or a ('container', key) token for a value still
@@ -2369,9 +2632,19 @@ class projectOpen:
         if parentInterface['interfaceKey'] != childInterfaceKey:
             return False
         paramKeys = set()
-        for payload in self._structureMap(parentInterface).values():
-            if self.data['structures'][payload['structureKey']]['isParameterizable']:
-                paramKeys |= set(self.structureParamDeps[payload['structureKey']])
+        interfaceDef = self.data['interface_defs'][parentInterface['interfaceTypeKey']]
+        for binding in self.getIntfParamBindings(interfaceDef, parentInterface['structures']):
+            # An unbound optional payload names no declaration and so depends
+            # on no parameter. A bound one is a structure or a type; each kind
+            # keeps its own root-parameter dependency table.
+            if binding['isNull']:
+                continue
+            declKey = binding['structureKey']
+            if binding['kind'] == 'types':
+                if self.data['types'][declKey]['isParameterizable']:
+                    paramKeys |= set(self.typeParamDeps[declKey])
+            elif self.data['structures'][declKey]['isParameterizable']:
+                paramKeys |= set(self.structureParamDeps[declKey])
         if not paramKeys:
             return True
         return all(self._paramValueAtEnd(parentConfigSelection, key)
@@ -2426,72 +2699,79 @@ class projectOpen:
                     transitChoice = configSelection
             return leafChoice or transitChoice
 
-        def resolveInterfaceDef(interfaceRow):
-            interfaceType = interfaceRow.get('interfaceType', '')
-            context = interfaceRow.get('_context', '')
-            if not interfaceType:
-                return None
-            qualifiedKey = f"{interfaceType}/{context}" if context else ''
-            if qualifiedKey in self.data.get('interface_defs', {}):
-                return self.data['interface_defs'][qualifiedKey]
-            for intfDef in self.data.get('interface_defs', {}).values():
-                if intfDef.get('interface_type') == interfaceType:
-                    return intfDef
-            return None
-
         def buildThunkerView(parentInterface, childInterface, parentConfigSelection, childConfigSelection):
-            parentStructures = self._structureMap(parentInterface)
-            childStructures = self._structureMap(childInterface)
-            interfaceType = parentInterface.get('interfaceType', '')
-            interfaceDef = resolveInterfaceDef(parentInterface)
-            if not interfaceDef:
-                printError("Unable to build cross-interface thunker view: "
-                           f"interface_defs entry for '{interfaceType}' was not found.")
-                exit(warningAndErrorReport())
-            scChannel = interfaceDef.get('sc_channel') or {}
-            channelType = scChannel.get('type') or interfaceType
-            parameters = interfaceDef.get('parameters') or {}
-            structureTypes = [
-                param for param, paramInfo in parameters.items()
-                if paramInfo.get('datatype') == 'struct'
-            ]
+            # The parser writes the qualified interface_defs key onto every
+            # interfaces row, so the definition that types an interface is a
+            # direct lookup from either end of the bind.
+            interfaceType = parentInterface['interfaceType']
+            interfaceDef = self.data['interface_defs'][parentInterface['interfaceTypeKey']]
+            channelType = interfaceDef['sc_channel']['type']
 
-            if not structureTypes:
+            # Each side contributes its own interface's full ordered bindings,
+            # tagged with the side it came from and the neutral Config selection
+            # that types its structures. Both groups stay in interface_defs
+            # declaration order; the argument order a particular thunker template
+            # requires is spelled by the language layer that emits it.
+            parentBindings = self.getIntfParamBindings(
+                interfaceDef, parentInterface['structures'])
+            if not parentBindings:
                 return None
+            childBindings = self.getIntfParamBindings(
+                self.data['interface_defs'][childInterface['interfaceTypeKey']],
+                childInterface['structures'])
 
-            payloads = []
-            for side, structures, configSelection in [
-                ('parent', parentStructures, parentConfigSelection),
-                ('child', childStructures, childConfigSelection),
-            ]:
-                for structureType in structureTypes:
-                    structure = structures.get(structureType)
-                    if not structure:
-                        printError(
-                            "Unable to build cross-interface thunker view: "
-                            f"{side} interface '{structureType}' payload is missing.")
-                        exit(warningAndErrorReport())
-                    payloads.append({
-                        'side': side,
-                        'structureType': structureType,
-                        'structure': structure['structure'],
-                        'structureKey': structure['structureKey'],
-                        'configSelection': configSelection,
-                    })
+            def payloadEntry(side, binding, configSelection):
+                return {
+                    'side': side,
+                    'structureType': binding['structureType'],
+                    'datatype': binding['datatype'],
+                    'structure': binding['structure'],
+                    'structureKey': binding['structureKey'],
+                    'kind': binding['kind'],
+                    'isOptional': binding['isOptional'],
+                    'isNull': binding['isNull'],
+                    'defaultWidth': binding['defaultWidth'],
+                    'configSelection': configSelection,
+                }
+
+            payloads = ([payloadEntry('parent', b, parentConfigSelection) for b in parentBindings]
+                        + [payloadEntry('child', b, childConfigSelection) for b in childBindings])
+
+            def payloadSignature(payload):
+                # Neutral storage description of one bound payload; None when
+                # unbound or not statically decidable, which refuses the pair.
+                if payload['isNull']:
+                    return None
+                if payload['kind'] == 'types':
+                    typeInfo = self.data['types'][payload['structureKey']]
+                    if typeInfo['enum']:
+                        return ('enum', payload['structureKey'])
+                    return self.typeStorage(typeInfo)
+                return self.structureStorageSignature(payload['structureKey'])
 
             # directCopy: the two declarations emit identical member storage, so
             # the adapter can transfer the payload whole instead of packing field
             # by field. The comparison is structural because the two ends may be
-            # the same declaration instantiated at differing Configs.
+            # the same declaration instantiated at differing Configs. One verdict
+            # per REQUIRED parameter, in declaration order: the thunker templates
+            # take exactly that many positional bools. Optional payloads carry no
+            # verdict; the template decides their copy from the C++ types
+            # themselves, since identical spellings on both sides are identical
+            # storage.
+            parentByType = {p['structureType']: p for p in payloads if p['side'] == 'parent'}
+            childByType = {p['structureType']: p for p in payloads if p['side'] == 'child'}
             payloadPairs = []
-            for index, parentPayload in enumerate(payloads[:len(structureTypes)]):
-                childPayload = payloads[len(structureTypes) + index]
-                parentSignature = self.structureStorageSignature(parentPayload['structureKey'])
+            for binding in parentBindings:
+                if binding['isOptional']:
+                    continue
+                parentPayload = parentByType[binding['structureType']]
+                childPayload = childByType[binding['structureType']]
+                parentSignature = payloadSignature(parentPayload)
                 payloadPairs.append({
                     'parent': parentPayload,
                     'child': childPayload,
-                    'directCopy': (parentSignature is not None and parentSignature
-                                   == self.structureStorageSignature(childPayload['structureKey'])),
+                    'directCopy': (parentSignature is not None
+                                   and parentSignature == payloadSignature(childPayload)),
                 })
 
             return {
@@ -2598,11 +2878,9 @@ class projectOpen:
                 'parentInterfaceKey': parentInterfaceKey,
                 'parentInterface': parentInterfaceName,
                 'parentInterfaceType': parentInterface['interfaceType'],
-                'parentStructures': self._structureMap(parentInterface),
                 'childInterfaceKey': childInterfaceKey,
                 'childInterface': childInterfaceName,
                 'childInterfaceType': childInterface['interfaceType'],
-                'childStructures': self._structureMap(childInterface),
                 'childVariant': instanceData['variant'],
                 'thunker': thunkerView,
             }
@@ -2937,6 +3215,7 @@ class projectOpen:
 
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
+        sourceContexts.update(ret['temp']['typeContexts'])
         for sourceContext in sourceContexts:
             if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
@@ -2958,11 +3237,24 @@ class projectOpen:
                 ret['includeContext'][sourceContext] = 0
 
         classStructs = dict()
+        classTypeContexts = dict()
         classConsts = dict()
 
         def addStructKey(structKey):
             if structKey:
                 classStructs[structKey] = 0
+
+        def addStructOrTypeKey(kind, structKey):
+            # An interface-declared payload's structureKey names either a
+            # 'structures' or a 'types' row. extractContext only knows how to
+            # recurse a structures row, so a type payload's own context is
+            # recorded directly instead of being handed to it.
+            if not structKey:
+                return
+            if kind == 'types':
+                classTypeContexts[self.datatypeRef('types', structKey)['context']] = 0
+            else:
+                addStructKey(structKey)
 
         def addConstKey(constKey):
             if constKey:
@@ -2975,7 +3267,7 @@ class projectOpen:
             if not intfData:
                 return
             for structInfo in intfData.get('structures', []) or []:
-                addStructKey(structInfo.get('structureKey'))
+                addStructOrTypeKey(structInfo['structureKind'], structInfo.get('structureKey'))
 
         for regData in ret.get('registers', {}).values():
             if regData.get('regType') != 'memory':
@@ -3000,12 +3292,12 @@ class projectOpen:
                 addStructKey(connData.get('addressStructKey'))
                 for crossBind in connData.get('crossInterfaceEnds', []) or []:
                     for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
-                        addStructKey(payload.get('structureKey'))
+                        addStructOrTypeKey(payload['kind'], payload.get('structureKey'))
 
         for connMapData in ret.get('connectionMaps', {}).values():
             for crossBind in connMapData.get('crossInterfaceEnds', []) or []:
                 for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
-                    addStructKey(payload.get('structureKey'))
+                    addStructOrTypeKey(payload['kind'], payload.get('structureKey'))
 
         if ret['addressDecode'].get('isApbRouter') or ret['addressDecode'].get('hasDecoder'):
             # The router's upstream interface determines the register-bus
@@ -3016,9 +3308,10 @@ class projectOpen:
                 for intfData in self.data['interfaces'].values():
                     if intfData.get('interface') == regBusInterface:
                         for item in intfData.get('structures', []) or []:
-                            addStructKey(item.get('structureKey'))
+                            addStructOrTypeKey(item['structureKind'], item.get('structureKey'))
 
         classContexts = self.extractContext(classStructs, classConsts)
+        classContexts.update(classTypeContexts)
         for sourceContext in ret['includeContext']:
             if sourceContext in classContexts and sourceContext not in self.specialContexts:
                 ret['classIncludeContext'][sourceContext] = 0
@@ -3042,30 +3335,22 @@ class projectOpen:
                 ret['includeContext'][child_context] = 0
 
     def getBDInterfaceDefs(self, ret):
-        """Collect interface definitions for all interface types used in the block
+        """Collect the interface definition behind every interface type in the block.
 
-        Creates a simple mapping from interface type aliases to canonical interface types.
-        This allows 'reg_ro' to map to 'status', etc.
+        Register rows are typed by an alias (`reg_ro`, `reg_rw`, `reg_ext`,
+        `reg_memory`) declared through an interface definition's `mappedFrom`.
+        Map each alias to its canonical interface type so 'reg_ro' renders
+        through 'status', and add that canonical type to the block's interface
+        types so its definition is collected below.
         """
-        # Get interface_defs from loaded data
-        all_interface_defs = self.data.get('interface_defs', {})
-
-        # Build simple mapping: alias -> qualified canonical interface type
-        # by filtering interface_defs that have mappedFrom data
-        # Example: {'reg_ro': 'status/_a2csystem', 'reg_rw': 'control/_a2csystem', ...}
-        type_mappings = {}
-        type_mappings_qualified = {}
+        all_interface_defs = self.data['interface_defs']
+        type_mappings = dict()
         for qual_key, intf_def in all_interface_defs.items():
-            if 'mappedFrom' in intf_def and intf_def['mappedFrom']:
-                for mapping_key, mapping_data in intf_def['mappedFrom'].items():
-                    if 'mapped_type' in mapping_data:
-                        mapped_type = mapping_data['mapped_type']
-                        # Only include mappings for register interface types we're using
-                        if mapped_type in ret['temp']['registerInterfaceTypes']:
-                            type_mappings[mapped_type] = intf_def['interface_type']
-                            type_mappings_qualified[mapped_type] = qual_key
-                            ret['interfaceTypes'][intf_def['interface_type']] = qual_key
-
+            for mapping in (intf_def['mappedFrom'] or {}).values():
+                mapped_type = mapping['mapped_type']
+                if mapped_type in ret['temp']['registerInterfaceTypes']:
+                    type_mappings[mapped_type] = intf_def['interface_type']
+                    ret['interfaceTypes'][intf_def['interface_type']] = qual_key
         ret['interface_type_mappings'] = type_mappings
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
@@ -3691,6 +3976,11 @@ class projectCreate:
         dirMacros = { "a2c" : self.a2cRoot }
         self.config.setConfig('A2CROOT', self.a2cRoot)
         self.config.setConfig('A2CPROJ', self.a2cProj)
+        # Absolute path of the root project file. The makefile scaffold needs it
+        # to emit A2C_PRJ_YAML, because a2c-common.mk defaults that variable to
+        # the functional-layout location (arch/yaml/project.yaml) and every other
+        # layout must state it explicitly.
+        self.config.setConfig('PRJFILE', self._rootProjFileAbs)
         # Refuse to build an un-migrated project before any address or eval
         # processing runs. This is the sole detector of a pre-migration project.
         self._gateYamlFormat()
@@ -3805,6 +4095,8 @@ class projectCreate:
         self.validateContainerSourcedTestbench()
         # reject one variant label declared by two of a block's variant sources
         self.validateVariantSourceLabelCollision()
+        # reject a socket shell on a parameterizable block
+        self.validateSocketOnParameterizedBlock()
         # derive the Config module set the build manifest and newModule scaffold both read
         self.calcConfigModules()
         self.calcForeignConfigHeaders()
@@ -4302,6 +4594,29 @@ class projectCreate:
                 f"testbench builds one DUT at one named variant, and a container's label "
                 f"names no Config of this block. Declare a variant on "
                 f"'{blockRow['block']}' for testbench purposes, or clear {selectors}.")
+            exit(warningAndErrorReport())
+
+    def validateSocketOnParameterizedBlock(self):
+        """Reject a socket shell (hasSkt) on a parameterizable block.
+
+        A parameterizable block's factory registration is owned by the
+        per-assembler trampoline registrar (templates/systemc/blockRegistrar.py),
+        which registers the model and verif kinds only. The socket shell
+        templates still self-register through an explicit instantiation per
+        variant, a scheme the trampoline replaced, so a parameterizable block's
+        socket shell would register under a Config the assembler never binds.
+        Until the registrar also registers the socket kind, the combination is
+        rejected here rather than failing in generated C++.
+        """
+        for qualBlock, blockRow in self.flatData['blocks'].items():
+            if not blockRow['hasSkt'] or not blockRow['isParameterizable']:
+                continue
+            printError(
+                f"Block '{blockRow['block']}' declares hasSkt: true but is "
+                f"parameterizable. The socket shell's factory registration is not "
+                f"emitted by the trampoline registrar, so a parameterizable block "
+                f"cannot carry a Python-socket shell yet. Clear hasSkt on "
+                f"'{blockRow['block']}' or drop its parameterization.")
             exit(warningAndErrorReport())
 
     def deriveModuleIdentities(self):
@@ -5248,6 +5563,7 @@ class projectCreate:
             return rows
 
         structures = {r['structureKey']: r for r in flat_rows('structures')}
+        types = {r['typeKey']: r for r in flat_rows('types')}
         interfaces = {r['interfaceKey']: r for r in flat_rows('interfaces')}
 
         instances_by_type = dict()
@@ -5555,6 +5871,12 @@ class projectCreate:
                 struct = structures[struct_key]
                 add_param_source(bool(struct['isParameterizable']), struct['_context'] or '', own_surface)
 
+            def add_type(type_key, own_surface):
+                if not type_key:
+                    return
+                type_row = types[type_key]
+                add_param_source(bool(type_row['isParameterizable']), type_row['_context'] or '', own_surface)
+
             def add_regmem(row, own_surface):
                 add_struct(row['structureKey'], own_surface)
                 add_struct(row['addressStructKey'], own_surface)
@@ -5565,7 +5887,10 @@ class projectCreate:
                 if not intf['isParameterizable']:
                     return
                 for struct_row in intf['structures'].values():
-                    add_struct(struct_row['structureKey'], own_surface)
+                    if struct_row['structureKind'] == 'types':
+                        add_type(struct_row['structureKey'], own_surface)
+                    else:
+                        add_struct(struct_row['structureKey'], own_surface)
 
             # 1. Connections touching a port-owner instance of this block. The
             #    surface the block carries is the interface IT declares for that
@@ -6092,8 +6417,9 @@ class projectCreate:
                 continue
             intf = interfaces[conn['interfaceKey']]
             needed = set()
-            for structRow in intf.get('structures', dict()).values():
-                info = declInfo.get(('structure', structRow['structureKey']))
+            for structRow in intf['structures'].values():
+                declKind = 'type' if structRow['structureKind'] == 'types' else 'structure'
+                info = declInfo.get((declKind, structRow['structureKey']))
                 if info is not None:
                     needed |= info['paramDeps']
             if not needed:
@@ -6110,8 +6436,9 @@ class projectCreate:
                 continue
             intf = interfaces[cm['interfaceKey']]
             needed = set()
-            for structRow in intf.get('structures', dict()).values():
-                info = declInfo.get(('structure', structRow['structureKey']))
+            for structRow in intf['structures'].values():
+                declKind = 'type' if structRow['structureKind'] == 'types' else 'structure'
+                info = declInfo.get((declKind, structRow['structureKey']))
                 if info is not None:
                     needed |= info['paramDeps']
             if not needed:
@@ -6682,6 +7009,15 @@ class projectCreate:
     def _structureRowsForInterface(self, interfaceRow):
         return (interfaceRow.get('structures') or {}).values()
 
+    def _optionalStructParams(self, interfaceType, context):
+        # Parameter name (struct or type payload) an interface of this type may
+        # leave unbound. `parameters:` is an optional section, so a definition
+        # that declares none carries no key at all at this stage, unlike the
+        # schema-loaded row a projectOpen view reads.
+        (intfDef, _) = self.lookupInScope('interface_defs', context, interfaceType)
+        return {param for param, paramInfo in (intfDef.get('parameters') or {}).items()
+                if paramInfo['optional']}
+
     def _junctionSideIdentity(self, label, ifaceRow, ifaceContext, site,
                               siteIndex, bindings, containerSite):
         # One side of a junction for a compatibility diagnostic: the interface with
@@ -6782,8 +7118,18 @@ class projectCreate:
         parentByType = {s['structureType']: s for s in parentStructs}
         childByType = {s['structureType']: s for s in childStructs}
         allTypes = set(parentByType.keys()) | set(childByType.keys())
+        # An optional parameter may legally be bound by one interface and left
+        # unbound by the other; each declaration is valid on its own, so the pair
+        # is only compared over the payloads both ends actually carry.
+        optionalTypes = self._optionalStructParams(parentProto, parentContext)
         anyError = False
         for stype in sorted(allTypes):
+            if stype in optionalTypes:
+                # Skips only the presence check: one end may legally carry an
+                # optional payload the other leaves unbound. An optional both
+                # ends do carry survives the intersection re-filter below and
+                # is still compared in packed form.
+                continue
             if stype not in parentByType:
                 printError(
                     f"{locationStr}: the two interfaces at this junction must "
@@ -6802,6 +7148,7 @@ class projectCreate:
                 continue
         if anyError:
             exit(warningAndErrorReport())
+        allTypes = {s for s in allTypes if s in parentByType and s in childByType}
 
         parentResolver = ValueResolver(
             self,
@@ -6824,10 +7171,29 @@ class projectCreate:
             childStructKey = childByType[stype]['structureKey']
             parentStruct = parentByType[stype]['structure']
             childStruct = childByType[stype]['structure']
-            parentStructContext = self.flatData['structures'][parentStructKey]['_context']
-            childStructContext = self.flatData['structures'][childStructKey]['_context']
-            parentFields = parentResolver.structPackedFields(parentStructKey)
-            childFields = childResolver.structPackedFields(childStructKey)
+            parentStructContext = self.flatData[parentByType[stype]['structureKind']][parentStructKey]['_context']
+            childStructContext = self.flatData[childByType[stype]['structureKind']][childStructKey]['_context']
+            parentKind = parentByType[stype]['structureKind']
+            childKind = childByType[stype]['structureKind']
+            if parentKind != childKind:
+                printError(
+                    f"{locationStr}: the paired payloads for structureType "
+                    f"'{stype}' must be the same kind of declaration on both "
+                    f"sides, but the parent interface binds it to a "
+                    f"'{parentKind}' entry ('{parentStruct}', file "
+                    f"{parentStructContext}) while the child interface binds "
+                    f"it to a '{childKind}' entry ('{childStruct}', file "
+                    f"{childStructContext}).{sides()}")
+                anyError = True
+                continue
+            if parentKind == 'types':
+                # A type payload has no fields to pack; it compares as a
+                # single field of its own width.
+                parentFields = [(stype, parentResolver.typeWidth(parentStructKey), 0)]
+                childFields = [(stype, childResolver.typeWidth(childStructKey), 0)]
+            else:
+                parentFields = parentResolver.structPackedFields(parentStructKey)
+                childFields = childResolver.structPackedFields(childStructKey)
             if len(parentFields) != len(childFields):
                 printError(
                     f"{locationStr}: the paired structures for structureType "
@@ -7520,6 +7886,15 @@ class projectCreate:
                         if field in item:
                             qualKey = self._parserResolver.qualifyKey(ret[field], yamlFile)
                     ret[field+'Key'] = qualKey
+                if ftype == 'typeStruct':
+                    # Names a types or structures row; the parenthesised form fixes or selects the accepted kinds.
+                    # Scoped like a plain foreign key. A list row has no anchor, so its key field identifies it.
+                    rowId = anchor if anchor is not None else ret[self.schema.data['key'][context+section]]
+                    where = f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{rowId} field {field}"
+                    ret[field] = item.get(field)
+                    kinds = self.typeStructKinds(self.schema.data['typeStructKinds'][context+section+field], ret, where)
+                    resolved = self.resolveTypeStruct(ret[field], yamlFile, kinds, where) if kinds else None
+                    (ret[field+'Key'], ret[field+'Kind']) = resolved if resolved else ('InvalidValueInYaml', 'InvalidValueInYaml')
                 if ftype=='eval':
                     # value is either provided from eval statement or a named field if present
                     if field in item:
@@ -7847,11 +8222,16 @@ class projectCreate:
         return item
 
     def _post_validate_interface_structures(self, itemkey, item, yamlFile):
-        """Validate that structureType values match parameters defined in interface_defs
+        """Validate that every required interface_defs parameter has a
+        corresponding structureType.
 
-        This performs bidirectional validation:
-        1. Each structureType must be a valid parameter in interface_defs
-        2. All struct-type parameters from interface_defs must be present
+        A structureType's own validity (is it a declared parameter of the
+        definition) and its bound kind (does it match that parameter's
+        declared datatype) are both enforced already, by the typeStruct
+        primitive resolving `structure:` (typeStruct(field,
+        parameterDatatype)) and the `_auto_interfaceParameterDatatype`
+        sibling it reads. This hook covers what neither can see: a required
+        parameter with no structureType entry at all.
         """
         # Only validate if interface has interfaceType
         if 'interfaceType' not in item:
@@ -7876,43 +8256,26 @@ class projectCreate:
                             f"has structures defined, but interface_defs '{intf_type}' does not define any parameters")
             return item
 
-        # Get all valid structure types and required struct parameters
-        all_params = intf_def['parameters']
-        valid_structure_types = set(all_params.keys())
-
-        # Filter to only struct-type parameters (these are the ones that need structures defined)
-        required_struct_params = {
-            param_name for param_name, param_info in all_params.items()
-            if param_info.get('datatype') == 'struct'
+        # Parameters marked optional may be left unbound by the declaring interface; they remain
+        # valid structureTypes so an interface that does carry the payload is still accepted.
+        required_params = {
+            param_name for param_name, param_info in intf_def['parameters'].items()
+            if not param_info['optional']
         }
 
-        # Get the structureTypes that are defined in the interface
-        defined_structure_types = set()
-        structures = item.get('structures', {})
+        defined_structure_types = {
+            struct_data['structureType']
+            for struct_data in item.get('structures', {}).values()
+            if 'structureType' in struct_data
+        }
 
-        # Validation 1: Check each defined structureType is valid
-        for struct_key, struct_data in structures.items():
-            if 'structureType' not in struct_data:
-                continue  # This will be caught by required field validation
-
-            structure_type = struct_data['structureType']
-            defined_structure_types.add(structure_type)
-
-            if structure_type not in valid_structure_types:
-                line_num = struct_data['lc'].line + 1 if hasattr(struct_data, 'lc') else '?'
-                valid_types_str = "', '".join(sorted(valid_structure_types))
-                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
-                            f"structureType '{structure_type}' is not valid. "
-                            f"Valid structureTypes for '{intf_type}' are: '{valid_types_str}'")
-
-        # Validation 2: Check all required struct parameters are present
-        missing_params = required_struct_params - defined_structure_types
+        missing_params = required_params - defined_structure_types
         if missing_params:
             line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
             missing_params_str = "', '".join(sorted(missing_params))
             self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
                         f"missing required structureType(s): '{missing_params_str}'. "
-                        f"All struct-type parameters from interface_defs must have corresponding structures.")
+                        f"Every required parameter from interface_defs must have a corresponding structure.")
 
         return item
 
@@ -8568,12 +8931,29 @@ class projectCreate:
             exit(warningAndErrorReport())
 
     def _auto_intfIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
-        # Interface rows inherit parameterization from any carried structure.
+        # Interface rows inherit parameterization from any carried structure
+        # or type payload.
         for struct_row in (processed.get('structures') or {}).values():
-            sEntry = self._rowByQualifiedKey('structures', struct_row['structureKey'])
+            sEntry = self._rowByQualifiedKey(struct_row['structureKind'], struct_row['structureKey'])
             if sEntry['isParameterizable']:
                 return True
         return False
+
+    def _auto_interfaceParameterDatatype(self, section, anchor, item, field, yamlFile, ret):
+        # The mode word interfaces.structures.structure's typeStruct(field,
+        # parameterDatatype) binding resolves against: structureType names a
+        # parameter of the interface's own definition (interfaceType is
+        # copied onto this row by the outer field declared just above), and
+        # that parameter's own declared datatype ('struct' | 'type' |
+        # 'typeStruct') is the word typeStructKindsForMode expects.
+        (intfDef, _) = self.lookupInScope('interface_defs', yamlFile, ret['interfaceType'])
+        structureType = ret['structureType']
+        if 'parameters' not in intfDef or structureType not in intfDef['parameters']:
+            self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, interfaceType '{ret['interfaceType']}': "
+                          f"structureType '{structureType}' is not a parameter of interface_defs "
+                          f"'{ret['interfaceType']}'.")
+            return 'InvalidValueInYaml'
+        return intfDef['parameters'][structureType]['datatype']
 
     def _auto_interfaceRefIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
         intf = self._rowByQualifiedKey('interfaces', processed['interfaceKey'])
@@ -9026,6 +9406,71 @@ class projectCreate:
                 if all(row[source] == sourceRow[source] for source in sourceCombo):
                     return row, qualification
         return None, None
+
+    def typeStructKinds(self, recorded, ret, where):
+        """The sections a typeStruct field may resolve against: the tuple
+        the schema recorded for a constant spelling, or the tuple selected by
+        the sibling field's value for typeStruct(field, <sibling>). Returns
+        None after logging when the sibling's value is absent or not a mode word."""
+        if isinstance(recorded, tuple):
+            return recorded
+        if recorded not in ret or ret[recorded] is None:
+            # The sibling is declared earlier, but an omitted optional
+            # sub-table, and const/param/eval under continueOnError, store
+            # nothing for an absent value.
+            self.logError(f"{where}'s mode field '{recorded}' has no value, so the field cannot be resolved.")
+            return None
+        word = ret[recorded]
+        if isinstance(word, (list, dict)):
+            self.logError(f"{where}'s mode field '{recorded}' must be a scalar, but got {word!r}.")
+            return None
+        kinds = self.schema.typeStructKindsForMode(word)
+        if kinds is None:
+            self.logError(f"{where}'s mode field '{recorded}' is '{word}', which is not 'type', 'struct', or 'typeStruct'.")
+        return kinds
+
+    def resolveTypeStruct(self, name, yamlFile, kinds, where):
+        """Resolve a typeStruct field's name against the sections `kinds`
+        allows, in the scope of `yamlFile` (its include chain, plus the
+        `_a2csystem` fallback lookupInScope always applies). `name` is the
+        row's raw value: None when the field is missing.
+
+        Always looks up both 'types' and 'structures', so a hit in a
+        section `kinds` does not allow can be named precisely instead of
+        folded into "neither"; ambiguity (more than one allowed hit) is
+        therefore reachable only when `kinds` allows both.
+
+        `where` is the caller's already-built "In file ...: section ...,
+        key:..., field ..." diagnostic prefix.
+
+        Returns (key, kind): the qualified 'name/context' key and the
+        resolved section ('types' or 'structures') on exactly one allowed
+        hit, or None after logging one diagnostic through `where`."""
+        if name is None:
+            self.logError(f"{where} is missing.")
+            return None
+        if isinstance(name, (list, dict)):
+            self.logError(f"{where}'s value must be a scalar, but got {name!r}.")
+            return None
+        noun = {'types': 'type', 'structures': 'structure'}
+        hits = []
+        for kind in ('types', 'structures'):
+            (row, qualification) = self.lookupInScope(kind, yamlFile, name)
+            if row:
+                hits.append((kind, qualification))
+        allowed = [hit for hit in hits if hit[0] in kinds]
+        if len(allowed) == 1:
+            (kind, qualification) = allowed[0]
+            return (name + '/' + qualification, kind)
+        if len(allowed) > 1:
+            (kind0, context0), (kind1, context1) = allowed[0], allowed[1]
+            self.logError(f"{where}, '{name}' is ambiguous: it names both a {noun[kind0]} (in {context0}) and a {noun[kind1]} (in {context1}) visible from this file. Rename one of them.")
+        elif hits:
+            (wrongKind, wrongContext) = hits[0]
+            self.logError(f"{where} accepts only a {noun[kinds[0]]}; '{name}' is a {noun[wrongKind]} (in {wrongContext}).")
+        else:
+            self.logError(f"{where}, '{name}' is neither a type nor a structure in {yamlFile} or anything it includes.")
+        return None
 
     def _scalarSeqItemLc(self, nested, index):
         # ruamel (round-trip) attaches line/col to the parent CommentedSeq, not to

@@ -96,7 +96,8 @@ Guide the user through initializing a new project, setting up the directory stru
     *   Converting an existing `addressControl.yaml` project to this schema is a one-time migration — see `migrate-project.md` / `address-migration.md`.
 
 4.  **Makefile Setup:**
-    *   `newProject` scaffolds `project.yaml` and the directory tree only; the build `Makefile` and its `include/make/shared.mk` are copied from an existing example (e.g. `examples/helloWorld`) and renamed for the project.
+    *   For a brand-new project in a clean repository, run `arch2code.py --newproject`. It writes the project file and seed design, builds the database, and scaffolds all four build files (`Makefile`, `include/make/shared.mk`, `rundir/Makefile`, `rtl/Makefile`) for you. Do not copy makefiles from an example, and do not hand-author `project.yaml`. See `readme.md` for the full bootstrap sequence.
+    *   The same four files are scaffolded create-once by `make newmodule` for an existing project, so a project that predates them picks them up without manual copying.
     *   The per-project `include/make/shared.mk` sets `PROJECTNAME` / `TB_TOP_MODULE` / `HDL_TOP_MODULE` and then includes `a2c-common.mk`; the `rundir/Makefile` includes it and then `a2c-systemc.mk`.
     *   The build is manifest-driven: `make db` derives the source/include dirs and the generated-file set from the layout and emits `.gen/build.mk`; no Makefile edits are needed as blocks are added. Model output lands in `rundir/build/run`, the whole-design Verilator build in `rundir/build/vl`.
     *   Declare files that arch2code owns under `fileGeneration.fileMap`. For example, a project-wide instance and register address header uses the `regAddresses` key with `mode: project`; set `name:` to its basename and `basePath:` to its segment. `make newmodule` scaffolds the host and the manifest includes it in generation and compilation.

@@ -96,18 +96,9 @@ def includeConstants(args, prj, data):
 def constReference_cpp(constKey, prj, useConfig=False):
     """Spell a constant reference for the shared context header. A
     Config-member constant spells as `Config::NAME`; a derived (eval)
-    constant is not a member, so it spells as its canonical expression."""
-    row = prj.data['constants'][constKey]
-    if not useConfig or not row['isParameterizable']:
-        return row['constant']
-    if row['evalCanonical']:
-        # Parenthesised because the caller substitutes this into a larger
-        # expression.
-        return '(' + emissionUtils.emitExpr(
-            row['evalCanonical'],
-            lambda symKey: constReference_cpp(symKey, prj, useConfig=True),
-            emissionUtils.C) + ')'
-    return f"Config::{row['constant']}"
+    constant is not a member, so it spells as its canonical expression
+    (emissionUtils.constReference_cpp owns the rule)."""
+    return emissionUtils.constReference_cpp(constKey, prj, 'Config' if useConfig else None)
 
 
 def constReferenceValueKeyed_cpp(constKey, prj):

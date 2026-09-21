@@ -74,6 +74,14 @@ def render(args, prj, data):
             return(tandem_hdr(args, prj, data))
         case 'tandem_src':
             return(tandem_src(args, prj, data))
+        case 'socket_hdr':
+            return(socket_hdr(args, prj, data))
+        case 'socket_src':
+            return(socket_src(args, prj, data))
+        case 'socketCatalog_hdr':
+            return(socketCatalog_hdr(args, prj, data))
+        case 'socketCatalog_py':
+            return(socketCatalog_py(args, prj, data))
         case 'tbConfig_src':
             return(tbConfig(args, prj, data))
         case 'testBench_cppm':
@@ -483,6 +491,67 @@ def tandem_src(args, prj, data):
     return(t.substitute({'modulename':data["block"],
                          'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
+socket_hdrTemplate = \
+"""#ifndef __MODULENAME___SOCKET_H
+#define __MODULENAME___SOCKET_H
+// __copyright__
+
+// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socket --section=socket
+// GENERATED_CODE_END
+};
+
+#endif //__MODULENAME___SOCKET_H
+"""
+
+def socket_hdr(args, prj, data):
+    t = TemplateCustom(socket_hdrTemplate)
+    return(t.substitute({'MODULENAME':data["block"].upper(),
+                         'modulename':data["block"],
+                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+socket_srcTemplate = \
+"""// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket
+
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket
+// GENERATED_CODE_END
+}
+"""
+
+def socket_src(args, prj, data):
+    t = TemplateCustom(socket_srcTemplate)
+    return(t.substitute({'modulename':data["block"]}))
+
+socketCatalog_hdrTemplate = \
+"""#ifndef __MODULENAME___SOCKETCATALOG_H
+#define __MODULENAME___SOCKETCATALOG_H
+// __copyright__
+
+// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socketCatalog --section=header
+// GENERATED_CODE_END
+
+#endif //__MODULENAME___SOCKETCATALOG_H
+"""
+
+def socketCatalog_hdr(args, prj, data):
+    t = TemplateCustom(socketCatalog_hdrTemplate)
+    return(t.substitute({'MODULENAME':data["block"].upper(),
+                         'modulename':data["block"],
+                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+socketCatalog_pyTemplate = \
+"""# GENERATED_CODE_PARAM --block=__modulename__
+# GENERATED_CODE_BEGIN --template=socketCatalog --section=python
+# GENERATED_CODE_END
+"""
+
+def socketCatalog_py(args, prj, data):
+    t = TemplateCustom(socketCatalog_pyTemplate)
+    return(t.substitute({'modulename':data["block"]}))
+
 # Plain translation unit for the testbench Config class. Unlike the rest of the
 # testbench family this is NOT a module unit, so it has no zone rules: the single
 # user slot accepts `#include` and `import` interleaved in any order. Everything
@@ -574,6 +643,31 @@ def testBench_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
+# Guidance seeded into a fresh External's member slot: how to write a test that
+# terminates cleanly. The pair of registration lines lives in the constructor body
+# slot below it.
+_TB_EXTERNAL_STIMULUS_GUIDE = [
+    '// Your stimulus goes here. The generated eotThread above stops the',
+    '// simulation when end-of-test latches, and the testbench Config asserts',
+    '// that it did, so a test that never votes ends by aborting in final().',
+    '// Uncomment the lines below and the matching pair in the constructor body',
+    '// to get a test that terminates cleanly, then drive the DUT inside the',
+    '// thread.',
+    '//',
+    '// void stimulusThread(void)',
+    '// {',
+    '//     wait(SC_ZERO_TIME);',
+    '//',
+    '//     // ... drive the DUT here ...',
+    '//',
+    '//     eot_.setEndOfTest(true);',
+    '// }',
+    '//',
+    '// private:',
+    '//     endOfTest eot_{true};   // registers this thread as a voter',
+    '',
+]
+
 # C++20 module interface unit for a block's testbench External (the inverted
 # stimulus/checker peer of the DUT). Follows the blockModule_cppm seam pattern: the
 # scaffold owns the closing `};` of both the class and the constructor body, so the
@@ -592,11 +686,16 @@ def tbExternal_cppm(args, prj, data):
     out.append('\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('    // external implementation members\n\n')
+    for line in _TB_EXTERNAL_STIMULUS_GUIDE:
+        out.append(f'    {line}\n' if line else '\n')
     out.append('};\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=init\n')
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
+    out.append('\n')
+    out.append('    // Register your stimulus thread here (see the member slot above for the pair).\n')
+    out.append('    // SC_THREAD(stimulusThread);\n')
     out.append('};\n\n')
     return("".join(out))
 

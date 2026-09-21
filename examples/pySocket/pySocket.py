@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Sidecar process for pySocket: one TCP connection per req_ack interface (see socketFactory).
+"""Sidecar process for pySocket: one TCP connection per interface (see socketFactory).
 
 Environment (set by pySocketConfig before exec):
   PYSOCKET_PORTS — comma-separated name:port pairs, e.g.
-    test_req_ack:54321,test2Python_req_ack:54322,dut2Python_req_ack:54323
+    pySocket.test_req_ack:54321,pySocket.test2Python_req_ack:54322
 
 Override script path with absolute PYSOCKET_PY_SCRIPT if the binary is not under the usual
 rundir/build layout.
@@ -17,12 +17,41 @@ import os
 import struct
 import sys
 
+_CATALOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base")
+if _CATALOG_DIR not in sys.path:
+    sys.path.insert(0, _CATALOG_DIR)
+from pySocketSocketCatalog import name_for_port, required_names
+
 MSG_REQ = 0x01
 MSG_ACK = 0x02
+MSG_PUSH = 0x03
+MSG_PUSH_ACK = 0x04
+MSG_VLD = 0x05
+MSG_RDY = 0x06
 MSG_SYNC = 0x07
+MSG_POP = 0x19
+MSG_POP_ACK = 0x1A
+MSG_NOTIFY = 0x1B
+MSG_NOTIFY_ACK = 0x1C
+MSG_AXIS_BEAT = 0x1F
+MSG_AXIS_RDY = 0x20
 MSG_SHUTDOWN = 0xFE
 
 HEADER_STRUCT = struct.Struct("<BBH")
+
+# test2Python_req_ack param1 that asks the DUT to push/pop Python instead of req_ack.
+DUT_PUSH_POP_CMD = 0x50555348
+DUT_NOTIFY_CMD = 0x4E4F5449
+DUT_NOTIFY_ACK = 0xA11C
+DUT_RDY_VLD_CMD = 0x52445956
+DUT_AXIS_CMD = 0x41584953
+PUSH_POP_BIAS = 1
+RDY_VLD_BIAS = 2
+AXIS_BIAS = 3
+
+# axi4StreamByteQual_e is an unscoped enum (typically 4 bytes); 64-bit tdata => 8 quals.
+_AXIS_QUAL_COUNT = 8
+_Q_TRUE = 0xFF
 
 
 class p2s_message_st(ctypes.LittleEndianStructure):
@@ -31,6 +60,39 @@ class p2s_message_st(ctypes.LittleEndianStructure):
 
 class p2s_response_st(ctypes.LittleEndianStructure):
     _fields_ = [("response", ctypes.c_uint32)]
+
+
+class axis_tid_st(ctypes.LittleEndianStructure):
+    _fields_ = [("id", ctypes.c_uint8)]
+
+
+class axis_tdest_st(ctypes.LittleEndianStructure):
+    _fields_ = [("id", ctypes.c_uint8)]
+
+
+class axi4_stream_info_st(ctypes.LittleEndianStructure):
+    """Unpacked axi4StreamInfoSt<p2s_message_st, axis_tid_st, axis_tdest_st> (no TUSER)."""
+
+    _fields_ = [
+        ("tdata", p2s_message_st),
+        ("tstrb", ctypes.c_int * _AXIS_QUAL_COUNT),
+        ("tkeep", ctypes.c_int * _AXIS_QUAL_COUNT),
+        ("tid", axis_tid_st),
+        ("tlast", ctypes.c_bool),
+        ("tdest", axis_tdest_st),
+    ]
+
+
+def _make_axis_beat(param1: int, param2: int, *, tid: int = 0, tdest: int = 0, tlast: bool = True) -> axi4_stream_info_st:
+    beat = axi4_stream_info_st()
+    beat.tdata = p2s_message_st(param1, param2)
+    for i in range(_AXIS_QUAL_COUNT):
+        beat.tstrb[i] = _Q_TRUE
+        beat.tkeep[i] = _Q_TRUE
+    beat.tid.id = tid & 0xFF
+    beat.tlast = tlast
+    beat.tdest.id = tdest & 0xFF
+    return beat
 
 
 def struct_bytes(obj: ctypes.Structure) -> bytes:
@@ -104,6 +166,10 @@ class SocketTransport:
         self._writer = None
 
 
+def _derived_response(param1: int, param2: int) -> int:
+    return (param1 + param2 + PUSH_POP_BIAS) & 0xFFFFFFFF
+
+
 async def python2systemc_test(t: SocketTransport) -> None:
     transactions = [(1, 2), (3, 4)]
     for param1, param2 in transactions:
@@ -137,8 +203,138 @@ async def systemc2python_test(t: SocketTransport) -> None:
         if ack.response != want:
             raise ValueError(f"test2Python mismatch: got {ack.response:#x} want {want:#x}")
         print(f"pySocket.py: test2Python_req_ack ({p1:#x},{p2:#x}) -> {ack.response:#x}", flush=True)
+
+
+async def python_push_pop_test(tr_push: SocketTransport, tr_pop: SocketTransport) -> None:
+    transactions = [(5, 7), (10, 20)]
+    for param1, param2 in transactions:
+        req = p2s_message_st(param1, param2)
+        await tr_push.send_msg(MSG_PUSH, struct_bytes(req))
+        msg_type, body = await tr_push.recv_msg()
+        if msg_type != MSG_PUSH_ACK or len(body) != 0:
+            raise ValueError(f"unexpected PUSH_ACK: type={msg_type} len={len(body)}")
+        await tr_pop.send_msg(MSG_POP, b"")
+        msg_type, body = await tr_pop.recv_msg()
+        if msg_type != MSG_POP_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+            raise ValueError(f"unexpected POP_ACK: type={msg_type} len={len(body)}")
+        ack = p2s_response_st.from_buffer_copy(body)
+        expected = _derived_response(param1, param2)
+        if ack.response != expected:
+            raise ValueError(f"push/pop mismatch: got {ack.response} expected {expected}")
+        print(
+            f"pySocket.py: test_push/pop {param1}+{param2}+{PUSH_POP_BIAS} -> {ack.response}",
+            flush=True,
+        )
+    await tr_push.send_msg(MSG_SHUTDOWN, b"")
+    await tr_pop.send_msg(MSG_SHUTDOWN, b"")
+    await tr_push.close()
+    await tr_pop.close()
+
+
+async def python_notify_test(t: SocketTransport) -> None:
+    for i in range(2):
+        await t.send_msg(MSG_NOTIFY, b"")
+        msg_type, body = await t.recv_msg()
+        if msg_type != MSG_NOTIFY_ACK or len(body) != 0:
+            raise ValueError(f"unexpected NOTIFY_ACK: type={msg_type} len={len(body)}")
+        print(f"pySocket.py: test_notify_ack handshake {i}", flush=True)
     await t.send_msg(MSG_SHUTDOWN, b"")
     await t.close()
+
+
+async def python_rdy_vld_test(t: SocketTransport) -> None:
+    transactions = [(6, 8), (11, 21)]
+    for param1, param2 in transactions:
+        req = p2s_message_st(param1, param2)
+        await t.send_msg(MSG_VLD, struct_bytes(req))
+        msg_type, body = await t.recv_msg()
+        if msg_type != MSG_RDY or len(body) != 0:
+            raise ValueError(f"unexpected RDY: type={msg_type} len={len(body)}")
+        print(f"pySocket.py: test_rdy_vld write ({param1},{param2})", flush=True)
+    await t.send_msg(MSG_SHUTDOWN, b"")
+    await t.close()
+
+
+async def python_axi4_stream_test(t: SocketTransport) -> None:
+    transactions = [(7, 9), (12, 22)]
+    for param1, param2 in transactions:
+        beat = _make_axis_beat(param1, param2, tid=0xA, tdest=0xB, tlast=True)
+        await t.send_msg(MSG_AXIS_BEAT, struct_bytes(beat))
+        msg_type, body = await t.recv_msg()
+        if msg_type != MSG_AXIS_RDY or len(body) != 0:
+            raise ValueError(f"unexpected AXIS_RDY: type={msg_type} len={len(body)}")
+        print(f"pySocket.py: test_axi4_stream beat ({param1},{param2})", flush=True)
+    await t.send_msg(MSG_SHUTDOWN, b"")
+    await t.close()
+
+
+async def dut_push_pop_via_req_test(tr_req: SocketTransport) -> None:
+    param1, param2 = DUT_PUSH_POP_CMD, 0x11
+    req = p2s_message_st(param1, param2)
+    await tr_req.send_msg(MSG_REQ, struct_bytes(req))
+    msg_type, body = await tr_req.recv_msg()
+    if msg_type != MSG_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+        raise ValueError(f"unexpected reply on DUT push/pop req: type={msg_type} len={len(body)}")
+    ack = p2s_response_st.from_buffer_copy(body)
+    expected = _derived_response(param1, param2)
+    if ack.response != expected:
+        raise ValueError(f"DUT push/pop req mismatch: got {ack.response:#x} want {expected:#x}")
+    print(
+        f"pySocket.py: test2Python DUT push/pop ({param1:#x},{param2:#x}) -> {ack.response:#x}",
+        flush=True,
+    )
+
+
+async def dut_notify_via_req_test(tr_req: SocketTransport) -> None:
+    param1, param2 = DUT_NOTIFY_CMD, 0
+    req = p2s_message_st(param1, param2)
+    await tr_req.send_msg(MSG_REQ, struct_bytes(req))
+    msg_type, body = await tr_req.recv_msg()
+    if msg_type != MSG_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+        raise ValueError(f"unexpected reply on DUT notify req: type={msg_type} len={len(body)}")
+    ack = p2s_response_st.from_buffer_copy(body)
+    if ack.response != DUT_NOTIFY_ACK:
+        raise ValueError(f"DUT notify req mismatch: got {ack.response:#x} want {DUT_NOTIFY_ACK:#x}")
+    print(
+        f"pySocket.py: test2Python DUT notify ({param1:#x}) -> {ack.response:#x}",
+        flush=True,
+    )
+
+
+async def dut_rdy_vld_via_req_test(tr_req: SocketTransport) -> None:
+    param1, param2 = DUT_RDY_VLD_CMD, 0x22
+    req = p2s_message_st(param1, param2)
+    await tr_req.send_msg(MSG_REQ, struct_bytes(req))
+    msg_type, body = await tr_req.recv_msg()
+    if msg_type != MSG_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+        raise ValueError(f"unexpected reply on DUT rdy_vld req: type={msg_type} len={len(body)}")
+    ack = p2s_response_st.from_buffer_copy(body)
+    expected = (param1 + param2 + RDY_VLD_BIAS) & 0xFFFFFFFF
+    if ack.response != expected:
+        raise ValueError(f"DUT rdy_vld req mismatch: got {ack.response:#x} want {expected:#x}")
+    print(
+        f"pySocket.py: test2Python DUT rdy_vld ({param1:#x},{param2:#x}) -> {ack.response:#x}",
+        flush=True,
+    )
+
+
+async def dut_axi4_stream_via_req_test(tr_req: SocketTransport) -> None:
+    param1, param2 = DUT_AXIS_CMD, 0x33
+    req = p2s_message_st(param1, param2)
+    await tr_req.send_msg(MSG_REQ, struct_bytes(req))
+    msg_type, body = await tr_req.recv_msg()
+    if msg_type != MSG_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+        raise ValueError(f"unexpected reply on DUT axi4_stream req: type={msg_type} len={len(body)}")
+    ack = p2s_response_st.from_buffer_copy(body)
+    expected = (param1 + param2 + AXIS_BIAS) & 0xFFFFFFFF
+    if ack.response != expected:
+        raise ValueError(f"DUT axi4_stream req mismatch: got {ack.response:#x} want {expected:#x}")
+    print(
+        f"pySocket.py: test2Python DUT axi4_stream ({param1:#x},{param2:#x}) -> {ack.response:#x}",
+        flush=True,
+    )
+    await tr_req.send_msg(MSG_SHUTDOWN, b"")
+    await tr_req.close()
 
 
 async def dut2python_target(t: SocketTransport) -> None:
@@ -162,39 +358,187 @@ async def dut2python_target(t: SocketTransport) -> None:
         await t.send_msg(MSG_ACK, struct_bytes(rsp))
 
 
+class _LastPush:
+    msg: p2s_message_st | None = None
+
+
+async def dut2python_push_target(t: SocketTransport, last: _LastPush) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_PUSH or len(body) != ctypes.sizeof(p2s_message_st):
+            raise ValueError(f"dut2Python_push: bad message type={msg_type} len={len(body)}")
+        last.msg = p2s_message_st.from_buffer_copy(body)
+        print(
+            f"pySocket.py: dut2Python_push_ack ({last.msg.param1:#x},{last.msg.param2:#x})",
+            flush=True,
+        )
+        await t.send_msg(MSG_PUSH_ACK, b"")
+
+
+async def dut2python_pop_target(t: SocketTransport, last: _LastPush) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_POP or len(body) != 0:
+            raise ValueError(f"dut2Python_pop: bad message type={msg_type} len={len(body)}")
+        if last.msg is None:
+            raise ValueError("dut2Python_pop: POP before PUSH")
+        rsp = p2s_response_st(_derived_response(last.msg.param1, last.msg.param2))
+        print(
+            f"pySocket.py: dut2Python_pop_ack -> {rsp.response:#x}",
+            flush=True,
+        )
+        await t.send_msg(MSG_POP_ACK, struct_bytes(rsp))
+
+
+async def dut2python_notify_target(t: SocketTransport) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_NOTIFY or len(body) != 0:
+            raise ValueError(f"dut2Python_notify: bad message type={msg_type} len={len(body)}")
+        print("pySocket.py: dut2Python_notify_ack", flush=True)
+        await t.send_msg(MSG_NOTIFY_ACK, b"")
+
+
+async def dut2python_rdy_vld_target(t: SocketTransport) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_VLD or len(body) != ctypes.sizeof(p2s_message_st):
+            raise ValueError(f"dut2Python_rdy_vld: bad message type={msg_type} len={len(body)}")
+        msg = p2s_message_st.from_buffer_copy(body)
+        print(
+            f"pySocket.py: dut2Python_rdy_vld ({msg.param1:#x},{msg.param2:#x})",
+            flush=True,
+        )
+        await t.send_msg(MSG_RDY, b"")
+
+
+async def dut2python_axi4_stream_target(t: SocketTransport) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_AXIS_BEAT or len(body) != ctypes.sizeof(axi4_stream_info_st):
+            raise ValueError(f"dut2Python_axi4_stream: bad message type={msg_type} len={len(body)}")
+        beat = axi4_stream_info_st.from_buffer_copy(body)
+        print(
+            f"pySocket.py: dut2Python_axi4_stream ({beat.tdata.param1:#x},{beat.tdata.param2:#x}) "
+            f"tlast={int(beat.tlast)}",
+            flush=True,
+        )
+        await t.send_msg(MSG_AXIS_RDY, b"")
+
+
+async def _wait_task(task: asyncio.Task) -> None:
+    try:
+        await asyncio.wait_for(task, timeout=5.0)
+    except asyncio.TimeoutError:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
 async def main(argv: list[str]) -> None:
     if len(argv) >= 1:
         ports_file = argv[0]
     else:
         ports_file = None
     ports = parse_ports(ports_file)
-    required = ("test_req_ack", "test2Python_req_ack", "dut2Python_req_ack")
+    required = required_names()
     for name in required:
         if name not in ports:
             print(f"pySocket.py: missing {name} in PYSOCKET_PORTS", file=sys.stderr)
             sys.exit(1)
 
-    tr_test = SocketTransport("127.0.0.1", ports["test_req_ack"])
-    tr_test2 = SocketTransport("127.0.0.1", ports["test2Python_req_ack"])
-    tr_dut = SocketTransport("127.0.0.1", ports["dut2Python_req_ack"])
-    await asyncio.gather(tr_test.connect(), tr_test2.connect(), tr_dut.connect())
-    await asyncio.gather(tr_test.recv_sync(), tr_test2.recv_sync(), tr_dut.recv_sync())
+    tr_test = SocketTransport("127.0.0.1", ports[name_for_port("test_req_ack")])
+    tr_test2 = SocketTransport("127.0.0.1", ports[name_for_port("test2Python_req_ack")])
+    tr_dut = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_req_ack")])
+    tr_push = SocketTransport("127.0.0.1", ports[name_for_port("test_push_ack")])
+    tr_pop = SocketTransport("127.0.0.1", ports[name_for_port("test_pop_ack")])
+    tr_dut_push = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_push_ack")])
+    tr_dut_pop = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_pop_ack")])
+    tr_notify = SocketTransport("127.0.0.1", ports[name_for_port("test_notify_ack")])
+    tr_dut_notify = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_notify_ack")])
+    tr_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("test_rdy_vld")])
+    tr_dut_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_rdy_vld")])
+    tr_axis = SocketTransport("127.0.0.1", ports[name_for_port("test_axi4_stream")])
+    tr_dut_axis = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_axi4_stream")])
+    await asyncio.gather(
+        tr_test.connect(),
+        tr_test2.connect(),
+        tr_dut.connect(),
+        tr_push.connect(),
+        tr_pop.connect(),
+        tr_dut_push.connect(),
+        tr_dut_pop.connect(),
+        tr_notify.connect(),
+        tr_dut_notify.connect(),
+        tr_rdy_vld.connect(),
+        tr_dut_rdy_vld.connect(),
+        tr_axis.connect(),
+        tr_dut_axis.connect(),
+    )
+    await asyncio.gather(
+        tr_test.recv_sync(),
+        tr_test2.recv_sync(),
+        tr_dut.recv_sync(),
+        tr_push.recv_sync(),
+        tr_pop.recv_sync(),
+        tr_dut_push.recv_sync(),
+        tr_dut_pop.recv_sync(),
+        tr_notify.recv_sync(),
+        tr_dut_notify.recv_sync(),
+        tr_rdy_vld.recv_sync(),
+        tr_dut_rdy_vld.recv_sync(),
+        tr_axis.recv_sync(),
+        tr_dut_axis.recv_sync(),
+    )
     print("pySocket.py: connected all interfaces (synced)", flush=True)
 
+    last_push = _LastPush()
     dut_task = asyncio.create_task(dut2python_target(tr_dut))
+    dut_push_task = asyncio.create_task(dut2python_push_target(tr_dut_push, last_push))
+    dut_pop_task = asyncio.create_task(dut2python_pop_target(tr_dut_pop, last_push))
+    dut_notify_task = asyncio.create_task(dut2python_notify_target(tr_dut_notify))
+    dut_rdy_vld_task = asyncio.create_task(dut2python_rdy_vld_target(tr_dut_rdy_vld))
+    dut_axis_task = asyncio.create_task(dut2python_axi4_stream_target(tr_dut_axis))
     await python2systemc_test(tr_test)
+    await python_push_pop_test(tr_push, tr_pop)
+    await python_notify_test(tr_notify)
+    await python_rdy_vld_test(tr_rdy_vld)
+    await python_axi4_stream_test(tr_axis)
     await systemc2python_test(tr_test2)
-    # Tell the SystemC target bridge to exit; matches finite DUT traffic on dut2Python.
+    await dut_push_pop_via_req_test(tr_test2)
+    await dut_notify_via_req_test(tr_test2)
+    await dut_rdy_vld_via_req_test(tr_test2)
+    await dut_axi4_stream_via_req_test(tr_test2)
     await tr_dut.send_msg(MSG_SHUTDOWN, b"")
-    try:
-        await asyncio.wait_for(dut_task, timeout=5.0)
-    except asyncio.TimeoutError:
-        dut_task.cancel()
-        try:
-            await dut_task
-        except asyncio.CancelledError:
-            pass
+    await tr_dut_push.send_msg(MSG_SHUTDOWN, b"")
+    await tr_dut_pop.send_msg(MSG_SHUTDOWN, b"")
+    await tr_dut_notify.send_msg(MSG_SHUTDOWN, b"")
+    await tr_dut_rdy_vld.send_msg(MSG_SHUTDOWN, b"")
+    await tr_dut_axis.send_msg(MSG_SHUTDOWN, b"")
+    await _wait_task(dut_task)
+    await _wait_task(dut_push_task)
+    await _wait_task(dut_pop_task)
+    await _wait_task(dut_notify_task)
+    await _wait_task(dut_rdy_vld_task)
+    await _wait_task(dut_axis_task)
     await tr_dut.close()
+    await tr_dut_push.close()
+    await tr_dut_pop.close()
+    await tr_dut_notify.close()
+    await tr_dut_rdy_vld.close()
+    await tr_dut_axis.close()
     print("pySocket.py: done", flush=True)
 
 

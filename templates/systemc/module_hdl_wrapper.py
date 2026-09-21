@@ -40,6 +40,13 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
+        # vl_trace() below calls dut_hdl->trace(tfp, ...), passing the
+        # VerilatedVcdC* it receives into a VerilatedTraceBaseC* parameter; that
+        # derived-to-base conversion needs the complete type, which blockBase.h
+        # deliberately only forward-declares (see the comment there).
+        s.append('#ifdef VERILATOR')
+        s.append('#include "verilated_vcd_c.h"')
+        s.append('#endif')
         # A module import does not propagate the base module's own context
         # imports / using-directives the way the old textual `<block>Base.h`
         # did. The Verilated SC wrapper class spells the DUT's interface struct
@@ -210,6 +217,7 @@ sec_hdl_sc_wrapper_class_template = """\
 {% if sec_bfm_includes %}
 {{ sec_bfm_includes }}
 {% endif %}
+#include "socketSync.h"
 {%- if is_template %}
 template <typename DUT_T, typename Config>
 {%- endif %}
@@ -227,7 +235,7 @@ public:
 
     DUT_T *dut_hdl;
 {% endif %}
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     {{ sec_bfm_decl | indent(4) }}
 {%- if not is_template %}
@@ -245,9 +253,10 @@ public:
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
         {{blockname}}Base{{cfg}}(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n(0)
+        rst_n("rst_n", true),
+        clk_half_(0.5, SC_NS)
     {
 {%- if not is_template %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -263,6 +272,8 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -282,10 +293,41 @@ private:
     {{ sec_hdl_if_decl | indent(4) }}
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
-        rst_n = true;
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
+        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
+        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
+        // Free-run / non-socket: assert, hold, then release.
+        if (socketSyncLockstepActive()) {
+            rst_n.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst_n.write(socketSyncRstN());
+            }
+        } else {
+            rst_n.write(false);
+            wait(5, SC_NS);
+            rst_n.write(true);
+        }
     }
 
 """

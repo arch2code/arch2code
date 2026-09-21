@@ -49,6 +49,10 @@ AXI_DIR = examples/axiDemo
 AXI_DOT_DB_FILE = $(AXI_DIR)/.axiDemo.db
 AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
+AXISOCKET_MASTER_DIR = examples/axiSocketMaster
+AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
+XIF_DIR = examples/xif
+
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 
 
@@ -487,6 +491,18 @@ pySocket:
 	make -C $(PYSOCKET_DIR)/rundir -j run
 	make -C $(PYSOCKET_DIR)/rtl lint -j
 
+.PHONY : axiSocketMaster
+# Python AXI master / SystemC memory slave over TCP sockets (model-only).
+axiSocketMaster:
+	make -C $(AXISOCKET_MASTER_DIR)/rundir -j all
+	make -C $(AXISOCKET_MASTER_DIR)/rundir run
+
+.PHONY : axiSocketSlave
+# SystemC AXI master / Python memory slave over TCP sockets (model-only).
+axiSocketSlave:
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir -j all
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir run
+
 .PHONY : in-and-out
 # sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
 # demo, whose SystemC sim cannot regenerate under this branch's cppm-default
@@ -564,6 +580,31 @@ clean :
 	done
 
 # Invocation contract: see unittest/README.md, "Invocation contract".
+
+.PHONY : newmodule-all
+# Scaffold + fill generated regions for every example that exposes a2c-common
+# newmodule/gen (inAndOut / hierInclude are lint-only and are omitted). Nested
+# IP project roots are included alongside their assemblers.
+# Two make invocations per dir: gen's wildcard GEN_DEPS is fixed at parse time,
+# so it must re-parse after newmodule lays down new files (same as migrate).
+newmodule-all:
+	make -C $(NESTED_DIR) -j newmodule && make -C $(NESTED_DIR) -j gen
+	make -C $(HELLO_DIR) -j newmodule && make -C $(HELLO_DIR) -j gen
+	make -C $(MIXED_DIR) -j newmodule && make -C $(MIXED_DIR) -j gen
+	make -C $(PYSOCKET_DIR) -j newmodule && make -C $(PYSOCKET_DIR) -j gen
+	make -C $(AXISOCKET_MASTER_DIR) -j newmodule && make -C $(AXISOCKET_MASTER_DIR) -j gen
+	make -C $(AXISOCKET_SLAVE_DIR) -j newmodule && make -C $(AXISOCKET_SLAVE_DIR) -j gen
+	make -C $(XIF_DIR) -j newmodule && make -C $(XIF_DIR) -j gen
+	make -C $(APBDECODE_DIR) -j newmodule && make -C $(APBDECODE_DIR) -j gen
+	make -C $(AXI_DIR) -j newmodule && make -C $(AXI_DIR) -j gen
+	make -C $(AXI4SDEMO_DIR) -j newmodule && make -C $(AXI4SDEMO_DIR) -j gen
+	make -C $(HIER_VL_DEMO_DIR) -j newmodule && make -C $(HIER_VL_DEMO_DIR) -j gen
+	make -C $(IP_TEST_DIR) -j newmodule && make -C $(IP_TEST_DIR) -j gen
+	make -C $(IP_TEST_DIR)/ip -j newmodule && make -C $(IP_TEST_DIR)/ip -j gen
+	make -C $(IP_TEST_DIR)/bridge -j newmodule && make -C $(IP_TEST_DIR)/bridge -j gen
+	make -C $(SIMPLE_IP_DIR) -j newmodule && make -C $(SIMPLE_IP_DIR) -j gen
+	make -C $(SIMPLE_IP_DIR)/ip -j newmodule && make -C $(SIMPLE_IP_DIR)/ip -j gen
+
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests_parallel.sh
@@ -572,7 +613,7 @@ unittest:
 # The example projects build in their own directories, so they run PIPELINE_JOBS
 # at a time; targets that share a project declare the order themselves.
 PIPELINE_JOBS ?= 8
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

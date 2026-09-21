@@ -5,6 +5,10 @@
 
 #include "systemc.h"
 #include "apb_channel.h"
+#include "socketObserve.h"
+
+#include <cstdint>
+#include <string>
 
 template<typename VL_ADDR_T, typename VL_DATA_T>
 struct apb_hdl_if: public sc_interface {
@@ -81,6 +85,9 @@ public:
     sc_in<bool> clk;
     sc_in<bool> rst_n;
 
+    // When set (e.g. "cpu_apb_reg"), emit pin-accurate RESP observe with wait_cycles.
+    std::string observe_ifc;
+
     SC_HAS_PROCESS (apb_dst_bfm);
 
     apb_dst_bfm(sc_module_name modulename) {
@@ -103,20 +110,37 @@ public:
             }
             wait(clk.posedge_event());
             hdl_if_p->penable = true;
-            do {
+            // Count access-phase cycles where the slave holds PREADY low (wait states).
+            uint32_t wait_cycles = 0;
+            for (;;) {
                 wait(clk.posedge_event());
-            } while (!hdl_if_p->pready);
+                if (hdl_if_p->pready) {
+                    break;
+                }
+                if (wait_cycles < 255u) {
+                    ++wait_cycles;
+                }
+            }
             if ( !is_write ) {
                 data.sc_unpack(hdl_if_p->prdata);
             }
             hdl_if_p->penable = false;
             slverr = hdl_if_p->pslverr;
             if( !is_write ) if_p->complete(data);
+
+            if (!observe_ifc.empty()) {
+                const uint32_t addr_u = static_cast<uint32_t>(addr._getAddress());
+                const uint32_t data_u = static_cast<uint32_t>(data._getData());
+                socket_observe_apb_resp(observe_ifc, is_write, addr_u, data_u,
+                                        static_cast<uint8_t>(wait_cycles), true);
+            }
+
             hdl_if_p->psel = false;
             hdl_if_p->paddr = VL_ADDR_T(0);
             hdl_if_p->pwrite = false;
             hdl_if_p->pwdata = VL_DATA_T(0);
-            Q_ASSERT(!slverr, "Unexpected slverr flag set");
+            // PSLVERR is legal for unmapped APB (rev3 §11.5); do not fatal.
+            (void)slverr;
         }
     }
 

@@ -1,0 +1,35 @@
+yamlFormat: 2
+
+projectName: axiSocketSlave
+
+projectFiles:
+  - axiSocketSlave_tb.yaml
+
+topInstance: axiSocketSlave_tb
+
+dirs:
+  root: ../..
+  base: $root/base
+  model: $root/model
+  tb: $root/tb
+  fwInc: $root/fw/include
+
+fileGeneration:
+  template: $a2c/templates/fileGen/fileGen.py
+  fileMap:
+    includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+  fileCopyrightStatement: ""
+
+instanceGroups:
+  top:
+    varType: inst_top
+    enumPrefix: INST_TOP_
+
+addressObjects:
+  memories:
+    alignment: memsize
+    sizeRoundUpPowerOf2: true
+    sortDescending: true
+  registers:
+    alignment: 8
+    sortDescending: true

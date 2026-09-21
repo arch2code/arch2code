@@ -504,8 +504,8 @@ def test_port_binds_its_own_project_interface():
         if end['childInterfaceKey'] != stored:
             failures.append(
                 f"cross-interface bind used '{end['childInterfaceKey']}', "
-                f"expected '{stored}'; the thunker payload is "
-                f"{end['childStructures']}")
+                f"expected '{stored}'; the thunker payloads are "
+                f"{[p['structureKey'] for p in end['thunker']['payloads']]}")
         if failures:
             for failure in failures:
                 print(f"  FAIL: {failure}")

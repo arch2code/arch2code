@@ -20,6 +20,8 @@
 #include <format>
 #include "simpleQueue.h"
 #include "axiCommon.h"
+#include "optionalPayload.h"
+#include "bitTwiddling.h"
 
 // sendAddr( A )
 //          -------> receiveAddr( &A )
@@ -29,20 +31,29 @@
 //                   sendResp( S )
 // receiveResp( &S ) <-------
 
-template <typename D, typename S>
+// id_t is optional, so its payload type ID and its bit width IDW sit last in
+// the template argument list, after the USER sidebands (AWU, WU, BU): ID
+// defaults to _axiIdT and IDW to 4, the width the companion SV interface and
+// C++ templates already default an unbound id_t to.
+template <typename D, typename S, typename U = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
 struct axiWriteDataSt
 {
-    _axiIdT wid; // Write ID tag. This signal is the identification tag for the write data group of signals
+    ID wid; // Write ID tag. This signal is the identification tag for the write data group of signals
     D wdata;     // Write data
     S wstrb;     // Write strobes. This signal indicates which byte lanes hold valid data
     bool wlast;  // Write last. This signal indicates the last transfer in a write burst transaction
+    // WUSER sideband, qualified by the write data channel handshake. Declared
+    // last so that an empty U occupies tail padding and leaves the offsets of
+    // every other member untouched.
+    [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in wid
+    static constexpr unsigned int idWidth = IDW; // number of bits in wid
     static constexpr unsigned int dataWidth = D::_bitWidth; // number of bits in data
     static constexpr unsigned int strbWidth = S::_bitWidth; // number of bits in wstrb
     static constexpr unsigned int lastWidth = 1; // number of bits in wlast
+    static constexpr unsigned int userWidth = optionalPayloadBitWidth<U>(); // number of bits in user
 
-    static constexpr unsigned int _bitWidth = idWidth + dataWidth + strbWidth + lastWidth;
+    static constexpr unsigned int _bitWidth = idWidth + dataWidth + strbWidth + lastWidth + userWidth;
     static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
     static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
 
@@ -54,7 +65,10 @@ struct axiWriteDataSt
 
     inline D * getDataPtr(void) {return &wdata;} // returns pointer to internal data element. Note this is unrelated to any backdoor
 
-    inline bool operator == (const axiWriteDataSt< D, S > & rhs) const {
+    inline bool operator == (const axiWriteDataSt< D, S, U, ID, IDW > & rhs) const {
+        if constexpr (hasOptionalPayload<U>) {
+            if (!(rhs.user == user)) { return false; }
+        }
         return (
             rhs.wid == wid &&
             rhs.wdata == wdata &&
@@ -62,13 +76,14 @@ struct axiWriteDataSt
             rhs.wlast == wlast
         );
     }
-    inline friend void sc_trace(sc_trace_file *tf, const axiWriteDataSt< D, S > & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const axiWriteDataSt< D, S, U, ID, IDW > & v, const std::string & NAME ) {
         sc_trace(tf,v.wid, NAME + ".wid");
         sc_trace(tf,v.wdata, NAME + ".wdata");
         sc_trace(tf,v.wstrb, NAME + ".rresp");
         sc_trace(tf,v.wlast, NAME + ".rlast");
+        if constexpr (hasOptionalPayload<U>) { sc_trace(tf,v.user, NAME + ".wuser"); }
     }
-    inline friend ostream& operator << ( ostream& os,  axiWriteDataSt< D, S > const & v ) {
+    inline friend ostream& operator << ( ostream& os,  axiWriteDataSt< D, S, U, ID, IDW > const & v ) {
         os << "("
            << std::hex << std::setw(1) << (int)v.wid << ", "
            << v.wdata.prt() << ", "
@@ -114,12 +129,18 @@ struct axiWriteDataSt
         _pos += strbWidth;
         pack_bits((uint64_t *)&_ret, _pos, wlast, lastWidth);
         _pos += lastWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            user.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            _pos += userWidth;
+        }
     }
 
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        wid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        wid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
         _pos += idWidth;
         {
             typename D::_packedSt _tmp{0};
@@ -135,26 +156,37 @@ struct axiWriteDataSt
         _pos += strbWidth;
         wlast = (bool)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lastWidth) - 1));
         _pos += lastWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
+            user.unpack(_tmp);
+            _pos += userWidth;
+        }
     }
 
 };
 
-template <typename A>
+template <typename A, typename U = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
 struct axiWriteAddressSt
 {
-    _axiIdT     awid;    // Write address ID. This signal is the identification tag for the write address group of signals (4bits)
+    ID          awid;    // Write address ID. This signal is the identification tag for the write address group of signals
     A           awaddr;  // Write address. The write address gives the address of the first transfer in a write burst transaction
     uint8_t     awlen;   // Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   awsize;  // Burst size. This signal indicates the size of each transfer in the burst.
     _axiBurstT  awburst; // Master Burst type. The burst type and the size information determine how the address for each transfer within the burst is calculated
+    // AWUSER sideband, qualified by the write address channel handshake.
+    // Declared last so that an empty U occupies tail padding and leaves the
+    // offsets of every other member untouched.
+    [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in awid
+    static constexpr unsigned int idWidth = IDW; // number of bits in awid
     static constexpr unsigned int addrWidth = A::_bitWidth; // number of bits in awaddr
     static constexpr unsigned int lenWidth = 8; // number of bits in awlen
     static constexpr unsigned int sizeWidth = 3; // number of bits in awsize
     static constexpr unsigned int burstWidth = 2; // number of bits in awburst
+    static constexpr unsigned int userWidth = optionalPayloadBitWidth<U>(); // number of bits in user
 
-    static constexpr unsigned int _bitWidth = idWidth + addrWidth + lenWidth + sizeWidth + burstWidth;
+    static constexpr unsigned int _bitWidth = idWidth + addrWidth + lenWidth + sizeWidth + burstWidth + userWidth;
     static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
     static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
 
@@ -162,7 +194,10 @@ struct axiWriteAddressSt
 
     axiWriteAddressSt() {};
 
-    inline bool operator == (const axiWriteAddressSt< A > & rhs) const {
+    inline bool operator == (const axiWriteAddressSt< A, U, ID, IDW > & rhs) const {
+        if constexpr (hasOptionalPayload<U>) {
+            if (!(rhs.user == user)) { return false; }
+        }
         return (
             rhs.awid == awid &&
             rhs.awaddr == awaddr &&
@@ -171,14 +206,15 @@ struct axiWriteAddressSt
             rhs.awburst == awburst
         );
     }
-    inline friend void sc_trace(sc_trace_file *tf, const axiWriteAddressSt< A > & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const axiWriteAddressSt< A, U, ID, IDW > & v, const std::string & NAME ) {
         sc_trace(tf,v.awid, NAME + ".awid");
         sc_trace(tf,v.awaddr, NAME + ".awaddr");
         sc_trace(tf,v.awlen, NAME + ".awlen");
         sc_trace(tf,v.awsize, NAME + ".awsize");
         sc_trace(tf,v.awburst, NAME + ".awburst");
+        if constexpr (hasOptionalPayload<U>) { sc_trace(tf,v.user, NAME + ".awuser"); }
     }
-    inline friend ostream& operator << ( ostream& os, axiWriteAddressSt< A > const & v ) {
+    inline friend ostream& operator << ( ostream& os, axiWriteAddressSt< A, U, ID, IDW > const & v ) {
         os << "("
            << (int)v.awid << ", "
            << v.awaddr.prt() << ", "
@@ -223,11 +259,17 @@ struct axiWriteAddressSt
         _pos += sizeWidth;
         pack_bits((uint64_t *)&_ret, _pos, awburst, burstWidth);
         _pos += burstWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            user.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            _pos += userWidth;
+        }
     }
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        awid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        awid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
         _pos += idWidth;
         {
             typename A::_packedSt _tmp{0};
@@ -241,19 +283,31 @@ struct axiWriteAddressSt
         _pos += sizeWidth;
         awburst = (_axiBurstT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << burstWidth) - 1));
         _pos += burstWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
+            user.unpack(_tmp);
+            _pos += userWidth;
+        }
     }
 
 };
 
+template <typename U = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
 struct axiWriteRespSt
 {
-    _axiIdT     bid;    // Write address ID. This signal is the identification tag for the write address group of signals (4bits)
+    ID          bid;    // Write address ID. This signal is the identification tag for the write address group of signals
     _axiResponseT bresp; // Write response. This signal indicates the status of the write transaction
+    // BUSER sideband, qualified by the write response channel handshake.
+    // Declared last so that an empty U occupies tail padding and leaves the
+    // offsets of every other member untouched.
+    [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in bid
+    static constexpr unsigned int idWidth = IDW; // number of bits in bid
     static constexpr unsigned int respWidth = 2; // number of bits in bresp
+    static constexpr unsigned int userWidth = optionalPayloadBitWidth<U>(); // number of bits in user
 
-    static constexpr unsigned int _bitWidth = idWidth + respWidth;
+    static constexpr unsigned int _bitWidth = idWidth + respWidth + userWidth;
     static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
     static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
 
@@ -261,17 +315,21 @@ struct axiWriteRespSt
 
     axiWriteRespSt() {};
 
-    inline bool operator == (const axiWriteRespSt & rhs) const {
+    inline bool operator == (const axiWriteRespSt< U, ID, IDW > & rhs) const {
+        if constexpr (hasOptionalPayload<U>) {
+            if (!(rhs.user == user)) { return false; }
+        }
         return (
             rhs.bid == bid &&
             rhs.bresp == bresp
         );
     }
-    inline friend void sc_trace(sc_trace_file *tf, const axiWriteRespSt & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const axiWriteRespSt< U, ID, IDW > & v, const std::string & NAME ) {
         sc_trace(tf,v.bid, NAME + ".bid");
         sc_trace(tf,v.bresp, NAME + ".bresp");
+        if constexpr (hasOptionalPayload<U>) { sc_trace(tf,v.user, NAME + ".buser"); }
     }
-    inline friend ostream& operator << ( ostream& os, axiWriteRespSt const & v ) {
+    inline friend ostream& operator << ( ostream& os, axiWriteRespSt< U, ID, IDW > const & v ) {
         os << "("
            << (int)v.bid << ", "
            << _axiResponseT_prt(v.bresp) << ");";
@@ -300,32 +358,56 @@ struct axiWriteRespSt
         _pos += idWidth;
         pack_bits((uint64_t *)&_ret, _pos, bresp, respWidth);
         _pos += respWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            user.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            _pos += userWidth;
+        }
     }
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        bid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        bid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
         _pos += idWidth;
         bresp = (_axiResponseT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << respWidth) - 1));
         _pos += respWidth;
+        if constexpr (hasOptionalPayload<U>) {
+            typename U::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
+            user.unpack(_tmp);
+            _pos += userWidth;
+        }
     }
 
 };
 
-template <class A, class D, class S>
+// The default instantiation must stay bit and size identical to the
+// pre-USER, non-template axiWriteRespSt.
+static_assert(axiWriteRespSt<>::userWidth == 0, "empty BUSER must contribute no packed bits");
+static_assert(axiWriteRespSt<>::_bitWidth == axiWriteRespSt<>::idWidth + axiWriteRespSt<>::respWidth,
+              "axiWriteRespSt<> packed width changed");
+static_assert(sizeof(axiWriteRespSt<>) == 8, "axiWriteRespSt<> storage size changed");
+
+template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate, class ID = _axiIdT, unsigned IDW = 4>
 class axi_write_in_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
 
     // receiver interfaces
-    virtual void receiveAddr( axiWriteAddressSt<A>& ) = 0;
-    virtual void receiveData( axiWriteDataSt<D, S>& ) = 0;
-    virtual void receiveDataCycle(  axiWriteDataSt<D, S>& ) = 0;  // for multi cycle channels, gets one burst
-    virtual void sendResp( const axiWriteRespSt& ) = 0;
-    virtual void sendRespCycle( const axiWriteRespSt& ) = 0;
+    virtual void receiveAddr( axiWriteAddressSt<A, AWU, ID, IDW>& ) = 0;
+    virtual void receiveData( axiWriteDataSt<D, S, WU, ID, IDW>& ) = 0;
+    virtual void receiveDataCycle(  axiWriteDataSt<D, S, WU, ID, IDW>& ) = 0;  // for multi cycle channels, gets one burst
+    virtual void sendResp( const axiWriteRespSt<BU, ID, IDW>& ) = 0;
+    virtual void sendRespCycle( const axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual void push_burst(uint32_t burstCount) = 0; // push number of burst
     virtual uint8_t * getReceiveDataPtr(void) = 0;
+    // arbitration: reflects the address sub-channel, since the arbitration
+    // decision on the dst side is made at the address phase
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -334,23 +416,23 @@ protected:
 
 private:
     // disabled
-    axi_write_in_if( const axi_write_in_if<A, D, S>& );
-    axi_write_in_if<A, D, S>& operator = ( const axi_write_in_if<A, D, S>& );
+    axi_write_in_if( const axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW>& );
+    axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW>& operator = ( const axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW>& );
 };
 
 
-template <class A, class D, class S>
+template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate, class ID = _axiIdT, unsigned IDW = 4>
 class axi_write_out_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
     // sender interfaces
-    virtual void sendAddr( const axiWriteAddressSt<A>&, std::optional<std::string> str=std::nullopt ) = 0;
-    virtual void sendData( const axiWriteDataSt<D, S>& ) = 0;
-    virtual void sendData( const axiWriteDataSt<D, S>&, int burstCount ) = 0;
-    virtual void sendDataCycle( const axiWriteDataSt<D, S>& ) = 0;
-    virtual void receiveResp( axiWriteRespSt& ) = 0;
-    virtual void receiveRespCycle( axiWriteRespSt& ) = 0;
+    virtual void sendAddr( const axiWriteAddressSt<A, AWU, ID, IDW>&, std::optional<std::string> str=std::nullopt ) = 0;
+    virtual void sendData( const axiWriteDataSt<D, S, WU, ID, IDW>& ) = 0;
+    virtual void sendData( const axiWriteDataSt<D, S, WU, ID, IDW>&, int burstCount ) = 0;
+    virtual void sendDataCycle( const axiWriteDataSt<D, S, WU, ID, IDW>& ) = 0;
+    virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) = 0;
+    virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual uint8_t * getSendDataPtr(void) = 0;
 
 protected:
@@ -360,8 +442,8 @@ protected:
 
 private:
     // disabled
-    axi_write_out_if( const axi_write_out_if<A, D, S>& );
-    axi_write_out_if<A, D, S>& operator = ( const axi_write_out_if<A, D, S>& );
+    axi_write_out_if( const axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW>& );
+    axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW>& operator = ( const axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW>& );
 };
 
 class axi_write_transaction_counter {
@@ -370,14 +452,20 @@ public:
 };
 
 
-template <class A, class D, class S>
+template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate, class ID = _axiIdT, unsigned IDW = 4>
 class axi_write_channel
-: public axi_write_in_if<A, D, S>,
-  public axi_write_out_if<A, D, S>,
+: public axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW>,
+  public axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW>,
   public sc_prim_channel,
   public axi_write_transaction_counter
 {
 public:
+    // Each AXI channel allocates several vectors of transactionIdMax entries,
+    // so its footprint grows as 2^IDW; ID must be wide enough to hold IDW
+    // bits, since the id is stored in it directly rather than packed.
+    static_assert(IDW >= 1 && IDW <= 16 && IDW <= 8 * sizeof(ID), "IDW must be >= 1 and <= 16, otherwise the per-channel transaction-tracking vectors (sized 2^IDW) become impractically large, and must fit in ID");
+    static constexpr unsigned int transactionIdMax = 1u << IDW;
+
     // constructor const char * module, std::string block
     explicit axi_write_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
@@ -392,7 +480,7 @@ public:
         m_resp_in((std::string(name_) + "respIn").c_str()),
         m_reader(nullptr),
         m_writer(nullptr),
-        m_resp_transactions(AXI_TRANSACTION_ID_MAX),
+        m_resp_transactions(transactionIdMax),
         m_logQueueAddr(std::make_shared<stringPingPong>()),
         m_logQueueData(std::make_shared<stringPingPong>()),
         m_logQueueResp(std::make_shared<stringPingPong>())
@@ -411,7 +499,7 @@ public:
     explicit axi_write_channel( const char* name_, std::string block_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
         m_addr_channel((std::string(name_) + "addr").c_str(), block_),
-        m_data_channel((std::string(name_) + "data").c_str(), block_, multiCycleType_, pingpong_size_*sizeof(axiWriteDataSt<D, S>), trackerName_),
+        m_data_channel((std::string(name_) + "data").c_str(), block_, multiCycleType_, pingpong_size_*sizeof(axiWriteDataSt<D, S, WU, ID, IDW>), trackerName_),
         m_resp_channel((std::string(name_) + "resp").c_str(), block_),
         m_addr_out((std::string(name_) + "addrOut").c_str()),
         m_data_out((std::string(name_) + "dataOut").c_str()),
@@ -421,7 +509,7 @@ public:
         m_resp_in((std::string(name_) + "respIn").c_str()),
         m_reader(nullptr),
         m_writer(nullptr),
-        m_resp_transactions(AXI_TRANSACTION_ID_MAX),
+        m_resp_transactions(transactionIdMax),
         m_logQueueAddr(std::make_shared<stringPingPong>()),
         m_logQueueData(std::make_shared<stringPingPong>()),
         m_logQueueResp(std::make_shared<stringPingPong>())
@@ -445,25 +533,28 @@ public:
     virtual void register_port( sc_port_base&, const char* ) override;
 
     // out interfaces
-    virtual void sendAddr( const axiWriteAddressSt<A>&, std::optional<std::string> str ) override;
-    virtual void sendData( const axiWriteDataSt<D, S>& ) override;
-    virtual void sendData( const axiWriteDataSt<D, S>&, int burstCount ) override;
-    virtual void sendDataCycle( const axiWriteDataSt<D, S>& ) override;
-    virtual void receiveResp( axiWriteRespSt& ) override;
-    virtual void receiveRespCycle( axiWriteRespSt& ) override;
+    virtual void sendAddr( const axiWriteAddressSt<A, AWU, ID, IDW>&, std::optional<std::string> str ) override;
+    virtual void sendData( const axiWriteDataSt<D, S, WU, ID, IDW>& ) override;
+    virtual void sendData( const axiWriteDataSt<D, S, WU, ID, IDW>&, int burstCount ) override;
+    virtual void sendDataCycle( const axiWriteDataSt<D, S, WU, ID, IDW>& ) override;
+    virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) override;
+    virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual uint8_t * getSendDataPtr( void ) override    { return m_data_out->getWritePtr();}
 
     // in interfaces
-    virtual void receiveAddr( axiWriteAddressSt<A>& ) override;
-    virtual void receiveData( axiWriteDataSt<D, S>& ) override;
-    virtual void receiveDataCycle( axiWriteDataSt<D, S>& ) override;
-    virtual void sendResp( const axiWriteRespSt& ) override;
-    virtual void sendRespCycle( const axiWriteRespSt& ) override;
+    virtual void receiveAddr( axiWriteAddressSt<A, AWU, ID, IDW>& ) override;
+    virtual void receiveData( axiWriteDataSt<D, S, WU, ID, IDW>& ) override;
+    virtual void receiveDataCycle( axiWriteDataSt<D, S, WU, ID, IDW>& ) override;
+    virtual void sendResp( const axiWriteRespSt<BU, ID, IDW>& ) override;
+    virtual void sendRespCycle( const axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual void push_burst(uint32_t burstCount) override
     {
-        m_data_in->push_context(burstCount * sizeof(axiWriteDataSt<D, S>));
+        m_data_in->push_context(burstCount * sizeof(axiWriteDataSt<D, S, WU, ID, IDW>));
     }
     virtual uint8_t * getReceiveDataPtr(void) override { return m_data_in->getReadPtr(); }
+    virtual bool isActive() override { return m_addr_in->isActive(); }
+    virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
+    virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }
 
     // other methods
     void trace( sc_trace_file* tf ) const override;
@@ -501,16 +592,16 @@ public:
          }
     }
 protected:
-    rdy_vld_channel<axiWriteAddressSt<A>> m_addr_channel;
-    rdy_vld_channel<axiWriteDataSt<D, S>> m_data_channel;
-    rdy_vld_channel<axiWriteRespSt> m_resp_channel;
+    rdy_vld_channel<axiWriteAddressSt<A, AWU, ID, IDW>> m_addr_channel;
+    rdy_vld_channel<axiWriteDataSt<D, S, WU, ID, IDW>> m_data_channel;
+    rdy_vld_channel<axiWriteRespSt<BU, ID, IDW>> m_resp_channel;
 public: // make these public for the tees/verif
-    rdy_vld_out <axiWriteAddressSt<A>> m_addr_out; // for sending address (axi_out)
-    rdy_vld_out <axiWriteDataSt<D, S>> m_data_out; // for sending data (axi_out)
-    rdy_vld_out <axiWriteRespSt> m_resp_out; // for sending response (axi_in)
-    rdy_vld_in <axiWriteAddressSt<A>> m_addr_in; // for receiving address (axi_in)
-    rdy_vld_in <axiWriteDataSt<D, S>> m_data_in; // for receiving data (axi_in)
-    rdy_vld_in <axiWriteRespSt> m_resp_in; // for receiving response (axi_out)
+    rdy_vld_out <axiWriteAddressSt<A, AWU, ID, IDW>> m_addr_out; // for sending address (axi_out)
+    rdy_vld_out <axiWriteDataSt<D, S, WU, ID, IDW>> m_data_out; // for sending data (axi_out)
+    rdy_vld_out <axiWriteRespSt<BU, ID, IDW>> m_resp_out; // for sending response (axi_in)
+    rdy_vld_in <axiWriteAddressSt<A, AWU, ID, IDW>> m_addr_in; // for receiving address (axi_in)
+    rdy_vld_in <axiWriteDataSt<D, S, WU, ID, IDW>> m_data_in; // for receiving data (axi_in)
+    rdy_vld_in <axiWriteRespSt<BU, ID, IDW>> m_resp_in; // for receiving response (axi_out)
 
 protected:
     sc_port_base* m_reader; // used for static design rule checking
@@ -527,23 +618,23 @@ private:
     bool m_receiver_cycle_transaction = false;
     bool m_data_sender_new_transaction = true;
     // disabled
-    axi_write_channel( const axi_write_channel<A, D, S>& );
-    axi_write_channel& operator = ( const axi_write_channel<A, D, S>& );
+    axi_write_channel( const axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>& );
+    axi_write_channel& operator = ( const axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>& );
     std::shared_ptr<stringPingPong> m_logQueueAddr;
     std::shared_ptr<stringPingPong> m_logQueueData;
     std::shared_ptr<stringPingPong> m_logQueueResp;
-    void manageSendDataTransaction(const axiWriteDataSt<D, S> & data_);
+    void manageSendDataTransaction(const axiWriteDataSt<D, S, WU, ID, IDW> & data_);
     void handleSendTransactionLog(void);
-    void manageSendRespTransaction(const axiWriteRespSt & data_);
+    void manageSendRespTransaction(const axiWriteRespSt<BU, ID, IDW> & data_);
     void handleSendRespTransactionLog(void);
 };
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::register_port( sc_port_base& port_,
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::register_port( sc_port_base& port_,
                 const char* if_typename_ )
 {
     std::string nm( if_typename_ );
-    if( nm == typeid( axi_write_in_if<A, D, S> ).name() )
+    if( nm == typeid( axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW> ).name() )
     {
         // only one reader can be connected
         if( m_reader != 0 ) {
@@ -551,7 +642,7 @@ inline void axi_write_channel<A, D, S>::register_port( sc_port_base& port_,
             // may continue, if suppressed
         }
         m_reader = &port_;
-    } else if( nm == typeid( axi_write_out_if<A, D, S> ).name() )
+    } else if( nm == typeid( axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW> ).name() )
     {
         // only one writer can be connected
         if( m_writer != 0 ) {
@@ -567,8 +658,8 @@ inline void axi_write_channel<A, D, S>::register_port( sc_port_base& port_,
         // may continue, if suppressed
     }
 }
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::manageSendDataTransaction(const axiWriteDataSt<D, S> & data_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::manageSendDataTransaction(const axiWriteDataSt<D, S, WU, ID, IDW> & data_)
 {
     if (m_send_transactions.empty() || !m_send_transaction_are_addr) {
         // if there are no transactions in the queue, then data is first so create a new transaction
@@ -583,8 +674,8 @@ inline void axi_write_channel<A, D, S>::manageSendDataTransaction(const axiWrite
         m_resp_transactions[m_current_send_data_transaction.id].emplace(m_current_send_data_transaction);
     }
 }
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::handleSendTransactionLog(void)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::handleSendTransactionLog(void)
 {
     if (m_data_channel.log_.isMatch(LOG_NORMAL)) {
         if (m_current_send_data_transaction.transactionStr) {
@@ -595,8 +686,8 @@ inline void axi_write_channel<A, D, S>::handleSendTransactionLog(void)
     }
 
 }
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::manageSendRespTransaction(const axiWriteRespSt & resp_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::manageSendRespTransaction(const axiWriteRespSt<BU, ID, IDW> & resp_)
 {
     if (m_resp_transactions[resp_.bid].empty()) {
         m_resp_channel.log_.logPrint(std::format("transaction id not valid: {}", resp_.prt()));
@@ -605,8 +696,8 @@ inline void axi_write_channel<A, D, S>::manageSendRespTransaction(const axiWrite
     m_current_send_resp_transaction = m_resp_transactions[resp_.bid].front();
     m_resp_transactions[resp_.bid].pop();
 }
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::handleSendRespTransactionLog(void)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::handleSendRespTransactionLog(void)
 {
     if (m_resp_channel.log_.isMatch(LOG_NORMAL)) {
         if (m_current_send_resp_transaction.transactionStr) {
@@ -618,27 +709,27 @@ inline void axi_write_channel<A, D, S>::handleSendRespTransactionLog(void)
 }
 
 // blocking transactional read
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::receiveAddr( axiWriteAddressSt<A> &addr_ )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::receiveAddr( axiWriteAddressSt<A, AWU, ID, IDW> &addr_ )
 {
     m_addr_in->read(addr_);
 }
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::receiveData( axiWriteDataSt<D, S> &data_ )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::receiveData( axiWriteDataSt<D, S, WU, ID, IDW> &data_ )
 {
     m_data_in->read(data_);
 }
 
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::receiveDataCycle(  axiWriteDataSt<D, S> & data_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::receiveDataCycle(  axiWriteDataSt<D, S, WU, ID, IDW> & data_)
 {
     m_data_in->readClocked(data_);
 }
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::sendAddr( const axiWriteAddressSt<A>& addr_, std::optional<std::string> str )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendAddr( const axiWriteAddressSt<A, AWU, ID, IDW>& addr_, std::optional<std::string> str )
 {
     uint64_t txn;
     if (m_send_transactions.empty() || m_send_transaction_are_addr) {
@@ -661,30 +752,30 @@ inline void axi_write_channel<A, D, S>::sendAddr( const axiWriteAddressSt<A>& ad
     }
     if (m_sender_cycle_transaction && !m_receiver_cycle_transaction) {
         // as the sender is cycle based we need to pretend that the reader is providing the context for the multicycle data transfer
-        m_data_in->push_context((addr_.awlen + 1) * sizeof(axiWriteDataSt<D, S>));
+        m_data_in->push_context((addr_.awlen + 1) * sizeof(axiWriteDataSt<D, S, WU, ID, IDW>));
         m_address_synch_event.notify(); // incase the sender is waiting for the address
     }
     m_addr_out->write(addr_);
 }
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::sendData( const axiWriteDataSt<D, S>& data_ )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendData( const axiWriteDataSt<D, S, WU, ID, IDW>& data_ )
 {
     manageSendDataTransaction(data_);
     handleSendTransactionLog();
     m_data_out->write(data_);
 }
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::sendData( const axiWriteDataSt<D, S>& data_, int burstCount )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendData( const axiWriteDataSt<D, S, WU, ID, IDW>& data_, int burstCount )
 {
     manageSendDataTransaction(data_);
     handleSendTransactionLog();
-    m_data_out->write(data_, burstCount * sizeof(axiWriteDataSt<D, S>));
+    m_data_out->write(data_, burstCount * sizeof(axiWriteDataSt<D, S, WU, ID, IDW>));
 }
 
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::sendDataCycle( const axiWriteDataSt<D, S>& data_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendDataCycle( const axiWriteDataSt<D, S, WU, ID, IDW>& data_)
 {
     if (!m_receiver_cycle_transaction && m_data_sender_new_transaction) {
         // receiver is not cycle based, so we must enforce addr before data
@@ -709,8 +800,8 @@ inline void axi_write_channel<A, D, S>::sendDataCycle( const axiWriteDataSt<D, S
     m_data_out->writeClocked(data_);
 }
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::sendResp( const axiWriteRespSt& resp_ )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendResp( const axiWriteRespSt<BU, ID, IDW>& resp_ )
 {
     manageSendRespTransaction(resp_);
     handleSendRespTransactionLog();
@@ -718,62 +809,62 @@ void axi_write_channel<A, D, S>::sendResp( const axiWriteRespSt& resp_ )
 }
 
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::sendRespCycle( const axiWriteRespSt& resp_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::sendRespCycle( const axiWriteRespSt<BU, ID, IDW>& resp_)
 {
     sendResp(resp_);
 }
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::receiveResp( axiWriteRespSt& resp_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::receiveResp( axiWriteRespSt<BU, ID, IDW>& resp_)
 {
     m_resp_in->read(resp_);
 }
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::receiveRespCycle( axiWriteRespSt& resp_)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& resp_)
 {
     receiveResp(resp_);
 }
 
 
-template <class A, class D, class S>
-void axi_write_channel<A, D, S>::status(void)
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::status(void)
 {
     // nothing useful yet, as internal interfaces will give their own status
     //teeStatus();
 }
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::trace( sc_trace_file* tf ) const
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::trace( sc_trace_file* tf ) const
 {
     (void) tf; /* ignore potentially unused parameter */
 }
 
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::print( ::std::ostream& os ) const
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::print( ::std::ostream& os ) const
 {
     m_addr_channel.print(os);
     m_data_channel.print(os);
 }
 
-template <class A, class D, class S>
-inline void axi_write_channel<A, D, S>::dump( ::std::ostream& os ) const
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline void axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>::dump( ::std::ostream& os ) const
 {
 
 }
 
-template <class A, class D, class S>
-inline ::std::ostream& operator << ( ::std::ostream& os, const axi_write_channel<A, D, S>& a )
+template <class A, class D, class S, class AWU, class WU, class BU, class ID, unsigned IDW>
+inline ::std::ostream& operator << ( ::std::ostream& os, const axi_write_channel<A, D, S, AWU, WU, BU, ID, IDW>& a )
 {
     a.print( os );
     return os;
 }
 
-template <class A, class D, class S>
-using axi_write_out = sc_port<axi_write_out_if<A, D, S> >;
-template <class A, class D, class S>
-using axi_write_in = sc_port<axi_write_in_if<A, D, S> >;
+template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate, class ID = _axiIdT, unsigned IDW = 4>
+using axi_write_out = sc_port<axi_write_out_if<A, D, S, AWU, WU, BU, ID, IDW> >;
+template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate, class ID = _axiIdT, unsigned IDW = 4>
+using axi_write_in = sc_port<axi_write_in_if<A, D, S, AWU, WU, BU, ID, IDW> >;
 
 #endif // AXI_WRITE_CHANNEL_H

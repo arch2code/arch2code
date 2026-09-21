@@ -101,6 +101,7 @@ FULLY_GENERATED_FILEMAP_KEYS = frozenset({
     "blockBase", "blockRegistrar", "include", "package",
     "vlSvWrap", "vlSvWrapBody",
     "tandem", "blockVlRegistrar", "configModule", "vlSvWrapForeign",
+    "socketCatalog",
 })
 
 # Relative include references rewritten inside moved source user regions:

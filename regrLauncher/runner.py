@@ -130,8 +130,11 @@ class sessionRunExecutor(sessionExecutorBase):
             fp.write('# ' + str(hier_test) + '\n')
             fp.write(str(cmd)+'\n')
         log_ = rundir.joinpath(test+'.log')
+        results_ = (rundir / 'results.xml').resolve()
+        run_env = os.environ.copy()
+        run_env['COCOTB_RESULTS_FILE'] = str(results_)
         with open(log_, 'wt') as fp:
-            exec_status = self.execute_command(cmd, fp, timeout, env=None)
+            exec_status = self.execute_command(cmd, fp, timeout, env=run_env)
 
         # Log Parse Analyzer
         lpa = logParserAnalyzer(rules)

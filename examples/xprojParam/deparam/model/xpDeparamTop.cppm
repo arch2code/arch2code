@@ -50,10 +50,10 @@ public:
     std::shared_ptr<xpSinkBase<xpSink_xpSinkV0Config>> uSink;
 
     // cross-interface thunkers
-    push_ack_port_thunker<boundarySt, videoSt<xpGain_xpGainV0Config>, false> thunker_videoOut_0_uGain;
-    push_ack_port_thunker<boundarySt, videoSt<xpFilter_xpFilterV0Config>, false> thunker_videoOut_0_uFilter;
-    push_ack_port_thunker<boundarySt, videoSt<xpFilter_xpFilterV0Config>, false> thunker_videoOut_1_uFilter;
-    push_ack_port_thunker<boundarySt, videoSt<xpSink_xpSinkV0Config>, false> thunker_videoOut_1_uSink;
+    push_ack_port_thunker<xpDeparam_xpDeparamTop_ns::boundarySt, xpGain_ns::videoSt<xpGain_xpGainV0Config>, false> thunker_videoOut_0_uGain;
+    push_ack_port_thunker<xpDeparam_xpDeparamTop_ns::boundarySt, xpFilter_ns::videoSt<xpFilter_xpFilterV0Config>, false> thunker_videoOut_0_uFilter;
+    push_ack_port_thunker<xpDeparam_xpDeparamTop_ns::boundarySt, xpFilter_ns::videoSt<xpFilter_xpFilterV0Config>, false> thunker_videoOut_1_uFilter;
+    push_ack_port_thunker<xpDeparam_xpDeparamTop_ns::boundarySt, xpSink_ns::videoSt<xpSink_xpSinkV0Config>, false> thunker_videoOut_1_uSink;
 
     xpDeparamTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpDeparamTop() override = default;
