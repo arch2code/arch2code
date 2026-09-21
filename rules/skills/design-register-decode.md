@@ -160,7 +160,9 @@ does.
     decoder actually dispatches to (the leaf itself, or the outermost such
     passthrough container) carries `addressGroup:` naming the serving
     router's `addressBlock.addressGroup`; a leaf fed through a passthrough
-    container carries none.
+    container carries none. A nested router's container must sit directly in
+    its dispatching router's container; a passthrough chain ends at a leaf or
+    a `registerPorts:` IP, never at another router.
 2.  **Decoder-as-generated-block.** The decoder is a first-class block whose RTL
     is generated from `apbDecodeModule` (auto-selected by `make newmodule`
     because the block carries `addressBlock:`). Never hand-write it.
@@ -332,6 +334,7 @@ output.
 | `Leaf block '…' needs a register handler but no router was found serving any of its instances, directly or through single-consumer containers.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container, or in a container that a router serves and that holds no other register consumer. |
 | `No primary router could be inferred …` | Every router is nested under another; no dispatch-tree root. | Ensure exactly one router is not contained in another router's served scope. |
 | `Multiple candidate primary routers: …` | Two+ routers are both un-nested. | Nest all but one under the primary (give the subsystem container an `addressGroup`). |
+| `Nested router '…' (block '…') is hosted by block '…', whose instance '…' sits in router-less container '…' … not supported.` | The nested router's container is instantiated inside a router-less container rather than directly in the dispatching router's container; passthrough does not carry the bus to another router. | Move the named instance directly into the dispatching router's container, or add an `addressBlock:` router to the router-less container so it becomes a real nested-router hop. |
 | `Router block '…' has multiple instances … Multi-instance routers are not supported …` | A router block is instanced more than once. | Use one instance per router block; add distinct router blocks per scope (see `apbDecode` vs `bridgeApbDecode`). |
 | `Router blocks declare addressBlock: but have no instances in the design: …` | Router block declared but never instanced. | Instance the router in the container it serves. |
 | `Router block '…' names upstreamPort '…', but no visible interface has that name` / `does not resolve to an addressBus: true interfaceType`. | `addressBlock.upstreamPort` does not name a visible `apb`-shaped (addressBus) interface in scope. | Point `upstreamPort` at the real register-bus interface (e.g. `apbReg`). |

@@ -274,6 +274,7 @@ ADDRCTL_TESTS=(
     "multi-instance router"                     "test_error_multi_instance_router.py"
     "no primary router candidate"               "test_error_no_primary_router.py"
     "multiple primary router candidates"        "test_error_multi_primary_router.py"
+    "nested router in router-less container"    "test_error_nested_router_in_passthrough.py"
     "router-less container holds two consumers" "test_error_leaf_unserved.py"
     "router-less passthrough single consumer"   "test_addrctl_passthrough_single_consumer.py"
     "passthrough addressGroup diagnostics"      "test_error_passthrough_diagnostics.py"

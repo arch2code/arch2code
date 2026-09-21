@@ -168,7 +168,32 @@ def _findRouterParent(prj, childRouterInstRow, decoderContainer, reachable):
     return None
 
 
-def _findPrimaryRouter(prj, routers, router_instance, reachable):
+def _findRouterlessAncestorContainer(prj, childRouterInstRow, decoderContainer,
+                                     topBlockKeys, reachable):
+    """Find a reachable instance of the router's container block that
+    itself sits in a router-less, non-root container. `_findRouterParent`
+    does not walk this far, and passthrough synthesis does not support
+    this shape either.
+
+    Returns that instance row, or None when the router's container is
+    at the design root or in a container a router serves.
+    """
+    routerContainerBlockKey = childRouterInstRow['containerKey']
+    for instRow in prj.flatData['instances'].values():
+        if instRow['instanceKey'] not in reachable:
+            continue
+        if instRow['instanceTypeKey'] != routerContainerBlockKey:
+            continue
+        if instRow['container'] == '_topInstance':
+            continue
+        ancestor_container = instRow['containerKey']
+        if ancestor_container in decoderContainer or ancestor_container in topBlockKeys:
+            continue
+        return instRow
+    return None
+
+
+def _findPrimaryRouter(prj, routers, router_instance, reachable, topBlockKeys):
     """Infer the primary router by hierarchy walk. Errors if zero or
     more than one candidate is found."""
     decoderContainer = {
@@ -195,6 +220,42 @@ def _findPrimaryRouter(prj, routers, router_instance, reachable):
         )
 
     if len(primary_candidates) > 1:
+        blockInfo = prj.flatData['blocks']
+        offenders = []
+        for routerInstRow in primary_candidates:
+            ancestorInstRow = _findRouterlessAncestorContainer(
+                prj, routerInstRow, decoderContainer, topBlockKeys, reachable)
+            if ancestorInstRow is not None:
+                offenders.append((routerInstRow, ancestorInstRow))
+        if offenders:
+            childInstRow, ancestorInstRow = offenders[0]
+            ancestorBlockRow = blockInfo[ancestorInstRow['containerKey']]
+            hostBlockRow = blockInfo[childInstRow['containerKey']]
+            offenderKeys = {r['instanceKey'] for r, _ in offenders}
+            dispatchers = [
+                r for r in primary_candidates if r['instanceKey'] not in offenderKeys
+            ]
+            if len(dispatchers) == 1:
+                dispatchContainerBlock = blockInfo[dispatchers[0]['containerKey']]['block']
+                fix = (
+                    f"Move '{ancestorInstRow['instance']}' into "
+                    f"'{dispatchContainerBlock}', or add an addressBlock: "
+                    f"router to '{ancestorBlockRow['block']}'."
+                )
+            else:
+                fix = f"Add an addressBlock: router to '{ancestorBlockRow['block']}'."
+            _exit_with_error(
+                f"Nested router '{childInstRow['instance']}' (block "
+                f"'{childInstRow['instanceType']}') is hosted by block "
+                f"'{hostBlockRow['block']}', whose instance "
+                f"'{ancestorInstRow['instance']}' sits in router-less "
+                f"container '{ancestorBlockRow['block']}'. A nested "
+                f"router's container must be instantiated directly in "
+                f"the container of the router that dispatches to it; "
+                f"passing the register bus through a router-less "
+                f"container to a nested router is not supported. {fix}"
+            )
+
         names = ', '.join(
             f"{r['instance']} (block {r['instanceType']})"
             for r in primary_candidates
@@ -371,7 +432,16 @@ def postProcess(prj):
     # are handled by that child's own build.
     routers = {blockKey: routers[blockKey] for blockKey in router_instance}
 
-    primary_router = _findPrimaryRouter(prj, routers, router_instance, reachable)
+    # Block keys instantiated at the design root (container: '_topInstance').
+    # Used both to infer the primary router and, further down, to keep the
+    # passthrough fixed point from treating the root as a passthrough.
+    topBlockKeys = {
+        instRow['instanceTypeKey']
+        for instRow in prj.flatData['instances'].values()
+        if instRow['container'] == '_topInstance'
+    }
+
+    primary_router = _findPrimaryRouter(prj, routers, router_instance, reachable, topBlockKeys)
 
     decoderContainer = {
         routerInstRow['containerKey']: routerInstRow
@@ -446,12 +516,8 @@ def postProcess(prj):
     # itself a consumer of its parent. A container's status depends on its
     # children's, so the set grows by fixed point. The design root has no
     # parent to feed it and is never a passthrough; an unresolved chain
-    # ending there is reported as unserved further down.
-    topBlockKeys = {
-        instRow['instanceTypeKey']
-        for instRow in prj.flatData['instances'].values()
-        if instRow['container'] == '_topInstance'
-    }
+    # ending there is reported as unserved further down. topBlockKeys was
+    # already computed above, ahead of the primary-router resolution.
     consumerBlockKeys = set(blocksNeedingHandler)
     # A nested-router container is fed by an authored master connection or
     # by router-to-router dispatch, never by passthrough synthesis, even

@@ -2,7 +2,7 @@
 
 - **Status:** IMPLEMENTED (2026-09-15). Phases 1-5 and 7 land in this tree;
   phase 6 (the register handler bridge, §7 item 6) is tracked as its own
-  plan. §8 holds one open follow-up (schema-owned clock references).
+  plan. Every §8 item is resolved.
 - **Specification:** [`spec-clock-reset-requirements.md`](./spec-clock-reset-requirements.md).
   R and V numbers below refer to it. Where this plan and the specification
   disagree, the specification is right and this plan is stale.
