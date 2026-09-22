@@ -241,7 +241,9 @@ void port_socket(axi_write_in<A, D, S, std::monostate, std::monostate, std::mono
         resp.bresp = static_cast<_axiResponseT>(wire_resp.bresp);
         port->sendRespCycle(resp);
     }
-    if (should_shutdown) {
+    // The rx thread can clear `running` while this thread is mid-transaction,
+    // so the loop may also end at its top without a break: close either way.
+    if (should_shutdown || !running->load(std::memory_order_acquire)) {
         socketFactory::shutdownByName(interface_name);
     }
 }
@@ -380,7 +382,9 @@ void port_socket(axi_write_out<A, D, S, std::monostate, std::monostate, std::mon
             break;
         }
     }
-    if (should_shutdown) {
+    // The rx thread can clear `running` while this thread is mid-transaction,
+    // so the loop may also end at its top without a break: close either way.
+    if (should_shutdown || !running->load(std::memory_order_acquire)) {
         socketFactory::shutdownByName(interface_name);
     }
 }

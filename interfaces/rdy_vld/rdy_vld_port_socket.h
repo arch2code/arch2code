@@ -96,7 +96,9 @@ void port_socket(rdy_vld_out<T> &port, const std::string &interface_name)
             break;
         }
     }
-    if (should_shutdown) {
+    // The rx thread can clear `running` while this thread is mid-transaction,
+    // so the loop may also end at its top without a break: close either way.
+    if (should_shutdown || !running->load(std::memory_order_acquire)) {
         socketFactory::shutdownByName(interface_name);
     }
 }
@@ -181,7 +183,9 @@ void port_socket(rdy_vld_in<T> &port, const std::string &interface_name)
         }
     }
 
-    if (should_shutdown) {
+    // The rx thread can clear `running` while this thread is mid-transaction,
+    // so the loop may also end at its top without a break: close either way.
+    if (should_shutdown || !running->load(std::memory_order_acquire)) {
         socketFactory::shutdownByName(interface_name);
     }
 }
