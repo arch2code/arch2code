@@ -518,6 +518,9 @@ socket_srcTemplate = \
 // GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket
 // GENERATED_CODE_END
 }
+// user method definitions here
+// GENERATED_CODE_BEGIN --template=socketConstructor --section=instantiateSocket
+// GENERATED_CODE_END
 """
 
 def socket_src(args, prj, data):

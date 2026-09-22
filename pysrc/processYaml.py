@@ -1827,9 +1827,13 @@ class projectOpen:
                         verif.append(ownerAggregate)
         model.sort(key=lambda entry: (entry['variant'], entry['factoryProject']))
         verif.sort(key=lambda entry: (entry['variant'], entry['factoryProject']))
+        # The socket shell binds the same Config the model does, so its
+        # registrations are the model rows under the `_socket` kind.
+        socket = list(model) if self.data['blocks'][childQualBlock]['hasSkt'] else []
         return {**pair,
                 'modelRegistrations': model,
                 'verifRegistrations': verif,
+                'socketRegistrations': socket,
                 'variantDescriptors': variantDescriptors,
                 'defaultConfig': self.data['blocks'][childQualBlock]['defaultConfig'],
                 'registeredVariants': list(dict.fromkeys(
@@ -3290,14 +3294,14 @@ class projectOpen:
                 addInterfaceStructs(connData.get('interfaceKey'))
                 addStructKey(connData.get('structureKey'))
                 addStructKey(connData.get('addressStructKey'))
-                for crossBind in connData.get('crossInterfaceEnds', []) or []:
-                    for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
-                        addStructOrTypeKey(payload['kind'], payload.get('structureKey'))
+                for crossBind in connData.get('crossInterfaceEnds', []):
+                    for payload in crossBind['thunker']['payloads']:
+                        addStructOrTypeKey(payload['kind'], payload['structureKey'])
 
         for connMapData in ret.get('connectionMaps', {}).values():
-            for crossBind in connMapData.get('crossInterfaceEnds', []) or []:
-                for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
-                    addStructOrTypeKey(payload['kind'], payload.get('structureKey'))
+            for crossBind in connMapData.get('crossInterfaceEnds', []):
+                for payload in crossBind['thunker']['payloads']:
+                    addStructOrTypeKey(payload['kind'], payload['structureKey'])
 
         if ret['addressDecode'].get('isApbRouter') or ret['addressDecode'].get('hasDecoder'):
             # The router's upstream interface determines the register-bus
@@ -4095,8 +4099,8 @@ class projectCreate:
         self.validateContainerSourcedTestbench()
         # reject one variant label declared by two of a block's variant sources
         self.validateVariantSourceLabelCollision()
-        # reject a socket shell on a parameterizable block
-        self.validateSocketOnParameterizedBlock()
+        # reject a parameterizable socket shell that no registrar would register
+        self.validateParameterizedSocketHasModel()
         # derive the Config module set the build manifest and newModule scaffold both read
         self.calcConfigModules()
         self.calcForeignConfigHeaders()
@@ -4596,27 +4600,23 @@ class projectCreate:
                 f"'{blockRow['block']}' for testbench purposes, or clear {selectors}.")
             exit(warningAndErrorReport())
 
-    def validateSocketOnParameterizedBlock(self):
-        """Reject a socket shell (hasSkt) on a parameterizable block.
+    def validateParameterizedSocketHasModel(self):
+        """A parameterizable socket shell with no model is built but never registered.
 
-        A parameterizable block's factory registration is owned by the
-        per-assembler trampoline registrar (templates/systemc/blockRegistrar.py),
-        which registers the model and verif kinds only. The socket shell
-        templates still self-register through an explicit instantiation per
-        variant, a scheme the trampoline replaced, so a parameterizable block's
-        socket shell would register under a Config the assembler never binds.
-        Until the registrar also registers the socket kind, the combination is
-        rejected here rather than failing in generated C++.
+        The assembler's registrar (templates/systemc/blockRegistrar.py) registers
+        a parameterizable block's socket shell, and it is generated only for a
+        block with a model. Rejecting the combination here beats a run-time
+        factory miss.
         """
-        for qualBlock, blockRow in self.flatData['blocks'].items():
-            if not blockRow['hasSkt'] or not blockRow['isParameterizable']:
+        for blockRow in self.flatData['blocks'].values():
+            if not blockRow['hasSkt'] or not blockRow['isParameterizable'] or blockRow['hasMdl']:
                 continue
             printError(
-                f"Block '{blockRow['block']}' declares hasSkt: true but is "
-                f"parameterizable. The socket shell's factory registration is not "
-                f"emitted by the trampoline registrar, so a parameterizable block "
-                f"cannot carry a Python-socket shell yet. Clear hasSkt on "
-                f"'{blockRow['block']}' or drop its parameterization.")
+                f"Block '{blockRow['block']}' (file {blockRow['_context']}) declares "
+                f"hasSkt: true and is parameterizable, but has hasMdl: false. A "
+                f"parameterizable socket shell is registered by the registrar "
+                f"generated for blocks with a model, so this shell would never be "
+                f"registered. Set hasMdl: true on '{blockRow['block']}' or clear hasSkt.")
             exit(warningAndErrorReport())
 
     def deriveModuleIdentities(self):
@@ -7006,6 +7006,65 @@ class projectCreate:
                 f"blocks.{parentName}.hasRtl: false if the parent is model-only.")
             exit(warningAndErrorReport())
 
+    def validateConnectionMapBoundaries(self, connections_flat, connection_maps_flat, instances_flat):
+        """A connectionMap surfaces a port that nothing above the block binds.
+
+        An unbound dst port floats with no driver, an unbound src port is an
+        output nothing reads, and a port the container spells differently fails
+        late in generated code. Ports match on (direction, name) alone because
+        the binding may name a different interface (a thunker bind, or a
+        register bus dispatched onto an IP's own register interface). The top
+        instance is the testbench, so a connectionMap on its block is always an
+        error.
+        """
+        # A definitions-only project declares no top instance.
+        topInstance = next((row for row in instances_flat.values()
+                            if row['container'] == '_topInstance'), None)
+        # Per block, the (direction, port) pairs its containers bind, each with
+        # the interface the binding names.
+        bound = dict()
+        for conn in connections_flat.values():
+            for end in conn['ends'].values():
+                bound.setdefault(end['instanceTypeKey'], dict())[
+                    (end['direction'], end['portName'])] = conn['interface']
+        for cm in connection_maps_flat.values():
+            innerBlockKey = instances_flat[cm['instanceKey']]['instanceTypeKey']
+            bound.setdefault(innerBlockKey, dict())[
+                (cm['direction'], cm['instancePortName'])] = cm['interface']
+        for cm in connection_maps_flat.values():
+            line = cm['lc'].line + 1 if cm.get('lc') else '?'
+            if topInstance and cm['blockKey'] == topInstance['instanceTypeKey']:
+                printError(
+                    f"In {cm['_context']}:{line}, connectionMap for interface "
+                    f"'{cm['interface']}' on block '{cm['block']}' surfaces port "
+                    f"'{cm['portName']}' of instance '{cm['instance']}' at the "
+                    f"boundary of the project's top instance "
+                    f"'{topInstance['instance']}'. The top instance is the testbench "
+                    f"and has no external connections. Connect the port inside "
+                    f"'{cm['block']}', or move the connectionMap to a block "
+                    f"instantiated below the top.")
+                exit(warningAndErrorReport())
+            ports = bound.get(cm['blockKey'], dict())
+            if (cm['direction'], cm['portName']) in ports:
+                continue
+            hazard = ("a floating input with no driver" if cm['direction'] == 'dst'
+                      else "an output nothing above reads")
+            message = (
+                f"In {cm['_context']}:{line}, connectionMap for interface "
+                f"'{cm['interface']}' on block '{cm['block']}' surfaces port "
+                f"'{cm['portName']}' of instance '{cm['instance']}' at the block's "
+                f"boundary, but no block containing '{cm['block']}' binds that "
+                f"port: it is {hazard}. Connect the port where '{cm['block']}' is "
+                f"instantiated, or remove the connectionMap.")
+            otherNames = sorted(port for (direction, port), interface in ports.items()
+                                if direction == cm['direction'] and interface == cm['interface'])
+            if otherNames:
+                message += (f" A '{cm['interface']}' {cm['direction']} connection binds "
+                            f"'{cm['block']}' under port '{otherNames[0]}'; add "
+                            f"port: {otherNames[0]} to the connectionMap.")
+            printError(message)
+            exit(warningAndErrorReport())
+
     def _structureRowsForInterface(self, interfaceRow):
         return (interfaceRow.get('structures') or {}).values()
 
@@ -7276,6 +7335,7 @@ class projectCreate:
             registers_flat,
         )
         self.validateRtlHierarchy(blocks_flat, instances_flat)
+        self.validateConnectionMapBoundaries(connections_flat, connection_maps_flat, instances_flat)
 
         def _blockHasOwnParams(blockRow):
             return bool(blockRow.get('params'))

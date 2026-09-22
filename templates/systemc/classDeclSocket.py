@@ -47,24 +47,20 @@ def render_socket(args, prj, data):
         out.append(templateDecl + '\n')
     out.append(f'SC_MODULE({className}), public blockBase, public {baseClassName}\n')
     out.append('{\n')
-    out.append('private:\n')
     indent = ' ' * 4
-    out.append(indent + 'struct registerBlock\n')
-    out.append(indent + '{\n')
-    if hasOwnParams:
-        out.append(indent + '    registerBlock(const char * variant_)\n')
-        out.append(indent + '    {\n')
-        out.append(indent + '        // lamda function to construct the block\n')
-        out.append(indent + f'        instanceFactory::registerBlock("{blockName}_socket", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{className}<Config>>(blockName, variant, bbMode));}}, variant_, "{projectName}");\n')
-        out.append(indent + '    }\n')
-    else:
+    # A Config-templated shell is registered by the assembler's trampoline
+    # registrar (blockRegistrar.py), which binds the Config its instances select.
+    if not hasOwnParams:
+        out.append('private:\n')
+        out.append(indent + 'struct registerBlock\n')
+        out.append(indent + '{\n')
         out.append(indent + '    registerBlock()\n')
         out.append(indent + '    {\n')
         out.append(indent + '        // lamda function to construct the block\n')
         out.append(indent + f'        instanceFactory::registerBlock("{blockName}_socket", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{className}>(blockName, variant, bbMode));}}, "", "{projectName}");\n')
         out.append(indent + '    }\n')
-    out.append(indent + '};\n')
-    out.append(indent + 'static registerBlock registerBlock_;\n')
+        out.append(indent + '};\n')
+        out.append(indent + 'static registerBlock registerBlock_;\n')
     out.append('public:\n')
 
     if hasOwnParams:

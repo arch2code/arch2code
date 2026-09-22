@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace, configType
+from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace, configType, BLOCK_CONFIG_PARAM
 import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
@@ -98,7 +98,7 @@ def constReference_cpp(constKey, prj, useConfig=False):
     Config-member constant spells as `Config::NAME`; a derived (eval)
     constant is not a member, so it spells as its canonical expression
     (emissionUtils.constReference_cpp owns the rule)."""
-    return emissionUtils.constReference_cpp(constKey, prj, 'Config' if useConfig else None)
+    return emissionUtils.constReference_cpp(constKey, prj, BLOCK_CONFIG_PARAM if useConfig else None)
 
 
 def constReferenceValueKeyed_cpp(constKey, prj):

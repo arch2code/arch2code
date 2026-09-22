@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""A socket shell (hasSkt: true) on a parameterizable block is rejected at db.
+"""A socket shell (hasSkt: true) on a parameterizable block without a model is
+rejected at db.
 
-A parameterizable block's factory registration is owned by the per-assembler
-trampoline registrar (templates/systemc/blockRegistrar.py), which registers the
-model and verif kinds only. The socket shell templates still self-register
-through one explicit instantiation per variant, the scheme the trampoline
-replaced, so a parameterizable block's socket shell would register under a
-Config the assembler never binds. `validateSocketOnParameterizedBlock`
+The assembler's registrar (templates/systemc/blockRegistrar.py) registers a
+parameterizable block's socket shell, and that registrar is generated only for
+a block with a model. `validateParameterizedSocketHasModel`
 (`pysrc/processYaml.py`) rejects the combination at `make db`, naming the
-block, instead of letting it fail in generated C++.
+block, instead of letting the factory lookup fail at run time.
 
-The fixture is the parameterized-top one, placed under an unparameterized root
-exactly as test_error_parameterized_top.py's accepted arm does, so the only
-rule that can reject it here is the socket rule. Two arms: hasSkt on the
-parameterizable harness block is rejected; hasSkt on the unparameterized root
-is accepted.
+The fixture is parameterized-top under an unparameterized root, the shape
+test_error_parameterized_top.py's accepted arm uses. Two arms: hasSkt with
+hasMdl false on the parameterizable harness block is rejected; the same block
+with hasMdl true is accepted.
 """
 
 import os
@@ -45,22 +42,27 @@ ADD_ROOT = [
 ]
 REPOINT_TOP = [('topInstance: ptTop_tb', 'topInstance: ptRoot')]
 
-# Anchored on the harness block's own params: line, so the flag lands on the
-# parameterizable block and nowhere else.
-SOCKET_ON_PARAMETERIZED = [
-    ('        params: [PT_WIDTH]\n',
+# Anchored on the harness block's own params: and hasMdl: lines, so the flags
+# land on the parameterizable block and nowhere else.
+SOCKET_WITHOUT_MODEL = [
+    ('        params: [PT_WIDTH]\n'
+     '        hasMdl: false\n',
      '        params: [PT_WIDTH]\n'
-     '        hasSkt: true\n'),
+     '        hasSkt: true\n'
+     '        hasMdl: false\n'),
 ]
-SOCKET_ON_ROOT = [
-    ('        desc: "Unparameterized root holding the harness"\n',
-     '        desc: "Unparameterized root holding the harness"\n'
-     '        hasSkt: true\n'),
+SOCKET_WITH_MODEL = [
+    ('        params: [PT_WIDTH]\n'
+     '        hasMdl: false\n',
+     '        params: [PT_WIDTH]\n'
+     '        hasSkt: true\n'
+     '        hasMdl: true\n'),
 ]
 
 REQUIRED_SUBSTRINGS = [
-    "Block 'ptTop_tb' declares hasSkt: true but is parameterizable",
-    "trampoline registrar",
+    "Block 'ptTop_tb'",
+    "hasSkt: true and is parameterizable, but has hasMdl: false",
+    "Set hasMdl: true",
 ]
 
 
@@ -94,10 +96,10 @@ def prepare(project):
 
 def check_rejected(project):
     prepare(project)
-    edit_yaml(project, ARCH, SOCKET_ON_PARAMETERIZED)
+    edit_yaml(project, ARCH, SOCKET_WITHOUT_MODEL)
     rc, output = make_db(project)
     if rc == 0:
-        print("  FAIL: make db accepted hasSkt on a parameterizable block")
+        print("  FAIL: make db accepted hasSkt on a parameterizable block without a model")
         return False
     if 'Traceback (most recent call last)' in output:
         print("  FAIL: got a Python stack trace instead of a clean rejection")
@@ -108,33 +110,33 @@ def check_rejected(project):
         print(f"  FAIL: diagnostic missing substrings: {missing}")
         print(output)
         return False
-    print("  PASS: hasSkt on a parameterizable block is rejected, naming the block")
+    print("  PASS: hasSkt without hasMdl on a parameterizable block is rejected, naming the block")
     return True
 
 
 def check_accepted(project):
     prepare(project)
-    edit_yaml(project, ARCH, SOCKET_ON_ROOT)
+    edit_yaml(project, ARCH, SOCKET_WITH_MODEL)
     rc, output = make_db(project)
     if rc != 0:
-        print(f"  FAIL: make db rejected hasSkt on an unparameterized block (rc={rc})")
+        print(f"  FAIL: make db rejected hasSkt with hasMdl on a parameterizable block (rc={rc})")
         print(output)
         return False
-    print("  PASS: hasSkt on an unparameterized block is accepted")
+    print("  PASS: hasSkt with hasMdl on a parameterizable block is accepted")
     return True
 
 
 def run_all_tests():
-    tmp = tempfile.mkdtemp(prefix='socket_param_', dir=test_dir)
+    tmp = tempfile.mkdtemp(prefix='socket_nomodel_', dir=test_dir)
     try:
         ok = check_rejected(os.path.join(tmp, 'sktReject'))
         ok = check_accepted(os.path.join(tmp, 'sktAccept')) and ok
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     if ok:
-        print("\nPASS: a socket shell on a parameterizable block is rejected at db")
+        print("\nPASS: a parameterizable socket shell without a model is rejected at db")
         return 0
-    print("\nFAIL: the socket-on-parameterizable rule is wrong")
+    print("\nFAIL: the socket-without-model rule is wrong")
     return 1
 
 

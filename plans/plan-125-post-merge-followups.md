@@ -130,11 +130,16 @@ never had them, so this merge dropped the dead helpers. Today's `validatePorts`
   crash, an invisible correctness bug. A floating handshake stalls forever; an
   unrouted register bus leaves a block at reset defaults. There is no reason to
   write the connectionMap if the interface is meant to go nowhere.
-- **Orphan on the project's top instance** is legitimate: those ports are the
-  project's exported I/O contract, wired by the project or testbench that
-  instantiates it. The testbench external pseudo-block's local-only channels
-  (`_ext_cm_*` in `templates/systemc/testbench.py`) are this case. The instance
-  row with `container == '_topInstance'` identifies it.
+- **A connectionMap on the project's top instance's block** is an error in its
+  own right (ruling 2026-09-22). The top instance is the testbench. Nothing
+  instantiates it, so it has no external connections, and a port surfaced at
+  its boundary can never be bound. The instance row with
+  `container == '_topInstance'` identifies it.
+- **No exemption for a code-free block** (ruling 2026-09-22). `isp_vid2axis`
+  used a code-free wrapper under a code-free root whose dead-end connectionMaps
+  only existed to satisfy the DUT's `ports:` declaration. We restructured it
+  into source and sink instances with real connections, the shape
+  `ccm_tb.yaml` uses.
 
 ### 3.3 Design
 
@@ -143,8 +148,12 @@ instances_flat)` and call it from `validatePorts` after `validateRtlHierarchy`:
 
 - Index, per block, every boundary port name it acquires from a connection end
   or an outer connectionMap, with the interface key and direction.
-- For each connectionMap whose block is not the top instance's block, require
-  its computed port name to be in that block's index.
+- Reject a connectionMap whose block is the top instance's block, naming the
+  top instance.
+- For each other connectionMap, require its computed (direction, port name)
+  to be in that block's index. The binding may name a different interface than
+  the map (a thunker bind, or a register bus dispatched onto an IP's own
+  register interface).
 - On failure, `printError` naming the interface, the port, the block, the
   instance and the hazard in design terms (floating input with no driver for
   `dst`, output nothing above reads for `src`), then
@@ -156,7 +165,9 @@ instances_flat)` and call it from `validatePorts` after `validateRtlHierarchy`:
 
 ### 3.4 Acceptance and gate
 
-- All three tests in `test_validate_ports.py` pass.
+- All five tests in `test_validate_ports.py` pass (orphan on a block with a
+  model, orphan on a code-free block, name-mismatch hint, connectionMap on the
+  top instance's block, nested example builds).
 - `make db` across every example project exits as it does today. The
   intentionally failing `xprojParam` probes fail for their own reasons and
   must not start failing on this check.
@@ -185,7 +196,9 @@ paths have no unit test, and the first three sit on code the merge touched:
 - **Thunker member spelling with a type payload.** Every thunker spelling
   assertion uses struct payloads. Assert both arms of
   `_qualified_payload_type_name` (`pysrc/intf_gen_utils.py`): a
-  parameterizable type spells `<ctx>_ns::<type>, <owner>_<block><V>Config::<W>`;
+  parameterizable type spells `<ctx>_ns::<type><<Config>>, <Config>::<W>`,
+  where `<Config>` is the bound side's `<owner>_<block><V>Config`. The type is
+  an alias template (`templates/systemc/includes.py`);
   a fixed type whose width names a constant spells the resolved literal.
 - **Direct-copy verdict for type payloads.** `unittest/test_payload_direct_copy.py`
   checks structure signatures only; add a `types` pair (equal and differing

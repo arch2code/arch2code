@@ -1298,6 +1298,121 @@ projectFiles:
               "the message names the missing backing parameter")
 
 
+PARAM_TYPE_CONNMAP_ARCH_YAML = """interface_defs:
+  ts_proto:
+    parameters:
+      p_ts: {datatype: typeStruct}
+      p_ty: {datatype: type, optional: true, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ts: p_ts
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ts', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ts', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ts_proto'
+      multicycle_types: []
+
+constants:
+  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}
+  OTHER_W: {value: 6, isParameterizable: true, maxValue: 12, desc: "unrelated backing param"}
+
+types:
+  lT: {widthLog2: 40, desc: "log2 type"}
+  pT: {width: PW, isParameterizable: true, desc: "parameterizable type"}
+
+interfaces:
+  ifA:
+    interfaceType: ts_proto
+    desc: "type parameter carried through a connectionMap"
+    structures:
+      - {structure: lT, structureType: p_ts}
+      - {structure: pT, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer: {desc: "Producer block", params: [PW]}
+  mid: {desc: "Container surfacing its child's port at its own boundary", params: [PW]}
+  consumer:
+    desc: "Consumer block"
+    params: [OTHER_W]
+    ports:
+      inA: {interface: ifA, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer, variant: v0}
+  uMid: {container: top, instanceType: mid, variant: m0}
+  uConsumer: {container: mid, instanceType: consumer, variant: v0}
+
+connections:
+  - {interface: ifA, src: uProducer, srcport: outA, dst: uMid, dstport: inA}
+
+connectionMaps:
+  - {interface: ifA, block: mid, port: inA, direction: dst, instance: uConsumer, instancePort: inA}
+
+parameters:
+  producer:
+    v0: {PW: 6}
+  mid:
+    m0: {PW: 6}
+  consumer:
+    v0: {OTHER_W: 6}
+"""
+
+
+def test_param_type_payload_connectionmap_missing_backing_param():
+    """A connectionMap child that lacks the type payload's backing parameter
+    is rejected. The container sizes the payload from PW and the mapped child
+    declares only OTHER_W. The connectionMaps loop of
+    `_validateParameterizedConnectionEndpoints` must reach the `types`-kind
+    payload the same way the connection loop does."""
+    print("\n[negative] a connectionMap child missing a type payload's backing parameter is rejected")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_connmap_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(PARAM_TYPE_CONNMAP_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'paramTypeConnMapProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: paramTypeConnMap
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'paramTypeConnMap.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a connectionMap child missing the type payload's backing "
+                          "parameter must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("connectionMap" in message, "the message names the connectionMap")
+        check("ifA" in message, "the message names the interface")
+        check("uConsumer" in message, "the message names the mapped child instance")
+        check("does not declare the required parameter" in message,
+              "the message states the same reason a connection end gets")
+        check("missing PW" in message,
+              "the message names the missing backing parameter")
+
+
 def test_cross_interface_bind_kind_mismatch():
     """A cross-interface bind where the same structureType is bound to a
     `types` row on one interface and a `structures` row on the other must
@@ -1465,6 +1580,7 @@ def main():
     test_param_type_payload_builds_and_generates()
     test_param_type_variant_channel_width()
     test_param_type_payload_missing_backing_param()
+    test_param_type_payload_connectionmap_missing_backing_param()
     test_cross_interface_bind_kind_mismatch()
 
     print("\n" + "=" * 72)

@@ -117,6 +117,73 @@ connectionMaps:
                 os.unlink(path)
 
 
+def test_orphan_connection_map_on_code_free_block():
+    """A block with no model, RTL or Verilated wrapper gets no exemption: its orphan connectionMap fails too."""
+    yaml = """types:
+  bit_t:
+    width: 1
+    desc: single bit
+
+structures:
+  irq_st:
+    level: {varType: bit_t, desc: irq level}
+
+interfaces:
+  irq_if:
+    interfaceType: status
+    desc: level-sensitive irq
+    structures:
+      - {structure: irq_st, structureType: data_t}
+
+blocks:
+  top_tb:
+    desc: tb container
+    hasRtl: false
+    hasTb: false
+  child:
+    desc: child block
+    hasMdl: true
+  wrapper:
+    desc: code-free wrapper
+    hasMdl: false
+    hasRtl: false
+    hasVl: false
+    hasTb: false
+
+instances:
+  top_tb:
+    container: top_tb
+    instanceType: top_tb
+  u_wrapper:
+    container: top_tb
+    instanceType: wrapper
+  u_child:
+    container: wrapper
+    instanceType: child
+
+connectionMaps:
+  - {interface: irq_if, block: wrapper, direction: src, instance: u_child}
+"""
+    project_path, arch_path = create_test_files(yaml)
+    db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
+    try:
+        result = run_db_build(project_path, db_path)
+        output = result.stderr + result.stdout
+        if result.returncode == 0:
+            print("FAIL: expected db build to fail for an orphan connectionMap on a code-free block")
+            return False
+        for needle in ('connectionMap', 'irq_if', "'wrapper'", 'boundary'):
+            if needle not in output:
+                print(f"FAIL: expected {needle!r} in error output:\n{output}")
+                return False
+        print("PASS: orphan connectionMap on a code-free block rejected")
+        return True
+    finally:
+        for path in (project_path, arch_path, db_path):
+            if os.path.exists(path):
+                os.unlink(path)
+
+
 def test_port_name_mismatch_hint():
     """connectionMap using interface name should hint when TB connection uses name: alias."""
     yaml = """types:
@@ -189,6 +256,67 @@ connectionMaps:
                 os.unlink(path)
 
 
+def test_top_connection_map_rejected():
+    """A connectionMap on the top instance's block fails make db, because the top is the testbench."""
+    yaml = """types:
+  bit_t:
+    width: 1
+    desc: single bit
+
+structures:
+  irq_st:
+    level: {varType: bit_t, desc: irq level}
+
+interfaces:
+  irq_if:
+    interfaceType: status
+    desc: level-sensitive irq
+    structures:
+      - {structure: irq_st, structureType: data_t}
+
+blocks:
+  top_tb:
+    desc: tb container
+    hasTb: false
+  top:
+    desc: top block
+    hasMdl: true
+    hasTb: true
+
+instances:
+  top_tb:
+    container: top_tb
+    instanceType: top_tb
+  u_top:
+    container: top_tb
+    instanceType: top
+
+connectionMaps:
+  - {interface: irq_if, block: top_tb, direction: src, instance: u_top}
+"""
+    project_path, arch_path = create_test_files(yaml)
+    db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
+    try:
+        result = run_db_build(project_path, db_path)
+        output = result.stderr + result.stdout
+        if result.returncode == 0:
+            print("FAIL: expected db build to fail for a connectionMap on the top instance's block")
+            return False
+        if 'Traceback (most recent call last)' in output:
+            print(f"FAIL: got a Python stack trace instead of a clean rejection:\n{output}")
+            return False
+        for needle in ('connectionMap', 'irq_if', "top instance 'top_tb'", 'testbench'):
+            if needle not in output:
+                print(f"FAIL: expected {needle!r} in error output:\n{output}")
+                return False
+        print("PASS: connectionMap on the top instance's block rejected")
+        return True
+    finally:
+        for path in (project_path, arch_path, db_path):
+            if os.path.exists(path):
+                os.unlink(path)
+
+
 def test_nested_example_passes():
     """Valid nested example with aligned connectionMaps should pass make db."""
     # The nested example's project file lives where its Makefile points
@@ -212,7 +340,9 @@ def test_nested_example_passes():
 def main():
     tests = [
         test_orphan_connection_map,
+        test_orphan_connection_map_on_code_free_block,
         test_port_name_mismatch_hint,
+        test_top_connection_map_rejected,
         test_nested_example_passes,
     ]
     passed = sum(1 for t in tests if t())

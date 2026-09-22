@@ -46,16 +46,14 @@ EXAMPLE_READERS=(
     test_boundary_signals.py          # reads examples/ip_test
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
+    test_validate_ports.py            # reads examples/nested (db to a temp path)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
 EXAMPLE_WRITER="test_build_manifest.py"
 
-# Not run by either runner until the check it asserts is revived
-# (plans/plan-125-post-merge-followups.md, section 3).
-DISABLED=(
-    test_validate_ports.py
-)
+# Suites held out of both runners; empty unless a check is being revived.
+DISABLED=()
 
 # ISOLATED = all test_*.py minus readers minus writer minus disabled.
 declare -A SKIP=()

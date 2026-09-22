@@ -7,10 +7,12 @@ def render(args, prj, data):
             return constructorInitSocket(args, prj, data)
         case 'bodySocket':
             return constructorBodySocket(args, prj, data)
+        case 'instantiateSocket':
+            return constructorInstantiateSocket(args, prj, data)
         case _:
             raise ValueError(
                 f"Unknown section '{args.section}' for template '{args.template}'. "
-                "Valid values are initSocket, bodySocket")
+                "Valid values are initSocket, bodySocket, instantiateSocket")
 
 
 def _catalog_rows(prj, data):
@@ -20,16 +22,6 @@ def _catalog_rows(prj, data):
 
 def _method_name(row):
     return f"{row['port']}Observe" if row['role'] == 'observe' else f"{row['port']}Socket"
-
-
-def _variant_config_names(data, defaultConfig):
-    # Each persisted descriptor carries the C++ struct name it emits as
-    # (structName): the block's defaultConfig for the default row, else the
-    # owner-qualified per-variant Config struct.
-    variantConfigName = dict()
-    for desc in data['variantConfigs']:
-        variantConfigName[desc['variant']] = desc['structName']
-    return variantConfigName
 
 
 def _port_ref(port, hasOwnParams):
@@ -67,21 +59,12 @@ def constructorInitSocket(args, prj, data):
     templateDecl = intf_gen_utils.block_config_decl(hasOwnParams)
     qualClassName = f'{className}{cfg}'
     baseClassName = f'{blockName}Base{cfg}'
-    defaultConfig = data['defaultConfig']
     rows = _catalog_rows(prj, data)
 
     out.append(f'#include "{prj.getModuleFilename("socket", blockName, "hdr")}"\n\n')
 
-    if hasOwnParams:
-        variantConfigName = _variant_config_names(data, defaultConfig)
-        if data['variants']:
-            for variant in sorted(data['variants']):
-                perVariantConfig = variantConfigName.get(variant, defaultConfig)
-                out.append(f'template<> {className}<{perVariantConfig}>::registerBlock {className}<{perVariantConfig}>::registerBlock_("{variant}"); //register the block with the factory\n')
-        else:
-            out.append(f'template<> {className}<{defaultConfig}>::registerBlock {className}<{defaultConfig}>::registerBlock_(""); //register the block with the factory\n')
-        out.append('\n')
-    else:
+    # A Config-templated shell is registered by the trampoline registrar.
+    if not hasOwnParams:
         out.append(f'SC_HAS_PROCESS({className});\n\n')
         out.append(f'{className}::registerBlock {className}::registerBlock_; //register the block with the factory\n\n')
 
@@ -114,4 +97,22 @@ def constructorBodySocket(args, prj, data):
     out.append('    log_.logPrint(std::format("Socket shell {} initialized.", this->name()), LOG_IMPORTANT );\n')
     for row in rows:
         out.append(f'    SC_THREAD({_method_name(row)});\n')
+    return "".join(out)
+
+
+def constructorInstantiateSocket(args, prj, data):
+    # The registrar constructs the shell from another translation unit, so the
+    # constructor is instantiated here for every Config this project binds. A
+    # container-sourced Config is a template over the parent's and binds none.
+    if not data['hasOwnParams']:
+        return ''
+    blockName = data['blockName']
+    className = f'{blockName}Socket'
+    configNames = list(dict.fromkeys(
+        desc['structName'] for desc in data['variantConfigs']
+        if not desc['containerSourced']))
+    out = list()
+    for configName in configNames:
+        out.append(f'template {className}<{configName}>::{className}'
+                   '(sc_module_name, const char *, blockBaseMode);\n')
     return "".join(out)

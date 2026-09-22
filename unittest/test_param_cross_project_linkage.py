@@ -407,6 +407,121 @@ def test_one_interface_at_equal_valued_configs_binds_directly():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_one_interface_at_equal_valued_configs_binds_directly_type_payload():
+    _header("a type payload at equal-valued Configs binds directly, mirroring "
+            "the struct-payload case")
+    work = _copy_fixture('param_xproj_typepayload_')
+    try:
+        # Rewire dataIf to carry dataT itself as a `type` payload instead of
+        # wrapping it in the dataSt structure. This walks the
+        # `binding['kind'] == 'types'` branch of bindsDirectly() and the
+        # parentKind == 'types' branch of checkInterfacePair(), the two
+        # branches no test in this suite reaches with a struct-only fixture.
+        _edit_fixture_yaml(
+            work, os.path.join('projA', 'yaml', 'aTop.yaml'),
+            'ipParameters:\n    constants:',
+            'interface_defs:\n'
+            '    push_ack_typed:\n'
+            '        parameters:\n'
+            '            data_t: { datatype: type }\n'
+            '        signals:\n'
+            '            push: bool\n'
+            '            data: data_t\n'
+            '            ack: bool\n'
+            '        modports:\n'
+            '            src:\n'
+            '                inputs: [\'ack\']\n'
+            '                outputs: [\'push\', \'data\']\n'
+            '            dst:\n'
+            '                inputs: [\'push\', \'data\']\n'
+            '                outputs: [\'ack\']\n'
+            '        sc_channel:\n'
+            '            type: \'push_ack_typed\'\n'
+            '            multicycle_types: []\n'
+            '\n'
+            'ipParameters:\n    constants:')
+        _edit_fixture_yaml(
+            work, os.path.join('projA', 'yaml', 'aTop.yaml'),
+            'structures:\n'
+            '    dataSt:\n'
+            '        data: { varType: dataT, desc: "projA payload" }\n'
+            '\n'
+            'interfaces:\n'
+            '    dataIf:\n'
+            '        desc: "projA parameterized push/ack stream"\n'
+            '        interfaceType: push_ack\n'
+            '        structures:\n'
+            '            - { structure: dataSt, structureType: data_t }',
+            'interfaces:\n'
+            '    dataIf:\n'
+            '        desc: "projA parameterized push/ack stream carrying a '
+            'type payload"\n'
+            '        interfaceType: push_ack_typed\n'
+            '        structures:\n'
+            '            - { structure: dataT, structureType: data_t }')
+        db, out, rc = _build_db(work, 'sharedProject.yaml')
+        if rc != 0:
+            print("  FAIL: the type-payload shared-include composition did not build")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        prj, ends = _cross_interface_ends(db)
+        if ends:
+            print(f"  FAIL: expected no adapter on either hop, got {sorted(ends)}")
+            return False
+        # All four port ends bind the one upstream dataIf declaration, so the
+        # direct bind below follows from equal WIDTH values, not from a missed
+        # interface difference.
+        for blockName, portName in (('aIp', 'out'), ('bSharedIp', 'in'),
+                                     ('bSharedIp', 'out'), ('cSharedIp', 'in')):
+            blockRow = next(row for row in prj.data['blocks'].values()
+                            if row['block'] == blockName)
+            interfaceKey = blockRow['ports'][portName]['interfaceKey']
+            if interfaceKey != f'dataIf/{A_CONTEXT}':
+                print(f"  FAIL: fixture no longer states the premise this cell "
+                      f"tests; {blockName}.{portName} binds {interfaceKey} "
+                      f"rather than the one upstream dataIf declaration")
+                return False
+        interfaceRow = next(row for row in prj.data['interfaces'].values()
+                            if row['interfaceKey'] == f'dataIf/{A_CONTEXT}')
+        instances = {name: next(row for row in prj.data['instances'].values()
+                                if row['instance'] == name)
+                     for name in ('uA', 'uB', 'uC')}
+        selections = {name: prj._resolveInstanceConfigFields(row)
+                      for name, row in instances.items()}
+        for parentName, childName in (('uA', 'uB'), ('uB', 'uC')):
+            if not prj.bindsDirectly(interfaceRow, interfaceRow['interfaceKey'],
+                                      selections[parentName],
+                                      selections[childName]):
+                print(f"  FAIL: {parentName}->{childName} did not bind "
+                      f"directly at equal WIDTH values")
+                return False
+        _close_db()
+
+        _edit_fixture_yaml(
+            work, os.path.join('top', 'yaml', 'sharedTop.yaml'),
+            "    bSharedIp:\n        v0:\n            WIDTH: 8",
+            "    bSharedIp:\n        v0:\n            WIDTH: 16")
+        os.remove(db)
+        _db2, out2, rc2 = _build_db(work, 'sharedProject.yaml')
+        if rc2 == 0:
+            print("  FAIL: unequal WIDTH values on the one shared type-payload "
+                  "dataIf declaration built cleanly; the value mismatch was "
+                  "never checked at db")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        if '_bitWidth' not in out2:
+            print("  FAIL: build failed but not with the per-field _bitWidth "
+                  "reconciliation diagnostic")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        print("  PASS: type payload binds directly at equal values; unequal "
+              "values rejected at db with the same diagnostic")
+        return True
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 # ----------------------------------------------------------------------------
 # Reconciliation and resolution rules.
 # ----------------------------------------------------------------------------
@@ -614,6 +729,7 @@ def run_all_tests():
         test_same_named_cross_project_interfaces_are_adapted,
         test_shared_ipparameter_include_across_projects,
         test_one_interface_at_equal_valued_configs_binds_directly,
+        test_one_interface_at_equal_valued_configs_binds_directly_type_payload,
         test_cross_project_width_mismatch_rejected,
         test_port_binds_its_own_project_interface,
         test_shared_include_binding_sizing_enforced,

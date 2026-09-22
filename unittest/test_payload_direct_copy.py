@@ -497,6 +497,161 @@ def test_two_param_field_constructor_avoids_comma_splice():
     return ok
 
 
+
+# One `datatype: type` payload over a local protocol, bound three ways the
+# cppAxis fixture above does not cover: two `types` rows of equal storage,
+# two of differing storage, and two enums. The differing pair varies
+# signedness, not bitwidth, because validatePorts rejects a bitwidth mismatch
+# before any verdict is computed. Same build_arch shape as
+# test_thunker_view.py (child interface on the consumer's port, parent
+# interface on the connection), so the bind goes through buildThunkerView.
+TYPE_PAIR_ARCH_YAML = """interface_defs:
+  type_pair_proto:
+    parameters:
+      p_ty: {datatype: type}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'type_pair_proto'
+      multicycle_types: []
+
+types:
+  eqTypeA: {width: 8, desc: "8-bit type, parent side of the equal-storage pair"}
+  eqTypeB: {width: 8, desc: "8-bit type, child side of the equal-storage pair, a distinct declaration"}
+  diffTypeUnsigned: {width: 8, desc: "8-bit unsigned type, parent side of the differing-storage pair"}
+  diffTypeSigned: {width: 8, isSigned: true, desc: "8-bit signed type, child side of the differing-storage pair"}
+  enumModeA:
+    desc: "Enum type, parent side of the enum pair"
+    enum:
+      - {enumName: PAIR_A_OFF, value: 0, desc: "Off"}
+      - {enumName: PAIR_A_ON,  value: 1, desc: "On"}
+  enumModeB:
+    desc: "Enum type, child side of the enum pair, a distinct declaration with the same members"
+    enum:
+      - {enumName: PAIR_B_OFF, value: 0, desc: "Off"}
+      - {enumName: PAIR_B_ON,  value: 1, desc: "On"}
+
+interfaces:
+  eqParentIf:
+    interfaceType: type_pair_proto
+    desc: "Parent side of the equal-typeStorage pair"
+    structures:
+      - {structure: eqTypeA, structureType: p_ty}
+  eqChildIf:
+    interfaceType: type_pair_proto
+    desc: "Child side of the equal-typeStorage pair"
+    structures:
+      - {structure: eqTypeB, structureType: p_ty}
+  diffParentIf:
+    interfaceType: type_pair_proto
+    desc: "Parent side of the differing-typeStorage pair"
+    structures:
+      - {structure: diffTypeUnsigned, structureType: p_ty}
+  diffChildIf:
+    interfaceType: type_pair_proto
+    desc: "Child side of the differing-typeStorage pair"
+    structures:
+      - {structure: diffTypeSigned, structureType: p_ty}
+  enumParentIf:
+    interfaceType: type_pair_proto
+    desc: "Parent side of the enum pair"
+    structures:
+      - {structure: enumModeA, structureType: p_ty}
+  enumChildIf:
+    interfaceType: type_pair_proto
+    desc: "Child side of the enum pair"
+    structures:
+      - {structure: enumModeB, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block"}
+  producer: {desc: "Producer block"}
+  consumer:
+    desc: "Consumer block"
+    ports:
+      inEq:   {interface: eqChildIf,   direction: dst}
+      inDiff: {interface: diffChildIf, direction: dst}
+      inEnum: {interface: enumChildIf, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer}
+  uConsumer: {container: top, instanceType: consumer}
+
+connections:
+  - {interface: eqParentIf,   src: uProducer, srcport: outEq,   dst: uConsumer, dstport: inEq}
+  - {interface: diffParentIf, src: uProducer, srcport: outDiff, dst: uConsumer, dstport: inDiff}
+  - {interface: enumParentIf, src: uProducer, srcport: outEnum, dst: uConsumer, dstport: inEnum}
+"""
+
+# buildThunkerView's payloadSignature() (pysrc/processYaml.py) compares a
+# `types` payload by typeStorage(), so eqTypeA/eqTypeB compare equal despite
+# being two distinct declarations. Direct copy follows storage, not type
+# identity, so diffTypeUnsigned/diffTypeSigned, equal in bitwidth but not in
+# signedness, compare unequal. An enum payload's signature is
+# ('enum', structureKey), so enumModeA and enumModeB compare unequal even
+# though they declare identical members. An enum pair copies directly only
+# when both ends bind the same declared row.
+TYPE_PAIR_EXPECTED_VERDICTS = {
+    'inEq':   True,
+    'inDiff': False,
+    'inEnum': False,
+}
+
+
+def _connect_double_verdicts(blockData):
+    """{consumer port name: directCopy} over every connectDouble cross-interface end."""
+    verdicts = dict()
+    for byChannelType in blockData['connectDouble'].values():
+        for value in byChannelType.values():
+            for end in value.get('crossInterfaceEnds', []):
+                pairs = end['thunker']['payloadPairs']
+                assert len(pairs) == 1, \
+                    f"type_pair_proto carries one payload pair, got {len(pairs)}"
+                verdicts[end['portName']] = pairs[0]['directCopy']
+    return verdicts
+
+
+def test_type_and_enum_pair_verdicts():
+    """`types` and enum payload pairs get the verdict buildThunkerView computes.
+
+    test_cpp_axis_pair_verdicts only covers structure payload pairs
+    (structureStorageSignature). This pins the other two payload kinds
+    buildThunkerView.payloadSignature() handles: a plain `types` pair, equal
+    and differing storage, and an enum pair.
+    """
+    _header("types and enum payload pairs get the recorded C++ compatibility verdicts")
+    ok = True
+    db_path, project_path, arch_paths = build_database(TYPE_PAIR_ARCH_YAML)
+    try:
+        prj = projectOpen(db_path)
+        verdicts = _connect_double_verdicts(_block_data(prj, 'top'))
+        if set(verdicts) != set(TYPE_PAIR_EXPECTED_VERDICTS):
+            print(f"  FAIL: adapted junctions are {sorted(verdicts)}, "
+                  f"expected {sorted(TYPE_PAIR_EXPECTED_VERDICTS)}")
+            return False
+        for port, expected in TYPE_PAIR_EXPECTED_VERDICTS.items():
+            if verdicts[port] != expected:
+                ok = False
+                print(f"  FAIL: {port} directCopy is {verdicts[port]}, "
+                      f"expected {expected}")
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+    if ok:
+        print("  PASS: equal-storage types pair copies directly, differing-storage "
+              "does not, and the enum pair never does despite identical members")
+    return ok
+
+
 def run_all_tests():
     print("=" * 70)
     print("TESTING: C++ definition compatibility at a thunked junction")
@@ -506,6 +661,7 @@ def run_all_tests():
         test_cpp_axis_pair_verdicts,
         test_cpp_axis_member_flag_emission,
         test_multi_slot_flag_slot_correspondence,
+        test_type_and_enum_pair_verdicts,
         test_two_param_field_constructor_avoids_comma_splice,
     ]
     results = []

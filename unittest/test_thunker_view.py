@@ -13,6 +13,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from pysrc.processYaml import projectOpen
+import pysrc.intf_gen_utils as intf_gen_utils
 
 
 BASE_YAML = """constants:
@@ -338,6 +339,146 @@ def test_connectionmap_child_missing_param_rejected():
         cleanup((db_path, project_path, arch_path))
 
 
+TYPE_PAYLOAD_INTERFACE_DEF = """interface_defs:
+  ty_proto:
+    parameters:
+      p_ty: {datatype: type}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ty_proto'
+      multicycle_types: []
+
+"""
+
+TYPE_PAYLOAD_BODY = """interfaces:
+  parentIf: {interfaceType: ty_proto, desc: "Parent interface", structures: [{structure: data_t, structureType: p_ty}]}
+  childIf: {interfaceType: ty_proto, desc: "Child interface", structures: [{structure: data_t, structureType: p_ty}]}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer:
+    desc: "Producer block"
+    hasRtl: false
+__PRODUCER_PARAMS__
+    ports:
+      outData: {interface: parentIf, direction: src}
+  consumer:
+    desc: "Consumer block"
+    hasRtl: false
+__CONSUMER_PARAMS__
+    ports:
+      inData: {interface: childIf, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer__PRODUCER_VARIANT__}
+  uConsumer: {container: top, instanceType: consumer__CONSUMER_VARIANT__}
+
+connections:
+  - {interface: parentIf, src: uProducer, srcport: outData, dst: uConsumer, dstport: inData}
+"""
+
+PARAM_TYPE_PAYLOAD_YAML = TYPE_PAYLOAD_INTERFACE_DEF + """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 16, desc: "Data width"}
+  types:
+    data_t: {width: WIDTH, desc: "Data type"}
+
+""" + (TYPE_PAYLOAD_BODY
+       .replace('__PRODUCER_PARAMS__', '    params: [WIDTH]')
+       .replace('__CONSUMER_PARAMS__', '    params: [WIDTH]')
+       .replace('__PRODUCER_VARIANT__', ', variant: prodVar')
+       .replace('__CONSUMER_VARIANT__', ', variant: consVar')) + """
+parameters:
+  producer:
+    prodVar:
+      WIDTH: 8
+  consumer:
+    consVar:
+      WIDTH: 8
+"""
+
+FIXED_TYPE_PAYLOAD_YAML = TYPE_PAYLOAD_INTERFACE_DEF + """constants:
+  WIDTH: {value: 8, desc: "Data width"}
+
+types:
+  data_t: {width: WIDTH, desc: "Data type"}
+
+""" + (TYPE_PAYLOAD_BODY
+       .replace('__PRODUCER_PARAMS__\n', '')
+       .replace('__CONSUMER_PARAMS__\n', '')
+       .replace('__PRODUCER_VARIANT__', '')
+       .replace('__CONSUMER_VARIANT__', ''))
+
+
+def _thunker_type_args(db_path):
+    prj = projectOpen(db_path)
+    top = get_top_block_data(db_path)
+    thunker = first_thunker(top)
+    ref = prj.datatypeRef('types', thunker['payloads'][0]['structureKey'])
+    ns = intf_gen_utils.cpp_namespace_name(prj.contextModuleIdentity[ref['context']])
+    decls = intf_gen_utils.sc_declare_thunkers(top, prj, '', top)
+    if len(decls) != 1 or not decls[0].endswith(' thunker_outData_uConsumer;'):
+        raise AssertionError(f"expected one thunker member for the bind, got {decls}")
+    args = decls[0].split('<', 1)[1].rsplit('>', 1)[0]
+    return prj, thunker, ns, [a.strip() for a in args.split(',')]
+
+
+def test_type_payload_spelling_parameterizable():
+    print("\nTesting thunker spelling of a parameterizable type payload")
+    # A type payload is a (name, width) pair. A parameterizable type is an
+    # alias template over the Config the bound side selects, its width a
+    # member of that Config, and the type name carries its owner's namespace.
+    db_path, project_path, arch_path = build_database(PARAM_TYPE_PAYLOAD_YAML)
+    try:
+        prj, thunker, ns, args = _thunker_type_args(db_path)
+        configs = [intf_gen_utils.cpp_config_struct_name(p['configSelection'])
+                   for p in thunker['payloads']]
+        expected = [f'{ns}::data_t<{configs[0]}>', f'{configs[0]}::WIDTH',
+                    f'{ns}::data_t<{configs[1]}>', f'{configs[1]}::WIDTH']
+        if args[:4] != expected:
+            print(f"FAIL: expected {expected}, got {args[:4]}")
+            return False
+        if not (configs[0].endswith('ProdVarConfig') and configs[1].endswith('ConsVarConfig')):
+            print(f"FAIL: each side must spell the Config its own instance selects, got {configs}")
+            return False
+        if args[4:] != ['true' if pair['directCopy'] else 'false'
+                        for pair in thunker['payloadPairs']]:
+            print(f"FAIL: the verdict slot must follow the two pairs, got {args[4:]}")
+            return False
+        print("PASS")
+        return True
+    finally:
+        cleanup((db_path, project_path, arch_path))
+
+
+def test_type_payload_spelling_fixed_width_constant():
+    print("\nTesting thunker spelling of a fixed type whose width names a constant")
+    # The constant's bare name is ambiguous across the contexts a composed
+    # container imports, so the width is spelled as its resolved literal.
+    db_path, project_path, arch_path = build_database(FIXED_TYPE_PAYLOAD_YAML)
+    try:
+        prj, thunker, ns, args = _thunker_type_args(db_path)
+        expected = [f'{ns}::data_t', '8', f'{ns}::data_t', '8']
+        if args[:4] != expected:
+            print(f"FAIL: expected {expected}, got {args[:4]}")
+            return False
+        print("PASS")
+        return True
+    finally:
+        cleanup((db_path, project_path, arch_path))
+
+
 def run_all_tests():
     tests = [
         lambda: test_parameter_order('rdy_vld', ['data_t', 'data_t']),
@@ -347,6 +488,8 @@ def run_all_tests():
         test_no_struct_parameter_not_thunked,
         test_binds_directly_reflects_param_values,
         test_connectionmap_child_missing_param_rejected,
+        test_type_payload_spelling_parameterizable,
+        test_type_payload_spelling_fixed_width_constant,
     ]
     return 0 if all(test() for test in tests) else 1
 
