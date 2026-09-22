@@ -148,6 +148,12 @@ public:
         }
 
         socketSyncStartRxThread();
+        // Model-only testbench: hold sc_start until the sidecar is lockstep-ready,
+        // otherwise its first request can race the reset release.
+        if (!socketSyncWaitPythonReady()) {
+            socketFactory::shutdownAll();
+            return false;
+        }
 
         testController &controller = testController::GetInstance();
         controller.set_test_names({

@@ -56,6 +56,14 @@ void socketSyncRegisterApbReqEvent(const std::shared_ptr<ThreadSafeEvent> &event
 
 void socketSyncStartRxThread();
 
+// Block the calling host thread until Python has sent its lockstep-ready SYNC
+// (call from createTestBench after socketSyncStartRxThread, before sc_start).
+// Returns false if the sync link closed first. A model-only testbench whose
+// traffic starts at t=0 needs this, or the DUT runs ahead of the peer and its
+// requests are answered DECERR while rst_n is still low. No-op (true) when
+// lockstep is off or no sync socket is connected.
+bool socketSyncWaitPythonReady();
+
 void socketSyncQuantumThread();
 
 // --- Gated time advance (lockstep) ---

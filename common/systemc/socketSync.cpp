@@ -7,6 +7,7 @@
 #include "socketFactory.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -24,7 +25,12 @@ std::shared_ptr<ThreadSafeEvent> g_ack_event;
 std::mutex g_ack_mutex;
 bool g_have_ack = false;
 uint64_t g_pending_ack_time_ns = 0;
-bool g_python_ready = false;
+std::atomic<bool> g_python_ready{false};
+// Host-side readiness for socketSyncWaitPythonReady(): the rx thread signals
+// g_ready_cv when the ready SYNC arrives or the sync link drops.
+std::mutex g_ready_mutex;
+std::condition_variable g_ready_cv;
+std::atomic<bool> g_rx_alive{false};
 std::shared_ptr<ThreadSafeEvent> g_ready_event;
 bool g_configured = false;
 
@@ -493,6 +499,9 @@ void socketSyncStartRxThread()
         sizeof(socket_bp_cfg_st) > sizeof(socket_reset_st) ? sizeof(socket_bp_cfg_st)
                                                            : sizeof(socket_reset_st);
 
+    // Set before the thread exists: only the rx thread clears it, so a thread
+    // that exits immediately cannot be overwritten by a later store(true).
+    g_rx_alive.store(true, std::memory_order_release);
     std::thread rx_thread([running, fd]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
@@ -505,9 +514,13 @@ void socketSyncStartRxThread()
                 break;
             }
             if (msg_type == MSG_SYNC && len == 0) {
-                g_python_ready = true;
                 g_lockstep_epoch_ns = socketSyncScTimeNs();
                 g_lockstep_epoch_set = true;
+                {
+                    std::lock_guard<std::mutex> lock(g_ready_mutex);
+                    g_python_ready.store(true, std::memory_order_release);
+                }
+                g_ready_cv.notify_all();
                 g_ready_event->notify();
                 continue;
             }
@@ -557,9 +570,27 @@ void socketSyncStartRxThread()
             }
         }
         running->store(false, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(g_ready_mutex);
+            g_rx_alive.store(false, std::memory_order_release);
+        }
+        g_ready_cv.notify_all();
         g_ack_event->notify();
     });
     socketFactory::registerThread(PYSOCKET_SYNC_IFC, std::move(rx_thread));
+}
+
+bool socketSyncWaitPythonReady()
+{
+    if (!socketSyncLockstepEnabled() || socketFactory::getFd(PYSOCKET_SYNC_IFC) < 0) {
+        return true;
+    }
+    std::unique_lock<std::mutex> lock(g_ready_mutex);
+    g_ready_cv.wait(lock, [] {
+        return g_python_ready.load(std::memory_order_acquire) ||
+               !g_rx_alive.load(std::memory_order_acquire);
+    });
+    return g_python_ready.load(std::memory_order_acquire);
 }
 
 void socketSyncQuantumThread()
@@ -582,8 +613,16 @@ void socketSyncQuantumThread()
     }
 
     // Free-run clocks until Python is ready so reset and early DUT time can complete.
-    while (!g_python_ready) {
-        wait(g_ready_event->default_event());
+    // A bare wait(ready_event) is not enough: a model-only testbench has no timed
+    // waiter, so the kernel queue empties and sc_start() returns before the ready
+    // SYNC arrives (same hazard as wait_for_ack()). Sleep until the next pending
+    // activity when there is one, otherwise delta-cycle at the current time.
+    while (!g_python_ready.load(std::memory_order_acquire)) {
+        if (sc_core::sc_pending_activity_at_future_time()) {
+            wait(sc_core::sc_time_to_pending_activity(), g_ready_event->default_event());
+        } else {
+            wait(sc_core::SC_ZERO_TIME);
+        }
     }
 
     // From here, only socketSyncAdvanceTime() may release DUT time.

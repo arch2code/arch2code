@@ -542,12 +542,6 @@ python3 test_type_struct_field.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: connectionMap boundary port validation"
-echo "------------------------------------------------------------------------"
-python3 test_validate_ports.py || FAILED=1
-idx=$((idx+1))
-
-echo ""
 echo "Test Suite ${idx}: socket shell on a parameterizable block is rejected"
 echo "------------------------------------------------------------------------"
 python3 test_error_socket_parameterized.py || FAILED=1

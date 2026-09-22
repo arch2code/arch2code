@@ -160,8 +160,11 @@ instances_flat)` and call it from `validatePorts` after `validateRtlHierarchy`:
 - `make db` across every example project exits as it does today. The
   intentionally failing `xprojParam` probes fail for their own reasons and
   must not start failing on this check.
-- Runner enrolment already landed in the merge: the suite is an example
-  reader in the parallel runner and is in the serial runner.
+- Re-enrol the suite in both runners (an example reader in
+  `run_all_tests_parallel.sh`, a numbered suite in `run_all_tests.sh`). The
+  merge enrolled it, which turned the CI unit-test job red because the check
+  is dead code; the enrolment was removed again on 2026-09-21 until this
+  section lands.
 
 ---
 

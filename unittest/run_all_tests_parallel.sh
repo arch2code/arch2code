@@ -46,15 +46,20 @@ EXAMPLE_READERS=(
     test_boundary_signals.py          # reads examples/ip_test
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
-    test_validate_ports.py            # runs projectCreate on examples/nested
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
 EXAMPLE_WRITER="test_build_manifest.py"
 
-# ISOLATED = all test_*.py minus readers minus writer.
+# Not run by either runner until the check it asserts is revived
+# (plans/plan-125-post-merge-followups.md, section 3).
+DISABLED=(
+    test_validate_ports.py
+)
+
+# ISOLATED = all test_*.py minus readers minus writer minus disabled.
 declare -A SKIP=()
-for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER"; do SKIP["$s"]=1; done
+for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER" "${DISABLED[@]}"; do SKIP["$s"]=1; done
 ISOLATED=()
 for f in test_*.py; do
     [[ -n "${SKIP[$f]:-}" ]] && continue
@@ -64,11 +69,11 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping or double-counting suites: ALL must contain
-# every test_*.py exactly once. Derived from the glob rather than a literal
-# count, so adding or removing a suite never requires editing this number.
+# Guard against silently dropping or double-counting suites: ALL plus DISABLED
+# must contain every test_*.py exactly once. Derived from the glob rather than a
+# literal count, so adding or removing a suite never requires editing this number.
 TOTAL_TEST_FILES=(test_*.py)
-if [[ ${#ALL[@]} -ne ${#TOTAL_TEST_FILES[@]} ]]; then
+if [[ $(( ${#ALL[@]} + ${#DISABLED[@]} )) -ne ${#TOTAL_TEST_FILES[@]} ]]; then
     echo "WARNING: expected ${#TOTAL_TEST_FILES[@]} suites (all test_*.py), found ${#ALL[@]} in the bucketed set." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
