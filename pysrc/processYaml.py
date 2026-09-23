@@ -1619,11 +1619,13 @@ class projectOpen:
             # getBDPorts stamps it with registerClock/registerReset.
             ret['registerBusPort'] = row['registerBusPort']
             # busClockPort/busResetPort (clockTree.py's _routerBusPorts /
-            # the handler's own implicit clk/rst_n) are the router's or
-            # handler's OWN declared port name carrying the register bus -
-            # a block-level fact repeated on every row the same way, read
-            # by getBDBusClockReset so bus_clock_reset_port_data does not
-            # re-derive the addressBlock: override rule itself.
+            # the handler's own registerClock/registerReset names, once
+            # _resolveRegisterHandlerBinds renames its clock/reset pair onto
+            # them) are the router's or handler's OWN declared port name
+            # carrying the register bus - a block-level fact repeated on
+            # every row the same way, read by getBDBusClockReset so
+            # bus_clock_reset_port_data does not re-derive the
+            # addressBlock: override rule itself.
             ret['busClockPort'] = row['busClockPort']
             ret['busResetPort'] = row['busResetPort']
             if row['kind'] == 'clock':
@@ -1655,12 +1657,14 @@ class projectOpen:
 
     def getBDBusClockReset(self, ret):
         # A router or a synthesised <block>_regs handler is a register-bus
-        # endpoint: its own declaration is always the generic implicit
-        # clk/rst_n (config/postParseRegisterPorts.py's synthesiseRegHandler
-        # declares neither clocks: nor resets:, and a top-down router
-        # commonly declares nothing either), so the block's own default
-        # clock/reset NAME carries no domain meaning of its own here. The
-        # real domain is registerClock/registerReset (clockTree.py's
+        # endpoint: a router commonly declares nothing of its own (a
+        # top-down router's clocks:/resets: are typically absent), and a
+        # handler declares neither clocks: nor resets: at all
+        # (config/postParseRegisterPorts.py's synthesiseRegHandler) - its
+        # clock/reset entries are clockTree.py's own renamed/appended pair(s)
+        # (_resolveRegisterHandlerBinds), not a declaration - so the block's
+        # own default clock/reset NAME carries no domain meaning of its own
+        # here. The real domain is registerClock/registerReset (clockTree.py's
         # _resolveRouterBusClockReset/_resolveRegisterHandlerBinds, spec
         # §4.3 "Registers"/"Routers"), a block-level fact resolved once at
         # build time from the block's sole instance and already read into
@@ -1672,6 +1676,13 @@ class projectOpen:
         # optional relationship.
         ret['busClock'] = ret['registerClock']
         ret['busReset'] = ret['registerReset']
+
+        # A handler's own memoriesParent entries (getBDRegistersMemories) are
+        # bridged (spec R20) exactly when their memory-side domainClock differs
+        # from the bus domain busClock just resolved above.
+        if ret['blockInfo']['isRegHandler']:
+            for entry in ret['memoriesParent'].values():
+                entry['bridged'] = entry['domainClock'] != ret['busClock']
 
     def getBDInstanceClockResetBinds(self, instanceKey):
         # The clock and reset binds a container emits for one child instance,

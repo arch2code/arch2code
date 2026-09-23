@@ -1,19 +1,19 @@
-#ifndef TWOCLK_HDL_SC_WRAPPER_H_
-#define TWOCLK_HDL_SC_WRAPPER_H_
+#ifndef TWOCLKDECODE_HDL_SC_WRAPPER_H_
+#define TWOCLKDECODE_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
 #include "instanceFactory.h"
 
-// GENERATED_CODE_PARAM --block=twoClk
+// GENERATED_CODE_PARAM --block=twoClkDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import twoClk.base;
+import twoClk_twoClkDecode.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
-#include "twoClk_hdl_sv_wrapper.h"
+#include "twoClkDecode_hdl_sv_wrapper.h"
 #else
-#include "VtwoClk_hdl_sv_wrapper.h"
+#include "VtwoClkDecode_hdl_sv_wrapper.h"
 #endif
 // GENERATED_CODE_END
 
@@ -21,47 +21,50 @@ import twoClk.base;
 
 import twoClk;
 using namespace twoClk_ns;
-import twoClkIp;
-using namespace twoClkIp_ns;
 #include "apb_bfm.h"
-#include "push_ack_bfm.h"
 
 #include "socketSync.h"
-class twoClk_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkBase {
+class twoClkDecode_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkDecodeBase {
 
 public:
 
 #if !defined(VERILATOR) && defined(VCS)
-    twoClk_hdl_sv_wrapper *dut_hdl;
+    twoClkDecode_hdl_sv_wrapper *dut_hdl;
 #else
-    VtwoClk_hdl_sv_wrapper *dut_hdl;
+    VtwoClkDecode_hdl_sv_wrapper *dut_hdl;
 #endif
 
     sc_signal<bool> clk;
-    sc_signal<bool> clkSlow;
 
+    apb_src_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_uTable_bfm;
     apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm;
 
-    SC_HAS_PROCESS (twoClk_hdl_sc_wrapper);
+    SC_HAS_PROCESS (twoClkDecode_hdl_sc_wrapper);
 
-    twoClk_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+    twoClkDecode_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
-        blockBase("twoClk_hdl_sc_wrapper", name(), bbMode),
-        twoClkBase(name(), variant),
+        blockBase("twoClkDecode_hdl_sc_wrapper", name(), bbMode),
+        twoClkDecodeBase(name(), variant),
         clk("clk"),
-        clkSlow("clkSlow"),
+        twoClkReg_uTable_bfm("twoClkReg_uTable_bfm"),
         twoClkReg_bfm("twoClkReg_bfm"),
         rst_n("rst_n", true),
-        rstSlow_n("rstSlow_n", true),
-        clk_half_(sc_time(1, SC_NS) / 2),
-        clkSlow_half_(sc_time(3, SC_NS) / 2)
+        clk_half_(sc_time(1, SC_NS) / 2)
     {
 #if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new twoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new twoClkDecode_hdl_sv_wrapper("dut_hdl");
 #else
-        dut_hdl = new VtwoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new VtwoClkDecode_hdl_sv_wrapper("dut_hdl");
 #endif
 
+        dut_hdl->twoClkReg_uTable_paddr(twoClkReg_uTable_hdl_if.paddr);
+        dut_hdl->twoClkReg_uTable_psel(twoClkReg_uTable_hdl_if.psel);
+        dut_hdl->twoClkReg_uTable_penable(twoClkReg_uTable_hdl_if.penable);
+        dut_hdl->twoClkReg_uTable_pwrite(twoClkReg_uTable_hdl_if.pwrite);
+        dut_hdl->twoClkReg_uTable_pwdata(twoClkReg_uTable_hdl_if.pwdata);
+        dut_hdl->twoClkReg_uTable_pready(twoClkReg_uTable_hdl_if.pready);
+        dut_hdl->twoClkReg_uTable_prdata(twoClkReg_uTable_hdl_if.prdata);
+        dut_hdl->twoClkReg_uTable_pslverr(twoClkReg_uTable_hdl_if.pslverr);
         dut_hdl->twoClkReg_paddr(twoClkReg_hdl_if.paddr);
         dut_hdl->twoClkReg_psel(twoClkReg_hdl_if.psel);
         dut_hdl->twoClkReg_penable(twoClkReg_hdl_if.penable);
@@ -71,9 +74,12 @@ public:
         dut_hdl->twoClkReg_prdata(twoClkReg_hdl_if.prdata);
         dut_hdl->twoClkReg_pslverr(twoClkReg_hdl_if.pslverr);
         dut_hdl->clk(clk);
-        dut_hdl->clkSlow(clkSlow);
         dut_hdl->rst_n(rst_n);
-        dut_hdl->rstSlow_n(rstSlow_n);
+
+        twoClkReg_uTable_bfm.if_p(this->twoClkReg_uTable);
+        twoClkReg_uTable_bfm.hdl_if_p(twoClkReg_uTable_hdl_if);
+        twoClkReg_uTable_bfm.clk(clk);
+        twoClkReg_uTable_bfm.rst_n(rst_n);
 
         twoClkReg_bfm.if_p(this->twoClkReg);
         twoClkReg_bfm.hdl_if_p(twoClkReg_hdl_if);
@@ -81,11 +87,8 @@ public:
         twoClkReg_bfm.rst_n(rst_n);
 
         clk.write(true);
-        clkSlow.write(true);
         SC_THREAD(clock_gen_clk);
-        SC_THREAD(clock_gen_clkSlow);
         SC_THREAD(reset_driver_rst_n);
-        SC_THREAD(reset_driver_rstSlow_n);
 
         end_ctor_init();
 
@@ -101,12 +104,11 @@ public:
 
 private:
 
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_uTable_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_hdl_if;
 
     sc_signal<bool> rst_n;
-    sc_signal<bool> rstSlow_n;
     sc_time clk_half_;
-    sc_time clkSlow_half_;
 
     // Free-run: toggle every half period. Gated lockstep: the quantum thread
     // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
@@ -154,9 +156,7 @@ private:
     }
 
     void clock_gen_clk() { clock_gen(clk, clk_half_); }
-    void clock_gen_clkSlow() { clock_gen(clkSlow, clkSlow_half_); }
     void reset_driver_rst_n() { reset_driver(rst_n, clk, 3); }
-    void reset_driver_rstSlow_n() { reset_driver(rstSlow_n, clkSlow, 3); }
 
 // GENERATED_CODE_END
 
@@ -167,4 +167,4 @@ private:
 
 };
 
-#endif // TWOCLK_HDL_SC_WRAPPER_H_
+#endif // TWOCLKDECODE_HDL_SC_WRAPPER_H_

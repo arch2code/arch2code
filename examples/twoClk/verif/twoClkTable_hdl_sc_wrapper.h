@@ -1,19 +1,19 @@
-#ifndef TWOCLK_HDL_SC_WRAPPER_H_
-#define TWOCLK_HDL_SC_WRAPPER_H_
+#ifndef TWOCLKTABLE_HDL_SC_WRAPPER_H_
+#define TWOCLKTABLE_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
 #include "instanceFactory.h"
 
-// GENERATED_CODE_PARAM --block=twoClk
+// GENERATED_CODE_PARAM --block=twoClkTable
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import twoClk.base;
+import twoClk_twoClkTable.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
-#include "twoClk_hdl_sv_wrapper.h"
+#include "twoClkTable_hdl_sv_wrapper.h"
 #else
-#include "VtwoClk_hdl_sv_wrapper.h"
+#include "VtwoClkTable_hdl_sv_wrapper.h"
 #endif
 // GENERATED_CODE_END
 
@@ -21,20 +21,17 @@ import twoClk.base;
 
 import twoClk;
 using namespace twoClk_ns;
-import twoClkIp;
-using namespace twoClkIp_ns;
 #include "apb_bfm.h"
-#include "push_ack_bfm.h"
 
 #include "socketSync.h"
-class twoClk_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkBase {
+class twoClkTable_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkTableBase {
 
 public:
 
 #if !defined(VERILATOR) && defined(VCS)
-    twoClk_hdl_sv_wrapper *dut_hdl;
+    twoClkTable_hdl_sv_wrapper *dut_hdl;
 #else
-    VtwoClk_hdl_sv_wrapper *dut_hdl;
+    VtwoClkTable_hdl_sv_wrapper *dut_hdl;
 #endif
 
     sc_signal<bool> clk;
@@ -42,12 +39,12 @@ public:
 
     apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm;
 
-    SC_HAS_PROCESS (twoClk_hdl_sc_wrapper);
+    SC_HAS_PROCESS (twoClkTable_hdl_sc_wrapper);
 
-    twoClk_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+    twoClkTable_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
-        blockBase("twoClk_hdl_sc_wrapper", name(), bbMode),
-        twoClkBase(name(), variant),
+        blockBase("twoClkTable_hdl_sc_wrapper", name(), bbMode),
+        twoClkTableBase(name(), variant),
         clk("clk"),
         clkSlow("clkSlow"),
         twoClkReg_bfm("twoClkReg_bfm"),
@@ -57,9 +54,9 @@ public:
         clkSlow_half_(sc_time(3, SC_NS) / 2)
     {
 #if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new twoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new twoClkTable_hdl_sv_wrapper("dut_hdl");
 #else
-        dut_hdl = new VtwoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new VtwoClkTable_hdl_sv_wrapper("dut_hdl");
 #endif
 
         dut_hdl->twoClkReg_paddr(twoClkReg_hdl_if.paddr);
@@ -167,4 +164,4 @@ private:
 
 };
 
-#endif // TWOCLK_HDL_SC_WRAPPER_H_
+#endif // TWOCLKTABLE_HDL_SC_WRAPPER_H_

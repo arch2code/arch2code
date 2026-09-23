@@ -2374,16 +2374,24 @@ def run_single_domain_cases():
     return all(results)
 
 
-# --------------------------------------- V24 (regAccess memory, R20 bridge) --
+# ------------------------------ V19 (regAccess memory bridge reset, R20) --
 
 # A router-served, TOP-DOWN leaf (no registerPorts:, so R25's top-down
-# selection resolves its register bus from the router dispatching to it) on
-# two clocks, with a regAccess memory the '%s' slot places on either one -
-# 'clk', the router's own bus clock, for the positive shape, or 'clkPix' for
-# the negative one. `%`-substituted rather than `.format()`-substituted: the
-# design otherwise reads as ordinary YAML, with none of `.format()`'s braces
-# to escape.
-V24_DESIGN = """constants:
+# selection resolves its register bus from the router dispatching to it),
+# declaring its bus clock/reset under names OTHER than the handler's own
+# implicit clk/rst_n (clkBus/rstBus_n, bound onto the project's clk/rst_n by
+# an explicit instance map - a name match would fire on 'clk'/'rst_n', which
+# is exactly what this fixture must not rely on), plus a second clock
+# (clkPix) the memories: '%s' slot places one or more regAccess memories on,
+# so a memory is served through the register handler's R20 bridge (spec
+# R20/V19). Four `%s` slots, substituted in order: top_tb's own extra
+# resets (a case naming a second clkPix reset in its instance map needs a
+# matching testbench reset for top_tb to bind it to), leafA's own extra
+# resets, uLeafA's own instance resets: map extra entries, and the whole
+# memories: row list. `%`-substituted rather than `.format()`-substituted:
+# the design otherwise reads as ordinary YAML, with none of `.format()`'s
+# braces to escape.
+V19_DESIGN = """constants:
     ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
     DATA_WIDTH: { value: 32, desc: "Register bus data width" }
     TBL_WORDS:  { value: 4, desc: "memory word count" }
@@ -2421,7 +2429,7 @@ blocks:
             clkPix: { }
         resets:
             rst_n:    { clock: clk }
-            rstPix_n: { clock: clkPix }
+            rstPix_n: { clock: clkPix }%s
     cpu:
         desc: "register-bus master"
         hasMdl: true
@@ -2440,26 +2448,32 @@ blocks:
         desc: "Top-down routed leaf owning a regAccess memory"
         hasMdl: true
         clocks:
-            clk:    { default: true }
+            clkBus: { default: true }
             clkPix: { }
         resets:
-            rst_n:    { clock: clk }
-            rstPix_n: { clock: clkPix }
+            rstBus_n: { clock: clkBus }%s
 
 instances:
     top_tb:     { container: top_tb, instanceType: top_tb,    instGroup: top }
     uCPU:       { container: top_tb, instanceType: cpu,       instGroup: top }
     uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }
-    uLeafA:     { container: top_tb, instanceType: leafA,     instGroup: top, addressGroup: top }
+    uLeafA:     { container: top_tb, instanceType: leafA,     instGroup: top, addressGroup: top,
+                  clocks: { clkBus: clk, clkPix: clkPix },
+                  resets: { rstBus_n: rst_n%s } }
 
 connections:
     - { interface: apbReg, src: uCPU, dst: uAPBDecode }
 
 memories:
-    - { memory: tbl, block: leafA, structure: memSt, addressStruct: memAddrSt, wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA regAccess table"%s }
-"""
+%s"""
 
-V24_PROJECT_DOMAINS = """
+# One 'tbl' memory row on clkPix, for the single-memory V19 cases.
+V19_ONE_MEMORY_ROW = (
+    '    - { memory: tbl, block: leafA, structure: memSt, addressStruct: memAddrSt, '
+    'wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA regAccess table", '
+    'clock: clkPix%s }\n')
+
+V19_PROJECT_DOMAINS = """
 clocks:
     clk:    { desc: "the default testbench clock", default: true, period: 1, timeUnit: ns }
     clkPix: { desc: "a second testbench clock", period: 2, timeUnit: ns }
@@ -2470,22 +2484,150 @@ resets:
 """
 
 
-def run_v24_regaccess_memory_domain_cases():
-    """V24 (spec R20/V24): until the register-handler bridge exists (plan
-    §6 phase 6), a regAccess memory on a clock other than its block's own
-    register bus clock is rejected at build, rather than silently generating
-    a handler whose memory-side flops are actually driven by the bus clock.
-
-    The positive shape - 'tbl' declared on 'clk', the same clock 'apbDecode'
-    dispatches leafA's register bus on - already builds in
-    test_clock_reset_emission.py (its own leafA fixture, ~438-439/657-665,
-    declares two regAccess memories on the feed clock for exactly this
-    reason), so it is not repeated here."""
+def run_v19_regaccess_memory_bridge_clock_no_reset_rejected():
+    """V19 (spec R20): a regAccess memory served through the register
+    handler's bridge needs a reset in its own domain for the bridge's memory
+    side (spec §4.3 "Memories"). leafA's own clkPix carries no reset at all,
+    so the bridge the memory's 'clock: clkPix' would otherwise need has
+    nothing to reset the memory-side logic with, and the build is rejected
+    rather than silently generating an unreset bridge."""
     return _expect_diagnostic(
-        "a regAccess memory on a clock other than its block's register bus "
-        "clock is rejected",
-        ('V24', 'tbl', 'leafA', 'clkPix', "'clk'"),
-        design=V24_DESIGN % ', clock: clkPix', projectDomains=V24_PROJECT_DOMAINS)
+        "a regAccess memory bridged to a clock with no selected reset is "
+        "rejected",
+        ('V19', 'tbl', 'leafA', 'clkPix'),
+        design=V19_DESIGN % ('', '', '', V19_ONE_MEMORY_ROW % ''),
+        projectDomains=V19_PROJECT_DOMAINS)
+
+
+def run_v19_regaccess_memory_bridge_reset_declared_builds():
+    """The positive shape: leafA declares a reset on clkPix, so the R20
+    bridge has a memory-side reset and the build succeeds. The handler's
+    ports carry the leaf's own clock/reset names, not the handler's own
+    implicit clk/rst_n, so the persisted handler block ('leafA_regs')
+    carries the bus pair (clkBus/rstBus_n) first, then the bridged
+    clkPix/rstPix_n pair, in leafA's own declaration order; the handler
+    instance's own binds mirror the same order onto the leaf's own nets, and
+    busClockPort/busResetPort and clkPix's own selectedReset confirm which
+    pair is the bus."""
+    label = "a regAccess memory bridged to a clock with a declared reset builds"
+    fixture, project_path, db_path = _make_fixture(
+        design=V19_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                             ', rstPix_n: rstPix_n', V19_ONE_MEMORY_ROW % ''),
+        projectDomains=V19_PROJECT_DOMAINS)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: {label}\n{output}")
+            return False
+        clocks, resets = _clock_reset_rows(db_path, 'leafA_regs')
+        failed = False
+        if clocks != ['clkBus', 'clkPix'] or resets != ['rstBus_n', 'rstPix_n']:
+            print(f"FAIL: {label}: leafA_regs persisted clocks={clocks}, "
+                  f"resets={resets}, expected clocks=['clkBus', 'clkPix'], "
+                  f"resets=['rstBus_n', 'rstPix_n'] (bus pair first, then "
+                  f"the bridged pair)")
+            failed = True
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        handlerBlockKey = cur.execute(
+            "SELECT blockKey FROM blocks WHERE block = 'leafA_regs'").fetchone()['blockKey']
+        clockRows = [dict(row) for row in cur.execute(
+            "SELECT * FROM blockClocksResets WHERE blockKey = ? AND kind = 'clock' "
+            "ORDER BY orderIndex", (handlerBlockKey,)).fetchall()]
+        handlerInstanceKey = cur.execute(
+            "SELECT instanceKey FROM instances WHERE instance = 'u_leafA_regs'").fetchone()['instanceKey']
+        binds = [(row['childPort'], row['parentSignal']) for row in cur.execute(
+            "SELECT * FROM instanceClockResetBinds WHERE instanceKey = ? "
+            "ORDER BY orderIndex", (handlerInstanceKey,)).fetchall()]
+        con.close()
+        # rows() lists every clock bind before any reset bind (R18: "clocks
+        # before resets"), so the bus pair and the bridged pair each land in
+        # their own clocks-then-resets group, bus port first in each.
+        expectedOrder = [('clkBus', 'clkBus'), ('clkPix', 'clkPix'),
+                         ('rstBus_n', 'rstBus_n'), ('rstPix_n', 'rstPix_n')]
+        if binds != expectedOrder:
+            print(f"FAIL: {label}: u_leafA_regs's own binds are {binds}, "
+                  f"expected {expectedOrder} (bus port first within the "
+                  f"clocks group and within the resets group)")
+            failed = True
+        busClockPorts = {row['busClockPort'] for row in clockRows}
+        busResetPorts = {row['busResetPort'] for row in clockRows}
+        if busClockPorts != {'clkBus'} or busResetPorts != {'rstBus_n'}:
+            print(f"FAIL: {label}: leafA_regs's busClockPort/busResetPort "
+                  f"are {busClockPorts}/{busResetPorts}, expected "
+                  f"{{'clkBus'}}/{{'rstBus_n'}} on every clock row (the "
+                  f"bus pair, not the bridged one, spec §4.3 'Registers')")
+            failed = True
+        clkPixRow = next(row for row in clockRows if row['itemKey'] == 'clkPix')
+        if clkPixRow['selectedReset'] != 'rstPix_n':
+            print(f"FAIL: {label}: leafA_regs's clkPix row carries "
+                  f"selectedReset={clkPixRow['selectedReset']!r}, expected "
+                  f"'rstPix_n' (the bridged reset for that clock, not the "
+                  f"bus reset)")
+            failed = True
+        print(f"{'FAIL' if failed else 'PASS'}: {label}")
+        return not failed
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_v19_regaccess_memory_bridge_conflicting_resets_rejected():
+    """V19/R20: the register handler's bridge to one non-bus clock is one
+    piece of generated logic, reset by "the block's reset in that domain"
+    (R20) - one reset, not one per memory. leafA declares two resets on
+    clkPix (rstPix_n, default, and rstPix2_n); 'tblA' takes clkPix's default
+    reset (rstPix_n) by leaving reset: unset, while 'tblB' names rstPix2_n
+    explicitly, so the two memories bridged to the same clock disagree on
+    which reset serves it, and the build is rejected rather than silently
+    picking one."""
+    twoMemoryRows = (
+        '    - { memory: tblA, block: leafA, structure: memSt, addressStruct: memAddrSt, '
+        'wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA regAccess table A", '
+        'clock: clkPix }\n'
+        '    - { memory: tblB, block: leafA, structure: memSt, addressStruct: memAddrSt, '
+        'wordLines: TBL_WORDS, ports: [p], regAccess: true, desc: "leafA regAccess table B", '
+        'clock: clkPix, reset: rstPix2_n }\n')
+    design = V19_DESIGN % (
+        '\n            rstPix2_n: { clock: clkPix }',
+        '\n            rstPix_n: { clock: clkPix, default: true }'
+        '\n            rstPix2_n: { clock: clkPix }',
+        ', rstPix_n: rstPix_n, rstPix2_n: rstPix2_n', twoMemoryRows)
+    return _expect_diagnostic(
+        "two regAccess memories bridged to the same clock resolving to "
+        "different resets are rejected",
+        ('V19', 'leafA', 'clkPix', 'tblA', 'tblB', 'rstPix_n', 'rstPix2_n'),
+        design=design,
+        projectDomains=V19_PROJECT_DOMAINS + """    rstPix2_n: { desc: "clkPix's second reset", clock: clkPix }
+""")
+
+
+def run_v19_memory_reset_names_wrong_clock_rejected():
+    """V19: a memory's reset: must name a reset belonging to the memory's own
+    clock. 'tbl' is on clkPix but names 'rstBus_n', which belongs to clkBus,
+    so the bridge would consume the bus reset for a clkPix memory instead of
+    a clkPix reset, and the build is rejected."""
+    return _expect_diagnostic(
+        "a memory's reset: naming a reset of a different clock is rejected",
+        ('V19', 'tbl', 'leafA', 'rstBus_n', 'clkBus', 'clkPix'),
+        design=V19_DESIGN % ('', '', '', V19_ONE_MEMORY_ROW % ', reset: rstBus_n'),
+        projectDomains=V19_PROJECT_DOMAINS)
+
+
+def run_v19_memory_reset_names_async_reset_rejected():
+    """V19: an asynchronous reset input belongs to no clock (V1), so it
+    cannot be a memory's own-clock reset either. 'tbl' on clkPix names the
+    async 'rstAsync_n' (mapped onto the container's existing rst_n net -
+    binding is unaffected by clock membership, only the V19 domain check
+    cares), and the build is rejected the same way as a synchronous reset
+    naming the wrong clock."""
+    return _expect_diagnostic(
+        "a memory's reset: naming an asynchronous reset is rejected",
+        ('V19', 'tbl', 'leafA', 'rstAsync_n', 'asynchronous'),
+        design=V19_DESIGN % ('', '\n            rstAsync_n: { async: true }',
+                             ', rstAsync_n: rst_n',
+                             V19_ONE_MEMORY_ROW % ', reset: rstAsync_n'),
+        projectDomains=V19_PROJECT_DOMAINS)
 
 
 # ---------------------- register-bus port domain override (getBDPorts) --
@@ -3821,7 +3963,11 @@ def _run():
         ("Instance maps", (run_instance_maps_cases,)),
         ("Local nets", (run_local_net_cases,)),
         ("Single-domain objects", (run_single_domain_cases,)),
-        ("V24 regAccess memory on the register bus", (run_v24_regaccess_memory_domain_cases,)),
+        ("V19 regAccess memory bridge reset", (run_v19_regaccess_memory_bridge_clock_no_reset_rejected,
+                                               run_v19_regaccess_memory_bridge_reset_declared_builds,
+                                               run_v19_regaccess_memory_bridge_conflicting_resets_rejected,
+                                               run_v19_memory_reset_names_wrong_clock_rejected,
+                                               run_v19_memory_reset_names_async_reset_rejected)),
         ("Register-bus port domain override (registerBusPort)",
          (run_registerports_reset_disambiguates_bus_port_domain,
           run_topdown_leaf_bus_port_domain_matches_register_clock)),

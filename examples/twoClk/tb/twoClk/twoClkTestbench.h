@@ -8,6 +8,8 @@
 #include "instanceFactory.h"
 
 import twoClk.base;
+import twoClk;
+using namespace twoClk_ns;
 import twoClkIp;
 using namespace twoClkIp_ns;
 #include "twoClkExternal.h"

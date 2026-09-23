@@ -416,6 +416,12 @@ python3 test_clock_reset_emission.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: memory_reg_bridge simulation"
+echo "------------------------------------------------------------------------"
+python3 test_memory_reg_bridge_sim.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: clock/reset local nets, exports, and ~ bindings"
 echo "------------------------------------------------------------------------"
 python3 test_clock_local_nets.py || FAILED=1

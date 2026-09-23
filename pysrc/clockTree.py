@@ -73,9 +73,11 @@ class MemoryDomain:
     directly, against the resolved consumer net, not carried here.
 
     `regAccess` marks a memory the register bus must be able to reach
-    through its owning block's own register handler (R20); `build()`'s V24
-    pass reads it to reject one on a clock other than that handler's bus
-    clock, the R20 bridge not being implemented yet.
+    through its owning block's own register handler (R20): on the handler's
+    own bus clock, served directly, or on another block clock, served
+    through the handler's bridge (`_resolveRegisterHandlerBinds`), which
+    needs a reset in the memory's own domain; `build()`'s V19 pass rejects a
+    bridged memory whose clock has none.
     """
     memoryBlockKey: str
     memory: str
@@ -107,10 +109,13 @@ class Consumer:
     `binding` records the rule that resolved it: 'map' (an instance
     `clocks:`/`resets:` map entry), 'name' (automatic binding by
     name match), 'fallback' (the `clk`/`rst_n` default fallback, spec §4.4,
-    R10), or 'register' (a synthesised `<block>_regs` handler's clock/reset,
-    bound directly onto its owning leaf's selected register clock/reset -
-    R25, or a reusable IP's `registerPorts:` clock/reset - no instance map
-    authors this bind, so it is not 'map').
+    R10), or 'register' (one of a synthesised `<block>_regs` handler's
+    clock/reset ports - the bus pair, bound onto its owning leaf's selected
+    register clock/reset (R25) or a reusable IP's `registerPorts:`
+    clock/reset, and one pair per regAccess memory domain the handler
+    bridges (R20), bound onto the leaf's own clock/reset net of that
+    memory's domain - no instance map authors any of these, so none is
+    'map').
     """
     instanceKey: str
     blockPort: str
@@ -214,9 +219,11 @@ class BlockDomains:
         self.registerReset = None
         # The router's or handler's OWN declared clock/reset PORT NAME
         # carrying the register bus (spec §4.3 "Routers"; `_routerBusPorts`
-        # for a router, the handler's sole implicit clk/rst_n for a
-        # handler), filled in alongside registerClock/registerReset by the
-        # same two resolution passes. Unlike registerClock/registerReset,
+        # for a router, the leaf's own registerClock/registerReset names for
+        # a handler, once `_resolveRegisterHandlerBinds` renames the
+        # handler's clock/reset pair onto them), filled in alongside
+        # registerClock/registerReset by the same two resolution passes.
+        # Unlike registerClock/registerReset,
         # this is always a port name of THIS block, never a container net,
         # for both kinds - the one fact intf_gen_utils.py's
         # bus_clock_reset_port_data needs to rename the right declared
@@ -473,9 +480,31 @@ class BlockDomains:
 
         # spec §4.3 "Memories": a memory's clock defaults to the owning
         # block's default clock, and its reset (for the R20 bridge's memory
-        # side) to that clock's selected reset.
+        # side) to that clock's selected reset. An authored reset: must
+        # belong to the memory's own clock (V19), the same rule a
+        # registerPorts:/addressBlock: reset: override follows: a reset
+        # naming a different clock cannot be "the block's reset in that
+        # domain" (R20) the bridge's memory side needs.
         for memDomain in memories:
             memDomain.clock = memDomain.clock or defaultClock
+            if memDomain.reset:
+                resetClock = resets[memDomain.reset]['clock']
+                if not resetClock:
+                    diag.logError(
+                        f"Memory '{memDomain.memory}' of block '{block}' "
+                        f"names reset: '{memDomain.reset}', an asynchronous "
+                        f"reset input belonging to no clock, so it cannot "
+                        f"be a memory's reset (V19): a memory's reset: must "
+                        f"name a reset belonging to the memory's own clock "
+                        f"'{memDomain.clock}'.")
+                elif resetClock != memDomain.clock:
+                    diag.logError(
+                        f"Memory '{memDomain.memory}' of block '{block}' "
+                        f"names reset: '{memDomain.reset}', which belongs "
+                        f"to clock '{resetClock}', not the memory's own "
+                        f"clock '{memDomain.clock}' (V19): a memory's "
+                        f"reset: must name a reset belonging to the "
+                        f"memory's own clock.")
             memDomain.reset = memDomain.reset or selected.get(memDomain.clock)
 
         clockDecls = OrderedDict(
@@ -1519,23 +1548,54 @@ def build(blocks, instances, connections, memories, memoryConnections,
                 f"reset (V19): a router's, a served leaf's or a passthrough "
                 f"container's register bus clock must have one.")
 
-    # V24 (spec R20): a regAccess memory must sit on its block's register bus
-    # clock until the R20 bridge exists. postParseRegisterPorts rejects a
-    # router that owns a regAccess memory before this point, and handlers own
-    # no memories, so only served leaves reach the compare, in their own
-    # clock-port names.
+    # V19 (spec R20): a regAccess memory whose clock differs from its block's
+    # register bus clock is served through the handler's bridge
+    # (_resolveRegisterHandlerBinds), whose memory side needs a reset in the
+    # memory's own domain. postParseRegisterPorts rejects a router that owns
+    # a regAccess memory before this point, and handlers own no memories, so
+    # only served leaves reach this check, in their own clock-port names.
     for domain in domains.values():
         if domain.registerClock is None:
             continue
+        bridgedMemoriesByClock = dict()
         for memDomain in domain.memories:
             if not memDomain.regAccess or memDomain.clock == domain.registerClock:
                 continue
+            bridgedMemoriesByClock.setdefault(memDomain.clock, list()).append(memDomain)
+            if memDomain.reset is not None:
+                continue
             diag.logError(
                 f"Memory '{memDomain.memory}' of block '{domain.block}' is "
-                f"regAccess on clock '{memDomain.clock}', but the block's "
-                f"register bus is on '{domain.registerClock}' (V24): the R20 "
-                f"bridge is not implemented; declare the memory on the "
-                f"register bus clock.")
+                f"regAccess on clock '{memDomain.clock}', which has no "
+                f"selected reset, but the block's register bus is on "
+                f"'{domain.registerClock}' (V19): the register handler's "
+                f"bridge to that memory is generated logic in the memory's "
+                f"domain and needs a reset there; declare a reset on "
+                f"'{memDomain.clock}' (or mark one default: true) or name it "
+                f"with the memory's reset:.")
+        # V19/R20: the bridge for one clock is one piece of generated logic,
+        # reset by "the block's reset in that domain" (R20) - one reset, not
+        # one per memory. Two regAccess memories bridged to the same clock
+        # whose reset: (authored or the clock's own selected reset) disagree
+        # would leave the handler with only one clock/reset pair for that
+        # clock (rows() persists one blockClocksResets entry per name), so
+        # whichever memory's reset lost out would name a handler port that
+        # was never declared.
+        for clockName, memDomainsOnClock in bridgedMemoriesByClock.items():
+            resetsUsed = sorted({memDomain.reset for memDomain in memDomainsOnClock
+                                 if memDomain.reset is not None})
+            if len(resetsUsed) > 1:
+                names = ', '.join(f"'{memDomain.memory}' (reset '{memDomain.reset}')"
+                                  for memDomain in memDomainsOnClock if memDomain.reset is not None)
+                diag.logError(
+                    f"Block '{domain.block}' clock '{clockName}' hosts more "
+                    f"than one regAccess memory bridged to the register bus "
+                    f"({names}), resolving to different resets "
+                    f"({', '.join(repr(r) for r in resetsUsed)}) (V19): the "
+                    f"register handler's bridge to that clock is reset by "
+                    f"\"the block's reset in that domain\" (R20), one reset "
+                    f"per domain; give the memories the same reset: or leave "
+                    f"both to the clock's selected reset.")
 
     _checkSupplyGraph(domains, containers, instances, blocks, diag)
 
@@ -1885,14 +1945,17 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
     """Resolve every routed leaf block's own register-port clock/reset
     (spec R25; rule 1 for a reusable IP's `registerPorts:`), storing the
     result on the leaf's own BlockDomains (spec §4.3: "a block-level
-    result"), then bind every synthesised `<block>_regs` handler instance's
-    own (sole, implicit) clock and reset onto it, with binding kind
-    'register' - no instance map authors this bind, so it is not 'map'. The
-    handler instance's own binding pass above already gave it a plain
-    name-match/fallback bind within its container (the owning leaf block,
-    config/postParseRegisterPorts.py's `synthesiseRegHandler`); this
-    replaces that guess. A top-down leaf's selection needs the OUTER leaf
-    instances' own binds, done above in every container before this runs.
+    result"), then rename every synthesised `<block>_regs` handler
+    instance's own implicit clock/reset pair onto it and bind the two ports
+    accordingly, with binding kind 'register' - no instance map authors this
+    bind, so it is not 'map'. The handler instance's own binding pass above
+    already gave it a plain name-match/fallback bind within its container
+    (the owning leaf block, config/postParseRegisterPorts.py's
+    `synthesiseRegHandler`); this replaces that guess. A top-down leaf's
+    selection needs the OUTER leaf instances' own binds, done above in
+    every container before this runs. The handler then gains one further
+    clock/reset port pair per regAccess memory domain it bridges (R20),
+    under that memory's own clock/reset names, bound the same way.
 
     `resolveBlock` applies the same rule-1-or-R25 resolution to a
     passthrough container. `_servingRouterBusNets` calls it for the
@@ -1975,19 +2038,94 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
         # register port NAME already IS that net name.
         handlerDomain.registerClock = leafDomain.registerClock
         handlerDomain.registerReset = leafDomain.registerReset
+
+        # Rename the handler's implicit clock/reset pair to the leaf's own
+        # register clock/reset names: the handler's ports take the leaf's
+        # own clock/reset names so that a bridged memory (below) declared on
+        # a block clock actually named 'clk' cannot collide with the
+        # handler's bus pair (spec R20, §4.3 "Registers"). The rename makes
+        # busClockPort/busResetPort (below) equal registerClock/
+        # registerReset, so intf_gen_utils.bus_clock_reset_port_data's
+        # rename-to-bus-name becomes an identity for a handler, same as it
+        # already is for a router.
+        clockDecl = handlerDomain.clocks.pop(handlerClockName)
+        handlerDomain.clocks[leafDomain.registerClock] = clockDecl
+        handlerDomain.names.pop(handlerClockName)
+        handlerDomain.names[leafDomain.registerClock] = 'clock'
+        handlerDomain.defaultClock = leafDomain.registerClock
         _rebindConsumer(leafContainer, instanceKey, handlerClockName,
                         leafDomain.registerClock, 'register')
+
+        resetName = handlerResetName
         if leafDomain.registerReset is not None:
+            # The reset renames alongside the clock. If it is None,
+            # build()'s V19 check that a register bus clock has a selected
+            # reset already rejects the design, so the reset entry is left
+            # under its implicit name rather than renamed to nothing; it is
+            # still retargeted to the bus clock two lines below.
+            resetDecl = handlerDomain.resets.pop(handlerResetName)
+            handlerDomain.resets[leafDomain.registerReset] = resetDecl
+            handlerDomain.names.pop(handlerResetName)
+            handlerDomain.names[leafDomain.registerReset] = 'reset'
+            resetName = leafDomain.registerReset
             _rebindConsumer(leafContainer, instanceKey, handlerResetName,
                             leafDomain.registerReset, 'register')
+        handlerDomain.resets[resetName].clock = leafDomain.registerClock
+        handlerDomain.selectedReset = {leafDomain.registerClock: resetName}
+        handlerDomain.busClockPort = leafDomain.registerClock
+        handlerDomain.busResetPort = resetName
+
+        # The bridge (spec R20, §4.3 "Memories"): every regAccess memory of
+        # the leaf whose own clock differs from the register bus clock gets
+        # its own clock/reset port pair on the handler, bound onto the
+        # leaf's own net of that same name (the leaf's own clock/reset
+        # declarations are already nets of leafContainer, as the bus pair
+        # above already relies on). A memory with no reset on its clock is
+        # rejected by the V19 check below instead of bridged here, and two
+        # memories on the same clock resolving to different resets is
+        # likewise rejected there rather than silently picking one. Order
+        # follows the leaf's own clock declaration order, never memory
+        # iteration order, so regenerating after an unrelated memory edit
+        # does not reshuffle the handler's port list.
+        bridgedResetByClock = dict()
+        for memDomain in leafDomain.memories:
+            if (memDomain.regAccess and memDomain.clock != leafDomain.registerClock
+                    and memDomain.reset is not None
+                    and memDomain.clock not in bridgedResetByClock):
+                bridgedResetByClock[memDomain.clock] = memDomain.reset
+        for clockName in leafDomain.clocks:
+            if clockName not in bridgedResetByClock:
+                continue
+            bridgedResetName = bridgedResetByClock[clockName]
+            leafClockDecl = leafDomain.clocks[clockName]
+            handlerDomain.clocks[clockName] = ClockDecl(
+                desc=leafClockDecl.desc, direction='input', default=False,
+                period=leafClockDecl.period, timeUnit=leafClockDecl.timeUnit)
+            leafResetDecl = leafDomain.resets[bridgedResetName]
+            handlerDomain.resets[bridgedResetName] = ResetDecl(
+                desc=leafResetDecl.desc, direction='input', default=False,
+                clock=clockName, isAsync=False)
+            handlerDomain.selectedReset[clockName] = bridgedResetName
+            handlerDomain.names[clockName] = 'clock'
+            handlerDomain.names[bridgedResetName] = 'reset'
+            _rebindConsumer(leafContainer, instanceKey, clockName, clockName,
+                            'register')
+            _rebindConsumer(leafContainer, instanceKey, bridgedResetName,
+                            bridgedResetName, 'register')
 
 
-def _rebindConsumer(container, instanceKey, blockPort, newNet, kind):
+def _rebindConsumer(container, instanceKey, oldBlockPort, newBlockPort, kind):
+    """Move (instanceKey, oldBlockPort)'s consumer entry, wherever it
+    currently sits, onto container.nets[newBlockPort] under the new port
+    name - always the same name as the net (a handler's port name is the
+    leaf's own net name, spec §4.3 "Registers"), so one name serves as both
+    the new Consumer.blockPort and the net to append it to.
+    """
     for net in container.nets.values():
         net.consumers = [consumer for consumer in net.consumers
                          if not (consumer.instanceKey == instanceKey
-                                 and consumer.blockPort == blockPort)]
-    container.nets[newNet].consumers.append(Consumer(instanceKey, blockPort, kind))
+                                 and consumer.blockPort == oldBlockPort)]
+    container.nets[newBlockPort].consumers.append(Consumer(instanceKey, newBlockPort, kind))
 
 
 def _servingRouterBusNets(leafInstanceKey, instances, domains, connections, blocks,

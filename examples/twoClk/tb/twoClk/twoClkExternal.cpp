@@ -5,15 +5,19 @@
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
 import a2c.endOfTest;
+import twoClk_twoClkCpu.base;
 #include "twoClkExternal.h"
 
 twoClkExternal::twoClkExternal(sc_module_name modulename) :
     twoClkInverted("Chnl"),
     log_(name())
 
+   ,uCpu(std::dynamic_pointer_cast<twoClkCpuBase>(instanceFactory::createInstance(name(), "uCpu", "twoClkCpu", "", "twoClk")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 {
+    // instance to instance connections via channel
+    uCpu->twoClkReg(twoClkReg);
 
     SC_THREAD(eotThread);
 // GENERATED_CODE_END
@@ -21,12 +25,11 @@ twoClkExternal::twoClkExternal(sc_module_name modulename) :
     SC_THREAD(stimulusThread);
 }
 
-// Bound the run, then vote. The window has to outlast the slowest
-// configuration, which is a verilated DUT: its wrapper holds each reset for
-// three edges of that reset's clock, and the slow pair then needs four ticks
-// twelve slow-clock nanoseconds apart. It
-// also outlasts the 100 ns framework startup gate, so the vote is never the
-// thing being waited on in a model-only run.
+// Bound the run, then vote: this is only the External's own vote, cast once
+// its fixed 200 ns window elapses. In every verilated configuration the cpu's
+// tbl write/read/compare pass takes longer than this window, so the cpu's own
+// vote is what actually closes those runs; this vote only has to outlast a
+// model-only run, where every other voter finishes well inside the window.
 void twoClkExternal::stimulusThread(void)
 {
     wait(SC_ZERO_TIME);

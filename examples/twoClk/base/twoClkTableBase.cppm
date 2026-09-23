@@ -1,31 +1,28 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-// GENERATED_CODE_PARAM --block=twoClk --mode=module
+// GENERATED_CODE_PARAM --block=twoClkTable --mode=module
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
 module;
 #include "systemc.h"
 #include "apb_channel.h"
-#include "push_ack_channel.h"
 
-export module twoClk.base;
+export module twoClk_twoClkTable.base;
 import twoClk;
-import twoClkIp;
 using namespace twoClk_ns;
-using namespace twoClkIp_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 
-export class twoClkBase : public virtual blockPortBase
+export class twoClkTableBase : public virtual blockPortBase
 {
 public:
-    virtual ~twoClkBase() = default;
+    virtual ~twoClkTableBase() = default;
     // dst ports
-    // uCpu->twoClkReg: twoClkCpu access to twoClkTable's tbl memory
+    // uDecode->twoClkReg: twoClkCpu access to twoClkTable's tbl memory
     apb_in< twoClkRegAddrSt, twoClkRegDataSt > twoClkReg;
 
 
-    twoClkBase(std::string name, const char * variant) :
+    twoClkTableBase(std::string name, const char * variant) :
         twoClkReg("twoClkReg")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -38,15 +35,15 @@ public:
         twoClkReg->setLogging(verbosity);
     };
 };
-export class twoClkInverted : public virtual blockPortBase
+export class twoClkTableInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // uCpu->twoClkReg: twoClkCpu access to twoClkTable's tbl memory
+    // uDecode->twoClkReg: twoClkCpu access to twoClkTable's tbl memory
     apb_out< twoClkRegAddrSt, twoClkRegDataSt > twoClkReg;
 
 
-    twoClkInverted(std::string name) :
+    twoClkTableInverted(std::string name) :
         twoClkReg(("twoClkReg"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -59,7 +56,7 @@ public:
         twoClkReg->setLogging(verbosity);
     };
 };
-export class twoClkChannels
+export class twoClkTableChannels
 {
 public:
     // dst ports
@@ -67,10 +64,10 @@ public:
     apb_channel< twoClkRegAddrSt, twoClkRegDataSt > twoClkReg;
 
 
-    twoClkChannels(std::string name, std::string srcName) :
+    twoClkTableChannels(std::string name, std::string srcName) :
     twoClkReg(("twoClkReg"+name).c_str(), srcName)
     {};
-    void bind( twoClkBase *a, twoClkInverted *b)
+    void bind( twoClkTableBase *a, twoClkTableInverted *b)
     {
         a->twoClkReg( twoClkReg );
         b->twoClkReg( twoClkReg );

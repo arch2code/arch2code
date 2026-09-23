@@ -9,5 +9,10 @@ HDL_TOP_MODULE = twoClk
 
 A2C_PRJ_YAML = $(REPO_ROOT)/prj/yaml/project.yaml
 
+# User-hosted generated-region file: arch2code injects the address defines (via
+# the includes template) into this user-authored host header. Not fileMap-
+# scaffolded, so it is listed in EXTRA_SC_GEN_FILES for generation.
+EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/regAddresses.h
+
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk

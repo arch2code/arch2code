@@ -667,7 +667,8 @@ def postProcess(prj):
         # otherwise let this slip through unreported. Without it, calcAddresses
         # raises a KeyError (a router instance carries no addressGroup, so the
         # space check's AddressGroups lookup on it fails), pre-empting the
-        # misleading V24 clock-port compare that would otherwise follow.
+        # misleading V19 bridged-memory reset check in clockTree.build() that
+        # would otherwise follow.
         if isRouter and blockKey in regAccessMemoryByBlock:
             _exit_with_error(
                 f"block '{blockRow['block']}' is a register-decode router "

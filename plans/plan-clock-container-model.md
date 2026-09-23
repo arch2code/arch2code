@@ -644,14 +644,11 @@ before the next phase starts.
    (V9, V10, V21, resolved clock, supply graph) and the rest of §5.5 wrapper
    behaviour (R26); attribute sourcing moved to phase 1. End-of-run report.
 5. **Documentation and skills.** §6.3.
-6. **Register handler bridge (R20, V24).** Separate plan once phases 1–4
-   are in: handshake bridge in `moduleRegs.py`, memory-side reset from
-   `reset:`, `pslverr` generation and router propagation, bridge behaviour
-   with the memory side in reset. Until then a memory with `regAccess` whose
-   clock differs from its handler's bus clock is rejected at build (§3.4,
-   V24; `clockTree.build()`, `unittest/test_clock_domains.py`). Of
-   phases 1-7, the bridge itself is the only one not implemented in this
-   tree.
+6. **Register handler bridge (R20, V19).** Done, in
+   [`plan-register-handler-bridge.md`](./plan-register-handler-bridge.md):
+   handshake bridge in `moduleRegs.py`, memory-side reset from `reset:`,
+   `pslverr` generation and router propagation, and bridge behaviour with
+   the memory side in reset.
 7. **Cleanup.** Once phases 1-5 are in, remove every plan-specific artefact
    phases 1-5 left in the tree; these markers are kept deliberately during
    development, so intermediate commits carry them, and removing them is the

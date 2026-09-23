@@ -16,6 +16,13 @@
 # the composition boundary. clocks:/resets: at the PROJECT level
 # (prj/yaml/project.yaml) describe the testbench and are not bound to the
 # design; they exist here only to validate connections' clock: references.
+#
+# A third trio, twoClkCpu -> twoClkDecode -> twoClkTable, adds a firmware-facing
+# register bus to the fixture: twoClkCpu drives twoClkReg on clk, twoClkDecode
+# decodes it on clk, and twoClkTable's tbl memory sits on clkSlow, a different
+# clock and reset domain from the twoClkReg bus on clk, so the generated
+# twoClkTableRegs handler reaches tbl through memory_reg_bridge rather than
+# sampling it directly.
 
 include:
     # The include edge puts the child's definitions on this context's resolution
@@ -26,6 +33,37 @@ constants:
     TWO_CLK_TICK_DIV: { value: 4, desc: "clkSlow cycles between consecutive tick words" }
     TWO_CLK_TICK_WORDS: { value: 4, desc: "Tick words the slow sink checks before voting end-of-test" }
     TWO_CLK_SLOW_PERIOD_NS: { value: 3, desc: "clkSlow period in ns; must equal clocks.clkSlow.period in prj/yaml/project.yaml" }
+    TWO_CLK_TBL_WORDS: { value: 8, desc: "Row count of twoClkTable's tbl memory" }
+    TWO_CLK_TBL_WORDS_LOG2: { eval: "$clog2($TWO_CLK_TBL_WORDS)", desc: "tbl row address width in bits" }
+    TWO_CLK_REG_ADDR_WIDTH: { value: 32, desc: "twoClkReg address bus width" }
+    TWO_CLK_REG_DATA_WIDTH: { value: 32, desc: "twoClkReg data bus width" }
+    TWO_CLK_RESET_SETTLE_NS: { value: 100, desc: "cpu start delay so both rst_n and rstSlow_n have released before the first bridged access" }
+
+types:
+    twoClkRegAddrT: { width: TWO_CLK_REG_ADDR_WIDTH, desc: "for addressing a register via twoClkReg" }
+    twoClkRegDataT: { width: TWO_CLK_REG_DATA_WIDTH, desc: "for data sent or received via twoClkReg" }
+    twoClkTblAddrBitsT: { width: TWO_CLK_TBL_WORDS_LOG2, desc: "size of tbl's row address in bits" }
+    twoClkTblLoT: { width: 32, desc: "tbl row bits [31:0]" }
+    twoClkTblHiT: { width: 16, desc: "tbl row bits [47:32]" }
+
+structures:
+    twoClkRegAddrSt:
+        address: { varType: twoClkRegAddrT, generator: address }
+    twoClkRegDataSt:
+        data: { varType: twoClkRegDataT, generator: data }
+    twoClkTblAddrSt:
+        address: { varType: twoClkTblAddrBitsT, generator: address }
+    twoClkTblSt:
+        hi: { varType: twoClkTblHiT, generator: memory, desc: "row bits [47:32]" }
+        lo: { varType: twoClkTblLoT, generator: memory, desc: "row bits [31:0]" }
+
+interfaces:
+    twoClkReg:
+        desc: "twoClkCpu access to twoClkTable's tbl memory"
+        interfaceType: apb
+        structures:
+            - { structure: twoClkRegAddrSt, structureType: addr_t }
+            - { structure: twoClkRegDataSt, structureType: data_t }
 
 blocks:
     twoClk_tb:
@@ -84,12 +122,54 @@ blocks:
             rstSlow_n: { clock: clkSlow }
         ports:
             in: { interface: twoClkDataIf, direction: dst }
+    twoClkCpu:
+        desc: "Register-bus master: writes and reads back every row of twoClkTable's tbl memory over twoClkReg"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+        resets:
+            rst_n: { clock: clk }
+    twoClkDecode:
+        desc: "twoClkReg router: decodes twoClkCpu's requests down to twoClkTable"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { default: true, period: 1, timeUnit: ns }
+        resets:
+            rst_n: { clock: clk }
+        addressBlock:
+            addressGroup: tbl
+            addressIncrement: 0x00010000
+            maxAddressSpaces: 4
+            varType: addr_id_tbl
+            enumPrefix: ADDR_ID_TBL_
+            upstreamPort: twoClkReg
+            registerDecoderPort: twoClkReg
+    twoClkTable:
+        desc: "Routed leaf: its tbl memory sits on clkSlow, one clock away from the twoClkReg bus on clk"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:     { default: true, period: 1, timeUnit: ns }
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
 
 instances:
     twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top, # self reference
                   clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
     u_twoClk:   { container: twoClk_tb, instanceType: twoClk,        instGroup: top,
                   clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+    uCpu:       { container: twoClk_tb, instanceType: twoClkCpu,     instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
     uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top,
                   clocks: { clk: clk }, resets: { rst_n: rst_n } }
     uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top,
@@ -98,6 +178,10 @@ instances:
                   clocks: { clkTick: clkSlow }, resets: { rstTick_n: rstSlow_n } }
     uSlowSink:  { container: twoClk,    instanceType: twoClkSlowSink, instGroup: top,
                   clocks: { clkSlow: clkSlow }, resets: { rstSlow_n: rstSlow_n } }
+    uDecode:    { container: twoClk,    instanceType: twoClkDecode,  instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uTable:     { container: twoClk,    instanceType: twoClkTable,   instGroup: top, addressGroup: tbl,
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
 
 connections:
     # Crosses the composition boundary: src block owned by twoClkIp, dst block
@@ -106,3 +190,16 @@ connections:
     # The fixture's only non-default-clock connection: both uSlowTick and
     # uSlowSink sit in clkSlow, so clock: pins the BFM there with no crossing.
     - { interface: twoClkDataIf, src: uSlowTick, srcport: out, dst: uSlowSink, dstport: in, clock: clkSlow }
+    # Register-bus feed: uCpu sits beside the DUT instance u_twoClk in
+    # twoClk_tb (a model-only block cannot nest inside the RTL block twoClk),
+    # so this connection crosses the DUT boundary and the connectionMap below
+    # routes it on to the router uDecode inside twoClk.
+    - { interface: twoClkReg, src: uCpu, dst: u_twoClk }
+
+connectionMaps:
+    - { interface: twoClkReg, block: twoClk, direction: dst, instance: uDecode }
+
+memories:
+    - { memory: tbl, block: twoClkTable, structure: twoClkTblSt, addressStruct: twoClkTblAddrSt,
+        wordLines: TWO_CLK_TBL_WORDS, memoryType: singlePort, regAccess: true, clock: clkSlow,
+        desc: "Firmware-accessible table, reached from twoClkCpu through the twoClkTableRegs bridge" }

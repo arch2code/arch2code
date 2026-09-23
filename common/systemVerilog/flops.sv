@@ -246,4 +246,11 @@ type n_``name; \
 `define DFF_KEEP_INST_CLK(clkSig, type, name)  `DFF_KEEP_INST_DOM(clkSig, rst_n, type, name)
 `define DFF_KEEP_INST(type, name)              `DFF_KEEP_INST_CLK(clk, type, name)
 
+// Same as DFFR_INST_DOM but marks the register keep/preserve, same as
+// DFF_KEEP_INST_DOM above.
+`define DFFR_KEEP_INST_DOM(clkSig, rstSig, type, name, rval) \
+(* syn_keep = "true", syn_preserve = "true" *) type name; \
+type n_``name; \
+`DFFR_DOM(clkSig, rstSig, name, n_``name, rval)
+
 `endif  // FLOPS_SV

@@ -10,12 +10,17 @@
 
 #include "instanceFactory.h"
 import twoClk.base;
+import twoClk_twoClkCpu.base;
+import twoClk;
+using namespace twoClk_ns;
 
 class twoClkExternal: public sc_module, public twoClkInverted {
 
     logBlock log_;
 
 public:
+
+    std::shared_ptr<twoClkCpuBase> uCpu;
 
     SC_HAS_PROCESS (twoClkExternal);
 
@@ -34,14 +39,15 @@ public:
     // checker. What the External owns is the run window. End-of-test needs
     // EVERY registered voter, and only the block models that are actually
     // elaborated register one, so this voter is what lets the same testbench
-    // terminate in all six configurations while still requiring the surviving
+    // terminate in all seven configurations while still requiring the surviving
     // block model(s) to have seen their traffic first:
-    //   model only                - all four block models + this voter
+    //   model only                - all five block models + this voter
     //   --vlInst twoClk.uIpSrc    - sink + this voter (proves RTL -> model)
     //   --vlInst twoClk.uSink     - producer + this voter (proves model -> RTL)
     //   --vlInst twoClk.uSlowTick - slow sink + this voter (RTL -> model, BFM on clkSlow)
     //   --vlInst twoClk.uSlowSink - slow tick + this voter (model -> RTL on clkSlow)
-    //   --vlInst twoClk           - this voter alone (elaborate/clock/run only)
+    //   --vlInst twoClk.uTable    - cpu + this voter (proves model -> RTL through the bridge)
+    //   --vlInst twoClk           - cpu + this voter (model -> RTL through the verilated router and bridge)
     void stimulusThread(void);
 
 private:

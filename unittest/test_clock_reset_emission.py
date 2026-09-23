@@ -80,6 +80,9 @@ FLOPS_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'flops.sv')
 FORK_SV = os.path.join(test_dir, 'fixtures', 'debayer_flops.sv')
 # flops.sv as it was before the reset-style selector: FPGA `initial` default, ASIC opt-in.
 PRE_SELECTOR_SV = os.path.join(test_dir, 'fixtures', 'flops_pre_selector.sv')
+ASSERTS_SVH = os.path.join(base_dir, 'common', 'systemVerilog', 'asserts.svh')
+BRIDGE_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_reg_bridge.sv')
+MEMORY_IF_DIR = os.path.join(base_dir, 'interfaces', 'memory')
 
 # Three clocks whose periods and units all differ, and one reset per clock, two
 # of them with different release counts. This is the TESTBENCH's own clocks:/
@@ -646,13 +649,16 @@ def _generate():
     return fixture, emitted
 
 
-def _build_regs(feed_clock, router_clocks=None):
+def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
     """Write the register-handler fixture and attempt its database build.
 
     feed_clock is the clock authored on the register-bus feed, or None to leave
     it unstated so the decode tree falls to the project default. router_clocks is
     an authored `clocks:` list on the ROUTER block, which is additive and so is
     the one way ordinary YAML can widen a router past its bus domain.
+    bridge_memories, only meaningful with feed_clock set, leaves the memories'
+    own clock: unstated so both fall to leafA's default clk instead of the bus
+    clock, which is what puts them behind the R20 bridge.
 
     The build result is RETURNED rather than asserted, so a case can require the
     build to fail.
@@ -711,12 +717,11 @@ def _build_regs(feed_clock, router_clocks=None):
         leafMap = ''
         # The memories are regAccess (firmware-only, reached through the
         # generated handler); a memory's own clock: is otherwise the owning
-        # block's default (spec §4.3), which would put it in a different
-        # domain than the handler's bus and needs the R20 bridge, not yet
-        # implemented; declaring it on the bus clock directly
-        # sidesteps that here, since nothing in this fixture reaches it from
-        # leafA's own datapath.
-        memClock = f", clock: {feed_clock}"
+        # block's default (spec §4.3). Declaring it on the bus clock directly
+        # keeps the handler and its memories in one domain; leaving clock:
+        # unstated (bridge_memories) puts them on leafA's own default clk
+        # instead, behind the R20 bridge.
+        memClock = '' if bridge_memories else f", clock: {feed_clock}"
     else:
         leafClockLines = ('        clocks:\n'
                          '            clk: { }\n'
@@ -777,12 +782,12 @@ def _build_regs(feed_clock, router_clocks=None):
     return fixture, db, built
 
 
-def _generate_regs(feed_clock):
+def _generate_regs(feed_clock, bridge_memories=False):
     """Build the register-handler fixture and render the handler and its leaf.
 
     Returns (fixture_dir, {relative path: emitted text}).
     """
-    fixture, db, built = _build_regs(feed_clock)
+    fixture, db, built = _build_regs(feed_clock, bridge_memories=bridge_memories)
     if built.returncode != 0:
         raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
     made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
@@ -1846,6 +1851,39 @@ def check_flops_default_matches_fork():
     return True
 
 
+def check_memory_reg_bridge_lints_under_every_reset_style():
+    """common/systemVerilog/memory_reg_bridge.sv lints clean under all three
+    reset styles. This is a named file, not a directory glob: the other
+    shared modules (memory_dp.sv, memory_sp.sv, and their _ext forms) take
+    their widths from a parameterised memory_if and cannot elaborate
+    standalone, and they already get linted with real widths by the example
+    verilator builds. memory_reg_bridge.sv is parameter-default-safe and is
+    the one shared module with hand-written logic in two clock domains, so it
+    gets its own three-style lint here.
+
+    The flags mirror include/make/a2c-rtl.mk's lint target (--no-timing
+    --lint-only, no -Wall: a leaf module with an unconnected interface port
+    lints with spurious UNUSEDSIGNAL/UNDRIVEN under -Wall even for a shipped
+    module such as memory_sp.sv), plus the -y/+incdir a standalone module
+    lint needs for its own directory and for memory_if.sv."""
+    common_dir = os.path.dirname(FLOPS_SV)
+    for style, defines in (('the default sync style', []),
+                           ('A2C_RESET_NONE', ['A2C_RESET_NONE']),
+                           ('A2C_RESET_ASYNC', ['A2C_RESET_ASYNC'])):
+        cmd = (['verilator', '--lint-only', '--no-timing',
+                '--top-module', 'memory_reg_bridge', '+libext+.sv',
+                '-y', common_dir, '-y', MEMORY_IF_DIR,
+                f'+incdir+{common_dir}', f'+incdir+{MEMORY_IF_DIR}'] +
+               [f'+define+{d}' for d in defines] +
+               [FLOPS_SV, ASSERTS_SVH, BRIDGE_SV])
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise AssertionError(
+                f"memory_reg_bridge.sv fails to lint under {style}:\n"
+                f"{result.stdout}{result.stderr}")
+    return True
+
+
 # --------------------------------------------------- <block>_regs handler --
 
 _FLOP_CALL = re.compile(r'`(\w+)\s*\(\s*([^,)]*)')
@@ -2108,6 +2146,194 @@ def check_router_and_handler_share_the_bus_domain(emitted):
     return True
 
 
+def check_regs_handler_same_domain_pslverr_unchanged(emitted):
+    """The same-domain handler's pslverr text is untouched by the bridge work."""
+    text = emitted[REGS_HANDLER]
+    _expect(text, "pslverr = 1'b0;", 'a same-domain handler never asserts pslverr',
+            'leafA_regs')
+    _expect(text, 'The bus is never stalled and slave', 'a same-domain handler '
+            'keeps its own APB-ready comment untouched', 'leafA_regs')
+    _refute(text, 'memory_reg_bridge', 'a same-domain handler instantiates no bridge',
+            'leafA_regs')
+    _refute(text, 'nxt_slverr', 'a same-domain handler declares no slverr '
+            'plumbing at all', 'leafA_regs')
+    _refute(text, '_wr_sel', 'a same-domain handler selects no bridged memory',
+            'leafA_regs')
+    return True
+
+
+def check_regs_handler_bridged_port_list(emitted):
+    """A bridged handler's port list carries every clock, bus first then the
+    bridged memory clock, then every reset the same way (clocks-then-resets is
+    the block module/handler generators' own grouping, unrelated to bridging)."""
+    lines = _sv_wrapper_input_lines(emitted[REGS_HANDLER], 'bridged leafA_regs module')
+    if lines != ['input clkSlow,', 'input clk,', 'input rstBus_n,', 'input rstMain_n']:
+        raise AssertionError(f"bridged leafA_regs declares {lines}, expected "
+                             f"['input clkSlow,', 'input clk,', 'input rstBus_n,', "
+                             f"'input rstMain_n']")
+    return True
+
+
+def check_regs_handler_bridged_flops_on_bus_domain(emitted):
+    """Every flop in a bridged handler is still on the bus clock/reset.
+
+    The bridged memories' own domain is carried only by the memory_reg_bridge
+    instances' mem_clk/mem_rst_n binds, never by a `_DOM` flop in the handler
+    itself."""
+    _assert_flops_clocked_by(emitted[REGS_HANDLER], 'clkSlow', 'rstBus_n',
+                             'bridged leafA_regs')
+    return True
+
+
+# A memory_reg_bridge instantiation, as moduleRegs.py's own template spells
+# it: unlike a container's one-bind-per-line child instantiation, its
+# bus/mem clock and reset are four binds on one line with no space before
+# the paren, so it needs its own pattern rather than _instance_binds.
+_BRIDGE_INSTANCE = re.compile(
+    r"memory_reg_bridge #\(\.data_t\((\w+)\), \.addr_t\((\w+)\)\) (u_\w+_bridge) \(\n"
+    r"\s*\.bus_clk\((\w+)\), \.bus_rst_n\((\w+)\), \.mem_clk\((\w+)\), \.mem_rst_n\((\w+)\),\n"
+    r"\s*\.req\((\w+)\), \.wr\((\w+)\),\n"
+    r"\s*\.addr\(.*?\), \.wdata\((\w+)\),\n"
+    r"\s*\.done\((\w+)\), \.err\((\w+)\), \.rdata\((\w+)\),\n"
+    r"\s*\.mem_port\((\w+)\)\);")
+
+
+def check_regs_handler_bridge_instances(emitted):
+    """One memory_reg_bridge instance per bridged memory, bound to the bus pair
+    and the memory's own pair, covering both the parameterizable and the
+    fixed-width memory emission path."""
+    text = emitted[REGS_HANDLER]
+    bridges = {m.group(3): m for m in _BRIDGE_INSTANCE.finditer(text)}
+    if sorted(bridges) != ['u_tblFixed_bridge', 'u_tbl_bridge']:
+        raise AssertionError(
+            f"bridged leafA_regs instantiates {sorted(bridges)}, expected the "
+            f"fixture's two bridged memories' bridges")
+    for name, m in bridges.items():
+        data_t, addr_t, _name, bus_clk, bus_rst_n, mem_clk, mem_rst_n = m.groups()[:7]
+        if (bus_clk, bus_rst_n, mem_clk, mem_rst_n) != ('clkSlow', 'rstBus_n', 'clk', 'rstMain_n'):
+            raise AssertionError(
+                f"{name} binds (bus_clk, bus_rst_n, mem_clk, mem_rst_n) = "
+                f"{(bus_clk, bus_rst_n, mem_clk, mem_rst_n)}, expected "
+                f"('clkSlow', 'rstBus_n', 'clk', 'rstMain_n')")
+    tbl_type = re.search(r'(\w+) tbl_reg;', text)
+    if not tbl_type:
+        raise AssertionError("bridged leafA_regs declares no tbl_reg; the "
+                             "parameterizable bridged memory's own storage is missing")
+    tbl_bridge = bridges['u_tbl_bridge']
+    if tbl_bridge.group(1) != tbl_type.group(1):
+        raise AssertionError(
+            f"u_tbl_bridge is parameterized with .data_t({tbl_bridge.group(1)}), "
+            f"expected {tbl_type.group(1)}, the same type as tbl_reg")
+    if tbl_bridge.group(10) != 'tbl_reg':
+        raise AssertionError(
+            f"u_tbl_bridge binds .wdata({tbl_bridge.group(10)}), expected .wdata(tbl_reg)")
+    return True
+
+
+def check_regs_handler_bridged_pslverr(emitted):
+    """A bridged handler routes pslverr through the bridge's own err, not the
+    unconditional 1'b0 a same-domain handler emits."""
+    text = emitted[REGS_HANDLER]
+    _expect(text, 'assign apbReg.pslverr = slverr;', 'a bridged handler routes '
+            'pslverr through slverr', 'leafA_regs')
+    _refute(text, "pslverr = 1'b0", 'a bridged handler never falls back to the '
+            'unconditional 1\'b0', 'leafA_regs')
+    return True
+
+
+def check_leaf_binds_its_bridged_handler(emitted):
+    """The leaf binds the bridged handler's four clock/reset ports by name."""
+    binds = _instance_binds(emitted[REGS_LEAF], 'leafA module (bridged)')
+    handler = next(name for name in binds if name.endswith('leafA_regs'))
+    return _assert_instance_tail(binds, 'leafA module (bridged)', {
+        handler: [('clkSlow', 'clkSlow'), ('clk', 'clk'),
+                 ('rstBus_n', 'rstBus_n'), ('rstMain_n', 'rstMain_n')]})
+
+
+# The handler's own `apb_if.dst`/`memory_if.src`/`status_if.src` ports carry
+# no parameter override, so linting rtl/leafA_regs.sv standalone elaborates
+# every one of those interfaces at its type's default (`logic`, 1 bit) and
+# every pwdata/rdata part-select in the handler becomes a bit-range error
+# unrelated to anything this fixture emits. The emitted leaf (rtl/leafA.sv)
+# already binds the memory_if/status_if ports to real structs; only the APB
+# port stays unbound at the leaf's own level too, so this wrapper supplies
+# just that one interface, with the two structs (apbAddrSt/apbDataSt) already
+# carried by the fixture's own shared package - not a guess, and not a
+# substitute for the handler's real ports, since every one of those is still
+# reached through the emitted rtl/leafA.sv hierarchy under test.
+_BRIDGED_LINT_WRAPPER = """\
+module leafA_regs_lint_top
+    import regsEmit_shared_package::*;
+(
+    input clk, clkSlow, rstMain_n, rstBus_n
+);
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
+
+    {leaf_module} #(.CFG_WIDTH(40)) dut (
+        .regs(apbReg),
+        .clk(clk), .clkSlow(clkSlow),
+        .rstMain_n(rstMain_n), .rstBus_n(rstBus_n)
+    );
+endmodule
+"""
+
+
+def check_regs_handler_bridged_lints_clean(fixture, emitted):
+    """The emitted bridged handler lints clean under verilator, elaborated
+    through its leaf so its interface ports carry real widths rather than
+    each interface's own default type (see _BRIDGED_LINT_WRAPPER's own
+    comment for why the leaf, and why one extra wrapper interface, are
+    needed). Same flag shape as
+    check_memory_reg_bridge_lints_under_every_reset_style (--lint-only
+    --no-timing, no -Wall, the -y/+incdir a standalone lint needs), default
+    reset style only. CFG_WIDTH is bound to a real value (40, the fixture's
+    own instance parameter) in the wrapper below rather than passed as -G,
+    since the top-module actually elaborated is that wrapper, not the
+    handler directly.
+
+    APB_READY_1WS=1's generate branch is not elaborated by this lint: the
+    leaf does not forward that parameter, so the handler always instantiates
+    at its default, 0."""
+    db = os.path.join(fixture, 'regs.db')
+    shared_pkg = os.path.join(fixture, 'rtl', 'shared_package.sv')
+    gen = _arch2code('--db', db, '-r', '--systemVerilog', '--file', shared_pkg,
+                     cwd=fixture)
+    if gen.returncode != 0:
+        raise AssertionError(
+            f"generating rtl/shared_package.sv failed:\n{gen.stdout}\n{gen.stderr}")
+
+    leaf_module_match = re.search(r'(?m)^module\s+(\w+)', emitted[REGS_LEAF])
+    if not leaf_module_match:
+        raise AssertionError(f"{REGS_LEAF} declares no module; cannot lint the "
+                             f"bridged handler through it")
+    leaf_module = leaf_module_match.group(1)
+    common_dir = os.path.dirname(FLOPS_SV)
+    apb_if_dir = os.path.join(base_dir, 'interfaces', 'apb')
+    status_if_dir = os.path.join(base_dir, 'interfaces', 'status')
+
+    with tempfile.TemporaryDirectory() as tmp:
+        wrapper_path = os.path.join(tmp, 'leafA_regs_lint_top.sv')
+        with open(wrapper_path, 'w') as f:
+            f.write(_BRIDGED_LINT_WRAPPER.format(leaf_module=leaf_module))
+
+        cmd = (['verilator', '--lint-only', '--no-timing',
+                '--top-module', 'leafA_regs_lint_top', '+libext+.sv',
+                '-y', common_dir, '-y', MEMORY_IF_DIR, '-y', apb_if_dir,
+                '-y', status_if_dir,
+                f'+incdir+{common_dir}', f'+incdir+{MEMORY_IF_DIR}',
+                f'+incdir+{apb_if_dir}', f'+incdir+{status_if_dir}',
+                FLOPS_SV, ASSERTS_SVH, BRIDGE_SV, shared_pkg,
+                os.path.join(fixture, 'rtl', 'top_package.sv'),
+                os.path.join(fixture, REGS_HANDLER),
+                os.path.join(fixture, REGS_LEAF),
+                wrapper_path])
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(
+            f"the bridged handler fails to lint:\n{result.stdout}{result.stderr}")
+    return True
+
+
 def check_router_default_domain(emitted):
     """A router in the DEFAULT domain uses the same parameterized spelling.
 
@@ -2211,6 +2437,8 @@ def main():
                     check_flops_none_matches_pre_change_fpga_default),
           _run_case('the default reset style matches the fork, unconditionally',
                     check_flops_default_matches_fork),
+          _run_case('memory_reg_bridge.sv lints clean under every reset style',
+                    check_memory_reg_bridge_lints_under_every_reset_style),
           _run_case('a router explicitly declaring two clocks is rejected',
                     check_router_extra_clock_rejected),
           _run_case('a two-clock router is rejected however declaration order '
@@ -2305,6 +2533,28 @@ def main():
              check_router_non_default_domain),
             ('the router and its handler share one bus domain',
              check_router_and_handler_share_the_bus_domain),
+            ('a same-domain handler emits no bridge and keeps pslverr 1\'b0',
+             check_regs_handler_same_domain_pslverr_unchanged),
+        )]
+    finally:
+        shutil.rmtree(fixture)
+
+    fixture, emitted = _generate_regs('clkSlow', bridge_memories=True)
+    try:
+        ok += [_run_case(label, lambda fn=fn: fn(emitted)) for label, fn in (
+            ("a bridged handler's port list carries the bus pair then the "
+             'bridged memory pair', check_regs_handler_bridged_port_list),
+            ('every flop in a bridged handler is still on the bus domain',
+             check_regs_handler_bridged_flops_on_bus_domain),
+            ('one memory_reg_bridge instance per bridged memory, both '
+             'parameterizable and fixed-width', check_regs_handler_bridge_instances),
+            ('a bridged handler routes pslverr through the bridge',
+             check_regs_handler_bridged_pslverr),
+            ("the leaf binds the bridged handler's four ports by name",
+             check_leaf_binds_its_bridged_handler),
+            ('the bridged handler lints clean under verilator',
+             lambda emitted, fixture=fixture: check_regs_handler_bridged_lints_clean(
+                 fixture, emitted)),
         )]
     finally:
         shutil.rmtree(fixture)

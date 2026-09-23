@@ -12,7 +12,7 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
-.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink run-vl-slowTick run-vl-slowSink
+.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink run-vl-slowTick run-vl-slowSink run-vl-table
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT
@@ -26,7 +26,10 @@ endif
 # SC/RTL boundary - uIpSrc verilated proves RTL -> model, uSink verilated proves
 # model -> RTL - because the surviving block model has to see the whole burst
 # before it casts its end-of-test vote. uSlowTick/uSlowSink repeat the same
-# proof for the clkSlow pair.
+# proof for the clkSlow pair. run-vl-table verilates only the handler, bridge
+# and memory inside uTable, proving model cpu to verilated handler/bridge/
+# memory; run-vl-top additionally carries the cpu's bus traffic through the
+# verilated router.
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
@@ -35,6 +38,7 @@ run-vl:
 	$(MAKE) run-vl-sink VL_DUT=1
 	$(MAKE) run-vl-slowTick VL_DUT=1
 	$(MAKE) run-vl-slowSink VL_DUT=1
+	$(MAKE) run-vl-table VL_DUT=1
 
 run-vl-top: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(HDL_TOP_MODULE)
@@ -50,3 +54,6 @@ run-vl-slowTick: $(BIN_DIR)/$(BIN)
 
 run-vl-slowSink: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSlowSink
+
+run-vl-table: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uTable

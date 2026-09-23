@@ -112,7 +112,10 @@ def render(args, prj, data):
     first = True
     for item in sorted_keys:
         if first:
-            out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+            if (int(inst_decode_info[item]['offset']) == 0):
+                out.append(f"{indent*2}begin // sole address slot: every address selects it")
+            else:
+                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
             first = False
         else:
             if (int(inst_decode_info[item]['offset']) == 0 ):

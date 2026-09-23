@@ -100,6 +100,12 @@ def render(args, prj, data):
 
     t = Template(regs_module_sv_j2_template)
 
+    # A bridged memory (spec R20) crosses from the bus domain to its own
+    # memory domain through memory_reg_bridge; a same-domain handler has none
+    # and every new pslverr/gate emission below stays empty.
+    bridged_memories = [m for m in data['memories'].values() if m['bridged']]
+    has_bridge = bool(bridged_memories)
+
     return(t.render(
         modulename=data['blockModuleName'],
         packages_imports=section_package_imports(args, prj, data),
@@ -121,7 +127,10 @@ def render(args, prj, data):
         section_02a=section_02a(data),
         section_02b=section_02b(data),
         section_03a=section_03a(data),
-        section_03b=section_03b(data)
+        section_03b=section_03b(data),
+        has_bridge=has_bridge,
+        wr_ready_bridge_gate=section_wr_ready_bridge_gate(bridged_memories),
+        apb_ready_comment=section_apb_ready_comment(has_bridge)
     ))
 
 def address_const_name(data, entry, name_field):
@@ -193,6 +202,35 @@ def section_address_constants(data):
         out.append(f"localparam int unsigned {name} = {value};{comment}")
     return string_joiner(out, '\n')
 
+def section_wr_ready_bridge_gate(bridged_memories):
+    """Per-bridged-memory pready/pslverr gate, appended after the write case's
+    unconditional ACK: once THIS memory's own access is selected, the bridge's
+    done/err (not the unconditional ACK) decide when the write completes.
+
+    A parameterizable memory's wr_sel is set here too, procedurally, in the
+    same always_comb that drives its own _update vector, matching the
+    fixed-width path's own wr_sel assignment: one assignment discipline for
+    every write-side select, bridged or not, parameterizable or not."""
+    lines = []
+    for mem_data in bridged_memories:
+        mem_intf = mem_data['memory']
+        if mem_data['isParameterizable']:
+            lines += [ f"{mem_intf}_wr_sel = {mem_intf}_update[{top_lp_name(mem_intf)}];" ]
+        lines += [ f"if ({mem_intf}_wr_sel) begin" ]
+        lines += [ f"    nxt_wr_ready = {mem_intf}_done;" ]
+        lines += [ f"    nxt_wr_slverr = {mem_intf}_done & {mem_intf}_err;" ]
+        lines += [ "end" ]
+    return string_joiner(lines, '\n')
+
+def section_apb_ready_comment(has_bridge):
+    if has_bridge:
+        return ("// Update APB ready, read data and slave error. A same-domain access\n"
+                "// never stalls. A bridged memory access holds pready low until its\n"
+                "// bridge reports done, and returns pslverr when the memory's domain\n"
+                "// was in reset during the access. Unmapped reads return 0.")
+    return ("// Update APB ready and read data. The bus is never stalled and slave\n"
+            "// error is never asserted: every access ACKs, unmapped reads return 0.")
+
 def segment_addr_expr(addr_const_name, base_offset, segment_offset):
     delta = segment_offset - base_offset
     if delta == 0:
@@ -222,7 +260,9 @@ def param_word_generate(reg_intf, struct, width_lp, max_words, flop_macro, flop_
     # variant-width data flop (when flop_macro is set) and 32-bit read view;
     # absent words (narrow variant) are elaborated away and read 0. The decode
     # always_comb only ever touches the fixed-width <intf>_rword/_update arrays,
-    # so no parameterized part-select appears outside this guard.
+    # so no parameterized part-select appears outside this guard. For a bridged
+    # memory, rword_src is the bridge's own rdata output instead of the local
+    # memory port, so the read view tracks the memory side of the crossing.
     reg_local = reg_intf + '_reg'
     if flop_macro == 'DFFREN':
         assert rst_words, f"rst_words required for DFFREN register {reg_intf}"
@@ -308,10 +348,13 @@ def section_01_regs(reg_data):
 
     return string_joiner(s_1 + s_3 + s_2 + s_4, '\n')
 
-def section_01_mem_param(mem_intf, mem_data):
+def section_01_mem_param(mem_intf, mem_data, bridged):
     """Parameterizable memory/memory-register: variant-width line storage,
     per-word data flops elaborated away per variant, worst-case address
-    footprint. mem_intf is the channel name ('memory' or 'register')."""
+    footprint. mem_intf is the channel name ('memory' or 'register'). A
+    bridged memory (spec R20) gets the bridge in place of the four access
+    flops and the four `assign <mem>.*` lines; a memory register is never
+    bridged."""
     struct = mem_data['structure']
     addr_struct = mem_data['addressStruct']
     width_lp = width_lp_name(mem_intf)
@@ -320,12 +363,35 @@ def section_01_mem_param(mem_intf, mem_data):
     rowwidth = mem_data['rowwidth']
     mem_local = mem_intf + '_reg'
 
-    s = [ f"// {mem_intf}" ]
+    s = [ f"// {mem_intf}" + (f" (bridged to {mem_data['domainClock']}/{mem_data['domainReset']})" if bridged else "") ]
     s += [ f"{struct} {mem_local};" ]
     s += [ f"localparam int unsigned {width_lp} = $bits({struct});" ]
     s += [ f"localparam int unsigned {top_lp} = ({width_lp}-1)/32; // top present word for this variant" ]
     s += [ f"logic [{max_words-1}:0] {mem_intf}_update;" ]
     s += [ f"logic [31:0] {mem_intf}_rword [0:{max_words-1}];" ]
+
+    if bridged:
+        s += [ f"logic {mem_intf}_wr_sel, {mem_intf}_rd_sel, {mem_intf}_sel;" ]
+        s += [ f"logic nxt_{mem_intf}_req, {mem_intf}_req, {mem_intf}_acked;" ]
+        s += [ f"logic {mem_intf}_done, {mem_intf}_err;" ]
+        s += [ f"{struct} {mem_intf}_rdata;" ]
+        s += [ "" ]
+        s += [ f"assign {mem_intf}_sel = {mem_intf}_wr_sel | {mem_intf}_rd_sel;" ]
+        s += [ f"assign nxt_{mem_intf}_req = {mem_intf}_sel & ~{mem_intf}_done & ~{mem_intf}_acked;" ]
+        s += [ f"`DFFR_DOM({regs_clk}, {regs_rst}, {mem_intf}_req, nxt_{mem_intf}_req, '0)" ]
+        s += [ f"`DFFR_DOM({regs_clk}, {regs_rst}, {mem_intf}_acked, ({mem_intf}_acked | {mem_intf}_done) & {mem_intf}_sel, '0)" ]
+        s += [ "" ]
+        s += param_word_generate(mem_intf, struct, width_lp, max_words, 'DFFEN',
+                                 f"{regs_intf}.pwdata", f"{mem_intf}_rdata")
+        s += [ "" ]
+        s += [ f"memory_reg_bridge #(.data_t({struct}), .addr_t({addr_struct})) u_{mem_intf}_bridge (" ]
+        s += [ f"    .bus_clk({regs_clk}), .bus_rst_n({regs_rst}), .mem_clk({mem_data['domainClock']}), .mem_rst_n({mem_data['domainReset']})," ]
+        s += [ f"    .req({mem_intf}_req), .wr({mem_intf}_wr_sel)," ]
+        s += [ f"    .addr({addr_struct}'(apb_addr[31:{rowwidth}])), .wdata({mem_local})," ]
+        s += [ f"    .done({mem_intf}_done), .err({mem_intf}_err), .rdata({mem_intf}_rdata)," ]
+        s += [ f"    .mem_port({mem_intf}));" ]
+        return string_joiner(s, '\n')
+
     s += [ f"{addr_struct} {mem_intf}_addr;" ]
     s += [ f"logic nxt_{mem_intf}_rd_enable, {mem_intf}_rd_enable, {mem_intf}_rd_capture;" ]
     s += [ f"logic {mem_intf}_wr_enable;" ]
@@ -347,7 +413,7 @@ def section_01_mem_param(mem_intf, mem_data):
 def section_01_memregs(reg_data):
     """Handle memory register declarations similar to external memories"""
     if reg_data['isParameterizable']:
-        return section_01_mem_param(reg_data['register'], reg_data)
+        return section_01_mem_param(reg_data['register'], reg_data, False)
 
     mem_intf = reg_data['register']
 
@@ -366,7 +432,21 @@ def section_01_memregs(reg_data):
 
 def section_01_mems(mem_data):
     if mem_data['isParameterizable']:
-        return section_01_mem_param(mem_data['memory'], mem_data)
+        return section_01_mem_param(mem_data['memory'], mem_data, mem_data['bridged'])
+
+    if mem_data['bridged']:
+        t = Template(section_01_mem_bridge_j2_template)
+        return(t.render(
+            mem_intf=mem_data['memory'],
+            mem_datatype=mem_data['structure'],
+            mem_addrtype=mem_data['addressStruct'],
+            segments=mem_data['segments'],
+            paddr_l = mem_data['rowwidth'],
+            memClock=mem_data['domainClock'],
+            memReset=mem_data['domainReset'],
+            regs_clk=regs_clk,
+            regs_rst=regs_rst
+        ))
 
     t = Template(section_01_mem_j2_template)
 
@@ -444,7 +524,10 @@ def section_02a_mems(mem_data):
     data_local = mem_data['memory'] + '_data'
 
     if mem_data['isParameterizable']:
-        return f"{mem_intf}_update = '0;"
+        s_1 = [ f"{mem_intf}_update = '0;" ]
+        if mem_data['bridged']:
+            s_1 += [ f"{mem_intf}_wr_sel = 1'b0;" ]
+        return string_joiner(s_1, '\n')
 
     segments_enum = list(enumerate(mem_data['segments']))
 
@@ -456,6 +539,8 @@ def section_02a_mems(mem_data):
         s_1 += [ f"{update_sig} = 1'b0;" ]
 
     s_1 += [ f"nxt_{data_local} = {data_local};" ]
+    if mem_data['bridged']:
+        s_1 += [ f"{mem_intf}_wr_sel = 1'b0;" ]
 
     return string_joiner(s_1, '\n')
 
@@ -572,6 +657,8 @@ def section_02b_mems(mem_data):
 
     addr_l, _ = mem_data['address_range']
 
+    seg_last = len(segments_enum) - 1
+
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
@@ -582,6 +669,10 @@ def section_02b_mems(mem_data):
         s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
         s_1 += [ f"            {mem_intf}_update_{n} = 1'b1;" ]
         s_1 += [ f"            {data_local}[{u}:{l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+        if mem_data['bridged'] and n == seg_last:
+            # The full word is accumulated into {mem_intf}_data by this
+            # cycle, so the last segment's write is what may raise wr_sel.
+            s_1 += [ f"            {mem_intf}_wr_sel = 1'b1;" ]
         s_1 += [ f"        end" ]
     s_1 +=     [ f"        default: ;" ]
     s_1 += [ f"    endcase" ]
@@ -600,6 +691,12 @@ def section_03a(data):
 
 def section_03a_mems(mem_data):
     mem_intf = mem_data['memory']
+
+    if mem_data['bridged']:
+        # No rd_enable/rd_capture pipeline for a bridged memory: rd_sel gates
+        # the bridge request directly, in the case decode below.
+        return f"{mem_intf}_rd_sel = 1'b0;"
+
     enable_sig = f"nxt_{mem_intf}_rd_enable"
 
     s_1 = [ f"{enable_sig} = 1'b0;" ]
@@ -659,9 +756,11 @@ def section_03b_regs(reg_data):
 
     return string_joiner(s_1, '\n')
 
-def section_03b_mem_param(mem_intf, mem_data):
+def section_03b_mem_param(mem_intf, mem_data, bridged):
     """Parameterizable memory read decode: select the precomputed 32-bit
-    _rword views (absent words are '0). Range + inner per-word case."""
+    _rword views (absent words are '0). Range + inner per-word case. A
+    bridged memory (spec R20) has no rd_capture pipeline: each present word
+    sets rd_sel and completes once the bridge's own done pulses."""
     addr_l, _ = mem_data['address_range']
     rowwidth = mem_data['rowwidth']
     word_offsets = []
@@ -673,17 +772,26 @@ def section_03b_mem_param(mem_intf, mem_data):
         o_rel = o - addr_l
         word_offsets.append(f"{rowwidth}'h{o_rel:x}")
         s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
-        s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
-        s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
-        s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}_rword[{n}]);" ]
-        s_1 += [ f"            end" ]
+        if bridged:
+            s_1 += [ f"            {mem_intf}_rd_sel = 1'b1;" ]
+            s_1 += [ f"            if ({mem_intf}_done) begin" ]
+            s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
+            s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}_rword[{n}]);" ]
+            s_1 += [ f"                nxt_rd_slverr = {mem_intf}_err;" ]
+            s_1 += [ f"            end" ]
+        else:
+            s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
+            s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
+            s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}_rword[{n}]);" ]
+            s_1 += [ f"            end" ]
         s_1 += [ f"        end" ]
     s_1 += [ f"        default: begin" ]
     s_1 += [ f"            nxt_rd_ready = 1'b1;" ]
     s_1 += [ f"            nxt_rd_data = '0;" ]
     s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    if not bridged:
+        s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     return string_joiner(s_1, '\n')
 
@@ -692,7 +800,7 @@ def section_03b_mems(mem_data):
     data_local = 'nxt_' + mem_data['memory'] + '_data'
 
     if mem_data['isParameterizable']:
-        return section_03b_mem_param(mem_intf, mem_data)
+        return section_03b_mem_param(mem_intf, mem_data, mem_data['bridged'])
 
     segments_enum = list(enumerate(mem_data['segments']))
 
@@ -702,6 +810,23 @@ def section_03b_mems(mem_data):
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
+    if mem_data['bridged']:
+        for seg in segments_enum:
+            n, (o, u, l, w, _) = seg
+            o -= addr_l # offset relative to base of mem mod bus width
+            s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
+            s_1 += [ f"            {mem_intf}_rd_sel = 1'b1;" ]
+            s_1 += [ f"            if ({mem_intf}_done) begin" ]
+            s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
+            s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}_rdata[{u}:{l}]);" ]
+            s_1 += [ f"                nxt_rd_slverr = {mem_intf}_err;" ]
+            s_1 += [ f"            end" ]
+            s_1 += [ f"        end" ]
+        s_1 +=     [ f"        default: ;" ]
+        s_1 += [ f"    endcase" ]
+        s_1 += [ f"end" ]
+        return string_joiner(s_1, '\n')
+
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
@@ -729,7 +854,7 @@ def section_03b_memregs(reg_data):
     rowwidth = reg_data['rowwidth']
 
     if reg_data['isParameterizable']:
-        return section_03b_mem_param(mem_intf, reg_data)
+        return section_03b_mem_param(mem_intf, reg_data, False)
 
     s_1 = []
 
@@ -822,8 +947,14 @@ module {{ modulename }}
     assign rd_select = {{regs_intf}}.psel & {{regs_intf}}.penable & !{{regs_intf}}.pwrite & {{regs_rst}};
 
     logic nxt_wr_ready, wr_ready;
+    {%- if has_bridge %}
+    logic nxt_wr_slverr;
+    {%- endif %}
     always_comb begin
         nxt_wr_ready = 1'b0;
+        {%- if has_bridge %}
+        nxt_wr_slverr = 1'b0;
+        {%- endif %}
         {{ section_02a | indent(8) }}
         if (wr_select) begin
             case (apb_addr) inside
@@ -831,14 +962,23 @@ module {{ modulename }}
                 default: ; // unmapped/ro write: silently ignored (ACK below)
             endcase
             nxt_wr_ready = 1'b1;
+            {%- if has_bridge %}
+            {{ wr_ready_bridge_gate | indent(12) }}
+            {%- endif %}
         end
     end
 
     logic nxt_rd_ready, rd_ready;
     {{regs_data_t}} nxt_rd_data, rd_data;
+    {%- if has_bridge %}
+    logic nxt_rd_slverr, nxt_slverr, slverr;
+    {%- endif %}
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
+        {%- if has_bridge %}
+        nxt_rd_slverr = 1'b0;
+        {%- endif %}
         {{ section_03a | indent(8) }}
         if (rd_select) begin
             case (apb_addr) inside
@@ -850,25 +990,33 @@ module {{ modulename }}
             endcase
         end
     end
+    {%- if has_bridge %}
+    assign nxt_slverr = nxt_wr_slverr | nxt_rd_slverr;
+    {%- endif %}
 
-    // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    {{ apb_ready_comment | indent(4) }}
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_ready,   nxt_rd_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_data,    nxt_rd_data,    '0)
+            {%- if has_bridge %}
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, slverr,     nxt_slverr,     '0)
+            {%- endif %}
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
+            {%- if has_bridge %}
+            assign slverr     = nxt_slverr;
+            {%- endif %}
         end
     endgenerate
 
     // Update the APB interface
     assign {{regs_intf}}.prdata  = rd_data;
     assign {{regs_intf}}.pready  = rd_ready | wr_ready;
-    assign {{regs_intf}}.pslverr = 1'b0;
+    assign {{regs_intf}}.pslverr = {% if has_bridge %}slverr{% else %}1'b0{% endif %};
 
 endmodule : {{ modulename }}
 """
@@ -897,4 +1045,34 @@ assign {{mem_intf}}.enable      = {{mem_intf}}_rd_enable | {{mem_intf}}_wr_enabl
 assign {{mem_intf}}.wr_en       = {{mem_intf}}_wr_enable;
 assign {{mem_intf}}.addr        = {{mem_intf}}_addr;
 assign {{mem_intf}}.write_data  = {{mem_intf}}_data;
+"""
+
+# Section 01 - Fixed-width memory bridged (spec R20) to its own domain: the
+# access flops and memory_if binds of section_01_mem_j2_template are replaced
+# by the req/acked handshake and the memory_reg_bridge instance.
+section_01_mem_bridge_j2_template = """\
+// {{mem_intf}} (bridged to {{memClock}}/{{memReset}})
+{{mem_datatype}} nxt_{{mem_intf}}_data, {{mem_intf}}_data;   // write accumulation
+
+{% for seg in segments -%}
+logic {{mem_intf}}_update_{{loop.index0}};
+{% endfor -%}
+logic {{mem_intf}}_wr_sel, {{mem_intf}}_rd_sel, {{mem_intf}}_sel;
+logic nxt_{{mem_intf}}_req, {{mem_intf}}_req, {{mem_intf}}_acked;
+logic {{mem_intf}}_done, {{mem_intf}}_err;
+{{mem_datatype}} {{mem_intf}}_rdata;
+
+{% for seg in segments -%}{% set ul %}[{{seg[1]}}:{{seg[2]}}]{% endset -%}
+`DFFEN_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_data{{ul}}, nxt_{{mem_intf}}_data{{ul}}, {{mem_intf}}_update_{{loop.index0}})
+{% endfor %}
+assign {{mem_intf}}_sel = {{mem_intf}}_wr_sel | {{mem_intf}}_rd_sel;
+assign nxt_{{mem_intf}}_req = {{mem_intf}}_sel & ~{{mem_intf}}_done & ~{{mem_intf}}_acked;
+`DFFR_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_req, nxt_{{mem_intf}}_req, '0)
+`DFFR_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_acked, ({{mem_intf}}_acked | {{mem_intf}}_done) & {{mem_intf}}_sel, '0)
+memory_reg_bridge #(.data_t({{mem_datatype}}), .addr_t({{mem_addrtype}})) u_{{mem_intf}}_bridge (
+    .bus_clk({{regs_clk}}), .bus_rst_n({{regs_rst}}), .mem_clk({{memClock}}), .mem_rst_n({{memReset}}),
+    .req({{mem_intf}}_req), .wr({{mem_intf}}_wr_sel),
+    .addr({{mem_addrtype}}'(apb_addr[31:{{paddr_l}}])), .wdata({{mem_intf}}_data),
+    .done({{mem_intf}}_done), .err({{mem_intf}}_err), .rdata({{mem_intf}}_rdata),
+    .mem_port({{mem_intf}}));
 """

@@ -1,12 +1,11 @@
-`ifndef _TWOCLK_HDL_SV_WRAPPER_SV_GUARD_
-`define _TWOCLK_HDL_SV_WRAPPER_SV_GUARD_
+`ifndef _TWOCLKTABLE_HDL_SV_WRAPPER_SV_GUARD_
+`define _TWOCLKTABLE_HDL_SV_WRAPPER_SV_GUARD_
 
-// GENERATED_CODE_PARAM --block=twoClk
+// GENERATED_CODE_PARAM --block=twoClkTable
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
-module twoClk_hdl_sv_wrapper
+module twoClkTable_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import twoClkIp_package::*;
     import twoClk_package::*;
 (
     // apb_if.dst
@@ -36,7 +35,7 @@ module twoClk_hdl_sv_wrapper
     assign #0 twoClkReg_prdata = twoClkReg.prdata;
     assign #0 twoClkReg_pslverr = twoClkReg.pslverr;
 
-    twoClk dut (
+    twoClk_twoClkTable dut (
         .twoClkReg(twoClkReg), // apb_if.dst
         .clk(clk),
         .clkSlow(clkSlow),
@@ -50,8 +49,8 @@ module twoClk_hdl_sv_wrapper
     end
     `endif
 
-endmodule : twoClk_hdl_sv_wrapper
+endmodule : twoClkTable_hdl_sv_wrapper
 
 // GENERATED_CODE_END
 
-`endif // _TWOCLK_HDL_SV_WRAPPER_SV_GUARD_
+`endif // _TWOCLKTABLE_HDL_SV_WRAPPER_SV_GUARD_
