@@ -2,8 +2,11 @@
 #ifndef SOCKET_TRANSPORT_H
 #define SOCKET_TRANSPORT_H
 
+#include "optionalPayload.h"
+
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 
 enum socketMsgTypeT {
     MSG_REQ=0x01,
@@ -150,7 +153,33 @@ static constexpr uint16_t SOCKET_BP_EVERY_BURST = 0xFFFF;
 static constexpr const char *PYSOCKET_SYNC_IFC = "pysocket_sync";
 
 static constexpr uint16_t SOCKET_AXI_BURST_BYTES = 4096;
+// Capacity of each AXI USER field on the socket wire (AxUSER, BUSER, and each
+// beat's WUSER/RUSER).
+static constexpr uint16_t SOCKET_AXI_USER_BYTES = 8;
 static constexpr uint16_t SOCKET_AXI_OBS_PREVIEW_BYTES = 16;
+
+// AXI USER payloads cross the wire in their packed form. An absent USER
+// (std::monostate) leaves the zero-initialized field alone on send and ignores
+// the field on receive.
+template <typename U>
+inline void socket_axi_user_to_wire(const U &user, uint8_t (&wire)[SOCKET_AXI_USER_BYTES])
+{
+    if constexpr (hasOptionalPayload<U>) {
+        typename U::_packedSt packed{};
+        user.pack(packed);
+        std::memcpy(wire, &packed, U::_byteWidth);
+    }
+}
+
+template <typename U>
+inline void socket_axi_user_from_wire(U &user, const uint8_t (&wire)[SOCKET_AXI_USER_BYTES])
+{
+    if constexpr (hasOptionalPayload<U>) {
+        typename U::_packedSt packed{};
+        std::memcpy(&packed, wire, U::_byteWidth);
+        user.unpack(packed);
+    }
+}
 
 bool socket_send_msg(int fd, uint8_t msg_type, const void *payload, uint16_t len);
 

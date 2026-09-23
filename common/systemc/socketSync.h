@@ -21,7 +21,10 @@ class ThreadSafeEvent;
 // Model-only (no gated clock) still advances correctly via wait() in AdvanceTime.
 //
 // Ack wait uses delta-cycling so the SystemC event queue cannot go empty (this
-// TB has no watchDog keep-alive). That freezes sc_time until Python acks.
+// TB has no watchDog keep-alive). That freezes sc_time until Python acks. If the
+// sync link drops, gating ends and sc_time free-runs.
+//
+// The zero-length ready SYNC is accepted once; a repeat stops the run.
 //
 // MSG_RESET (on pysocket_sync, in place of a SYNC ack) requests an ARESETn
 // pulse: rst_n held low for assert_cycles, released, then settle_cycles, then

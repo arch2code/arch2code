@@ -1,6 +1,6 @@
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
-from templates.systemVerilog.package import parameterizedDeclLines
+from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
@@ -39,7 +39,7 @@ def render(args, prj, data):
     # Parameters
     if ( data['blockInfo']['params'] ):
         out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in data['blockInfo']['params']]))
+        out.append(",\n".join([f"{indent}{moduleParameterDecl(prj, param)}" for param in data['blockInfo']['params']]))
         out.append(')')
 
     out.append("(")

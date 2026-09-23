@@ -7,7 +7,7 @@ module xpRtInh_xpRtLeafRegs
     import common_shared_types_package::*;
     import xpRtInh_package::*;
     #(
-        parameter RT_WIDTH,
+        parameter int unsigned RT_WIDTH = 32'h0000_0008,
         parameter bit APB_READY_1WS = 0
     )
     (

@@ -26,6 +26,7 @@ import pySocket
 from axiSocketSocketCatalog import name_for_port, observe_name_for_port, required_names
 
 SOCKET_AXI_BURST_BYTES = 4096
+SOCKET_AXI_USER_BYTES = 8
 BEAT_BYTES = 4
 LOOPCOUNT = 4
 BURST_LEN = 3
@@ -40,6 +41,7 @@ class socket_axi_rd_req_st(ctypes.LittleEndianStructure):
         ("arsize", ctypes.c_uint8),
         ("arburst", ctypes.c_uint8),
         ("pad1", ctypes.c_uint8),
+        ("aruser", ctypes.c_uint8 * SOCKET_AXI_USER_BYTES),
     ]
 
 
@@ -49,6 +51,7 @@ class socket_axi_rd_resp_st(ctypes.LittleEndianStructure):
         ("rresp", ctypes.c_uint8),
         ("pad", ctypes.c_uint8),
         ("data", ctypes.c_uint8 * SOCKET_AXI_BURST_BYTES),
+        ("ruser", (ctypes.c_uint8 * SOCKET_AXI_USER_BYTES) * (SOCKET_AXI_BURST_BYTES // 16)),
     ]
 
 
@@ -63,6 +66,8 @@ class socket_axi_wr_req_st(ctypes.LittleEndianStructure):
         ("pad1", ctypes.c_uint8),
         ("data", ctypes.c_uint8 * SOCKET_AXI_BURST_BYTES),
         ("strb", ctypes.c_uint16 * (SOCKET_AXI_BURST_BYTES // 16)),
+        ("awuser", ctypes.c_uint8 * SOCKET_AXI_USER_BYTES),
+        ("wuser", (ctypes.c_uint8 * SOCKET_AXI_USER_BYTES) * (SOCKET_AXI_BURST_BYTES // 16)),
     ]
 
 
@@ -71,6 +76,7 @@ class socket_axi_wr_resp_st(ctypes.LittleEndianStructure):
         ("bid", ctypes.c_uint16),
         ("bresp", ctypes.c_uint8),
         ("pad", ctypes.c_uint8),
+        ("buser", ctypes.c_uint8 * SOCKET_AXI_USER_BYTES),
     ]
 
 

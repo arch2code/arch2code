@@ -8,7 +8,7 @@ module xpRtInh_xpRtNestDecode
 import xpRtInh_package::*;
 import common_shared_types_package::*;
 #(
-    parameter RT_WIDTH
+    parameter int unsigned RT_WIDTH = 32'h0000_0008
 )
 (
     apb_if.src apbReg_uLeaf,

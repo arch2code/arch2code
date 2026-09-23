@@ -8,8 +8,8 @@ module xpTwoCtx_xpTwoCtxDut
 import xpTwoCtx_package::*;
 import xpDpLeaf_package::*;
 #(
-    parameter DP_WIDTH,
-    parameter TC_GAIN
+    parameter int unsigned DP_WIDTH = 32'h0000_0008,
+    parameter int unsigned TC_GAIN = 32'h0000_0002
 )
 (
     push_ack_if.dst in,

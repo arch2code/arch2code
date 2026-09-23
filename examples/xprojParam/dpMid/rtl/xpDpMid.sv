@@ -7,8 +7,8 @@ module xpDpMid
 // Generated Import package statement(s)
 import xpDpLeaf_package::*;
 #(
-    parameter DP_WIDTH,
-    parameter MID_ALGO
+    parameter int unsigned DP_WIDTH = 32'h0000_0008,
+    parameter int unsigned MID_ALGO = 32'h0000_0002
 )
 (
     push_ack_if.dst midIn,

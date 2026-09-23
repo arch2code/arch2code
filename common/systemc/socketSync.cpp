@@ -3,6 +3,7 @@
 #include "socketSync.h"
 
 #include "asyncEvent.h"
+#include "q_assert.h"
 #include "simController.h"
 #include "socketFactory.h"
 
@@ -31,11 +32,14 @@ std::atomic<bool> g_python_ready{false};
 std::mutex g_ready_mutex;
 std::condition_variable g_ready_cv;
 std::atomic<bool> g_rx_alive{false};
+// Readiness is one-shot; a second ready SYNC is a protocol error that drops the link.
+std::atomic<bool> g_ready_repeated{false};
 std::shared_ptr<ThreadSafeEvent> g_ready_event;
 bool g_configured = false;
 
 uint64_t g_boundary_time_ns = 0;
-bool g_at_boundary = false;
+std::atomic<bool> g_at_boundary{false};
+// Kernel-only: the quantum thread captures the epoch when it sees readiness.
 uint64_t g_lockstep_epoch_ns = 0;
 bool g_lockstep_epoch_set = false;
 std::mutex g_boundary_events_mutex;
@@ -126,7 +130,7 @@ bool env_enabled_default_true(const char *value)
 void begin_boundary(uint64_t time_ns)
 {
     g_boundary_time_ns = time_ns;
-    g_at_boundary = true;
+    g_at_boundary.store(true, std::memory_order_release);
 
     std::vector<std::shared_ptr<ThreadSafeEvent>> events;
     {
@@ -142,7 +146,7 @@ void begin_boundary(uint64_t time_ns)
 
 void end_boundary()
 {
-    g_at_boundary = false;
+    g_at_boundary.store(false, std::memory_order_release);
 }
 
 sc_core::sc_time effective_quantum()
@@ -276,21 +280,41 @@ bool bp_should_stall(uint8_t channel_bit, uint16_t burst, uint16_t beat)
 // issuing timed waits, so a pure wait(ack_event) can leave the SystemC event
 // queue empty and sc_start() returns immediately. Delta-cycling here keeps the
 // kernel alive until the OS rx thread sets g_have_ack (no sc_time advance).
-void wait_for_ack(uint64_t expected_time_ns)
+// Returns false once the rx thread has exited, since no ack can follow.
+bool wait_for_ack(uint64_t expected_time_ns)
 {
     while (true) {
+        // Sampled before the ack check so a last ack posted before exit is seen.
+        const bool rx_alive = g_rx_alive.load(std::memory_order_acquire);
         {
             std::lock_guard<std::mutex> lock(g_ack_mutex);
             if (g_have_ack) {
                 if (g_pending_ack_time_ns == expected_time_ns) {
                     g_have_ack = false;
-                    return;
+                    return true;
                 }
                 // Stale / mismatched ack — discard and keep waiting.
                 g_have_ack = false;
             }
         }
+        if (!rx_alive) {
+            return false;
+        }
         sc_core::wait(sc_core::SC_ZERO_TIME);
+    }
+}
+
+// The sync link is gone. Let time free-run so end-of-test or --scTimeLimit can
+// still end the simulation.
+[[noreturn]] void free_run_after_link_loss()
+{
+    g_time_gated = false;
+    // Release processes that chose the gated branch and are waiting for a clock
+    // edge or a time tick.
+    edge_event().notify(sc_core::SC_ZERO_TIME);
+    time_tick_event().notify(sc_core::SC_ZERO_TIME);
+    while (true) {
+        sc_core::wait(sc_core::sc_time(1, sc_core::SC_US));
     }
 }
 
@@ -360,7 +384,7 @@ uint64_t socketSyncObserveTimeNs()
 
 bool socketSyncAtBoundary()
 {
-    return socketSyncLockstepEnabled() && g_at_boundary;
+    return socketSyncLockstepEnabled() && g_at_boundary.load(std::memory_order_acquire);
 }
 
 void socketSyncRegisterBoundaryEvent(const std::shared_ptr<ThreadSafeEvent> &event)
@@ -514,8 +538,10 @@ void socketSyncStartRxThread()
                 break;
             }
             if (msg_type == MSG_SYNC && len == 0) {
-                g_lockstep_epoch_ns = socketSyncScTimeNs();
-                g_lockstep_epoch_set = true;
+                if (g_python_ready.load(std::memory_order_acquire)) {
+                    g_ready_repeated.store(true, std::memory_order_release);
+                    break;
+                }
                 {
                     std::lock_guard<std::mutex> lock(g_ready_mutex);
                     g_python_ready.store(true, std::memory_order_release);
@@ -575,6 +601,7 @@ void socketSyncStartRxThread()
             g_rx_alive.store(false, std::memory_order_release);
         }
         g_ready_cv.notify_all();
+        g_ready_event->notify();
         g_ack_event->notify();
     });
     socketFactory::registerThread(PYSOCKET_SYNC_IFC, std::move(rx_thread));
@@ -618,12 +645,19 @@ void socketSyncQuantumThread()
     // SYNC arrives (same hazard as wait_for_ack()). Sleep until the next pending
     // activity when there is one, otherwise delta-cycle at the current time.
     while (!g_python_ready.load(std::memory_order_acquire)) {
+        // The rx thread publishes readiness before it clears g_rx_alive.
+        if (!g_rx_alive.load(std::memory_order_acquire) &&
+            !g_python_ready.load(std::memory_order_acquire)) {
+            free_run_after_link_loss();
+        }
         if (sc_core::sc_pending_activity_at_future_time()) {
             wait(sc_core::sc_time_to_pending_activity(), g_ready_event->default_event());
         } else {
             wait(sc_core::SC_ZERO_TIME);
         }
     }
+    g_lockstep_epoch_ns = socketSyncScTimeNs();
+    g_lockstep_epoch_set = true;
 
     // From here, only socketSyncAdvanceTime() may release DUT time.
     g_time_gated = true;
@@ -642,7 +676,10 @@ void socketSyncQuantumThread()
             break;
         }
 
-        wait_for_ack(payload.sc_time_ns);
+        if (!wait_for_ack(payload.sc_time_ns)) {
+            end_boundary();
+            break;
+        }
 
         bool do_reset = false;
         bool do_bp = false;
@@ -669,4 +706,9 @@ void socketSyncQuantumThread()
         // Sole timed waiter under lockstep: advances sc_time and drives clock edges.
         socketSyncAdvanceTime(effective_quantum());
     }
+    // After a repeated ready SYNC, Python still waits for a SYNC and keeps its
+    // data sockets open, so nothing else would end this run.
+    Q_ASSERT_CTX_MSG_NODUMP(!g_ready_repeated.load(std::memory_order_acquire), "pysocket_sync",
+                            "ready SYNC repeated after readiness, sync link dropped", "");
+    free_run_after_link_loss();
 }

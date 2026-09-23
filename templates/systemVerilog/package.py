@@ -18,6 +18,12 @@ def constantTypeValue(value):
         case _:
             return value['valueType'], str(value['value'])
 
+
+def moduleParameterDecl(prj, param):
+    """SV module parameter declaration, typed and defaulted from its backing constant."""
+    type_str, value_str = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
+    return f"parameter {type_str} {param['param']} = {value_str}"
+
 # args from generator line
 # prj object
 # data set dict

@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
-from templates.systemVerilog.package import parameterizedDeclLines
+from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
 
 import pysrc.intf_gen_utils as intf_gen_utils
 
@@ -128,7 +128,7 @@ def section_module_params(prj, data):
     if not params:
         return ""
     return string_joiner(
-        [ f"parameter {param['param']}," for param in params ], '\n')
+        [ f"{moduleParameterDecl(prj, param)}," for param in params ], '\n')
 
 def section_param_decls(prj, data):
     # Module-local parameterizable type/struct declarations, ordered

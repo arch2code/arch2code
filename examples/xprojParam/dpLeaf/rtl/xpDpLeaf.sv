@@ -7,8 +7,8 @@ module xpDpLeaf
 // Generated Import package statement(s)
 import xpDpLeaf_package::*;
 #(
-    parameter DP_ALGO,
-    parameter DP_WIDTH
+    parameter int unsigned DP_ALGO = 32'h0000_0001,
+    parameter int unsigned DP_WIDTH = 32'h0000_0008
 )
 (
     push_ack_if.dst in,

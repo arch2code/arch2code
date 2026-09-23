@@ -130,7 +130,7 @@ public:
                         m_pending_w_beats = 0;
                     }
                     for (int i = 0; i < left; ++i) {
-                        axiWriteDataSt<DATA_T, STRB_T, std::monostate, ID, IDW> dummy{};
+                        axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW> dummy{};
                         dummy.wid = 0;
                         dummy.wlast = (i == left - 1);
                         if_p->sendDataCycle(dummy);

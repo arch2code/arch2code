@@ -6,7 +6,7 @@ module mixed_blockGRegs
     // Generated Import package statement(s)
     import mixed_package::*;
     #(
-        parameter fred,
+        parameter int unsigned fred = 32'h0000_0000,
         parameter bit APB_READY_1WS = 0
     )
     (
