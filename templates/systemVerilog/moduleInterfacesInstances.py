@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from pysrc.processYaml import camelCase
-from templates.systemVerilog.package import parameterizedDeclLines
+from templates.systemVerilog.package import constantTypeValue, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
@@ -21,7 +21,11 @@ def render(args, prj, data):
     # Parameters
     if ( data['blockInfo']['params'] ):
         out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in data['blockInfo']['params']]))
+        params = []
+        for param in data['blockInfo']['params']:
+            type_str, value_str = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
+            params.append(f"{indent}parameter {type_str} {param['param']} = {value_str}")
+        out.append(",\n".join(params))
         out.append(')')
 
     out.append("(")

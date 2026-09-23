@@ -1,6 +1,23 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 import pysrc.emissionUtils as emissionUtils
 
+
+def constantTypeValue(value):
+    """SV type and literal, sized for the declared parameter range."""
+    bound = max(abs(value['value']), abs(value['maxValue'])) if value['isParameterizable'] else abs(value['value'])
+    match value['valueType']:
+        case 'uint':
+            if bound <= 0xFFFFFFFF:
+                return 'int unsigned', f"32'h{value['value']:09_X}"
+            return 'longint unsigned', f"64'h{value['value']:019_X}"
+        case 'int':
+            sign = '-' if value['value'] < 0 else ''
+            if bound <= 0x7FFFFFFF:
+                return 'int', f"{sign}32'sh{abs(value['value']):09_X}"
+            return 'longint', f"{sign}64'sh{abs(value['value']):019_X}"
+        case _:
+            return value['valueType'], str(value['value'])
+
 # args from generator line
 # prj object
 # data set dict
@@ -110,33 +127,7 @@ def render(args, prj, data):
     for unusedKey, value in data['constants'].items():
         if value['isParameterizable']:
             continue
-        match value['valueType']:
-            case 'uint':
-                if value['value'] <= 0xFFFFFFFF:
-                    type_str = 'int unsigned'
-                    value_str = f"32'h{value['value']:09_X}"
-                else:
-                    type_str = 'longint unsigned'
-                    value_str = f"64'h{value['value']:019_X}"
-            case 'int':
-                if abs(value['value']) <= 0x7FFFFFFF:
-                    type_str = 'int'
-                    if value['value'] < 0:
-                        value_str = f"-32'sh{abs(value['value']):09_X}"
-                    else:
-                        value_str = f"32'sh{value['value']:09_X}"
-                else:
-                    type_str = 'longint'
-                    if value['value'] < 0:
-                        value_str = f"-64'sh{abs(value['value']):019_X}"
-                    else:
-                        value_str = f"64'sh{value['value']:019_X}"
-            case 'real':
-                type_str = 'real'
-                value_str = f"{value['value']}"
-            case _:
-                type_str = value['valueType']
-                value_str = f"{value['value']}"
+        type_str, value_str = constantTypeValue(value)
         out += f"localparam {type_str} {value['constant']} = {value_str};  // {value['desc']}\n"
     # Generate types
     out += f"\n// types\n"

@@ -7,7 +7,7 @@ module mixed_blockG
 // Generated Import package statement(s)
 import mixed_package::*;
 #(
-    parameter fred
+    parameter int unsigned fred = 32'h0000_0000
 )
 (
     apb_if.dst apbReg,

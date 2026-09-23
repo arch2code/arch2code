@@ -8,8 +8,8 @@ module ip_test_src
 import ip_test_ipLeaf_package::*;
 import ip_test_src_package::*;
 #(
-    parameter OUT0_DATA_WIDTH,
-    parameter OUT1_DATA_WIDTH
+    parameter int unsigned OUT0_DATA_WIDTH = 32'h0000_0008,
+    parameter int unsigned OUT1_DATA_WIDTH = 32'h0000_0046
 )
 (
     push_ack_if.src out0,

@@ -7,8 +7,8 @@ module ip_test_ipLeaf
 // Generated Import package statement(s)
 import ip_test_ipLeaf_package::*;
 #(
-    parameter LEAF_DATA_WIDTH,
-    parameter LEAF_MEM_DEPTH
+    parameter int unsigned LEAF_DATA_WIDTH = 32'h0000_0004,
+    parameter int unsigned LEAF_MEM_DEPTH = 32'h0000_0004
 )
 (
     input clk, rst_n

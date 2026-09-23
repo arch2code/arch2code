@@ -6,8 +6,8 @@ module mixed_blockF
 import mixed_package::*;
 import mixed_mixedBlockC_package::*;
 #(
-    parameter bob,
-    parameter fred
+    parameter int unsigned bob = 32'h0000_0010,
+    parameter int unsigned fred = 32'h0000_0000
 )
 (
     rdy_vld_if.src cStuffIf,

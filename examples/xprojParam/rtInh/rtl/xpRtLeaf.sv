@@ -8,7 +8,7 @@ module xpRtInh_xpRtLeaf
 import common_shared_types_package::*;
 import xpRtInh_package::*;
 #(
-    parameter RT_WIDTH
+    parameter int unsigned RT_WIDTH = 32'h0000_0008
 )
 (
     apb_if.dst apbReg,
