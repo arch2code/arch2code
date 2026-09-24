@@ -11,16 +11,13 @@
 #include "systemc.h"
 
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <queue>
 #include <string>
 #include <thread>
-#include <vector>
 
 #pragma pack(push, 1)
 struct socket_apb_req_st {
@@ -31,44 +28,20 @@ struct socket_apb_req_st {
 };
 struct socket_apb_ack_st {
     uint32_t data;
-    uint8_t pslverr;
-    uint8_t pad[3];
 };
 #pragma pack(pop)
 
 static_assert(sizeof(socket_apb_req_st) == 12, "socket_apb_req_st wire layout");
-static_assert(sizeof(socket_apb_ack_st) == 8, "socket_apb_ack_st wire layout");
+static_assert(sizeof(socket_apb_ack_st) == 4, "socket_apb_ack_st wire layout");
 
-// Unmapped → PSLVERR on the ACK. TLM writes complete before the slave can
-// return status, so decode uses the selected target's register-map contract
-// (word offsets + address mask) rather than a per-block hard-coded list.
-// An empty map means this port has no register target; do not raise PSLVERR.
-inline bool socket_apb_unmapped(uint32_t address, const uint32_t *mapped_offsets,
-                                std::size_t mapped_count, uint32_t addr_mask)
-{
-    if (mapped_count == 0) {
-        return false;
-    }
-    const uint32_t local = address & addr_mask;
-    for (std::size_t i = 0; i < mapped_count; ++i) {
-        if (local == mapped_offsets[i]) {
-            return false;
-        }
-    }
-    return true;
-}
 // apb_out: Python is APB master; shell forwards to SystemC slaves via port->request().
 template <class R, class D>
-void port_socket(apb_out<R, D> &port, const std::string &interface_name,
-                 std::initializer_list<uint32_t> mapped_offsets = {},
-                 uint32_t addr_mask = 0xffffffffu)
+void port_socket(apb_out<R, D> &port, const std::string &interface_name)
 {
     const int fd = socketFactory::getFd(interface_name);
     if (fd < 0) {
         return;
     }
-
-    const std::vector<uint32_t> mapped(mapped_offsets.begin(), mapped_offsets.end());
 
     auto req_event = ThreadSafeEventFactory::newEvent((interface_name + "_apb_req").c_str());
     if (socketSyncLockstepEnabled()) {
@@ -151,8 +124,6 @@ void port_socket(apb_out<R, D> &port, const std::string &interface_name,
 
             socket_apb_ack_st wire_ack{};
             wire_ack.data = data.data;
-            wire_ack.pslverr = socket_apb_unmapped(wire_req.address, mapped.data(),
-                                                   mapped.size(), addr_mask) ? 1 : 0;
             if (!socket_send_msg(fd, MSG_APB_ACK, &wire_ack, static_cast<uint16_t>(sizeof(socket_apb_ack_st)))) {
                 running->store(false, std::memory_order_release);
                 should_shutdown = true;

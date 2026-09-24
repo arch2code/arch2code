@@ -47,14 +47,8 @@ def _registered_check(listen_expr):
     )
 
 
-def _drive_body(port_ref, name, mapped_offsets=None, addr_mask=None):
-    check = _registered_check(name)
-    if mapped_offsets is None:
-        return check + f'    port_socket({port_ref}, {name});\n'
-    offs = ', '.join(f'{offset:#x}u' for offset in mapped_offsets)
-    return check + (
-        f'    port_socket({port_ref}, {name}, {{{offs}}}, {addr_mask:#x}u);\n'
-    )
+def _drive_body(port_ref, name):
+    return _registered_check(name) + f'    port_socket({port_ref}, {name});\n'
 
 
 def _observe_body(port_ref, name, observe_name):
@@ -108,8 +102,7 @@ def constructorInitSocket(args, prj, data):
         if row['role'] == 'observe':
             out.append(_observe_body(port_ref, name, _observe_name_expr(blockName, row['port'])))
         else:
-            out.append(_drive_body(port_ref, name,
-                                   row['apbMappedOffsets'], row['apbAddrMask']))
+            out.append(_drive_body(port_ref, name))
         out.append('}\n\n')
 
     if hasOwnParams:

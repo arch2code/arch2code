@@ -128,9 +128,7 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
     {
         apbIn->reqReceive(isWrite, addr, data);
         uint64_t address = addr._getAddress() & (addressMask);
-        // Unmapped: ACK, PRDATA=0, write ignored. PSLVERR is returned on the
-        // pySocket APB ACK from the target register-map contract passed to
-        // port_socket (mapped word offsets + address mask).
+        // Unmapped: ACK, PRDATA=0, write ignored.
         if (!regs.contains(address))
         {
             if (!isWrite)
