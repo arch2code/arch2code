@@ -272,6 +272,9 @@ process instead of reading kernel time itself.
 
 ### 5.6 APB socket decode excludes memory windows
 
+**Closed (base 707eeb76).** The APB socket no longer decodes addresses or
+raises PSLVERR, and `_blockRegisterWordDecode` is gone.
+
 `pysrc/processYaml.py:1380` `_blockRegisterWordDecode` skips
 `regType == 'memory'` and returns `None` when no register offsets remain. The
 code comment records this as intentional (memory windows are range-decoded in
@@ -282,6 +285,9 @@ the decode view, or reject socket drive ports onto memory-only targets at db.
 
 ### 5.7 APB target selected by first connection match on block type
 
+**Closed (base 707eeb76).** `_socketApbTargetBlockKey` went with the socket's
+register map, so the socket no longer looks up a target.
+
 `pysrc/processYaml.py:1443` `_socketApbTargetBlockKey` scans all project
 connections and returns the first whose source or destination instance has
 this block type and port. Two instances of one block type wired to different
@@ -290,6 +296,10 @@ target must be persisted by `projectCreate` and supplied to the view keyed by
 instance, not derived from block type.
 
 ### 5.8 `INSTANCES_WITH_REGAPB` read as optional
+
+**Closed.** Base 707eeb76 removed the socket catalog read. The router read in
+`getBDAddressDecode` now uses a plain `getConfig`, like the other required
+keys.
 
 `pysrc/processYaml.py:1416` (and 2280) read the fact with `failOk=True` and
 return `None` when absent, while `config/postParseRegisterPorts.py` always

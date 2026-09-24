@@ -2178,10 +2178,7 @@ class projectOpen:
         addressBlock = blockRow.get('addressBlock')
         if addressBlock:
             qualDecoder = next(iter(ret['instances']))
-            instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
-            if instanceWithRegApb is None:
-                printError('No instances with register interface found in db: missing or invalid register post processing script')
-                exit(warningAndErrorReport())
+            instanceWithRegApb = self.config.getConfig('INSTANCES_WITH_REGAPB')
             isApbRouter = True
             ret['addressDecode']['addressGroupData'] = dict(addressBlock)
             ret['addressDecode']['addressGroup'] = addressBlock['addressGroup']
