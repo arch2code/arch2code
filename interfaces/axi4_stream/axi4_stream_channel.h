@@ -140,6 +140,9 @@ public:
 
     // receiver interfaces
     virtual void receiveInfo( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER>& ) = 0;
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -222,6 +225,9 @@ public:
 
     // in interface
     virtual void receiveInfo( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER>& ) override;
+    virtual bool isActive() override { return m_tx_in->isActive(); }
+    virtual bool isNotActive() override { return m_tx_in->isNotActive(); }
+    virtual void setExternalEvent( sc_event *event ) override { m_tx_in->setExternalEvent(event); }
 
     void setMultiDriver(std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {

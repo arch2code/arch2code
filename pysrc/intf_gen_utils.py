@@ -6,6 +6,7 @@ LEGACY_COMPAT_MODE = False
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import pysrc.processYaml as processYaml
+import pysrc.emissionUtils as emissionUtils
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
@@ -43,12 +44,15 @@ def get_intf_data(data, prj_data):
         if interfaceKey:
             return prj_data.data['interfaces'].get(interfaceKey, None)
         else:
-            ret =  {'structures': [{'structureType': 'data_t', 'structure': data['structure'], 'structureKey': data['structureKey']}],
+            # A register/memory row's own 'structure' field is a plain foreign
+            # key into 'structures' (not a typeStruct), so this synthesized
+            # payload always names a structure, never a type.
+            ret =  {'structures': [{'structureType': 'data_t', 'structure': data['structure'], 'structureKey': data['structureKey'], 'structureKind': 'structures'}],
                     'interfaceType': data['interfaceType'],
                     'desc': data.get('desc', '')}
             # Only add addressStruct if exists
             if data['addressStruct']:
-                ret['structures'].append({'structureType': 'addr_t', 'structure': data['addressStruct'], 'structureKey': data['addressStructKey']})
+                ret['structures'].append({'structureType': 'addr_t', 'structure': data['addressStruct'], 'structureKey': data['addressStructKey'], 'structureKind': 'structures'})
             return ret
 def get_channel_name(data):
     channel_base = data["interfaceName"]
@@ -108,10 +112,16 @@ def sv_struct_width_expression(struct_key, prj):
         terms.append(expr)
     return ' + '.join(terms) if terms else '0'
 
-def sv_boundary_struct_width_expression(struct_key, prj):
-    struct = prj.data['structures'][struct_key]
-    if not struct['isParameterizable']:
-        return str(struct['width'])
+def sv_boundary_width_expression(kind, struct_key, prj):
+    ref = prj.datatypeRef(kind, struct_key)
+    if kind == 'types':
+        # A type's width column holds the raw authored token (empty for a
+        # widthLog2/widthLog2minus1 type), not a resolved integer, whether or
+        # not the type is parameterizable, so this always goes through the
+        # same decision tree a structure field of this type uses.
+        return sv_type_width_expression(ref['row'], prj)
+    if not ref['isParameterizable']:
+        return str(ref['width'])
     return sv_struct_width_expression(struct_key, prj)
 
 def sv_packed_bit_type(width_expr):
@@ -192,12 +202,12 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
             binding = intf_param[port_type]
             if binding['isNull']:
                 # An unbound optional payload names no structure, so it has no
-                # width to blast. The interface still declares the signal, as
-                # the one-bit placeholder its parameter defaults to, so the
-                # flattened boundary port is that same single bit.
-                port_type = 'bit'
+                # width to blast. The interface still declares the signal, at
+                # the width its parameter's defaultWidth names, so the
+                # flattened boundary port carries that same width.
+                port_type = sv_packed_bit_type(binding['defaultWidth'])
             else:
-                width_expr = sv_boundary_struct_width_expression(binding['structureKey'], prj)
+                width_expr = sv_boundary_width_expression(binding['kind'], binding['structureKey'], prj)
                 port_type = sv_packed_bit_type(width_expr)
         elif port_type in hdl_param.keys():
             w = hdl_param[port_type]
@@ -382,18 +392,69 @@ def sc_split_payload_params(payload_params):
                     len(payload_params))
     return payload_params[:boundary], payload_params[boundary:]
 
-def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
-    # config_override: when supplied (and the structure is parameterizable),
+def _config_qualified_name(name, is_parameterizable, config_override=None):
+    # config_override: when supplied (and the declaration is parameterizable),
     # the named Config replaces the literal `Config` template parameter in
     # the emitted type. This lets channels use the connected child's
     # per-variant Config without requiring the parent to be a class template.
-    if use_config and struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False):
-        suffix = config_override if config_override else 'Config'
-        return f"{struct_name}<{suffix}>"
-    return struct_name
+    # Shared C++ spelling for a parameterizable struct or type payload's own
+    # name, whichever the caller is naming.
+    if not is_parameterizable:
+        return name
+    suffix = config_override if config_override else 'Config'
+    return f"{name}<{suffix}>"
+
+def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
+    # An unbound field reaches here with struct_key '' (sc_structure_field_type
+    # passes row.get(key_field_name, '')); it names no row to dereference and
+    # is never parameterizable.
+    is_parameterizable = use_config and struct_key and prj.datatypeRef('structures', struct_key)['isParameterizable']
+    return _config_qualified_name(struct_name, is_parameterizable, config_override)
 
 def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):
     return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config, config_override)
+
+def _type_width_expr_cpp(type_row, prj, config_scope):
+    # A type's width column holds the literal author wrote (a plain number)
+    # only when it was declared as a bare literal; a `width:`/`widthLog2:`/
+    # `widthLog2minus1:` naming a constant leaves the symbolic name there
+    # instead, resolved through the constant's own qualified key. This is the
+    # same decision tree that a structure field of this type uses
+    # (templates/systemc/includes.py:typeWidthExpression_cpp), qualified by
+    # whatever config_scope the caller is spelling the payload's own name
+    # against (see sc_type_payload_name/sc_hdl_bridge_type), not always
+    # 'Config': a non-templated parent spells a connected child's payload
+    # against that child's own per-variant Config. A parameterizable type's
+    # C++ spelling is a `using` alias to a fixed-size container
+    # (templates/systemc/includes.py:includeTypes), not a struct template with
+    # its own `::_bitWidth`, so its actual width is always this expression,
+    # never a `::_bitWidth` reference.
+    return emissionUtils.typeWidthExpr(
+        type_row, emissionUtils.C,
+        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, config_scope),
+        literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
+
+def sc_type_payload_name(payload, prj, config_override=None):
+    # A bound `type`/`typeStruct` payload's positional template argument is a
+    # (name, width) pair rather than the single name a `struct` payload
+    # spells. A `typeStruct` payload bound to a structure is named exactly as
+    # a struct payload would be; its second argument is that structure's own
+    # width, spelled the same parameterizable-aware way sc_hdl_bridge_type
+    # spells a structure's bridge width.
+    kind = payload['kind']
+    ref = prj.datatypeRef(kind, payload['structureKey'])
+    name = _config_qualified_name(ref['name'], ref['isParameterizable'], config_override)
+    if kind == 'types':
+        # Mirror _config_qualified_name's own suffix choice: the connected
+        # child's per-variant Config when supplied, else the bare `Config`
+        # template parameter of a parameterizable parent.
+        config_scope = config_override if config_override else 'Config'
+        width = _type_width_expr_cpp(ref['row'], prj, config_scope)
+    elif ref['isParameterizable']:
+        width = f"{name}::_bitWidth"
+    else:
+        width = str(ref['width'])
+    return f"{name}, {width}"
 
 # C++ spelling of an absent payload. The protocol templates default their
 # optional parameters to this type and test presence against it
@@ -403,25 +464,39 @@ def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=Tru
 SC_NULL_PAYLOAD_TYPE = 'std::monostate'
 
 def sc_payload_type_name(payload, prj, config_override=None):
-    # Positional template argument for one payload binding. An unbound optional
+    # Positional template argument(s) for one payload binding. Arity follows
+    # the parameter's declared datatype, not the bound kind, so a companion
+    # template has a fixed signature regardless of what a `typeStruct`
+    # parameter happens to be bound to: `struct` is always one argument,
+    # `type`/`typeStruct` are always two, name and width. An unbound optional
     # payload names no structure; when it still holds a slot it is spelled as
-    # the absence sentinel. The trailing unbound run is dropped before here.
+    # the absence sentinel, a two-argument payload's slot being the
+    # (sentinel, width) pair its arity requires. The trailing unbound run is
+    # dropped before here.
+    if payload['datatype'] == 'struct':
+        if payload['isNull']:
+            return SC_NULL_PAYLOAD_TYPE
+        return sc_struct_type_name(payload['structure'], payload['structureKey'], prj,
+                                   config_override=config_override)
     if payload['isNull']:
-        return SC_NULL_PAYLOAD_TYPE
-    return sc_struct_type_name(payload['structure'], payload['structureKey'], prj,
-                               config_override=config_override)
+        return f"{SC_NULL_PAYLOAD_TYPE}, {payload['defaultWidth']}"
+    return sc_type_payload_name(payload, prj, config_override=config_override)
 
 def sc_hdl_bridge_type(struct_param, prj):
     # An unbound optional payload names no structure, so it has no width to
-    # bridge. The interface still declares the signal it types, as the one-bit
-    # placeholder its parameter defaults to, so the bridge carries that bit.
+    # bridge. The interface still declares the signal it types, at the width
+    # its parameter's defaultWidth names, so the bridge carries that width.
     if struct_param['isNull']:
-        return 'bool'
-    struct_key = struct_param['structureKey']
-    struct_name = sc_struct_type_name(struct_param['structure'], struct_key, prj)
-    if prj.data['structures'][struct_key]['isParameterizable']:
+        w = struct_param['defaultWidth']
+        return 'bool' if w == 1 else f"sc_bv<{w}>"
+    ref = prj.datatypeRef(struct_param['kind'], struct_param['structureKey'])
+    if struct_param['kind'] == 'types':
+        w_expr = _type_width_expr_cpp(ref['row'], prj, 'Config')
+        return 'bool' if _is_one(w_expr) else f"sc_bv<{w_expr}>"
+    if ref['isParameterizable']:
+        struct_name = sc_struct_type_name(struct_param['structure'], struct_param['structureKey'], prj)
         return f"sc_bv<{struct_name}::_bitWidth>"
-    w = get_struct_width(struct_key, prj.data['structures'])
+    w = ref['width']
     return 'bool' if w == 1 else f"sc_bv<{w}>"
 
 def block_config_decl(is_parameterizable):
@@ -797,12 +872,12 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # An optional payload contributes a bridge type only when it types an
     # interface signal, because only then does the HDL boundary have a port for
     # it. Such a port exists whether or not the payload is bound, so a
-    # gap-filling unbound payload still occupies its slot as the one-bit
-    # placeholder; the trailing unbound run is already trimmed off
-    # optional_params and is covered by the bridge template's defaults.
-    hdl_if_bv_types = []
+    # gap-filling unbound payload still occupies its slot at its parameter's
+    # defaultWidth; the hdl_if declaration below trims its trailing unbound run
+    # off optional_params, relying on the bridge template's own defaults there.
+    bridge_prefix = []
     for binding in required_params:
-        hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
+        bridge_prefix.append(sc_hdl_bridge_type(binding, prj))
     hdl_params = intf_def.get('hdlparams', {}) or {}
     for param in hdl_params:
         assert(hdl_params[param]['datatype'] in ['integer'])
@@ -813,21 +888,31 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
             w = eval(eval_str)
             assert(isinstance(w, int))
             sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
-            hdl_if_bv_types.append(sc_bv_type)
-    for binding in optional_params:
-        if binding['typesSignal']:
-            hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
+            bridge_prefix.append(sc_bv_type)
+
+    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+                                       for binding in optional_params
+                                       if binding['typesSignal']]
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 
     out['hdl_if_decl'] = f"{hdl_intf_type}<{hdl_if_params}> {hdl_intf_name};"
+
+    # The BFM splices the bridge group before the optional payload group, so
+    # every optional bridge slot must stay occupied, an unbound one at its
+    # parameter's defaultWidth, or a later payload argument would shift into
+    # the wrong slot. The hdl_if declaration's bridge group is last, so it can
+    # keep using the trimmed run instead.
+    bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+                                        for binding in param_bindings
+                                        if binding['isOptional'] and binding['typesSignal']]
 
     # BFM arguments: the payload list split at its required/optional boundary,
     # with the whole Verilated bridge group spliced in between, because that is
     # the order the hand-written BFM template declares.
     chnl_params = ', '.join([sc_payload_type_name(binding, prj)
                              for binding in required_params]
-                            + hdl_if_bv_types
+                            + bfm_bridge_types
                             + [sc_payload_type_name(binding, prj)
                                for binding in optional_params])
 
@@ -860,6 +945,75 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         out['assign'].append(f"assign {assign_lhs} = {assign_rhs};")
 
     return out
+
+def sc_multicycle_ctor_args(conn_data, multicycle_types, prj, warn=True):
+    """Trailing multicycle/tracker arguments for a channel constructor.
+
+    Every emitter that constructs a channel must use this, otherwise the
+    channel falls back to the constructor overload that leaves its multicycle
+    buffer null and the first burst access segfaults.
+
+    Args:
+        conn_data: the connection row naming the interface. Either a
+            connectDouble connection row (`maxTransferSize` and `tracker`
+            schema-guaranteed), a testbench-synthesized connectionMaps row
+            (`_cm_synth_conn` in templates/systemc/testbench.py; carries
+            `maxTransferSize` but no `tracker` field, that schema having no
+            alloc/dealloc concept for a local-only channel), or a register
+            connection row (no `interfaceKey`; contributes no arguments).
+        multicycle_types: the interface definition's
+            `sc_channel.multicycle_types` flag; when false the channel type
+            has no multicycle constructor overload and `extra` stays empty.
+        warn: cleared by secondary emitters so a misconfigured interface is
+            reported once rather than once per generated hierarchy.
+
+    Returns:
+        (extra, autoMode) pair of literal C++ argument text, each already
+        carrying its leading comma when non-empty so callers can append both
+        unconditionally.
+    """
+    extra = ''
+    # we may have a multicycle interface
+    if 'interfaceKey' in conn_data:
+        interfaceInfo = prj.data['interfaces'][conn_data['interfaceKey']]
+        interfaceSize = interfaceInfo['maxTransferSize']
+        # did the connection specify an interface maxTransferSize
+        if conn_data['maxTransferSize'] != "0": # check for override
+            interfaceSize = conn_data['maxTransferSize'] # override interface setting from connection
+        trackerType = interfaceInfo['trackerType']
+        multiCycleMode = interfaceInfo['multiCycleMode']
+        autoModeMapping = {
+            "": "",
+            "alloc": ", INTERFACE_AUTO_ALLOC",
+            "dealloc": ", INTERFACE_AUTO_DEALLOC",
+            "allocReq": ", INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_OFF",
+            "deallocReq": ", INTERFACE_AUTO_DEALLOC, INTERFACE_AUTO_OFF",
+            "allocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC",
+            "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
+        }
+        autoMode = autoModeMapping.get(conn_data.get('tracker', ""), "")
+    else:
+        # register interface
+        interfaceSize = 0
+        trackerType = ''
+        multiCycleMode = ''
+        autoMode = ''
+
+    if multicycle_types:
+        #- fixed_size        #
+        #- header_tracker    # for rdyVldBurst tracker tag comes from field in the header (based on field with "generator: tracker(xxx)"" in structures where xxx is the tracker name)
+        #- header_size       # for rdyVldBurst size comes from field in the header (based on field with "generator: tracker(length)"" in structures)
+        #- api_list_tracker  # tracker tag comes from write api and push_context
+        #- api_list_size     # size comes from write api and push_context
+
+        if multiCycleMode != "":
+            if trackerType != "":
+                trackerType = f'tracker:{trackerType}'
+            extra = f', "{multiCycleMode}", {interfaceSize}, "{trackerType}"'
+        elif warn and (interfaceSize != "0" or trackerType):
+            print(f"warning: interface {conn_data['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
+
+    return extra, autoMode
 
 def sc_gen_block_channels(conn_data, prj, block_data):
 

@@ -141,47 +141,8 @@ def constructorInit(args, prj, data):
                     f"Channel naming will be arbitrarily using {dst!r} as the destination instance"
                 )
             channelTitle = dst + "_" + channelBase
-            extra = ''
-            # we may have a multicycle interface
-            if 'interfaceKey' in chnlInfo:
-                interfaceInfo = prj.data['interfaces'][chnlInfo['interfaceKey']]
-                interfaceSize = interfaceInfo['maxTransferSize']
-                # did the connection specify an interface maxTransferSize
-                if chnlInfo['maxTransferSize'] != "0": # check for override
-                    interfaceSize = chnlInfo['maxTransferSize'] # override interface setting from connection
-                trackerType = interfaceInfo['trackerType']
-                multiCycleMode = interfaceInfo['multiCycleMode']
-                autoModeMapping = {
-                    "": "",
-                    "alloc": ", INTERFACE_AUTO_ALLOC",
-                    "dealloc": ", INTERFACE_AUTO_DEALLOC",
-                    "allocReq": ", INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_OFF",
-                    "deallocReq": ", INTERFACE_AUTO_DEALLOC, INTERFACE_AUTO_OFF",
-                    "allocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC",
-                    "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
-                }
-                autoMode = autoModeMapping.get(chnlInfo['tracker'],"")
-            else:
-                # register interface
-                interfaceSize = 0
-                trackerType = ''
-                multiCycleMode = ''
-                autoMode = ''
-
-            if chnl_table[chnl]['multicycle_types']:
-                #- fixed_size        #
-                #- header_tracker    # for rdyVldBurst tracker tag comes from field in the header (based on field with "generator: tracker(xxx)"" in structures where xxx is the tracker name)
-                #- header_size       # for rdyVldBurst size comes from field in the header (based on field with "generator: tracker(length)"" in structures)
-                #- api_list_tracker  # tracker tag comes from write api and push_context
-                #- api_list_size     # size comes from write api and push_context
-
-                if multiCycleMode != "":
-                    if trackerType != "":
-                        trackerType = f'tracker:{trackerType}'
-                    extra = f', "{multiCycleMode}", {interfaceSize}, "{trackerType}"'
-                else:
-                    if interfaceSize != "0" or trackerType:
-                        print(f"warning: interface {chnlInfo['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
+            extra, autoMode = intf_gen_utils.sc_multicycle_ctor_args(
+                chnlInfo, chnl_table[chnl]['multicycle_types'], prj)
             if chnl_table[chnl]['set_initial_value']:
                 # The structure type for the channel's default-value
                 # initializer must match the channel's own template

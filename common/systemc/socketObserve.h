@@ -26,8 +26,8 @@ struct socket_apb_obs_st {
 
 struct socket_axi_rd_obs_req_st {
     uint64_t sc_time_ns;
-    uint8_t arid;
-    uint8_t pad0[3];
+    uint16_t arid;
+    uint8_t pad0[2];
     uint32_t araddr;
     uint8_t arlen;
     uint8_t arsize;
@@ -36,15 +36,15 @@ struct socket_axi_rd_obs_req_st {
 };
 struct socket_axi_rd_obs_resp_st {
     uint64_t sc_time_ns;
-    uint8_t rid;
+    uint16_t rid;
     uint8_t rresp;
-    uint8_t pad[2];
+    uint8_t pad;
     uint8_t data_preview[SOCKET_AXI_OBS_PREVIEW_BYTES];
 };
 struct socket_axi_wr_obs_req_st {
     uint64_t sc_time_ns;
-    uint8_t awid;
-    uint8_t pad0[3];
+    uint16_t awid;
+    uint8_t pad0[2];
     uint32_t awaddr;
     uint8_t awlen;
     uint8_t awsize;
@@ -56,9 +56,9 @@ struct socket_axi_wr_obs_req_st {
 };
 struct socket_axi_wr_obs_resp_st {
     uint64_t sc_time_ns;
-    uint8_t bid;
+    uint16_t bid;
     uint8_t bresp;
-    uint8_t pad[2];
+    uint8_t pad;
 };
 
 struct socket_irq_obs_st {
@@ -162,7 +162,7 @@ inline void socket_observe_apb_resp(const std::string &interface_name, bool is_w
     socket_observe_apb_push(interface_name, MSG_APB_OBS_RESP, obs);
 }
 
-inline void socket_observe_axi_rd_req(const std::string &interface_name, uint8_t arid, uint32_t araddr,
+inline void socket_observe_axi_rd_req(const std::string &interface_name, uint16_t arid, uint32_t araddr,
                                       uint8_t arlen, uint8_t arsize, uint8_t arburst)
 {
     socket_axi_rd_obs_req_st obs{};
@@ -186,7 +186,7 @@ inline void socket_observe_axi_rd_req(const std::string &interface_name, uint8_t
     socket_observe_push(interface_name, MSG_AXI_RD_OBS_REQ, &obs, static_cast<uint16_t>(sizeof(obs)));
 }
 
-inline void socket_observe_axi_rd_resp(const std::string &interface_name, uint8_t rid, uint8_t rresp,
+inline void socket_observe_axi_rd_resp(const std::string &interface_name, uint16_t rid, uint8_t rresp,
                                        const uint8_t *burst_data)
 {
     socket_axi_rd_obs_resp_st obs{};
@@ -211,7 +211,7 @@ inline void socket_observe_axi_rd_resp(const std::string &interface_name, uint8_
     socket_observe_push(interface_name, MSG_AXI_RD_OBS_RESP, &obs, static_cast<uint16_t>(sizeof(obs)));
 }
 
-inline void socket_observe_axi_wr_req(const std::string &interface_name, uint8_t awid, uint32_t awaddr,
+inline void socket_observe_axi_wr_req(const std::string &interface_name, uint16_t awid, uint32_t awaddr,
                                       uint8_t awlen, uint8_t awsize, uint8_t awburst, const uint8_t *burst_data,
                                       const uint16_t *burst_strb = nullptr)
 {
@@ -249,7 +249,7 @@ inline void socket_observe_axi_wr_req(const std::string &interface_name, uint8_t
     socket_observe_push(interface_name, MSG_AXI_WR_OBS_REQ, &obs, static_cast<uint16_t>(sizeof(obs)));
 }
 
-inline void socket_observe_axi_wr_resp(const std::string &interface_name, uint8_t bid, uint8_t bresp)
+inline void socket_observe_axi_wr_resp(const std::string &interface_name, uint16_t bid, uint8_t bresp)
 {
     socket_axi_wr_obs_resp_st obs{};
     obs.sc_time_ns = socket_sc_time_ns();

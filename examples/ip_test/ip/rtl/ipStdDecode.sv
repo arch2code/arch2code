@@ -45,7 +45,7 @@ always_comb begin
     set_trans_active = 1'b0;
     if (ipReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        begin // sole address slot: every address selects it
+        begin
             ipReg_uIp_next_psel = '1;
         end
     end

@@ -19,6 +19,10 @@ import clkGen_rstSync.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
+
 #include "socketSync.h"
 class rstSync_hdl_sc_wrapper: public sc_module, public blockBase, public rstSyncBase {
 

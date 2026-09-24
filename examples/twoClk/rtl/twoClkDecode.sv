@@ -45,7 +45,7 @@ always_comb begin
     set_trans_active = 1'b0;
     if (twoClkReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        begin // sole address slot: every address selects it
+        begin
             twoClkReg_uTable_next_psel = '1;
         end
     end

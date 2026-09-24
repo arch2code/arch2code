@@ -19,6 +19,9 @@ import twoClkIp_twoClkIpSrc.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import twoClkIp;
 using namespace twoClkIp_ns;
 #include "push_ack_bfm.h"

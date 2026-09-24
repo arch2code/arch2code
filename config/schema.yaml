@@ -143,10 +143,20 @@ interface_defs:
   parameters:
     _attribs: [optional, multiple]
     param: key
-    datatype: required
+    datatype:
+      _type: required
+      _validate:
+        values:
+          - struct
+          - type
+          - typeStruct
     # when true the parameter need not be bound by a declaring interface;
     # unbound optional parameters are not required by validate_interface_structures
     optional: optional(false)
+    # width of the signals this parameter types when a declaring interface leaves
+    # the parameter unbound; the companion SV interface and C++ templates default
+    # to a type of this width
+    defaultWidth: optional(1)
   hdlparams:
     _attribs: [optional, multiple]
     hdlparam: key
@@ -218,12 +228,10 @@ interfaces:
   trackerType: optional() # must specify a valid tracker name in the design. For cases where the tracker value is coming from the header, this field is optional
   structures: #indented list for subtable
     _attribs: [optional, list] #list means potentially more than 1
-    structureType: key  # validated by post-processing function against interface_defs parameters
-    structure:
-      _type: required
-      _validate:
-        section: structures
-        field: structure
+    structureType: key  # validated by the auto below against interface_defs parameters
+    interfaceType: outer
+    parameterDatatype: auto(interfaceParameterDatatype)
+    structure: typeStruct(field, parameterDatatype) # names a types row or a structures row, whichever structureType's own datatype allows; see typeStruct in SCHEMA_SPECIFICATION.md
   isParameterizable: auto(intfIsParameterizable)
 
 instances:

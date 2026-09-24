@@ -11,6 +11,9 @@ import ip.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import ip;
 using namespace ip_ns;
 #include "ipVariantConfig.h"

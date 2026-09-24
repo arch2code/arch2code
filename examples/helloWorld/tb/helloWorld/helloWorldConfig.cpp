@@ -43,7 +43,8 @@ public:
             "test_rdy_vld",
             "test_req_ack",
             "test_push_ack",
-            "test_pop_ack"
+            "test_pop_ack",
+            "test_rdy_vld_arb"
         });
 
         //create hierarchy

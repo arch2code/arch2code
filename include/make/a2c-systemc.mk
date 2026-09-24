@@ -43,6 +43,11 @@ CPP_STD ?= $(C_STD_VER)
 
 CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
+# The link recipe uses LD_FLAGS only, never CXX_FLAGS, so -pthread must be
+# repeated here for every link, not just the Verilated one: the runtime's
+# std::thread use resolves through a real libpthread DSO on glibc < 2.34,
+# where omitting it fails the link with "DSO missing from command line".
+LD_FLAGS += -pthread
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $(A2C_ROOT)/interfaces/*) $(wildcard $(A2C_ROOT)/pro/interfaces/*)
