@@ -25,6 +25,9 @@ import a2c.endOfTest;
 
 namespace {
 
+// Instance paths of the socket shells; axiSocketSlave.py spells the same paths.
+constexpr const char *SHELL_INSTANCE = "axiSocketSlave_tb.u_axiSocket";
+
 std::string resolveAxiSocketSlaveScriptPath()
 {
     if (const char *env = getenv("PYSOCKET_PY_SCRIPT")) {
@@ -82,9 +85,14 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("axiSocketSlave_tb.u_axiSocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE, "socket");
 
-        if (!axiSocketSocketCatalog::registerAll()) {
+        if (!axiSocketSocketCatalog::registerInstance(SHELL_INSTANCE)) {
+            return false;
+        }
+        if (axiSocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
@@ -142,7 +150,7 @@ public:
             std::remove(sc_ports_file.c_str());
         }
 
-        if (!axiSocketSocketCatalog::handshakeAll()) {
+        if (!socketFactory::handshakeAll()) {
             socketFactory::shutdownAll();
             return false;
         }
@@ -179,6 +187,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");

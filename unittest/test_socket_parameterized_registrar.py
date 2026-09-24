@@ -5,8 +5,9 @@ the assembler's trampoline registrar, not by the shell itself.
 The shell is a `template<typename Config>` class, and the Config an instance
 binds is the parent's choice, so the parent-owned registrar
 (templates/systemc/blockRegistrar.py) emits one `<block>_socket` registration
-per variant next to the `<block>_model` rows. The shell's own header and
-translation unit carry no registration of their own.
+per variant next to the `<block>_model` rows. The shell is a C++20 module
+unit, `<block>Socket.cppm`, that carries no registration and no explicit
+instantiation: the registrar imports it and instantiates it at each Config.
 
 The fixture is parameterized-top under an unparameterized root (the shape
 test_error_parameterized_top.py's accepted arm uses), with the harness block
@@ -106,11 +107,11 @@ def registration_variants(text, kind):
 def check_registrar(project):
     ok = True
     text = read(project, os.path.join('registrar', 'ptTop_tbRegistrar.cppm'))
-    if '#include "ptTop_tbSocket.h"' not in text:
-        print("  FAIL: registrar does not include the socket shell header")
+    if not re.search(r'^import ptTest_ptTop_tb\.socket;', text, re.M):
+        print("  FAIL: registrar does not import the socket shell module")
         ok = False
-    if not re.search(r'^import ptTest_ptTop_tb\.base;|^import ptTop_tb\.base;', text, re.M):
-        print("  FAIL: registrar does not import the block's Base module")
+    if 'Socket.h"' in text:
+        print("  FAIL: registrar still includes a socket shell header")
         ok = False
     model = registration_variants(text, 'model')
     socket = registration_variants(text, 'socket')
@@ -136,24 +137,27 @@ def check_registrar(project):
 def check_shell(project):
     ok = True
     for relative in (os.path.join('base', 'ptTop_tbSocket.h'),
-                     os.path.join('base', 'ptTop_tbSocket.cpp')):
-        text = read(project, relative)
-        if 'registerBlock' in text:
-            print(f"  FAIL: {relative} still registers the shell itself")
+                     os.path.join('base', 'ptTop_tbSocket.cpp'),
+                     os.path.join('base', 'ptTop_tbSocket.cppm')):
+        if os.path.exists(os.path.join(project, relative)):
+            print(f"  FAIL: {relative} was scaffolded; the shell is model/ptTop_tbSocket.cppm only")
             ok = False
-    # The registrar constructs the shell from another translation unit, so the
-    # shell's own file must instantiate its constructor for every Config.
-    text = read(project, os.path.join('base', 'ptTop_tbSocket.cpp'))
-    instantiated = set(re.findall(
-        r'^template ptTop_tbSocket<(\w+)>::ptTop_tbSocket\(sc_module_name, const char \*, blockBaseMode\);',
-        text, re.M))
-    for variant in VARIANTS:
-        expected = f'ptTest_ptTop_tb{variant[0].upper()}{variant[1:]}Config'
-        if expected not in instantiated:
-            print(f"  FAIL: shell does not instantiate its constructor for {expected}; found {sorted(instantiated)}")
-            ok = False
+    text = read(project, os.path.join('model', 'ptTop_tbSocket.cppm'))
+    if not re.search(r'^export module ptTest_ptTop_tb\.socket;', text, re.M):
+        print("  FAIL: the shell does not declare its socket module")
+        ok = False
+    if 'registerBlock' in text:
+        print("  FAIL: the shell still registers itself")
+        ok = False
+    # Every importer sees the member definitions, so no Config is named here.
+    if re.search(r'^template ptTop_tbSocket<', text, re.M):
+        print("  FAIL: the shell still explicitly instantiates its constructor")
+        ok = False
+    if not re.search(r'^template<typename Config>\nptTop_tbSocket<Config>::ptTop_tbSocket\(', text, re.M):
+        print("  FAIL: the shell does not define its templated constructor in the module unit")
+        ok = False
     if ok:
-        print(f"  PASS: the shell carries no registration and instantiates its constructor for {sorted(instantiated)}")
+        print("  PASS: the shell is a module unit with its definitions, no registration and no instantiation list")
     return ok
 
 

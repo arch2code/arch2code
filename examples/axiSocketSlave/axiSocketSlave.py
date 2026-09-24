@@ -25,6 +25,9 @@ for path in (_CATALOG_DIR, _PYSRC_DIR):
 import pySocket
 from axiSocketSocketCatalog import name_for_port, observe_name_for_port, required_names
 
+# Matches SHELL_INSTANCE in tb/axiSocket/axiSocketConfig.cpp.
+SHELL_INSTANCE = "axiSocketSlave_tb.u_axiSocket"
+
 SOCKET_AXI_BURST_BYTES = 4096
 SOCKET_AXI_USER_BYTES = 8
 BEAT_BYTES = 4
@@ -170,15 +173,15 @@ async def shutdown_all(*transports: pySocket.SocketTransport) -> None:
 async def main(argv: list[str]) -> None:
     ports_file = argv[0] if argv else None
     ports = pySocket.parse_ports(ports_file)
-    for name in required_names():
+    for name in required_names(SHELL_INSTANCE):
         if name not in ports:
             print(f"axiSocketSlave.py: missing {name} in PYSOCKET_PORTS", file=sys.stderr)
             sys.exit(1)
 
-    tr_rd = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiRd0")])
-    tr_wr = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiWr0")])
-    tr_rd_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiRd0")])
-    tr_wr_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiWr0")])
+    tr_rd = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiRd0", SHELL_INSTANCE)])
+    tr_wr = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiWr0", SHELL_INSTANCE)])
+    tr_rd_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiRd0", SHELL_INSTANCE)])
+    tr_wr_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiWr0", SHELL_INSTANCE)])
     tr_sync = pySocket.SocketTransport("127.0.0.1", ports[pySocket.PYSOCKET_SYNC_IFC])
 
     transports = (tr_rd, tr_wr, tr_rd_obs, tr_wr_obs, tr_sync)

@@ -152,6 +152,13 @@ xproj-nested-router:
 	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run-vl
 
+.PHONY : xproj-socket
+# Socket shell of a parameterized IP, built at a Config only the assembler
+# declares. sktAsm's gen also generates sktIp.
+xproj-socket:
+	make -C $(XPROJ_PARAM_DIR)/sktAsm -j gen
+	make -C $(XPROJ_PARAM_DIR)/sktAsm/rundir -j run
+
 .PHONY : xproj-param
 # Parameterized interface across separately named project boundaries. Leaf-first:
 # each stage project generates its own artifacts before the assembler composes them.
@@ -492,7 +499,8 @@ pySocket:
 	make -C $(PYSOCKET_DIR)/rtl lint -j
 
 .PHONY : axiSocketMaster
-# Python AXI master / SystemC memory slave over TCP sockets (model-only).
+# Python AXI master / SystemC memory slave over TCP sockets (model-only). Two
+# shells, each on its own consumer memory.
 axiSocketMaster:
 	make -C $(AXISOCKET_MASTER_DIR)/rundir -j all
 	make -C $(AXISOCKET_MASTER_DIR)/rundir run
@@ -613,7 +621,7 @@ unittest:
 # The example projects build in their own directories, so they run PIPELINE_JOBS
 # at a time; targets that share a project declare the order themselves.
 PIPELINE_JOBS ?= 8
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

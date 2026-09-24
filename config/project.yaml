@@ -167,7 +167,7 @@ fileGeneration:
     # root, keyed to the project's top context. rtl.f is the verilator file list (-F)
     # for the whole build, listing every package on that context's include chain.
     rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     desc: "Per-project verilator file list (rtl.f)"}
-    socket      : { name : "Socket",          ext: {hdr: "h", src: "cpp"}, cond: {hasSkt: true},                 mode: block,   basePath: base,    desc: "Python-socket shell block (drive/observe threads)"}
+    socket      : { name : "Socket",          ext: {cppm: "cppm"},         cond: {hasSkt: true},                 mode: block,   basePath: model,   desc: "Python-socket shell module interface unit (drive/observe threads)"}
     socketCatalog : { name : "SocketCatalog", ext: {hdr: "h", py: "py"},   cond: {hasSkt: true},                 mode: block,   basePath: base,    desc: "Shared C++/Python socket name catalog"}
   # Create-once user-owned build makefiles. This is NOT a fileMap section: the
   # files carry no GENERATED_CODE regions, so make gen never touches them and the

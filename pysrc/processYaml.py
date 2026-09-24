@@ -1475,10 +1475,12 @@ class projectOpen:
         return self._blockRegisterWordDecode(target)
 
     def getSocketCatalogView(self, qualBlock, block_data=None):
-        # Per-block socket catalog: factory key `{block}.{port}`, drive vs
-        # observe role, and listen names (drive names plus `_obs` where the
-        # helper actually pushes observe traffic). pysocket_sync is not a YAML
-        # port; it is appended when any helper row has lockstep: true.
+        # Per-block socket catalog. A connection is named per shell instance:
+        # the instance path followed by the row's nameSuffix (`.{port}`), or by
+        # observeSuffix (`.{port}_obs`) where the helper pushes observe
+        # traffic. listenSuffixes lists the drive suffixes, then the observe
+        # ones. pysocket_sync is not a YAML port; syncNames carries it when any
+        # helper row has lockstep: true.
         # APB drive rows also carry the selected target's register-map
         # word offsets and address mask for PSLVERR on the socket ACK.
         if block_data is None:
@@ -1495,8 +1497,8 @@ class projectOpen:
                     socket_rows = block_data['interface_defs'][interface_type].get('socket')
                     if socket_rows:
                         helper = socket_rows.get(direction)
-                name = f'{block_name}.{port}'
-                observe_name = f'{name}_obs' if helper and helper['observe'] else None
+                name_suffix = f'.{port}'
+                observe_suffix = f'{name_suffix}_obs' if helper and helper['observe'] else None
                 if helper and helper['lockstep']:
                     uses_lockstep = True
                 apb_decode = None
@@ -1505,25 +1507,25 @@ class projectOpen:
                         qualBlock, port, port_data, source_type)
                 ports.append({
                     'port': port,
-                    'name': name,
+                    'nameSuffix': name_suffix,
                     'interfaceType': interface_type,
                     'direction': direction,
                     'role': helper['kind'] if helper else None,
                     'hasPortSocket': helper is not None,
-                    'observeName': observe_name,
+                    'observeSuffix': observe_suffix,
                     'block': block_name,
                     'sourceType': source_type,
                     'apbMappedOffsets': None if apb_decode is None else apb_decode['mappedOffsets'],
                     'apbAddrMask': None if apb_decode is None else apb_decode['addrMask'],
                 })
-        listen_names = [row['name'] for row in ports if row['role'] == 'drive']
-        listen_names.extend(row['observeName'] for row in ports if row['observeName'])
+        listen_suffixes = [row['nameSuffix'] for row in ports if row['role'] == 'drive']
+        listen_suffixes.extend(row['observeSuffix'] for row in ports if row['observeSuffix'])
         sync_names = ['pysocket_sync'] if uses_lockstep else []
         return {
             'block': block_name,
             'qualBlock': qualBlock,
             'ports': ports,
-            'listenNames': listen_names,
+            'listenSuffixes': listen_suffixes,
             'syncNames': sync_names,
             'usesLockstep': uses_lockstep,
         }

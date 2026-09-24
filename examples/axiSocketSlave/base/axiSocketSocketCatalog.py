@@ -3,42 +3,43 @@
 CATALOG = {
     'axiRd0': {
         "port": 'axiRd0',
-        "name": 'axiSocket.axiRd0',
+        "nameSuffix": '.axiRd0',
         "interfaceType": 'axi_read',
         "direction": 'dst',
         "role": 'drive',
-        "observeName": 'axiSocket.axiRd0_obs',
+        "observeSuffix": '.axiRd0_obs',
     },
     'axiWr0': {
         "port": 'axiWr0',
-        "name": 'axiSocket.axiWr0',
+        "nameSuffix": '.axiWr0',
         "interfaceType": 'axi_write',
         "direction": 'dst',
         "role": 'drive',
-        "observeName": 'axiSocket.axiWr0_obs',
+        "observeSuffix": '.axiWr0_obs',
     },
 }
 
-LISTEN_NAMES = (
-    'axiSocket.axiRd0',
-    'axiSocket.axiWr0',
-    'axiSocket.axiRd0_obs',
-    'axiSocket.axiWr0_obs',
+LISTEN_SUFFIXES = (
+    '.axiRd0',
+    '.axiWr0',
+    '.axiRd0_obs',
+    '.axiWr0_obs',
 )
 SYNC_NAMES = (
     'pysocket_sync',
 )
 
-def required_names():
-    return list(LISTEN_NAMES) + list(SYNC_NAMES)
+def required_names(instance):
+    return [instance + suffix for suffix in LISTEN_SUFFIXES] + list(SYNC_NAMES)
 
 def by_port(port):
     return CATALOG[port]
 
-def name_for_port(port):
-    return CATALOG[port]["name"]
+def name_for_port(port, instance):
+    return instance + CATALOG[port]["nameSuffix"]
 
-def observe_name_for_port(port):
-    return CATALOG[port]["observeName"]
+def observe_name_for_port(port, instance):
+    suffix = CATALOG[port]["observeSuffix"]
+    return None if suffix is None else instance + suffix
 
 # GENERATED_CODE_END

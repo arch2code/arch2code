@@ -519,6 +519,12 @@ def cpp_base_module_name(blockName):
     # types module (`<context>`) the base imports.
     return f'{cpp_module_name(blockName)}.base'
 
+def cpp_socket_module_name(blockName):
+    # C++20 module name for a block's Python-socket shell interface unit
+    # (`<block>Socket.cppm`), distinct from the block impl module
+    # (`<block>.block`) the shell stands in for.
+    return f'{cpp_module_name(blockName)}.socket'
+
 def cpp_tb_module_name(blockName):
     # C++20 module name for a block's testbench-top interface unit
     # (`<block>Testbench.cppm`). Spelled `<block>.testbench` so it stays distinct

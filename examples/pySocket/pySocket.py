@@ -22,6 +22,9 @@ if _CATALOG_DIR not in sys.path:
     sys.path.insert(0, _CATALOG_DIR)
 from pySocketSocketCatalog import name_for_port, required_names
 
+# Matches SHELL_INSTANCE in tb/pySocket/pySocketConfig.cpp.
+SHELL_INSTANCE = "pySocket_tb.u_pySocket"
+
 MSG_REQ = 0x01
 MSG_ACK = 0x02
 MSG_PUSH = 0x03
@@ -453,25 +456,25 @@ async def main(argv: list[str]) -> None:
     else:
         ports_file = None
     ports = parse_ports(ports_file)
-    required = required_names()
+    required = required_names(SHELL_INSTANCE)
     for name in required:
         if name not in ports:
             print(f"pySocket.py: missing {name} in PYSOCKET_PORTS", file=sys.stderr)
             sys.exit(1)
 
-    tr_test = SocketTransport("127.0.0.1", ports[name_for_port("test_req_ack")])
-    tr_test2 = SocketTransport("127.0.0.1", ports[name_for_port("test2Python_req_ack")])
-    tr_dut = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_req_ack")])
-    tr_push = SocketTransport("127.0.0.1", ports[name_for_port("test_push_ack")])
-    tr_pop = SocketTransport("127.0.0.1", ports[name_for_port("test_pop_ack")])
-    tr_dut_push = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_push_ack")])
-    tr_dut_pop = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_pop_ack")])
-    tr_notify = SocketTransport("127.0.0.1", ports[name_for_port("test_notify_ack")])
-    tr_dut_notify = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_notify_ack")])
-    tr_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("test_rdy_vld")])
-    tr_dut_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_rdy_vld")])
-    tr_axis = SocketTransport("127.0.0.1", ports[name_for_port("test_axi4_stream")])
-    tr_dut_axis = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_axi4_stream")])
+    tr_test = SocketTransport("127.0.0.1", ports[name_for_port("test_req_ack", SHELL_INSTANCE)])
+    tr_test2 = SocketTransport("127.0.0.1", ports[name_for_port("test2Python_req_ack", SHELL_INSTANCE)])
+    tr_dut = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_req_ack", SHELL_INSTANCE)])
+    tr_push = SocketTransport("127.0.0.1", ports[name_for_port("test_push_ack", SHELL_INSTANCE)])
+    tr_pop = SocketTransport("127.0.0.1", ports[name_for_port("test_pop_ack", SHELL_INSTANCE)])
+    tr_dut_push = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_push_ack", SHELL_INSTANCE)])
+    tr_dut_pop = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_pop_ack", SHELL_INSTANCE)])
+    tr_notify = SocketTransport("127.0.0.1", ports[name_for_port("test_notify_ack", SHELL_INSTANCE)])
+    tr_dut_notify = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_notify_ack", SHELL_INSTANCE)])
+    tr_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("test_rdy_vld", SHELL_INSTANCE)])
+    tr_dut_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_rdy_vld", SHELL_INSTANCE)])
+    tr_axis = SocketTransport("127.0.0.1", ports[name_for_port("test_axi4_stream", SHELL_INSTANCE)])
+    tr_dut_axis = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_axi4_stream", SHELL_INSTANCE)])
     await asyncio.gather(
         tr_test.connect(),
         tr_test2.connect(),

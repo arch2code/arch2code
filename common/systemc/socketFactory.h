@@ -20,6 +20,10 @@ public:
 
     static void acceptAll();
 
+    // Sends the startup MSG_SYNC on every registered connection. False when
+    // any registered name has no accepted connection or the send fails.
+    static bool handshakeAll();
+
     static uint16_t getPort(const std::string &name);
 
     static std::vector<std::pair<std::string, uint16_t>> getAllPorts();

@@ -22,6 +22,9 @@ import a2c.endOfTest;
 #include "pySocketSocketCatalog.h"
 #include "testController.h"
 
+// Instance path of the socket shell; pySocket.py spells the same path.
+constexpr const char *SHELL_INSTANCE = "pySocket_tb.u_pySocket";
+
 // Absolute path to pySocket.py: do not rely on getcwd() — runs may start from FIPS/rundir or .../pySocket/rundir.
 std::string resolvePySocketScriptPath()
 {
@@ -84,11 +87,16 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE, "socket");
 
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
-        if (!pySocketSocketCatalog::registerAll()) {
+        if (!pySocketSocketCatalog::registerInstance(SHELL_INSTANCE)) {
+            return false;
+        }
+        if (pySocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
@@ -156,8 +164,8 @@ public:
 
         socketFactory::acceptAll();
 
-        for (const char *ifc : pySocketSocketCatalog::listen_names) {
-            if (socketFactory::getFd(ifc) < 0) {
+        for (const char *suffix : pySocketSocketCatalog::listen_suffixes) {
+            if (socketFactory::getFd(std::string(SHELL_INSTANCE) + suffix) < 0) {
                 socketFactory::shutdownAll();
                 return false;
             }
@@ -196,7 +204,7 @@ public:
         // m_outstanding_completions inconsistent with threads that already registered.
 
         // Release Python sidecar to send transactions only after enumeration and startup barrier.
-        (void)pySocketSocketCatalog::handshakeAll();
+        (void)socketFactory::handshakeAll();
     }
 
     void final(void) override
@@ -206,6 +214,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         // Final cleanup if needed

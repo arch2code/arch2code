@@ -43,8 +43,6 @@ def render_default(args, prj, data):
         registrarConfig['ownerProject'],
         registrarConfig['childModuleIdentity'])
 
-    # The socket shell is a header-declared class over the block's Base module,
-    # so its `_socket` rows need the header here and the Base import below.
     socketRegistrations = registrarConfig['socketRegistrations']
 
     # #includes are illegal in module purview, so all textual headers live here
@@ -52,8 +50,6 @@ def render_default(args, prj, data):
     out.append('module;')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
-    if socketRegistrations:
-        out.append(f'#include "{prj.getModuleFilename("socket", blockName, "hdr")}"')
     out.append('')
     out.append(f'export module {registrarModule};')
 
@@ -62,7 +58,7 @@ def render_default(args, prj, data):
     # `export import`): the registrar exports nothing, it only runs its static.
     out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
     if socketRegistrations:
-        out.append(f'import {intf_gen_utils.cpp_base_module_name(data["blockModuleName"])};')
+        out.append(f'import {intf_gen_utils.cpp_socket_module_name(data["blockModuleName"])};')
 
     for mod in registrarConfig['configModules']:
         out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')

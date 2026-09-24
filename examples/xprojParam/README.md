@@ -1017,3 +1017,41 @@ make xproj-twoctx           # runs xproj-depth first, then twoCtx generates and 
 `make xproj-twoctx` is part of `pipeline-test`. It shares `dpLeaf` with
 `xproj-depth`, so it is an order-only dependent of that target, which also
 means a standalone `make xproj-twoctx` runs the depth family first.
+
+## The socket-shell family (`sktIp` + `sktAsm`)
+
+A socket shell is the generated block that bridges a block's ports to TCP
+sockets so a Python sidecar can drive them. This family checks that a shell of a
+parameterized IP builds at a Config only the assembler declares.
+
+| Directory | `projectName` | Role |
+| :-- | :-- | :-- |
+| `sktIp/` | `xpSktIp` | reusable IP. `xpSktLeaf` declares `SK_PIXEL_WIDTH` (default 8, max 16), `hasSkt: true`, and one `push_ack` source port `out` |
+| `sktAsm/` | `xpSktAsm` | assembler. Declares the `asm` variant of `xpSktLeaf` at `SK_ASM_WIDTH` = 12, wires `uLeaf.out` to the checker `uChk.in`, and runs `uLeaf` as its socket shell |
+
+The shell is a C++20 module unit, `sktIp/model/xpSktLeafSocket.cppm`, and its
+member definitions live in that unit. `sktAsm`'s registrar imports it and
+instantiates `xpSktLeafSocket<xpSktAsm_xpSktLeafAsmConfig>` in the assembler's
+own build. The `asm` Config exists only in `sktAsm`, so only the importer can
+compile the shell's constructor at that Config. The `sktAsm` link checks that it
+does.
+
+At run time the testbench registers the shell's sockets under the instance path
+`xpSktAsmTop.uLeaf`, then forks `sktAsm/xpSktAsm.py`. The sidecar pushes four
+samples through the shell, `tag = i` and `data = 0x10 + i`, laid out as
+`skSampleSt_v<12>`. `uChk` asserts its own `SK_PIXEL_WIDTH` is 12, checks every
+field of every sample, and ends the test. The testbench also asserts that the
+sidecar exited with status 0.
+
+The instance path appears twice, as `LEAF_INSTANCE` in
+`sktAsm/tb/xpSktAsmTop/xpSktAsmTopConfig.cpp` and in `xpSktAsm.py`. Change
+both together.
+
+### Build and run
+
+```
+make xproj-socket           # sktIp and sktAsm generate; sktAsm runs
+```
+
+`make xproj-socket` is part of `pipeline-test`. It shares no sub-project with any
+other target, so it needs no ordering.

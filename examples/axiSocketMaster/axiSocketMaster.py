@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Sidecar for axiSocketMaster: Python AXI master over TCP sockets.
 
+Two socket shells, each wired to its own consumer memory. Python writes a
+different pattern through each shell and reads it back through the same shell,
+so a crossed or shared connection fails the read-back check.
+
 Environment (set by axiSocketConfig before exec):
   PYSOCKET_PORTS — comma-separated name:port pairs from the generated catalog
   (drive, observe, and pysocket_sync). Observe sockets are connected for accept
@@ -24,6 +28,9 @@ for path in (_CATALOG_DIR, _PYSRC_DIR):
 
 import pySocket
 from axiSocketSocketCatalog import name_for_port, observe_name_for_port, required_names
+
+# Match SHELL_INSTANCE0/1 in tb/axiSocket/axiSocketConfig.cpp.
+SHELL_INSTANCES = ("axiSocketMaster_tb.u_axiSocket0", "axiSocketMaster_tb.u_axiSocket1")
 
 SOCKET_AXI_BURST_BYTES = 4096
 SOCKET_AXI_USER_BYTES = 8
@@ -88,50 +95,28 @@ async def drain_observe(t: pySocket.SocketTransport) -> None:
             break
 
 
-async def run_axi_reads(t: pySocket.SocketTransport) -> None:
-    for loop in range(LOOPCOUNT):
-        req = socket_axi_rd_req_st()
-        req.arid = 0x1
-        req.araddr = loop
-        req.arlen = BURST_LEN
-        req.arsize = 0x2
-        req.arburst = 0x1  # INCR
-        await t.send_msg(pySocket.MSG_AXI_RD_REQ, pySocket.struct_bytes(req))
-
-        msg_type, body = await t.recv_msg()
-        if msg_type != pySocket.MSG_AXI_RD_RESP or len(body) != ctypes.sizeof(socket_axi_rd_resp_st):
-            raise ValueError(f"AXI read resp: type={msg_type} len={len(body)}")
-        resp = socket_axi_rd_resp_st.from_buffer_copy(body)
-        if resp.rid != req.arid or resp.rresp != 0:
-            raise ValueError(f"AXI read resp mismatch rid={resp.rid} rresp={resp.rresp}")
-        for beat_idx in range(BURST_LEN + 1):
-            expected = (beat_idx * 0x01010101) & 0xFFFFFFFF
-            offset = beat_idx * BEAT_BYTES
-            got = int.from_bytes(bytes(resp.data[offset : offset + BEAT_BYTES]), "little")
-            if got != expected:
-                raise ValueError(
-                    f"AXI read data mismatch loop={loop} beat={beat_idx} got={got:#010x} exp={expected:#010x}"
-                )
-        print(
-            f"axiSocketMaster.py: read AR addr={req.araddr:#010x} arlen={req.arlen} OK",
-            flush=True,
-        )
+def beat_value(shell: int, loop: int, beat: int) -> int:
+    """Data word for one beat; the top nibble names the shell it was written through."""
+    return ((shell + 1) << 28) | (loop << 8) | beat
 
 
-async def run_axi_writes(t: pySocket.SocketTransport) -> None:
+def burst_addr(loop: int) -> int:
+    return loop * (BURST_LEN + 1) * BEAT_BYTES
+
+
+async def run_axi_writes(t: pySocket.SocketTransport, shell: int) -> None:
     for loop in range(LOOPCOUNT):
         req = socket_axi_wr_req_st()
         req.awid = 0x1
-        req.awaddr = loop
+        req.awaddr = burst_addr(loop)
         req.awlen = BURST_LEN
         req.awsize = 0x2
         req.awburst = 0x1  # INCR
         for beat_idx in range(BURST_LEN + 1):
-            value = (beat_idx * 0x01010101) & 0xFFFFFFFF
             offset = beat_idx * BEAT_BYTES
             ctypes.memmove(
                 ctypes.byref(req.data, offset),
-                value.to_bytes(BEAT_BYTES, "little"),
+                beat_value(shell, loop, beat_idx).to_bytes(BEAT_BYTES, "little"),
                 BEAT_BYTES,
             )
             req.strb[beat_idx] = 0xF
@@ -144,9 +129,46 @@ async def run_axi_writes(t: pySocket.SocketTransport) -> None:
         if resp.bid != req.awid or resp.bresp != 0:
             raise ValueError(f"AXI write resp mismatch bid={resp.bid} bresp={resp.bresp}")
         print(
-            f"axiSocketMaster.py: write AW addr={req.awaddr:#010x} awlen={req.awlen} OK",
+            f"axiSocketMaster.py: shell {shell} write AW addr={req.awaddr:#010x} awlen={req.awlen} OK",
             flush=True,
         )
+
+
+async def run_axi_reads(t: pySocket.SocketTransport, shell: int) -> None:
+    for loop in range(LOOPCOUNT):
+        req = socket_axi_rd_req_st()
+        req.arid = 0x1
+        req.araddr = burst_addr(loop)
+        req.arlen = BURST_LEN
+        req.arsize = 0x2
+        req.arburst = 0x1  # INCR
+        await t.send_msg(pySocket.MSG_AXI_RD_REQ, pySocket.struct_bytes(req))
+
+        msg_type, body = await t.recv_msg()
+        if msg_type != pySocket.MSG_AXI_RD_RESP or len(body) != ctypes.sizeof(socket_axi_rd_resp_st):
+            raise ValueError(f"AXI read resp: type={msg_type} len={len(body)}")
+        resp = socket_axi_rd_resp_st.from_buffer_copy(body)
+        if resp.rid != req.arid or resp.rresp != 0:
+            raise ValueError(f"AXI read resp mismatch rid={resp.rid} rresp={resp.rresp}")
+        for beat_idx in range(BURST_LEN + 1):
+            expected = beat_value(shell, loop, beat_idx)
+            offset = beat_idx * BEAT_BYTES
+            got = int.from_bytes(bytes(resp.data[offset : offset + BEAT_BYTES]), "little")
+            if got != expected:
+                raise ValueError(
+                    f"AXI read data mismatch shell={shell} loop={loop} beat={beat_idx} "
+                    f"got={got:#010x} exp={expected:#010x}"
+                )
+        print(
+            f"axiSocketMaster.py: shell {shell} read AR addr={req.araddr:#010x} arlen={req.arlen} OK",
+            flush=True,
+        )
+
+
+async def run_shell(tr_rd: pySocket.SocketTransport, tr_wr: pySocket.SocketTransport, shell: int) -> None:
+    """Write this shell's pattern, then read it back through the same shell."""
+    await run_axi_writes(tr_wr, shell)
+    await run_axi_reads(tr_rd, shell)
 
 
 async def shutdown_all(*transports: pySocket.SocketTransport) -> None:
@@ -159,24 +181,28 @@ async def shutdown_all(*transports: pySocket.SocketTransport) -> None:
 async def main(argv: list[str]) -> None:
     ports_file = argv[0] if argv else None
     ports = pySocket.parse_ports(ports_file)
-    for name in required_names():
-        if name not in ports:
-            print(f"axiSocketMaster.py: missing {name} in PYSOCKET_PORTS", file=sys.stderr)
-            sys.exit(1)
+    for instance in SHELL_INSTANCES:
+        for name in required_names(instance):
+            if name not in ports:
+                print(f"axiSocketMaster.py: missing {name} in PYSOCKET_PORTS", file=sys.stderr)
+                sys.exit(1)
 
-    tr_rd = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiRd0")])
-    tr_wr = pySocket.SocketTransport("127.0.0.1", ports[name_for_port("axiWr0")])
-    tr_rd_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiRd0")])
-    tr_wr_obs = pySocket.SocketTransport("127.0.0.1", ports[observe_name_for_port("axiWr0")])
-    tr_sync = pySocket.SocketTransport("127.0.0.1", ports[pySocket.PYSOCKET_SYNC_IFC])
+    def transport(name: str) -> pySocket.SocketTransport:
+        return pySocket.SocketTransport("127.0.0.1", ports[name])
 
-    transports = (tr_rd, tr_wr, tr_rd_obs, tr_wr_obs, tr_sync)
+    tr_rd = [transport(name_for_port("axiRd0", inst)) for inst in SHELL_INSTANCES]
+    tr_wr = [transport(name_for_port("axiWr0", inst)) for inst in SHELL_INSTANCES]
+    tr_obs = [transport(observe_name_for_port(port, inst))
+              for inst in SHELL_INSTANCES for port in ("axiRd0", "axiWr0")]
+    tr_sync = transport(pySocket.PYSOCKET_SYNC_IFC)
+
+    shell_transports = (*tr_rd, *tr_wr, *tr_obs)
+    transports = (*shell_transports, tr_sync)
     await asyncio.gather(*(t.connect() for t in transports))
     await asyncio.gather(*(t.recv_sync() for t in transports))
     print("axiSocketMaster.py: connected (synced)", flush=True)
 
-    rd_obs_task = asyncio.create_task(drain_observe(tr_rd_obs))
-    wr_obs_task = asyncio.create_task(drain_observe(tr_wr_obs))
+    obs_tasks = [asyncio.create_task(drain_observe(t)) for t in tr_obs]
 
     sync_task = None
     if pySocket.lockstep_enabled():
@@ -189,11 +215,10 @@ async def main(argv: list[str]) -> None:
         await tr_sync.send_python_ready()
 
     try:
-        await run_axi_reads(tr_rd)
-        await run_axi_writes(tr_wr)
+        await asyncio.gather(*(run_shell(tr_rd[k], tr_wr[k], k) for k in range(len(SHELL_INSTANCES))))
     finally:
-        await shutdown_all(tr_rd, tr_wr, tr_rd_obs, tr_wr_obs)
-        for task in (rd_obs_task, wr_obs_task):
+        await shutdown_all(*shell_transports)
+        for task in obs_tasks:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task

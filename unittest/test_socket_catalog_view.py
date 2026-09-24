@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""projectOpen.getSocketCatalogView drive/observe/listen-name contract.
+"""projectOpen.getSocketCatalogView drive/observe/listen-suffix contract.
+
+A socket name is the shell's instance path plus a per-port suffix, so the view
+carries suffixes only.
 
 Two fixtures:
   pySocket-like — req_ack both directions plus push_ack; all drive; no `_obs`.
   py_test-like  — APB src, AXI read/write dst, status dst; irq is observe;
-                  APB/AXI/status have `_obs` listen names; status drive name
-                  is not in listenNames.
+                  APB/AXI/status have `_obs` listen suffixes; the status drive
+                  suffix is not in listenSuffixes.
 """
 
 from _addrctl_helpers import (
@@ -177,19 +180,20 @@ def _run_pysocket_like():
             row = by_port[port]
             assert row['role'] == 'drive', f"{port} role expected drive, got {row['role']!r}"
             assert row['hasPortSocket'] is True, f"{port} should emit a port_socket thread"
-            assert row['observeName'] is None, f"{port} must not have an observe name"
-            assert row['name'] == f"stim.{port}", f"{port} name expected stim.{port}, got {row['name']!r}"
+            assert row['observeSuffix'] is None, f"{port} must not have an observe suffix"
+            assert row['nameSuffix'] == f".{port}", \
+                f"{port} suffix expected .{port}, got {row['nameSuffix']!r}"
 
         assert by_port['test_req_ack']['direction'] == 'src'
         assert by_port['dut2Python_req_ack']['direction'] == 'dst'
         assert by_port['test_push_ack']['interfaceType'] == 'push_ack'
 
-        assert all('_obs' not in name for name in view['listenNames']), \
-            f"pySocket-like listenNames must not contain _obs: {view['listenNames']}"
+        assert view['listenSuffixes'] == ['.test_req_ack', '.dut2Python_req_ack', '.test_push_ack'], \
+            f"pySocket-like listenSuffixes expected the three drive suffixes: {view['listenSuffixes']}"
         assert view['syncNames'] == [], \
             f"pySocket-like syncNames expected empty, got {view['syncNames']!r}"
         assert view['usesLockstep'] is False
-        print("PASS: pySocket-like drive names, no _obs, no sync")
+        print("PASS: pySocket-like drive suffixes, no _obs, no sync")
         return True
     finally:
         cleanup(paths)
@@ -209,8 +213,8 @@ def _run_py_test_like():
         assert apb['interfaceType'] == 'apb'
         assert apb['direction'] == 'src'
         assert apb['role'] == 'drive'
-        assert apb['name'] == 'py_test.apbReg'
-        assert apb['observeName'] == 'py_test.apbReg_obs'
+        assert apb['nameSuffix'] == '.apbReg'
+        assert apb['observeSuffix'] == '.apbReg_obs'
         assert apb['apbMappedOffsets'] is None
         assert apb['apbAddrMask'] is None
 
@@ -218,30 +222,30 @@ def _run_py_test_like():
         assert axi_rd['interfaceType'] == 'axi_read'
         assert axi_rd['direction'] == 'dst'
         assert axi_rd['role'] == 'drive'
-        assert axi_rd['observeName'] == 'py_test.dma_axi_read_if_obs'
+        assert axi_rd['observeSuffix'] == '.dma_axi_read_if_obs'
 
         axi_wr = by_port['dma_axi_write_if']
         assert axi_wr['interfaceType'] == 'axi_write'
         assert axi_wr['direction'] == 'dst'
         assert axi_wr['role'] == 'drive'
-        assert axi_wr['observeName'] == 'py_test.dma_axi_write_if_obs'
+        assert axi_wr['observeSuffix'] == '.dma_axi_write_if_obs'
 
         irq = by_port['dma_irq_if']
         assert irq['interfaceType'] == 'status'
         assert irq['direction'] == 'dst'
         assert irq['role'] == 'observe'
         assert irq['hasPortSocket'] is True
-        assert irq['name'] == 'py_test.dma_irq_if'
-        assert irq['observeName'] == 'py_test.dma_irq_if_obs'
+        assert irq['nameSuffix'] == '.dma_irq_if'
+        assert irq['observeSuffix'] == '.dma_irq_if_obs'
 
-        listen = view['listenNames']
-        assert 'py_test.apbReg' in listen
-        assert 'py_test.apbReg_obs' in listen
-        assert 'py_test.dma_axi_read_if_obs' in listen
-        assert 'py_test.dma_axi_write_if_obs' in listen
-        assert 'py_test.dma_irq_if_obs' in listen
-        assert 'py_test.dma_irq_if' not in listen, \
-            "status drive name must not be a listen name"
+        listen = view['listenSuffixes']
+        assert '.apbReg' in listen
+        assert '.apbReg_obs' in listen
+        assert '.dma_axi_read_if_obs' in listen
+        assert '.dma_axi_write_if_obs' in listen
+        assert '.dma_irq_if_obs' in listen
+        assert '.dma_irq_if' not in listen, \
+            "status drive suffix must not be a listen suffix"
         assert view['usesLockstep'] is True
         assert view['syncNames'] == ['pysocket_sync']
         print("PASS: py_test-like irq observe + APB/AXI _obs; status drive not listened")

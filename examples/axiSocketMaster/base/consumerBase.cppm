@@ -19,9 +19,9 @@ export class consumerBase : public virtual blockPortBase
 public:
     virtual ~consumerBase() = default;
     // dst ports
-    // u_axiSocket->axiRdIf: AXI Read channels; Address and Data
+    // u_axiSocket0->axiRdIf: AXI Read channels; Address and Data
     axi_read_in< axiAddrSt, axiDataSt > axiRd0;
-    // u_axiSocket->axiWrIf: AXI Write channels; Address, Data, and Response
+    // u_axiSocket0->axiWrIf: AXI Write channels; Address, Data, and Response
     axi_write_in< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
 
 
@@ -45,9 +45,9 @@ export class consumerInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // u_axiSocket->axiRdIf: AXI Read channels; Address and Data
+    // u_axiSocket0->axiRdIf: AXI Read channels; Address and Data
     axi_read_out< axiAddrSt, axiDataSt > axiRd0;
-    // u_axiSocket->axiWrIf: AXI Write channels; Address, Data, and Response
+    // u_axiSocket0->axiWrIf: AXI Write channels; Address, Data, and Response
     axi_write_out< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
 
 

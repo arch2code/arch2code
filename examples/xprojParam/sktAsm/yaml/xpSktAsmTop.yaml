@@ -1,0 +1,42 @@
+# Assembler for the socket-shell family. The leaf's `asm` variant is declared
+# here, for a block xpSktIp owns, so its Config exists only in this build. The
+# testbench runs uLeaf as its socket shell: Python pushes the samples and
+# uChk checks them.
+include:
+    - ../../sktIp/yaml/xpSktIp.yaml
+
+constants:
+    SK_ASM_WIDTH: { value: 12, desc: "This assembler's pixel width, distinct from the IP's default of 8" }
+
+blocks:
+    xpSktAsmTop:
+        desc: "Assembler top holding the socket-driven leaf and its checker"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpSktChk:
+        desc: "Checker naming the IP's SK_PIXEL_WIDTH by include scope"
+        params: [SK_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: skSampleIf, direction: dst }
+
+instances:
+    xpSktAsmTop: { container: xpSktAsmTop, instanceType: xpSktAsmTop, instGroup: top }
+    uLeaf:       { container: xpSktAsmTop, instanceType: xpSktLeaf,   instGroup: top, variant: asm }
+    uChk:        { container: xpSktAsmTop, instanceType: xpSktChk,    instGroup: top, variant: asm }
+
+connections:
+    - { interface: skSampleIf, src: uLeaf, srcport: out, dst: uChk, dstport: in }
+
+parameters:
+    xpSktLeaf:
+        asm:
+            SK_PIXEL_WIDTH: SK_ASM_WIDTH
+    xpSktChk:
+        asm:
+            SK_PIXEL_WIDTH: SK_ASM_WIDTH

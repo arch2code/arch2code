@@ -25,6 +25,10 @@ import a2c.endOfTest;
 
 namespace {
 
+// Instance paths of the socket shells; axiSocketMaster.py spells the same paths.
+constexpr const char *SHELL_INSTANCE0 = "axiSocketMaster_tb.u_axiSocket0";
+constexpr const char *SHELL_INSTANCE1 = "axiSocketMaster_tb.u_axiSocket1";
+
 std::string resolveAxiSocketMasterScriptPath()
 {
     if (const char *env = getenv("PYSOCKET_PY_SCRIPT")) {
@@ -82,9 +86,18 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("axiSocketMaster_tb.u_axiSocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE0, "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE1, "socket");
 
-        if (!axiSocketSocketCatalog::registerAll()) {
+        if (!axiSocketSocketCatalog::registerInstance(SHELL_INSTANCE0)) {
+            return false;
+        }
+        if (!axiSocketSocketCatalog::registerInstance(SHELL_INSTANCE1)) {
+            return false;
+        }
+        if (axiSocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
@@ -142,7 +155,7 @@ public:
             std::remove(sc_ports_file.c_str());
         }
 
-        if (!axiSocketSocketCatalog::handshakeAll()) {
+        if (!socketFactory::handshakeAll()) {
             socketFactory::shutdownAll();
             return false;
         }
@@ -177,6 +190,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");

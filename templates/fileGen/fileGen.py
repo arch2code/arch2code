@@ -74,10 +74,8 @@ def render(args, prj, data):
             return(tandem_hdr(args, prj, data))
         case 'tandem_src':
             return(tandem_src(args, prj, data))
-        case 'socket_hdr':
-            return(socket_hdr(args, prj, data))
-        case 'socket_src':
-            return(socket_src(args, prj, data))
+        case 'socket_cppm':
+            return(socket_cppm(args, prj, data))
         case 'socketCatalog_hdr':
             return(socketCatalog_hdr(args, prj, data))
         case 'socketCatalog_py':
@@ -491,41 +489,30 @@ def tandem_src(args, prj, data):
     return(t.substitute({'modulename':data["block"],
                          'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
-socket_hdrTemplate = \
-"""#ifndef __MODULENAME___SOCKET_H
-#define __MODULENAME___SOCKET_H
-// __copyright__
-
-// GENERATED_CODE_PARAM --block=__modulename__
-// GENERATED_CODE_BEGIN --template=socket --section=socket
-// GENERATED_CODE_END
-};
-
-#endif //__MODULENAME___SOCKET_H
-"""
-
-def socket_hdr(args, prj, data):
-    t = TemplateCustom(socket_hdrTemplate)
-    return(t.substitute({'MODULENAME':data["block"].upper(),
-                         'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
-
-socket_srcTemplate = \
-"""// GENERATED_CODE_PARAM --block=__modulename__
-// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket
-
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket
-// GENERATED_CODE_END
-}
-// user method definitions here
-// GENERATED_CODE_BEGIN --template=socketConstructor --section=instantiateSocket
-// GENERATED_CODE_END
-"""
-
-def socket_src(args, prj, data):
-    t = TemplateCustom(socket_srcTemplate)
-    return(t.substitute({'modulename':data["block"]}))
+# C++20 module interface unit for a block's Python-socket shell, laid out like
+# blockModule_cppm: global module fragment, preamble, exported class, then the
+# member definitions, all in one unit.
+def socket_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=moduleHeader\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_INCLUDES_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=moduleExport\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_IMPORTS_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=socket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('    // socket shell members\n\n')
+    out.append('};\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('}\n')
+    out.append('// user method definitions here\n')
+    return("".join(out))
 
 socketCatalog_hdrTemplate = \
 """#ifndef __MODULENAME___SOCKETCATALOG_H

@@ -10,6 +10,7 @@ module;
 #include "axi_write_channel.h"
 // GENERATED_CODE_END
 // user #includes here
+#include <map>
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module axiSocketMaster_consumer.block;
 import axiSocketMaster_consumer.base;
@@ -30,6 +31,12 @@ public:
     // GENERATED_CODE_END
     void inAXI0Rd(void);
     void inAXI0Wr(void);
+
+private:
+    // Word-addressed backing store: a write burst stores each beat and a read
+    // burst returns what was stored (zero where nothing was written).
+    static constexpr axiAddrT BEAT_BYTES = axiDataSt::_byteWidth;
+    std::map<axiAddrT, axiDataT> m_memory;
 
 };
 
@@ -70,7 +77,8 @@ void consumer::inAXI0Rd(void)
             axiReadRespSt<axiDataSt> resp{};
             resp.rresp = AXIRESP_OKAY;
             resp.rid = addr.arid;
-            resp.rdata.data = static_cast<axiDataT>(i) * 0x01010101;
+            const auto word = m_memory.find(static_cast<axiAddrT>(addr.araddr.addr) + i * BEAT_BYTES);
+            resp.rdata.data = word == m_memory.end() ? 0 : word->second;
             resp.rlast = (i == num_beats - 1);
             axiRd0->sendDataCycle(resp);
         }
@@ -91,11 +99,11 @@ void consumer::inAXI0Wr(void)
             axiWriteDataSt<axiDataSt, axiStrobeSt> data{};
             axiWr0->receiveDataCycle(data);
             if (data.wid != addr.awid ||
-                data.wdata.data != static_cast<axiDataT>(i) * 0x01010101 ||
                 data.wstrb.strobe != 0xF ||
                 ((i == num_beats - 1) != data.wlast)) {
                 resp.bresp = AXIRESP_SLVERR;
             }
+            m_memory[static_cast<axiAddrT>(addr.awaddr.addr) + i * BEAT_BYTES] = data.wdata.data;
         }
         axiWr0->sendRespCycle(resp);
     }
