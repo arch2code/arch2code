@@ -131,7 +131,7 @@ def render_sc(args, prj, data):
 
     def sec_clock_half_decl(args, prj, data):
         # An `output` block clock is produced by the DUT and observed, not
-        # generated (spec §4.8/§4.11): it needs no half-period to toggle on.
+        # generated: it needs no half-period to toggle on.
         return '\n'.join(f"sc_time {row['clock']}_half_;"
                          for row in data['clocks'] if row['direction'] == 'input')
 
@@ -164,7 +164,7 @@ def render_sc(args, prj, data):
 
     def sec_reset_threads(args, prj, data):
         # An `output` block reset is produced by the DUT and observed, not
-        # driven (spec §4.8/§4.11): it gets no driver thread.
+        # driven: it gets no driver thread.
         return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
                          for row in data['resets'] if row['direction'] == 'input')
 
@@ -176,8 +176,8 @@ def render_sc(args, prj, data):
                          for row in data['resets'] if row['direction'] == 'input')
 
     def sec_edge_track_decl(args, prj, data):
-        # R23 end-of-run report: one edge counter per OUTPUT clock this
-        # wrapper observes (never drives, spec §4.8/§4.11), and one release
+        # End-of-run report: one edge counter per OUTPUT clock this
+        # wrapper observes (never drives), and one release
         # flag per OUTPUT reset. The wrapper observes the block's own output
         # clocks and resets; internal nets elsewhere in the design are not
         # visible here.
@@ -205,9 +205,10 @@ def render_sc(args, prj, data):
         return '\n'.join(s)
 
     def sec_end_of_simulation(args, prj, data):
-        # R23 (spec §4.8): reported here rather than left to a silent,
-        # activity-free run. The wrapper observes the block's own output
-        # clocks and resets; internal nets are not visible here.
+        # An output clock with no edge or an output reset never released is
+        # reported here rather than left to a silent, activity-free run. The
+        # wrapper observes the block's own output clocks and resets; internal
+        # nets are not visible here.
         lines = [f'if (!{row["clock"]}_edges_) {{ std::cerr << "warning: '
                 f'clock \'{row["clock"]}\' produced no edge by end of run" '
                 f'<< std::endl; }}'
@@ -276,7 +277,7 @@ def render_sc(args, prj, data):
         variants = data.get('variants', {})
         useOwnVariantTemplateArg = useOwnVariantConfig and bool(variants)
         baseCfg = f'<{wrapperCfgTemplateArg}>' if useOwnVariantTemplateArg else cfg
-        # R23's end-of-run report has nothing to say for a block with no
+        # The end-of-run report has nothing to say for a block with no
         # OUTPUT clock or reset (there is nothing this wrapper observes
         # rather than drives), so the override is emitted only then -
         # otherwise every hasVl wrapper gets an empty override body.
@@ -465,8 +466,8 @@ public:
 
 {%- if has_edge_track %}
 
-    // R23: reported at end of run rather than left to a silent,
-    // activity-free run (spec §4.8).
+    // An output clock with no edge or an output reset never released is
+    // reported at end of run rather than left to a silent, activity-free run.
     void end_of_simulation() override {
         {{ sec_end_of_simulation | indent(8) }}
     }

@@ -51,7 +51,6 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-import pysrc.processYaml as processYaml_module
 from pysrc.processYaml import projectCreate, projectOpen
 
 g.disableColors = True
@@ -335,19 +334,19 @@ def _run():
 
             def neither_errors():
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe(
                             creator, arch_context, 'probeNeither', 'target',
                             'noSuchName_t')
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
                 # The message must name the file, section, field, and the
                 # value, and say it is neither a type nor a structure.
-                return g.errorCount > before \
+                return raised and g.errorCount > before \
                     and arch_context in output \
                     and 'typeStructTest' in output \
                     and 'target' in output \
@@ -356,19 +355,19 @@ def _run():
 
             def both_errors():
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe(
                             creator, arch_context, 'probeBoth', 'target',
                             'sharedName_t')
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
                 # The message must name the file, section, field, and the
                 # value, and say the name is ambiguous.
-                return g.errorCount > before \
+                return raised and g.errorCount > before \
                     and arch_context in output \
                     and 'typeStructTest' in output \
                     and 'target' in output \
@@ -409,17 +408,17 @@ def _run():
                 # row, even though probeStruct_t is a real structure visible
                 # from this scope; it must name the mismatch, not "neither".
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe(
                             creator, arch_context, 'probeOnlyTypeBad',
                             'onlyType', 'probeStruct_t')
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
+                return raised and g.errorCount > before \
                     and arch_context in output \
                     and 'typeStructTest' in output \
                     and 'onlyType' in output \
@@ -442,17 +441,17 @@ def _run():
                 # row, even though probeType_t is a real type visible from
                 # this scope; it must name the mismatch, not "neither".
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe(
                             creator, arch_context, 'probeOnlyStructBad',
                             'onlyStruct', 'probeType_t')
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
+                return raised and g.errorCount > before \
                     and arch_context in output \
                     and 'typeStructTest' in output \
                     and 'onlyStruct' in output \
@@ -468,15 +467,15 @@ def _run():
                 # from a sibling's value, so there is no need to route
                 # through processSimple (or a synthetic schema) to reach it.
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
-                        result = creator.resolveTypeStruct(
+                        creator.resolveTypeStruct(
                             name, arch_context, kinds, 'where')
-                finally:
-                    processYaml_module.continueOnError = False
-                return result, buf.getvalue(), g.errorCount > before
+                except SystemExit:
+                    raised = True
+                return buf.getvalue(), raised and g.errorCount > before
 
             def dynamic_type_accepts_type():
                 # dynamicTarget: typeStruct(field, modeWord); modeWord's own
@@ -513,25 +512,25 @@ def _run():
                     and retStruct['dynamicTargetKind'] == 'structures'
 
             def dynamic_type_rejects_structure():
-                result, output, errored = _direct_resolve(
+                output, errored = _direct_resolve(
                     'probeStruct_t', ('types',))
-                return result is None and errored \
+                return errored \
                     and 'accepts only a type' in output \
                     and 'is a structure' in output \
                     and defs_context in output
 
             def dynamic_struct_rejects_type():
-                result, output, errored = _direct_resolve(
+                output, errored = _direct_resolve(
                     'probeType_t', ('structures',))
-                return result is None and errored \
+                return errored \
                     and 'accepts only a structure' in output \
                     and 'is a type' in output \
                     and defs_context in output
 
             def dynamic_typeStruct_ambiguous():
-                result, output, errored = _direct_resolve(
+                output, errored = _direct_resolve(
                     'sharedName_t', ('types', 'structures'))
-                return result is None and errored and 'ambiguous' in output
+                return errored and 'ambiguous' in output
 
             def dynamic_sibling_non_scalar_errors():
                 # The sibling's own value (modeWord) is a YAML list, not a
@@ -539,66 +538,56 @@ def _run():
                 # offending value, not raise TypeError out of
                 # typeStructKindsForMode's dict.get(word).
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
-                        ret = _direct_probe_row(
+                        _direct_probe_row(
                             creator, arch_context, 'probeSiblingList',
                             {'modeWord': ['type'], 'dynamicTarget': 'probeType_t'},
                             {'modeWord': 'required', 'dynamicTarget': 'typeStruct'})
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
-                    and ret['dynamicTargetKey'] == 'InvalidValueInYaml' \
-                    and ret['dynamicTargetKind'] == 'InvalidValueInYaml' \
+                return raised and g.errorCount > before \
                     and 'modeWord' in output \
                     and 'must be a scalar' in output
 
             def dynamic_sibling_absent_errors():
-                # The sibling is declared earlier but its field type stores
-                # nothing for an omitted value (here: const, missing from the
-                # row under continueOnError), so it is absent from the row.
-                # This must log a clean error, not raise KeyError.
+                # The sibling is an optional field authored `~`, so it
+                # stores None. This must log a clean error naming it.
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
-                        ret = _direct_probe_row(
+                        _direct_probe_row(
                             creator, arch_context, 'probeSiblingAbsent',
-                            {'dynamicTarget': 'probeType_t'},
-                            {'modeWord': 'const', 'dynamicTarget': 'typeStruct'})
-                finally:
-                    processYaml_module.continueOnError = False
+                            {'modeWord': None, 'dynamicTarget': 'probeType_t'},
+                            {'modeWord': 'optional', 'dynamicTarget': 'typeStruct'})
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
-                    and 'modeWord' not in ret \
-                    and ret['dynamicTargetKey'] == 'InvalidValueInYaml' \
-                    and ret['dynamicTargetKind'] == 'InvalidValueInYaml' \
-                    and 'modeWord' in output \
-                    and 'has no value' in output
+                return raised and g.errorCount > before \
+                    and "mode field 'modeWord' has no value" in output
 
             def dynamic_field_non_scalar_errors():
                 # The typeStruct field's own value (dynamicTarget) is a YAML
                 # list, not a name: this must log a clean error, not raise
                 # TypeError out of resolveTypeStruct's lookupInScope.
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
-                        ret = _direct_probe_row(
+                        _direct_probe_row(
                             creator, arch_context, 'probeFieldList',
                             {'modeWord': 'type', 'dynamicTarget': ['probeType_t']},
                             {'modeWord': 'required', 'dynamicTarget': 'typeStruct'})
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
-                    and ret['dynamicTargetKey'] == 'InvalidValueInYaml' \
-                    and ret['dynamicTargetKind'] == 'InvalidValueInYaml' \
+                return raised and g.errorCount > before \
                     and 'dynamicTarget' in output \
                     and 'must be a scalar' in output
 
@@ -608,8 +597,8 @@ def _run():
                 # "not 'type', 'struct', or 'typeStruct'" error any other
                 # unrecognised mode word gets, not silent acceptance.
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe_row(
@@ -617,33 +606,31 @@ def _run():
                             {'modeWord': 'InvalidValueInYaml',
                              'dynamicTarget': 'probeType_t'},
                             {'modeWord': 'required', 'dynamicTarget': 'typeStruct'})
-                finally:
-                    processYaml_module.continueOnError = False
+                except SystemExit:
+                    raised = True
                 output = buf.getvalue()
-                return g.errorCount > before \
+                return raised and g.errorCount > before \
                     and 'InvalidValueInYaml' in output \
                     and "not 'type', 'struct', or 'typeStruct'" in output
 
-            def missing_field_sets_row_shape():
-                # The typeStruct field itself absent from the row: ret[field]
-                # must still be populated (None), the same way the `required`
-                # branch handles a missing field, so continueOnError callers
-                # do not crash with a KeyError reading it back downstream.
+            def missing_field_errors():
+                # The typeStruct field itself absent from the row must log a
+                # clean error naming the field, not raise KeyError.
                 before = g.errorCount
-                processYaml_module.continueOnError = True
                 buf = io.StringIO()
+                raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
-                        ret = _direct_probe_row(
+                        _direct_probe_row(
                             creator, arch_context, 'probeMissingField',
                             {'modeWord': 'type'},
                             {'modeWord': 'required', 'dynamicTarget': 'typeStruct'})
-                finally:
-                    processYaml_module.continueOnError = False
-                return g.errorCount > before \
-                    and ret['dynamicTarget'] is None \
-                    and ret['dynamicTargetKey'] == 'InvalidValueInYaml' \
-                    and ret['dynamicTargetKind'] == 'InvalidValueInYaml'
+                except SystemExit:
+                    raised = True
+                output = buf.getvalue()
+                return raised and g.errorCount > before \
+                    and 'dynamicTarget' in output \
+                    and 'is missing' in output
 
             results.append(_run_case(
                 "type hit (row scope)", type_hit_row_scope))
@@ -695,8 +682,8 @@ def _run():
                 "typeStruct(field, modeWord) literal sentinel sibling value errors",
                 sentinel_sibling_value_errors))
             results.append(_run_case(
-                "typeStruct(field, modeWord) missing field sets row shape",
-                missing_field_sets_row_shape))
+                "typeStruct(field, modeWord) missing field errors",
+                missing_field_errors))
 
             # projectOpen.datatypeRef: close the write connection this test
             # opened, then reopen the persisted DB read-only through
@@ -876,7 +863,6 @@ def _run():
         print(f"FAIL: setup raised {exc}")
         return False
     finally:
-        processYaml_module.continueOnError = False
         if g.db is not None:
             try:
                 g.db.close()

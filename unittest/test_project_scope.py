@@ -997,6 +997,50 @@ def run_implicit_default_build():
           reset_injected_and_resolved)))
 
 
+def run_single_entry_default_build():
+    """A section of exactly one entry that states no default: is the default.
+
+    Covered per section, and on a CHILD project, since the rule runs per project
+    in the build. Asserted on the stored rows, so every consumer is shown to see
+    default set rather than merely a build that succeeds."""
+    cases = (
+        ("the only clock is the default", {
+            'root_clocks': "clocks:\n  clkA: { desc: \"the only clock\" }\n",
+            'consumer_clock': 'clkA'}, 'clocks', 'clockKey', 'clkA/assembler'),
+        ("the only reset is the default", {
+            'root_clocks': ("clocks:\n"
+                            "  clk: { desc: \"only clock\", default: true }\n"
+                            "\n"
+                            "resets:\n"
+                            "  rst_n: { desc: \"the only reset\", clock: clk }\n")},
+         'resets', 'resetKey', 'rst_n/assembler'),
+        ("a child project's only clock is the default", {
+            'root_clocks': ROOT_CLOCKS,
+            'child_clocks': "clocks:\n  clkC: { desc: \"the child's only clock\" }\n",
+            'child_consumer_clock': 'clkC'}, 'clocks', 'clockKey', 'clkC/childIp'),
+    )
+    results = []
+    for label, kwargs, table, keyField, key in cases:
+        def check(kwargs=kwargs, table=table, keyField=keyField, key=key):
+            fixture, project_path, db_path = _make_fixture(**kwargs)
+            try:
+                code, output = _build(project_path, db_path)
+                if code != 0:
+                    raise AssertionError(
+                        f"build failed; a single entry is the implied "
+                        f"default.\n{output}")
+                rows = _rows_by_key(db_path, table, keyField)
+                if not rows[key]['default']:
+                    raise AssertionError(
+                        f"{key} is stored default={rows[key]['default']}, "
+                        f"expected true: the only entry of its section")
+                return True
+            finally:
+                shutil.rmtree(fixture)
+        results.append(_run_case(label, check))
+    return all(results)
+
+
 def run_own_clock_injected_reset_build():
     """A project declaring its own clocks: and no resets:.
 
@@ -1150,6 +1194,26 @@ def _expect_diagnostic(label, needles, **fixtureKwargs):
     return _run_case(label, check)
 
 
+def _expect_child_diagnostic(label, phrase, **fixtureKwargs):
+    """Every line carrying `phrase` names the child's project file and project
+    name, never the root's."""
+    def check():
+        code, output = _build_expecting_failure(**fixtureKwargs)
+        if code == 0 or 'Traceback' in output:
+            raise AssertionError(f"the build did not report a diagnostic.\n{output}")
+        lines = [line for line in output.splitlines() if phrase in line]
+        if not lines:
+            raise AssertionError(f"no diagnostic says '{phrase}'.\n{output}")
+        for line in lines:
+            if (os.path.join('ip', 'ipProject.yaml') not in line
+                    or "'childIp'" not in line or "'assembler'" in line):
+                raise AssertionError(
+                    f"the diagnostic does not name the child's project file "
+                    f"and name.\n{output}")
+        return True
+    return _run_case(label, check)
+
+
 def _project_file_diagnostic_case(label, root_clocks, needles, expect_failure=True):
     """Every message about a row authored in the project file names that FILE.
 
@@ -1217,42 +1281,84 @@ def run_diagnostic_cases():
         ["top.yaml", "collides"],
         root_clocks=ROOT_CLOCKS, root_project_name='top.yaml'))
 
-    # A declared section with no default entry, caught once per project per
-    # section. Both sections are covered because they are independent, and the
-    # message must name the project file rather than the bucket key the rows were
-    # parsed under.
-    no_default_clock = (
+    # Two or more entries with none marked default: a default is implied only
+    # for a single entry, and the message must name the project file rather than
+    # the bucket key the rows were parsed under.
+    two_unmarked_clocks = (
         "clocks:\n"
-        "  clkA: { desc: \"the only clock, and not the default\" }\n")
+        "  clkA: { desc: \"first clock, not the default\" }\n"
+        "  clkB: { desc: \"second clock, not the default\" }\n")
     results.append(_expect_diagnostic(
-        "a clocks: section declaring no default is rejected",
+        "a clocks: section of two entries declaring no default is rejected",
         ["project.yaml", "clocks", "no entry declares default: true",
          "exactly one default"],
-        root_clocks=no_default_clock, consumer_clock='clkA'))
+        root_clocks=two_unmarked_clocks, consumer_clock='clkA'))
 
-    no_default_reset = (
+    # The default reset must belong to the default clock.
+    default_reset_on_other_clock = (
+        "clocks:\n"
+        "  clkA: { desc: \"the default clock\", default: true }\n"
+        "  clkB: { desc: \"a second clock\" }\n"
+        "\n"
+        "resets:\n"
+        "  rstB_n: { desc: \"default reset, on clkB\", default: true, clock: clkB }\n"
+        "  rstA_n: { desc: \"reset on clkA\", clock: clkA }\n")
+    results.append(_expect_diagnostic(
+        "a default reset on a clock other than the default clock is rejected",
+        ["project.yaml", "'assembler'", "'rstB_n'", "'clkB'", "'clkA'",
+         "default clock", "mark one of rstA_n default: true instead"],
+        root_clocks=default_reset_on_other_clock, consumer_clock='clkA'))
+
+    # With no reset on the default clock there is none to mark.
+    no_reset_on_default_clock = (
+        "clocks:\n"
+        "  clkA: { desc: \"the default clock\", default: true }\n"
+        "  clkB: { desc: \"a second clock\" }\n"
+        "\n"
+        "resets:\n"
+        "  rstB_n: { desc: \"the only reset, on clkB\", clock: clkB }\n")
+    results.append(_expect_diagnostic(
+        "a default reset on another clock, with no reset on the default clock, is rejected",
+        ["'rstB_n'", "declare a reset on 'clkA' and mark it default: true instead"],
+        root_clocks=no_reset_on_default_clock, consumer_clock='clkA'))
+
+    two_unmarked_resets = (
         "clocks:\n"
         "  clk: { desc: \"only clock\", default: true }\n"
         "\n"
         "resets:\n"
-        "  rst_n: { desc: \"the only reset, and not the default\", clock: clk }\n")
+        "  rstA_n: { desc: \"first reset, not the default\", clock: clk }\n"
+        "  rstB_n: { desc: \"second reset, not the default\", clock: clk }\n")
     results.append(_expect_diagnostic(
-        "a resets: section declaring no default is rejected",
+        "a resets: section of two entries declaring no default is rejected",
         ["project.yaml", "resets", "no entry declares default: true",
          "exactly one default"],
-        root_clocks=no_default_reset))
+        root_clocks=two_unmarked_resets))
 
-    # The same rule on a CHILD project's section, naming the child's own project
-    # file: the check runs per project in the build, not only for the root, and a
-    # message naming the root's project file would point at the wrong file.
-    no_default_child_clock = (
+    # The same rules on a CHILD project's sections: each runs per project, and
+    # the message must name the child's own project file and name.
+    two_unmarked_child_clocks = (
         "clocks:\n"
-        "  clkC: { desc: \"the child's only clock, and not the default\" }\n")
-    results.append(_expect_diagnostic(
-        "a child project's section declaring no default is rejected",
-        [os.path.join('ip', 'ipProject.yaml'), "'childIp'",
-         "no entry declares default: true"],
-        root_clocks=ROOT_CLOCKS, child_clocks=no_default_child_clock,
+        "  clkC: { desc: \"first child clock, not the default\" }\n"
+        "  clkD: { desc: \"second child clock, not the default\" }\n")
+    results.append(_expect_child_diagnostic(
+        "a child project's section of two entries declaring no default is rejected",
+        "no entry declares default: true",
+        root_clocks=ROOT_CLOCKS, child_clocks=two_unmarked_child_clocks,
+        child_consumer_clock='clkC'))
+
+    child_default_reset_on_other_clock = (
+        "clocks:\n"
+        "  clkC: { desc: \"the child's default clock\", default: true }\n"
+        "  clkD: { desc: \"a second child clock\" }\n"
+        "\n"
+        "resets:\n"
+        "  rstD_n: { desc: \"child default reset, on clkD\", default: true, clock: clkD }\n"
+        "  rstC_n: { desc: \"child reset on clkC\", clock: clkC }\n")
+    results.append(_expect_child_diagnostic(
+        "a child project's default reset on another clock is rejected",
+        "The default reset must belong to the default clock",
+        root_clocks=ROOT_CLOCKS, child_clocks=child_default_reset_on_other_clock,
         child_consumer_clock='clkC'))
 
     # The other failure mode of the one rule: more than one default.
@@ -1376,6 +1482,7 @@ def _run():
     ok = run_empty_body_accepted_by_guard() and ok
     ok = run_implicit_default_build() and ok
     ok = run_own_clock_injected_reset_build() and ok
+    ok = run_single_entry_default_build() and ok
     ok = run_multi_entry_one_default_build() and ok
     ok = run_count_field_types_build() and ok
     ok = run_schema_cases() and ok

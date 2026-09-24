@@ -28,11 +28,10 @@ def render(args, prj, data):
     # <block>_regs is a register-bus endpoint: it declares neither clocks: nor
     # resets: of its own, so its declared set is always the generic implicit
     # clk/rst_n and carries no domain meaning. busClock/busReset
-    # (getBDBusClockReset, spec §4.3 "Registers"/"Routers") is the container
-    # net its one instance's binds actually resolved to - a router's own
-    # instance map, or a leaf's registerPorts: clock/R25 selection for a
-    # handler - and is what the
-    # module's own port and every flop use.
+    # (getBDBusClockReset) is the container net its one instance's binds
+    # resolved to - a router's own instance map, or for a handler the leaf's
+    # registerPorts: clock or the clock its instance map binds to the bus -
+    # and is what the module's own port and every flop use.
     regs_clk = data['busClock']
     regs_rst = data['busReset']
 
@@ -100,7 +99,7 @@ def render(args, prj, data):
 
     t = Template(regs_module_sv_j2_template)
 
-    # A bridged memory (spec R20) crosses from the bus domain to its own
+    # A bridged memory crosses from the bus domain to its own
     # memory domain through memory_reg_bridge; a same-domain handler has none
     # and every new pslverr/gate emission below stays empty.
     bridged_memories = [m for m in data['memories'].values() if m['bridged']]
@@ -352,7 +351,7 @@ def section_01_mem_param(mem_intf, mem_data, bridged):
     """Parameterizable memory/memory-register: variant-width line storage,
     per-word data flops elaborated away per variant, worst-case address
     footprint. mem_intf is the channel name ('memory' or 'register'). A
-    bridged memory (spec R20) gets the bridge in place of the four access
+    bridged memory gets the bridge in place of the four access
     flops and the four `assign <mem>.*` lines; a memory register is never
     bridged."""
     struct = mem_data['structure']
@@ -759,7 +758,7 @@ def section_03b_regs(reg_data):
 def section_03b_mem_param(mem_intf, mem_data, bridged):
     """Parameterizable memory read decode: select the precomputed 32-bit
     _rword views (absent words are '0). Range + inner per-word case. A
-    bridged memory (spec R20) has no rd_capture pipeline: each present word
+    bridged memory has no rd_capture pipeline: each present word
     sets rd_sel and completes once the bridge's own done pulses."""
     addr_l, _ = mem_data['address_range']
     rowwidth = mem_data['rowwidth']
@@ -1047,7 +1046,7 @@ assign {{mem_intf}}.addr        = {{mem_intf}}_addr;
 assign {{mem_intf}}.write_data  = {{mem_intf}}_data;
 """
 
-# Section 01 - Fixed-width memory bridged (spec R20) to its own domain: the
+# Section 01 - Fixed-width memory bridged to its own domain: the
 # access flops and memory_if binds of section_01_mem_j2_template are replaced
 # by the req/acked handshake and the memory_reg_bridge instance.
 section_01_mem_bridge_j2_template = """\

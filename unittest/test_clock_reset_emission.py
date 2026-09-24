@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Coverage for clock and reset PORT EMISSION (plan-multi-clock-reset.md §5).
+"""Coverage for clock and reset PORT EMISSION.
 
-No shipped example declares a second clock domain on a block or a connection, so
-the multi-domain spellings this suite asserts are otherwise unexercised: every
-example's block module emits the single default `input clk, rst_n`, which is
-byte-identical to what the generator emitted before the derived sets reached the
-emitters.
+The multi-domain spellings are pinned here on small fixtures; a single-domain
+block module emits the default `input clk, rst_n`.
 
 One fixture is built and generated, then the emitted text is read back:
   - a leaf living wholly in a non-default domain, whose port list names neither
@@ -90,10 +87,9 @@ MEMORY_IF_DIR = os.path.join(base_dir, 'interfaces', 'memory')
 # authoring nothing still declares SOMETHING to build against and so the
 # standalone/period fields below have a project to read defaults from. Every
 # block below declares its own clocks:/resets:
-# directly (spec R5): nothing is inferred from connections or containment, and
-# a block's declared order - clocks then resets - is what a port list reads
-# (R18), so the blocks are authored default-first to keep the emitted order
-# this suite has always pinned.
+# directly: nothing is inferred from connections or containment, and a block's
+# declared order - clocks then resets - is what a port list reads, so the
+# blocks are authored default-first to keep the emitted order this suite pins.
 PROJECT = """yamlFormat: 2
 projectName: emitTest
 topInstance: top_tb
@@ -225,8 +221,8 @@ blocks:
     # to bind to by name match - there is no instance clocks:/resets: map, so
     # a name other than clk/rst_n binds only by being declared under that
     # same name at every level up to the root). Authored default-first so
-    # the emitted port list keeps the order this suite has always pinned;
-    # spec R18 emits declaration order, not a default-first reordering.
+    # the emitted port list keeps the order this suite pins; emission follows
+    # declaration order, not a default-first reordering.
     top_tb:
         desc: "testbench container"
         hasVl: false
@@ -331,7 +327,7 @@ CONTAINER = 'rtl/dut.sv'
 # vendored IP does in tree: the assembler's --newmodule does not scaffold another
 # project's files. The standalone build is also what makes the assertion mean
 # something - the leaf's port list has to be the same emitted standalone as the
-# spelling the assembler binds (spec R8: a block's boundary is fixed by its own
+# spelling the assembler binds (a block's boundary is fixed by its own
 # declaration alone).
 IP_LEAF = 'ip/rtl/ipLeaf.sv'
 
@@ -529,7 +525,7 @@ CLK_MEMBER_PERIPH_LEAF = 'rtl/periphLeaf.sv'
 # shape in which the constructor's bfm and reset initialiser sections are
 # both empty and only the clock section has anything to say. topBlock itself
 # declares no clocks:/resets:, so it derives the implicit clk/rst_n the
-# testbench binds to (V10).
+# testbench binds to.
 NO_RESET_PROJECT = """yamlFormat: 2
 projectName: noResetCtorInit
 topInstance: topInst
@@ -658,7 +654,7 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
     the one way ordinary YAML can widen a router past its bus domain.
     bridge_memories, only meaningful with feed_clock set, leaves the memories'
     own clock: unstated so both fall to leafA's default clk instead of the bus
-    clock, which is what puts them behind the R20 bridge.
+    clock, which is what puts them behind the register bridge.
 
     The build result is RETURNED rather than asserted, so a case can require the
     build to fail.
@@ -669,7 +665,7 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
     os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
     os.makedirs(os.path.join(fixture, 'yaml'))
     # The short list form admits only one clock (a multi-clock block has
-    # nowhere to mark the default, spec §4.2); more than one entry needs the
+    # nowhere to mark the default); more than one entry needs the
     # mapping form, with the first marked default so the block builds at all.
     if router_clocks and len(router_clocks) > 1:
         routerLines = '        clocks:\n' + ''.join(
@@ -683,14 +679,14 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
     # non-rst_n-named reset binds by name match with no instance map. In the
     # non-default-domain case 'top' additionally declares the bus clock and
     # its own reset (a container clock exists only where some block declares
-    # it, spec R5): the router's instance map binds onto it directly, and
-    # leafA's registerPorts: entry names it as the register port's own clock
-    # (rule 1), with leafA declaring that same clock itself and an instance
+    # it): the router's instance map binds onto it directly, and leafA's
+    # registerPorts: entry names it as the register port's own clock, with
+    # leafA declaring that same clock itself and an instance
     # map placing it on the same container net as the router.
     # 'top' also declares clkSlow whenever the router's OWN extra clocks:
     # name it (router_clocks), independently of feed_clock: a router
     # declaring clkSlow needs a container clock of that name to bind to by
-    # name match, or it is a plain V3 unbound-clock error rather than the
+    # name match, or it is a plain unbound-clock error rather than the
     # single-domain-router rejection these cases are actually testing.
     needsClkSlow = bool(feed_clock) or 'clkSlow' in (router_clocks or [])
     if needsClkSlow:
@@ -717,10 +713,10 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
         leafMap = ''
         # The memories are regAccess (firmware-only, reached through the
         # generated handler); a memory's own clock: is otherwise the owning
-        # block's default (spec §4.3). Declaring it on the bus clock directly
+        # block's default. Declaring it on the bus clock directly
         # keeps the handler and its memories in one domain; leaving clock:
         # unstated (bridge_memories) puts them on leafA's own default clk
-        # instead, behind the R20 bridge.
+        # instead, behind the register bridge.
         memClock = '' if bridge_memories else f", clock: {feed_clock}"
     else:
         leafClockLines = ('        clocks:\n'
@@ -740,7 +736,7 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
         # default clock, 'clk'; when the router's own bus clock is clkSlow
         # instead, leafA's instance needs the same explicit map, or its
         # register port genuinely sits in a different domain than the
-        # router's bus (V8) - a real mismatch these two cases are not
+        # router's bus - a real mismatch these two cases are not
         # testing.
         if router_clocks and router_clocks[0] == 'clkSlow':
             routerMap = ", resets: { rst_n: rstBus_n }"
@@ -759,7 +755,7 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
         f.write(APB_PREAMBLE)
     with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
         # The feed connection itself states no clock:: 'cpu' stays on the
-        # default clock (rule 3, each end takes its own default
+        # default clock (each end takes its own default
         # independently), and the router's instance map alone is what puts
         # the bus in a non-default domain - a connection clock: states the
         # SAME container clock for both ends, which 'cpu' and the bus would
@@ -768,7 +764,7 @@ def _build_regs(feed_clock, router_clocks=None, bridge_memories=False):
                                    memClock=memClock, leafMap=leafMap))
     with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
         # 'top' only declares clkSlow (and thus needs a testbench binding
-        # for it, V10) when needsClkSlow says so; the testbench declares it
+        # for it) when needsClkSlow says so; the testbench declares it
         # to match, never unconditionally.
         clkSlowDecl = ('\n    clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }'
                       if needsClkSlow else '')
@@ -964,8 +960,8 @@ def _instance_binds(text, where):
 def _assert_instance_tail(binds, where, expected):
     """Each named instance's LAST binds are exactly the expected clock/reset pairs.
 
-    Asserted as a tail rather than by searching, so an emitter that also left the
-    old literal in place, or that put the clock/reset binds somewhere other than
+    Asserted as a tail rather than by searching, so an emitter that also emitted
+    a fixed `.clk`/`.rst_n` literal, or that put the clock/reset binds somewhere other than
     the end of the list, fails."""
     for instance, tail in expected.items():
         found = binds[instance][-len(tail):]
@@ -1013,9 +1009,8 @@ def check_multi_domain_port_list(emitted):
 def check_two_clock_port_list(emitted):
     """A block reached from two domains carries both clocks and BOTH resets.
 
-    cons authors no resets:, so its set is derived from its clock set - one reset
-    per domain it is reached from. It previously carried the project default reset
-    alone, which left its clkSlow logic with a reset released on a clk edge."""
+    cons declares clk and clkSlow with one reset on each; the port list carries
+    all four, clocks first."""
     line = _block_module_input_line(emitted['rtl/cons.sv'], 'cons module')
     if line != 'input clk, clkSlow, rst_n, rstSlow_n':
         raise AssertionError(f"cons port list is {line!r}, expected "
@@ -1152,8 +1147,8 @@ def check_ctor_init_no_stray_comma(emitted):
 # ------------------------------------------------------ container binds --
 
 def check_container_port_list(emitted):
-    """The container declares its own complete set (spec R5): nothing is
-    inferred from its children any more, so 'dut' carries clkSlow, clkPico and
+    """The container declares its own complete set: nothing is inferred from
+    its children, so 'dut' carries clkSlow, clkPico and
     ipClk only because it declares them itself - the same as any leaf.
 
     This is what makes every bind below legal: a bound signal has to be a port
@@ -1170,9 +1165,9 @@ def check_container_port_list(emitted):
 def check_container_binds_child_port_names(emitted):
     """A container binds each child's OWN clock and reset port names.
 
-    uSlow's module declares clkSlow and rstSlow_n and nothing else, so the
-    literal `.clk`/`.rst_n` this emitter used to end every instantiation with
-    named ports that child does not have - RTL that does not elaborate. uFast is
+    uSlow's module declares clkSlow and rstSlow_n and nothing else, so a
+    literal `.clk`/`.rst_n` ending every instantiation would name ports that
+    child does not have - RTL that does not elaborate. uFast is
     the shape that pins the ORDER and the CARDINALITY together: three clocks then
     three resets, position for position against its port list, so dropping the
     resets or emitting them before the clocks is visible."""
@@ -1231,10 +1226,10 @@ def check_container_binds_no_literal_clk(emitted):
     """No instantiation in the container binds a literal `.clk`/`.rst_n` pair
     that the child does not declare.
 
-    uSlow and uIpLeaf have no port named clk or rst_n, so their presence anywhere
-    in those two bind lists is the exact defect this step removes, stated as a
-    refutation so a future emitter cannot satisfy the tail assertions above by
-    appending the old literals after them."""
+    uSlow and uIpLeaf have no port named clk or rst_n, so either name anywhere in
+    those two bind lists binds a port the child lacks. Stated as a refutation so
+    an emitter cannot satisfy the tail assertions above by appending fixed
+    `.clk`/`.rst_n` literals after them."""
     binds = _instance_binds(emitted[CONTAINER], 'dut module')
     for instance in ('uSlow', 'uIpLeaf'):
         stale = [bind for bind in binds[instance] if bind[0] in ('clk', 'rst_n')]
@@ -1265,9 +1260,7 @@ def check_wrapper_port_list_matches_module(emitted):
 def check_wrapper_keeps_per_line_style(emitted):
     """The verilated SV wrapper declares one clock/reset per line, verbatim.
 
-    This is the wrapper generator's own pre-existing style, and it is what makes
-    the emission byte-identical to baseline for every single-clock project. The
-    ordering rule is shared with the RTL module port list; the spelling is not."""
+    This is the wrapper generator's own style. The ordering rule is shared with the RTL module port list; the spelling is not."""
     expected = {'slowProd': ['input clkSlow,', 'input rstSlow_n'],
                 'fastProd': ['input clk,', 'input clkSlow,', 'input clkPico,',
                              'input rst_n,', 'input rstSlow_n,',
@@ -1734,7 +1727,7 @@ def check_flops_bare_macro_is_an_alias():
         if needle in text:
             raise AssertionError(
                 f"{FLOPS_SV} still contains {needle!r}; the reset is an "
-                f"explicit _DOM argument now, not the old per-compilation macro")
+                f"explicit _DOM argument, not a per-compilation macro")
     return True
 
 
@@ -1999,7 +1992,7 @@ def check_leaf_binds_its_generated_handler(emitted):
     leafA spans clk and clkSlow and carries the reset of each, while its handler
     spans only clkSlow and carries only that domain's reset, so both sets
     genuinely differ here: a container that bound its own first clock or first
-    reset, or the old literal `clk`, names a port the handler does not declare."""
+    reset, or a fixed literal `clk`, names a port the handler does not declare."""
     binds = _instance_binds(emitted[REGS_LEAF], 'leafA module')
     handler = next(name for name in binds if name.endswith('leafA_regs'))
     return _assert_instance_tail(binds, 'leafA module', {
@@ -2014,7 +2007,7 @@ def _memory_instance_binds(emitted, where):
     if len(memories) != 2:
         raise AssertionError(
             f"{where} instantiates {sorted(memories)}, expected the fixture's two "
-            f"memories; the fixture no longer covers the memory bind")
+            f"memories; the fixture does not cover the memory bind")
     return memories
 
 
@@ -2024,7 +2017,7 @@ def check_memory_instance_binds_the_accessor_domain(emitted):
     Both of leafA's memories are regAccess and are reached only by the generated
     handler, which is on the register bus (clkSlow). leafA's own set is
     [clk, clkSlow], so the bus clock is NOT the block's first one - an emitter
-    taking the block's primary clock, or the old literal `clk`, would clock a
+    taking the block's primary clock, or a fixed literal `clk`, would clock a
     memory that clkSlow flops in the handler write, and nothing else in the
     toolchain reports that."""
     for name, bound in _memory_instance_binds(emitted, 'leafA module').items():
@@ -2039,9 +2032,8 @@ def check_memory_instance_binds_the_accessor_domain(emitted):
 def check_memory_instance_default_domain(emitted):
     """The same memory bind in the DEFAULT domain names the default clock.
 
-    Which is what makes this change churn-free for every single-domain project:
-    the memory's accessor domain and the literal that used to be emitted
-    coincide there."""
+    In a single-domain project the memory's accessor domain is the default
+    clock, so the bind reads `clk`."""
     for name, bound in _memory_instance_binds(
             emitted, 'default-domain leafA module').items():
         if bound[-1] != ('clk', 'clk'):
@@ -2063,7 +2055,7 @@ def check_regs_handler_is_not_its_owning_block(emitted):
     if leaf != 'input clk, clkSlow, rstMain_n, rstBus_n':
         raise AssertionError(
             f"leafA port list is {leaf!r}, expected 'input clk, clkSlow, "
-            f"rstMain_n, rstBus_n'; the fixture no longer separates the two sets")
+            f"rstMain_n, rstBus_n'; the fixture does not separate the two sets")
     handler = _names(_sv_wrapper_input_lines(emitted[REGS_HANDLER],
                                             'leafA_regs module'))
     if handler != ['clkSlow', 'rstBus_n']:
@@ -2081,8 +2073,8 @@ def check_regs_handler_default_domain(emitted):
 
     leafA_regs is synthesised with no clocks:/resets: of its own; its domain
     is leafA's own registerPorts: entry, which names no clock:/reset: here,
-    so it takes leafA's own block default clock and ITS selected reset (spec
-    §4.3 rule 1) - leafA's own rstMain_n, not the generic rst_n floor, since
+    so it takes leafA's own block default clock and ITS selected reset -
+    leafA's own rstMain_n, not the generic rst_n floor, since
     rstMain_n is leafA's sole declared candidate on its default clock."""
     text = emitted[REGS_HANDLER]
     lines = _sv_wrapper_input_lines(text, 'default-domain leafA_regs module')
@@ -2355,21 +2347,18 @@ def check_router_default_domain(emitted):
 
 
 def _assert_router_rejected(feed_clock, router_clocks, expected_clocks):
-    """A router whose derived set is widened past its bus domain is an ERROR.
+    """A router declaring more than one clock is an ERROR.
 
-    Both the exit status and the message are asserted: a router emitter reads the
-    FIRST entry of the derived set, so a two-clock router that merely generated
-    would put a clock crossing on the APB handshake between the router and its
-    own handler, emitted as a real port and therefore elaborating cleanly. The
-    message has to name the router, both clocks, and the condition - telling the
-    author to merge the two domains is a dead end, because the router does not own
-    the bus clock it is given.
+    A router's clock set is exactly its declared clocks: (or the implicit clk),
+    and a router is single-clock: every flop runs on the register bus clock, so
+    a second declared clock would be emitted as a port nothing clocks. Both the
+    exit status and the message are asserted. The message has to name the
+    router, both clocks, and the condition - telling the author to merge the two
+    domains is a dead end, because the router does not own the bus clock it is
+    given.
 
-    No remedy is asserted. These fixtures widen the set with a clocks: entry, but
-    a contained instance whose block declares its own clocks, a non-register
-    connection carrying clock:, and a second register-bus connection widen it too,
-    with no clocks: entry to remove; pinning one prescription here would re-lock a
-    message that is wrong for those authors."""
+    No remedy is asserted: these cases pin the rule, not the wording of its
+    fix."""
     fixture, _db, built = _build_regs(feed_clock, router_clocks=router_clocks)
     try:
         if built.returncode == 0:
@@ -2391,8 +2380,8 @@ def _assert_router_rejected(feed_clock, router_clocks, expected_clocks):
 
 def check_router_extra_clock_rejected():
     """A router explicitly declaring two clocks is rejected: a block's own
-    clocks: declaration is now exhaustive (spec R5), so nothing but the
-    block's own YAML can widen its set past one domain any more, and
+    clocks: declaration is exhaustive, so nothing but the block's own YAML
+    can widen its set past one domain, and
     declaring a second clock: entry is the measured shape of that."""
     return _assert_router_rejected(None, ['clk', 'clkSlow'], ('clk', 'clkSlow'))
 
@@ -2401,9 +2390,8 @@ def check_router_extra_clock_rejected_bus_first():
     """The same rejection when declaration order happens to put a DIFFERENT
     clock first than the register bus's own.
 
-    Here the emitter's index would still pick a real clock, so this is the
-    case that pins the rule as being about the CARDINALITY of the router's
-    set rather than about the order within it: the router still declares a
+    This pins the rule as being about the CARDINALITY of the router's
+    declared clocks rather than their order: the router still declares a
     second clock port that nothing clocks, and the supported shape is one
     domain."""
     return _assert_router_rejected(None, ['clkSlow', 'clk'], ('clk', 'clkSlow'))

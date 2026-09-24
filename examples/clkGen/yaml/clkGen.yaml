@@ -1,25 +1,23 @@
 # clkGen - a fixture for output clocks, output resets, local nets, an
-# export and a `~` binding (spec-clock-reset-requirements.md §4.5/§4.6).
+# export and a `~` binding.
 #
 # clkDivider produces clkDiv (an output clock) and rstDivRaw_n, its own raw
-# output reset belonging to clkDiv (spec §4.2: an output reset belongs to the
-# clock it is released into, here the block's own output rather than an
-# input). clkGen re-declares clkDiv as its own output and binds uDivider's
-# clkDiv straight onto it: that binding is the export (spec §4.5) that lets
-# clkGen's own co-simulation wrapper observe clkDiv without generating it.
+# output reset belonging to clkDiv (an output reset belongs to the clock it
+# is released into, here the block's own output rather than an input).
+# clkGen re-declares clkDiv as its own output and binds uDivider's clkDiv
+# straight onto it: that binding is the export that lets clkGen's own
+# co-simulation wrapper observe clkDiv without generating it.
 # clkDivider's rstDivRaw_n is bound to a name clkGen does not declare
 # (rstDivRaw_n): a local net, visible only inside clkGen, wired as an
-# internal `wire` (R18). Rather than releasing the clkDiv domain directly off
-# that raw reset, uRstSync (spec §4.5's `rstSync` worked example) takes it in
-# as an asynchronous-assert input and releases rstDivInt_n synchronously to
-# clkDiv (R22/R23): the raw reset is asserted whenever uDivider's own
-# rstRef_n is asserted, which is exactly when clkDiv is invalid. clkDivider
-# also carries a second, deliberately unused output tap (clkDivBy2) bound to
-# `~` at uDivider (spec §4.5 "An output bound to `~` is left unconnected"),
-# covering R11's "never dropped silently, but explicit" rule in real
-# generated RTL. u_clkGen's own clkDiv output is left `~` one level up, in
-# clkGen_tb: nothing above clkGen consumes it once the wrapper observes it
-# directly at clkGen's own boundary.
+# internal `wire`. Rather than releasing the clkDiv domain directly off that
+# raw reset, uRstSync takes it in as an asynchronous-assert input and
+# releases rstDivInt_n synchronously to clkDiv: the raw reset is asserted
+# whenever uDivider's own rstRef_n is asserted, which is exactly when clkDiv
+# is invalid. clkDivider also carries a second, deliberately unused output
+# tap (clkDivBy2) bound to `~` at uDivider, so the generated RTL shows an
+# output left explicitly unconnected rather than dropped. u_clkGen's own
+# clkDiv output is left `~` one level up, in clkGen_tb: nothing above clkGen
+# consumes it once the wrapper observes it directly at clkGen's own boundary.
 
 blocks:
     clkGen_tb:
@@ -57,13 +55,13 @@ blocks:
             rstRef_n: { clock: clkRef }
             rstDivRaw_n: { clock: clkDiv, direction: output, desc: "asserted while rstRef_n is asserted; clkDiv's domain is invalid until it releases" }
     rstSync:
-        desc: "Reset synchroniser: asynchronous assert, synchronous release (spec §4.5 worked example)"
+        desc: "Reset synchroniser: asynchronous assert, synchronous release"
         hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
         clocks:
-            clk: { period: 20, timeUnit: ns, desc: "the divided clock it synchronises into; supplied, so its standalone rate must be declared (V21)" }
+            clk: { period: 20, timeUnit: ns, desc: "the divided clock it synchronises into; supplied, so its standalone rate must be declared" }
         resets:
             rstIn_n:  { async: true }
             rstOut_n: { clock: clk, direction: output }

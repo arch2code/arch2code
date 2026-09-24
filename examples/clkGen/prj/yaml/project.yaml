@@ -1,8 +1,7 @@
-# clkGen - a fixture for output clocks/resets and local nets
-# (spec-clock-reset-requirements.md §4.5/§4.6). Single self-contained
-# project, no child project: the whole
-# point is the container-internal wiring between a clock divider and its
-# consumer, which needs no reuse boundary to demonstrate.
+# clkGen - a fixture for output clocks/resets and local nets. Single
+# self-contained project, no child project: the whole point is the
+# container-internal wiring between a clock divider and its consumer, which
+# needs no reuse boundary to demonstrate.
 
 yamlFormat: 2
 projectName: clkGen
@@ -13,7 +12,7 @@ projectFiles:
 topInstance: clkGen_tb
 
 # The testbench's own clkRef/rstRef_n: bound to clkGen_tb's (and, through it,
-# clkGen's) declared clkRef/rstRef_n by name match (spec §4.4/§4.8).
+# clkGen's) declared clkRef/rstRef_n by name match.
 clocks:
     clkRef:
         desc: "reference clock the testbench generates"

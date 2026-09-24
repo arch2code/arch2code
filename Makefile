@@ -140,8 +140,7 @@ two-clk:
 
 .PHONY : clk-gen
 # Single self-contained project (no child project): output clocks/resets,
-# local nets, an export and a `~` binding (plan-clock-container-model.md
-# phase 3; spec-clock-reset-requirements.md §4.5/§4.6).
+# local nets, an export and a `~` binding.
 clk-gen:
 	make -C $(CLK_GEN_DIR) gen
 	make -C $(CLK_GEN_DIR)/rundir -j run
@@ -271,6 +270,7 @@ clean :
 	make -C $(SIMPLE_IP_DIR) clean
 	make -C $(TWO_CLK_DIR) clean
 	make -C $(TWO_CLK_DIR)/ip clean
+	make -C $(CLK_GEN_DIR) clean
 
 .PHONY : newmodule-all
 # Scaffold + fill generated regions for every example that exposes a2c-common

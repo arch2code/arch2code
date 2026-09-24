@@ -184,7 +184,7 @@ on the memory row). When that clock is not the register bus clock, the
 generated handler bridges the access with a four-phase handshake in
 `common/systemVerilog/memory_reg_bridge.sv`, so the memory's clock must have a
 reset (its selected reset, or the memory's own `reset:`), else the build is
-rejected (V19). Each bridged access stalls the bus for two synchroniser
+rejected. Each bridged access stalls the bus for two synchroniser
 crossings each way plus the memory cycle, on the order of five bus cycles
 plus four memory cycles, and a read of an N-word row is N such accesses. A
 memory-side reset during an access completes it with `pslverr`, and firmware
@@ -356,8 +356,8 @@ output.
 | Decoder RTL is an empty skeleton (ports only). | `make newmodule` ran before `addressBlock:` was present, so the generic template was seeded. | Add `addressBlock:`, re-run `make newmodule`; it selects `apbDecodeModule`. Never hand-write the demux. |
 | `<block>_regs` instantiated but its source file is missing. | Stale generated files or an out-of-date `.gen` cache. (`_regs` is synthesized for any block with registers **or** `regAccess` memories — register-only blocks DO get one.) | Remove orphaned generated files and `rm -rf .gen`, then `make db && make gen`. |
 | `Nested register decoder '…' (group '…') routes a 0x…-byte footprint …, which exceeds the 0x…-byte window that parent decoder '…' allocates to slot '…'.` | db-time nested-decoder address-containment check. A routed slot whose block contains a nested decoder must fit that decoder's whole footprint (`addressIncrement × maxAddressSpaces`) inside the per-child window the parent allocates. A bare register-block slot is covered instead by the decoded-span check (a router owns no registers, so it needs this separate check); a project with no `addressBlock:` at all has no groups to check (the `ip_test` no-decoder fixture). | Reduce the nested decoder's `addressIncrement` or `maxAddressSpaces`, or widen the parent decoder's `addressIncrement`. |
-| `Memory '…' of block '…' is regAccess on clock '…', which has no selected reset, but the block's register bus is on '…' (V19): the register handler's bridge to that memory is generated logic in the memory's domain and needs a reset there.` | The memory's clock has no reset for the bridge's memory side. | Declare a reset on that clock (or mark one `default: true`), or name one with the memory's `reset:`. |
-| `Memory '…' of block '…' names reset: '…', which belongs to clock '…', not the memory's own clock '…' (V19).` | The memory's `reset:` names a reset that belongs to a different clock than the memory's own. | Name a reset that belongs to the memory's own clock, or drop `reset:` and let the clock's selected reset apply. |
+| `Memory '…' of block '…' is regAccess on clock '…', which has no selected reset, but the block's register bus is on '…'. The register handler's bridge to that memory is generated logic in the memory's domain and needs a reset there; …` | The memory's clock has no reset for the bridge's memory side. | Declare a reset on that clock (or mark one `default: true`), or name one with the memory's `reset:`. |
+| `Memory '…' of block '…' names reset: '…', which belongs to clock '…', not the memory's own clock '…'. A memory's reset: must belong to the memory's own clock. …` | The memory's `reset:` names a reset that belongs to a different clock than the memory's own. | Name a reset that belongs to the memory's own clock, or drop `reset:` and let the clock's selected reset apply. |
 
 ---
 

@@ -231,7 +231,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
 def clock_reset_port_names(block_data):
     # The block's clock and reset port names, clocks then resets, each set in
-    # the persisted declaration order (R18). Clocks and resets share one
+    # the persisted declaration order. Clocks and resets share one
     # module port namespace, so one order serves every emission site: a module
     # port list, its instantiation, and the verilated wrapper that
     # reconstructs it must agree name for name and position for position.
@@ -241,7 +241,7 @@ def clock_reset_port_names(block_data):
 def clock_reset_ports(block_data):
     # (name, direction) pairs in the same order as clock_reset_port_names, so
     # a port list generator can spell each entry's SystemVerilog port
-    # direction (input/output map directly onto the spec's own field values).
+    # direction (input/output map directly onto the YAML direction values).
     return ([(row['clock'], row['direction']) for row in block_data['clocks']]
             + [(row['reset'], row['direction']) for row in block_data['resets']])
 
@@ -269,8 +269,8 @@ def sv_clock_reset_input_lines(block_data):
                       for name, direction in clock_reset_ports(block_data))
 
 # A router or handler's declared clock/reset port matching busClockPort/
-# busResetPort (getBDBusClockReset, the already-resolved port names, spec
-# §4.3 "Registers"/"Routers") is renamed to busClock/busReset for
+# busResetPort (getBDBusClockReset, the already-resolved port names) is
+# renamed to busClock/busReset for
 # sv_clock_reset_input_lines, without disturbing block_data's own declared
 # rows for other emission sites.
 def bus_clock_reset_port_data(block_data, bus_clock, bus_reset):
@@ -290,7 +290,7 @@ def sv_clock_reset_binds(block_data):
 # identifier `clk`, and hand-written RTL names `rst_n` directly. A block whose
 # own clock or reset port carries some other name still needs those two
 # identifiers to resolve, so the generated region aliases them onto the
-# block's default clock and its selected reset (spec §4.2), only when
+# block's default clock and its selected reset, only when
 # each exists and the block does not already declare a port of that name: a
 # block whose declared clocks are all direction: output has no default clock
 # and gets no clk alias, and a clock the block does declare - wherever it

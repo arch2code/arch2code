@@ -40,18 +40,18 @@ def render(args, prj, data):
             out.append(f"{indent}{entry['line']}")
         out.append("")
 
+    # One internal wire per net a child instance's output drives under a name
+    # this block does not declare. Emitted before the aliases, which may read
+    # a local net.
+    if data['localNets']:
+        out.append(f"{indent}// Local clock/reset nets, driven by a child instance's output")
+        out.extend(f"{indent}wire {net['name']};" for net in data['localNets'])
+        out.append("")
+
     alias_lines = intf_gen_utils.sv_default_domain_aliases(data)
     if alias_lines:
         out.append(f"{indent}// Default-domain aliases: the bare flop macros expand to clk / rst_n")
         out.extend(f"{indent}{line}" for line in alias_lines)
-        out.append("")
-
-    # Container clock/reset local nets (spec §4.5/§4.6, R18): one internal wire
-    # per net a child instance's output drives under a name this block itself
-    # does not declare.
-    if data['localNets']:
-        out.append(f"{indent}// Local clock/reset nets, driven by a child instance's output")
-        out.extend(f"{indent}wire {net['name']};" for net in data['localNets'])
         out.append("")
 
     #// Interface Instances, needed for between instanced modules inside this module

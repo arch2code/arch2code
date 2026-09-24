@@ -86,8 +86,8 @@ public:
     }
 #endif
 
-    // R23: reported at end of run rather than left to a silent,
-    // activity-free run (spec §4.8).
+    // An output clock with no edge or an output reset never released is
+    // reported at end of run rather than left to a silent, activity-free run.
     void end_of_simulation() override {
         if (!clkDiv_edges_) { std::cerr << "warning: clock 'clkDiv' produced no edge by end of run" << std::endl; }
         if (!clkDivBy2_edges_) { std::cerr << "warning: clock 'clkDivBy2' produced no edge by end of run" << std::endl; }

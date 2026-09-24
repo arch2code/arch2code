@@ -253,4 +253,7 @@ type n_``name; \
 type n_``name; \
 `DFFR_DOM(clkSig, rstSig, name, n_``name, rval)
 
+`define DFFR_KEEP_INST_CLK(clkSig, type, name, rval)  `DFFR_KEEP_INST_DOM(clkSig, rst_n, type, name, rval)
+`define DFFR_KEEP_INST(type, name, rval)              `DFFR_KEEP_INST_CLK(clk, type, name, rval)
+
 `endif  // FLOPS_SV

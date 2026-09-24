@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Coverage for the clock domain of a generated register-decode tree
-(spec-clock-reset-requirements.md §4.3, R25, V8, V25, V26).
+"""Coverage for the clock domain of a generated register-decode tree: the
+bus clock and reset of routers, handlers, served leaves and passthrough
+containers, and the diagnostics when they disagree.
 
 A router or a synthesised `<block>_regs` handler does not inherit its domain
 from a clock: literal stamped onto a synthesised connection; clocks are
@@ -8,8 +9,8 @@ block-scoped, and the project-scoped `clock:` fields that mechanism depended
 on do not exist: a router's own domain is bound like any other instance, by an
 ordinary `clocks:`/`resets:` map on the router instance itself, and a
 handler's domain follows automatically - the leaf's own declared
-`registerPorts:` clock for a reusable IP, or the R25 selection for a
-top-down leaf.
+`registerPorts:` clock for a reusable IP, or for a top-down leaf whichever
+of its clocks the instance map binds to the bus.
 
 Assertions are on the derived clock set per block (`blockClocksResets`,
 which a block's own declaration and its instances' binds produce) and on
@@ -60,7 +61,7 @@ ROUTER = render_router('apbDecode', 'top')
 # ordinary instance map can bind the router (and, for the reusable-IP leaf,
 # nothing further - registerPorts: with no clock: takes the leaf's own
 # default) onto the non-default domain. A design's clocks/resets exist on
-# the BLOCK that carries them (spec R5); the project's own clocks:/resets:
+# the BLOCK that carries them; the project's own clocks:/resets:
 # are the testbench's, bound to the design only through the top instance,
 # so 'top' must declare them itself for a design fixture to use them at all.
 TOP_TWO_CLOCKS = """    top:
@@ -74,8 +75,8 @@ TOP_TWO_CLOCKS = """    top:
             apbRst_n: { clock: apbClk }
 """
 
-# The router bound onto 'top's non-default clock by an ordinary instance map -
-# the only mechanism a router's own domain uses now.
+# The router bound onto 'top's non-default clock by an ordinary instance map,
+# the only way a router's own domain is set.
 FEED_ON_NON_DEFAULT_CLOCK = f"""include:
     - shared.yaml
 
@@ -111,8 +112,8 @@ instances:
 
 # A reusable-IP leaf's instance map disagrees with the router: the router is
 # bound onto apbClk, but leafA (registerPorts: with no clock:, so its own
-# default clock) is left on 'top's clk instead. V8 (spec §4.3, "a register
-# bus tree is one domain throughout").
+# default clock) is left on 'top's clk instead: a register bus tree is one
+# domain throughout.
 FEED_MISMATCH = f"""include:
     - shared.yaml
 
@@ -131,11 +132,10 @@ connections:
 {REGISTER}"""
 
 # A reusable IP whose registerPorts: names its own clock: explicitly
-# (block-local, rule 1) and whose instance map renames THAT clock onto the
-# router's own bus clock (item 2 regression: the router-to-leaf dispatch
-# connection used to stamp this block-local name onto its own container-
-# scoped clock:, which V13 then rejected as soon as the map renamed it away
-# from the literal name 'regClk').
+# (block-local) and whose instance map renames THAT clock onto the router's
+# own bus clock. The router-to-leaf dispatch connection must not carry this
+# block-local name as its container-scoped clock:, or the connection clock:
+# check would reject it once the map renames it away from 'regClk'.
 REG_CLK_LEAF = render_leaf('leafB', extra_block_lines=(
     "        clocks:\n"
     "            regClk: { }\n"
@@ -167,10 +167,10 @@ connections:
 {REG_CLK_REGISTER}"""
 
 # The routed leaf's register and memory reached from two other blocks, each
-# declaring and binding its OWN clock (spec R5: nothing is derived onto a
-# block from a connection any more); the leaf itself carries both its bus
-# domain and theirs. leafA additionally declares objClk so its memory (V8
-# requires the memory's own clock: to name one of the OWNING block's clocks)
+# declaring and binding its OWN clock (nothing is derived onto a block from a
+# connection); the leaf itself carries both its bus domain and theirs. leafA
+# additionally declares objClk so its memory (whose clock: must name one of
+# the OWNING block's clocks)
 # can be put in the same domain as the memory accessor reaching it.
 _LEAFA_TWO_CLOCKS = ("        clocks:\n"
                     "            clk:    { default: true }\n"
@@ -238,9 +238,9 @@ memoryConnections:
 """
 
 # A TOP-DOWN leaf (no registerPorts:): owns its own register directly, and
-# infers its register-bus port from the serving router (R25). 'sampler'
-# declares two clocks; its instance map binds clkCap, not the default clk,
-# onto the router's own apbClk - so the register port is clkCap (V8/R25).
+# infers its register-bus port from the serving router. 'sampler' declares
+# two clocks; its instance map binds clkCap, not the default clk, onto the
+# router's own apbClk - so the register port is clkCap.
 SAMPLER_BLOCK = """    sampler:
         desc: "top-down leaf; owns a register, authors no registerPorts:"
         hasMdl: true
@@ -257,7 +257,7 @@ SAMPLER_REGISTER = ("registers:\n"
                     "desc: \"sampler configuration\" }\n")
 
 # A passthrough container: no addressBlock:, no registerPorts:. It
-# resolves its register bus top-down (R25) like a leaf, through the
+# resolves its register bus top-down like a leaf, through the
 # `resolveBlock` path `_servingRouterBusNets` takes for its inner
 # consumer.
 WRAP_BLOCK = """    wrap:
@@ -412,17 +412,17 @@ registers:
 
 def _deriveProjectDomains(design, blockName='top'):
     """A project `clocks:`/`resets:` section mirroring `blockName`'s own
-    EFFECTIVE input clocks/resets by name (spec §4.8, R3): the testbench
+    EFFECTIVE input clocks/resets by name: the testbench
     binds the top block by name match, so a fixture's project file needs a
     same-named entry for everything the top block's own declaration has -
     including the implicit clk/rst_n a block with no clocks:/resets: gets
-    (spec R5) - or an input clock/reset the block declares has nothing to
-    bind to (V10/V3). `default: true` is derived from the block's own
+    - or an input clock/reset the block declares has nothing to bind to.
+    `default: true` is derived from the block's own
     declaration - its default clock, and the reset marked default (or the
     sole candidate) ON that clock - never merely "declared first": a fixture
     whose first declared reset happens to sit on a non-default clock would
     otherwise mark a default reset that does not belong to the default
-    clock, which V23 requires (spec §4.1).
+    clock, which every project requires.
     """
     blockRow = yaml.safe_load(design)['blocks'][blockName]
     clocks = blockRow.get('clocks') or {'clk': {}}
@@ -451,7 +451,7 @@ def _deriveProjectDomains(design, blockName='top'):
             f"on its default clock '{defaultClock}' unambiguously "
             f"(candidates: {candidates or 'none'}); the fixture needs a "
             f"single reset there to mark default: true on - 'declared "
-            f"first' is not a substitute (spec §4.1, V23).")
+            f"first' is not a substitute.")
     lines = ['clocks:']
     for name, row in clocks.items():
         row = row or {}
@@ -543,7 +543,7 @@ def _instanceBinds(db_path):
     instanceClockResetBinds - the container net each instance's own clock and
     reset ports resolved to, whatever the binding rule (map, name match or
     fallback). A block's own declared clock NAMES never change with how it is
-    instantiated (spec R5), so this is the only place "which clock a router
+    instantiated, so this is the only place "which clock a router
     or handler instance actually runs on" is observable."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -578,7 +578,7 @@ def _registerBusPort(db_path, block_name):
 
 def _registerBusDomain(db_path, block_name):
     """(registerClock, registerReset) persisted on every one of a block's own
-    blockClocksResets rows (clockTree.py's R25/rule-1 result): a router's or a
+    blockClocksResets rows (clockTree.py's register-bus resolution): a router's or a
     synthesised `<block>_regs` handler's own bus clock/reset, a block-level
     fact rather than a per-instance bind, so it is not exposed through
     instanceClockResetBinds."""
@@ -643,7 +643,7 @@ def _expect_diagnostic(label, design, needles):
 # A reusable-IP leaf whose registerPorts: names a reset the block does not
 # declare, and a router whose addressBlock: names a clock it does not
 # declare: both are the schema's blockClock/blockReset combo foreign key
-# (V2's existence part), reported in the parser's "not valid in context" form.
+# (the existence check), reported in the parser's "not valid in context" form.
 _BAD_RESET_LEAF = render_leaf('leafB', extra_block_lines=(
     "        clocks:\n"
     "            clk: { default: true }\n"
@@ -714,8 +714,8 @@ def run_router_bound_to_non_default_clock():
     # childPort reads 'apbClk', not the router's own raw declared 'clk': the
     # router's own emitted module port is renamed to its bus clock/reset
     # (intf_gen_utils.py's bus_clock_reset_port_data), so the persisted bind
-    # a container's own instantiation reads must use that same name (spec
-    # §4.3 "Registers"/"Routers") - clockTree.py's rows() bakes the rename
+    # a container's own instantiation reads must use that same name -
+    # clockTree.py's rows() bakes the rename
     # in directly.
     return _case(
         "an ordinary instance map binds the router (and its served reusable-IP "
@@ -729,15 +729,16 @@ def run_reusable_ip_bus_mismatch_rejected():
         "a reusable-IP leaf whose registerPorts: clock does not sit on the "
         "router's actual bus clock is rejected",
         FEED_MISMATCH,
-        ('leafA', 'clk', 'V8'))
+        ('leafA', 'clk', 'A register port must run on the register bus clock'))
 
 
 def run_reusable_ip_register_port_clock_rename():
-    """A reusable IP's registerPorts: clock: (block-local, rule 1), renamed
+    """A reusable IP's registerPorts: clock: (block-local), renamed
     onto the bus by an ordinary instance map, builds clean and the handler
     binds through it - the router-to-leaf dispatch connection states no
     clock: of its own (config/postParseRegisterPorts.py), so there is
-    nothing for V13 to falsely reject against the renamed name."""
+    nothing for the connection clock: check to reject against the renamed
+    name."""
     label = ("a reusable IP's registerPorts: clock:, renamed by an ordinary "
              "instance map, builds clean and the handler binds through it")
     fixture, project_path, db_path = _make_fixture(REG_CLK_RENAME)
@@ -789,7 +790,7 @@ def run_feed_at_container_instance():
         failed = False
         binds = _instanceBinds(db_path)
         # uAPBDecode's own port reads 'apbClk' (its emitted module port is
-        # renamed to its bus clock, spec §4.3 "Registers"/"Routers"); uLeafA
+        # renamed to its bus clock); uLeafA
         # is an ordinary
         # reusable-IP instance, never renamed, so its own port stays 'clk'.
         got = binds.get('uAPBDecode', {}).get('apbClk')
@@ -803,7 +804,7 @@ def run_feed_at_container_instance():
                   f"binds to {got!r}, expected 'apbClk'")
             failed = True
         # The router's own bus clock/reset is the CONTAINER's (ipBlock's own)
-        # net name (spec §4.3 "Routers"): its instance is one level below the
+        # net name: its instance is one level below the
         # design root, and this is the fact that walk must still resolve.
         routerBus = _registerBusDomain(db_path, 'apbDecode')
         if routerBus != ('apbClk', 'apbRst_n'):
@@ -811,7 +812,7 @@ def run_feed_at_container_instance():
                   f"expected ('apbClk', 'apbRst_n')")
             failed = True
         # The handler's own bus clock/reset mirrors leafA's own registerPorts:
-        # selection - leafA's OWN clock/reset port NAME (spec §4.3 rule 1),
+        # selection - leafA's OWN clock/reset port NAME,
         # unaffected by how leafA's instance is renamed outward.
         handlerBus = _registerBusDomain(db_path, 'leafA_regs')
         if handlerBus != ('clk', 'rst_n'):
@@ -845,7 +846,7 @@ def run_composed_child_respells_the_clock():
                   f"{got!r}, expected 'apbClk'")
             failed = True
         # leafIp authors no registerPorts: clock: of its own, so its bus is
-        # its own default clock/reset port NAME (spec §4.3 rule 1) - and the
+        # its own default clock/reset port NAME - and the
         # handler synthesised into the CHILD project's own context mirrors it.
         leafBus = _registerBusDomain(db_path, 'leafIp')
         if leafBus != ('clk', 'rst_n'):
@@ -866,11 +867,10 @@ def run_composed_child_respells_the_clock():
 def run_top_down_leaf_register_port_selection():
     # childPort reads 'clkCap' (the selected register clock), not the
     # handler's own raw implicit 'clk': the handler's own emitted module
-    # port is renamed the same way a router's is (spec §4.3
-    # "Registers"/"Routers").
+    # port is renamed the same way a router's is.
     return _case(
         "a top-down leaf's register port is the clock its map binds to the bus, "
-        "not the block default (R25)",
+        "not the block default",
         _sampler_design("clocks: { clkCap: apbClk },\n"
                         "                  resets: { rstCap_n: apbRst_n }"),
         {'u_sampler_regs': {'clkCap': 'clkCap'}})
@@ -908,14 +908,14 @@ def run_top_down_leaf_no_clock_match_rejected():
         "is rejected",
         _sampler_design("clocks: { clk: clk, clkCap: clk },\n"
                         "                  resets: { rst_n: rst_n, rstCap_n: rst_n }"),
-        ('sampler', 'V8'))
+        ('sampler', "none of its declared clock ports is bound to the register bus's clock"))
 
 
 def run_top_down_leaf_no_reset_match_rejected():
     # apbClk carries two resets, apbRst_n marked default (the selected reset)
     # and apbRst2_n not: clkCap correctly resolves to the bus clock, but its
-    # own reset is bound to apbRst2_n, a reset of the right clock (V6 is
-    # satisfied) yet not the bus's SELECTED one (V25).
+    # own reset is bound to apbRst2_n, a reset of the right clock (clock
+    # membership is satisfied) yet not the bus's SELECTED one.
     design = f"""include:
     - shared.yaml
 
@@ -948,12 +948,12 @@ connections:
         "a top-down leaf none of whose reset ports is bound to the bus's "
         "selected reset is rejected",
         design,
-        ('sampler', 'V25'))
+        ('sampler', "none of its declared reset ports is bound to the register bus's selected reset"))
 
 
 def run_top_down_leaf_instances_disagree_rejected():
     """Two instances of the same top-down leaf resolving to different
-    clock/reset pairs is rejected (V26): the leaf module is generated once."""
+    clock/reset pairs is rejected: the leaf module is generated once."""
     design = f"""include:
     - shared.yaml
 
@@ -979,18 +979,19 @@ connections:
         "two instances of a top-down leaf resolving to different clock/reset "
         "pairs is rejected",
         design,
-        ('sampler', 'uSamplerA', 'uSamplerB', 'V26'))
+        ('sampler', 'uSamplerA', 'uSamplerB',
+         'Every instance must use the same clock/reset pair for its register port'))
 
 
 def run_register_bus_reset_missing_rejected():
-    """V19: a block clock hosting a register bus must have a selected
+    """A block clock hosting a register bus must have a selected
     reset. The router itself declares resets: {} (no reset at all), so its
     bus clock resolves (registerClock) but has no reset to select
     (registerReset stays None) - its own reset port is simply unbound. A
     reusable-IP leaf's own resets: {} is not used for this: the leaf still
     needs its synthesised handler's implicit rst_n to fall back onto ONE of
-    the leaf's own resets regardless (V11 fires first, cascading), so the
-    router is the clean, isolated V19 case."""
+    the leaf's own resets regardless (the rst_n fallback error fires first,
+    cascading), so the router is the clean, isolated case."""
     design = f"""include:
     - shared.yaml
 
@@ -1021,13 +1022,13 @@ connections:
 {REGISTER}"""
     return _expect_diagnostic(
         "a router declaring resets: {} has no reset for its register bus "
-        "clock (V19)",
+        "clock",
         design,
-        ('apbDecodeNR', 'V19'))
+        ('apbDecodeNR', 'register bus clock must have one'))
 
 
 def run_router_addressblock_reset_override_not_duplicated():
-    """intf_gen_utils.bus_clock_reset_port_data (item 4): a router
+    """intf_gen_utils.bus_clock_reset_port_data: a router
     declaring more than one reset on its bus clock, with addressBlock:
     reset: naming the NON-default one as the bus reset, must rename that
     named port to the bus name - not block_data['defaultReset'] (the
@@ -1105,14 +1106,14 @@ connections:
 
 
 def run_reusable_ip_authored_reset_mismatch_rejected():
-    """V25 for a reusable IP: registerPorts: reset: authors a reset that is
+    """For a reusable IP, registerPorts: reset: authors a reset that is
     not bound to the same container reset as the serving router's own bus
     reset. leafE names 'regRst2_n' explicitly (its own clock regClk agrees
-    with the bus, so V8's clock check passes), but its instance map puts
+    with the bus, so the register port clock check passes), but its instance map puts
     regRst2_n on 'top's apbRst2_n, not the router's own selected
     apbRst_n - a second reset on the SAME container clock as the bus reset,
-    so this isolates V25 from V6 (clock membership) and V19 (a reset
-    exists, just the wrong one)."""
+    so this isolates the bus reset check from clock membership and from the
+    missing-reset check (a reset exists, just the wrong one)."""
     design = """include:
     - shared.yaml
 
@@ -1159,7 +1160,7 @@ registers:
         "a reusable IP's authored registerPorts: reset: not bound to the "
         "router's own bus reset is rejected",
         design,
-        ('leafE', 'regRst2_n', 'V25'))
+        ('leafE', 'regRst2_n', "A register port's reset must be the register bus reset"))
 
 
 # A container whose default clock is literally named 'regClk', and a served
@@ -1264,7 +1265,7 @@ def run_passthrough_inner_leaf_bus_mismatch_rejected():
         "a leaf behind a passthrough container whose clock does not sit on "
         "the container's own resolved bus clock is rejected",
         design,
-        ('sampler', 'V8'))
+        ('sampler', "none of its declared clock ports is bound to the register bus's clock"))
 
 
 def run_passthrough_container_bus_mismatch_rejected():
@@ -1275,7 +1276,7 @@ def run_passthrough_container_bus_mismatch_rejected():
         "a passthrough container whose clock does not sit on the router's "
         "actual bus clock is rejected",
         design,
-        ('wrap', 'V8'))
+        ('wrap', "none of its declared clock ports is bound to the register bus's clock"))
 
 
 # A reusable-IP passthrough container: registerPorts: { regs: ... }, owns
@@ -1344,7 +1345,7 @@ def run_passthrough_reusable_ip_container_inner_leaf_port():
 
 def run_passthrough_container_instances_disagree_rejected():
     """Two instances of a passthrough container that resolve to different
-    clock/reset pairs are rejected (V26); the container's registerClock is
+    clock/reset pairs are rejected; the container's registerClock is
     a block-level fact."""
     design = f"""include:
     - shared.yaml
@@ -1373,7 +1374,7 @@ connections:
         "two instances of a passthrough container resolving to different "
         "clock/reset pairs is rejected",
         design,
-        ('wrap', 'V26'))
+        ('wrap', 'Every instance must use the same clock/reset pair for its register port'))
 
 
 def _run():

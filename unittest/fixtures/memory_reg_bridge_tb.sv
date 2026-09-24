@@ -923,10 +923,10 @@ module memory_reg_bridge_tb #(
     // Measures the connect handshake's three legs directly, each in the
     // domain where it happens, rather than folding all three into one
     // bus-cycle total that a fast memory clock can shrink to less than a
-    // workable tolerance. Runs after scenario_random_traffic so the jitter
-    // random stream random traffic draws from is unchanged from before this
-    // scenario existed. It can no longer rely on scenario_back_to_back's row
-    // 0 value surviving random traffic, so it starts by writing a known
+    // workable tolerance. Runs after scenario_random_traffic so it does not
+    // shift the jitter random stream random traffic draws from. It cannot
+    // rely on scenario_back_to_back's row 0 value surviving random traffic,
+    // so it starts by writing a known
     // value to row 0 with retry_access and reading it back once;
     // random_traffic's own join_any already released both resets, and if it
     // left the design mid-reconnect, this retry_access absorbs that.
@@ -1315,7 +1315,7 @@ module memory_reg_bridge_tb #(
 
         // Connect-cost cycles in the bus domain, sized for a retry bound
         // rather than restating the module header's connect-cost figure
-        // (item 2, measured from a joint reset release). A retry after a
+        // (measured from a joint reset release). A retry after a
         // bus-only reset instead waits out alive_sync_stable's fall in
         // BUS_ARM and then its rise in BUS_CONNECT, two transitions rather
         // than the header's one release-to-connect pass, and jitter's held

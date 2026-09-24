@@ -36,12 +36,9 @@ def render(args, prj, data):
     out.append(importPackages(args, prj, startingContext, data))
     out.append("(")
 
-    # A router declares neither clocks: nor resets: of its own in the common
-    # case, so its declared set is the generic implicit clk/rst_n and carries
-    # no domain meaning (spec §4.3 "Routers"): busClock/busReset
-    # (getBDBusClockReset)
-    # is the container net its one instance's own map actually resolved to,
-    # and is what the module's own port and every flop below use.
+    # A router's declared clk/rst_n carry no domain meaning. busClock/busReset,
+    # from getBDBusClockReset, are the container nets its one instance's map
+    # resolves to; the module's ports and every flop below use them.
     decode_clk = data['busClock']
     decode_rst = data['busReset']
 

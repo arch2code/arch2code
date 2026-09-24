@@ -78,8 +78,8 @@ public:
     }
 #endif
 
-    // R23: reported at end of run rather than left to a silent,
-    // activity-free run (spec §4.8).
+    // An output clock with no edge or an output reset never released is
+    // reported at end of run rather than left to a silent, activity-free run.
     void end_of_simulation() override {
         if (!rstOut_n_released_) { std::cerr << "warning: output reset 'rstOut_n' was never observed to release during the run" << std::endl; }
     }

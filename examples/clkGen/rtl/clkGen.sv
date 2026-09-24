@@ -9,13 +9,13 @@ module clkGen
     input clkRef, output clkDiv, input rstRef_n
 );
 
-    // Default-domain aliases: the bare flop macros expand to clk / rst_n
-    wire clk = clkRef;
-    wire rst_n = rstRef_n;
-
     // Local clock/reset nets, driven by a child instance's output
     wire rstDivRaw_n;
     wire rstDivInt_n;
+
+    // Default-domain aliases: the bare flop macros expand to clk / rst_n
+    wire clk = clkRef;
+    wire rst_n = rstRef_n;
 
     // Interface Instances, needed for between instanced modules inside this module
 

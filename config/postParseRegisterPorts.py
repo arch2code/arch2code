@@ -361,6 +361,9 @@ def postProcess(prj):
         # No addressBlock: routers are declared, so no register-bus
         # decode pass runs for this project (the project either has no
         # register bus at all or has not adopted the addressBlock: schema).
+        # REGAPB_PASSTHROUGH is persisted regardless: projectCreate reads it
+        # unconditionally.
+        prj.config.setConfig("REGAPB_PASSTHROUGH", {}, bin=True)
         return None
 
     instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)
@@ -666,9 +669,8 @@ def postProcess(prj):
         # memory. Must precede Check 1's `if isRouter: continue`, which would
         # otherwise let this slip through unreported. Without it, calcAddresses
         # raises a KeyError (a router instance carries no addressGroup, so the
-        # space check's AddressGroups lookup on it fails), pre-empting the
-        # misleading V19 bridged-memory reset check in clockTree.build() that
-        # would otherwise follow.
+        # space check's AddressGroups lookup on it fails), and clockTree.build()
+        # would report a misleading bridged-memory reset error.
         if isRouter and blockKey in regAccessMemoryByBlock:
             _exit_with_error(
                 f"block '{blockRow['block']}' is a register-decode router "
@@ -866,14 +868,12 @@ def postProcess(prj):
                 'interfaceName': f"{regDecoderPort}_{instRow['instance']}",
             }
             # This connection's own clock: is left unstated: a connection's
-            # clock: names a CONTAINER net (spec §4.3 rule 2), while a
-            # reusable IP's registerPorts: clock: is block-local (rule 1) -
-            # stamping the block-local name here as if it were a container
-            # net falsely fails V13 whenever an instance map renames it
-            # (e.g. registerPorts: clock: regClk mapped regClk: apbClk).
-            # Rule 1 stays authoritative through getBDPortDomain reading the
-            # leaf's own registerPorts: row directly, not through this
-            # connection.
+            # clock: names a CONTAINER net, while a reusable IP's
+            # registerPorts: clock: is block-local. Stamping the block-local
+            # name here would fail the connection clock: check whenever an
+            # instance map renames it (e.g. registerPorts: clock: regClk
+            # mapped regClk: apbClk). getBDPortDomain reads the leaf's own
+            # registerPorts: row directly instead.
             # Owner context is the container that holds both
             # endpoints. The router's own YAML file does not see
             # leaf-scoped interfaces; the container's file does, via
@@ -1055,12 +1055,11 @@ def postProcess(prj):
         }
 
     # ---- Emit per owner context ----
-    # Every synthesised connection/connectionMap here is a register-bus feed
-    # (§4.3 "Registers"/"Routers"): a top-down leaf's is a synthesised
-    # register-bus port, which R25 governs directly rather than a stamped
-    # clock:, and a nested router's is a synthesised feed, which spec §4.3
-    # says carries no clock: at all (a nested router on a non-default clock
-    # names it on its own addressBlock: instead). Neither row states clock:.
+    # Every synthesised connection/connectionMap here is a register-bus feed,
+    # and neither row states clock:. A top-down leaf's register-bus port
+    # takes whichever of its clocks the instance map binds to the bus clock.
+    # A nested router's feed carries no clock: at all; a nested router on a
+    # non-default clock names it on its own addressBlock: instead.
     for ownerContext, sections in perContext.items():
         ordered = dict()
         for sectionName in ('blocks', 'instances', 'connections', 'connectionMaps'):

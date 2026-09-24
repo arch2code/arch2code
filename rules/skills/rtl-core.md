@@ -138,7 +138,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     *   Use the bare macro for a flop on the block's default clock. That is the normal case in every block: when the block's default clock is not named `clk`, or its selected reset not named `rst_n`, the generated region of its module declares `wire clk = <default clock>;` (and/or `wire rst_n = <selected reset>;`) as an alias, so the bare macros expand to a real net whatever the domain is called. An alias is emitted only for the name that differs; a block that declares nothing needs neither.
     *   Use the `_CLK` form for a flop on another clock of a multi-clock block only when that clock shares the block's `rst_n`; otherwise use the `_DOM` form below, which names both the clock and the reset. Generated modules (`<block>_regs`, `apbDecode`) emit `_DOM` with their own resolved clock and reset.
     *   `_CLK` resets on `rst_n`, the block's own reset domain (a port or the generated default-domain alias). Every `_CLK` macro is one line onto its `_DOM` form, and every bare macro one line onto its `_CLK` form.
-    *   A reset **supplier**'s assertion path — a synchroniser's asynchronous input flop, a PLL wrapper's raw output reset — is written with explicit asynchronous flops outside this macro library, so the domain resets even while its clock is stopped (spec §4.9); the selected reset style governs ordinary flops, not a supplier's assertion path.
+    *   A reset **supplier**'s assertion path — a synchroniser's asynchronous input flop, a PLL wrapper's raw output reset — is written with explicit asynchronous flops outside this macro library, so the domain resets even while its clock is stopped; the selected reset style governs ordinary flops, not a supplier's assertion path.
 
     **Reset Style:**
     *   Exactly one of `A2C_RESET_SYNC` (default), `A2C_RESET_ASYNC`, `A2C_RESET_NONE` is active per compilation, selected at the top of `flops.sv`. `ASIC` aliases to `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` aliases to `A2C_RESET_NONE`, for compatibility with existing defines. Defining more than one style is a compile error.
@@ -148,6 +148,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     *   Write code the same way; the macros handle the difference.
     *   For a flop on a second domain of a multi-clock block, use the `_DOM(clkSig, rstSig, ...)` form, which takes both the clock and the reset signal explicitly: `` `DFF_DOM(clkSig, rstSig, q, d) ``, and so on. `_CLK` and bare are one-line aliases onto `_DOM`.
     *   `` `DFF_KEEP_INST(type, name) ``: same as `DFF_INST`, but marks the register keep/preserve so synthesis does not merge it with an apparently-equivalent register.
+    *   `` `DFFR_KEEP_INST(type, name, rval) ``: keep/preserve with a reset value, the same as `DFFR_INST` otherwise. Both keep macros have `_CLK` and `_DOM` forms (`DFF_KEEP_INST_CLK`, `DFF_KEEP_INST_DOM`, `DFFR_KEEP_INST_CLK`, `DFFR_KEEP_INST_DOM`).
 
     **Pattern: Declare then Drive:**
 

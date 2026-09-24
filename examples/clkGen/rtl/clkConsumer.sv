@@ -16,7 +16,7 @@ module clkGen_clkConsumer
 
 // Free-running counter on the clock it is handed (clkDiv, at the container):
 // a stopped clkDiv leaves it unchanged, and held at 0 while rst_n is
-// asserted, both observable in a waveform (R23).
+// asserted, both observable in a waveform.
 typedef logic [7:0] count_t;
 `DFFR_INST(count_t, count, '0)
 

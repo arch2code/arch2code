@@ -283,7 +283,7 @@ def render_leaf(block_name, *, port_name='regs',
 
     port_extra is appended inside the registerPorts: entry itself (e.g.
     ', clock: clkSlow, reset: rstBus_n'), for a reusable IP whose register
-    port is not on the block default clock (spec §4.3 rule 1).
+    port is not on the block default clock.
     """
     return f"""    {block_name}:
         desc: "Routed leaf block '{block_name}'"

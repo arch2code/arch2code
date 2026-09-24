@@ -262,13 +262,12 @@ instances:
   addressID: auto(addressID) #note that even if specified in instances section, will be overridden
   instGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
   instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
-  # The instance's own clock/reset binding map (spec-clock-reset-requirements.md
-  # §4.4): key = a block clock/reset of instanceType, value = a container
-  # clock/reset name, a new local net name (an output binding only, spec
-  # §4.5), or `~` to leave an output unconnected. The set of valid values
-  # (local nets included) only exists after binding resolution runs, so both
-  # the key and the value are validated in clockTree.build()/projectCreate,
-  # not by a schema foreign key.
+  # The instance's own clock/reset binding map: key = a block clock/reset of
+  # instanceType, value = a container clock/reset name, a new local net name
+  # (an output binding only), or `~` to leave an output unconnected. The set
+  # of valid values (local nets included) only exists after binding
+  # resolution runs, so both the key and the value are validated in
+  # clockTree.build()/projectCreate, not by a schema foreign key.
   clocks:
     _attribs: [optional, multiple]
     _singular: bind
@@ -302,7 +301,7 @@ blocks:
     _attribs: [optional, list, flat, post(validateBlockParamBacking)]
     param: key
   # The clocks and resets the block's implementation uses, named for its own
-  # module ports (spec-clock-reset-requirements.md R4/R5). The declaration is
+  # module ports. The declaration is
   # complete: a block's clocks and resets are exactly these entries, for a
   # container as for a leaf, and nothing is inferred from its children,
   # connections or ports. A block declaring no clocks: has one clock, `clk`,
@@ -327,10 +326,9 @@ blocks:
           - input
           - output
     default: optional(false)
-    # Unset means undeclared, distinct from an authored value (spec §4.8,
-    # V21 need that distinction); an undeclared clock's simulated rate is
-    # supplied by getBDClocksResets. The testbench's own clocks: keeps its
-    # 1 ns schema default (spec §4.1); only a block clock's is removed.
+    # No schema default: unset means undeclared, which the build must tell
+    # apart from an authored value. An undeclared clock's simulated rate is
+    # supplied by getBDClocksResets.
     period: optional
     timeUnit:
       _type: optional(ns)
@@ -350,7 +348,7 @@ blocks:
           - input
           - output
     default: optional(false)
-    # The block-local clock this reset belongs to (V1); unstated means the
+    # The block-local clock this reset belongs to; unstated means the
     # block default clock, resolved in clockTree.BlockDomains.build(). A
     # stated name must be one of the same block's own clocks: rows, which the
     # blockClock combo below checks against the sibling clocks sub-table
@@ -388,8 +386,8 @@ blocks:
           - src
           - dst
     # The block clock this port is timed by; block-local, unstated means the
-    # block default clock (spec §4.3). A stated name must be one of the same
-    # block's own clocks: rows (V2, the blockClock combo); the port-domain
+    # block default clock. A stated name must be one of the same
+    # block's own clocks: rows (the blockClock combo); the port-domain
     # derivation that reads it is a separate concern (getBDPortDomain).
     clock: optional
     blockClock:
@@ -411,7 +409,7 @@ blocks:
         section: interfaces
         field: interface
     # Block-local bus clock/reset, each one of the same block's own clocks:/
-    # resets: rows when stated (V2); unstated means the block default clock
+    # resets: rows when stated; unstated means the block default clock
     # and its selected reset.
     clock: optional
     blockClock:
@@ -441,7 +439,7 @@ blocks:
     upstreamPort: optional(apbReg)
     registerDecoderPort: optional(apbReg)
     # The router's own bus clock/reset, each one of the same block's own
-    # clocks:/resets: rows when stated (V2); unstated means the block default
+    # clocks:/resets: rows when stated; unstated means the block default
     # clock and its selected reset.
     clock: optional
     blockClock:
@@ -542,11 +540,10 @@ connections: # custom handler
           - deallocReq # outbound interface only dealloc
           - allocAck   # inbound interface only alloc
           - deallocAck # inbound interface only dealloc
-    # Clock domain of this wire (spec-clock-reset-requirements.md §4.3): a
-    # container clock, not a project reference. Unstated means each endpoint's
-    # own block default independently (rule 3), not a name both endpoints must
-    # share; validated against the container's nets in projectCreate
-    # (clockTree.build(), V13), not by a schema foreign key.
+    # Clock domain of this wire: a container clock, not a project reference.
+    # Unstated means each endpoint's own block default independently, not a
+    # name both endpoints must share; validated against the container's nets
+    # in projectCreate (clockTree.build()), not by a schema foreign key.
     clock: optional()
     connection:  # at the end to ensure calculated fieldfs populated
       _key:
@@ -635,7 +632,7 @@ connectionMaps:
     _type: optional
   instancePortName: auto(instancePortName)
   isParameterizable: auto(interfaceRefIsParameterizable)
-  # spec-clock-reset-requirements.md V16: a connectionMaps row's boundary port
+  # A connectionMaps row's boundary port
   # takes the inner port's derived domain; it carries no clock: of its own.
   portId : # at end for ordering
     _key:
@@ -668,8 +665,8 @@ memories:
   regAccess: optional(false)
   local: optional(false) # for memories that need to be in flops with fast array access
   isParameterizable: auto(memIsParameterizable)
-  # The owning block's clock this memory is on, and the reset for the R20
-  # bridge's memory side; both block-local, each one of the owning block's
+  # The owning block's clock this memory is on, and the reset for the
+  # register bridge's memory side; both block-local, each one of the owning block's
   # own clocks:/resets: rows when stated, else the block default clock and
   # its selected reset, resolved by clockTree.BlockDomains.build() once the
   # owning block's own defaultClock/selectedReset are known.
@@ -786,9 +783,9 @@ memoryConnections:
       section: instances
       field: instance
   isParameterizable: auto(memoryConnectionIsParameterizable)
-  # spec-clock-reset-requirements.md V17: a memoryConnections row carries no
-  # clock: of its own; the accessing side derives its own domain from its own
-  # block and instance, and must agree with the memory's declared domain (V8).
+  # A memoryConnections row carries no clock: of its own; the accessing side
+  # derives its own domain from its own block and instance, and must agree
+  # with the memory's declared domain.
   memoryBlockInstance:
     _key:
       memory: required
@@ -818,9 +815,9 @@ registerConnections:
       section: instances
       field: instance
   isParameterizable: auto(registerConnectionIsParameterizable)
-  # spec-clock-reset-requirements.md V17: a registerConnections row carries no
-  # clock: of its own; the register's domain is that of the bus reaching its
-  # owning block's register port (V8), and the accessing side derives its own.
+  # A registerConnections row carries no clock: of its own; the register's
+  # domain is that of the bus reaching its owning block's register port, and
+  # the accessing side derives its own.
   registerBlockInstance:
     _key:
       register: required
@@ -887,7 +884,6 @@ resets:
       scope: project
   # Cycles of this reset's own clock the co-simulation wrapper holds it asserted.
   # Per reset, not per project: a reset in a 3 ns domain and one in a 1 ns domain
-  # share no release requirement. Three is the shortest count that satisfies a
-  # synchronous reset (two) and also puts the third edge of a 1 ns clock started
-  # at 3 ns at 5 ns, the instant the release had while it was an absolute time.
+  # share no release requirement. The default of three exceeds the two cycles a
+  # synchronous reset needs.
   releaseCycles: optional(3)

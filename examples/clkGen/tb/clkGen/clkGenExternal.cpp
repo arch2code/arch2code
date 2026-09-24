@@ -30,7 +30,7 @@ clkGenExternal::clkGenExternal(sc_module_name modulename) :
 
 // Bound the run, then vote. The window has to outlast a verilated DUT's reset
 // release (a few clkRef edges) and several clkDiv edges beyond that, so a
-// stalled clkDiv (R23) has time to show up under a waveform before the vote
+// stalled clkDiv has time to show up under a waveform before the vote
 // closes the run; nothing here inspects the DUT's internals directly.
 void clkGenExternal::stimulusThread(void)
 {

@@ -5,13 +5,12 @@
 # wholly in clkSlow over the same twoClkDataIf; its connection's clock: puts
 # the BFM on clkSlow, so the slow domain is checked in flow, not just elaborated.
 #
-# Every block below declares its own clocks:/resets: completely (spec R5,
-# spec-clock-reset-requirements.md): nothing is inferred from connections or
-# from a block's children. Every instance below binds explicitly through a
-# clocks:/resets: map (spec §4.4), the composition and renaming test this
-# fixture is for: twoClkSlowTick declares its own clock as clkTick, not
-# clkSlow, and uSlowTick's map is what binds clkTick to the container's
-# clkSlow - the shape of one IP's clock renamed at its assembler. uIpSrc's map
+# Every block below declares its own clocks:/resets: completely: nothing is
+# inferred from connections or from a block's children. Every instance below
+# binds explicitly through a clocks:/resets: map, the composition and
+# renaming test this fixture is for: twoClkSlowTick declares its own clock
+# as clkTick, not clkSlow, and uSlowTick's map is what binds clkTick to the
+# container's clkSlow - the shape of one IP's clock renamed at its assembler. uIpSrc's map
 # is the identity case, spelled out to show a plain rename-free bind through
 # the composition boundary. clocks:/resets: at the PROJECT level
 # (prj/yaml/project.yaml) describe the testbench and are not bound to the

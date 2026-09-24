@@ -17,11 +17,11 @@ module clkGen_rstSync
 // Instances
 // GENERATED_CODE_END
 
-// Reset synchroniser (spec §4.5 worked example, §4.9 "Supplied reset,
-// assertion"): asynchronous assert on rstIn_n, synchronous release into the
-// clk domain. Explicitly asynchronous flops written outside the macro
-// library, since the macro-selected reset style is not what this block's
-// own output reset is - it IS the reset, produced here rather than consumed.
+// Reset synchroniser: asynchronous assert on rstIn_n, synchronous release
+// into the clk domain, so the domain resets even while clk is stopped.
+// Explicitly asynchronous flops written outside the macro library, since the
+// macro-selected reset style is not what this block's own output reset is -
+// it IS the reset, produced here rather than consumed.
 logic rstSync1_n, rstSync2_n;
 always_ff @(posedge clk or negedge rstIn_n) begin
     if (!rstIn_n) begin
