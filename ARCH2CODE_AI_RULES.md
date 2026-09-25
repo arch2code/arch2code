@@ -782,7 +782,6 @@ blocks:
     hasRtl: <true|false>      # Has RTL implementation
     hasMdl: <true|false>      # Has SystemC model
     hasTb: <true|false>       # Has testbench
-    isRegHandler: <true|false> # Is this a register decoder block (special)
     params:                    # Optional, for parameterized blocks
       - <param_name>
 ```
@@ -798,8 +797,8 @@ blocks:
    - `hasTb: true`: Generate testbench skeleton
    - RTL hierarchy is closed: if a parent block has `hasRtl: true`, every block instantiated inside it must also have `hasRtl: true`. A `hasRtl: false` child is only valid under a model-only parent.
 4. **Special Flags**:
-   - `isRegHandler: true`: Indicates this is a register decoder block (auto-generated blocks have this)
-   - **Do not manually set** `isRegHandler` - it's set automatically for `<blockname>_regs` blocks
+   - `isRegHandler: true`: Marks a synthesised register handler block. It is set automatically on the `<blockname>_regs` blocks.
+   - **Do not manually set** `isRegHandler` - a block that sets `isRegHandler: true` is rejected
 5. **Parameters**:
    - `params` names block parameters that can be bound by variant under the project-level `parameters:` section
    - Parameters that affect type widths, structure widths, or memory depth should be declared in `ipParameters` when they have a backing constant/type
@@ -809,7 +808,6 @@ blocks:
    - `hasMdl`: defaults to `true` (most blocks have model)
    - `hasVl`: defaults to `false`; explicitly set it to `true` for normal user-authored RTL blocks
    - `hasTb`: defaults to `false` (set on the DUT block, not the `_tb` wrapper)
-   - `isRegHandler`: defaults to `false` (only for register handler blocks)
 7. **RTL/Verilator Guidance**:
    - Prefer `hasRtl: true` and `hasVl: true` together for user-authored RTL blocks.
    - `hasRtl: true` with `hasVl: false` is legal but unusual; use it only when a block intentionally should not get a Verilator wrapper.

@@ -319,15 +319,18 @@ def ext_sec_header(args, prj, data):
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
     cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
-    # Each child's Base type is owned by a named module (`export module
-    # <child>.base;`), so importing is the only way to name it: a global-module
-    # forward declaration is a DISTINCT entity under C++20 module ownership -
-    # ill-formed once the module is reachable in the same TU, and for a class
-    # template it gives the createInstance dynamic_pointer_cast a mismatched-RTTI
-    # target so the cast returns null.
+    # Every child's Base is attached to its own named module. Per [basic.link],
+    # a declaration in the global module and a declaration attached to a named
+    # module declare DISTINCT entities -- a global-module forward declaration
+    # does NOT merge with the module's exported class. clang 17 and 18 reject
+    # this directly ("declaration of '<X>Base' in the global module follows
+    # declaration in module <x>.base"); for a parameterizable child it also
+    # yields mismatched RTTI so the createInstance dynamic_pointer_cast returns
+    # null. Import the child's Base module in both cases so the member type is
+    # the real module type (mirrors the DUT's own <DUT>Testbench importing
+    # <DUT>.base).
     ext_child_base_imports_s = []
-    # sorted for stable emitted import order across regeneration
-    for blockKey, _ in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
+    for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
         ext_child_base_imports_s.append(f'import {cpp_base_module_name(data["subBlockTypes"][blockKey]["blockModuleName"])};')
 
     ext_inst_decl_s = []

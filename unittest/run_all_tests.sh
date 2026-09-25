@@ -271,6 +271,7 @@ ADDRCTL_TESTS=(
     "duplicate addressGroup"                    "test_error_duplicate_address_group.py"
     "registerPort out-of-scope interface"       "test_error_register_port_out_of_scope.py"
     "router has no instance"                    "test_error_router_no_instance.py"
+    "block authors isRegHandler"                "test_error_authored_reg_handler.py"
     "multi-instance router"                     "test_error_multi_instance_router.py"
     "no primary router candidate"               "test_error_no_primary_router.py"
     "multiple primary router candidates"        "test_error_multi_primary_router.py"

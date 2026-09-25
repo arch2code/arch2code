@@ -553,7 +553,7 @@ def _run():
                     and 'modeWord' in output \
                     and 'must be a scalar' in output
 
-            def dynamic_sibling_absent_errors():
+            def dynamic_sibling_null_errors():
                 # The sibling is an optional field authored `~`, so it
                 # stores None. This must log a clean error naming it.
                 before = g.errorCount
@@ -591,26 +591,25 @@ def _run():
                     and 'dynamicTarget' in output \
                     and 'must be a scalar' in output
 
-            def sentinel_sibling_value_errors():
-                # A user who literally types the sentinel string
-                # InvalidValueInYaml as the sibling's value must get the same
-                # "not 'type', 'struct', or 'typeStruct'" error any other
-                # unrecognised mode word gets, not silent acceptance.
+            def dynamic_sibling_unknown_mode_word_errors():
+                # A sibling value that is not a mode word, here the section
+                # name 'types', must log the "not 'type', 'struct', or
+                # 'typeStruct'" error naming the value, not be accepted.
                 before = g.errorCount
                 buf = io.StringIO()
                 raised = False
                 try:
                     with contextlib.redirect_stdout(buf):
                         _direct_probe_row(
-                            creator, arch_context, 'probeSentinel',
-                            {'modeWord': 'InvalidValueInYaml',
+                            creator, arch_context, 'probeUnknownMode',
+                            {'modeWord': 'types',
                              'dynamicTarget': 'probeType_t'},
                             {'modeWord': 'required', 'dynamicTarget': 'typeStruct'})
                 except SystemExit:
                     raised = True
                 output = buf.getvalue()
                 return raised and g.errorCount > before \
-                    and 'InvalidValueInYaml' in output \
+                    and "is 'types'" in output \
                     and "not 'type', 'struct', or 'typeStruct'" in output
 
             def missing_field_errors():
@@ -676,11 +675,11 @@ def _run():
                 "typeStruct(field, modeWord) non-scalar field value errors",
                 dynamic_field_non_scalar_errors))
             results.append(_run_case(
-                "typeStruct(field, modeWord) absent sibling value errors",
-                dynamic_sibling_absent_errors))
+                "typeStruct(field, modeWord) null sibling value errors",
+                dynamic_sibling_null_errors))
             results.append(_run_case(
-                "typeStruct(field, modeWord) literal sentinel sibling value errors",
-                sentinel_sibling_value_errors))
+                "typeStruct(field, modeWord) unknown mode word sibling value errors",
+                dynamic_sibling_unknown_mode_word_errors))
             results.append(_run_case(
                 "typeStruct(field, modeWord) missing field errors",
                 missing_field_errors))

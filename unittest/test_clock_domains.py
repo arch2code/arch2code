@@ -3714,6 +3714,53 @@ def run_rst_fallback_self_driven_candidates_cases():
     ])
 
 
+def run_rst_fallback_self_driven_candidates_non_default_clock_cases():
+    """The self-driven candidates moved onto dut's second, non-default clock
+    slowClk. With a declared candidate beside the one uGsync drives, the
+    diagnostic names the self-driven one and offers the declared reset as a
+    map target and for marking default: true. When uGsync drives every
+    candidate, none can be its rst_n."""
+    def onSlowClk(**parts):
+        return (_self_driven_candidates(**parts)
+                .replace("            sysClk: { default: true }\n",
+                         "            sysClk: { default: true }\n            slowClk: { }\n")
+                .replace("clocks: { sysClk: clk }", "clocks: { sysClk: clk, slowClk: clk }")
+                .replace("clocks: { clk: sysClk }", "clocks: { clk: slowClk }")
+                .replace("instanceType: cons, instGroup: top, resets:",
+                         "instanceType: cons, instGroup: top, clocks: { clk: slowClk }, resets:"))
+    oneOutput = "            rstOut_n: { clock: clk, direction: output, default: true }\n"
+    twoOutputs = ("            rstOutA_n: { clock: clk, direction: output, default: true }\n"
+                  "            rstOutB_n: { clock: clk, direction: output }\n")
+    partial = dict(dutResets="            rstD_n:     { clock: slowClk }\n",
+                   topResets=', rstD_n: rst_n', gsyncOutputs=oneOutput,
+                   gsyncMap=', rstOut_n: rstL_n',
+                   consumers="    uCons:  { container: dut, instanceType: cons, instGroup: top, "
+                             "resets: { rst_n: rstL_n } }\n")
+    every = dict(gsyncOutputs=twoOutputs,
+                 gsyncMap=', rstOutA_n: rstLA_n, rstOutB_n: rstLB_n',
+                 consumers="    uConsA: { container: dut, instanceType: cons, instGroup: top, "
+                           "resets: { rst_n: rstLA_n } }\n"
+                           "    uConsB: { container: dut, instanceType: cons, instGroup: top, "
+                           "resets: { rst_n: rstLB_n } }\n")
+    return all([
+        _expect_diagnostic(
+            "a self-driven rst_n candidate on a non-default clock is named, and "
+            "the declared one is offered",
+            ("'uGsync'", "container clock 'slowClk'",
+             "and the instance itself drives rstL_n",
+             "map rst_n to rstD_n in the instance's resets:",
+             "mark one of the declared resets (rstD_n) default: true"),
+            design=onSlowClk(**partial), projectDomains=''),
+        _expect_diagnostic(
+            "rst_n candidates on a non-default clock that the instance alone "
+            "drives cannot be its rst_n",
+            ("'uGsync'", "container clock 'slowClk'",
+             "and the instance itself drives every one of them, so none can be "
+             "its rst_n"),
+            design=onSlowClk(**every), projectDomains=''),
+    ])
+
+
 def run_rst_fallback_async_map_suppressed_when_only_self_driven():
     """dut declares no reset, and the only reset net in it is the local
     rstL_n that uGsync itself drives. The fallback diagnostic cannot offer
@@ -3780,6 +3827,7 @@ def run_binding_conformance_cases():
         run_rst_fallback_offered_fix_cases(),
         run_rst_fallback_several_local_candidates_rejected(),
         run_rst_fallback_self_driven_candidates_cases(),
+        run_rst_fallback_self_driven_candidates_non_default_clock_cases(),
         run_rst_fallback_async_map_suppressed_when_only_self_driven(),
         run_sync_consumer_of_unclocked_local_reset_rejected(),
     ])
@@ -4178,6 +4226,31 @@ def run_regaccess_memory_bridge_clock_no_reset_rejected():
         ("The register handler's bridge to that memory", 'tbl', 'leafA', 'clkPix'),
         design=BRIDGE_DESIGN % ('', '', '', BRIDGE_ONE_MEMORY_ROW % ''),
         projectDomains=BRIDGE_PROJECT_DOMAINS)
+
+
+def run_router_bus_on_output_clock_rejected():
+    """A router consumes its register bus clock, so addressBlock: clock:
+    naming one of the router's own output clocks is rejected."""
+    design = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    design = design.replace(
+        """        desc: "Router block 'apbDecode'"
+        hasMdl: true
+""",
+        """        desc: "Router block 'apbDecode'"
+        hasMdl: true
+        clocks:
+            clkOut: { direction: output }
+""").replace(
+        "            registerDecoderPort: apbReg\n",
+        "            registerDecoderPort: apbReg\n            clock: clkOut\n")
+    return _expect_diagnostic(
+        "a router bus clock that is an output clock of the router is rejected",
+        ("Block 'apbDecode' addressBlock: names clock: 'clkOut', an output "
+         "clock of 'apbDecode'. A router is clocked by the register bus it "
+         "routes, so its clock must be direction: input.",
+         "Make 'clkOut' an input clock of 'apbDecode', and its only clock."),
+        design=design, projectDomains=BRIDGE_PROJECT_DOMAINS)
 
 
 def run_regaccess_memory_bridge_reset_declared_builds():
@@ -6057,7 +6130,8 @@ def _run():
                                                run_memory_reset_names_async_reset_rejected)),
         ("Register-bus port domain override (registerBusPort)",
          (run_registerports_reset_disambiguates_bus_port_domain,
-          run_topdown_leaf_bus_port_domain_matches_register_clock)),
+          run_topdown_leaf_bus_port_domain_matches_register_clock,
+          run_router_bus_on_output_clock_rejected)),
         ("hasVl BFM port reset", (run_hasvl_port_reset_cases,)),
         ("Name collisions", (run_collision_cases,)),
         ("Graph shape", (run_clock_tree_shape_cases,)),

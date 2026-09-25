@@ -360,7 +360,8 @@ def render_sc(args, prj, data):
         case 'channel_decl': return sec_channel_decl(args, prj, data)
         case 'bfm_decl': return sec_bfm_decl(args, prj, data)
         case 'bfm_ctor_init':
-            # Standalone section keeps its old trailing-comma contract.
+            # Emitted standalone, the section ends in a comma, ready for the
+            # member initialisers that follow it.
             s = sec_bfm_ctor_init(args, prj, data)
             return s + ',' if s else ''
         case 'dut_connect': return sec_dut_connect(args, prj, data)

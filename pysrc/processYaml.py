@@ -3269,7 +3269,6 @@ class projectOpen:
             # For these three the connection-shaped source row is kept whole under
             # 'connection' rather than merged in, so that is what carries the clock.
             for portRow in newPorts.values():
-                instanceKey = portRow['connection'].get('instanceKey')
                 # connectionMapPorts/registerPorts/memoryPorts rows carry no
                 # clock: of their own: a connectionMaps: port resolves
                 # through portDomains (rule 2 below) before this would ever
@@ -3283,7 +3282,7 @@ class projectOpen:
                 # own name IS the boundary name already.
                 boundaryPortName = (portRow['connection']['portName']
                                     if connType == 'connectionMapPorts' else portRow['name'])
-                domainClock = self.getBDPortDomain(ret, None, instanceKey, portRow['name'],
+                domainClock = self.getBDPortDomain(ret, None, None, portRow['name'],
                                                    boundaryPortName)
                 self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
@@ -3325,10 +3324,8 @@ class projectOpen:
            row shape - read back from the instance bind
            (getBDInstanceClockResetBinds) rather than a name-equality
            check, since an instance map may rename the block's own clock
-           away from the container's. Unstated (`clockName` falsy,
-           or `instanceKey` None for a port synthesised from an object the
-           block itself owns, such as a register handler's implied
-           register/memory port) means the block default clock.
+           away from the container's. Unstated (`clockName` falsy) means
+           the block default clock; `instanceKey` is then unused.
 
         A connection naming a clock: no input clock of a top-down port's
         instance resolves to, or that more than one resolves to, is rejected
@@ -3346,7 +3343,7 @@ class projectOpen:
         for row in self.data['portDomains'].get(ret['qualBlock'], []):
             if row['portName'] == boundaryPortName:
                 return row['domainClock']
-        if declaredRow is not None or instanceKey is None or not clockName:
+        if declaredRow is not None or not clockName:
             return ret['defaultClock']
         clockNames = {row['clock'] for row in ret['clocks']}
         matches = [bind['port'] for bind in self.getBDInstanceClockResetBinds(instanceKey)
@@ -4088,13 +4085,6 @@ class projectCreate:
         # all" versus "resets: omitted"; transient to this
         # projectCreate.
         self._blocksDeclaringNoResets = set()
-        # Connections whose clock: was authored (unstated is never filled in;
-        # each endpoint then takes its own block default), keyed by
-        # (yamlFile, connection key). Populated by _process_connections and
-        # consumed by clockTree.build()'s connection clock: check, which
-        # applies only to an authored clock:. Transient to this
-        # projectCreate.
-        self._connectionsWithAuthoredClock = set()
         # Per referenced child project file, its raw content and the absolute
         # directory of the child project file (so its dirs: resolve relative to
         # the child file, mirroring the root's relative-to-project-file rule).
@@ -4254,7 +4244,7 @@ class projectCreate:
             self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
             self.flatData['memories'], self.flatData['memoryConnections'],
             self.flatData['connectionMaps'], registerBusPassthroughs,
-            self._blocksDeclaringNoResets, self._connectionsWithAuthoredClock,
+            self._blocksDeclaringNoResets,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)
         # objects that are one module in one domain must have connections that agree
@@ -4619,17 +4609,14 @@ class projectCreate:
                 if canonical in self.projectScopeSections:
                     bodiesBySection.setdefault(canonical, []).append(raw[key])
             # A project authoring none of a built-in section inherits it, which is
-            # a reason to own a bucket in its own right. Guarded by the schema so a
-            # custom dbSchema that drops the section is not injected into.
+            # a reason to own a bucket in its own right.
             for section, body in self.IMPLICIT_PROJECT_DECLARATIONS.items():
-                if section in self.projectScopeSections and section not in bodiesBySection:
+                if section not in bodiesBySection:
                     bodiesBySection[section] = [body]
             # Schema declaration order, not the author's key order: foreign keys
             # are validated at parse time, so a referencing section must be
             # parsed after the one it references.
             sections = [s for s in self.schema.data['schema'] if s in bodiesBySection]
-            if not sections:
-                continue
             # A bucket and a context file key share the self.data[section]
             # keyspace, so a collision silently merges two declaration sets.
             if projectName in self.yamlAllFiles:
@@ -4651,8 +4638,8 @@ class projectCreate:
                 for body in bodiesBySection[section]:
                     self.processSection(section, body, projectName)
                 self._validateProjectScopeDefaults(projectName, section)
-            self._validateClockResetNames(projectName, sections)
-            self._validateDefaultResetClock(projectName, sections)
+            self._validateClockResetNames(projectName)
+            self._validateDefaultResetClock(projectName)
         g.db.commit()
         # see processYamls for why the parse-time resolver is nulled between phases
         self._parserResolver = None
@@ -8565,12 +8552,6 @@ class projectCreate:
             dirContext = dict()
             # use process simple with the data schema to extract the info and validate
             row = self.processSimple('connections_dataSchema', 'dummy', item, yamlFile, schema=self.schema.data['dataSchema']['connections'] )
-            # An unstated clock: is not defaulted to the project's clock:
-            # each endpoint takes its OWN block default independently.
-            # clockTree.build()'s connection clock: check reads this set to
-            # tell "authored" from "unstated".
-            if row['clock']:
-                self._connectionsWithAuthoredClock.add((yamlFile, row['connection']))
             # the base entry is based on this processing
             entry = row.copy()
             # every connection has a nested table with the source and destination of the connection saved in the ends field
@@ -8764,8 +8745,6 @@ class projectCreate:
         # default: itself. Set on the raw entry before parsing, because a
         # row is persisted as it is parsed and a later section's row hook
         # resolves an unstated reference against this section's default.
-        if self.schema.get_section(section).get_field('default') is None:
-            return
         entries = []
         for body in bodies:
             self._requireSectionBody(section, body, projectName)
@@ -8779,13 +8758,7 @@ class projectCreate:
         # row hook: a row cannot know that no OTHER row claimed the default, and
         # the count is only final once the section is fully parsed. Driven from the
         # pre-pass, the only place that knows which sections a given project
-        # contributes, so it runs once per project per section. A section the
-        # project does not contribute is not checked: it declares nothing, and a
-        # reference into it is already reported at the referring row. Generic over
-        # any project-scoped section carrying a default: field, so the schema stays
-        # the single source of truth.
-        if self.schema.get_section(section).get_field('default') is None:
-            return
+        # contributes, so it runs once per project per section.
         rows = self.data[section][projectName]
         defaults = [name for name, row in rows.items() if row['default']]
         if len(defaults) == 1:
@@ -8800,23 +8773,19 @@ class projectCreate:
             return
         # The message states what the parsed rows show, never what the file says:
         # default: is not boolean-validated, so an author writing 'no' lands here
-        # too. lc is read through .get because an injected row carries no line -
-        # though a section is injected whole, so its one row is never the second.
+        # too. A section is injected whole, so its one row is never the second.
         second = rows[defaults[1]]
         self.logError(
-            f"In {self.diagnosticLocation(projectName, second.get('lc'))} (project "
+            f"In {self.diagnosticLocation(projectName, second['lc'])} (project "
             f"'{projectName}'), {section}: entry '{defaults[1]}' is a second entry "
             f"taken as the default; '{defaults[0]}' is already the default. A "
             f"project must declare exactly one default entry in its {section}: "
             f"section.")
 
-    def _validateClockResetNames(self, projectName, sections):
+    def _validateClockResetNames(self, projectName):
         # A clock and a reset are emitted as ports of the same module, so one name
-        # cannot serve both. Checked once both sections are parsed, and only for a
-        # project that contributes both - either may be authored or injected, and a
-        # custom dbSchema need not declare them at all.
-        if not {'clocks', 'resets'} <= set(sections):
-            return
+        # cannot serve both. Checked once both sections are parsed; either may be
+        # authored or injected.
         collisions = (self.data['clocks'][projectName].keys()
                       & self.data['resets'][projectName].keys())
         for name in sorted(collisions):
@@ -8826,12 +8795,10 @@ class projectCreate:
                 f"clocks: and resets: sections. A clock and a reset become ports of "
                 f"the same module, so one name cannot name both; rename one.")
 
-    def _validateDefaultResetClock(self, projectName, sections):
+    def _validateDefaultResetClock(self, projectName):
         # The default reset must belong to the default clock. Both defaults are
         # confirmed unique by now, and an unstated resets.clock is already
         # resolved to the default clock by _post_resolveReset.
-        if not {'clocks', 'resets'} <= set(sections):
-            return
         defaultClock = next(row for row in self.data['clocks'][projectName].values()
                             if row['default'])
         defaultReset = next(row for row in self.data['resets'][projectName].values()
@@ -9038,7 +9005,8 @@ class projectCreate:
         value that is absent or not a mode word is an error."""
         if isinstance(recorded, tuple):
             return recorded
-        # The sibling is declared earlier, so it is already in the row; a
+        # The sibling is declared earlier, so it is already in the row: the
+        # schema rejects a sibling whose type stores no value in the row. A
         # sibling authored `~` stores None.
         word = ret[recorded]
         if word is None:

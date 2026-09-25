@@ -356,6 +356,16 @@ def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
 
 def postProcess(prj):
     blockInfo = prj.flatData['blocks']
+    # Only synthesiseRegHandler below sets isRegHandler, so a block row that
+    # carries it at this point was authored that way.
+    for blockRow in blockInfo.values():
+        if blockRow['isRegHandler']:
+            _exit_with_error(
+                f"block '{blockRow['block']}' sets isRegHandler: true. A "
+                f"register handler block is synthesised for each routed block "
+                f"that owns registers or regAccess memories; remove isRegHandler "
+                f"from block '{blockRow['block']}'."
+            )
     routers = _collectRouterBlocks(blockInfo)
     if not routers:
         # No addressBlock: routers are declared, so no register-bus
