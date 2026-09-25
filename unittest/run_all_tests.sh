@@ -266,6 +266,7 @@ ADDRCTL_TESTS=(
     "parent router variant interface"           "test_addrctl_parent_router_variant_interface.py"
     "addressBlock and registerPorts both"       "test_error_addr_and_register_ports.py"
     "router owning a regAccess memory"          "test_error_router_regaccess_memory.py"
+    "router owning a register"                  "test_error_router_registers.py"
     "multi registerPorts rows"                  "test_error_multi_register_ports.py"
     "registerPort interface not addressBus"     "test_error_register_port_not_addressbus.py"
     "duplicate addressGroup"                    "test_error_duplicate_address_group.py"

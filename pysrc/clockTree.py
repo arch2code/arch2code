@@ -177,9 +177,9 @@ class BlockDomains:
         declaration rules: default-clock marking, one default reset per clock,
         async resets, name uniqueness, explicit clocks on a block with no default
         clock, that an input reset belongs to an input clock, and that a router's
-        addressBlock: clock: is an input clock. That a stated
-        clock:/reset: names one of the block's own is checked at parse time by the
-        schema's blockClock/blockReset foreign keys.
+        addressBlock: clock: and reset: are inputs, the reset synchronous. That a
+        stated clock:/reset: names one of the block's own is checked at parse time
+        by the schema's blockClock/blockReset foreign keys.
         """
         block = blockRow['block']
 
@@ -266,6 +266,29 @@ class BlockDomains:
                     f"is clocked by the register bus it routes, so its clock "
                     f"must be direction: input. Make '{busClock}' an input "
                     f"clock of '{block}', and its only clock. "
+                    f"{_diagLoc(diag, addressBlockRow)}")
+            busReset = addressBlockRow['reset']
+            if busReset and blockRow['resets'][busReset]['direction'] == 'output':
+                diag.logError(
+                    f"Block '{block}' addressBlock: names reset: "
+                    f"'{busReset}', an output reset of '{block}'. A router "
+                    f"is reset by the register bus it routes, so its reset "
+                    f"must be direction: input. Make '{busReset}' an input "
+                    f"reset of '{block}', or name an input reset in "
+                    f"addressBlock: reset:. {_diagLoc(diag, addressBlockRow)}")
+            elif busReset and blockRow['resets'][busReset]['async']:
+                # The router and the leaves it serves release the bus reset
+                # synchronously on the bus clock; an asynchronous reset
+                # belongs to no clock.
+                busClockName = busClock or defaultClock
+                diag.logError(
+                    f"Block '{block}' addressBlock: names reset: "
+                    f"'{busReset}', an asynchronous reset input belonging "
+                    f"to no clock. A router's bus reset must belong to its "
+                    f"bus clock '{busClockName}', on which the router and "
+                    f"the leaves it serves release it. Name a reset of "
+                    f"'{busClockName}' in addressBlock: reset:, or remove "
+                    f"reset: to use that clock's selected reset. "
                     f"{_diagLoc(diag, addressBlockRow)}")
         isRegHandler = bool(blockRow['isRegHandler'])
 
@@ -475,38 +498,6 @@ class ClockTree:
                     f"default clock. Give the owning block one default input "
                     f"clock, or name the memory's clock:.")
 
-        # A generated apbDecode router is single-clock by decision: every flop
-        # and port is clocked by busClock, the register-bus clock, and its own
-        # declared clocks carry no domain meaning. A second declared clock would
-        # be emitted as a port nothing clocks, so a router declaring more than
-        # one clock is rejected rather than rendered.
-        # Scoped to the routers this build routes. The register-decode pass drops a
-        # router whose every instance lies outside this build's topInstance - a
-        # referenced child project's standalone-harness router - so this build
-        # neither routes nor emits it, and failing on it would fail a root build on
-        # a block only the child's own build is responsible for.
-        # The candidates are selected FIRST and reachability computed only if one
-        # exists. Reachability does not cache, and projectCreate already performs
-        # one full walk of its own after generateHierarchy(), so computing it here
-        # unconditionally would walk the whole design twice on every build to serve
-        # a rule that almost no design triggers.
-        multiClockRouters = {blockKey: domain for blockKey, domain in self.blocks.items()
-                             if domain.isRouter and len(domain.clocks) > 1}
-        if multiClockRouters:
-            reachableInstances = _reachableInstanceKeys(self.containers, self.root)
-            reachableBlockKeys = {blockKey
-                                  for container in (self.root, *self.containers.values())
-                                  for instanceKey, blockKey in container.instances.items()
-                                  if instanceKey in reachableInstances}
-            for blockKey, domain in multiClockRouters.items():
-                if blockKey not in reachableBlockKeys:
-                    continue
-                names = ', '.join(f"'{clockName}'" for clockName in domain.clocks)
-                self._diag.logError(f"Register-decode router block '{domain.block}' declares more "
-                              f"than one clock ({names}). A router is a single-domain module "
-                              f"clocked by the register bus it routes. Declare at most one "
-                              f"clock in the router's 'clocks:'.")
-
     def rows(self):
         """The five persisted tables' rows, in their existing column order:
         blockClocksResets, instanceClockResetBinds, memoryClocks, portDomains,
@@ -621,6 +612,23 @@ def build(blocks, instances, connections, memories, memoryConnections,
         memoriesByBlock.setdefault(memRow['blockKey'], list()).append(
             MemoryDomain(memoryBlockKey, memRow['memory'], memRow['clock'],
                         memRow['reset'], memRow['regAccess']))
+
+    # A router's module is generated whole from its addressBlock:, so it
+    # cannot contain instances; reported before any router clock/reset check.
+    routerChildren = dict()
+    for instRow in instances.values():
+        containerKey = instRow['containerKey']
+        if instRow['container'] != ClockTree.ROOT_KEY and blocks[containerKey].get('addressBlock'):
+            routerChildren.setdefault(containerKey, list()).append(instRow['instance'])
+    for routerKey, childNames in routerChildren.items():
+        routerRow = blocks[routerKey]
+        names = ', '.join(f"'{name}'" for name in childNames)
+        diag.logError(
+            f"Register-decode router block '{routerRow['block']}' contains "
+            f"instance(s) {names}. A router's module is generated entirely "
+            f"from its addressBlock:, so it cannot contain instances. Move "
+            f"{names} into the container that instantiates "
+            f"'{routerRow['block']}'. {_diagLoc(diag, routerRow)}")
 
     domains = dict()
     for blockKey, blockRow in blocks.items():
@@ -1577,19 +1585,27 @@ def build(blocks, instances, connections, memories, memoryConnections,
     # Instances transitively contained by this build's topInstance. A block
     # shared with another project (a reusable IP) may have an instance in
     # that project's own standalone harness. postParseRegisterPorts routes
-    # only reachable instances' register buses, so the register-port and
-    # memory-accessor resolution below skips the same out-of-scope
-    # instances: they have no binds of this build's making to check.
+    # only reachable instances' register buses, so the register-port
+    # resolution below skips the same out-of-scope instances: they have no
+    # binds of this build's making to check.
     reachableInstances = _reachableInstanceKeys(containers, root)
 
     _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContainer,
-                               reachableInstances)
+                               reachableInstances, diag)
     _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
                                  consumerNetByContainer, reachableInstances,
                                  registerBusPassthroughs, diag)
+    # Memory accessors are checked in every container the root project
+    # declares, instantiated or not, since the root project generates each
+    # of them; a referenced child project's unreachable instances stay that
+    # project's own build's to check.
+    accessorScope = reachableInstances | {
+        instanceKey for instanceKey, instRow in instances.items()
+        if instRow['container'] != ClockTree.ROOT_KEY
+        and contextOwningProject[blocks[instRow['containerKey']]['_context']] == rootProjectName}
     _checkMemoryAccessorDomains(domains, containers, instances, memoryConnections,
                                 consumerNetByContainer, driverNetByContainer,
-                                reachableInstances, diag)
+                                accessorScope, diag)
 
     # The co-simulation wrapper resets each port's BFM with the port clock's
     # selected reset, so every clock timing a port of a hasVl block needs one:
@@ -1660,10 +1676,11 @@ def build(blocks, instances, connections, memories, memoryConnections,
 
     # A block clock hosting a register bus (a router's, a served
     # leaf's, or a passthrough container's registerClock) must
-    # have a selected reset. A router bus reset port left unbound, or a
-    # reusable IP with resets: {} and no registerPorts: reset:, would
-    # otherwise reach generation with registerReset None. Only those three
-    # block kinds set registerClock; every other block keeps both None.
+    # have a selected reset. A reusable IP with resets: {} and no
+    # registerPorts: reset: would otherwise reach generation with
+    # registerReset None. A router with none is rejected earlier, in
+    # _resolveRouterBusClockReset. Only those three block kinds set
+    # registerClock; every other block keeps both None.
     for domain in domains.values():
         if domain.registerClock is not None and domain.registerReset is None:
             diag.logError(
@@ -2079,11 +2096,13 @@ def _routerBusPorts(routerBlockKey, blocks, domains):
 
 
 def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContainer,
-                                reachableInstances):
+                                reachableInstances, diag):
     """Set each router's bus port names and its registerClock/registerReset,
     the container nets its bus ports bind to at its one reachable instance. An
     unreachable instance belongs to a child project's standalone harness and is
-    ignored.
+    ignored. A reachable router declaring more than one clock, or whose bus
+    clock has no selected input reset, is rejected here, before the leaves it
+    serves look for that reset.
     """
     instanceByBlock = dict()
     for instanceKey, instRow in instances.items():
@@ -2103,9 +2122,41 @@ def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContain
             # standalone harness, out of this build's own scope. Either
             # way registerClock/registerReset stay unset.
             continue
+        # A generated apbDecode router is single-clock by decision: every
+        # flop and port is clocked by the register-bus clock, so a second
+        # declared clock would be emitted as a port nothing clocks. Checked
+        # ahead of the bus reset, whose advice assumes that one clock.
+        if len(domain.clocks) > 1:
+            names = ', '.join(f"'{clockName}'" for clockName in domain.clocks)
+            diag.logError(f"Register-decode router block '{domain.block}' declares more "
+                          f"than one clock ({names}). A router is a single-domain module "
+                          f"clocked by the register bus it routes. Declare at most one "
+                          f"clock in the router's 'clocks:'. "
+                          f"{_diagLoc(diag, blocks[blockKey])}")
         containerKey = instances[instanceKey]['containerKey']
         consumerNet = consumerNetByContainer[containerKey]
         clockPort, resetPort = _routerBusPorts(blockKey, blocks, domains)
+        # A stated addressBlock: reset: is a synchronous input, checked in
+        # BlockDomains.build(); the clock's selected reset may instead be one
+        # of the router's output resets, which the bus does not drive.
+        if resetPort is None or domain.resets[resetPort].direction == 'output':
+            if resetPort is None:
+                cause = f"'{clockPort}' has no selected reset"
+                fix = (f"Declare a synchronous input reset on '{clockPort}' "
+                       f"in '{domain.block}''s resets:.")
+            else:
+                cause = (f"the selected reset of '{clockPort}' is "
+                         f"'{resetPort}', an output reset of '{domain.block}',")
+                fix = (f"Declare an input reset on '{clockPort}' in "
+                       f"'{domain.block}''s resets: and mark it default: "
+                       f"true, or name an input reset in addressBlock: reset:.")
+            diag.logError(
+                f"Block '{domain.block}' addressBlock: runs its register bus "
+                f"on clock '{clockPort}', but {cause} and addressBlock: names "
+                f"no reset:. A router is reset by the register bus it routes, "
+                f"and the leaves it serves take that same reset, so the router "
+                f"needs an input reset on '{clockPort}'. {fix} "
+                f"{_diagLoc(diag, blocks[blockKey]['addressBlock'])}")
         domain.busClockPort = clockPort
         domain.busResetPort = resetPort
         domain.registerClock = consumerNet.get((instanceKey, clockPort))
@@ -2412,33 +2463,29 @@ def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstan
 
 def _checkMemoryAccessorDomains(domains, containers, instances, memoryConnections,
                                 consumerNetByContainer, driverNetByContainer,
-                                reachableInstances, diag):
+                                scopeInstances, diag):
     """A memoryConnections accessor must run on the memory's clock: its default
     clock, mapped through its instance, is the memory's clock mapped through the
     owning instance. The accessor is a child inside the owning block or a
     sibling of an owning instance, checked against every such instance; any
-    other accessor is reported. Only reachable instances are checked.
+    other accessor is reported. That the accessor's block has a default clock
+    depends only on the block, so it is checked for every accessor instance of
+    a memory with a clock; the domain match and placement are checked only for
+    accessor and owning instances in `scopeInstances`.
     """
     instancesByBlock = dict()
     for instanceKey, instRow in instances.items():
-        if instanceKey in reachableInstances:
+        if instanceKey in scopeInstances:
             instancesByBlock.setdefault(instRow['instanceTypeKey'], list()).append(instanceKey)
+    # A row with no instance is a local-mode connection of the owning block
+    # itself, with no accessor instance to check.
     memConnectionsByMemory = dict()
     for row in memoryConnections.values():
-        if row['instanceKey'] in reachableInstances:
+        if row['instanceKey']:
             memConnectionsByMemory.setdefault(row['memoryBlockKey'], list()).append(row)
 
     def checkAccessor(accessorInstanceKey, accessorInstRow, consumerNet, memoryNet, memDomain, domain):
-        accessorDomain = domains[accessorInstRow['instanceTypeKey']]
-        accessorClockName = accessorDomain.defaultClock
-        if accessorClockName is None:
-            diag.logError(
-                f"Instance '{accessorInstRow['instance']}' of block "
-                f"'{accessorDomain.block}' accesses memory '{memDomain.memory}' "
-                f"of block '{domain.block}', but '{accessorDomain.block}' has "
-                f"no default clock (every declared clock is direction: "
-                f"output). A memory accessor takes its block's default clock. "
-                f"Give '{accessorDomain.block}' an input clock.")
+        accessorClockName = domains[accessorInstRow['instanceTypeKey']].defaultClock
         accessorNet = consumerNet[(accessorInstanceKey, accessorClockName)]
         if accessorNet != memoryNet:
             diag.logError(
@@ -2454,6 +2501,20 @@ def _checkMemoryAccessorDomains(domains, containers, instances, memoryConnection
             if not memDomain.clock:
                 continue  # no clock at all: reported by ClockTree.check()
             accessorRows = memConnectionsByMemory.get(memDomain.memoryBlockKey, [])
+            for row in accessorRows:
+                accessorInstRow = instances[row['instanceKey']]
+                accessorDomain = domains[accessorInstRow['instanceTypeKey']]
+                if accessorDomain.defaultClock is None:
+                    diag.logError(
+                        f"Instance '{accessorInstRow['instance']}' of block "
+                        f"'{accessorDomain.block}' accesses memory "
+                        f"'{memDomain.memory}' of block '{domain.block}', but "
+                        f"'{accessorDomain.block}' has no default clock (every "
+                        f"declared clock is direction: output). A memory "
+                        f"accessor takes its block's default clock. Give "
+                        f"'{accessorDomain.block}' an input clock.")
+            accessorRows = [row for row in accessorRows
+                            if row['instanceKey'] in scopeInstances]
             if not accessorRows:
                 continue
             ownerContainerNet = consumerNetByContainer.get(blockKey)

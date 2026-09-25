@@ -649,6 +649,11 @@ def postProcess(prj):
     for memoryData in prj.flatData['memories'].values():
         if memoryData['regAccess'] and memoryData['blockKey'] not in regAccessMemoryByBlock:
             regAccessMemoryByBlock[memoryData['blockKey']] = memoryData['memory']
+    # {blockKey: first register name}, so Check 4 can name the register.
+    registerByBlock = dict()
+    for registerData in prj.flatData['registers'].values():
+        if registerData['blockKey'] not in registerByBlock:
+            registerByBlock[registerData['blockKey']] = registerData['register']
 
     for blockKey, blockRow in blockInfo.items():
         isRouter = blockKey in routers
@@ -687,6 +692,20 @@ def postProcess(prj):
                 f"(addressBlock:) but also owns regAccess memory "
                 f"'{regAccessMemoryByBlock[blockKey]}'. A router owns no "
                 f"firmware-accessible memories; declare it on a leaf the "
+                f"router serves."
+            )
+
+        # Check 4: a router that owns registers; Check 3 has already
+        # reported a regAccess memory, so the block owns a register here. Its
+        # module is generated whole from its addressBlock:, so the
+        # <block>_regs handler Step 4 would synthesise inside it has nowhere
+        # to go.
+        if isRouter and ownsRegisters:
+            _exit_with_error(
+                f"block '{blockRow['block']}' is a register-decode router "
+                f"(addressBlock:) but also owns register "
+                f"'{registerByBlock[blockKey]}'. A router owns no "
+                f"firmware-accessible registers; declare them on a leaf the "
                 f"router serves."
             )
 

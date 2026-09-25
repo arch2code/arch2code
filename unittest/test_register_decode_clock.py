@@ -864,6 +864,102 @@ def run_composed_child_respells_the_clock():
         shutil.rmtree(fixture)
 
 
+# A never-instantiated harness container of the child project, holding a
+# memory accessor on another clock than the memory it accesses.
+COMPOSED_CHILD_HARNESS = f"""include:
+    - ../../yaml/shared.yaml
+
+types:
+    ipDataT: {{ width: 8, desc: "payload word" }}
+    ipAddrT: {{ width: 3, desc: "memory address" }}
+
+structures:
+    ipMemSt:
+        data: {{ varType: ipDataT, desc: "memory payload" }}
+    ipMemAddrSt:
+        address: {{ varType: ipAddrT, desc: "memory address" }}
+
+blocks:
+{render_leaf('leafIp')}    ipHarness:
+        desc: "the child project's own harness, instantiated by no one here"
+        hasMdl: false
+        clocks:
+            clk:  {{ default: true }}
+            clkB: {{ }}
+        resets:
+            rst_n:  {{ clock: clk }}
+            rstB_n: {{ clock: clkB }}
+    ipMemOwner: {{ desc: "owns a memory on its default clock", hasMdl: false }}
+    ipAccessor: {{ desc: "hardware accessor of the memory", hasMdl: false }}
+
+instances:
+    hMemOwner: {{ container: ipHarness, instanceType: ipMemOwner }}
+    hAccessor: {{ container: ipHarness, instanceType: ipAccessor,
+                 clocks: {{ clk: clkB }}, resets: {{ rst_n: rstB_n }} }}
+
+memories:
+    - {{ memory: ipTbl, block: ipMemOwner, structure: ipMemSt, addressStruct: ipMemAddrSt,
+        wordLines: 4, ports: [p], desc: "table" }}
+
+memoryConnections:
+    - {{ memory: ipTbl, block: ipMemOwner, instance: hAccessor, port: p }}
+
+registers:
+    - {{ register: cfgIp, regType: rw, block: leafIp, structure: cfgRegSt, desc: "leafIp configuration" }}
+"""
+
+
+def run_child_harness_accessor_domain_not_checked():
+    """A memory accessor's domain is checked in every container the root
+    project declares, but a container the child project declares and this
+    build never instantiates is the child's own build's to check, so its
+    cross-domain accessor does not fail the root build."""
+    label = "a child project's uninstantiated harness accessor is not checked by the root build"
+    fixture, project_path, db_path = _make_fixture(
+        COMPOSED_ASSEMBLER, child=COMPOSED_CHILD_HARNESS)
+    try:
+        code, output = _build(project_path, db_path)
+    finally:
+        shutil.rmtree(fixture)
+    if code != 0:
+        print(f"FAIL: {label}\n{output}")
+        return False
+    print(f"PASS: {label}")
+    return True
+
+
+def run_child_harness_accessor_without_default_clock_rejected():
+    """Whether an accessor's block has a default clock depends only on the
+    block, so it is checked even for an accessor in a child project's
+    uninstantiated harness, which the domain match skips."""
+    label = ("a child project's uninstantiated harness accessor with no default "
+             "clock is rejected")
+    child = COMPOSED_CHILD_HARNESS.replace(
+        '    ipAccessor: { desc: "hardware accessor of the memory", hasMdl: false }',
+        '    ipAccessor:\n'
+        '        desc: "hardware accessor of the memory"\n'
+        '        hasMdl: false\n'
+        '        clocks:\n'
+        '            clkO: { direction: output }').replace(
+        "clocks: { clk: clkB }, resets: { rst_n: rstB_n } }",
+        "clocks: { clkO: ~ } }")
+    fixture, project_path, db_path = _make_fixture(COMPOSED_ASSEMBLER, child=child)
+    try:
+        code, output = _build(project_path, db_path)
+    finally:
+        shutil.rmtree(fixture)
+    needles = ("Instance 'hAccessor' of block 'ipAccessor' accesses memory 'ipTbl' "
+               "of block 'ipMemOwner', but 'ipAccessor' has no default clock (every "
+               "declared clock is direction: output). A memory accessor takes its "
+               "block's default clock. Give 'ipAccessor' an input clock.",
+               "Found 1 Error.")
+    if code == 0 or 'Traceback' in output or any(n not in output for n in needles):
+        print(f"FAIL: {label}\n{output}")
+        return False
+    print(f"PASS: {label}")
+    return True
+
+
 def run_top_down_leaf_register_port_selection():
     # childPort reads 'clkCap' (the selected register clock), not the
     # handler's own raw implicit 'clk': the handler's own emitted module
@@ -984,14 +1080,10 @@ connections:
 
 
 def run_register_bus_reset_missing_rejected():
-    """A block clock hosting a register bus must have a selected
-    reset. The router itself declares resets: {} (no reset at all), so its
-    bus clock resolves (registerClock) but has no reset to select
-    (registerReset stays None) - its own reset port is simply unbound. A
-    reusable-IP leaf's own resets: {} is not used for this: the leaf still
-    needs its synthesised handler's implicit rst_n to fall back onto ONE of
-    the leaf's own resets regardless (the rst_n fallback error fires first,
-    cascading), so the router is the clean, isolated case."""
+    """A router's register bus clock must have a selected input reset. The
+    router declares resets: {} (no reset at all), so its bus clock has no
+    reset to select, which is reported at the router before the leaf it
+    serves looks for that reset."""
     design = f"""include:
     - shared.yaml
 
@@ -1024,7 +1116,7 @@ connections:
         "a router declaring resets: {} has no reset for its register bus "
         "clock",
         design,
-        ('apbDecodeNR', 'register bus clock must have one'))
+        ('apbDecodeNR', "has no selected reset and addressBlock: names no reset:"))
 
 
 def run_router_addressblock_reset_override_not_duplicated():
@@ -1389,6 +1481,8 @@ def _run():
         run_object_access_keeps_its_own_domain,
         run_feed_at_container_instance,
         run_composed_child_respells_the_clock,
+        run_child_harness_accessor_domain_not_checked,
+        run_child_harness_accessor_without_default_clock_rejected,
         run_top_down_leaf_register_port_selection,
         run_top_down_leaf_tie_by_declaration_order,
         run_top_down_leaf_no_clock_match_rejected,

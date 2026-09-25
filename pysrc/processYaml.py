@@ -4247,7 +4247,7 @@ class projectCreate:
             self._blocksDeclaringNoResets,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)
-        # objects that are one module in one domain must have connections that agree
+        # a memory of a block with no default clock must name its own clock
         tree.check()
         self._persistClockTree(tree)
         # generate address enums and types

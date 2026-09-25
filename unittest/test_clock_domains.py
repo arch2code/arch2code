@@ -7,11 +7,9 @@ a block's children, connections or containment.
 Groups: the completeness rule itself (implicit clk/rst_n, an explicitly
 empty resets:); the template-facing view (getBlockData, including a port's
 selected reset); the reset-clock, stated-clock and reset-membership
-validation diagnostics; the single-domain
-rules for memories and register buses, driven directly against the check
-because authoring a memory decode hierarchy would say nothing extra about
-the rule; and project-scope name collisions, unaffected by this rule since
-they are a project-file concern.
+validation diagnostics; the single-domain rules for memories and register
+buses; and project-scope name collisions, unaffected by this rule since they
+are a project-file concern.
 
 Assertions are on the persisted declaration, never on the build merely
 succeeding: a build that emits nothing at all succeeds too.
@@ -3931,54 +3929,6 @@ def run_clockless_row_cases():
 
 # --------------------------------------------- single-domain object rules --
 
-class _StubDiag:
-    """The diag protocol clockTree needs: `logError` collects rather than
-    exits, unlike the real one, which ends the build at its first
-    diagnostic. The message counts below are properties
-    of this harness, and what they assert is that a given shape produces
-    exactly one diagnostic and not a second spurious one.
-    `diagnosticLocation` is part of the protocol; no test here builds
-    through BlockDomains.build()/clockTree.build(), the only callers, so it
-    is never actually invoked.
-    """
-
-    def __init__(self):
-        self.messages = []
-
-    def logError(self, msg):
-        self.messages.append(msg)
-
-    def diagnosticLocation(self, yamlFile, lc):
-        return yamlFile
-
-
-def _validateRouterDomain(routerClocks):
-    """Run ClockTree.check() over one synthetic router BlockDomains.
-
-    THIS EXERCISES THE CHECK IN ISOLATION, not a build: BlockDomains built by
-    hand, not by BlockDomains.build(), so a multi-clock router needs no
-    default-clock marking of its own (irrelevant to this rule) to reach
-    the check. Every synthetic block is instantiated at the top so it is
-    reachable; the pruning of unreachable routers is what the end-to-end
-    cases cover (run_router_domain_cases).
-    """
-    clocks = OrderedDict(
-        (name, clockTree.ClockDecl(desc='', direction='input',
-                                   default=(index == 0), period='', timeUnit='ns'))
-        for index, name in enumerate(routerClocks))
-    domains = {
-        'router/top.yaml': clockTree.BlockDomains(
-            'router/top.yaml', 'router', clocks, OrderedDict(), routerClocks[0], {},
-            True, False, [], {}),
-    }
-    root = clockTree.Container(clockTree.ClockTree.ROOT_KEY)
-    root.instances['u_router/top.yaml'] = 'router/top.yaml'
-    diag = _StubDiag()
-    tree = clockTree.ClockTree(domains, {}, root, diag, [])
-    tree.check()
-    return diag.messages
-
-
 # A memory owner (implicit clk) and one hardware accessor, so the rule that a
 # memoryConnections: accessor must be in the memory's own domain can be driven
 # through a real build rather than by hand: the rule reads the accessor's own
@@ -4053,54 +4003,54 @@ def run_single_domain_cases():
                           "        resets:\n"
                           "            rstSlow_n: { clock: clkSlow }\n")))
 
-    def router_one_domain_accepted():
-        messages = _validateRouterDomain(['clkSlow'])
-        if messages:
-            raise AssertionError(
-                f"a router wholly in one non-default domain was rejected: "
-                f"{messages}. A router takes the clock of its register bus, "
-                f"whichever domain that is.")
-        return True
+    results.append(_run_case("a memory accessor in the memory's own domain is accepted",
+                             memory_accessor_same_domain_accepted))
 
-    def router_two_domains_rejected():
-        messages = _validateRouterDomain(['clk', 'clkSlow'])
-        if len(messages) != 1:
-            raise AssertionError(
-                f"expected exactly one diagnostic, got {messages}")
-        for needle in ('router', "'clk'", "'clkSlow'", 'single-domain module'):
-            if needle not in messages[0]:
-                raise AssertionError(
-                    f"the message does not mention '{needle}'. It has to name the "
-                    f"router, both clocks, and the condition - a router does not own "
-                    f"its bus clock, so 'put both in one domain' is a dead end here: "
-                    f"{messages[0]}")
-        # Deliberately NOT asserting a remedy: a router's clock set is exactly
-        # its declared clocks:, and this case pins the rule, not the wording of
-        # its fix.
-        return True
+    # A router is single-clock: one clock of any name builds, and a second
+    # declared clock is rejected by name whichever clock is the bus clock.
+    # Only the rule is asserted, not the wording of its fix.
+    def routerDesign(routerClocks, routerMap):
+        design = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                                   ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+        return design.replace(
+            ROUTER_HEADER, ROUTER_HEADER + "        clocks:\n" + routerClocks).replace(
+            "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }",
+            "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top, "
+            f"clocks: {{ {routerMap} }} }}")
 
-    def router_rule_is_on_cardinality_not_order():
-        """The bus clock coming FIRST does not make a two-clock router legal.
-
-        It is still rejected, because the router would declare a second clock
-        port that nothing clocks."""
-        messages = _validateRouterDomain(['clkSlow', 'clkPico'])
-        if len(messages) != 1:
-            raise AssertionError(
-                f"a two-clock router whose bus clock sorts first was accepted "
-                f"({messages}); the rule is on the size of the set")
-        return True
-
-    for label, fn in (
-            ("a memory accessor in the memory's own domain is accepted",
-             memory_accessor_same_domain_accepted),
-            ("a router wholly in one non-default domain is accepted",
-             router_one_domain_accepted),
-            ("a router resolving to two clocks is rejected by name",
-             router_two_domains_rejected),
-            ("a two-clock router is rejected however the set is ordered",
-             router_rule_is_on_cardinality_not_order)):
-        results.append(_run_case(label, fn))
+    results.append(_expect_builds(
+        "a router with one clock of its own name is accepted",
+        design=routerDesign("            clkBus: { }\n", "clkBus: clk"),
+        projectDomains=BRIDGE_PROJECT_DOMAINS))
+    results.append(_expect_diagnostic(
+        "a router resolving to two clocks is rejected by name",
+        ("Register-decode router block 'apbDecode' declares more than one clock "
+         "('clk', 'clkSlow'). A router is a single-domain module",
+         "Found 1 Error."),
+        design=routerDesign("            clk:     { default: true }\n"
+                            "            clkSlow: { }\n", "clk: clk, clkSlow: clkPix"),
+        projectDomains=BRIDGE_PROJECT_DOMAINS))
+    results.append(_expect_diagnostic(
+        "a two-clock router is rejected however the set is ordered",
+        ("Register-decode router block 'apbDecode' declares more than one clock "
+         "('clkSlow', 'clkPico').",
+         "Found 1 Error."),
+        design=routerDesign("            clkSlow: { default: true }\n"
+                            "            clkPico: { }\n", "clkSlow: clk, clkPico: clkPix"),
+        projectDomains=BRIDGE_PROJECT_DOMAINS))
+    results.append(_expect_diagnostic(
+        "a two-clock router is rejected when its bus clock is declared second",
+        ("Register-decode router block 'apbDecode' declares more than one clock "
+         "('clkSlow', 'clkBus').",
+         "Found 1 Error."),
+        design=routerDesign("            clkSlow: { default: true }\n"
+                            "            clkBus:  { }\n"
+                            "        resets:\n"
+                            "            rst_n: { clock: clkBus }\n",
+                            "clkSlow: clkPix, clkBus: clk").replace(
+            "            registerDecoderPort: apbReg\n",
+            "            registerDecoderPort: apbReg\n            clock: clkBus\n"),
+        projectDomains=BRIDGE_PROJECT_DOMAINS))
     return all(results)
 
 
@@ -4251,6 +4201,219 @@ def run_router_bus_on_output_clock_rejected():
          "routes, so its clock must be direction: input.",
          "Make 'clkOut' an input clock of 'apbDecode', and its only clock."),
         design=design, projectDomains=BRIDGE_PROJECT_DOMAINS)
+
+
+ROUTER_HEADER = """        desc: "Router block 'apbDecode'"
+        hasMdl: true
+"""
+
+
+def run_router_bus_on_output_reset_rejected():
+    """A router consumes its register bus reset, so addressBlock: reset:
+    naming one of the router's own output resets is rejected, and is the
+    only error reported."""
+    design = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    design = design.replace(
+        ROUTER_HEADER,
+        ROUTER_HEADER + """        resets:
+            rst_n: { default: true }
+            rstOut_n: { direction: output }
+""").replace(
+        "            registerDecoderPort: apbReg\n",
+        "            registerDecoderPort: apbReg\n            reset: rstOut_n\n")
+    return _expect_diagnostic(
+        "a router bus reset that is an output reset of the router is rejected",
+        ("Block 'apbDecode' addressBlock: names reset: 'rstOut_n', an output "
+         "reset of 'apbDecode'. A router is reset by the register bus it "
+         "routes, so its reset must be direction: input.",
+         "Make 'rstOut_n' an input reset of 'apbDecode', or name an input "
+         "reset in addressBlock: reset:.",
+         "Found 1 Error."),
+        design=design, projectDomains=BRIDGE_PROJECT_DOMAINS)
+
+
+def run_router_bus_without_reset_rejected():
+    """A router whose bus clock has no selected input reset is reported at
+    the router, not as a leaf-side reset binding error: one with resets: {},
+    and one whose selected reset is its own output reset."""
+    direct = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    outputSelected = direct.replace(
+        ROUTER_HEADER, ROUTER_HEADER + """        resets:
+            rstOut_n: { direction: output }
+""").replace(
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }",
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top, "
+        "resets: { rstOut_n: ~ } }")
+    return all([
+        _expect_diagnostic_without(
+            "a router with resets: {} serving a top-down leaf is reported at the router",
+            ("Block 'apbDecode' addressBlock: runs its register bus on clock "
+             "'clk', but 'clk' has no selected reset and addressBlock: names "
+             "no reset:.",
+             "so the router needs an input reset on 'clk'. Declare a "
+             "synchronous input reset on 'clk' in 'apbDecode''s resets:.",
+             "Found 1 Error."),
+            "bound to the register bus's selected reset",
+            design=direct.replace(ROUTER_HEADER, ROUTER_HEADER + "        resets: {}\n"),
+            projectDomains=BRIDGE_PROJECT_DOMAINS),
+        _expect_diagnostic_without(
+            "a router whose bus clock's selected reset is an output reset is "
+            "reported at the router",
+            ("but the selected reset of 'clk' is 'rstOut_n', an output reset "
+             "of 'apbDecode', and addressBlock: names no reset:.",
+             "so the router needs an input reset on 'clk'. Declare an input "
+             "reset on 'clk' in 'apbDecode''s resets: and mark it default: "
+             "true, or name an input reset in addressBlock: reset:.",
+             "Found 1 Error."),
+            "bound to the register bus's selected reset",
+            design=outputSelected, projectDomains=BRIDGE_PROJECT_DOMAINS),
+    ])
+
+
+def run_multi_clock_router_bus_reset_rejected_as_multi_clock():
+    """A router with a second clock is reported as multi-clock even when its
+    bus clock also has no selected reset, since the reset advice assumes a
+    single-clock router."""
+    design = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    design = design.replace(
+        ROUTER_HEADER, ROUTER_HEADER + """        clocks:
+            clk:    { default: true }
+            apbClk: { }
+        resets:
+            rstA_n: { clock: apbClk }
+            rstB_n: { clock: apbClk }
+""").replace(
+        "            registerDecoderPort: apbReg\n",
+        "            registerDecoderPort: apbReg\n            clock: apbClk\n").replace(
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }",
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top, "
+        "clocks: { clk: clkPix, apbClk: clk }, resets: { rstA_n: rst_n, rstB_n: rst_n } }")
+    return _expect_diagnostic_without(
+        "a two-clock router whose bus clock has no selected reset is reported "
+        "as multi-clock",
+        ("Register-decode router block 'apbDecode' declares more than one clock "
+         "('clk', 'apbClk'). A router is a single-domain module clocked by the "
+         "register bus it routes. Declare at most one clock in the router's "
+         "'clocks:'.",
+         "Found 1 Error."),
+        "Declare a synchronous input reset",
+        design=design, projectDomains=BRIDGE_PROJECT_DOMAINS)
+
+
+def run_router_with_children_rejected():
+    """A router's module is generated whole from its addressBlock:, so a
+    router block containing instances is rejected: one plain child, and a
+    child driving a local reset net another child consumes."""
+    direct = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    oneChild = direct.replace("    leafA:\n", """    sink:
+        desc: "a child of the router"
+        hasMdl: true
+    leafA:
+""").replace(
+        "\nconnections:",
+        "    uSink:      { container: apbDecode, instanceType: sink }\n\nconnections:")
+    localNet = direct.replace(
+        ROUTER_HEADER, ROUTER_HEADER + "        resets: {}\n").replace(
+        "    leafA:\n", """    rstGen:
+        desc: "drives a reset inside the router"
+        hasMdl: true
+        resets:
+            rstO_n: { direction: output }
+    sink:
+        desc: "consumes the router's local reset net"
+        hasMdl: true
+    leafA:
+""").replace(
+        "\nconnections:",
+        "    uRstGen:    { container: apbDecode, instanceType: rstGen, resets: { rstO_n: rstL_n } }\n"
+        "    uSink:      { container: apbDecode, instanceType: sink, resets: { rst_n: rstL_n } }\n"
+        "\nconnections:")
+    tail = ("A router's module is generated entirely from its addressBlock:, "
+            "so it cannot contain instances.")
+    return all([
+        _expect_diagnostic(
+            "a router block containing one instance is rejected",
+            ("Register-decode router block 'apbDecode' contains instance(s) 'uSink'.",
+             tail, "Move 'uSink' into the container that instantiates 'apbDecode'.",
+             "Found 1 Error."),
+            design=oneChild, projectDomains=BRIDGE_PROJECT_DOMAINS),
+        _expect_diagnostic(
+            "a router block containing a local reset net's driver and consumer is rejected",
+            ("Register-decode router block 'apbDecode' contains instance(s) "
+             "'uRstGen', 'uSink'.",
+             tail,
+             "Move 'uRstGen', 'uSink' into the container that instantiates 'apbDecode'.",
+             "Found 1 Error."),
+            design=localNet, projectDomains=BRIDGE_PROJECT_DOMAINS),
+    ])
+
+
+def run_router_bus_async_reset_rejected():
+    """addressBlock: reset: must be released on the router's bus clock, so
+    an asynchronous reset, which belongs to no clock, is rejected."""
+    design = (BRIDGE_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                               ', rstPix_n: rstPix_n', BRIDGE_ONE_MEMORY_ROW % ''))
+    design = design.replace(
+        ROUTER_HEADER, ROUTER_HEADER + """        resets:
+            rst_n:  { }
+            rstA_n: { async: true }
+""").replace(
+        "            registerDecoderPort: apbReg\n",
+        "            registerDecoderPort: apbReg\n            reset: rstA_n\n").replace(
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top }",
+        "uAPBDecode: { container: top_tb, instanceType: apbDecode, instGroup: top, "
+        "resets: { rstA_n: rst_n } }")
+    return _expect_diagnostic(
+        "a router bus reset that is an asynchronous reset is rejected",
+        ("Block 'apbDecode' addressBlock: names reset: 'rstA_n', an "
+         "asynchronous reset input belonging to no clock. A router's bus "
+         "reset must belong to its bus clock 'clk'",
+         "Name a reset of 'clk' in addressBlock: reset:, or remove reset: "
+         "to use that clock's selected reset.",
+         "Found 1 Error."),
+        design=design, projectDomains=BRIDGE_PROJECT_DOMAINS)
+
+
+def run_passthrough_register_ports_without_bus_reset_rejected():
+    """A passthrough container that declares registerPorts: on a clock with
+    two unmarked resets has no register-bus reset. That is reported at the
+    container, not as the leaf behind it failing to bind the container's
+    reset."""
+    design = HASVL_PASSTHROUGH_BUS_PORT_DESIGN
+    for old, new in (
+            ("""            apbRst_n: { clock: apbClk }
+    leafV:""", """            apbRst_n: { clock: apbClk }
+        registerPorts:
+            apbReg: { interface: apbReg, clock: clk }
+    leafV:"""),
+            ("""        desc: "top-down leaf behind the passthrough container"
+        hasMdl: true
+""", """        desc: "top-down leaf behind the passthrough container"
+        hasMdl: true
+        resets:
+            rst_n: { }
+        registerPorts:
+            regs: { interface: apbReg, reset: rst_n }
+"""),
+            ("""                  clocks: { clkD: clk },
+                  resets: { rstD_n: rst_n, rstAlt_n: rst_n } }""",
+             """                  clocks: { clkD: clk, clk: apbClk },
+                  resets: { rstD_n: rst_n, rst_n: apbRst_n, rstAlt_n: apbRst_n } }"""),
+            ("clocks: { clk: apbClk }, resets: { rst_n: apbRst_n } }\n\nconnections",
+             "clocks: { clk: clk }, resets: { rst_n: rst_n } }\n\nconnections")):
+        design = design.replace(old, new)
+    return _expect_diagnostic_without(
+        "a passthrough container with registerPorts: and no bus reset is "
+        "reported at the container",
+        ("Block 'wrapV' hosts its register bus on clock 'clk', but that clock "
+         "has no selected reset.",
+         "Found 1 Error."),
+        "not bound to the same container reset",
+        design=design, projectDomains=HASVL_APB_PROJECT_DOMAINS)
 
 
 def run_regaccess_memory_bridge_reset_declared_builds():
@@ -5517,6 +5680,21 @@ def run_collision_cases():
 
 # --------------------------------------------------------- graph shape --
 
+class _StubDiag:
+    """The diag protocol clockTree needs: `logError(msg)` and
+    `diagnosticLocation(yamlFile, lc)`.
+    """
+
+    def __init__(self):
+        self.messages = []
+
+    def logError(self, msg):
+        self.messages.append(msg)
+
+    def diagnosticLocation(self, yamlFile, lc):
+        return yamlFile
+
+
 def run_clock_tree_shape_cases():
     """The clockTree.py graph (Net.kind/.isReset/.clockNet/.driver,
     Driver.kind, Consumer.binding, BlockDomains.blockKey/Container.blockKey)
@@ -5525,14 +5703,13 @@ def run_clock_tree_shape_cases():
     name match, one by the clk/rst_n fallback, and one asynchronous reset
     input bound by an explicit name.
 
-    Built directly through the constructors, the way _validateSingleDomain
-    builds its fixtures, rather than through BlockDomains.build()/
-    clockTree.build(): a graph-shape check on the model's own classes, not a
-    real project build (run_async_reset_bound_by_name_cases and
+    Built directly through the constructors rather than through
+    BlockDomains.build()/clockTree.build(): a graph-shape check on the
+    model's own classes, not a real project build
+    (run_async_reset_bound_by_name_cases and
     run_async_reset_bound_by_map_cases exercise a real build for that). An
     asynchronous reset input binds as a Consumer like any other, 'name' or
-    'map', never 'fallback' (it takes no clk/rst_n-style default
-    fallback).
+    'map', never 'fallback' (it takes no clk/rst_n-style default fallback).
     """
     def clockDecl(default=False):
         return clockTree.ClockDecl(desc='', direction='input', default=default,
@@ -6060,6 +6237,98 @@ def run_memory_accessor_without_default_clock_cases():
             "the accessor given an input clock builds",
             accessorViewOpens,
             design=design('            clk: { }\n', 'clk: clk, '), projectDomains=''),
+        _expect_builds(
+            "a memoryConnections row with no instance, beside an accessor, builds",
+            design=design('            clk: { }\n', 'clk: clk, ')
+            + "    - { memory: tbl, block: memOwner, port: p }\n", projectDomains=''),
+    ])
+
+
+def run_memory_accessor_without_default_clock_unreachable_rejected():
+    """An accessor with no default clock is rejected inside a root-project
+    container that nothing instantiates. A child project's uninstantiated
+    harness is covered in test_register_decode_clock.py."""
+    design = MEMORY_ACCESSOR_NO_DEFAULT_CLOCK_DESIGN.replace(
+        '{accessorClocks}', '').replace('{accessorMap}', '').replace(
+        "    memOwner: {",
+        "    orphan: { desc: \"container no instance names\", hasVl: false, hasMdl: false, "
+        "hasTb: false, hasRtl: false }\n    memOwner: {").replace(
+        "uMemOwner: { container: top_tb,", "uMemOwner: { container: orphan,").replace(
+        "uAccessor: { container: top_tb,", "uAccessor: { container: orphan,")
+    return _expect_diagnostic(
+        "a memory accessor with no default clock in an uninstantiated container is rejected",
+        ("Instance 'uAccessor' of block 'accessor' accesses memory 'tbl' of block "
+         "'memOwner', but 'accessor' has no default clock (every declared clock is "
+         "direction: output). A memory accessor takes its block's default clock. "
+         "Give 'accessor' an input clock.",
+         "Found 1 Error."),
+        design=design, projectDomains='')
+
+
+MEMORY_ACCESSOR_UNINSTANTIATED_CONTAINER_DESIGN = """types:
+    dataT: { width: 8, desc: "payload word" }
+    memAddrT: { width: 3, desc: "memory address" }
+
+structures:
+    memSt:
+        data: { varType: dataT, desc: "memory payload" }
+    memAddrSt:
+        address: { varType: memAddrT, desc: "memory address" }
+
+blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    orphan:
+        desc: "container no instance names"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:  { default: true }
+            clkB: { }
+        resets:
+            rst_n:  { clock: clk }
+            rstB_n: { clock: clkB }
+    memOwner: { desc: "owns a memory on its default clock", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    accessor: { desc: "hardware accessor of the memory", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+
+instances:
+    top_tb:    { container: top_tb, instanceType: top_tb,   instGroup: top }
+    oMemOwner: { container: orphan, instanceType: memOwner, instGroup: top }
+    oAccessor: { container: orphan, instanceType: accessor, instGroup: top,
+                 clocks: { clk: {accessorClock} }, resets: { rst_n: {accessorReset} } }
+
+memories:
+    - { memory: tbl, block: memOwner, structure: memSt, addressStruct: memAddrSt,
+        wordLines: 4, ports: [p], desc: "table" }
+
+memoryConnections:
+    - { memory: tbl, block: memOwner, instance: oAccessor, port: p }
+"""
+
+
+def run_memory_accessor_uninstantiated_container_domain_cases():
+    """The root project generates every container it declares, so an
+    accessor's domain is checked inside one that nothing instantiates: on
+    another clock than the memory it is rejected, on the memory's own clock
+    it builds."""
+    def design(accessorClock, accessorReset):
+        return MEMORY_ACCESSOR_UNINSTANTIATED_CONTAINER_DESIGN.replace(
+            '{accessorClock}', accessorClock).replace('{accessorReset}', accessorReset)
+
+    return all([
+        _expect_diagnostic(
+            "an accessor in an uninstantiated root container on another clock "
+            "than its memory is rejected",
+            ("Instance 'oAccessor' accesses memory 'tbl' of block 'memOwner' over "
+             "clock 'clkB', but the memory is on 'clk'. A hardware accessor of a "
+             "memory must be in the memory's own domain. Bind the accessor's "
+             "default clock to 'clk'.",
+             "Found 1 Error."),
+            design=design('clkB', 'rstB_n'), projectDomains=''),
+        _expect_builds(
+            "an accessor in an uninstantiated root container on its memory's clock builds",
+            design=design('clk', 'rst_n'), projectDomains=''),
     ])
 
 
@@ -6122,7 +6391,9 @@ def _run():
         ("Single-domain objects", (run_single_domain_cases,
                                    run_memory_stated_clock_on_no_default_clock_block_accepted,
                                    run_memory_on_owner_output_clock_cases,
-                                   run_memory_accessor_without_default_clock_cases)),
+                                   run_memory_accessor_without_default_clock_cases,
+                                   run_memory_accessor_without_default_clock_unreachable_rejected,
+                                   run_memory_accessor_uninstantiated_container_domain_cases)),
         ("regAccess memory bridge reset", (run_regaccess_memory_bridge_clock_no_reset_rejected,
                                                run_regaccess_memory_bridge_reset_declared_builds,
                                                run_regaccess_memory_bridge_conflicting_resets_rejected,
@@ -6131,7 +6402,13 @@ def _run():
         ("Register-bus port domain override (registerBusPort)",
          (run_registerports_reset_disambiguates_bus_port_domain,
           run_topdown_leaf_bus_port_domain_matches_register_clock,
-          run_router_bus_on_output_clock_rejected)),
+          run_router_bus_on_output_clock_rejected,
+          run_router_bus_on_output_reset_rejected,
+          run_router_bus_without_reset_rejected,
+          run_router_bus_async_reset_rejected,
+          run_router_with_children_rejected,
+          run_multi_clock_router_bus_reset_rejected_as_multi_clock,
+          run_passthrough_register_ports_without_bus_reset_rejected)),
         ("hasVl BFM port reset", (run_hasvl_port_reset_cases,)),
         ("Name collisions", (run_collision_cases,)),
         ("Graph shape", (run_clock_tree_shape_cases,)),
