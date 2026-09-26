@@ -1,5 +1,5 @@
 import pysrc.emissionUtils as emissionUtils
-from pysrc.intf_gen_utils import cpp_config_module_name, CONTAINER_CONFIG_PARAM, configType
+from pysrc.intf_gen_utils import CONTAINER_CONFIG_PARAM, configType
 
 # args from generator line
 # prj object
@@ -14,8 +14,7 @@ def configModule(args, prj, data):
     if not descriptors:
         return ""
     # All descriptors share one (project, block) identity, so any one names the module.
-    moduleName = cpp_config_module_name(descriptors[0]['declaringProject'],
-                                        descriptors[0]['block'])
+    moduleName = descriptors[0]['configModule']
     out = []
     # #includes are illegal in module purview, so the config struct's constexpr
     # dependencies live in the global module fragment ahead of the module decl.

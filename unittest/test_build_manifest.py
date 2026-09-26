@@ -425,7 +425,7 @@ def check_hierarchical_vl_wrap_path():
             'include': '$root/include',
         },
     }
-    layout = pc._buildLayoutFor(dirMacros, fileGeneration)
+    layout = pc._buildLayoutFor(dirMacros, fileGeneration, {'sv': '', 'sc': '', 'fw': ''})
     return (layout['segments']['vl_wrap']['path'] == 'verif' and
             layout['segments']['model']['path'] == 'model')
 

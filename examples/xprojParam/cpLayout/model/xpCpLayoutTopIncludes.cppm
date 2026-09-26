@@ -24,7 +24,8 @@ export namespace xpCpLayout_xpCpLayoutTop_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpCpLayout_xpCpLayoutTop_ns {
 // types
-template<typename Config> using cpPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t CP_WIDTH> using cpPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using cpPixelT = cpPixelT_v<Config::CP_WIDTH>;
 typedef uint8_t cpTagT; // [8] Sample tag; lowest packed position
 typedef uint8_t cpMarkT; // [8] Trailing marker, so a width change also moves an offset
 
@@ -39,30 +40,30 @@ export namespace xpCpLayout_xpCpLayoutTop_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpCpLayout_xpCpLayoutTop_ns {
 // structures
-template<typename Config>
-struct cpSt {
+template<uint32_t CP_WIDTH>
+struct cpSt_v {
     cpMarkT mark; //Trailing marker
-    cpPixelT<Config> data; //Parameterizable pixel payload
+    cpPixelT_v<CP_WIDTH> data; //Parameterizable pixel payload
     cpTagT tag; //Sample tag
 
-    cpSt() {}
+    cpSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::CP_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + CP_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const cpSt<Config> & rhs) const {
+    inline bool operator == (const cpSt_v<CP_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const cpSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const cpSt_v<CP_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  cpSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  cpSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -78,12 +79,12 @@ struct cpSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cpSt<Config>::_byteWidth);
+        memset(&_ret, 0, cpSt_v<CP_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::CP_WIDTH);
-        _pos += Config::CP_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, CP_WIDTH);
+        _pos += CP_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -92,44 +93,45 @@ struct cpSt {
         uint16_t _pos{0};
         mark = (cpMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (cpPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::CP_WIDTH)) - 1));
-        _pos += Config::CP_WIDTH;
+        data = (cpPixelT_v<CP_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CP_WIDTH)) - 1));
+        _pos += CP_WIDTH;
         tag = (cpTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<cpSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<cpSt_v<CP_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<cpSt<Config>::_bitWidth> packed_data;
+        sc_bv<cpSt_v<CP_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::CP_WIDTH-1, _pos) = data;
-        _pos += Config::CP_WIDTH;
+        packed_data.range(_pos+CP_WIDTH-1, _pos) = data;
+        _pos += CP_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<cpSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<cpSt_v<CP_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (cpMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (cpPixelT<Config>) packed_data.range(_pos+Config::CP_WIDTH-1, _pos).to_uint64();
-        _pos += Config::CP_WIDTH;
+        data = (cpPixelT_v<CP_WIDTH>) packed_data.range(_pos+CP_WIDTH-1, _pos).to_uint64();
+        _pos += CP_WIDTH;
         tag = (cpTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit cpSt(sc_bv<cpSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit cpSt(
+    explicit cpSt_v(sc_bv<cpSt_v<CP_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit cpSt_v(
         cpMarkT mark_,
-        cpPixelT<Config> data_,
+        cpPixelT_v<CP_WIDTH> data_,
         cpTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit cpSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit cpSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using cpSt = cpSt_v<Config::CP_WIDTH>;
 } // namespace xpCpLayout_xpCpLayoutTop_ns
 
 // GENERATED_CODE_END

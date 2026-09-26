@@ -100,32 +100,98 @@ def sanitizeIdentifierToken(name):
     # keep the rule to what is illegal in a plain identifier segment.
     return name.replace('-', '_').replace('.', '_')
 
-def configStructName(declaringProject, blockName, variant):
-    # Owner-qualified so a reused block's own variants and another project's
-    # variants of it are distinct C++ types.
-    bare = f'{blockName}Config' if variant == '' \
-        else f'{blockName}{variant[0].upper()}{variant[1:]}Config'
-    return f'{sanitizeIdentifierToken(declaringProject)}_{bare}'
+def configStructName(stem, variant):
+    # stem is the declaring project's CONFIGMODULES stub, so a reused block's
+    # own variants and another project's variants of it are distinct C++ types.
+    if variant == '':
+        return f'{stem}Config'
+    return f'{stem}{variant[0].upper()}{variant[1:]}Config'
 
-def qualifyModuleIdentity(name, projectName):
-    # Project-qualify a module / package / namespace identifier for cross-project
-    # uniqueness, deduping when the name already leads with its owning project so
-    # a single-project name (or an already-qualified one) stays byte-identical.
-    # The '_' boundary is load-bearing: it prevents a false dedup of a name such
-    # as 'debayering' under project 'debayer'. Owner comes from the intrinsic
-    # per-context CONTEXTOWNINGPROJECT, so the identity is build-independent (a
-    # child IP spells the same name standalone and composed).
-    #
-    # Sanitize both tokens so the returned identifier is a legal SV/C++
-    # module/package/namespace name even when the project name carries a '-' or
-    # '.' (e.g. 'my-project' -> 'my_project_ip'); the dedup test then compares
-    # sanitized-vs-sanitized. sanitizeIdentifierToken is idempotent, so an
-    # already-underscore project name stays byte-identical.
+def rejectSharedName(names, kind, entity, describe, remedy):
+    # Two keys sharing one emitted name would clobber each other's output.
+    keyByName = {}
+    for key, name in names.items():
+        prior = keyByName.get(name)
+        if prior is not None:
+            printError(f"{kind} '{name}' is used by two distinct {entity}: "
+                       f"{describe(prior)} and {describe(key)}. Names must be "
+                       f"unique across all {entity} in a build; {remedy}.")
+            exit(warningAndErrorReport())
+        keyByName[name] = key
+
+# A plain SystemVerilog identifier (IEEE 1800 5.6).
+SV_IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_$]*')
+
+# The reserved keywords of IEEE 1800-2017 Annex B, none of which an identifier
+# may spell.
+SV_KEYWORDS = frozenset({
+    'accept_on', 'alias', 'always', 'always_comb', 'always_ff', 'always_latch',
+    'and', 'assert', 'assign', 'assume', 'automatic', 'before', 'begin', 'bind',
+    'bins', 'binsof', 'bit', 'break', 'buf', 'bufif0', 'bufif1', 'byte', 'case',
+    'casex', 'casez', 'cell', 'chandle', 'checker', 'class', 'clocking', 'cmos',
+    'config', 'const', 'constraint', 'context', 'continue', 'cover', 'covergroup',
+    'coverpoint', 'cross', 'deassign', 'default', 'defparam', 'design', 'disable',
+    'dist', 'do', 'edge', 'else', 'end', 'endcase', 'endchecker', 'endclass',
+    'endclocking', 'endconfig', 'endfunction', 'endgenerate', 'endgroup',
+    'endinterface', 'endmodule', 'endpackage', 'endprimitive', 'endprogram',
+    'endproperty', 'endspecify', 'endsequence', 'endtable', 'endtask', 'enum',
+    'event', 'eventually', 'expect', 'export', 'extends', 'extern', 'final',
+    'first_match', 'for', 'force', 'foreach', 'forever', 'fork', 'forkjoin',
+    'function', 'generate', 'genvar', 'global', 'highz0', 'highz1', 'if', 'iff',
+    'ifnone', 'ignore_bins', 'illegal_bins', 'implements', 'implies', 'import',
+    'incdir', 'include', 'initial', 'inout', 'input', 'inside', 'instance', 'int',
+    'integer', 'interconnect', 'interface', 'intersect', 'join', 'join_any',
+    'join_none', 'large', 'let', 'liblist', 'library', 'local', 'localparam',
+    'logic', 'longint', 'macromodule', 'matches', 'medium', 'modport', 'module',
+    'nand', 'negedge', 'nettype', 'new', 'nexttime', 'nmos', 'nor',
+    'noshowcancelled', 'not', 'notif0', 'notif1', 'null', 'or', 'output', 'package',
+    'packed', 'parameter', 'pmos', 'posedge', 'primitive', 'priority', 'program',
+    'property', 'protected', 'pull0', 'pull1', 'pulldown', 'pullup',
+    'pulsestyle_ondetect', 'pulsestyle_onevent', 'pure', 'rand', 'randc',
+    'randcase', 'randsequence', 'rcmos', 'real', 'realtime', 'ref', 'reg',
+    'reject_on', 'release', 'repeat', 'restrict', 'return', 'rnmos', 'rpmos',
+    'rtran', 'rtranif0', 'rtranif1', 's_always', 's_eventually', 's_nexttime',
+    's_until', 's_until_with', 'scalared', 'sequence', 'shortint', 'shortreal',
+    'showcancelled', 'signed', 'small', 'soft', 'solve', 'specify', 'specparam',
+    'static', 'string', 'strong', 'strong0', 'strong1', 'struct', 'super',
+    'supply0', 'supply1', 'sync_accept_on', 'sync_reject_on', 'table', 'tagged',
+    'task', 'this', 'throughout', 'time', 'timeprecision', 'timeunit', 'tran',
+    'tranif0', 'tranif1', 'tri', 'tri0', 'tri1', 'triand', 'trior', 'trireg',
+    'type', 'typedef', 'union', 'unique', 'unique0', 'unsigned', 'until',
+    'until_with', 'untyped', 'use', 'uwire', 'var', 'vectored', 'virtual', 'void',
+    'wait', 'wait_order', 'wand', 'weak', 'weak0', 'weak1', 'while', 'wildcard',
+    'wire', 'with', 'within', 'wor', 'xnor', 'xor'
+})
+
+def rejectIllegalSvName(names, kind, describe, remedy):
+    # SV names are spelled from block names, yaml file names and prefixes,
+    # which allow characters and keywords an SV identifier does not.
+    for key, name in names.items():
+        if not SV_IDENTIFIER.fullmatch(name):
+            printError(f"SystemVerilog {kind} name '{name}' of {describe(key)} is not a "
+                       f"legal SystemVerilog identifier; {remedy}.")
+            exit(warningAndErrorReport())
+        if name in SV_KEYWORDS:
+            printError(f"SystemVerilog {kind} name '{name}' of {describe(key)} is a "
+                       f"SystemVerilog keyword (IEEE 1800-2017 Annex B); {remedy}.")
+            exit(warningAndErrorReport())
+
+def leadsWithProject(name, projectName):
+    # The '_' boundary keeps 'debayering' from counting as led by 'debayer'.
     name = sanitizeIdentifierToken(name)
     projectName = sanitizeIdentifierToken(projectName)
-    if name == projectName or name.startswith(projectName + '_'):
-        return name
-    return f'{projectName}_{name}'
+    return name == projectName or name.startswith(projectName + '_')
+
+def qualifyModuleIdentity(name, projectName):
+    # Project-qualify a C++ module, namespace or Config identifier so two
+    # projects' same-named blocks and contexts stay distinct. A name that already
+    # leads with its owning project is returned unchanged. The owner is the
+    # intrinsic CONTEXTOWNINGPROJECT, so a child IP spells the same identity
+    # standalone and composed. Both tokens are sanitized, so a project name such
+    # as 'my-project' still yields a legal identifier.
+    if leadsWithProject(name, projectName):
+        return sanitizeIdentifierToken(name)
+    return f'{sanitizeIdentifierToken(projectName)}_{sanitizeIdentifierToken(name)}'
 
 def addressGroupLabel(groupKey):
     # Diagnostic spelling of an AddressGroups registry key. The registry is keyed
@@ -397,6 +463,10 @@ storageBuckets = [
     {'maxSize': 1024, 'storageBits': 64, 'arrayElementSize': 64},
 ]
 
+# The Verilated SystemC wrapper class is `<block>` plus this suffix, whatever
+# name the vlScWrap fileMap entry gives its header.
+SC_WRAPPER_CLASS_SUFFIX = '_hdl_sc_wrapper'
+
 # project open is the class that loads the database and provides access to the data
 # it is used by the generators to access the data
 # it additionaly provides some helper functions to make the generators easier to write
@@ -450,9 +520,11 @@ class projectOpen:
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
+        self.contextSvPackageName = self.config.getConfig('CONTEXTSVPACKAGENAME')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
+        self.blockSvModuleName = self.config.getConfig('BLOCKSVMODULENAME')
+        self.svWrapperNames = self.config.getConfig('SVWRAPPERNAMES')
         self.filemap = self.config.getConfig('FILEMAP')
-        self.configModuleFileDef = artifactPaths.configModuleFileDef(self.filemap)
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
         global layoutConfig
@@ -824,17 +896,18 @@ class projectOpen:
         return self.contextOwningProject[context]
 
     def getModuleFilename(self, filekey, module, fileType):
-        fileDefinition = self.filemap.get(filekey, None)
+        # The artifact belongs to the block, so the block owner's fileMap names it.
+        blockContext = self.data['blocks'][self.getQualBlock(module)]['_context']
+        layout = self.projectLayout[self.contextOwningProject[blockContext]]
+        fileDefinition = layout['fileMap'].get(filekey, None)
         if not fileDefinition:
             printError(f"File type {filekey} not defined in project file filemap section")
             exit(warningAndErrorReport())
-        fileStub = fileDefinition.get('name', '')
         extension = fileDefinition['ext'].get(fileType, None)
         if not extension:
             printError(f"File type {fileType} not defined in filemap->ext")
             exit(warningAndErrorReport())
-        fileName = f"{module}{fileStub}.{extension}"
-        return fileName
+        return f"{artifactPaths.fileStem(fileDefinition, module, layout)}.{extension}"
 
     def _build_enum_lookup(self):
         """Build a lookup dictionary for enum values (lazy initialization)"""
@@ -1240,10 +1313,11 @@ class projectOpen:
         # Directory of each context's generated RTL, relative to the root
         # rtl.f. Functional layouts mirror the yaml subdir inside the owning
         # project's rtl segment; hierarchical layouts resolve rtl.f and each
-        # package through expandNewModulePath against their node dirs.
-        fileMap = self.config.getConfig('FILEMAP')
+        # package through expandNewModulePath against their node dirs. rtl.f
+        # follows this build's fileMap, each package its owner's.
         rootName = self.config.getConfig('PROJECTNAME')
         rootLayout = self.projectLayout[rootName]
+        fileMap = rootLayout['fileMap']
         rtlSegKey = fileMap['package']['basePath']
         # A project without an rtl segment emits no rtl.f, so nothing consumes
         # this map; return empty rather than fabricating a directory.
@@ -1265,7 +1339,7 @@ class projectOpen:
                 ownerLayout = self.projectLayout[self.contextOwningProject[context]]
                 includeName = self.includeName[context]
                 pkgDir = os.path.dirname(artifactPaths.expandNewModulePath(
-                    fileMap['package'], self.contextNodeDir[context], includeName,
+                    ownerLayout['fileMap']['package'], self.contextNodeDir[context], includeName,
                     includeName, ownerLayout, missingDirOk=True))
                 ret[context] = os.path.relpath(pkgDir, rtlDotFdir)
             return ret
@@ -1275,8 +1349,9 @@ class projectOpen:
             ownerLayout = self.projectLayout[owner]
             absYaml = os.path.normpath(os.path.join(rootYaml, context))
             subdir = os.path.dirname(os.path.relpath(absYaml, ownerLayout['yaml']))
+            ownerSegKey = ownerLayout['fileMap']['package']['basePath']
             absRtlDir = os.path.normpath(
-                os.path.join(ownerLayout['segments'][rtlSegKey]['path'], subdir))
+                os.path.join(ownerLayout['segments'][ownerSegKey]['path'], subdir))
             ret[context] = os.path.relpath(absRtlDir, rtlDotFdir)
         return ret
 
@@ -1287,7 +1362,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'classIncludeContext', 'configModules',
+                        'classIncludeContext',
                         'containerTypedChildModules',
                         'addressDecode', 'standaloneVariants', 'standaloneVariantConfigs', 'foreignVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings'}
         ret = dict()
@@ -1304,6 +1379,8 @@ class projectOpen:
         # value: one label can be bound at different values by different
         # declaring projects, so value consumers select a descriptor instead.
         ret['variants'] = set()
+        # C++ Config module names this block's instances import.
+        ret['configModules'] = set()
         for k in blockDataSet:
             ret[k] = dict()
         ret['addressDecode']['hasDecoder'] = False
@@ -1452,34 +1529,29 @@ class projectOpen:
         ret['blockUsesClog2'] = blockUsesClog2
 
     def getBDSvWrapperNames(self, ret):
-        # Verilated wrapper design-unit names, plus the SC wrapper's class shape.
-        # Each name composes the fileMap tail expandNewModulePath uses for the
-        # scaffold filename. A foreign top carries the sanitized declaring
-        # project.
-        wrapTail = self.filemap['vlSvWrap']['name']
-        bodyExt = self.filemap['vlSvWrapBody']['ext']['svh']
-        foreignTail = self.filemap['vlSvWrapForeign']['name']
-        scTail = self.filemap['vlScWrap']['name']
-        scExt = self.filemap['vlScWrap']['ext']['hdr']
+        # Verilated wrapper design-unit names (projectCreate.deriveSvModuleNames),
+        # plus the SC wrapper's class shape. One standalone SV top per label,
+        # each scaffolded and verilated as a fixed-width model: the owner's
+        # declarations under the block's name, the labels this build declares
+        # of a block another project owns under this build's Config stub.
         blockName = ret['blockName']
-        project = self.config.getConfig('PROJECTNAME')
-        bodyModule = f'{blockName}{wrapTail}'
-        # One standalone SV top per label, each scaffolded and verilated as a
-        # fixed-width model: bare for the owner's declarations, owner-qualified
-        # for the labels this build declares of a block another project owns.
-        variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['standaloneVariants']}
-        foreignVariantTops = {
-            v: f'{sanitizeIdentifierToken(project)}_{blockName}_{v}{foreignTail}'
-            for v in ret['foreignVariants']}
+        ownerLayout = self.projectLayout[self.contextOwningProject[ret['blockInfo']['_context']]]
+        fileMap = ownerLayout['fileMap']
+        names = self.svWrapperNames[ret['qualBlock']]
+        bodyModule = names['bodyModule']
+        variantTops = names['variantTops']
+        foreignVariantTops = names['foreignVariantTops'][self.config.getConfig('PROJECTNAME')] \
+            if ret['foreignVariants'] else dict()
+        scWrapperFile = artifactPaths.fileStem(fileMap['vlScWrap'], blockName, ownerLayout)
         ret['svWrapper'] = {
             'bodyModule': bodyModule,
-            'bodyInclude': f'{bodyModule}.{bodyExt}',
+            'bodyInclude': f"{bodyModule}.{fileMap['vlSvWrapBody']['ext']['svh']}",
             'variantTops': variantTops,
             'foreignVariantTops': foreignVariantTops,
-            # SystemC verilated wrapper class + its include, from the vlScWrap
-            # fileMap name/ext (the wrapper this block's VlRegistrar instantiates).
-            'scWrapperModule': f'{blockName}{scTail}',
-            'scWrapperInclude': f'{blockName}{scTail}.{scExt}',
+            # The SystemC Verilated wrapper class this block's VlRegistrar
+            # instantiates, and the vlScWrap header that declares it.
+            'scWrapperModule': f"{blockName}{SC_WRAPPER_CLASS_SUFFIX}",
+            'scWrapperInclude': f"{scWrapperFile}.{fileMap['vlScWrap']['ext']['hdr']}",
             # True when the SystemC wrapper is a reusable `<DUT_T, Config>` class
             # template, one wrapper serving every concrete top selected by an
             # ordinary block variant or a parent-child registration pair.
@@ -1510,10 +1582,10 @@ class projectOpen:
         # The own-Config import exists exactly when the fileMap scaffolds the
         # owner-qualified Config module for this block.
         condData = self.getBlockCondRow(qualBlock)
-        ret['ownConfigModule'] = {
-            'project': self.contextOwningProject[ret['blockInfo']['_context']],
-            'block':   ret['blockInfo']['block'],
-        } if artifactPaths.fileMapCondMatch(self.configModuleFileDef, condData) else None
+        owner = self.contextOwningProject[ret['blockInfo']['_context']]
+        configDef = artifactPaths.configModuleFileDef(self.projectLayout[owner]['fileMap'])
+        ret['ownConfigModule'] = self.config.getConfig('CONFIGMODULES')[(owner, qualBlock)]['moduleName'] \
+            if artifactPaths.fileMapCondMatch(configDef, condData) else None
 
     def getBlockConfigView(self, qualBlock):
         cached = self._blockConfigBundleCache.get(qualBlock)
@@ -1605,8 +1677,7 @@ class projectOpen:
         # Config type and needs no import.
         if is_parameterizable and has_own_params:
             descriptor = self.instanceVariantDescriptor(instanceData)
-            config_module = {'project': descriptor['declaringProject'],
-                             'block': descriptor['block']}
+            config_module = descriptor['configModule']
 
         # The child's Config is a function of the CONTAINER's, making the child a
         # family of C++ types the factory key cannot select from; the container
@@ -1744,24 +1815,21 @@ class projectOpen:
                     entry['config'] for entry in verif)}
 
     def _configExpressionModules(self, expressions):
-        descriptors = list()
+        # C++ Config module names the expressions' structs live in.
+        modules = set()
         def collect(expression):
             if expression is None:
                 return
             if expression['kind'] == 'default':
-                descriptors.append({'declaringProject': expression['project'],
-                                    'block': expression['block']})
+                if expression['configModule'] is not None:
+                    modules.add(expression['configModule'])
                 return
-            descriptors.append(expression['descriptor'])
+            modules.add(expression['descriptor']['configModule'])
             if expression['kind'] == 'template':
                 collect(expression['container'])
         for expression in expressions:
             collect(expression)
-        return self._configModules(descriptors)
-
-    def _configModules(self, descriptors):
-        modules = {(desc['declaringProject'], desc['block']) for desc in descriptors}
-        return [{'project': project, 'block': block} for project, block in sorted(modules)]
+        return sorted(modules)
 
     def getConfigModuleData(self, childQualBlock, parentBlock):
         parentQual = self.getQualBlock(parentBlock)
@@ -2005,8 +2073,10 @@ class projectOpen:
         ret['subBlockInstances'] = containedInstances
         ret['containerBlocks'] = containerBlocks
         ret['blockName'] = self.data['blocks'][qualBlock]['block']
-        # Emit-only project-qualified module name (blockName stays the lookup key).
+        # Emit-only names; blockName stays the lookup key. blockModuleName is the
+        # C++ identity, blockSvModuleName the SV module.
         ret['blockModuleName'] = self.blockModuleName[qualBlock]
+        ret['blockSvModuleName'] = self.blockSvModuleName[qualBlock]
         # Sibling view: per child block type, surface the config facts
         # templates need for forward-declaring child Base classes
         # (`hasOwnParams`) and for resolving per-instance Config struct
@@ -2024,9 +2094,10 @@ class projectOpen:
         for inst, instInfo in containedInstances.items():
             childTypeKey = instInfo['instanceTypeKey']
             ret['subBlocks'][childTypeKey] = instInfo['instanceType']
-            # Emit-only project-qualified module name of the instantiated block
-            # (instanceType stays the lookup key).
+            # Emit-only C++ and SV names of the instantiated block (instanceType
+            # stays the lookup key).
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
+            instInfo['instanceTypeSvModuleName'] = self.blockSvModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
                 instInfo, parentParamNames)
             if childTypeKey not in ret['subBlockTypes']:
@@ -2048,12 +2119,11 @@ class projectOpen:
             instInfo['instanceTypeDefaultConfig']  = configFields['defaultConfig']
             # When the child binds a foreign (assembler-declared) variant, its
             # owner-qualified Config lives in a registrar-domain module the
-            # container TU must import; aggregate the neutral (project, child)
-            # identities for this block (deduped, one module per owning project).
+            # container TU must import; collect the module names for this block
+            # (deduped, one module per owning project).
             configModule = configFields['configModule']
             if configModule:
-                key = (configModule['project'], configModule['block'])
-                ret['configModules'][key] = configModule
+                ret['configModules'].add(configModule)
             # A child typed by this container's Config has no concrete C++ type
             # until this container is instantiated, so the container names its
             # implementation class at the createInstance site rather than reaching
@@ -2093,8 +2163,7 @@ class projectOpen:
             instInfo['instanceTypeDefaultConfig']     = configFields['defaultConfig']
             configModule = configFields['configModule']
             if configModule:
-                key = (configModule['project'], configModule['block'])
-                ret['configModules'][key] = configModule
+                ret['configModules'].add(configModule)
             if configFields['containerTyped']:
                 ret['containerTypedChildModules'][instInfo['instanceTypeKey']] = \
                     self.blockModuleName[instInfo['instanceTypeKey']]
@@ -3774,7 +3843,7 @@ class projectCreate:
     #custom section require complete custom section handling including the main loop
     customSections = {"connections", "ipParameters"}
     # any section inbetween has a per entry handler
-    ignoreSections = {"include", "flows", "includeName", "blockDir" } # note all project file field are added later
+    ignoreSections = {"include", "flows", "includeName", "blockDir", "svFilePrefix", "scFilePrefix", "fwFilePrefix" } # note all project file field are added later
     generatorTemplates = {"cppConfig", "svConfig", "docConfig" }
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
@@ -3987,6 +4056,9 @@ class projectCreate:
         # tables but do not belong to this build.
         self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
         self.deriveModuleIdentities()
+        # derive the Config module set the descriptors, build manifest and
+        # newModule scaffold read
+        self.calcConfigModules()
         self.calcVariantConfigDescriptors()
         self.calcVariantSourceBlocks()
         # reject a testbench on a block whose Config comes from its container
@@ -3995,16 +4067,17 @@ class projectCreate:
         self.validateVariantSourceLabelCollision()
         # reject a parameterizable socket shell that no registrar would register
         self.validateParameterizedSocketHasModel()
-        # derive the Config module set the build manifest and newModule scaffold both read
-        self.calcConfigModules()
         self.calcForeignConfigHeaders()
+        self.deriveSvWrapperNames()
         self.calcRegistrarPairs()
+        self.deriveSvModuleNames()
         # reject address-enum identity collisions before the enums are emitted
         self.validateAddressGroupEnumIdentity()
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
         self.saveIncludeFiles()
+        self.validateSvPackageNames()
         # The project's top context: the defining context of the topInstance's
         # block. Its include chain spans the whole build, so it keys the single
         # per-project (mode: project) artifact, the rtl.f verilator file list.
@@ -4101,6 +4174,7 @@ class projectCreate:
             valueKey = row['valueKey']
             return constants[valueKey]['value'] if valueKey else row['value']
 
+        configModules = self.config.getConfig('CONFIGMODULES')
         descriptors = dict()
         defaultDescriptors = dict()
         for blockKey, block in blocks.items():
@@ -4139,7 +4213,9 @@ class projectCreate:
                         'block': block['block'],
                         'configContext': configContext,
                         'isForeign': project != blockOwnerProject,
-                        'structName': configStructName(project, block['block'], variant),
+                        'structName': configStructName(
+                            configModules[(project, blockKey)]['stub'], variant),
+                        'configModule': configModules[(project, blockKey)]['moduleName'],
                         'values': values,
                         'paramSourceKeys': paramSourceKeys,
                         'containerSourced': {
@@ -4167,6 +4243,7 @@ class projectCreate:
                 'variant': '', 'declaringProject': blockOwnerProject, 'block': block['block'],
                 'configContext': configContext,
                 'structName': block['defaultConfig'],
+                'configModule': configModules[(blockOwnerProject, blockKey)]['moduleName'],
                 'values': {row['constant']: row['value'] for row in paramConstants},
                 'paramSourceKeys': paramSourceKeys,
                 'containerSourced': {}, 'valueSymbols': {},
@@ -4185,7 +4262,6 @@ class projectCreate:
         descriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
         constants = {row['constantKey']: row for row in self.flatData['constants'].values()}
         foreignHeaders = self.config.getConfig('FOREIGNCONFIGHEADERS')
-        wrapperTail = self.proj['fileGeneration']['fileMap']['vlSvWrap']['name']
 
         paramsByBlock = dict()
         for row in self.flatData['blocksparams'].values():
@@ -4202,12 +4278,18 @@ class projectCreate:
                              and d['declaringProject'] == declaringProject]
             return descriptor
 
+        configModules = self.config.getConfig('CONFIGMODULES')
+
         def literalConfig(child, descriptor):
             if descriptor is None:
+                # A child parameterizable only through its own children declares
+                # no params and has no Config module.
+                owner = self.contextOwningProject[child['_context']]
+                configModule = configModules[(owner, child['blockKey'])]['moduleName'] \
+                    if paramsByBlock.get(child['blockKey']) else None
                 return {'kind': 'default', 'name': child['defaultConfig'],
                         'configContext': child['configContext'],
-                        'project': self.contextOwningProject[child['_context']],
-                        'block': child['block']}
+                        'configModule': configModule}
             return {'kind': 'descriptor', 'descriptor': descriptor}
 
         def appendUnique(entries, entry, parentName, childName):
@@ -4283,7 +4365,10 @@ class projectCreate:
                     pairKey = (parentKey, childKey)
                     parentIdentity = self.blockModuleName[parentKey]
                     childIdentity = self.blockModuleName[childKey]
+                    parentSvName = self.blockSvModuleName[parentKey]
+                    childSvName = self.blockSvModuleName[childKey]
                     pairOwner = self.contextOwningProject[parent['_context']]
+                    childOwner = self.contextOwningProject[child['_context']]
                     pair = pairs.setdefault(pairKey, {
                         'parentKey': parentKey,
                         'childKey': childKey,
@@ -4294,8 +4379,8 @@ class projectCreate:
                         'childModuleIdentity': childIdentity,
                         'artifactStem': child['block'],
                         'pairVlStem': (
-                            f'p{len(parentIdentity)}_{parentIdentity}_'
-                            f'c{len(childIdentity)}_{childIdentity}'),
+                            f'p{len(parentSvName)}_{parentSvName}_'
+                            f'c{len(childSvName)}_{childSvName}'),
                         'factoryProject': f'{pairOwner}.{parentIdentity}.{childIdentity}',
                         'variantDescriptors': {},
                         'modelRegistrations': [],
@@ -4365,8 +4450,12 @@ class projectCreate:
                                 suffix = sanitizeIdentifierToken(
                                     config['variant'] or 'default')
                                 if config['pairSpecific']:
+                                    # The pair stem already spells both SV names.
                                     fileStub = f"{pair['pairVlStem']}_{suffix}"
                                     physicalFileStub = f"{child['block']}_{suffix}"
+                                    topModule = artifactPaths.unprefixedStem(
+                                        self.projectLayout[pairOwner]['fileMap']['vlSvWrapPair'],
+                                        fileStub)
                                 else:
                                     expression = config['config']
                                     configDescriptor = None if expression is None \
@@ -4378,14 +4467,19 @@ class projectCreate:
                                             (configDescriptor['declaringProject'],
                                              childKey)]
                                         fileStub = f"{foreign['stub']}_{suffix}"
+                                        topModule = self.svWrapperNames[childKey][
+                                            'foreignVariantTops'][
+                                            configDescriptor['declaringProject']][
+                                            config['variant']]
                                     else:
                                         fileStub = f"{child['block']}_{suffix}"
+                                        topModule = self.svWrapperNames[childKey][
+                                            'variantTops'][config['variant']]
                                     physicalFileStub = fileStub
-                                topModule = f"{fileStub}{wrapperTail}"
                             else:
                                 fileStub = child['block']
                                 physicalFileStub = fileStub
-                                topModule = f"{child['block']}{wrapperTail}"
+                                topModule = self.svWrapperNames[childKey]['bodyModule']
                             appendUnique(pair['verifRegistrations'], {
                                 **config,
                                 'fileStub': fileStub,
@@ -4465,12 +4559,12 @@ class projectCreate:
         and none of them names a Config of this block. Testbenches are not owed
         to every block: a block that wants one declares a variant for the purpose.
         """
-        fileMap = self.proj['fileGeneration']['fileMap']
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         variantLabels = self.declaredVariantLabels()
         for qualBlock, blockRow in self.flatData['blocks'].items():
             if not blockRow['isParameterizable'] or qualBlock in variantLabels:
                 continue
+            fileMap = self.projectLayout[self.contextOwningProject[blockRow['_context']]]['fileMap']
             sourceBlocks = [b for b in self.variantSourceBlocks[qualBlock] if b != qualBlock]
             if not sourceBlocks:
                 continue
@@ -4514,82 +4608,154 @@ class projectCreate:
             exit(warningAndErrorReport())
 
     def deriveModuleIdentities(self):
-        # Per-context C++ module/namespace linkage identity, keyed identically to
-        # includeName. Role A emitters (the SystemC `export module` and namespace
-        # names) spell this identity; it is deliberately separate from the raw
-        # include stem, which continues to name generated files and SystemVerilog
-        # packages so those stay unqualified.
-        #
-        # The identity is the include stem project-qualified by the context's
-        # intrinsic owner (CONTEXTOWNINGPROJECT), with a prefix dedup: a context
-        # whose stem already equals or leads with its owning project stays
-        # byte-identical, every genuinely cross-named context gets prefixed.
-        # Because the owner is intrinsic (not the current build root), a context
-        # spells the same C++ module name and SystemVerilog package name whether
-        # built standalone or imported by a referencing parent project, so the
-        # owning file's `export module <id>;` and a referencing file's
-        # `import <id>;` always match. The raw include stem continues to name
-        # generated files (filenames stay unqualified); only the in-file
-        # identifier is qualified.
+        # Two identities per context and per block. The C++ one (module and
+        # namespace names) is project-qualified so same-named blocks and contexts
+        # from two projects stay apart. The SV one is the stem of the owning
+        # project's SV file, so a module or package is named like its file.
+        # Owners are intrinsic, so a child IP spells both the same standalone
+        # and composed.
         self.contextModuleIdentity = {}
+        self.contextSvPackageName = {}
         for context, stem in self.includeName.items():
-            self.contextModuleIdentity[context] = qualifyModuleIdentity(
-                stem, self.contextOwningProject[context])
+            owner = self.contextOwningProject[context]
+            layout = self.projectLayout[owner]
+            self.contextModuleIdentity[context] = qualifyModuleIdentity(stem, owner)
+            self.contextSvPackageName[context] = artifactPaths.fileStem(
+                layout['fileMap']['package'], stem, layout)
         self.config.setConfig('CONTEXTMODULEIDENTITY', self.contextModuleIdentity, bin=True)
+        self.config.setConfig('CONTEXTSVPACKAGENAME', self.contextSvPackageName, bin=True)
 
-        # A context's module/package identity names its generated SystemC module
-        # and namespace and its SystemVerilog package. Two distinct contexts
-        # sharing one identity would emit the same module/package name and
-        # silently clobber each other's generated output, so reject it here.
-        identityToContext = {}
-        for context, identity in self.contextModuleIdentity.items():
-            prior = identityToContext.get(identity)
-            if prior is not None:
-                printError(f"Module/package identity '{identity}' is used by "
-                           f"two distinct contexts: '{prior}' (project "
-                           f"'{self.contextOwningProject[prior]}') and '{context}' "
-                           f"(project '{self.contextOwningProject[context]}'). "
-                           f"Module and package names must be unique across all "
-                           f"contexts in a build; give one context a distinct "
-                           f"includeName.")
-                exit(warningAndErrorReport())
-            identityToContext[identity] = context
+        def describeContext(context):
+            return f"'{context}' (project '{self.contextOwningProject[context]}')"
+        rejectSharedName(self.contextModuleIdentity, "Module/package identity", "contexts",
+                         describeContext, "give one context a distinct includeName")
 
-        # Per-block SystemVerilog module-name identity, keyed by blockKey and
-        # analogous to contextModuleIdentity: the block name project-qualified by
-        # its owning context with the same prefix dedup. Emit-only — the plain
-        # blockName / instanceType stay the internal lookup keys. Consumed by the
-        # module begin-declaration, the generator-owned endmodule, parent
-        # instantiation, and the HDL wrapper's DUT instantiation so a same-named
-        # block from two projects does not collide. The HDL wrapper's own
-        # body/top module names stay plain: they are the filename-coupled
-        # verilated tops (A2C_VL_TOP / --top-module derive from the unqualified
-        # filename basename).
+        # blockName and instanceType stay the internal lookup keys; these maps
+        # are emit-only.
         blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
         self.blockModuleName = {}
+        self.blockSvModuleName = {}
         for blockKey, blockRow in blockByKey.items():
-            self.blockModuleName[blockKey] = qualifyModuleIdentity(
-                blockRow['block'], self.contextOwningProject[blockRow['_context']])
+            owner = self.contextOwningProject[blockRow['_context']]
+            layout = self.projectLayout[owner]
+            self.blockModuleName[blockKey] = qualifyModuleIdentity(blockRow['block'], owner)
+            self.blockSvModuleName[blockKey] = artifactPaths.fileStem(
+                layout['fileMap']['rtlModule'], blockRow['block'], layout)
         self.config.setConfig('BLOCKMODULENAME', self.blockModuleName, bin=True)
+        self.config.setConfig('BLOCKSVMODULENAME', self.blockSvModuleName, bin=True)
 
-        # Two distinct blocks resolving to one qualified module name would emit
-        # the same SystemVerilog module and silently clobber each other, so reject
-        # it here (parallel to the context-identity gate above).
-        moduleNameToBlock = {}
-        for blockKey, moduleName in self.blockModuleName.items():
-            prior = moduleNameToBlock.get(moduleName)
-            if prior is not None:
-                priorRow = blockByKey[prior]
-                thisRow = blockByKey[blockKey]
-                printError(f"SystemVerilog module name '{moduleName}' is used by "
-                           f"two distinct blocks: '{priorRow['block']}' (project "
-                           f"'{self.contextOwningProject[priorRow['_context']]}') and "
-                           f"'{thisRow['block']}' (project "
-                           f"'{self.contextOwningProject[thisRow['_context']]}'). "
-                           f"Module names must be unique across all blocks in a "
-                           f"build; rename one block.")
-                exit(warningAndErrorReport())
-            moduleNameToBlock[moduleName] = blockKey
+        def describeBlock(blockKey):
+            row = blockByKey[blockKey]
+            return f"'{row['block']}' (project '{self.contextOwningProject[row['_context']]}')"
+        rejectSharedName(self.blockModuleName, "C++ module name", "blocks", describeBlock,
+                         "rename one block")
+
+    def deriveSvWrapperNames(self):
+        # The Verilated wrapper body and standalone top names of every block,
+        # named like the wrapper files that hold them. The registrar pairs and
+        # the SV wrapper templates both read this map.
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        self.svWrapperNames = dict()
+        for row in self.flatData['blocks'].values():
+            layout = self.projectLayout[self.contextOwningProject[row['_context']]]
+            fileMap = layout['fileMap']
+            variants = variantSelection.standaloneVariantDescriptors(self.config, row['blockKey'])
+            # A parameterized block's body lives in the vlSvWrapBody .svh, any
+            # other block's wrapper module in its single vlSvWrap file.
+            condRow = artifactPaths.blockCondRow(row, blocksWithParams)
+            bodyDef = fileMap['vlSvWrapBody'] \
+                if artifactPaths.fileMapCondMatch(fileMap['vlSvWrapBody'], condRow) \
+                else fileMap['vlSvWrap']
+            self.svWrapperNames[row['blockKey']] = {
+                'bodyModule': artifactPaths.fileStem(bodyDef, row['block'], layout),
+                'variantTops': {v: artifactPaths.fileStem(fileMap['vlSvWrap'],
+                                                          f"{row['block']}_{v}", layout)
+                                for v in variants},
+                'foreignVariantTops': dict(),
+            }
+        for (declaringProject, childKey), entry in self.config.getConfig('FOREIGNCONFIGHEADERS').items():
+            layout = self.projectLayout[declaringProject]
+            self.svWrapperNames[childKey]['foreignVariantTops'][declaringProject] = {
+                v: artifactPaths.fileStem(layout['fileMap']['vlSvWrapForeign'],
+                                          f"{entry['stub']}_{v}", layout)
+                for v in entry['vlVariants']}
+        self.config.setConfig('SVWRAPPERNAMES', self.svWrapperNames, bin=True)
+
+    def deriveSvModuleNames(self):
+        # Every SV module a build emits: block modules, Verilated wrapper bodies,
+        # standalone variant tops, foreign tops and pair tops. Two of them
+        # sharing a name are two files declaring one module, which Verilator
+        # rejects, so they are checked together.
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        condRows = {k: artifactPaths.blockCondRow(row, blocksWithParams)
+                    for k, row in blockByKey.items()}
+        def projectFileMap(project):
+            return self.projectLayout[project]['fileMap']
+        def ownerFileMap(blockKey):
+            return projectFileMap(self.contextOwningProject[blockByKey[blockKey]['_context']])
+        emitted = dict()
+        for blockKey, names in self.svWrapperNames.items():
+            fileMap = ownerFileMap(blockKey)
+            if artifactPaths.fileMapCondMatch(fileMap['rtlModule'], condRows[blockKey]):
+                emitted[('block', blockKey)] = self.blockSvModuleName[blockKey]
+            if artifactPaths.fileMapCondMatch(fileMap['vlSvWrap'], condRows[blockKey]):
+                emitted[('wrapper', blockKey)] = names['bodyModule']
+                for v, name in names['variantTops'].items():
+                    emitted[('variantTop', blockKey, v)] = name
+        for declaringProject, childKey in self.config.getConfig('FOREIGNCONFIGHEADERS'):
+            if artifactPaths.fileMapCondMatch(projectFileMap(declaringProject)['vlSvWrapForeign'],
+                                              condRows[childKey]):
+                tops = self.svWrapperNames[childKey]['foreignVariantTops'][declaringProject]
+                for v, name in tops.items():
+                    emitted[('foreignTop', declaringProject, childKey, v)] = name
+        for (parentKey, childKey), pair in self.config.getConfig('REGISTRARPAIRS').items():
+            if not artifactPaths.fileMapCondMatch(ownerFileMap(parentKey)['vlSvWrapPair'],
+                                                  condRows[childKey]):
+                continue
+            for registration in pair['verifRegistrations']:
+                if registration['pairSpecific']:
+                    emitted[('pairTop', parentKey, childKey, registration['variant'])] = \
+                        registration['topModule']
+
+        def describeBlock(blockKey):
+            row = blockByKey[blockKey]
+            return f"block '{row['block']}' (project '{self.contextOwningProject[row['_context']]}')"
+        def describe(key):
+            if key[0] == 'block':
+                return describeBlock(key[1])
+            if key[0] == 'wrapper':
+                return f"the Verilated wrapper of {describeBlock(key[1])}"
+            if key[0] == 'variantTop':
+                return f"the variant '{key[2]}' Verilated top of {describeBlock(key[1])}"
+            if key[0] == 'foreignTop':
+                return (f"the variant '{key[3]}' Verilated top project '{key[1]}' declares "
+                        f"of {describeBlock(key[2])}")
+            return (f"the variant '{key[3]}' pair top of {describeBlock(key[1])} "
+                    f"containing {describeBlock(key[2])}")
+        rejectIllegalSvName(emitted, "module", describe,
+                            "rename the block or change its project's svFilePrefix")
+        rejectSharedName(emitted, "SystemVerilog module name", "design units", describe,
+                         "rename one block or give its project a distinct svFilePrefix")
+
+    def validateSvPackageNames(self):
+        # Every SV package a build emits has a legal, unique name. Whether a
+        # context emits one is only final once the address enums are added.
+        emitted = {context: self.contextSvPackageName[context] for context in self.includeValid
+                   if self.contextFileEmitted(
+                       self.projectLayout[self.contextOwningProject[context]]['fileMap']['package'],
+                       context)}
+        def describeContext(context):
+            return f"'{context}' (project '{self.contextOwningProject[context]}')"
+        def describeContextFile(context):
+            owner = self.contextOwningProject[context]
+            prefix = self.projectLayout[owner]['filePrefix']['sv']
+            prefixNote = f", svFilePrefix '{prefix}'" if prefix else ''
+            return f"context '{context}' (project '{owner}'{prefixNote})"
+        rejectIllegalSvName(emitted, "package", describeContextFile,
+                            "set includeName in that file or rename the file")
+        rejectSharedName(emitted, "SystemVerilog package name", "contexts",
+                         describeContext, "give one context a distinct includeName")
 
     def _resolveDirMacros(self, dirsDict, baseDir):
         # Resolve a project's dirs: block into an absolute macro dict, seeded
@@ -4659,7 +4825,24 @@ class projectCreate:
     # include are $root-anchored and stay at the project root (Q-L3 amended).
     LAYOUT_CONVENTION_KEYS = ('yaml', 'prj', 'rundir', 'include')
 
-    def _buildLayoutFor(self, dirMacros, fileGeneration):
+    # Project-file key per filename prefix kind (see artifactPaths.fileNamePrefix).
+    FILE_PREFIX_KEYS = {'sv': 'svFilePrefix', 'sc': 'scFilePrefix', 'fw': 'fwFilePrefix'}
+
+    def _filePrefixes(self, proj, projectLabel):
+        # An omitted key means no prefix. The SV names a prefix produces are
+        # checked as identifiers once they exist (deriveModuleIdentities,
+        # deriveSvModuleNames).
+        prefixes = dict()
+        for kind, key in self.FILE_PREFIX_KEYS.items():
+            value = proj.get(key, '')
+            if not isinstance(value, str):
+                self.logError(f"{key} in project '{projectLabel}' must be a string, got {value!r}")
+            elif os.sep in value:
+                self.logError(f"{key} '{value}' in project '{projectLabel}' must not contain '{os.sep}'")
+            prefixes[kind] = value
+        return prefixes
+
+    def _buildLayoutFor(self, dirMacros, fileGeneration, filePrefix):
         # Normalize one project's resolved dirs (dirMacros) + fileGeneration into
         # the layout-keyed shape the seam (expandNewModulePath) and build views
         # consume. functional placement is the project's resolved dirs:,
@@ -4726,6 +4909,10 @@ class projectCreate:
             'prj':         conventions['prj'],
             'rundir':      conventions['rundir'],
             'include':     conventions['include'],
+            # Filename prefix per kind (sv/sc/fw) this project's artifacts take.
+            'filePrefix':  filePrefix,
+            # The merged fileMap that names and places this project's artifacts.
+            'fileMap':     fileGeneration['fileMap'],
         }
 
     def buildLayout(self):
@@ -4734,7 +4921,8 @@ class projectCreate:
         # parse-time placement; PROJECTLAYOUT (built after readRaw) additionally
         # holds one such layout per owning project for per-owner path selection.
         global layoutConfig
-        layoutConfig = self._buildLayoutFor(dirMacros, self.proj['fileGeneration'])
+        layoutConfig = self._buildLayoutFor(dirMacros, self.proj['fileGeneration'],
+                                            self._filePrefixes(self.proj, self.projFile))
         self.config.setConfig('LAYOUT', layoutConfig)
 
     def buildProjectLayout(self):
@@ -4757,7 +4945,8 @@ class projectCreate:
             childMacros = self._resolveDirMacros(childProj.get('dirs'),
                                                  childInfo['projectFileDir'])
             self.projectLayout[childName] = self._buildLayoutFor(
-                childMacros, childProj['fileGeneration'])
+                childMacros, childProj['fileGeneration'],
+                self._filePrefixes(childProj, childName))
         self.config.setConfig('PROJECTLAYOUT', self.projectLayout, bin=True)
 
     def createProjectConfig(self):
@@ -5912,7 +6101,7 @@ class projectCreate:
                 # Identity is the block's own owner, not the config context's,
                 # so it does not depend on which params: file sorts first.
                 owner_project = self.contextOwningProject[block_row['_context']]
-                default_config = f'{sanitizeIdentifierToken(owner_project)}_{blockName}DefaultConfig'
+                default_config = f'{qualifyModuleIdentity(blockName, owner_project)}DefaultConfig'
             else:
                 config_context = ''
                 default_config = ''
@@ -5950,18 +6139,24 @@ class projectCreate:
             current = parentKeys.get(anchorKey)
             if current is None or containerKey < current:
                 parentKeys[anchorKey] = containerKey
-        configDef = artifactPaths.configModuleFileDef(self.proj['fileGeneration']['fileMap'])
 
         def newEntry(childKey, declaringProject):
+            # stub is the Config struct stem and the file stub. A block leading
+            # with the declaring project drops the project from the stub and
+            # from the C++ module name.
             childBlock = blockByKey[childKey]['block']
-            stub = f"{sanitizeIdentifierToken(declaringProject)}_{childBlock}"
+            stub = qualifyModuleIdentity(childBlock, declaringProject)
+            moduleName = f'{sanitizeIdentifierToken(childBlock)}.config' \
+                if leadsWithProject(childBlock, declaringProject) \
+                else f'{sanitizeIdentifierToken(declaringProject)}.{sanitizeIdentifierToken(childBlock)}.config'
             layout = self.projectLayout[declaringProject]
+            configDef = artifactPaths.configModuleFileDef(layout['fileMap'])
             parentKey = parentKeys.get((declaringProject, childKey), childKey)
             filePath = artifactPaths.expandNewModulePath(configDef, blockByKey[parentKey]['dir'],
                                                          childBlock, stub, layout, missingDirOk=True)
             baseName = os.path.basename(filePath) + "." + configDef['ext']['cppm']
-            return {'stub': stub, 'baseName': baseName, 'parentKey': parentKey,
-                    'variants': set(), 'containerSourcedVariants': set()}
+            return {'stub': stub, 'moduleName': moduleName, 'baseName': baseName,
+                    'parentKey': parentKey, 'variants': set(), 'containerSourcedVariants': set()}
 
         modules = dict()
         for blockKey in blocksWithParams:
@@ -5980,6 +6175,18 @@ class projectCreate:
             entry['variants'] = sorted(entry['variants'])
             entry['vlVariants'] = sorted(
                 set(entry['variants']) - entry.pop('containerSourcedVariants'))
+
+        def describeDeclaration(key):
+            declaringProject, childKey = key
+            return (f"block '{blockByKey[childKey]['block']}' as declared by project "
+                    f"'{declaringProject}'")
+        remedy = "rename one block"
+        rejectSharedName({key: entry['stub'] for key, entry in modules.items()},
+                         "Config struct and file stem", "Config declarations",
+                         describeDeclaration, remedy)
+        rejectSharedName({key: entry['moduleName'] for key, entry in modules.items()},
+                         "Config C++ module name", "Config declarations",
+                         describeDeclaration, remedy)
         self.config.setConfig('CONFIGMODULES', modules, bin=True)
 
     def calcForeignConfigHeaders(self):
@@ -6516,27 +6723,26 @@ class projectCreate:
         # Phase complete; see processYamls() for the rationale.
         self._parserResolver = None
 
+    def contextFileEmitted(self, fileDef, context):
+        # A smartInclude context file exists only when its context has content.
+        return not (fileDef['cond']['smartInclude'] and not self.includeValid[context]['valid'])
+
     def saveIncludeFiles(self):
-        files = dict()
         if 'fileGeneration' in self.proj:
             if 'fileMap' in self.proj['fileGeneration']:
                 self.config.setConfig('FILEMAP', self.proj['fileGeneration']['fileMap'])
-                for fileType, fileInfo in self.proj['fileGeneration']['fileMap'].items():
-                    mode = fileInfo.get('mode', 'block')
-                    if mode == 'context':
-                        files[fileType] = fileInfo
 
         includeFiles = dict()
-        for fileType, fileData in files.items():
-            smartInclude = fileData['cond']['smartInclude']
-            for include, includeData in self.includeValid.items():
-                includeName = self.includeName[include]
-                valid = includeData['valid']
-                if not(smartInclude and not valid):
-                    # Resolve under the layout of the project that owns this
-                    # context (its defining file). include is the context's
-                    # file key, keyed identically to contextOwningProject.
-                    layout = self.projectLayout[self.contextOwningProject[include]]
+        for include, includeData in self.includeValid.items():
+            includeName = self.includeName[include]
+            # The project that owns this context (its defining file) names and
+            # places its files. include is the context's file key, keyed
+            # identically to contextOwningProject.
+            layout = self.projectLayout[self.contextOwningProject[include]]
+            for fileType, fileData in layout['fileMap'].items():
+                if fileData.get('mode', 'block') != 'context':
+                    continue
+                if self.contextFileEmitted(fileData, include):
                     fileName = artifactPaths.expandNewModulePath(fileData, includeData['dir'], includeName, includeName, layout, missingDirOk=True)
                     # Sibling header basename, derived from this file type's own
                     # ext map (filespec). A source artifact #includes its paired

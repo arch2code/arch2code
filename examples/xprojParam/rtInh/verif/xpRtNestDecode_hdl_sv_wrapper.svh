@@ -7,7 +7,7 @@
 module xpRtNestDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 #(
     parameter RT_WIDTH
 ) (
@@ -63,7 +63,7 @@ module xpRtNestDecode_hdl_sv_wrapper
     assign #0 apbReg_prdata = apbReg.prdata;
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
-    xpRtInh_xpRtNestDecode #(.RT_WIDTH(RT_WIDTH)) dut (
+    xpRtNestDecode #(.RT_WIDTH(RT_WIDTH)) dut (
         .apbReg_uLeaf(apbReg_uLeaf), // apb_if.src
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),

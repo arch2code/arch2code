@@ -47,6 +47,12 @@ EXAMPLE_READERS=(
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
     test_validate_ports.py            # reads examples/nested (db to a temp path)
+    test_file_prefix.py               # reads examples/simple_ip (copytree)
+    test_per_project_filemap.py       # reads examples/simple_ip (copytree)
+    test_vl_sc_wrap_name.py           # reads examples/ip_test (copytree)
+    test_filemap_name_overrides.py    # reads examples/simple_ip (copytree)
+    test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
+    test_sv_names_match_file_stem.py  # reads every examples/ tree
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

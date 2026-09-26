@@ -13,7 +13,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpDpMid_xpDpMidStdWrap.block;
 import xpDpMid_xpDpMidStdWrap.base;
-import xpDpMid.xpDpMid.config;
+import xpDpMid.config;
 import xpDpMid.xpDpMidDrv.config;
 import xpDpMid.xpDpMidSnk.config;
 import xpDpLeaf;
@@ -33,13 +33,13 @@ private:
 public:
     // channels
     // The leaf IP's own parameterized pixel push/ack stream
-    push_ack_channel< dpSt<xpDpMid_xpDpMidStdConfig> > out;
+    push_ack_channel< dpSt<xpDpMidStdConfig> > out;
     // The leaf IP's own parameterized pixel push/ack stream
     push_ack_channel< dpSt<xpDpMid_xpDpMidSnkStdConfig> > midOut;
 
     //instances contained in block
     std::shared_ptr<xpDpMidDrvBase<xpDpMid_xpDpMidDrvStdConfig>> uDrv;
-    std::shared_ptr<xpDpMidBase<xpDpMid_xpDpMidStdConfig>> uMidStd;
+    std::shared_ptr<xpDpMidBase<xpDpMidStdConfig>> uMidStd;
     std::shared_ptr<xpDpMidSnkBase<xpDpMid_xpDpMidSnkStdConfig>> uSnk;
 
     xpDpMidStdWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -70,7 +70,7 @@ xpDpMidStdWrap::xpDpMidStdWrap(sc_module_name blockName, const char * variant, b
         ,out("xpDpMid_out", "xpDpMidDrv")
         ,midOut("xpDpMidSnk_midOut", "xpDpMid")
         ,uDrv(std::dynamic_pointer_cast<xpDpMidDrvBase<xpDpMid_xpDpMidDrvStdConfig>>(instanceFactory::createInstance(name(), "uDrv", "xpDpMidDrv", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid_xpDpMidDrv")))
-        ,uMidStd(std::dynamic_pointer_cast<xpDpMidBase<xpDpMid_xpDpMidStdConfig>>(instanceFactory::createInstance(name(), "uMidStd", "xpDpMid", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid")))
+        ,uMidStd(std::dynamic_pointer_cast<xpDpMidBase<xpDpMidStdConfig>>(instanceFactory::createInstance(name(), "uMidStd", "xpDpMid", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid")))
         ,uSnk(std::dynamic_pointer_cast<xpDpMidSnkBase<xpDpMid_xpDpMidSnkStdConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpDpMidSnk", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid_xpDpMidSnk")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body

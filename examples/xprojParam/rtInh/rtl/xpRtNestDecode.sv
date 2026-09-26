@@ -2,11 +2,11 @@
 
 // GENERATED_CODE_PARAM --block=xpRtNestDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: xpRtInh_xpRtNestDecode
-module xpRtInh_xpRtNestDecode
+//module as defined by block: xpRtNestDecode
+module xpRtNestDecode
 // Generated Import package statement(s)
 import xpRtInh_package::*;
-import common_shared_types_package::*;
+import shared_types_package::*;
 #(
     parameter int unsigned RT_WIDTH = 32'h0000_0008
 )
@@ -80,5 +80,5 @@ assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;
 
-endmodule: xpRtInh_xpRtNestDecode
+endmodule: xpRtNestDecode
 // GENERATED_CODE_END

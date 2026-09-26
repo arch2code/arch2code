@@ -33,7 +33,7 @@ module blockA_hdl_sv_wrapper
     assign #0 apbReg_prdata = apbReg.prdata;
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
-    apbDecode_blockA dut (
+    blockA dut (
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

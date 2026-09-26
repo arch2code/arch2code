@@ -135,6 +135,7 @@ def render_sc(args, prj, data):
         isTemplate = data['svWrapper']['scWrapperConfigTemplated']
         s = t.render(
             blockname=data['blockName'],
+            sc_wrapper_class=data['svWrapper']['scWrapperModule'],
             is_template=isTemplate,
             concrete_sv_module=concrete['svModule'],
             concrete_dut_class=concrete['dutClass'],
@@ -221,7 +222,7 @@ sec_hdl_sc_wrapper_class_template = """\
 {%- if is_template %}
 template <typename DUT_T, typename Config>
 {%- endif %}
-class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
+class {{sc_wrapper_class}}: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
 
 public:
 {%- if not is_template %}
@@ -240,18 +241,18 @@ public:
     {{ sec_bfm_decl | indent(4) }}
 {%- if not is_template %}
 
-    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper);
+    SC_HAS_PROCESS ({{sc_wrapper_class}});
 {%- else %}
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
-    using {{blockname}}_hdl_sc_wrapper_self_t = {{blockname}}_hdl_sc_wrapper<DUT_T, Config>;
-    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper_self_t);
+    using {{sc_wrapper_class}}_self_t = {{sc_wrapper_class}}<DUT_T, Config>;
+    SC_HAS_PROCESS ({{sc_wrapper_class}}_self_t);
 {%- endif %}
 
-    {{blockname}}_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+    {{sc_wrapper_class}}(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
-        blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
+        blockBase("{{sc_wrapper_class}}", name(), bbMode),
         {{blockname}}Base{{cfg}}(name(), variant),
         clk("clk"),
         {{ sec_bfm_ctor_init | indent(8) }}

@@ -193,18 +193,6 @@ def install_leaf_rtl(leaf):
         f.write(text.replace(marker, body + marker, 1))
 
 
-def update_parent_rtl_label(work):
-    path = os.path.join(work, 'dpMid', 'rtl', 'xpDpMid.sv')
-    with open(path) as f:
-        text = f.read()
-    old = 'endmodule: xpDpMid\n'
-    new = 'endmodule: xpDpTop_xpDpMid\n'
-    if text.count(old) != 1:
-        raise AssertionError("xpDpMid RTL end label anchor changed")
-    with open(path, 'w') as f:
-        f.write(text.replace(old, new, 1))
-
-
 def generate(work, env):
     leaf = os.path.join(work, 'dpLeaf')
     top = os.path.join(work, 'dpTop')
@@ -221,7 +209,6 @@ def generate(work, env):
     require_make(top, 'db', env)
     require_make(top, 'newmodule', env)
     require_make(top, 'gen', env)
-    update_parent_rtl_label(work)
     return top
 
 

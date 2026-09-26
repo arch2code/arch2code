@@ -76,6 +76,7 @@ from pysrc.migrateProjectParam import (
     restampProjectParam,
     restampContextParam,
 )
+from pysrc.migrateFilePrefix import moveRenamedFiles, renderFilePrefixReport
 from pysrc.migrateModuleEndlabel import (
     restampModuleEndlabel,
     renderModuleEndlabelReport,
@@ -99,12 +100,12 @@ from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 #               carries on (the generated tree must not be left un-generated) and
 #               re-raises the status at the end, so the target still signals
 #               non-zero while the item is open.
-#   RC_BLOCKED  a refused edit left the tree in a state the FOLLOWING step cannot
-#               process (a `<block>Config.cpp` still carrying a bare
-#               `--template=tbConfig` region, which gen rejects outright). Folding
-#               this into RC_TODO would replace the migrator's TODO list with a
-#               template traceback and half-regenerate the tree, so the pipeline
-#               halts on it.
+#   RC_BLOCKED  the tree is in a state the FOLLOWING steps cannot safely
+#               process, so the pipeline halts on it. A `<block>Config.cpp` still
+#               carrying a bare `--template=tbConfig` region makes gen fail with a
+#               template traceback. A file left at its unprefixed name next to its
+#               prefixed one is a stale file to newmodule, which deletes it along
+#               with the user code the TODO asks the user to keep.
 RC_CLEAN = 0
 RC_TODO = 1
 RC_BLOCKED = 2
@@ -540,6 +541,13 @@ def main(argv=None):
         if not args.db:
             parser.error("--sweep requires --db")
         prj = projectOpen(args.db)
+        # Files a filename-prefix change renamed move first, so every pass
+        # below finds them at their current names.
+        prefixReport = moveRenamedFiles(prj, write=args.write)
+        print(renderFilePrefixReport(prefixReport, args.write))
+        # A prefix conflict stops here, ahead of the orphan sweep deletions.
+        if not prefixReport.clean:
+            return RC_BLOCKED
         report = sweepOrphans(prj, write=args.write)
         print(renderOrphanReport(report, args.write))
         # Re-stamp project-mode artifacts (rtl.f) from the retired context form to
@@ -554,9 +562,9 @@ def main(argv=None):
         contextReport = restampContextParam(prj, write=args.write)
         print(renderProjectParamReport(contextReport, args.write, label="context-mode"))
         # Re-stamp the user-owned `endmodule: <label>` of each RTL block module to
-        # the qualified module name (blockModuleName), aligning it with the
-        # generator-owned, project-qualified module begin-label. DB-backed because
-        # the qualified name is owner-derived and only exists post-db.
+        # the block's SV module name (blockSvModuleName), matching the
+        # generator-owned begin-label. DB-backed because the name depends on the
+        # owning project's svFilePrefix.
         endlabelReport = restampModuleEndlabel(prj, write=args.write)
         print(renderModuleEndlabelReport(endlabelReport, args.write))
         # A sweep that leaves manual items (ungenerated delete targets, pending

@@ -6,13 +6,13 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module xpGain.xpGain.config;
+export module xpGain.config;
 
-export struct xpGain_xpGainDefaultConfig {
+export struct xpGainDefaultConfig {
     static constexpr uint32_t PIXEL_WIDTH = 12;
 };
 
-export struct xpGain_xpGainV0Config {
+export struct xpGainV0Config {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };
 

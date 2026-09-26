@@ -6,7 +6,7 @@
 
 module xpRtPrimeDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 (
     // apb_if.src
     output bit [31:0] apbReg_uWrap_paddr,
@@ -55,7 +55,7 @@ module xpRtPrimeDecode_hdl_sv_wrapper
     assign #0 cpu_main_prdata = cpu_main.prdata;
     assign #0 cpu_main_pslverr = cpu_main.pslverr;
 
-    xpRtInh_xpRtPrimeDecode dut (
+    xpRtPrimeDecode dut (
         .apbReg_uWrap(apbReg_uWrap), // apb_if.src
         .cpu_main(cpu_main), // apb_if.dst
         .clk(clk),

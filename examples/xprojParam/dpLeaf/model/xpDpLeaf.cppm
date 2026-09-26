@@ -14,7 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpDpLeaf.block;
 import xpDpLeaf.base;
-import xpDpLeaf.xpDpLeaf.config;
+import xpDpLeaf.config;
 import xpDpLeaf;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)

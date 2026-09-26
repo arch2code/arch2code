@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=blockG
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: mixed_blockG
-module mixed_blockG
+//module as defined by block: blockG
+module blockG
 // Generated Import package statement(s)
 import mixed_package::*;
 #(
@@ -18,13 +18,13 @@ import mixed_package::*;
     status_if #(.data_t(dRegSt)) rwG();
 
 // Instances
-mixed_blockGLeaf uBlockGLeaf (
+blockGLeaf uBlockGLeaf (
     .rwG (rwG),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-mixed_blockGRegs #(.fred(fred)) uBlockGRegs (
+blockGRegs #(.fred(fred)) uBlockGRegs (
     .apbReg (apbReg),
     .rwG (rwG),
     .clk (clk),
@@ -33,4 +33,4 @@ mixed_blockGRegs #(.fred(fred)) uBlockGRegs (
 
 // GENERATED_CODE_END
 
-endmodule: mixed_blockG
+endmodule: blockG

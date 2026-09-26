@@ -12,7 +12,7 @@ def render(args, prj, data):
 
     # Module declaration is emitted from the project-qualified module name;
     # filename/block consistency is validated by the generator before rendering.
-    out.append(moduleDeclaration(data['blockModuleName']))
+    out.append(moduleDeclaration(data['blockSvModuleName']))
 
     # Packages
     startingContext = data['blockInfo']['_context']
@@ -96,7 +96,7 @@ def render(args, prj, data):
             inst_params += ", ".join([f".{param['param']}({param['spelling']})" for param in value['svInstanceParams']])
             inst_params += ') '
 
-        out.append(f"{value['instanceTypeModuleName']}{inst_params}{value['instance']} (")
+        out.append(f"{value['instanceTypeSvModuleName']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):

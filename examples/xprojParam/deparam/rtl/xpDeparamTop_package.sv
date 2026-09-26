@@ -2,7 +2,7 @@
 // 
 // GENERATED_CODE_PARAM --project=xpDeparam --context=../../yaml/xpDeparamTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package xpDeparam_xpDeparamTop_package;
+package xpDeparamTop_package;
 // Generated Import package statement(s)
 import xpSink_package::*;
 import xpFilter_package::*;
@@ -20,5 +20,5 @@ typedef struct packed {
     boundaryPixelT data; //Pixel payload
 } boundarySt;
 
-endpackage : xpDeparam_xpDeparamTop_package
+endpackage : xpDeparamTop_package
 // GENERATED_CODE_END

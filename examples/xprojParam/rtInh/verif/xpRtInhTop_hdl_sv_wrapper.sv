@@ -7,7 +7,7 @@
 module xpRtInhTop_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 (
     // apb_if.dst
     input bit [31:0] cpu_main_paddr,
@@ -34,7 +34,7 @@ module xpRtInhTop_hdl_sv_wrapper
     assign #0 cpu_main_prdata = cpu_main.prdata;
     assign #0 cpu_main_pslverr = cpu_main.pslverr;
 
-    xpRtInh_xpRtInhTop dut (
+    xpRtInhTop dut (
         .cpu_main(cpu_main), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

@@ -2,7 +2,7 @@
 // 
 // GENERATED_CODE_PARAM --project=axiSocketMaster --context=axiStd.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package axiSocketMaster_axiStd_package;
+package axiStd_package;
 
 // types
 typedef logic[4-1:0] _axiIdT; //Type for axi ID tags. Used for ARID, RID, AWID, BID.
@@ -46,5 +46,5 @@ typedef enum logic[4-1:0] {         //Read Cache type for the AXI protocol
 } _axiWrCacheT;
 
 // structures
-endpackage : axiSocketMaster_axiStd_package
+endpackage : axiStd_package
 // GENERATED_CODE_END

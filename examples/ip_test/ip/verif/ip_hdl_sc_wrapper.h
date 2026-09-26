@@ -18,7 +18,7 @@ import ip.base;
 #endif
 import ip;
 using namespace ip_ns;
-import ip.ip.config;
+import ip.config;
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

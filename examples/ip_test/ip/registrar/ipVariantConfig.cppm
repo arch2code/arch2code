@@ -6,15 +6,15 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module ip.ip.config;
+export module ip.config;
 
-export struct ip_ipDefaultConfig {
+export struct ipDefaultConfig {
     static constexpr uint32_t IP_DATA_WIDTH = 70;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
     static constexpr uint32_t IP_NONCONST_DEPTH = 24;
 };
 
-export struct ip_ipVariant0Config {
+export struct ipVariant0Config {
     static constexpr uint32_t IP_DATA_WIDTH = 8;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
     static constexpr uint32_t IP_NONCONST_DEPTH = 24;

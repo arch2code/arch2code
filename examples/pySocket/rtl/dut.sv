@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=dut
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: pySocket_dut
-module pySocket_dut
+//module as defined by block: dut
+module dut
 // Generated Import package statement(s)
 import pySocket_tb_package::*;
 (
@@ -28,4 +28,4 @@ import pySocket_tb_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: pySocket_dut
+endmodule: dut

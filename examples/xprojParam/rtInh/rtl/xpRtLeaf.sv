@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=xpRtLeaf
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: xpRtInh_xpRtLeaf
-module xpRtInh_xpRtLeaf
+//module as defined by block: xpRtLeaf
+module xpRtLeaf
 // Generated Import package statement(s)
-import common_shared_types_package::*;
+import shared_types_package::*;
 import xpRtInh_package::*;
 #(
     parameter int unsigned RT_WIDTH = 32'h0000_0008
@@ -25,7 +25,7 @@ import xpRtInh_package::*;
     status_if #(.data_t(cfgSt)) cfg();
 
 // Instances
-xpRtInh_xpRtLeafRegs #(.RT_WIDTH(RT_WIDTH)) uXpRtLeafRegs (
+xpRtLeafRegs #(.RT_WIDTH(RT_WIDTH)) uXpRtLeafRegs (
     .apbReg (apbReg),
     .cfg (cfg),
     .clk (clk),
@@ -34,4 +34,4 @@ xpRtInh_xpRtLeafRegs #(.RT_WIDTH(RT_WIDTH)) uXpRtLeafRegs (
 
 // GENERATED_CODE_END
 
-endmodule: xpRtInh_xpRtLeaf
+endmodule: xpRtLeaf

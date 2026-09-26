@@ -42,6 +42,11 @@ projectFiles:
 # The top level instance of the design
 topInstance: {name}_tb
 
+# Filename prefixes. An omitted key and "" both mean no prefix.
+# svFilePrefix: ""  # Prefix for generated SystemVerilog filenames and matching module names
+# scFilePrefix: ""  # Prefix for generated SystemC filenames
+# fwFilePrefix: ""  # Prefix for generated firmware filenames
+
 dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
   root: ../..    # project root directory relative to this project file
 

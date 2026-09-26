@@ -13,7 +13,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpDpMid.block;
 import xpDpMid.base;
-import xpDpMid.xpDpMid.config;
+import xpDpMid.config;
 import xpDpMid.xpDpLeaf.config;
 import xpDpLeaf.block;
 import xpDpLeaf;

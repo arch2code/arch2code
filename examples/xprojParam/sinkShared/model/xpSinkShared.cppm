@@ -14,7 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpSinkShared.block;
 import xpSinkShared.base;
-import xpSinkShared.xpSinkShared.config;
+import xpSinkShared.config;
 import xpGain;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)

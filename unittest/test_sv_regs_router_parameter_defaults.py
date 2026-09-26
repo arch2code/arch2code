@@ -105,16 +105,16 @@ clean::
 # The status_if payload widths make a handler whose storage ignores WIDTH fail
 # elaboration.
 HARNESS = """module harness;
-import regsParamDefaults_arch_package::*;
+import arch_package::*;
 logic clk = 1'b0;
 logic rst_n = 1'b0;
 apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) upDef(), downDef(), upOvr(), downOvr();
 status_if #(.data_t(logic [11:0])) cfgDef();
 status_if #(.data_t(logic [19:0])) cfgOvr();
-regsParamDefaults_decode uDecodeDef (.cpu_main(upDef), .apbReg_uLeaf(downDef), .clk(clk), .rst_n(rst_n));
-regsParamDefaults_decode #(.WIDTH(20), .OFFSET(-7)) uDecodeOvr (.cpu_main(upOvr), .apbReg_uLeaf(downOvr), .clk(clk), .rst_n(rst_n));
-regsParamDefaults_leaf_regs uRegsDef (.apbReg(downDef), .cfg(cfgDef), .clk(clk), .rst_n(rst_n));
-regsParamDefaults_leaf_regs #(.WIDTH(20), .OFFSET(-7)) uRegsOvr (.apbReg(downOvr), .cfg(cfgOvr), .clk(clk), .rst_n(rst_n));
+decode uDecodeDef (.cpu_main(upDef), .apbReg_uLeaf(downDef), .clk(clk), .rst_n(rst_n));
+decode #(.WIDTH(20), .OFFSET(-7)) uDecodeOvr (.cpu_main(upOvr), .apbReg_uLeaf(downOvr), .clk(clk), .rst_n(rst_n));
+leaf_regs uRegsDef (.apbReg(downDef), .cfg(cfgDef), .clk(clk), .rst_n(rst_n));
+leaf_regs #(.WIDTH(20), .OFFSET(-7)) uRegsOvr (.apbReg(downOvr), .cfg(cfgOvr), .clk(clk), .rst_n(rst_n));
 initial begin
     if ($bits(uDecodeDef.WIDTH) != 32 || $bits(uRegsDef.OFFSET) != 32 ||
         !(uRegsDef.OFFSET < 0) || !(uDecodeDef.OFFSET < 0) || $bits(uRegsDef.cfg_reg) != 12)

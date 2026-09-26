@@ -136,7 +136,8 @@ class _FakePrj:
         self.hasOwnParams = hasOwnParams
         self.filemap = FILEMAP
         self.projectLayout = {"t": {"mode": "functional", "root": root,
-                                    "segments": {"tb": {"path": os.path.join(root, "tb")}}}}
+                                    "segments": {"tb": {"path": os.path.join(root, "tb")}},
+                                    "filePrefix": {"sv": "", "sc": "", "fw": ""}}}
         self.contextOwningProject = {CONTEXT: "t"}
         self.config = _FakeConfig({"PROJECTNAME": "t"})
         self.data = {"blocks": {BLOCK: {"blockKey": BLOCK, "_context": CONTEXT,
@@ -606,7 +607,7 @@ def test_tbconfig_drop_set_matches_the_template():
     check(len(emitted) == len(includes) + len(imports),
           "with no config context the region emits nothing but those includes and imports")
 
-    withConfig = {"ownConfigModule": {"project": "top", "block": "topBlk"}}
+    withConfig = {"ownConfigModule": "top.topBlk.config"}
     emittedCfg = "import top.topBlk.config;"
     check(emittedCfg in tb_config_prerequisites(None, None, withConfig).splitlines(),
           "a DUT with its own Config module imports it into the region")

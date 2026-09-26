@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: simple_ip_apbDecode
-module simple_ip_apbDecode
+//module as defined by block: apbDecode
+module apbDecode
 // Generated Import package statement(s)
-import common_shared_types_package::*;
+import shared_types_package::*;
 (
     apb_if.src apbReg_uIp,
     apb_if.dst cpu_main,
@@ -70,5 +70,5 @@ assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;
 
-endmodule: simple_ip_apbDecode
+endmodule: apbDecode
 // GENERATED_CODE_END

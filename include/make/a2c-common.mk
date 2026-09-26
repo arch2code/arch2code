@@ -176,13 +176,16 @@ db : $(A2C_SQLDB_FILE)
 # of files that already exist; --port-tb runs before gen so its region edits
 # are in place when gen renders; --port runs after gen because it transplants
 # user code into gen-filled .cppm files.
-# The sweep exit code is re-raised last, so pending hand ports still fail the
-# target after the tree is fully regenerated. A --port-tb exit of 1 is a
-# flagged hand port and folds into that code; higher codes halt.
+# An exit of 1 from --sweep or --port-tb is pending hand-port work: the tree
+# still regenerates and the target fails at the end with that code. A higher
+# code halts the target at once. The sweep halts it when a file sits at both
+# its unprefixed and prefixed names, since newmodule would delete the
+# unprefixed copy as stale.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
 	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
+	if [ $$rc -gt 1 ]; then exit $$rc; fi; \
 	$(MAKE) newmodule && \
 	{ $(A2C_ROOT)/migrateYaml.py --port-tb --write --db $(A2C_SQLDB_FILE); trc=$$?; \
 	  if [ $$trc -eq 1 ]; then rc=1; elif [ $$trc -ne 0 ]; then exit $$trc; fi; } && \

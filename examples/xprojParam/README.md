@@ -397,16 +397,16 @@ foreign constant in its own block's `params:` moves that block's config context
 to the vendor's file, which makes the project's own binding of its own block
 foreign to the context owner, so a third-party consumer selects it as a last
 resort. `xpGain` declares `PIXEL_WIDTH: 12` and every `v0` binds 8, so `uFilter`
-and `uSink` are typed at `xpFilterShared_xpFilterSharedV0Config` and
-`xpSinkShared_xpSinkSharedV0Config`; each stage asserts the bound 8 and would
+and `uSink` are typed at `xpFilterSharedV0Config` and
+`xpSinkSharedV0Config`; each stage asserts the bound 8 and would
 fail on the vendor default.
 
 ### Placing a declaring project's own Config module
 
 Every emitted Config, native or foreign alike, is owner-qualified and lands in
 its declaring project's own registrar domain, one module per (declaring
-project, block): the shape `dpMid/registrar/xpDpMid_xpDpMidVariantConfig.cppm`
-already has, and `filterShared/registrar/xpFilterShared_xpFilterSharedVariantConfig.cppm`
+project, block): the shape `dpMid/registrar/xpDpMidVariantConfig.cppm`
+already has, and `filterShared/registrar/xpFilterSharedVariantConfig.cppm`
 and its `sinkShared` peer.
 
 `newModule` and `createBuildManifest` enumerate these from the

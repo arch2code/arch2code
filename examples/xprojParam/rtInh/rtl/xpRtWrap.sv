@@ -2,11 +2,11 @@
 
 // GENERATED_CODE_PARAM --block=xpRtWrap
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: xpRtInh_xpRtWrap
-module xpRtInh_xpRtWrap
+//module as defined by block: xpRtWrap
+module xpRtWrap
 // Generated Import package statement(s)
 import xpRtInh_package::*;
-import common_shared_types_package::*;
+import shared_types_package::*;
 #(
     parameter int unsigned RT_WIDTH = 32'h0000_0008
 )
@@ -25,14 +25,14 @@ import common_shared_types_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uLeaf();
 
 // Instances
-xpRtInh_xpRtNestDecode #(.RT_WIDTH(RT_WIDTH)) uNestDecode (
+xpRtNestDecode #(.RT_WIDTH(RT_WIDTH)) uNestDecode (
     .apbReg (apbReg),
     .apbReg_uLeaf (apbReg_uLeaf),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-xpRtInh_xpRtLeaf #(.RT_WIDTH(RT_WIDTH)) uLeaf (
+xpRtLeaf #(.RT_WIDTH(RT_WIDTH)) uLeaf (
     .apbReg (apbReg_uLeaf),
     .clk (clk),
     .rst_n (rst_n)
@@ -40,4 +40,4 @@ xpRtInh_xpRtLeaf #(.RT_WIDTH(RT_WIDTH)) uLeaf (
 
 // GENERATED_CODE_END
 
-endmodule: xpRtInh_xpRtWrap
+endmodule: xpRtWrap

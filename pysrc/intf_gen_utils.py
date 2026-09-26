@@ -585,21 +585,11 @@ def cpp_container_typed_instance_arg(instance):
 
 def sc_instance_config_imports(data):
     out = []
-    for key in sorted(data['configModules']):
-        mod = data['configModules'][key]
-        out.append(f'import {cpp_config_module_name(mod["project"], mod["block"])};')
+    for moduleName in sorted(data['configModules']):
+        out.append(f'import {moduleName};')
     for key, moduleName in sorted(data['containerTypedChildModules'].items()):
         out.append(f'import {cpp_block_module_name(moduleName)};')
     return out
-
-def cpp_config_module_name(projectName, childBlock):
-    # C++20 module name for the owner-qualified foreign per-variant Config module
-    # interface unit of a reused child. Spelled `<project>.<child>.config` so the
-    # same reused child yields ONE config module per owning project (NOT per
-    # parent): every parent-owned registrar and container in that project that
-    # binds a foreign variant of the child imports the same module. The identity
-    # components (project, child) come from persisted data / projectOpen views.
-    return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.config'
 
 def cpp_config_expression_name(expression):
     # C++ spelling of a persisted Config expression. A containerParam binding
@@ -676,7 +666,7 @@ def cpp_own_config_import(data):
     module = data['ownConfigModule']
     if not module:
         return []
-    return [f'import {cpp_config_module_name(module["project"], module["block"])};']
+    return [f'import {module};']
 
 def sc_base_dependency_includes(prj, data):
     # Dependency lines a block's Base/Inverted/Channels declaration

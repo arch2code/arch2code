@@ -1,4 +1,4 @@
-package mixedEncoderPackage;
+package mixedEncoder_package;
 
     import mixed_package::*;
 
@@ -38,4 +38,4 @@ package mixedEncoderPackage;
 
     // GENERATED_CODE_END
 
-endpackage : mixedEncoderPackage
+endpackage : mixedEncoder_package

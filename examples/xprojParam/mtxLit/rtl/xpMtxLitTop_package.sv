@@ -2,7 +2,7 @@
 // 
 // GENERATED_CODE_PARAM --project=xpMtxLit --context=../../yaml/xpMtxLitTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package xpMtxLit_xpMtxLitTop_package;
+package xpMtxLitTop_package;
 // Generated Import package statement(s)
 import xpMtxIp_package::*;
 
@@ -20,5 +20,5 @@ typedef struct packed {
     mlChMarkT mark; //Trailing marker
 } mlChSt;
 
-endpackage : xpMtxLit_xpMtxLitTop_package
+endpackage : xpMtxLitTop_package
 // GENERATED_CODE_END

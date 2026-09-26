@@ -6,13 +6,13 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module xpFilterShared.xpFilterShared.config;
+export module xpFilterShared.config;
 
-export struct xpFilterShared_xpFilterSharedDefaultConfig {
+export struct xpFilterSharedDefaultConfig {
     static constexpr uint32_t PIXEL_WIDTH = 12;
 };
 
-export struct xpFilterShared_xpFilterSharedV0Config {
+export struct xpFilterSharedV0Config {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };
 

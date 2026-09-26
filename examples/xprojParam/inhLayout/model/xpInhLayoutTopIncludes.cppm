@@ -24,7 +24,8 @@ export namespace xpInhLayout_xpInhLayoutTop_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpInhLayout_xpInhLayoutTop_ns {
 // types
-template<typename Config> using ilPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t IL_WIDTH> using ilPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using ilPixelT = ilPixelT_v<Config::IL_WIDTH>;
 typedef uint8_t ilTagT; // [8] Sample tag; lowest packed position
 typedef uint8_t ilMarkT; // [8] Trailing marker, so a width change also moves an offset
 
@@ -39,30 +40,30 @@ export namespace xpInhLayout_xpInhLayoutTop_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpInhLayout_xpInhLayoutTop_ns {
 // structures
-template<typename Config>
-struct ilSt {
+template<uint32_t IL_WIDTH>
+struct ilSt_v {
     ilMarkT mark; //Trailing marker
-    ilPixelT<Config> data; //Parameterizable pixel payload
+    ilPixelT_v<IL_WIDTH> data; //Parameterizable pixel payload
     ilTagT tag; //Sample tag
 
-    ilSt() {}
+    ilSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::IL_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + IL_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const ilSt<Config> & rhs) const {
+    inline bool operator == (const ilSt_v<IL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const ilSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const ilSt_v<IL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  ilSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  ilSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -78,12 +79,12 @@ struct ilSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ilSt<Config>::_byteWidth);
+        memset(&_ret, 0, ilSt_v<IL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::IL_WIDTH);
-        _pos += Config::IL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, IL_WIDTH);
+        _pos += IL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -92,44 +93,45 @@ struct ilSt {
         uint16_t _pos{0};
         mark = (ilMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (ilPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::IL_WIDTH)) - 1));
-        _pos += Config::IL_WIDTH;
+        data = (ilPixelT_v<IL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (IL_WIDTH)) - 1));
+        _pos += IL_WIDTH;
         tag = (ilTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<ilSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<ilSt_v<IL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<ilSt<Config>::_bitWidth> packed_data;
+        sc_bv<ilSt_v<IL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::IL_WIDTH-1, _pos) = data;
-        _pos += Config::IL_WIDTH;
+        packed_data.range(_pos+IL_WIDTH-1, _pos) = data;
+        _pos += IL_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<ilSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<ilSt_v<IL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (ilMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (ilPixelT<Config>) packed_data.range(_pos+Config::IL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::IL_WIDTH;
+        data = (ilPixelT_v<IL_WIDTH>) packed_data.range(_pos+IL_WIDTH-1, _pos).to_uint64();
+        _pos += IL_WIDTH;
         tag = (ilTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit ilSt(sc_bv<ilSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit ilSt(
+    explicit ilSt_v(sc_bv<ilSt_v<IL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ilSt_v(
         ilMarkT mark_,
-        ilPixelT<Config> data_,
+        ilPixelT_v<IL_WIDTH> data_,
         ilTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit ilSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit ilSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using ilSt = ilSt_v<Config::IL_WIDTH>;
 } // namespace xpInhLayout_xpInhLayoutTop_ns
 
 // GENERATED_CODE_END

@@ -204,7 +204,7 @@ def test_config_struct_derived_members_move_to_base():
 
         ok = True
         derived = ('IP_DATA_WIDTH_X2', 'IP_DATA_WIDTH_X4', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH_X4')
-        for structName in ('ip_ipDefaultConfig', 'ip_ipVariant0Config'):
+        for structName in ('ipDefaultConfig', 'ipVariant0Config'):
             for constName in derived:
                 if _config_member(out, structName, constName) is not None:
                     print(f"  FAIL: {structName} still carries derived member {constName}")
@@ -224,11 +224,11 @@ def test_config_struct_derived_members_move_to_base():
         # ip declares only these three params; its Config carries exactly them.
         ownParams = ('IP_DATA_WIDTH', 'IP_MEM_DEPTH', 'IP_NONCONST_DEPTH')
         for constName in ownParams:
-            if _config_member(out, 'ip_ipDefaultConfig', constName) is None:
-                print(f"  FAIL: ip_ipDefaultConfig is missing its own param {constName}")
+            if _config_member(out, 'ipDefaultConfig', constName) is None:
+                print(f"  FAIL: ipDefaultConfig is missing its own param {constName}")
                 ok = False
         if ok:
-            print(f"  PASS: ip_ipDefaultConfig carries exactly its own declared params")
+            print(f"  PASS: ipDefaultConfig carries exactly its own declared params")
 
         # Second-level derived constants chain through the first by bare name, not re-expanded.
         block_data = prj.getBlockData(prj.getQualBlock('ip'))

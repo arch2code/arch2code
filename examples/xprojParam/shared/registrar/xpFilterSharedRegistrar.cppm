@@ -8,7 +8,7 @@ module;
 
 export module xpShared.xpFilterShared.registrar;
 import xpFilterShared.block;
-import xpFilterShared.xpFilterShared.config;
+import xpFilterShared.config;
 
 namespace {
 struct _xpFilterShared_registrar {
@@ -16,13 +16,13 @@ struct _xpFilterShared_registrar {
         instanceFactory::registerBlock(
             "xpFilterShared_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilterShared<xpFilterShared_xpFilterSharedV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilterShared<xpFilterSharedV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpFilterShared");
         instanceFactory::registerBlock(
             "xpFilterShared_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilterShared<xpFilterShared_xpFilterSharedV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilterShared<xpFilterSharedV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpShared.xpShared_xpSharedTop.xpFilterShared");
     }

@@ -193,9 +193,10 @@ def render_section_init(args, prj, data):
     # name unchanged.
     thisq = 'this->' if hasOwnParams else ''
     # render the template with the variables
+    classHeader = None if moduleMode else prj.getModuleFilename("block", blockName, "hdr")
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
                  hasOwnParams=hasOwnParams, moduleMode=moduleMode,
-                 registration=registration, thisq=thisq,
+                 class_header=classHeader, registration=registration, thisq=thisq,
                  reghandler=reghandler, hwregs=get_hwregs(prj, data))
     return s.rstrip()
 
@@ -239,7 +240,7 @@ public:
 
 block_regs_init_section_template = '''\
 {% if not moduleMode -%}
-#include "{{blockname}}.h"
+#include "{{class_header}}"
 {% endif -%}
 {% if not hasOwnParams %}
 SC_HAS_PROCESS({{blockname}});

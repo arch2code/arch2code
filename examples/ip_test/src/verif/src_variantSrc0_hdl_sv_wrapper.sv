@@ -8,8 +8,8 @@
 
 module src_variantSrc0_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import ip_test_ipLeaf_package::*;
-    import ip_test_src_package::*;
+    import ipLeaf_package::*;
+    import src_package::*;
 #(
     localparam OUT0_DATA_WIDTH = 8,
     localparam OUT1_DATA_WIDTH = 70

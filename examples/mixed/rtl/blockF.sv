@@ -1,10 +1,10 @@
 // GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: mixed_blockF
-module mixed_blockF
+//module as defined by block: blockF
+module blockF
 // Generated Import package statement(s)
 import mixed_package::*;
-import mixed_mixedBlockC_package::*;
+import mixedBlockC_package::*;
 #(
     parameter int unsigned bob = 32'h0000_0010,
     parameter int unsigned fred = 32'h0000_0000
@@ -34,4 +34,4 @@ memory_dp #(.DEPTH(bob), .data_t(seeSt)) uTest (
 
 // GENERATED_CODE_END
 
-endmodule: mixed_blockF
+endmodule: blockF

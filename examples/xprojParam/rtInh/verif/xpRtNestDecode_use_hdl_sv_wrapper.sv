@@ -9,7 +9,7 @@
 module xpRtNestDecode_use_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 #(
     localparam RT_WIDTH = 32
 )(
@@ -63,10 +63,10 @@ endmodule : xpRtNestDecode_use_hdl_sv_wrapper
 
 `include "xpRtNestDecode_hdl_sv_wrapper.svh"
 
-module p16_xpRtInh_xpRtWrap_c22_xpRtInh_xpRtNestDecode_use_hdl_sv_wrapper
+module p8_xpRtWrap_c14_xpRtNestDecode_use_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 #(
     localparam RT_WIDTH = 32
 )(
@@ -116,7 +116,7 @@ module p16_xpRtInh_xpRtWrap_c22_xpRtInh_xpRtNestDecode_use_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-endmodule : p16_xpRtInh_xpRtWrap_c22_xpRtInh_xpRtNestDecode_use_hdl_sv_wrapper
+endmodule : p8_xpRtWrap_c14_xpRtNestDecode_use_hdl_sv_wrapper
 
 // GENERATED_CODE_END
 

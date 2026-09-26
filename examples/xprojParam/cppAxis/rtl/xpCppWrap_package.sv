@@ -2,7 +2,7 @@
 // 
 // GENERATED_CODE_PARAM --project=xpCppAxis --context=../../yaml/xpCppWrap.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package xpCppAxis_xpCppWrap_package;
+package xpCppWrap_package;
 // Generated Import package statement(s)
 import xpCppLeaf_package::*;
 
@@ -19,5 +19,5 @@ typedef struct packed {
     wrapFlagT flag; //Header flag
 } wrapNestHdrSt;
 
-endpackage : xpCppAxis_xpCppWrap_package
+endpackage : xpCppWrap_package
 // GENERATED_CODE_END

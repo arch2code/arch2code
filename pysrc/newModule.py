@@ -75,14 +75,14 @@ class newModule:
         templateDefinition = { 'templates': { 'fileGen': templateProg } }
         self.renderer = renderer(prj, docType='', directTemplate=templateDefinition)
 
-        fileMap = fileGenerationConfig['fileMap']
-        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'], fileMap)
+        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'],
+                                          artifactPaths.projectFileMaps(prj))
 
         self.block_create_from_rows(fileGenerationConfig, rows, blockCondData, prj, args)
         self.registrar_create_from_rows(fileGenerationConfig, rows, prj, args)
 
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'registrar')
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'vl_wrap')
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'registrar')
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'vl_wrap')
         self.cleanup_retired_context_files(prj, rows)
         self.remove_legacy_fw_headers(prj, rows)
 
@@ -132,10 +132,9 @@ class newModule:
             data['block'] = block
             data['qualBlock'] = qualBlock
             data['variants'] = list(prj.getStandaloneVariants(qualBlock))
-            # Project-qualified module name for the scaffold's user-owned
-            # `endmodule: <label>` so a freshly created block matches its
-            # generator-emitted (qualified) module begin-label.
-            data['blockModuleName'] = prj.blockModuleName[qualBlock]
+            # The scaffold's user-owned `endmodule: <label>` must match the
+            # generator-emitted module begin-label.
+            data['blockSvModuleName'] = prj.blockSvModuleName[qualBlock]
             # A dutVariant artifact has no per-variant row; seed it with the
             # block's first declared variant so one pass scaffolds every
             # testbench.
@@ -183,12 +182,12 @@ class newModule:
                 continue
             self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
-    def cleanup_stale_segment_files(self, prj, rows, blockCondData, fileMap, basePath):
+    def cleanup_stale_segment_files(self, prj, rows, blockCondData, basePath):
         # newmodule owns segment scaffolding, so it also deletes the generated
         # files in owned segment directories the current contract no longer
         # names.
         expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
-            prj, rows, blockCondData, fileMap, basePath)
+            prj, rows, blockCondData, basePath)
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
             print(f"Removing stale {basePath} file {staleFile}")

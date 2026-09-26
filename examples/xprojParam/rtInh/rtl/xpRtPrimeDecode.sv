@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=xpRtPrimeDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: xpRtInh_xpRtPrimeDecode
-module xpRtInh_xpRtPrimeDecode
+//module as defined by block: xpRtPrimeDecode
+module xpRtPrimeDecode
 // Generated Import package statement(s)
-import common_shared_types_package::*;
+import shared_types_package::*;
 (
     apb_if.src apbReg_uWrap,
     apb_if.dst cpu_main,
@@ -70,5 +70,5 @@ assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;
 
-endmodule: xpRtInh_xpRtPrimeDecode
+endmodule: xpRtPrimeDecode
 // GENERATED_CODE_END

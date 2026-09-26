@@ -2,11 +2,11 @@
 
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: ip_test_src
-module ip_test_src
+//module as defined by block: src
+module src
 // Generated Import package statement(s)
-import ip_test_ipLeaf_package::*;
-import ip_test_src_package::*;
+import ipLeaf_package::*;
+import src_package::*;
 #(
     parameter int unsigned OUT0_DATA_WIDTH = 32'h0000_0008,
     parameter int unsigned OUT1_DATA_WIDTH = 32'h0000_0046
@@ -34,7 +34,7 @@ import ip_test_src_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-ip_test_ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
+ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -110,4 +110,4 @@ ip_test_ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
         end
     end
 
-endmodule: ip_test_src
+endmodule: src

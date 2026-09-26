@@ -14,7 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpSink.block;
 import xpSink.base;
-import xpSink.xpSink.config;
+import xpSink.config;
 import xpSink;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)

@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=ipLeaf
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: ip_test_ipLeaf
-module ip_test_ipLeaf
+//module as defined by block: ipLeaf
+module ipLeaf
 // Generated Import package statement(s)
-import ip_test_ipLeaf_package::*;
+import ipLeaf_package::*;
 #(
     parameter int unsigned LEAF_DATA_WIDTH = 32'h0000_0004,
     parameter int unsigned LEAF_MEM_DEPTH = 32'h0000_0004
@@ -40,4 +40,4 @@ memory_dp #(.DEPTH(LEAF_MEM_DEPTH), .data_t(ipLeafMemSt)) uIpLeafMem (
 
 // GENERATED_CODE_END
 
-endmodule: ip_test_ipLeaf
+endmodule: ipLeaf

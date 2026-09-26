@@ -4,7 +4,7 @@
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package xpRtInh_package;
 // Generated Import package statement(s)
-import common_shared_types_package::*;
+import shared_types_package::*;
 
 // types
 

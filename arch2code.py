@@ -14,7 +14,6 @@ from pysrc.drawStructure import drawStructure
 from pysrc.docgen import makeDoc
 from pysrc.systemcGen import genSystemC
 from pysrc.systemVerilogGenerator import systemVerilogGenerator
-from pysrc.initialSystemVerilogPackagesGenerator import initialSystemVerilogPackagesGenerator
 from pysrc.documentGenerator import documentGenerator
 from pysrc.newModule import newModule
 from pysrc.newProject import newProject
@@ -40,11 +39,6 @@ parser.add_argument('-v', '--version', action='store_true', help='arch2code (a2c
 parser.add_argument('--diagram', action='store_true', help='Create the Instances Diagram. If run with --debug the diagram will be opened for preview.')
 parser.add_argument('--docgen', action='store_true', help='runs document generator')
 parser.add_argument('--systemVerilogGenerator', '-sv', action='store_true', help='runs the SystemVerilog generator')
-parser.add_argument('--initialSystemVerilogPackagesGenerator', '-isvp', action='store_true', help='Automatically creates systemVerilog Packages\
-                        creates a package per context. If a yaml context is at my.yaml the package will be created\
-                        at a path delcared by --moduledir the package will be named myPackage.sv. If an included package of\
-                        my.yaml is at a/a.yaml relative to the top my.yaml context then output package will be in the directory\
-                        indicated by --moduledir then a/aPackage.sv.')
 parser.add_argument('--systemc', '-sc', action='store_true', help='runs SystemC generator')
 parser.add_argument('--newmodule', action='store_true', help='create all the base files for a new module')
 parser.add_argument('--newproject', action='store_true', help='create a new project')
@@ -158,8 +152,6 @@ if (args.instancesWithBlockType):
         print(Back.BLACK+Fore.WHITE+f"Instance: "+Fore.CYAN+f"{k}"+Fore.WHITE+f" of block type " \
               +Fore.LIGHTGREEN_EX+f"{prj.data['instances'][v]['instanceType']}"+Fore.WHITE \
               +f" with context(s): "+f"{c}"+Style.RESET_ALL)
-if (args.initialSystemVerilogPackagesGenerator):
-    initialSystemVerilogPackagesGenerator(prj, args)
 if (args.blockContexts):
     for k, v in prj.instances.items():
         print(Back.BLACK+Fore.WHITE+f"Instance: "+Fore.CYAN+f"{k}"+Fore.WHITE+f" with contexts" \

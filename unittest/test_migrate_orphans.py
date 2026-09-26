@@ -18,8 +18,9 @@ read. Files on disk are real; only the DB access surface is faked.
 
 Coverage (the required assertions):
   (a) every `delete`-disposition entry + the explicit vl_wrap.{cpp,h,sv} aggregate
-      is deleted (Includes.{h,cpp}, Base.h, _package.sv, the SV HDL wrapper,
-      Tandem.{h,cpp}, vl_wrap.*);
+      is deleted (Includes.{h,cpp}, Base.h, the SV HDL wrapper, Tandem.{h,cpp},
+      vl_wrap.*), except a legacy path that is still that artifact's current
+      file (_package.sv here);
   (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the SC HDL wrapper header,
       the tb top and External pairs and the tb Config, with generated markers)
       are never deleted, and are unreachable for deletion by construction;
@@ -131,7 +132,8 @@ class _FakePrj:
         }
         # `root` is a first-class layout field (present in both layout modes),
         # matching _buildLayoutFor; the sweep reads the walk root from here.
-        layout = {"mode": "functional", "segments": segments, "root": root}
+        layout = {"mode": "functional", "segments": segments, "root": root,
+                  "filePrefix": {"sv": "", "sc": "", "fw": ""}}
         self.projectLayout = {"t": layout}
         self.contextOwningProject = {"top.yaml": "t", "usr.yaml": "t"}
         self.includeName = {"top.yaml": "top", "usr.yaml": "usr"}
@@ -161,16 +163,20 @@ class _FakePrj:
                             "cond": {"hasTb": True}, "blockDir": True,
                             "mode": "block", "basePath": "tb"},
         }
+        layout["fileMap"] = self.filemap
         includeFiles = {
             "include_cppm": {
                 "top.yaml": {"baseName": "topIncludes.cppm",
-                             "fileName": os.path.join(model, "topIncludes.cppm")},
+                             "fileName": os.path.join(model, "topIncludes.cppm"),
+                             "stem": os.path.join(model, "topIncludes")},
                 "usr.yaml": {"baseName": "usrIncludes.cppm",
-                             "fileName": os.path.join(model, "usrIncludes.cppm")},
+                             "fileName": os.path.join(model, "usrIncludes.cppm"),
+                             "stem": os.path.join(model, "usrIncludes")},
             },
             "package_sv": {
                 "top.yaml": {"baseName": "top_package.sv",
-                             "fileName": os.path.join(rtl, "top_package.sv")},
+                             "fileName": os.path.join(rtl, "top_package.sv"),
+                             "stem": os.path.join(rtl, "top_package")},
             },
         }
         # The build manifest as `make db` would emit it: the segment roots
@@ -278,7 +284,7 @@ def _stage(root):
 DELETE_BASENAMES = {
     "myblkBase.h", "myblk_hdl_sv_wrapper.sv",
     "myblkTandem.h", "myblkTandem.cpp", "topIncludes.h", "topIncludes.cpp",
-    "top_package.sv", "vl_wrap.cpp", "vl_wrap.h", "vl_wrap.sv",
+    "vl_wrap.cpp", "vl_wrap.h", "vl_wrap.sv",
 }
 
 
@@ -296,9 +302,14 @@ def test_delete_dispatch_sweeps_delete_entries_and_literals():
         check(deleted == DELETE_BASENAMES,
               "delete-disposition entries + vl_wrap.* aggregate are swept")
         gone = ["base", "svWrap", "tandemH", "tandemCpp", "incH",
-                "incCpp", "pkg", "vlwCpp", "vlwH", "vlwSv"]
+                "incCpp", "vlwCpp", "vlwH", "vlwSv"]
         check(all(not os.path.exists(paths[k]) for k in gone),
               "every swept delete target is removed from disk")
+        # The legacy package path is the current package's path, so the file
+        # stays and no TODO is raised for it.
+        check(os.path.exists(paths["pkg"]) and "top_package.sv" not in
+              {i.location for i in report.manual},
+              "a legacy path that is the same artifact's current file is kept silently")
         # (f) the vl_wrap segment is a MIXED segment now: the SV wrapper is still
         # swept by its per-file path (not a directory-wide clear), while the SC
         # wrapper header (`port`) is left in place beside it.
@@ -335,10 +346,10 @@ def test_port_and_edit_never_deleted():
         # literals) is disjoint from the port/edit expansion.
         r = OrphansReport(projectName="t")
         contexts = _reconstructContexts(prj, r)
-        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts)
+        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts).keys()
         deleteTargets |= _literalDeletePaths(prj, r)
-        portEdit = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts)
-                    | expandFileMap(prj, _dispositionMap(MIGRATE_EDIT), r, contexts))
+        portEdit = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts).keys()
+                    | expandFileMap(prj, _dispositionMap(MIGRATE_EDIT), r, contexts).keys())
         check(portEdit and portEdit.isdisjoint(deleteTargets),
               "port/edit paths are unreachable for deletion by construction")
 

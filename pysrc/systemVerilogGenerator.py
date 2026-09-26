@@ -114,10 +114,10 @@ class systemVerilogGenerator:
             return
         if not any(self._sectionTemplate(s) in _MODULE_BODY_TEMPLATES for s in self.code.sections):
             return
-        blockName = prj.data['blocks'][prj.getQualBlock(self.code.block, project=self.code.params.project, filePath=fileName)]['block']
+        moduleName = prj.blockSvModuleName[prj.getQualBlock(self.code.block, project=self.code.params.project, filePath=fileName)]
         stem = Path(fileName).resolve().stem
-        if stem != blockName:
-            printWarning(f'The file name {stem} does not match the block name {blockName}')
+        if stem != moduleName:
+            printWarning(f'The file name {stem} does not match the module name {moduleName}')
 
     def _handler_generic(self, args, prj, data):
         vars = {'prj': prj, 'block': data, 'args': args}

@@ -454,8 +454,8 @@ xproj-variant-unique:
 # against its own Config, so a broken container-sourced link fails the run.
 xif:
 	make -C $(XIF_DIR) -j db
-	@if ! grep -q 'A2C_SC_GEN_FILES.*registrar/xif_xif_tbVariantConfig.cppm' $(XIF_DIR)/.gen/build.mk; then \
-	    echo "ERROR: xif_xif_tbVariantConfig.cppm missing from A2C_SC_GEN_FILES; the fileMap no longer earns xif_tb (params, no model, no tb) a Config module"; \
+	@if ! grep -q 'A2C_SC_GEN_FILES.*registrar/xif_tbVariantConfig.cppm' $(XIF_DIR)/.gen/build.mk; then \
+	    echo "ERROR: xif_tbVariantConfig.cppm missing from A2C_SC_GEN_FILES; the fileMap no longer earns xif_tb (params, no model, no tb) a Config module"; \
 	    exit 1; \
 	fi
 	make -C $(XIF_DIR)/rundir -j all

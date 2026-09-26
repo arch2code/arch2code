@@ -30,7 +30,7 @@ def render(args, prj, data):
 
     # Module declaration is emitted from the project-qualified module name;
     # filename/block consistency is validated by the generator before rendering.
-    out.append(moduleDeclaration(data['blockModuleName']))
+    out.append(moduleDeclaration(data['blockSvModuleName']))
 
     # Packages
     startingContext = data['blockInfo']['_context']
@@ -168,7 +168,7 @@ def render(args, prj, data):
 
     out.append("")
 
-    out.append(f"endmodule: {data['blockModuleName']}")
+    out.append(f"endmodule: {data['blockSvModuleName']}")
     return ("\n".join(out))
 
 #------------------------------------------------------------------------------

@@ -60,8 +60,8 @@ def render_default(args, prj, data):
     if socketRegistrations:
         out.append(f'import {intf_gen_utils.cpp_socket_module_name(data["blockModuleName"])};')
 
-    for mod in registrarConfig['configModules']:
-        out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
+    for moduleName in registrarConfig['configModules']:
+        out.append(f'import {moduleName};')
 
     registrations = list()
     for registration in registrarConfig['modelRegistrations']:

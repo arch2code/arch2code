@@ -7,6 +7,31 @@ from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.migrateCommon import userRegionLines
 from pysrc.variantSelection import standaloneVariantDescriptors
 
+# fileMap ext values that make an artifact SystemVerilog.
+SV_EXTS = {'sv', 'svh'}
+
+def fileNamePrefix(fileDefinition, layout):
+    # The owning project's filename prefix for this artifact. A project-mode
+    # name is a literal basename and takes none. Nor does a legacy entry
+    # (migrateOrphans.LEGACY_FILEMAP): the file it names predates prefixes.
+    if fileDefinition.get('mode', 'block') == 'project' or fileDefinition.get('legacy', False):
+        return ''
+    if SV_EXTS & set(fileDefinition['ext'].values()):
+        return layout['filePrefix']['sv']
+    if fileDefinition['basePath'] == 'fwInc':
+        return layout['filePrefix']['fw']
+    return layout['filePrefix']['sc']
+
+def unprefixedStem(fileDefinition, moduleFileStub):
+    # The artifact's name before the filename prefix. A C++ class named after
+    # its file follows the fileMap name but not scFilePrefix.
+    return f"{moduleFileStub}{fileDefinition.get('name', '')}"
+
+def fileStem(fileDefinition, moduleFileStub, layout):
+    # Artifact basename without extension. An SV artifact's design unit is
+    # named by this same stem.
+    return f"{fileNamePrefix(fileDefinition, layout)}{unprefixedStem(fileDefinition, moduleFileStub)}"
+
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk = False):
     # layout is the owning project's layoutConfig (PROJECTLAYOUT[owner]); the
     # caller selects it by the object's defining-context owner so a child-owned
@@ -41,7 +66,7 @@ def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layou
     blockDir = fileDefinition.get('blockDir', False)
     if blockDir:
         moduleDirAbs = os.path.join(moduleDirAbs, module)
-    fileName = f"{moduleFileStub}{fileStub}"
+    fileName = fileStem(fileDefinition, moduleFileStub, layout)
     filePath = os.path.join(moduleDirAbs, fileName)
     return filePath
 
@@ -74,6 +99,12 @@ def blockCondRow(blockRow, blocksWithParams):
     row['hasOwnParams'] = int(blockRow['blockKey'] in blocksWithParams)
     return row
 
+def projectFileMaps(prj):
+    # Each project's merged fileMap. A block's or context's artifacts follow
+    # the fileMap of the project that owns it, the same as when that project
+    # builds on its own.
+    return {project: layout['fileMap'] for project, layout in prj.projectLayout.items()}
+
 def configModuleFileDef(fileMap):
     # The owner-qualified Config module entry. ownerQualified marks both
     # owner-qualified registrar entries; the variant-bearing one is the SV wrapper top.
@@ -81,18 +112,25 @@ def configModuleFileDef(fileMap):
                   if fd.get('ownerQualified', False) and not fd.get('variant', False)]
     return fileDef
 
-def artifactRows(prj, blockCondData, instances, fileMap):
-    """One row per generated artifact the fileMap names, over every project in
-    the database. Fields: fileType/fileDef, mode, stem (the expandNewModulePath
-    result), files {extKey: path}, owner, layout, blockKey/anchorKey, variant
-    ('' when none), topModule (pairVlTop rows), context/includeEntries (context
-    rows). The caller supplies blockCondData and instances so projectCreate
-    (flatData) and projectOpen (data) both use it."""
+def artifactRows(prj, blockCondData, instances, fileMaps):
+    """One row per generated artifact, over every project in the database.
+    fileMaps holds a fileMap per project (projectFileMaps); an artifact is
+    named by the entries of the project whose layout places it, and project-
+    mode entries come from the project running the build. Fields:
+    fileType/fileDef, mode, stem (the expandNewModulePath result), files
+    {extKey: path}, owner, layout, blockKey/anchorKey, variant ('' when none),
+    topModule (pairVlTop rows), context/includeEntries (context rows). The
+    caller supplies blockCondData and instances so projectCreate (flatData)
+    and projectOpen (data) both use it."""
     projectLayout = prj.projectLayout
     contextOwningProject = prj.contextOwningProject
 
     def layoutForContext(context):
         return projectLayout[contextOwningProject[context]]
+
+    def entries(project, mode):
+        return [(fileType, fileDef) for fileType, fileDef in fileMaps[project].items()
+                if fileDef.get('mode', 'block') == mode]
 
     def row(fileType, fileDef, mode, stem, owner, layout, blockKey=None,
             anchorKey=None, variant='', topModule=None, context=None,
@@ -117,9 +155,7 @@ def artifactRows(prj, blockCondData, instances, fileMap):
     for blockRow in blockCondData.values():
         anchorLayout = layoutForContext(blockRow['_context'])
         owner = contextOwningProject[blockRow['_context']]
-        for fileType, fileDef in fileMap.items():
-            if fileDef.get('mode', 'block') != 'block':
-                continue
+        for fileType, fileDef in entries(owner, 'block'):
             if not fileMapCondMatch(fileDef, blockRow):
                 continue
             hasVariant = fileDef.get('variant', False)
@@ -141,16 +177,15 @@ def artifactRows(prj, blockCondData, instances, fileMap):
                                 variant=variant))
 
     # Registrar mode: four shapes told apart by ownerQualified, variant and pairVlTop.
-    registrarMap = {k: v for k, v in fileMap.items()
-                    if v.get('mode', 'block') == 'registrar'}
-    if registrarMap:
+    if any(entries(project, 'registrar') for project in fileMaps):
         registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
         for (assemblerKey, childKey), pair in registrarPairs.items():
             assemblerRow = blockCondData[assemblerKey]
             childRow = blockCondData[childKey]
             anchorLayout = layoutForContext(assemblerRow['_context'])
             owner = contextOwningProject[assemblerRow['_context']]
-            for fileType, fileDef in registrarMap.items():
+            registrarMap = entries(owner, 'registrar')
+            for fileType, fileDef in registrarMap:
                 if fileDef.get('ownerQualified', False) or fileDef.get('pairVlTop', False):
                     continue
                 if not fileMapCondMatch(fileDef, childRow):
@@ -163,7 +198,7 @@ def artifactRows(prj, blockCondData, instances, fileMap):
                                                anchorLayout, missingDirOk=True)
                 rows.append(row(fileType, fileDef, 'registrar', stemPath, owner, anchorLayout,
                                 blockKey=childKey, anchorKey=assemblerKey))
-            for fileType, fileDef in registrarMap.items():
+            for fileType, fileDef in registrarMap:
                 if not fileDef.get('pairVlTop', False):
                     continue
                 if not fileMapCondMatch(fileDef, childRow):
@@ -184,7 +219,8 @@ def artifactRows(prj, blockCondData, instances, fileMap):
             childRow = blockCondData[childKey]
             parentRow = blockCondData[entry['parentKey']]
             anchorLayout = layoutForContext(parentRow['_context'])
-            for fileType, fileDef in registrarMap.items():
+            for fileType, fileDef in entries(contextOwningProject[parentRow['_context']],
+                                             'registrar'):
                 if not fileDef.get('ownerQualified', False) or fileDef.get('variant', False):
                     continue
                 if not fileMapCondMatch(fileDef, childRow):
@@ -199,7 +235,8 @@ def artifactRows(prj, blockCondData, instances, fileMap):
             childRow = blockCondData[childKey]
             parentRow = blockCondData[entry['parentKey']]
             anchorLayout = layoutForContext(parentRow['_context'])
-            for fileType, fileDef in registrarMap.items():
+            for fileType, fileDef in entries(contextOwningProject[parentRow['_context']],
+                                             'registrar'):
                 if not (fileDef.get('ownerQualified', False) and fileDef.get('variant', False)):
                     continue
                 if not fileMapCondMatch(fileDef, childRow):
@@ -215,27 +252,31 @@ def artifactRows(prj, blockCondData, instances, fileMap):
 
     # Context mode: one row per (fileType, context), all its exts in `files`.
     includeFiles = prj.config.getConfig('INCLUDEFILES')
-    for fileType, fileDef in fileMap.items():
-        if fileDef.get('mode', 'block') != 'context':
-            continue
-        entriesByContext = dict()
-        for ext in fileDef['ext']:
-            expandedType = f"{fileType}_{ext}"
-            if expandedType not in includeFiles:
-                continue
-            for context, entry in includeFiles[expandedType].items():
-                entriesByContext.setdefault(context, dict())[ext] = entry
-        for context, extEntries in entriesByContext.items():
-            stem = next(iter(extEntries.values()))['stem']
-            rows.append(row(fileType, fileDef, 'context', stem,
-                            contextOwningProject[context], layoutForContext(context),
-                            context=context, includeEntries=extEntries))
+    for project in fileMaps:
+        for fileType, fileDef in entries(project, 'context'):
+            entriesByContext = dict()
+            for ext in fileDef['ext']:
+                expandedType = f"{fileType}_{ext}"
+                if expandedType not in includeFiles:
+                    continue
+                for context, entry in includeFiles[expandedType].items():
+                    if contextOwningProject[context] == project:
+                        entriesByContext.setdefault(context, dict())[ext] = entry
+            for context, extEntries in entriesByContext.items():
+                stem = next(iter(extEntries.values()))['stem']
+                rows.append(row(fileType, fileDef, 'context', stem, project,
+                                layoutForContext(context),
+                                context=context, includeEntries=extEntries))
 
     # Project mode: exactly one artifact per project-mode entry, at the top
     # context's node (hierarchical) or $root (functional). A definitions-only
     # project (no topInstance) has no top context and emits none.
+    # A caller passing only block-mode entries may also pass a block subset
+    # without the top block, so the anchor is resolved only when needed.
     topContext = prj.config.getConfig('TOPCONTEXT')
-    if topContext is not None:
+    buildProject = prj.config.getConfig('PROJECTNAME')
+    projectEntries = entries(buildProject, 'project')
+    if topContext is not None and projectEntries:
         anchorLayout = layoutForContext(topContext)
         if anchorLayout['mode'] == 'hierarchical':
             topBlockKey = next(inst['instanceTypeKey']
@@ -244,9 +285,7 @@ def artifactRows(prj, blockCondData, instances, fileMap):
             nodeDir = blockCondData[topBlockKey]['dir']
         else:
             nodeDir = ''
-        for fileType, fileDef in fileMap.items():
-            if fileDef.get('mode', 'block') != 'project':
-                continue
+        for fileType, fileDef in projectEntries:
             stemPath = expandNewModulePath(fileDef, nodeDir, '', '', anchorLayout,
                                            missingDirOk=True)
             rows.append(row(fileType, fileDef, 'project', stemPath,
@@ -255,9 +294,17 @@ def artifactRows(prj, blockCondData, instances, fileMap):
     return rows
 
 
-def getStaleSegmentFiles(prj, rows, blockCondData, fileMap, basePath):
-    """The files fileMap says should exist under one project's own basePath
-    segment, in the shapes newModule scaffolds; a generated file there
+def currentArtifactRows(prj):
+    """Every artifact the build names today, in every project, from a
+    projectOpen handle. Migrate never deletes or moves onto one of these
+    paths."""
+    blockCondData = {k: prj.getBlockCondRow(k) for k in prj.data['blocks']}
+    return artifactRows(prj, blockCondData, prj.data['instances'], projectFileMaps(prj))
+
+
+def getStaleSegmentFiles(prj, rows, blockCondData, basePath):
+    """The files the fileMap says should exist under one project's own
+    basePath segment, in the shapes newModule scaffolds; a generated file there
     outside this set is stale (left by a block, variant or instance rename).
     Returns (files, dirs) as absolute paths."""
     projectName = prj.config.getConfig('PROJECTNAME')
@@ -265,7 +312,7 @@ def getStaleSegmentFiles(prj, rows, blockCondData, fileMap, basePath):
 
     dirs = set()
     files = set()
-    segmentDef = next((fileDef for fileDef in fileMap.values()
+    segmentDef = next((fileDef for fileDef in layout['fileMap'].values()
                        if fileDef['basePath'] == basePath), None)
     if segmentDef is None:
         return files, dirs

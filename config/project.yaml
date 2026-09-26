@@ -110,6 +110,13 @@ fileGeneration:
     #   instantiated child), project (exactly one per project).
     # name is appended to the module/context name to form the filename; ext maps
     #   logical extension keys to real ones. basePath must reference a dirs: key.
+    # The owning project's filename prefix goes in front: svFilePrefix for an
+    #   entry with sv/svh exts, fwFilePrefix for basePath fwInc, scFilePrefix for
+    #   the rest. A project-mode name is literal and takes no prefix.
+    # A composed build names and places each block's and context's files by the
+    #   fileMap of the project that owns it, as that project does on its own,
+    #   including entry kinds the composing project lacks. Project-mode entries
+    #   come from the project building.
     # Placement otherwise follows the defining yaml file's directory unless the
     #   block definition overrides it; blockDir: true appends the block name.
     # cond: is OR - any listed field matching generates the file. condAnd: is AND -

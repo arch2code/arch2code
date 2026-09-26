@@ -46,7 +46,8 @@ drives the sweep.
 Every delete — per-file or directory-cleared — is guarded by the GENERATED_CODE
 marker: a file that lacks it is REPORTED as a manual TODO and left in place (a
 hand-authored file wearing a generated name, or one dropped into a generated
-segment, is never destroyed). Removal is a plain filesystem delete (never
+segment, is never destroyed). A file that is any artifact's current path, in
+any project, is never deleted either. Removal is a plain filesystem delete (never
 `git rm`). User `#include` sites of a deleted header are handed to the operator
 as manual TODOs. The sweep is delete-only; the operator runs `make gen`
 afterwards to recreate the current-format artifacts.
@@ -64,7 +65,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.artifactPaths import artifactRows, expandNewModulePath
+from pysrc.artifactPaths import artifactRows, currentArtifactRows, expandNewModulePath, unprefixedStem
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +134,9 @@ MIGRATE_DELETE = "delete"
 MIGRATE_PORT = "port"
 MIGRATE_EDIT = "edit"
 
-# Legacy fileMap (base ⊕ pro). Each entry carries a `migrate:` disposition.
+# Legacy fileMap (base ⊕ pro). Each entry carries a `migrate:` disposition,
+# and `legacy: True`, which resolves its paths without the project's filename
+# prefix: no legacy file ever had one.
 # An entry only earns its place by giving the sweep a legacy form to act on, so a
 # file type the migration left alone is omitted. Two such omissions: `includeFW`
 # keeps the same entry name and the same {hdr: h, src: cpp}, so it cancels out of
@@ -145,16 +148,16 @@ MIGRATE_EDIT = "edit"
 # retirement left a surviving empty header behind, which RETIRED_CONTEXT_SIBLINGS
 # below sweeps by its still-current `include` sibling.
 LEGACY_FILEMAP = {
-    "blockBase":  {"name": "Base",            "ext": {"hdr": "h"},              "cond": {"hasMdl": True, "hasTb": True},                 "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE},
-    "block":      {"name": "",                "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasMdl": True},                                "mode": "block",   "basePath": "model",   "migrate": MIGRATE_PORT},
-    "rtlModule":  {"name": "",                "ext": {"sv": "sv"},              "cond": {"hasRtl": True},                                "mode": "block",   "basePath": "rtl",     "migrate": MIGRATE_PORT},
-    "vlSvWrap":   {"name": "_hdl_sv_wrapper", "ext": {"sv": "sv"},              "cond": {"hasVl": True},                 "variant": True, "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_DELETE},
+    "blockBase":  {"name": "Base",            "ext": {"hdr": "h"},              "cond": {"hasMdl": True, "hasTb": True},                 "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE, "legacy": True},
+    "block":      {"name": "",                "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasMdl": True},                                "mode": "block",   "basePath": "model",   "migrate": MIGRATE_PORT, "legacy": True},
+    "rtlModule":  {"name": "",                "ext": {"sv": "sv"},              "cond": {"hasRtl": True},                                "mode": "block",   "basePath": "rtl",     "migrate": MIGRATE_PORT, "legacy": True},
+    "vlSvWrap":   {"name": "_hdl_sv_wrapper", "ext": {"sv": "sv"},              "cond": {"hasVl": True},                 "variant": True, "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_DELETE, "legacy": True},
     # The SC Verilated wrapper header seeds an `end_ctor_init()` hook and the
     # class's closing brace outside its generated regions, and product wrappers
     # carry hand-written overrides there (e.g. a `setTimedLocal` override), so it
     # is `port` like `tbExternal`: never deleted, only reported when its legacy
     # path diverges from the current one.
-    "vlScWrap":   {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},              "cond": {"hasVl": True},                                 "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_PORT},
+    "vlScWrap":   {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},              "cond": {"hasVl": True},                                 "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_PORT, "legacy": True},
     # The testbench top holds no user CODE in any measured instance (39 across
     # base, pro and the isp workspace): every user slot is empty and the only text
     # outside a generated region is the include-guard triple, which the `.cppm`
@@ -167,19 +170,19 @@ LEGACY_FILEMAP = {
     # `delete` — migrateBlockModulePort.portTbTops carries that selection onto the
     # scaffolded `.cppm` and only then deletes the pair. The sweep runs before the
     # scaffold exists, in a separate process, so it has nowhere to put the value.
-    "testBench":  {"name": "Testbench",       "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_PORT},
+    "testBench":  {"name": "Testbench",       "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_PORT, "legacy": True},
     # The Config stays a plain .cpp: the tbConfig phase rewrites it in place
     # (region markers, section rename, stranded-registration delete) at the same
     # path, so the sweep has no legacy path to find.
-    "tbConfig":   {"name": "Config",          "ext": {"src": "cpp"},            "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_EDIT},
+    "tbConfig":   {"name": "Config",          "ext": {"src": "cpp"},            "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_EDIT, "legacy": True},
     # The External DOES carry user code (class body, constructor init-list,
     # constructor body and out-of-line tail), so it is identified and reported
     # here and moved by the testbench porter; never deleted by the sweep.
-    "tbExternal": {"name": "External",        "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_PORT},
-    "include":    {"name": "Includes",        "ext": {"hdr": "h", "src": "cpp"}, "cond": {"smartInclude": True},                          "mode": "context", "basePath": "model",   "migrate": MIGRATE_DELETE},
-    "package":    {"name": "_package",        "ext": {"sv": "sv"},              "cond": {"smartInclude": True},                          "mode": "context", "basePath": "rtl",     "migrate": MIGRATE_DELETE},
+    "tbExternal": {"name": "External",        "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasTb": True}, "blockDir": True,               "mode": "block",   "basePath": "tb",      "migrate": MIGRATE_PORT, "legacy": True},
+    "include":    {"name": "Includes",        "ext": {"hdr": "h", "src": "cpp"}, "cond": {"smartInclude": True},                          "mode": "context", "basePath": "model",   "migrate": MIGRATE_DELETE, "legacy": True},
+    "package":    {"name": "_package",        "ext": {"sv": "sv"},              "cond": {"smartInclude": True},                          "mode": "context", "basePath": "rtl",     "migrate": MIGRATE_DELETE, "legacy": True},
     # pro addition:
-    "tandem":     {"name": "Tandem",          "ext": {"hdr": "h", "src": "cpp"}, "condAnd": {"hasMdl": True, "hasRtl": True},             "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE},
+    "tandem":     {"name": "Tandem",          "ext": {"hdr": "h", "src": "cpp"}, "condAnd": {"hasMdl": True, "hasRtl": True},             "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE, "legacy": True},
 }
 
 # Retired project-wide aggregates produced by NO fileMap entry (legacy or
@@ -206,6 +209,7 @@ ORPHAN_DELETE = "ORPHAN_DELETE"              # generated orphan deleted
 
 # Manual-TODO kinds (handed to the operator).
 TODO_UNGENERATED_FILE = "TODO_UNGENERATED_FILE"  # delete-target name-match lacks the generated marker; not deleted
+TODO_CURRENT_ARTIFACT = "TODO_CURRENT_ARTIFACT"  # delete target is another artifact's current file; not deleted
 TODO_PORT = "TODO_PORT"                          # user-code file awaiting agent-driven .cpp/.h->.cppm port; not deleted
 TODO_USER_INCLUDE = "TODO_USER_INCLUDE"          # user code #includes a deleted header
 TODO_MISSING_BASEPATH = "TODO_MISSING_BASEPATH"  # legacy basePath absent from current layout; entry skipped
@@ -259,8 +263,10 @@ def _reconstructContexts(prj, report):
     current context fileType produced is the set a legacy entry of that fileType
     would target. A context whose owning project uses hierarchical layout is
     reported and skipped: its node-relative segment cannot be inverted this way
-    (hierarchical layout is a separate opt-in migration).
+    (hierarchical layout is a separate opt-in migration). Contexts another
+    project owns are left to that project's own sweep.
     """
+    projectName = prj.config.getConfig("PROJECTNAME")
     includeFiles = prj.config.getConfig("INCLUDEFILES")
     ctxDir = dict()          # context -> placement dir passed to expandNewModulePath
     validFor = dict()        # current fileType -> set(context)
@@ -273,6 +279,8 @@ def _reconstructContexts(prj, report):
             if expandedType not in includeFiles:
                 continue
             for context, entry in includeFiles[expandedType].items():
+                if prj.contextOwningProject[context] != projectName:
+                    continue
                 layout = _layoutForContext(prj, context)
                 if basePath not in layout["segments"]:
                     continue
@@ -320,9 +328,9 @@ def _hierarchicalHasLegacyOrphan(prj, fileType, context, entry):
         f"expandNewModulePath")
     placementDir = os.path.dirname(entry["fileName"])
     includeName = prj.includeName[context]
-    legacyName = legacyDef["name"]
+    legacyStem = unprefixedStem(legacyDef, includeName)
     for ext in legacyDef["ext"].values():
-        legacyPath = os.path.join(placementDir, f"{includeName}{legacyName}.{ext}")
+        legacyPath = os.path.join(placementDir, f"{legacyStem}.{ext}")
         if legacyPath == entry["fileName"]:
             continue
         if os.path.exists(legacyPath) and _isGenerated(legacyPath):
@@ -340,9 +348,29 @@ def _reportUnsupportedLayout(report, context, mode):
         f"are not swept (functional layout only)"))
 
 
+def _artifactKey(row):
+    # Which artifact an artifactRows row is: its fileMap entry and object.
+    return (row["fileType"], row["blockKey"], row["context"], row["variant"])
+
+
+def _describeArtifact(prj, key):
+    if key is None:
+        return "retired generated file"
+    fileType, blockKey, context, variant = key
+    if blockKey is not None:
+        subject = f"block '{prj.data['blocks'][blockKey]['block']}'"
+    elif context is not None:
+        subject = f"context '{context}'"
+    else:
+        subject = "the project"
+    variantNote = f" variant '{variant}'" if variant else ""
+    return f"{fileType} file of {subject}{variantNote}"
+
+
 def expandFileMap(prj, fileMap, report, contexts):
-    """Expand `fileMap` over the current DB to the concrete set of generated file
-    paths (each expanded path with each declared extension).
+    """Expand `fileMap` over the current DB to the concrete generated file paths
+    (each expanded path with each declared extension), each mapped to the
+    `_artifactKey` of the artifact it names.
 
     `contexts` is the `(ctxDir, validFor)` pair from `_reconstructContexts`. It is
     passed in rather than rebuilt here because one sweep expands several maps and
@@ -350,31 +378,32 @@ def expandFileMap(prj, fileMap, report, contexts):
     opens candidate files), so rebuilding it per map re-reads the same files once
     per expansion.
 
-    Block mode reads the shared `artifactRows` view once per owner, since a
-    legacy artifact anywhere in the tree is a delete target. Context mode keeps
+    Only the running project's artifacts are expanded: a composed root never
+    touches a child project's files, which the child's own migrate handles.
+    Block mode reads the shared `artifactRows` view. Context mode keeps
     its own walk: `_reconstructContexts` recovers a legacy context's placement
     from the current artifact's directory, which the view has no source for.
     Registrar and project entries emit into segments no legacy entry names, so
     they are never expanded here. `report` collects missing-basePath notes.
     """
-    paths = set()
+    paths = dict()
 
     # block mode: one artifact per block per matching block-mode entry, one
     # per variant stem when the entry varies per variant.
-    blockCondData = {k: prj.getBlockCondRow(k) for k in prj.data["blocks"]}
-    for owner, layout in prj.projectLayout.items():
-        ownerBlocks = {k: v for k, v in blockCondData.items()
-                       if prj.contextOwningProject[v["_context"]] == owner}
-        ownerMap = dict()
-        for fileType, fileDef in fileMap.items():
-            if fileDef.get("mode", "block") != "block":
-                continue
-            if fileDef["basePath"] not in layout["segments"]:
-                _reportMissingBasePath(report, fileType, fileDef["basePath"])
-                continue
-            ownerMap[fileType] = fileDef
-        for row in artifactRows(prj, ownerBlocks, prj.data["instances"], ownerMap):
-            paths.update(row["files"].values())
+    projectName = prj.config.getConfig("PROJECTNAME")
+    layout = prj.projectLayout[projectName]
+    ownerBlocks = {k: prj.getBlockCondRow(k) for k, v in prj.data["blocks"].items()
+                   if prj.contextOwningProject[v["_context"]] == projectName}
+    ownerMap = dict()
+    for fileType, fileDef in fileMap.items():
+        if fileDef.get("mode", "block") != "block":
+            continue
+        if fileDef["basePath"] not in layout["segments"]:
+            _reportMissingBasePath(report, fileType, fileDef["basePath"])
+            continue
+        ownerMap[fileType] = fileDef
+    for row in artifactRows(prj, ownerBlocks, prj.data["instances"], {projectName: ownerMap}):
+        paths.update(dict.fromkeys(row["files"].values(), _artifactKey(row)))
 
     # context mode: expand each context entry over its valid contexts, mirroring
     # saveIncludeFiles (iterate valid contexts, resolve through expandNewModulePath).
@@ -392,7 +421,7 @@ def expandFileMap(prj, fileMap, report, contexts):
                                            includeName, includeName,
                                            layout, missingDirOk=True)
             for ext in fileDef["ext"]:
-                paths.add(filePath + "." + fileDef["ext"][ext])
+                paths[filePath + "." + fileDef["ext"][ext]] = (fileType, None, context, "")
 
     return paths
 
@@ -471,19 +500,15 @@ def _fullyGeneratedSegments(fileMap):
 
 
 def _fullyGeneratedDirs(prj, segments):
-    """Absolute on-disk directories of the fully-generated `segments`, over every
-    owning-project layout (each functional-layout occurrence resolves its segment
-    path the same way expandFileMap resolves basePath). Hierarchical layouts have
-    node-relative segments with no single directory and are not swept here (the
-    format sweep runs in functional layout)."""
-    dirs = set()
-    for layout in prj.projectLayout.values():
-        if layout["mode"] != "functional":
-            continue
-        for segment in segments:
-            if segment in layout["segments"]:
-                dirs.add(os.path.abspath(layout["segments"][segment]["path"]))
-    return dirs
+    """Absolute on-disk directories of the fully-generated `segments` in the
+    running project's layout. A hierarchical layout has node-relative segments
+    with no single directory and is not swept here (the format sweep runs in
+    functional layout)."""
+    layout = prj.projectLayout[prj.config.getConfig("PROJECTNAME")]
+    if layout["mode"] != "functional":
+        return set()
+    return {os.path.abspath(layout["segments"][segment]["path"])
+            for segment in segments if segment in layout["segments"]}
 
 
 def _withinDirs(path, dirs):
@@ -525,10 +550,11 @@ def sweepOrphans(prj, write=False):
     deleted header are reported as manual TODOs. Delete-only: the caller runs
     `make gen` after.
 
-    NOTE: the disposition is the sole delete decider; there is intentionally no
-    `delete`-target-also-in-current-map cross-check. A project that overrode a
-    `delete` entry (e.g. `include`) back to its legacy form would have those files
-    swept — the _isGenerated marker guard is the only backstop for that case.
+    No file that is any artifact's current path, in any project, is deleted.
+    A legacy path that is still the same artifact's current path (a package
+    or SV wrapper with no filename prefix) is simply kept. One that is a
+    different artifact's current file, which a filename prefix can cause, is
+    kept and reported as TODO_CURRENT_ARTIFACT.
     """
     report = OrphansReport(projectName=prj.config.getConfig("PROJECTNAME"))
 
@@ -545,17 +571,28 @@ def sweepOrphans(prj, write=False):
     literalDeletes = _literalDeletePaths(prj, report)
     retired = _retiredSiblingPaths(prj)
     deleteTargets = expandFileMap(prj, perFileDeleteMap, report, contexts)
-    deleteTargets |= literalDeletes
-    deleteTargets |= retired
+    deleteTargets.update(dict.fromkeys(literalDeletes | retired))
     # A literal/retired target that happens to sit inside a still-fully-generated
     # directory would otherwise be deleted twice: once here, per file, and again
     # by the directory clear below. Drop it from the per-file set so only the
     # directory clear removes it.
-    deleteTargets = {p for p in deleteTargets if not _withinDirs(p, fgDirs)}
+    deleteTargets = {p: key for p, key in deleteTargets.items() if not _withinDirs(p, fgDirs)}
+    currentArtifacts = {path: _artifactKey(row) for row in currentArtifactRows(prj)
+                        for path in row["files"].values()}
 
     deleted = list()
     for path in sorted(deleteTargets):
         if not os.path.exists(path):
+            continue
+        if path in currentArtifacts:
+            if currentArtifacts[path] != deleteTargets[path]:
+                report.manual.append(ReportItem(
+                    TODO_CURRENT_ARTIFACT, os.path.basename(path),
+                    f"{path} is the legacy name of the "
+                    f"{_describeArtifact(prj, deleteTargets[path])} and the current name of "
+                    f"the {_describeArtifact(prj, currentArtifacts[path])}, so migrate left it "
+                    f"in place. Check that it holds the current file's code; if it "
+                    f"still holds the legacy one, replace it by hand"))
             continue
         if not _isGenerated(path):
             report.manual.append(ReportItem(
@@ -574,7 +611,9 @@ def sweepOrphans(prj, write=False):
     # per-file fileMap expansion would miss are caught, while a hand-authored file
     # without the marker is REPORTED, never deleted. The removed files feed the
     # report and the deleted-header include-site scan.
+    # A current artifact in the segment is that artifact's file, not an orphan.
     wholesaleRemoved, wholesaleUngenerated = classifyGeneratedDir(fgDirs)
+    wholesaleRemoved = [p for p in wholesaleRemoved if p not in currentArtifacts]
     for path in wholesaleUngenerated:
         report.manual.append(ReportItem(
             TODO_UNGENERATED_FILE, os.path.basename(path),
@@ -617,7 +656,8 @@ def sweepOrphans(prj, write=False):
     legacyDeleteForm = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE),
                                      report, contexts)
     removedNames = {os.path.basename(p)
-                    for p in (legacyDeleteForm - currentForm) | literalDeletes | retired}
+                    for p in (legacyDeleteForm.keys() - currentForm.keys())
+                    | literalDeletes | retired}
     rootDir = prj.projectLayout[report.projectName]["root"]
     projectData = {"dirs": {"root": "."}}
     for path, line in _userIncludeSites(rootDir, projectData, removedNames):

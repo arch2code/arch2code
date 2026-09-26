@@ -6,14 +6,14 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module xpDpLeaf.xpDpLeaf.config;
+export module xpDpLeaf.config;
 
-export struct xpDpLeaf_xpDpLeafDefaultConfig {
+export struct xpDpLeafDefaultConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 
-export struct xpDpLeaf_xpDpLeafDfltConfig {
+export struct xpDpLeafDfltConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };

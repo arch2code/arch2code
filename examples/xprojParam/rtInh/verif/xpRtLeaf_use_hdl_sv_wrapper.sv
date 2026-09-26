@@ -8,7 +8,7 @@
 
 module xpRtLeaf_use_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import common_shared_types_package::*;
+    import shared_types_package::*;
     import xpRtInh_package::*;
 #(
     localparam RT_WIDTH = 32
@@ -45,9 +45,9 @@ endmodule : xpRtLeaf_use_hdl_sv_wrapper
 
 `include "xpRtLeaf_hdl_sv_wrapper.svh"
 
-module p16_xpRtInh_xpRtWrap_c16_xpRtInh_xpRtLeaf_use_hdl_sv_wrapper
+module p8_xpRtWrap_c8_xpRtLeaf_use_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import common_shared_types_package::*;
+    import shared_types_package::*;
     import xpRtInh_package::*;
 #(
     localparam RT_WIDTH = 32
@@ -80,7 +80,7 @@ module p16_xpRtInh_xpRtWrap_c16_xpRtInh_xpRtLeaf_use_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-endmodule : p16_xpRtInh_xpRtWrap_c16_xpRtInh_xpRtLeaf_use_hdl_sv_wrapper
+endmodule : p8_xpRtWrap_c8_xpRtLeaf_use_hdl_sv_wrapper
 
 // GENERATED_CODE_END
 

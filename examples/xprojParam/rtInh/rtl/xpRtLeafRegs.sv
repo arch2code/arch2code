@@ -2,9 +2,9 @@
 
 // GENERATED_CODE_PARAM --block=xpRtLeafRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module xpRtInh_xpRtLeafRegs
+module xpRtLeafRegs
     // Generated Import package statement(s)
-    import common_shared_types_package::*;
+    import shared_types_package::*;
     import xpRtInh_package::*;
     #(
         parameter int unsigned RT_WIDTH = 32'h0000_0008,
@@ -111,5 +111,5 @@ module xpRtInh_xpRtLeafRegs
     assign apbReg.pready  = rd_ready | wr_ready;
     assign apbReg.pslverr = 1'b0;
 
-endmodule : xpRtInh_xpRtLeafRegs
+endmodule : xpRtLeafRegs
 // GENERATED_CODE_END

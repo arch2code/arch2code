@@ -54,4 +54,4 @@ import vlInh_vliCont_package::*;
     assign out.data = fwd;
     assign in.ack   = out.ack;
 
-endmodule: vlInh_vliLeaf
+endmodule: vliLeaf

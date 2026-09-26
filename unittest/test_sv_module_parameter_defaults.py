@@ -66,8 +66,8 @@ include $(A2C_ROOT)/include/make/a2c-common.mk
 clean::
 	rm -rf $(A2C_SQLDB_DOTFILE) $(A2C_SQLDB_FILE) $(GEN_BUILD_DIR)
 run:
-	$(REPO_ROOT)/obj_defaults/VparamDefaults_leaf
-	$(REPO_ROOT)/obj_overrides/VparamDefaults_leaf
+	$(REPO_ROOT)/obj_defaults/Vleaf
+	$(REPO_ROOT)/obj_overrides/Vleaf
 """
 
 CHECKS = """
@@ -134,7 +134,7 @@ def main():
         assert "localparam int FIXED_SIGNED = -32'sh0000_0003;" in package.read_text()
 
         # The scaffold owns the generated declaration; checks live in its user body.
-        marker = 'endmodule: paramDefaults_leaf'
+        marker = 'endmodule: leaf'
         assert marker in text
         leaf.write_text(text.replace(marker, CHECKS + marker))
         run(make + ['gen'], work)
@@ -145,7 +145,7 @@ def main():
                            "-GLARGE=64'd8589934592", "-GGROW=64'd1099511627776",
                            "-GSIGNED_GROW=64'shffffff0000000000", '-GSCALE=2.5']),
         ]:
-            run(['verilator', '--binary', '-j', '4', '--top-module', 'paramDefaults_leaf',
+            run(['verilator', '--binary', '-j', '4', '--top-module', 'leaf',
                  '--Mdir', str(work / f'obj_{mode}'), *flags, *sources], work)
         output = run(make + ['run'], work)
         assert output.count('PASS: SV parameter values, widths and signedness') == 2, output

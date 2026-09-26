@@ -74,8 +74,9 @@ endif
 # Standard optimization source files.
 CPP_SRC =
 
-# Special optimization for some systemc files.
-O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
+# Special optimization for some systemc files and the generated firmware context
+# sources (see the -O3 rule below).
+O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp $(A2C_CPP_CONTEXT_SRC_FILES)
 
 # Extra compiler / linker dependencies (set by project Makefile)
 A2C_SRC_DIRS += $(EXTRA_A2C_SRC_DIRS)
@@ -241,8 +242,14 @@ ifndef USE_VCS
 	$(CXX) -o $@ $(OBJ) $(LD_FLAGS)
 endif
 
-# Rule to compile files in O3_CPP_SRC to add -o3 optimization
-$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
+# -O3 compiles: the systemc runtime files above, the user's EXTRA_O3_CPP_SRC and
+# the generated context files, which hold the types, pack/unpack code and address
+# definitions every block calls. The context files come from the manifest: this
+# rule takes the firmware context .cpp (A2C_CPP_CONTEXT_SRC_FILES), and the module
+# object rules below take the context modules (A2C_CPP_CONTEXT_MODULE_FILES).
+# $(sort) drops a file listed twice, as when an older rundir Makefile still names
+# the context sources in EXTRA_O3_CPP_SRC.
+$(sort $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) -O3 $(CXX_FLAGS) -MMD -c $< -o $@
 
@@ -257,6 +264,7 @@ $(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 # GCC does both in a single step and writes the CMI to the module cache. The
 # import-ordering edges below apply to whichever artifact the active compiler
 # produces (CPP_MODULE_DEPS): .pcm for Clang, .module.o for GCC.
+CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
 ifndef USE_GCC
 
 # Clang: precompile the interface unit to a PCM, then compile the PCM to an
@@ -272,16 +280,20 @@ $(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_pcm,$(call cpp_mod
 # global module fragment, and that header `import`s the block's context types
 # module. The module scanner sees only the .cppm's own `import` lines, so that
 # transitive dependency is invisible to the edge above. Order every
-# block-module pcm after all context (`*Includes.cppm`) pcms; the context
+# block-module pcm after all context (A2C_CPP_CONTEXT_MODULE_FILES) pcms; the context
 # modules' own inter-dependencies are already captured by the import-name scan.
-CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
-$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_pcm,$(src)): $(CPP_CONTEXT_MODULE_PCM)))
+CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
+$(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(eval $(call cpp_module_pcm,$(src)): $(CPP_CONTEXT_MODULE_PCM)))
 
 .SECONDARY: $(CPP_MODULE_PCM)
 
 $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
 	mkdir -p $(@D)
 	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
+
+# The context modules' code generation runs at -O3. Their PCMs keep the common
+# flags, so importers load a PCM built as before.
+$(CPP_CONTEXT_MODULE_OBJ): private CPP_MODULE_OBJ_FLAGS := -O3 $(CPP_MODULE_OBJ_FLAGS)
 
 else
 
@@ -292,11 +304,13 @@ $(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -x c++ -c $< -o $@
 
+# The context modules compile at -O3. Their CMIs come from this same compile.
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_FLAGS := -O3 $(CXX_FLAGS)
+
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.
 $(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_obj,$(call cpp_module_src_for,$(module))): $(call cpp_module_import_objs,$(module))))
-CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
-$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
+$(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
 
 endif
 

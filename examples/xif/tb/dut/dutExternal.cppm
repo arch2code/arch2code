@@ -15,7 +15,7 @@ module;
 export module xif_dut.external;
 import a2c.endOfTest;
 import xif_dut.base;
-import xif.xif_tb.config;
+import xif_tb.config;
 import xif_tbPeer.base;
 import xif_src.base;
 import xif_sink.base;
@@ -40,7 +40,7 @@ export class dutExternal: public sc_module, public dutInverted<xif_dutDutV0Confi
 public:
 
     std::shared_ptr<tbPeerBase<xif_tbPeerPv0Config>> uTbPeerA;
-    std::shared_ptr<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>> uTbPeerB;
+    std::shared_ptr<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>>> uTbPeerB;
     std::shared_ptr<srcBase<xif_srcSrcV0Config>> uSrc;
     std::shared_ptr<sinkBase<xif_sinkSinkV0Config>> uSink;
 
@@ -49,13 +49,13 @@ public:
     dutExternal(sc_module_name modulename);
 
     // Parameterized DUT stream (also the connection interface A)
-    push_ack_channel< streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>> > out_0;
+    push_ack_channel< streamSt<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>> > out_0;
     // Parameterized DUT stream (also the connection interface A)
     push_ack_channel< streamSt<xif_tbPeerPv0Config> > out_1;
 
     // cross-interface thunkers
-    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, xif_ns::streamSt<xif_tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
-    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPv0Config>, xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
+    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>>, xif_ns::streamSt<xif_tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
+    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPv0Config>, xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
     push_ack_port_thunker<xif_ns::streamSt<xif_dutDutV0Config>, xif_ns::streamBndrySt, false> thunker_out_uSrc;
     push_ack_port_thunker<xif_ns::streamSt<xif_dutDutV0Config>, xif_ns::streamBndrySt, false> thunker_streamOut_uSink;
 
@@ -77,7 +77,7 @@ dutExternal::dutExternal(sc_module_name modulename) :
     log_(name())
 
    ,uTbPeerA(std::dynamic_pointer_cast<tbPeerBase<xif_tbPeerPv0Config>>(instanceFactory::createInstance(name(), "uTbPeerA", "tbPeer", "pv0", "xif.xif_tb.xif_tbPeer")))
-   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif.xif_tb.xif_tbPeer")))
+   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<xif_tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif.xif_tb.xif_tbPeer")))
    ,uSrc(std::dynamic_pointer_cast<srcBase<xif_srcSrcV0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "srcV0", "xif.xif_tb.xif_src")))
    ,uSink(std::dynamic_pointer_cast<sinkBase<xif_sinkSinkV0Config>>(instanceFactory::createInstance(name(), "uSink", "sink", "sinkV0", "xif.xif_tb.xif_sink")))
    ,out_0("out_0", "uTbPeerA")

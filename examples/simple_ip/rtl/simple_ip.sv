@@ -7,7 +7,7 @@ module simple_ip
 // Generated Import package statement(s)
 import ip_package::*;
 import simple_ip_package::*;
-import common_shared_types_package::*;
+import shared_types_package::*;
 (
     apb_if.dst cpu_main,
     input clk, rst_n
@@ -18,14 +18,14 @@ import common_shared_types_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uIp();
 
 // Instances
-simple_ip_apbDecode uAPBDecode (
+apbDecode uAPBDecode (
     .cpu_main (cpu_main),
     .apbReg_uIp (apbReg_uIp),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-simple_ip_dataGen uDataGen (
+dataGen uDataGen (
     .out (out),
     .clk (clk),
     .rst_n (rst_n)

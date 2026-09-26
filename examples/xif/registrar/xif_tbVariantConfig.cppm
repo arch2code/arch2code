@@ -6,15 +6,15 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module xif.xif_tb.config;
+export module xif_tb.config;
 
-export struct xif_xif_tbDefaultConfig {
+export struct xif_tbDefaultConfig {
     static constexpr uint32_t DATA_WIDTH = 16;
     static constexpr uint32_t FRAME_HEIGHT = 8;
     static constexpr uint32_t FRAME_WIDTH = 8;
 };
 
-export struct xif_xif_tbTbV0Config {
+export struct xif_tbTbV0Config {
     static constexpr uint32_t DATA_WIDTH = 16;
     static constexpr uint32_t FRAME_HEIGHT = 12;
     static constexpr uint32_t FRAME_WIDTH = 12;

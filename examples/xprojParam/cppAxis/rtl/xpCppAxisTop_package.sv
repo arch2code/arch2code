@@ -2,10 +2,10 @@
 // 
 // GENERATED_CODE_PARAM --project=xpCppAxis --context=../../yaml/xpCppAxisTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package xpCppAxis_xpCppAxisTop_package;
+package xpCppAxisTop_package;
 // Generated Import package statement(s)
 import xpCppLeaf_package::*;
-import xpCppAxis_xpCppWrap_package::*;
+import xpCppWrap_package::*;
 
 // types
 typedef logic[8-1:0] bndTagT; //Literal boundary tag
@@ -37,5 +37,5 @@ typedef struct packed {
     bndPixelT data; //Pixel payload
 } bndNestSt;
 
-endpackage : xpCppAxis_xpCppAxisTop_package
+endpackage : xpCppAxisTop_package
 // GENERATED_CODE_END

@@ -2,11 +2,11 @@
 // 
 // GENERATED_CODE_PARAM --project=xpUniq --context=../../yaml/xpUniqTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package xpUniq_xpUniqTop_package;
+package xpUniqTop_package;
 // Generated Import package statement(s)
-import xpSink_xpSinkUniq_package::*;
-import xpFilter_xpFilterUniq_package::*;
-import xpGain_xpGainUniq_package::*;
+import xpSinkUniq_package::*;
+import xpFilterUniq_package::*;
+import xpGainUniq_package::*;
 
 // types
 typedef logic[4-1:0] boundaryTagT; //Literal boundary tag; matches each stage's tag field
@@ -20,5 +20,5 @@ typedef struct packed {
     boundaryPixelT data; //Pixel payload
 } boundarySt;
 
-endpackage : xpUniq_xpUniqTop_package
+endpackage : xpUniqTop_package
 // GENERATED_CODE_END

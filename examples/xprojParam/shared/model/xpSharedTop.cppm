@@ -13,9 +13,9 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpShared_xpSharedTop.block;
 import xpShared_xpSharedTop.base;
-import xpFilterShared.xpFilterShared.config;
-import xpGain.xpGain.config;
-import xpSinkShared.xpSinkShared.config;
+import xpFilterShared.config;
+import xpGain.config;
+import xpSinkShared.config;
 import xpGain;
 import xpGain.base;
 import xpFilterShared.base;
@@ -33,14 +33,14 @@ private:
 public:
     // channels
     // Parameterized pixel push/ack stream
-    push_ack_channel< videoSt<xpFilterShared_xpFilterSharedV0Config> > videoOut_0;
+    push_ack_channel< videoSt<xpFilterSharedV0Config> > videoOut_0;
     // Parameterized pixel push/ack stream
-    push_ack_channel< videoSt<xpSinkShared_xpSinkSharedV0Config> > videoOut_1;
+    push_ack_channel< videoSt<xpSinkSharedV0Config> > videoOut_1;
 
     //instances contained in block
-    std::shared_ptr<xpGainBase<xpGain_xpGainV0Config>> uGain;
-    std::shared_ptr<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>> uFilter;
-    std::shared_ptr<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>> uSink;
+    std::shared_ptr<xpGainBase<xpGainV0Config>> uGain;
+    std::shared_ptr<xpFilterSharedBase<xpFilterSharedV0Config>> uFilter;
+    std::shared_ptr<xpSinkSharedBase<xpSinkSharedV0Config>> uSink;
 
     xpSharedTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpSharedTop() override = default;
@@ -69,9 +69,9 @@ xpSharedTop::xpSharedTop(sc_module_name blockName, const char * variant, blockBa
         ,xpSharedTopBase(name(), variant)
         ,videoOut_0("xpFilterShared_videoOut_0", "xpGain")
         ,videoOut_1("xpSinkShared_videoOut_1", "xpFilterShared")
-        ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGain_xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared.xpShared_xpSharedTop.xpGain")))
-        ,uFilter(std::dynamic_pointer_cast<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterShared", "v0", "xpShared.xpShared_xpSharedTop.xpFilterShared")))
-        ,uSink(std::dynamic_pointer_cast<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkShared", "v0", "xpShared.xpShared_xpSharedTop.xpSinkShared")))
+        ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared.xpShared_xpSharedTop.xpGain")))
+        ,uFilter(std::dynamic_pointer_cast<xpFilterSharedBase<xpFilterSharedV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterShared", "v0", "xpShared.xpShared_xpSharedTop.xpFilterShared")))
+        ,uSink(std::dynamic_pointer_cast<xpSinkSharedBase<xpSinkSharedV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkShared", "v0", "xpShared.xpShared_xpSharedTop.xpSinkShared")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

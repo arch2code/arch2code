@@ -74,7 +74,7 @@ def constructorInit(args, prj, data):
     # contained-instance includes are therefore owned by the block-module GMF
     # (moduleScaffold.blockModuleHeader).
     if args.mode != 'module':
-        out.append(f'#include "{className}.h"')
+        out.append(f'#include "{prj.getModuleFilename("block", className, "hdr")}"')
         out += intf_gen_utils.sc_instance_includes(data, prj)
 
     if not hasOwnParams:

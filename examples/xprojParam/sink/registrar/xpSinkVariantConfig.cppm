@@ -6,13 +6,13 @@ module;
 #include <cstdint>
 #include "clog2.h"
 
-export module xpSink.xpSink.config;
+export module xpSink.config;
 
-export struct xpSink_xpSinkDefaultConfig {
+export struct xpSinkDefaultConfig {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };
 
-export struct xpSink_xpSinkV0Config {
+export struct xpSinkV0Config {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };
 

@@ -32,6 +32,8 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_SV_SRC_DIRS := {asList(manifest['svSrcDirs'])}",
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
+        f"A2C_CPP_CONTEXT_MODULE_FILES := {asList(manifest['cppContextModuleFiles'])}",
+        f"A2C_CPP_CONTEXT_SRC_FILES := {asList(manifest['cppContextSrcFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_SV_DEP_FILES := {asList(manifest['svDepFiles'])}",
         f"A2C_SC_GEN_FILES := {asList(manifest['scGenFiles'])}",
@@ -68,7 +70,6 @@ def create(prj):
     # Derive the per-project build directory/file set from the same emission
     # decisions the file generator makes, reading the same artifactRows() view
     # newModule and the orphan/stale-segment sweeps consume.
-    fileMap = prj.proj['fileGeneration']['fileMap']
     # Per-owning-project layouts. Object placement is resolved under the layout
     # of the project that owns the object's defining context, so a child-owned
     # artifact lands in the child project's segments. The root layout supplies
@@ -79,6 +80,10 @@ def create(prj):
 
     dirs = {group: set() for group in rootLayout['buildGroups']}
     moduleFiles = set()
+    # The context types modules, which every other module unit is ordered after.
+    contextModuleFiles = set()
+    # The context .cpp sources, which the rundir scaffold builds at -O3.
+    contextSrcFiles = set()
     svModuleFiles = set()
     # SV wrapper bodies reached only by `include`. No command line names them, so
     # they are dependencies of the owning block's tops but never compile inputs.
@@ -93,7 +98,8 @@ def create(prj):
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockCondData = {k: artifactPaths.blockCondRow(r, blocksParams) for k, r in blockByKey.items()}
-    rows = artifactPaths.artifactRows(prj, blockCondData, prj.flatData['instances'], fileMap)
+    rows = artifactPaths.artifactRows(prj, blockCondData, prj.flatData['instances'],
+                                      artifactPaths.projectFileMaps(prj))
 
     # Only blocks reachable from topInstance compile, so A2C_SV_FILES matches
     # rtl.f; a referenced child's standalone harness is in the database but
@@ -180,7 +186,7 @@ def create(prj):
     # A generated file in an owned registrar directory that the contract does
     # not name is stale. Warn here; newmodule performs the deletion.
     registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
-        prj, rows, blockCondData, fileMap, 'registrar')
+        prj, rows, blockCondData, 'registrar')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
     staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
     for staleFile in staleRegistrarFiles:
@@ -193,7 +199,7 @@ def create(prj):
     # name is stale (left behind by a block/variant rename). Warn here;
     # newmodule performs the deletion.
     vlWrapFiles, vlWrapDirs = artifactPaths.getStaleSegmentFiles(
-        prj, rows, blockCondData, fileMap, 'vl_wrap')
+        prj, rows, blockCondData, 'vl_wrap')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(vlWrapDirs)
     staleVlWrapFiles = sorted(set(generatedInDirs) - vlWrapFiles)
     for staleFile in staleVlWrapFiles:
@@ -225,6 +231,10 @@ def create(prj):
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=False)
+        if 'cppm' in row['files']:
+            contextModuleFiles.add(row['files']['cppm'])
+        contextSrcFiles.update(path for ext, path in row['files'].items()
+                               if row['fileDef']['ext'][ext] == 'cpp')
 
     # project mode: one artifact per project at the top context; rtl.f's path
     # is published so the VL and lint makefiles read it instead of assuming
@@ -244,15 +254,25 @@ def create(prj):
 
     # One record per vl-buildGroup .sv wrapper: block-mode vlSvWrap per
     # variant, registrar-mode vlSvWrapForeign per foreign variant,
-    # vlSvWrapPair per pairSpecific registration. The design unit is the file
-    # basename, the same composition the SV wrapper view emits; a pair top
-    # uses its registration's topModule.
+    # vlSvWrapPair per pairSpecific registration. Each design unit is the name
+    # projectCreate saved for that top, the one the SV wrapper view emits.
     vlTops = list()
+    svWrapperNames = prj.config.getConfig('SVWRAPPERNAMES')
 
-    def recordVlTop(fileDef, filePath, qualifiedTop=None):
+    def vlTopName(row):
+        if row['topModule'] is not None:
+            return row['topModule']
+        names = svWrapperNames[row['blockKey']]
+        if row['mode'] == 'registrar':
+            return names['foreignVariantTops'][row['owner']][row['variant']]
+        if row['variant']:
+            return names['variantTops'][row['variant']]
+        return names['bodyModule']
+
+    def recordVlTop(fileDef, filePath, qualifiedTop):
         vlTops.append({
             'physicalSv':   filePath + '.' + fileDef['ext']['sv'],
-            'qualifiedTop': qualifiedTop or os.path.basename(filePath),
+            'qualifiedTop': qualifiedTop,
         })
 
     def isVlSvTop(fileDef, objLayout):
@@ -290,7 +310,8 @@ def create(prj):
             continue
         if not isVlSvTop(row['fileDef'], row['layout']):
             continue
-        recordVlTop(row['fileDef'], row['stem'], row['topModule'])
+        topName = vlTopName(row)
+        recordVlTop(row['fileDef'], row['stem'], topName)
         # Every top here is verilated; only an owned one is regenerated here.
         if row['owner'] == rootProject:
             svGenFiles.add(row['files']['sv'])
@@ -298,7 +319,7 @@ def create(prj):
         # it (so the map and A2C_VL_TOPS agree exactly), keyed by block name
         # for the makefile's HDL_TOP_MODULE lookup.
         if row['mode'] == 'block' and dutTopVariantByBlock.get(row['blockKey']) == row['variant']:
-            dutTops[blockByKey[row['blockKey']]['block']] = os.path.basename(row['stem'])
+            dutTops[blockByKey[row['blockKey']]['block']] = topName
 
     # The SV a verilate run reads, as distinct from the modules named on its
     # command line. Project-wide: every top is verilated against the same rtl.f
@@ -324,6 +345,8 @@ def create(prj):
         'svSrcDirs':     sorted(dirs.get('sv', set())),
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'cppModuleFiles':sorted(moduleFiles),
+        'cppContextModuleFiles': sorted(contextModuleFiles),
+        'cppContextSrcFiles': sorted(contextSrcFiles),
         'svFiles':       sorted(svModuleFiles),
         'svDepFiles':    sorted(svDepFiles),
         'scGenFiles':    sorted(scGenFiles),
