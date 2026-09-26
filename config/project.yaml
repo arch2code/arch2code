@@ -110,11 +110,11 @@ fileGeneration:
     #   instantiated child), project (exactly one per project).
     # name is appended to the module/context name to form the filename; ext maps
     #   logical extension keys to real ones. basePath must reference a dirs: key.
-    # The owning project's filename prefix goes in front: svFilePrefix for an
-    #   entry with sv/svh exts, fwFilePrefix for basePath fwInc, scFilePrefix for
-    #   the rest. A project-mode name is literal and takes no prefix. To change
-    #   a prefix that is already set, rename the files by hand first, then run
-    #   make migrate.
+    # langDomain (sv, sc or fw) is required on every entry and picks the owning
+    #   project's filename prefix that goes in front: svFilePrefix, scFilePrefix
+    #   or fwFilePrefix. A project-mode name is literal and takes no prefix. To
+    #   change a prefix that is already set, rename the files by hand first,
+    #   then run make migrate.
     # A composed build names and places each block's and context's files by the
     #   fileMap of the project that owns it, as that project does on its own,
     #   including entry kinds the composing project lacks. Project-mode entries
@@ -125,59 +125,59 @@ fileGeneration:
     #   all listed fields must match. Neither means always generate.
     # smartInclude is yaml based rather than block based: if true the file is created
     #   only when the yaml file has content to include, if false it is always created.
-    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class interface unit (Base/Inverted/Channels)"}
+    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    langDomain: sc, desc: "Module Base class interface unit (Base/Inverted/Channels)"}
     # Every block implementation is a single C++20 module interface unit whose
     # member bodies are module-visible. classDecl selects the form on hasOwnParams:
     # a block declaring its own params: becomes a template<typename Config> class,
     # any other block an untemplated `export SC_MODULE(...)`.
-    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasMdl: true}, mode: block, basePath: model, desc: "Block module interface unit (.cppm, all blocks)"}
+    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasMdl: true}, mode: block, basePath: model, langDomain: sc, desc: "Block module interface unit (.cppm, all blocks)"}
     # A child-named registrar aggregates the child's model registrations for the
     # owning assembler project. Each registration keeps its parent-child factory
     # key. hasOwnParams selects Config-templated children; requiresRegistrations
     # omits an aggregate with no model registrations.
-    blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {hasOwnParams: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, requiresRegistrations: true, desc: "Per-assembler per-child trampoline registrar TU"}
+    blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {hasOwnParams: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, langDomain: sc, requiresRegistrations: true, desc: "Per-assembler per-child trampoline registrar TU"}
     # A child-named Verilated registrar aggregates the child's factory
     # registrations for the owning assembler project.
-    blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
+    blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, langDomain: sc, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
     # One owner-qualified Config module per (declaring project, block): its
     # default plus every variant it declares. A block earns one by declaring
     # its own params:.
-    configModule : { name : "VariantConfig", ext: {cppm: "cppm"},         condAnd: {hasOwnParams: true}, mode: registrar, basePath: registrar, ownerQualified: true, desc: "Owner-qualified per-variant Config module interface unit"}
-    rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
-    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    configModule : { name : "VariantConfig", ext: {cppm: "cppm"},         condAnd: {hasOwnParams: true}, mode: registrar, basePath: registrar, langDomain: sc, ownerQualified: true, desc: "Owner-qualified per-variant Config module interface unit"}
+    rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     langDomain: sv, desc: "RTL implementation file"}
+    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, langDomain: sv, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     # Canonical parameterized SV wrapper body: one include-only .svh per
     # parameterizable block, `include`d by each variant trampoline. Restricted to
     # parameterizable VL blocks so a plain block emits only its single .sv top,
     # with no .svh and no name collision.
-    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
-    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
+    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, langDomain: sv, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
+    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, langDomain: sc, desc: "SystemC Verilated HDL module derived class header file"}
     # Owner-qualified per-variant SV top for a label this project declares of
     # a block another project owns. It includes the child's .svh body and
     # binds the variant's resolved literals; the <project>_ prefix keeps two
     # projects' tops distinct Verilator design units.
-    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {hasOwnParams: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, ownerQualified: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
+    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {hasOwnParams: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, langDomain: sv, variant: true, ownerQualified: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
     # Container-sourced Configs require pair-qualified module names. pairVlTop
     # emits those modules through child-variant-qualified wrapper files.
-    vlSvWrapPair : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},            cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, pairVlTop: true, desc: "Pair-qualified concrete SV top aggregated in child-variant scaffold"}
+    vlSvWrapPair : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},            cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, langDomain: sv, variant: true, pairVlTop: true, desc: "Pair-qualified concrete SV top aggregated in child-variant scaffold"}
     # Each testbench file is emitted once per block. For a parameterizable block,
     # dutVariant seeds GENERATED_CODE_PARAM with its first declared variant. It
     # also identifies artifacts that require a block-owned DUT Config.
-    testBench   : { name : "Testbench",       ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench top module interface unit"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench external module interface unit"}
-    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
-    #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    testBench   : { name : "Testbench",       ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench top module interface unit"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench external module interface unit"}
+    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   langDomain: sc, desc: "yaml based include module interface"}
+    #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   langDomain: fw, desc: "yaml based fw include file"}
     # Address defines for the whole product, one file per project, so a project
     # wanting them declares the entry. name: is the literal basename, so a product
     # normally spells its own (e.g. debayerRegAddresses).
-    #regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: model,   desc: "Per-project instance and register address defines"}
-    package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
+    #regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: model,   langDomain: sc, desc: "Per-project instance and register address defines"}
+    package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     langDomain: sv, desc: "yaml based package file"}
     # mode: project creates exactly one artifact per project at its basePath segment
     # root, keyed to the project's top context. rtl.f is the verilator file list (-F)
     # for the whole build, listing every package on that context's include chain.
-    rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     desc: "Per-project verilator file list (rtl.f)"}
-    socket      : { name : "Socket",          ext: {cppm: "cppm"},         cond: {hasSkt: true},                 mode: block,   basePath: model,   desc: "Python-socket shell module interface unit (drive/observe threads)"}
-    socketCatalog : { name : "SocketCatalog", ext: {hdr: "h", py: "py"},   cond: {hasSkt: true},                 mode: block,   basePath: base,    desc: "Shared C++/Python socket name catalog"}
+    rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     langDomain: sc, desc: "Per-project verilator file list (rtl.f)"}
+    socket      : { name : "Socket",          ext: {cppm: "cppm"},         cond: {hasSkt: true},                 mode: block,   basePath: model,   langDomain: sc, desc: "Python-socket shell module interface unit (drive/observe threads)"}
+    socketCatalog : { name : "SocketCatalog", ext: {hdr: "h", py: "py"},   cond: {hasSkt: true},                 mode: block,   basePath: base,    langDomain: sc, desc: "Shared C++/Python socket name catalog"}
   # Create-once user-owned build makefiles. This is NOT a fileMap section: the
   # files carry no GENERATED_CODE regions, so make gen never touches them and the
   # build manifest never lists them; newModule writes each only if absent and never

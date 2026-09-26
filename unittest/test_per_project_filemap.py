@@ -30,12 +30,12 @@ from test_file_prefix import (PROJECT_FILES, check_sv_names_and_run, copy_simple
 IP_RTL_BLOCKS = ('ip', 'ipRegs', 'ipStdDecode', 'ipStdDriver', 'ipStdMaster', 'ipStdTop')
 
 RTL_IMPL_ENTRY = ('        rtlModule: { name: "_impl", ext: {sv: "sv"}, cond: {hasRtl: true}, '
-                  'mode: block, basePath: rtl, desc: "RTL implementation file" }\n')
+                  'mode: block, basePath: rtl, langDomain: sv, desc: "RTL implementation file" }\n')
 CONFIG_ENTRY = ('        configModule: { name: "Cfg", ext: {cppm: "cppm"}, condAnd: {hasOwnParams: true}, '
-                'mode: registrar, basePath: registrar, ownerQualified: true, '
+                'mode: registrar, basePath: registrar, langDomain: sc, ownerQualified: true, '
                 'desc: "Config module" }\n')
 INCLUDE_FW_ENTRY = ('includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, '
-                    'cond: {smartInclude: true}, mode: context, basePath: fwInc, '
+                    'cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, '
                     'desc: "yaml based fw include file" }\n')
 
 

@@ -67,6 +67,7 @@ from pysrc.migrateLayout import (
 from pysrc.migrateAddressControl import (migrateAddressControlInProject,
                                          routedLeafRegisterPortsAdvisory)
 from pysrc.migrateIncludes import migrateIncludesInProject
+from pysrc.migrateLangDomain import migrateLangDomainInProject
 from pysrc.migrateModuleHeader import migrateModuleHeaderInProject
 from pysrc.migrateVariantSchema import migrateVariantSchemaInProject
 from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
@@ -120,6 +121,7 @@ class MigrateResult:
     includesReport: object = None                     # migrateIncludes.IncludesReport
     moduleHeaderReport: object = None                 # migrateModuleHeader.ModuleHeaderReport
     variantReport: object = None                      # migrateVariantSchema.VariantReport
+    langDomainReport: object = None                   # migrateLangDomain.LangDomainReport
     subProjectsReport: object = None                  # migrateSubProjects.SubProjectsReport
     leafAdvisory: list = field(default_factory=list)  # list[migrateAddressControl.ReportItem]
     stamped: bool = False
@@ -135,7 +137,8 @@ class MigrateResult:
     def stampEligible(self):
         """True when nothing is left for the user to fix by hand: no manual eval
         rows, a clean Phase B report, a clean includes phase, a clean
-        module-header phase, and every referenced child project already migrated.
+        module-header phase, a clean langDomain phase, and every referenced
+        child project already migrated.
         Phase B's `clean` encodes that no address TODO remains and the
         `addressControl:` pointer was removed; the includes phase's `clean`
         encodes that no user-code import rewrite remains; the module-header
@@ -145,11 +148,13 @@ class MigrateResult:
         if (self.addressReport is None or self.includesReport is None
                 or self.moduleHeaderReport is None
                 or self.variantReport is None
+                or self.langDomainReport is None
                 or self.subProjectsReport is None):
             return False
         return (not self.evalManual and self.addressReport.clean
                 and self.includesReport.clean and self.moduleHeaderReport.clean
                 and self.variantReport.clean
+                and self.langDomainReport.clean
                 and self.subProjectsReport.clean)
 
 
@@ -189,6 +194,11 @@ def migrateProject(projectYamlPath, write=False):
     # bindings regrouped.
     result.variantReport = migrateVariantSchemaInProject(projectYamlPath, write=write)
 
+    # Every fileMap entry names its langDomain. The phase edits the project
+    # file's fileMap, is idempotent, and runs before the stamp short-circuit so
+    # a project stamped before the key existed still gets it.
+    result.langDomainReport = migrateLangDomainInProject(projectYamlPath, write=write)
+
     # Composed builds: every child project this one names must be migrated in its
     # own tree. Runs before the short-circuit so a top stamped before a child was
     # added still reports it, and because it is the only check that looks past
@@ -206,7 +216,8 @@ def migrateProject(projectYamlPath, write=False):
         result.alreadyMigrated = True
         result.wrote = write and (result.includesReport.written
                                   or result.moduleHeaderReport.written
-                                  or result.variantReport.written)
+                                  or result.variantReport.written
+                                  or result.langDomainReport.written)
         return result
 
     projectDir = os.path.dirname(projectYamlPath)
@@ -247,6 +258,7 @@ def migrateProject(projectYamlPath, write=False):
         or result.includesReport.written
         or result.moduleHeaderReport.written
         or result.variantReport.written
+        or result.langDomainReport.written
         or result.stamped
     )
     return result
@@ -273,6 +285,7 @@ def renderReport(result, write):
         _renderIncludes(result, lines)
         _renderModuleHeader(result, lines)
         _renderVariant(result, lines)
+        _renderLangDomain(result, lines)
         _renderSubProjects(result, lines)
         _renderLeafAdvisory(result, lines)
         return "\n".join(lines)
@@ -282,6 +295,7 @@ def renderReport(result, write):
     _renderIncludes(result, lines)
     _renderModuleHeader(result, lines)
     _renderVariant(result, lines)
+    _renderLangDomain(result, lines)
     _renderSubProjects(result, lines)
     _renderLeafAdvisory(result, lines)
     _renderPhaseC(result, write, lines)
@@ -377,6 +391,23 @@ def _renderVariant(result, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
+def _renderLangDomain(result, lines):
+    lines.append("")
+    lines.append("langDomain - fileMap entries name their langDomain")
+    report = result.langDomainReport
+    if not report.applied and not report.manual:
+        lines.append("  every fileMap entry has langDomain; nothing to do")
+        return
+    if report.applied:
+        lines.append("  applied:")
+        for item in report.applied:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+    if report.manual:
+        lines.append("  manual TODO:")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
 def _renderSubProjects(result, lines):
     """Render the composed-build check. Silent on a project that references no
     child projects, which is most of them."""
@@ -423,6 +454,8 @@ def _renderPhaseC(result, write, lines):
     for item in result.moduleHeaderReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.variantReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
+    for item in result.langDomainReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.subProjectsReport.manual:
         lines.append(f"    - {item.location} {item.message}")
@@ -648,6 +681,7 @@ def main(argv=None):
                                 and result.includesReport.clean
                                 and result.moduleHeaderReport.clean
                                 and result.variantReport.clean
+                                and result.langDomainReport.clean
                                 and result.subProjectsReport.clean)
         if not ok:
             return RC_TODO

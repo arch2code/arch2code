@@ -22,7 +22,7 @@ SOURCE = os.path.join(base_dir, 'examples', 'ip_test')
 # Project dirs (relative to the copy) that ip_test's make chain enters.
 PROJECTS = ('.', 'ip', 'bridge', 'common')
 SC_WRAP_ENTRY = ('        vlScWrap: { name: "_sc_wrap", ext: {hdr: "h"}, cond: {hasVl: true}, '
-                 'mode: block, basePath: vl_wrap, desc: "SystemC Verilated wrapper" }\n')
+                 'mode: block, basePath: vl_wrap, langDomain: sc, desc: "SystemC Verilated wrapper" }\n')
 
 
 def copy_ip_test():

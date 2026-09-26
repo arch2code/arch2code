@@ -240,8 +240,8 @@ addressObjects:
 # Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
-#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "FW includes"}
-#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Address defines"}
+#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
@@ -1784,6 +1784,7 @@ fileGeneration:
       cond: {smartInclude: true}, 
       mode: context, 
       basePath: fwInc, 
+      langDomain: fw,
       desc: "Firmware include file"
     }
     # Add per-product address defines (only if you need them)
@@ -1792,6 +1793,7 @@ fileGeneration:
       ext: {hdr: "h"},
       mode: project,
       basePath: model,
+      langDomain: sc,
       desc: "Per-project instance and register address defines"
     }
 ```

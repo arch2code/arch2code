@@ -38,7 +38,9 @@ parameterized registrars:
   file, and reports it;
 - a vlSvWrapBody entry with its own name gives the body file and module that
   name, and the variant top includes it;
-- a new project file lists the three keys as comments.
+- a new project file lists the three keys as comments;
+- an entry's langDomain alone picks its prefix, and make db rejects an entry
+  of the root or a child with no langDomain or an unknown one.
 """
 
 import os
@@ -53,7 +55,7 @@ import yaml
 from _addrctl_helpers import base_dir, test_dir
 import pysrc.arch2codeGlobals as g
 from pysrc import checkSvNames, migrateFilePrefix, migrateOrphans
-from pysrc.artifactPaths import currentArtifactRows
+from pysrc.artifactPaths import currentArtifactRows, fileNamePrefix
 from pysrc.newProject import projectFileTemplate
 from pysrc.processYaml import projectOpen
 
@@ -181,7 +183,8 @@ def name_facts(prj):
 
 
 def expected_kind(row):
-    # The spec, restated independently of artifactPaths.fileNamePrefix.
+    # The Part A rule the langDomain values in the shipped fileMaps follow,
+    # restated independently of artifactPaths.fileNamePrefix.
     fileDef = row['fileDef']
     if row['mode'] == 'project':
         return None
@@ -879,7 +882,7 @@ instances:
 
 
 BODY_ENTRY = ('        vlSvWrapBody: { name: "_body", ext: {svh: "svh"}, cond: {hasOwnParams: true}, '
-              'condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, '
+              'condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, langDomain: sv, variant: false, '
               'desc: "wrapper body under its own name" }\n')
 
 
@@ -937,6 +940,86 @@ def check_scaffold_keys():
         ok = False
     if ok:
         print("PASS: a new project file lists the three prefix keys as comments")
+    return ok
+
+
+def check_langdomain_picks_prefix():
+    # The entry's langDomain alone picks the prefix; its ext and basePath do
+    # not. Project-mode and legacy entries take none.
+    layout = {'filePrefix': {'sv': 'v_', 'sc': 'c_', 'fw': 'f_'}}
+    cases = (
+        ({'ext': {'sv': 'sv'}, 'basePath': 'rtl', 'langDomain': 'sc'}, 'c_'),
+        ({'ext': {'hdr': 'h'}, 'basePath': 'model', 'langDomain': 'fw'}, 'f_'),
+        ({'ext': {'hdr': 'h'}, 'basePath': 'fwInc', 'langDomain': 'sv'}, 'v_'),
+        ({'ext': {'hdr': 'h'}, 'basePath': 'model', 'langDomain': 'sv', 'mode': 'project'}, ''),
+        ({'ext': {'sv': 'sv'}, 'basePath': 'rtl', 'langDomain': 'sv', 'legacy': True}, ''),
+    )
+    ok = True
+    for fileDef, want in cases:
+        got = fileNamePrefix(fileDef, layout)
+        if got != want:
+            print(f"FAIL: fileNamePrefix({fileDef}) gave {got!r}, expected {want!r}")
+            ok = False
+    # Through make db: ip's includeFW set to langDomain sc takes scFilePrefix.
+    work = copy_simple_ip()
+    try:
+        edit(os.path.join(work, 'ip', PROJECT_FILES['ip']),
+             'basePath: fwInc, langDomain: fw,', 'basePath: fwInc, langDomain: sc,')
+        set_prefixes(work, 'ip', {'sc': 'scx_', 'fw': 'fwx_'})
+        rebuild_db(work, '.')
+        files = [os.path.basename(path)
+                 for row in currentArtifactRows(open_db(work, '.'))
+                 if row['owner'] == 'ip' and row['fileType'] == 'includeFW'
+                 for path in row['files'].values()]
+        if not files or not all(name.startswith('scx_') for name in files):
+            print(f"FAIL: ip's includeFW with langDomain sc gave {files}, not scx_ names")
+            ok = False
+    finally:
+        remove(work)
+    if ok:
+        print("PASS: langDomain alone picks an entry's prefix, through make db too")
+    return ok
+
+
+def check_langdomain_rejected():
+    design = """blocks:
+    top: { desc: "top" }
+instances:
+    uTop: { container: top, instanceType: top }
+"""
+    entries = (
+        ('includeFW', 'ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, '
+                      'basePath: fwInc', 'has no langDomain'),
+        ('includeFW', 'ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, '
+                      'basePath: fwInc, langDomain: rtl', "has langDomain 'rtl'"),
+        ('regAddresses', 'ext: {hdr: "h"}, mode: project, basePath: model', 'has no langDomain'),
+    )
+    ok = True
+    for fileType, rest, problem in entries:
+        files = single_project('langdomain', design)
+        files['yaml/project.yaml'] += (f'fileGeneration:\n    fileMap:\n'
+                                       f'        {fileType}: {{ name: "X", {rest} }}\n')
+        ok = expect_db_failure(
+            f"fileMap entry {fileType} that {problem}", files, 'yaml/project.yaml',
+            [f"fileMap entry '{fileType}' in project", problem,
+             "langDomain must be one of sv, sc, fw", "make migrate adds the key to project files"]) and ok
+    # A child project's entry is checked too, when the root builds.
+    work = copy_simple_ip()
+    try:
+        edit(os.path.join(work, 'ip', PROJECT_FILES['ip']),
+             'basePath: fwInc, langDomain: fw,', 'basePath: fwInc,')
+        run(['make', '-C', work, 'clean'])
+        result = run(['make', '-C', work, '-j8', 'db'])
+        output = result.stdout + result.stderr
+        if result.returncode == 0 or \
+                "fileMap entry 'includeFW' in project 'ip' has no langDomain" not in output:
+            print(f"FAIL: the root make db did not reject ip's includeFW without langDomain:\n"
+                  f"{output[-3000:]}")
+            ok = False
+        else:
+            print("PASS: the root make db rejects a child's entry without langDomain, naming the child")
+    finally:
+        remove(work)
     return ok
 
 
@@ -1125,7 +1208,8 @@ def main():
               check_module_package_shared_name, check_dollar_prefix, check_dollar_module_name,
               check_illegal_package_name, check_model_only_blocks_not_sv_names,
               check_keyword_module_name, check_sweep_keeps_current_file,
-              check_wrapper_body_name)
+              check_wrapper_body_name, check_langdomain_picks_prefix,
+              check_langdomain_rejected)
     failed = [check.__name__ for check in checks if not check()]
     if failed:
         print(f"SOME TESTS FAILED: {', '.join(failed)}")

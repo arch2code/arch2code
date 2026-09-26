@@ -7,20 +7,13 @@ from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.migrateCommon import userRegionLines
 from pysrc.variantSelection import standaloneVariantDescriptors
 
-# fileMap ext values that make an artifact SystemVerilog.
-SV_EXTS = {'sv', 'svh'}
-
 def fileNamePrefix(fileDefinition, layout):
-    # The owning project's filename prefix for this artifact. A project-mode
-    # name is a literal basename and takes none. Nor does a legacy entry
-    # (migrateOrphans.LEGACY_FILEMAP): the file it names predates prefixes.
+    # The owning project's filename prefix for the entry's langDomain. A
+    # project-mode name is a literal basename and takes none. Nor does a legacy
+    # entry (migrateOrphans.LEGACY_FILEMAP): the file it names predates prefixes.
     if fileDefinition.get('mode', 'block') == 'project' or fileDefinition.get('legacy', False):
         return ''
-    if SV_EXTS & set(fileDefinition['ext'].values()):
-        return layout['filePrefix']['sv']
-    if fileDefinition['basePath'] == 'fwInc':
-        return layout['filePrefix']['fw']
-    return layout['filePrefix']['sc']
+    return layout['filePrefix'][fileDefinition['langDomain']]
 
 def unprefixedStem(fileDefinition, moduleFileStub):
     # The artifact's name before the filename prefix. A C++ class named after

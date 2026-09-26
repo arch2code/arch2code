@@ -65,6 +65,7 @@ hand-create a top-level decoder.
           cond: {smartInclude: true}
           mode: context
           basePath: fwInc  # defined in dirs section
+          langDomain: fw   # takes fwFilePrefix
           desc: "Firmware include file"
     ```
 

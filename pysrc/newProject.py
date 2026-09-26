@@ -79,7 +79,7 @@ firmwareFileMapTemplate = \
   # context that has firmware-visible content. Headers appear once the design
   # declares registers or regAccess memories.
   fileMap:
-    includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, desc: "yaml based fw include file"}}
+    includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file"}}
 
 """
 

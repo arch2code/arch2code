@@ -15,4 +15,4 @@ fileGeneration:
     # This project's own fileMap names its firmware headers, in the composed
     # build as on its own.
     fileMap:
-        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file" }

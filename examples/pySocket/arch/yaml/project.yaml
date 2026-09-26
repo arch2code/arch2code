@@ -41,7 +41,7 @@ dirs:
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
   fileMap:
-    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   langDomain: fw, desc: "yaml based fw include file"}
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: ""
 

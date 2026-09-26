@@ -85,7 +85,7 @@ class _FakePrj:
         self.contextOwningProject = {"proj.yaml": "myProj"}
         self.filemap = {
             "rtlDotF": {"name": "rtl", "ext": {"f": "f"}, "mode": "project",
-                        "basePath": "rtl"},
+                        "basePath": "rtl", "langDomain": "sc"},
         }
         self.data = {"instances": {}, "blocks": {}}
         self.config = _FakeConfig({"TOPCONTEXT": "proj.yaml",

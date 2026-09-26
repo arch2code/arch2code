@@ -4828,7 +4828,8 @@ class projectCreate:
     # include are $root-anchored and stay at the project root (Q-L3 amended).
     LAYOUT_CONVENTION_KEYS = ('yaml', 'prj', 'rundir', 'include')
 
-    # Project-file key per filename prefix kind (see artifactPaths.fileNamePrefix).
+    # Project-file key per fileMap langDomain, the prefix kind an entry takes
+    # (see artifactPaths.fileNamePrefix).
     FILE_PREFIX_KEYS = {'sv': 'svFilePrefix', 'sc': 'scFilePrefix', 'fw': 'fwFilePrefix'}
 
     def _filePrefixes(self, proj, projectLabel):
@@ -4846,7 +4847,7 @@ class projectCreate:
             prefixes[kind] = value
         return prefixes
 
-    def _buildLayoutFor(self, dirMacros, fileGeneration, filePrefix):
+    def _buildLayoutFor(self, dirMacros, fileGeneration, filePrefix, projectLabel):
         # Normalize one project's resolved dirs (dirMacros) + fileGeneration into
         # the layout-keyed shape the seam (expandNewModulePath) and build views
         # consume. functional placement is the project's resolved dirs:,
@@ -4862,6 +4863,18 @@ class projectCreate:
                 self.logError(
                     f"fileGeneration.buildGroups must define basePath segment "
                     f"'{key}'")
+        langDomains = ', '.join(self.FILE_PREFIX_KEYS)
+        for fileType, fileDef in fileGeneration['fileMap'].items():
+            if 'langDomain' not in fileDef:
+                problem = "has no langDomain"
+            elif fileDef['langDomain'] not in self.FILE_PREFIX_KEYS:
+                problem = f"has langDomain {fileDef['langDomain']!r}"
+            else:
+                continue
+            self.logError(
+                f"fileGeneration.fileMap entry '{fileType}' in project '{projectLabel}' "
+                f"{problem}; langDomain must be one of {langDomains}. make migrate "
+                f"adds the key to project files")
 
         def buildGroupForSegment(key):
             if key not in buildGroups:
@@ -4926,7 +4939,8 @@ class projectCreate:
         # holds one such layout per owning project for per-owner path selection.
         global layoutConfig
         layoutConfig = self._buildLayoutFor(dirMacros, self.proj['fileGeneration'],
-                                            self._filePrefixes(self.proj, self.projFile))
+                                            self._filePrefixes(self.proj, self.projFile),
+                                            self.projFile)
         self.config.setConfig('LAYOUT', layoutConfig)
 
     def buildProjectLayout(self):
@@ -4950,7 +4964,7 @@ class projectCreate:
                                                  childInfo['projectFileDir'])
             self.projectLayout[childName] = self._buildLayoutFor(
                 childMacros, childProj['fileGeneration'],
-                self._filePrefixes(childProj, childName))
+                self._filePrefixes(childProj, childName), childName)
         self.config.setConfig('PROJECTLAYOUT', self.projectLayout, bin=True)
 
     def createProjectConfig(self):

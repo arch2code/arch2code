@@ -307,23 +307,29 @@ history.
 
 ## Follow-ups
 
-- **Explicit file type in the fileMap (user, 2026-09-24).** Each fileMap
-  entry gets a `fileType` key with the value `sv`, `sc` or `fw`, and
-  `artifactPaths.fileNamePrefix` picks the prefix from it. This replaces the
-  Part A inference from ext values and `basePath: fwInc`, which breaks
-  quietly when someone adds an entry that fits neither pattern.
-  - projectCreate rejects an entry that has no `fileType` or has an unknown
-    value. This covers the entries in `config/project.yaml` and any entries a
-    user project adds.
-  - The entries in `config/project.yaml` and every example project's fileMap
-    get the key. `make migrate` adds it to user project files that override or
-    extend the fileMap.
-  - Project-mode entries still take no prefix, whatever their `fileType`.
-  - The code already uses "fileType" for fileMap entry names and ext keys.
-    Check that the new key does not clash with that use, and pick another name
-    if it does.
-  - Proof: the unit suite, pipeline-test and the name check stay green with
-    output byte-identical to Part A.
+- **Explicit file type in the fileMap (user, 2026-09-24). Done 2026-09-26.**
+  Each fileMap entry has a `langDomain` key with the value `sv`, `sc` or `fw`,
+  and `artifactPaths.fileNamePrefix` picks the prefix from it. This replaces
+  the Part A inference from ext values and `basePath: fwInc`, which broke
+  quietly when someone added an entry that fit neither pattern.
+  - **Name ruling (user, 2026-09-26):** the key is `langDomain`, not
+    `fileType`. Base already uses `fileType` for the fileMap entry name
+    (`for fileType, fileDef in ...`, `row['fileType']`), so a `fileType` key
+    inside the entry would give one word two meanings.
+  - projectCreate rejects an entry of any project's merged fileMap, root or
+    child, that has no `langDomain` or has a value outside sv/sc/fw. The
+    message names the entry, the project and the allowed values, and points
+    at `make migrate`.
+  - Every entry in `config/project.yaml`, including the commented-out ones,
+    `builder/pro/config/project.yaml`, and every example and fixture fileMap
+    carry the key, with the value the Part A rule gave the entry. The
+    `make migrate` langDomain phase (`pysrc/migrateLangDomain.py`) adds it to
+    a user project file's own entries by that same rule, so no filename
+    changes. It runs before the yamlFormat short-circuit.
+  - Project-mode and legacy entries still take no prefix, whatever their
+    `langDomain`.
+  - Proof: the unit suite and pipeline-test pass, and the regenerated example
+    output is byte-identical to Part A.
 
 ## Risks
 

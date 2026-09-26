@@ -71,7 +71,7 @@ fileGeneration:
     layout: hierarchical
     template: $a2c/templates/fileGen/fileGen.py
     fileMap:
-        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file" }
     fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
     regBlockNaming: {
             instancePrefix: "u",

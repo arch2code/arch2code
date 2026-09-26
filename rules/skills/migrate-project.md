@@ -158,6 +158,16 @@ The text conversion (step 1) runs these phases over the project's YAML file set:
   of `yamlFormat: 2`, idempotent (a file already carrying a `moduleExport` region
   is a no-op), and, like the includes phase, runs before the stamp short-circuit.
 
+- **langDomain — fileMap entries name their langDomain.** Adds
+  `langDomain: sv`, `sc` or `fw` to each entry of the project file's own
+  `fileGeneration.fileMap` that lacks it: `sv` when an ext value is `sv` or
+  `svh`, `fw` for `basePath: fwInc`, `sc` otherwise. These are the prefix kinds
+  the entries had before the key existed, so no filename changes. A flow-style
+  entry gets `, langDomain: <value>` after its basePath value, and a block-style
+  entry gets a line after its basePath line. An entry it cannot edit safely is a
+  `TODO_LANGDOMAIN`; add the key by hand with the same rule. Idempotent, and it
+  runs before the stamp short-circuit like the includes phase.
+
 Because a stamped-but-orphan-carrying project exits step 1 with zero, the
 pipeline still proceeds to sweep, scaffold, and regenerate it — so `make migrate`
 finishes the job on a partially migrated tree, not only a pristine one.

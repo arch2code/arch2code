@@ -101,13 +101,13 @@ PARAM_TAIL = f"--block={BLOCK}_tb --excludeInst=u_{BLOCK}"
 FILEMAP = {
     "tbExternal": {"name": "External", "ext": {"cppm": "cppm"},
                    "cond": {"hasTb": True}, "blockDir": True, "mode": "block",
-                   "basePath": "tb"},
+                   "basePath": "tb", "langDomain": "sc"},
     "tbConfig": {"name": "Config", "ext": {"src": "cpp"},
                  "cond": {"hasTb": True}, "blockDir": True, "mode": "block",
-                 "basePath": "tb"},
+                 "basePath": "tb", "langDomain": "sc"},
     "testBench": {"name": "Testbench", "ext": {"cppm": "cppm"},
                   "cond": {"hasTb": True}, "blockDir": True, "mode": "block",
-                  "basePath": "tb"},
+                  "basePath": "tb", "langDomain": "sc"},
 }
 
 # The block's DECLARED variants, in declaration order, as projectOpen returns them.

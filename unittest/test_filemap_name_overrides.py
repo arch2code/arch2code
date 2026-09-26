@@ -22,28 +22,28 @@ from test_file_prefix import (PROJECT_FILES, check_sv_names_and_run, copy_simple
 # fileMap entry -> the new name ip gives it. Every other field keeps the base
 # config/project.yaml value, which the override repeats.
 NAME_OVERRIDES = {
-    'blockBase':    ('Ports', 'ext: {cppm: "cppm"}, cond: {hasMdl: true, hasTb: true}, mode: block, basePath: base'),
-    'blockModule':  ('Mdl', 'ext: {cppm: "cppm"}, cond: {hasMdl: true}, mode: block, basePath: model'),
+    'blockBase':    ('Ports', 'ext: {cppm: "cppm"}, cond: {hasMdl: true, hasTb: true}, mode: block, basePath: base, langDomain: sc'),
+    'blockModule':  ('Mdl', 'ext: {cppm: "cppm"}, cond: {hasMdl: true}, mode: block, basePath: model, langDomain: sc'),
     'blockRegistrar': ('Reg', 'ext: {cppm: "cppm"}, cond: {hasOwnParams: true}, condAnd: {hasMdl: true}, '
-                              'mode: registrar, basePath: registrar, requiresRegistrations: true'),
-    'blockVlRegistrar': ('VlReg', 'ext: {src: "cpp"}, cond: {hasVl: true}, mode: registrar, basePath: registrar'),
+                              'mode: registrar, basePath: registrar, langDomain: sc, requiresRegistrations: true'),
+    'blockVlRegistrar': ('VlReg', 'ext: {src: "cpp"}, cond: {hasVl: true}, mode: registrar, basePath: registrar, langDomain: sc'),
     'configModule': ('Cfgm', 'ext: {cppm: "cppm"}, condAnd: {hasOwnParams: true}, mode: registrar, '
-                             'basePath: registrar, ownerQualified: true'),
-    'rtlModule':    ('_rtl', 'ext: {sv: "sv"}, cond: {hasRtl: true}, mode: block, basePath: rtl'),
-    'vlSvWrap':     ('_svw', 'ext: {sv: "sv"}, cond: {hasVl: true}, mode: block, basePath: vl_wrap, variant: true'),
+                             'basePath: registrar, langDomain: sc, ownerQualified: true'),
+    'rtlModule':    ('_rtl', 'ext: {sv: "sv"}, cond: {hasRtl: true}, mode: block, basePath: rtl, langDomain: sv'),
+    'vlSvWrap':     ('_svw', 'ext: {sv: "sv"}, cond: {hasVl: true}, mode: block, basePath: vl_wrap, langDomain: sv, variant: true'),
     'vlSvWrapBody': ('_svwb', 'ext: {svh: "svh"}, cond: {hasOwnParams: true}, condAnd: {hasVl: true}, '
-                              'mode: block, basePath: vl_wrap, variant: false'),
-    'vlScWrap':     ('_scw', 'ext: {hdr: "h"}, cond: {hasVl: true}, mode: block, basePath: vl_wrap'),
+                              'mode: block, basePath: vl_wrap, langDomain: sv, variant: false'),
+    'vlScWrap':     ('_scw', 'ext: {hdr: "h"}, cond: {hasVl: true}, mode: block, basePath: vl_wrap, langDomain: sc'),
     'testBench':    ('Tb', 'ext: {cppm: "cppm"}, cond: {hasTb: true}, blockDir: true, mode: block, '
-                           'basePath: tb, dutVariant: true'),
+                           'basePath: tb, langDomain: sc, dutVariant: true'),
     'tbConfig':     ('TbCfg', 'ext: {src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block, '
-                              'basePath: tb, dutVariant: true'),
+                              'basePath: tb, langDomain: sc, dutVariant: true'),
     'tbExternal':   ('Ext', 'ext: {cppm: "cppm"}, cond: {hasTb: true}, blockDir: true, mode: block, '
-                            'basePath: tb, dutVariant: true'),
-    'include':      ('Types', 'ext: {cppm: "cppm"}, cond: {smartInclude: true}, mode: context, basePath: model'),
+                            'basePath: tb, langDomain: sc, dutVariant: true'),
+    'include':      ('Types', 'ext: {cppm: "cppm"}, cond: {smartInclude: true}, mode: context, basePath: model, langDomain: sc'),
     'includeFW':    ('Fw', 'ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, '
-                           'basePath: fwInc'),
-    'package':      ('_pkg', 'ext: {sv: "sv"}, cond: {smartInclude: true}, mode: context, basePath: rtl'),
+                           'basePath: fwInc, langDomain: fw'),
+    'package':      ('_pkg', 'ext: {sv: "sv"}, cond: {smartInclude: true}, mode: context, basePath: rtl, langDomain: sv'),
 }
 
 MANIFEST_FILE_VARIABLES = ('A2C_CPP_MODULE_FILES', 'A2C_CPP_CONTEXT_MODULE_FILES',
@@ -72,7 +72,7 @@ def override_names(work):
                     for fileType, (name, rest) in NAME_OVERRIDES.items())
     path = os.path.join(work, 'ip', PROJECT_FILES['ip'])
     edit(path, '        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, '
-               'cond: {smartInclude: true}, mode: context, basePath: fwInc, '
+               'cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, '
                'desc: "yaml based fw include file" }\n', lines)
 
 

@@ -413,8 +413,8 @@ def check_hierarchical_vl_wrap_path():
         'layout': 'hierarchical',
         'buildGroups': {'model': 'sc', 'vl_wrap': 'vl'},
         'fileMap': {
-            'block': {'basePath': 'model'},
-            'vlSvWrap': {'basePath': 'vl_wrap'},
+            'block': {'basePath': 'model', 'langDomain': 'sc'},
+            'vlSvWrap': {'basePath': 'vl_wrap', 'langDomain': 'sv'},
         },
         'hierarchicalDirs': {
             'model': 'model',
@@ -425,7 +425,8 @@ def check_hierarchical_vl_wrap_path():
             'include': '$root/include',
         },
     }
-    layout = pc._buildLayoutFor(dirMacros, fileGeneration, {'sv': '', 'sc': '', 'fw': ''})
+    layout = pc._buildLayoutFor(dirMacros, fileGeneration, {'sv': '', 'sc': '', 'fw': ''},
+                                'demo')
     return (layout['segments']['vl_wrap']['path'] == 'verif' and
             layout['segments']['model']['path'] == 'model')
 

@@ -30,5 +30,5 @@ fileGeneration:
     layout: hierarchical
     template: $a2c/templates/fileGen/fileGen.py
     fileMap:
-        regAddresses: { name: "rcvRegAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Per-project instance and register address defines" }
+        regAddresses: { name: "rcvRegAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Per-project instance and register address defines" }
     fileCopyrightStatement: ""
