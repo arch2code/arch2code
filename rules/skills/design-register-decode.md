@@ -227,8 +227,60 @@ blocks:
 ```
 
 A plain top-down leaf authors **no** `registerPorts:`; it infers its register
-bus from the serving router. A block declaring `addressBlock:` must **not** also
-declare `registerPorts:` (routers are not leaves).
+bus from the nearest authored boundary of each of its instances: the
+`registerPorts:` boundary of the innermost router-less passthrough container
+that encloses the instance, if one does, else the serving router. Each boundary
+offers a port name and an interface: the container's `registerPorts:` key and
+interface (so a wrapper IP's own `regs: { interface: ipReg }` reaches the leaf
+inside it), or the router's `registerDecoderPort` and register-bus interface.
+A block declaring `addressBlock:` must **not** also declare `registerPorts:`
+(routers are not leaves).
+
+The inferring block has one register-bus port, and its name depends only on the
+block, never on which instance is declared first:
+
+- When every instance's boundary offers the same name, the port takes that
+  name.
+- When the names differ (for example two wrappers with different
+  `registerPorts:` keys, routers with different `registerDecoderPort`s, or a
+  leaf served directly by a router and also behind a wrapper), the port takes
+  the name of the inferred register-bus interface.
+
+Each instance's own wiring lives on its own rows: the router's dispatch
+`connections` row lands on the block's port through its `dstport`, and a
+passthrough container's `connectionMaps` row bridges the container's own port
+to it. The router side of a dispatch stays named after the router
+(`<registerDecoderPort>_<instance>`).
+
+A synthesised `<block>_regs` handler's register-bus port takes the leaf's own
+port name: the authored `registerPorts:` key for a reusable IP (so `ip`'s
+`regs:` names its handler's port `regs` in every build that instantiates it),
+or the per-block name above for a top-down leaf. A router's
+`registerDecoderPort` reaches the handler only through the leaf's own port
+name, so routers with different `registerDecoderPort`s may serve the same
+block.
+
+A name difference is never rejected. An interface difference
+is: every instance must infer the same interface. When instances reach
+boundaries on different interfaces, the build is rejected, naming each boundary
+and the interface and file it supplies:
+
+- Different interfaces between authored boundaries: give the boundaries the
+  same `registerPorts:` interface, or use a separate block per boundary; a
+  block has one register port type.
+- Different interfaces where a source is a router, which cannot declare
+  `registerPorts:`: make the `registerPorts:` boundary use that router's
+  `upstreamPort` interface, or use a separate block per boundary. With no
+  authored boundary among the sources (two routers on different interfaces),
+  use a separate block per boundary.
+
+The inferred interface is named unqualified in the file where the block's
+register-bus rows are synthesised: the block's own file for a block that gets
+a handler, and, on the passthrough path, the file that declares the inner
+instance the container feeds. The build is rejected if that file sees a
+different interface of the same name, or no interface of that name at all.
+Rename one of the interfaces, include the file that declares the interface, or
+declare `registerPorts:` on the block.
 
 ---
 
@@ -347,6 +399,8 @@ output.
 | `Container block '…' hosts N instances that need a register bus (…) but no register-decode router (addressBlock:).` | A router-less container has two or more register consumers; it can pass the bus through to only one. | Add an `addressBlock:` router to the container, or move all but one consumer under a routed container. |
 | `Container block '…' owns firmware-accessible registers/memories itself and also hosts register-bus consumer(s) (…) but no register-decode router (addressBlock:).` | A router-less container that owns registers/memories is already its own boundary's consumer; it cannot also pass the bus through to another. | Add an `addressBlock:` router to the container, or move its registers/memories onto a leaf the router serves. |
 | `Leaf block '…' needs a register handler but no router was found serving any of its instances, directly or through single-consumer containers.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container, or in a container that a router serves and that holds no other register consumer. |
+| `Block '…' declares no registerPorts: and infers its register-bus interface from the nearest authored boundary of each instance, but its instances infer different interfaces: …` | A leaf or passthrough container that infers its register bus has instances whose nearest authored boundaries (a container's `registerPorts:` boundary, else the serving router) supply different interfaces; the block has one register port type. This includes a leaf served directly by a router and also behind a wrapper. Different port names alone are not rejected: the block's port takes the interface name. | Different interfaces between authored boundaries: give the boundaries the same `registerPorts:` interface, or use a separate block per boundary. Different interfaces where a source is a router: make the `registerPorts:` boundary use the router's `upstreamPort` interface, or use a separate block per boundary (only the latter when every source is a router). |
+| `Block '…' declares no registerPorts: and infers register-bus interface '…' declared in file …, but in file …, where its register-bus rows are synthesised, …` | The inferred interface name resolves to a different interface, or to none, in the file where the block's register-bus rows are emitted: the block's own file for a block that gets a handler, or the file declaring the inner instance on the passthrough path. | Rename one of the interfaces, include the file that declares the interface, or declare `registerPorts:` on the named block. |
 | `No primary router could be inferred …` | Every router is nested under another; no dispatch-tree root. | Ensure exactly one router is not contained in another router's served scope. |
 | `Multiple candidate primary routers: …` | Two+ routers are both un-nested. | Nest all but one under the primary (give the subsystem container an `addressGroup`). |
 | `Nested router '…' (block '…') is hosted by block '…', whose instance '…' sits in router-less container '…' … not supported.` | The nested router's container is instantiated inside a router-less container rather than directly in the dispatching router's container; passthrough does not carry the bus to another router. | Move the named instance directly into the dispatching router's container, or add an `addressBlock:` router to the router-less container so it becomes a real nested-router hop. |

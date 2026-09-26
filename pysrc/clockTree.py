@@ -143,9 +143,8 @@ class BlockDomains:
         # leaf's registerClock/registerReset names for a handler once
         # `_resolveRegisterHandlerBinds` renames its pair onto them. Unlike
         # registerClock/registerReset this is always a port of THIS block,
-        # never a container net, which is what intf_gen_utils.py's
-        # bus_clock_reset_port_data needs to rename the right clocks/resets
-        # row. None on a block that is neither a router nor a handler.
+        # never a container net, so it is what the router's own flops name.
+        # None on a block that is neither a router nor a handler.
         self.busClockPort = None
         self.busResetPort = None
         # A served leaf's or passthrough container's own port carrying the
@@ -552,32 +551,18 @@ class ClockTree:
             for instanceKey, childKey in container.instances.items():
                 child = self.blocks[childKey]
                 binds = list()
-                # A router's or a handler's own registerClock/registerReset
-                # is the container net its bus clock/reset port resolved to;
-                # the child's emitted port is renamed to that same string
-                # (intf_gen_utils.bus_clock_reset_port_data), so the parent's
-                # own instantiation must bind childPort = registerClock/
-                # registerReset there too. Not for a served LEAF, whose
-                # registerClock/registerReset is its own port name instead
-                # of a container net (a coincidental string match, not a
-                # real one).
-                childIsRouterOrHandler = child.isRouter or child.isRegHandler
+                # Every child, a router or handler included, is bound by its
+                # own declared clock/reset port names.
                 for name, clockDecl in child.clocks.items():
                     net = (consumerNet if clockDecl.direction == 'input' else driverNet).get((instanceKey, name))
                     if net is not None:
-                        childPort = (child.registerClock
-                                    if childIsRouterOrHandler and net == child.registerClock
-                                    else name)
-                        binds.append((childPort, net))
+                        binds.append((name, net))
                     elif (instanceKey, name) in container.unconnectedOutputs:
                         binds.append((name, ''))
                 for name, resetDecl in child.resets.items():
                     net = (consumerNet if resetDecl.direction == 'input' else driverNet).get((instanceKey, name))
                     if net is not None:
-                        childPort = (child.registerReset
-                                    if childIsRouterOrHandler and net == child.registerReset
-                                    else name)
-                        binds.append((childPort, net))
+                        binds.append((name, net))
                     elif (instanceKey, name) in container.unconnectedOutputs:
                         binds.append((name, ''))
                 for orderIndex, (childPort, parentSignal) in enumerate(binds):
@@ -593,7 +578,8 @@ class ClockTree:
 
 
 def build(blocks, instances, connections, memories, memoryConnections,
-          connectionMaps, registerBusPassthroughs, blocksDeclaringNoResets,
+          registerConnections, connectionMaps, registerBusPassthroughs,
+          blocksDeclaringNoResets,
           testbenchClocks, testbenchResets, contextOwningProject, rootProjectName, diag):
     """Build the project's ClockTree from parsed flatData tables.
 
@@ -945,6 +931,11 @@ def build(blocks, instances, connections, memories, memoryConnections,
                     f"it in the instance's resets:.")
                 continue
             elif resetName == 'rst_n':
+                # A synthesised register handler's rst_n takes no fallback:
+                # _resolveRegisterHandlerBinds binds it to its leaf's register
+                # bus reset, or the leaf is rejected.
+                if childDomain.isRegHandler:
+                    continue
                 boundClockNet = clockBindNet[resetDecl.clock]
                 # Deferred: local reset nets are candidates for the selected
                 # reset, and their clock membership is known only once every
@@ -1213,23 +1204,6 @@ def build(blocks, instances, connections, memories, memoryConnections,
         containers[containerKey].nets[chosen].consumers.append(
             Consumer(instanceKey, resetName, 'fallback'))
 
-    # A local net must be consumed by at least one child input binding of
-    # its container; `~` is how an output is left unused. Checked once every
-    # input is bound, so a consumer bound later in declaration order is not
-    # missed.
-    for containerKey, container in containers.items():
-        containerBlock = blocks[containerKey]['block']
-        for net in container.nets.values():
-            if net.kind != 'local' or net.consumers:
-                continue
-            driverInstance = instances[net.driver.instanceKey]['instance']
-            diag.logError(
-                f"Container '{containerBlock}' net '{net.name}', driven by "
-                f"instance '{driverInstance}' output '{net.driver.blockPort}', "
-                f"has no consumer. A local net must be consumed by at least "
-                f"one child input binding. Bind a child input to "
-                f"'{net.name}', or bind the driving output to `~`.")
-
     # Second pass: the selected reset of each container clock, now with local
     # reset nets among the candidates. Zero or several unmarked candidates
     # leaves it None. On the default clock several are an error, as in the
@@ -1413,7 +1387,29 @@ def build(blocks, instances, connections, memories, memoryConnections,
     # connectionMaps boundary port has a domain of its own, checked for
     # agreement below. Under an unstated clock: each top-down end takes its
     # own block default, so that block must have one; the two ends' names
-    # need not agree.
+    # need not agree. Every connection reaching the same top-down port of a
+    # block, through any of its instances, must put it on the same block
+    # clock, since the block's module has one port.
+    topDownPortClock = dict()
+
+    def recordTopDownPortClock(connRow, end, instRow, block, localClock):
+        portKey = (end['instanceTypeKey'], end['portName'])
+        firstClock, firstInstance, firstLoc = topDownPortClock.setdefault(
+            portKey, (localClock, instRow['instance'], _diagLoc(diag, connRow)))
+        if firstClock == localClock:
+            return
+        diag.logError(
+            f"Top-down port '{end['portName']}' of block '{block}' is on block "
+            f"clock '{firstClock}' through instance '{firstInstance}' (its "
+            f"connection at {firstLoc}), but on block clock '{localClock}' "
+            f"through instance '{instRow['instance']}' (its connection at "
+            f"{_diagLoc(diag, connRow)}). A block's port has one clock across "
+            f"every instance of the block. Either declare port "
+            f"'{end['portName']}' in block '{block}''s ports: with its clock: "
+            f"(a connection clock: reaching it must then agree), or map each "
+            f"instance's clocks: so every connection puts '{end['portName']}' "
+            f"on the same block clock.")
+
     for connRow in connections.values():
         clockName = connRow['clock']
         for end in connRow['ends'].values():
@@ -1435,6 +1431,8 @@ def build(blocks, instances, connections, memories, memoryConnections,
                         f"declare port '{end['portName']}' in block '{block}''s "
                         f"ports: with its clock:, or give '{block}' an input "
                         f"clock.")
+                recordTopDownPortClock(connRow, end, instRow, block,
+                                       domains[end['instanceTypeKey']].defaultClock)
                 continue
             if containerKey == ClockTree.ROOT_KEY:
                 # The topInstance's own binding to the testbench is
@@ -1444,6 +1442,7 @@ def build(blocks, instances, connections, memories, memoryConnections,
             container = containers[containerKey]
             matches = _inputClocksResolvingTo(container, instanceKey, clockName)
             if len(matches) == 1:
+                recordTopDownPortClock(connRow, end, instRow, block, matches[0])
                 continue
             if not matches:
                 net = container.nets.get(clockName)
@@ -1595,6 +1594,23 @@ def build(blocks, instances, connections, memories, memoryConnections,
     _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
                                  consumerNetByContainer, reachableInstances,
                                  registerBusPassthroughs, diag)
+    # A local net must be consumed by at least one child input binding of
+    # its container; `~` is how an output is left unused. Checked once every
+    # input is bound, a register handler's included, so a consumer bound
+    # later in declaration order is not missed.
+    for containerKey, container in containers.items():
+        containerBlock = blocks[containerKey]['block']
+        for net in container.nets.values():
+            if net.kind != 'local' or net.consumers:
+                continue
+            driverInstance = instances[net.driver.instanceKey]['instance']
+            diag.logError(
+                f"Container '{containerBlock}' net '{net.name}', driven by "
+                f"instance '{driverInstance}' output '{net.driver.blockPort}', "
+                f"has no consumer. A local net must be consumed by at least "
+                f"one child input binding. Bind a child input to "
+                f"'{net.name}', or bind the driving output to `~`.")
+
     # Memory accessors are checked in every container the root project
     # declares, instantiated or not, since the root project generates each
     # of them; a referenced child project's unreachable instances stay that
@@ -1606,11 +1622,25 @@ def build(blocks, instances, connections, memories, memoryConnections,
     _checkMemoryAccessorDomains(domains, containers, instances, memoryConnections,
                                 consumerNetByContainer, driverNetByContainer,
                                 accessorScope, diag)
+    # A registerConnections accessor's port is on its block's default clock,
+    # so, like a memory accessor, its block must have one.
+    for regConnRow in registerConnections.values():
+        accessorInstRow = instances[regConnRow['instanceKey']]
+        accessorDomain = domains[accessorInstRow['instanceTypeKey']]
+        if accessorDomain.defaultClock is None:
+            diag.logError(
+                f"Instance '{accessorInstRow['instance']}' of block "
+                f"'{accessorDomain.block}' accesses register "
+                f"'{regConnRow['register']}' of block '{regConnRow['block']}', "
+                f"but '{accessorDomain.block}' has no default clock (every "
+                f"declared clock is direction: output). A register accessor "
+                f"takes its block's default clock. Give "
+                f"'{accessorDomain.block}' an input clock.")
 
     # The co-simulation wrapper resets each port's BFM with the port clock's
     # selected reset, so every clock timing a port of a hasVl block needs one:
-    # declared, connection-derived and boundary ports. Only blocks declared in
-    # the root project are checked.
+    # declared, connection-derived, boundary, memory and register ports. Only
+    # blocks declared in the root project are checked.
     portDomainsByBlock = dict()
     for outerBlockKey, boundaryPortName, domainClock, _ in portDomainRows:
         portDomainsByBlock.setdefault(outerBlockKey, []).append((boundaryPortName, domainClock))
@@ -1618,6 +1648,17 @@ def build(blocks, instances, connections, memories, memoryConnections,
     for connRow in connections.values():
         for end in connRow['ends'].values():
             connectionEndsByBlock.setdefault(end['instanceTypeKey'], []).append((connRow, end))
+    # A memoryConnections or registerConnections row gives the accessing
+    # instance's block a port named after the memory or register, on the
+    # block default clock. A local-mode memory row names no instance.
+    objectPortsByBlock = dict()
+    for memConnRow in memoryConnections.values():
+        if memConnRow['instanceKey']:
+            objectPortsByBlock.setdefault(
+                instances[memConnRow['instanceKey']]['instanceTypeKey'], []).append(memConnRow['memory'])
+    for regConnRow in registerConnections.values():
+        objectPortsByBlock.setdefault(
+            instances[regConnRow['instanceKey']]['instanceTypeKey'], []).append(regConnRow['register'])
     for blockKey, blockRow in blocks.items():
         if not blockRow['hasVl'] or contextOwningProject[blockRow['_context']] != rootProjectName:
             continue
@@ -1657,6 +1698,10 @@ def build(blocks, instances, connections, memories, memoryConnections,
             else:
                 portClock = domain.defaultClock
             bucket = portsByClock.setdefault(portClock, [])
+            if portName not in bucket:
+                bucket.append(portName)
+        for portName in objectPortsByBlock.get(blockKey, []):
+            bucket = portsByClock.setdefault(domain.defaultClock, [])
             if portName not in bucket:
                 bucket.append(portName)
         for clockName, portNames in portsByClock.items():
@@ -2220,16 +2265,9 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
         # clk/rst_n pair.
         handlerClockName = next(iter(handlerDomain.clocks))
         handlerResetName = next(iter(handlerDomain.resets))
-        handlerDomain.busClockPort = handlerClockName
-        handlerDomain.busResetPort = handlerResetName
 
         resolveBlock(leafBlockKey)
 
-        if leafDomain.registerClock is None:
-            # The leaf has no instance under this build's topInstance, so
-            # no register bus serves it: leave the plain name-match/fallback
-            # bind the main pass already gave the handler instance.
-            continue
         # The handler's OWN registerClock/registerReset (read by
         # getBDBusClockReset for the handler's own view) is the same net as
         # the leaf's: inside the leaf's own container, the leaf's selected
@@ -2243,9 +2281,8 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
         # a block clock actually named 'clk' cannot collide with the
         # handler's bus pair. The rename makes
         # busClockPort/busResetPort (below) equal registerClock/
-        # registerReset, so intf_gen_utils.bus_clock_reset_port_data's
-        # rename-to-bus-name becomes an identity for a handler, same as it
-        # already is for a router.
+        # registerReset: every handler port is named after the leaf net it
+        # binds to.
         clockDecl = handlerDomain.clocks.pop(handlerClockName)
         handlerDomain.clocks[leafDomain.registerClock] = clockDecl
         handlerDomain.defaultClock = leafDomain.registerClock
@@ -2340,7 +2377,8 @@ def _servingRouterBusNets(leafInstanceKey, instances, domains, connections, bloc
         routerClockPort, routerResetPort = _routerBusPorts(routerBlockKey, blocks, domains)
         busClockNet = consumerNet.get((routerInstanceKey, routerClockPort))
         busResetNet = consumerNet.get((routerInstanceKey, routerResetPort))
-        registerBusPort = blocks[routerBlockKey]['addressBlock']['registerDecoderPort']
+        registerBusPort = next(end['portName'] for end in connRow['ends'].values()
+                               if end['instanceKey'] == leafInstanceKey)
         return consumerNet, busClockNet, busResetNet, registerBusPort
 
     passthrough = registerBusPassthroughs[containerKey]
@@ -2396,10 +2434,9 @@ def _resolveTopDownRegisterPorts(leafBlockKey, leafBlock, leafDomain, leafInstan
     generated once; the result is stored on `leafDomain`.
     """
     results = list()
-    # The port name config/postParseRegisterPorts.py synthesises for THIS
-    # BLOCK's own connectionMaps: bridge (its `_routerServingLeaf` resolves
-    # once per block, against the first reachable instance it finds) -
-    # captured the same way here, from the first instance that resolves.
+    # The block's own register-bus port: config/postParseRegisterPorts.py
+    # names it once per block, so every instance's feed lands on the same
+    # port and the first instance's name is the block's.
     registerBusPort = None
     for leafInstanceKey in leafInstanceKeys:
         instRow = instances[leafInstanceKey]
@@ -2666,16 +2703,20 @@ def _resolveAllInstances(root, containers, domains, instances):
     """The resolved net of every reachable instance's block clocks and resets:
     bindings followed upward through input ports to a testbench net, stopping at
     a local net or a supplier's output. Walked top-down because one block may be
-    reached by several paths. Returns `{instanceKey: {blockPort: resolved}}`,
-    where `resolved` is `('testbench', name)` or `('supplied', instanceKey,
+    reached by several paths, and one declared instance inside a reused
+    container is reached once per occurrence of that container. Returns
+    `{instanceKey: [(path, {blockPort: resolved}), ...]}`, one entry per
+    occurrence, where `path` is the dotted hierarchical instance path and
+    `resolved` is `('testbench', name)` or `('supplied', instanceKey,
     blockPort)`.
     """
     resolvedByInstance = dict()
 
-    def walk(container, ownNetResolved):
+    def walk(container, ownNetResolved, pathPrefix):
         consumerNet = _consumerNetIndex(container)
         for instanceKey, childKey in container.instances.items():
             childDomain = domains[childKey]
+            path = pathPrefix + instances[instanceKey]['instance']
             resolvedPorts = dict()
             for name, clockDecl in childDomain.clocks.items():
                 if clockDecl.direction == 'input':
@@ -2687,7 +2728,7 @@ def _resolveAllInstances(root, containers, domains, instances):
                     resolvedPorts[name] = ownNetResolved[consumerNet[(instanceKey, name)]]
                 else:
                     resolvedPorts[name] = ('supplied', instanceKey, name)
-            resolvedByInstance[instanceKey] = resolvedPorts
+            resolvedByInstance.setdefault(instanceKey, list()).append((path, resolvedPorts))
 
             childContainer = containers.get(childKey)
             if childContainer is None:
@@ -2712,10 +2753,10 @@ def _resolveAllInstances(root, containers, domains, instances):
                 elif net.driver.kind == 'ownImplementation':
                     childNetResolved[netName] = ('supplied', instanceKey, netName)
                 # 'environment' never occurs below root.
-            walk(childContainer, childNetResolved)
+            walk(childContainer, childNetResolved, path + '.')
 
     rootResolved = {name: ('testbench', name) for name in root.nets}
-    walk(root, rootResolved)
+    walk(root, rootResolved, '')
     return resolvedByInstance
 
 
@@ -2744,11 +2785,12 @@ def _resolveStandaloneAttrs(domains, blocks, instances, resolvedByInstance,
     _defaultTestbenchReset = next(row for row in testbenchResets.values() if row['default'])
 
     def instanceResolutions(blockKey, portName):
-        """(instanceKey, resolved) for each instance of the block in this
-        build.
+        """(path, resolved) for each occurrence of each instance of the
+        block in this build.
         """
-        return [(instanceKey, resolvedByInstance[instanceKey][portName])
-                for instanceKey in instanceKeysByBlock.get(blockKey, [])]
+        return [(path, resolvedPorts[portName])
+                for instanceKey in instanceKeysByBlock.get(blockKey, [])
+                for path, resolvedPorts in resolvedByInstance[instanceKey]]
 
     def testbenchNetOf(resolutions):
         """The one testbench net every entry of `resolutions` resolves to,
@@ -2769,14 +2811,11 @@ def _resolveStandaloneAttrs(domains, blocks, instances, resolvedByInstance,
         """
         if not resolutions:
             return "it has no instance in its own declaring project."
-        supplierNames = [instances[k]['instance'] for k, r in resolutions
-                         if r[0] == 'supplied']
+        supplierNames = [path for path, r in resolutions if r[0] == 'supplied']
         if supplierNames:
             return (f"instance(s) {', '.join(supplierNames)} resolve it to a "
                     f"supplier's output, not a testbench net.")
-        pairs = ', '.join(
-            f"{instances[k]['instance']}={r[1]}"
-            for k, r in resolutions)
+        pairs = ', '.join(f"{path}={r[1]}" for path, r in resolutions)
         return f"its instances disagree: {pairs}."
 
     for blockKey, domain in domains.items():

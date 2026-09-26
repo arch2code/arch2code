@@ -37,7 +37,6 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
-import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.processYaml import projectOpen
 
 PROJECT_TAIL = """
@@ -471,11 +470,13 @@ def _deriveProjectDomains(design, blockName='top'):
     return '\n'.join(lines) + '\n'
 
 
-def _make_fixture(design, top_instance='uTop', child=None):
+def _make_fixture(design, top_instance='uTop', child=None, files=None):
     """Write a design fixture into a fresh temp dir outside the repo tree.
 
     `child` adds a second project owning its own arch file, instantiated by
     the assembler, so a synthesised handler lands in the child's own context.
+    `files` ({name: content}) are written into the fixture's yaml/ directory
+    alongside top.yaml, replacing shared.yaml when named.
 
     Returns (fixture_dir, project_path, db_path).
     """
@@ -486,6 +487,9 @@ def _make_fixture(design, top_instance='uTop', child=None):
         f.write(APB_PREAMBLE)
     with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
         f.write(design)
+    for name, content in (files or {}).items():
+        with open(os.path.join(fixture, 'yaml', name), 'w') as f:
+            f.write(content)
 
     projectFiles = ['    - ../../yaml/shared.yaml\n', '    - ../../yaml/top.yaml\n']
     if child is not None:
@@ -595,6 +599,19 @@ def _registerBusDomain(db_path, block_name):
         conn.close()
 
 
+def _connectionMaps(db_path):
+    """{instance: (block, portName, instancePortName, interfaceKey)} for every
+    connectionMaps row: which boundary port of which block feeds which inner
+    port, and the qualified interface it carries."""
+    conn = sqlite3.connect(db_path)
+    try:
+        return {row[0]: row[1:] for row in conn.execute(
+            'select instance, block, portName, instancePortName, interfaceKey '
+            'from connectionMaps')}
+    finally:
+        conn.close()
+
+
 def _case(label, design, expected, child=None):
     """Build one fixture and assert every instance's binds in `expected` (a
     {instance name: {child port: container net}} subset)."""
@@ -619,8 +636,11 @@ def _case(label, design, expected, child=None):
         shutil.rmtree(fixture)
 
 
-def _expect_diagnostic(label, design, needles):
-    fixture, project_path, db_path = _make_fixture(design)
+def _expect_diagnostic(label, design, needles, forbidden=(), files=None):
+    """Build `design` and assert it fails with every one of `needles` in the
+    output and none of `forbidden`. `files` ({name: content}) are written
+    into the fixture's yaml/ directory alongside top.yaml."""
+    fixture, project_path, db_path = _make_fixture(design, files=files)
     try:
         code, output = _build(project_path, db_path)
     finally:
@@ -635,6 +655,10 @@ def _expect_diagnostic(label, design, needles):
     for needle in needles:
         if needle not in output:
             print(f"FAIL: {label}: diagnostic does not mention {needle!r}.\n{output}")
+            return False
+    for needle in forbidden:
+        if needle in output:
+            print(f"FAIL: {label}: diagnostic mentions {needle!r}.\n{output}")
             return False
     print(f"PASS: {label}")
     return True
@@ -711,17 +735,13 @@ def run_no_map_default_clock():
 
 
 def run_router_bound_to_non_default_clock():
-    # childPort reads 'apbClk', not the router's own raw declared 'clk': the
-    # router's own emitted module port is renamed to its bus clock/reset
-    # (intf_gen_utils.py's bus_clock_reset_port_data), so the persisted bind
-    # a container's own instantiation reads must use that same name -
-    # clockTree.py's rows() bakes the rename
-    # in directly.
+    # The router's ports keep their declared names, so its declared clk/rst_n
+    # are the child ports bound onto the container's apbClk/apbRst_n.
     return _case(
         "an ordinary instance map binds the router (and its served reusable-IP "
         "leaf's own default clock) onto a non-default clock",
         FEED_ON_NON_DEFAULT_CLOCK,
-        {'uAPBDecode': {'apbClk': 'apbClk'}})
+        {'uAPBDecode': {'clk': 'apbClk', 'rst_n': 'apbRst_n'}})
 
 
 def run_reusable_ip_bus_mismatch_rejected():
@@ -789,13 +809,10 @@ def run_feed_at_container_instance():
             return False
         failed = False
         binds = _instanceBinds(db_path)
-        # uAPBDecode's own port reads 'apbClk' (its emitted module port is
-        # renamed to its bus clock); uLeafA
-        # is an ordinary
-        # reusable-IP instance, never renamed, so its own port stays 'clk'.
-        got = binds.get('uAPBDecode', {}).get('apbClk')
+        # Both instances bind their own declared 'clk' port onto apbClk.
+        got = binds.get('uAPBDecode', {}).get('clk')
         if got != 'apbClk':
-            print(f"FAIL: {label}: instance 'uAPBDecode' port 'apbClk' "
+            print(f"FAIL: {label}: instance 'uAPBDecode' port 'clk' "
                   f"binds to {got!r}, expected 'apbClk'")
             failed = True
         got = binds.get('uLeafA', {}).get('clk')
@@ -962,8 +979,8 @@ def run_child_harness_accessor_without_default_clock_rejected():
 
 def run_top_down_leaf_register_port_selection():
     # childPort reads 'clkCap' (the selected register clock), not the
-    # handler's own raw implicit 'clk': the handler's own emitted module
-    # port is renamed the same way a router's is.
+    # handler's own raw implicit 'clk': the handler's ports are named after
+    # the leaf nets they bind to.
     return _case(
         "a top-down leaf's register port is the clock its map binds to the bus, "
         "not the block default",
@@ -1120,12 +1137,12 @@ connections:
 
 
 def run_router_addressblock_reset_override_not_duplicated():
-    """intf_gen_utils.bus_clock_reset_port_data: a router
-    declaring more than one reset on its bus clock, with addressBlock:
-    reset: naming the NON-default one as the bus reset, must rename that
-    named port to the bus name - not block_data['defaultReset'] (the
-    block's own marked default, 'rst_n' here), which would rename the
-    wrong row and leave two ports both named the bus reset."""
+    """A router declaring more than one reset on its bus clock, with
+    addressBlock: reset: naming the NON-default one as the bus reset, runs
+    its flops on that named port (busResetPort) - not
+    block_data['defaultReset'] (the block's own marked default, 'rst_n'
+    here) - and keeps each declared reset once, each bound by its own
+    name."""
     design = f"""include:
     - shared.yaml
 
@@ -1167,9 +1184,9 @@ connections:
     - {{ interface: apbReg, src: uCPU, dst: uAPBDecodeRR }}
 
 {REGISTER}"""
-    label = ("a router's addressBlock: reset: override renames the named "
-             "reset, not the block's own default, so the bus reset is not "
-             "duplicated in the emitted port list")
+    label = ("a router's addressBlock: reset: override selects the named "
+             "reset, not the block's own default, and every declared reset "
+             "keeps its own name")
     fixture, project_path, db_path = _make_fixture(design)
     try:
         code, output = _build(project_path, db_path)
@@ -1180,16 +1197,20 @@ connections:
         routerKey = next(key for key, row in prj.data['blocks'].items()
                          if row['block'] == 'apbDecodeRR')
         view = prj.getBlockData(routerKey)
-        data = intf_gen_utils.bus_clock_reset_port_data(view, view['busClock'], view['busReset'])
-        names = [row['reset'] for row in data['resets']]
+        names = [row['reset'] for row in view['resets']]
         failed = False
-        if names.count(view['busReset']) != 1:
-            print(f"FAIL: {label}: bus reset {view['busReset']!r} appears "
-                  f"{names.count(view['busReset'])} times in {names}, expected once")
+        if view['busResetPort'] != 'rstBus_n':
+            print(f"FAIL: {label}: the router's bus reset port is "
+                  f"{view['busResetPort']!r}, expected 'rstBus_n'")
             failed = True
-        if 'rst_n' not in names:
-            print(f"FAIL: {label}: the router's own default reset 'rst_n' "
-                  f"is missing from {names}, it must keep its own name")
+        if names != ['rst_n', 'rstBus_n']:
+            print(f"FAIL: {label}: the router declares resets {names}, "
+                  f"expected ['rst_n', 'rstBus_n']")
+            failed = True
+        binds = _instanceBinds(db_path)['uAPBDecodeRR']
+        if binds != {'clk': 'clk', 'rst_n': 'rst_n', 'rstBus_n': 'rstBus_n'}:
+            print(f"FAIL: {label}: instance 'uAPBDecodeRR' binds {binds}, "
+                  f"expected each port bound by its own name")
             failed = True
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
@@ -1372,11 +1393,10 @@ def run_passthrough_container_bus_mismatch_rejected():
 
 
 # A reusable-IP passthrough container: registerPorts: { regs: ... }, owns
-# no registers of its own, and hosts a top-down inner leaf. Its own
-# boundary port is 'regs' (its authored registerPorts: key); the inner
-# leaf's port is the one postParseRegisterPorts synthesises for it
-# (REGAPB_PASSTHROUGH's innerPortName), the router's registerDecoderPort
-# 'apbReg' - not the container's own key.
+# no registers of its own, and hosts a top-down inner leaf. The container is
+# the inner leaf's nearest authored boundary, so the leaf's own port takes the
+# container's key 'regs'; the leaf's synthesised handler takes that same
+# name as its port.
 WRAP_IP_BLOCK = render_leaf('wrapIP')
 
 PASSTHROUGH_REUSABLE_IP_SAMPLER = f"""include:
@@ -1401,11 +1421,12 @@ connections:
 
 
 def run_passthrough_reusable_ip_container_inner_leaf_port():
-    """A reusable-IP passthrough container's own registerPorts: key and
-    its inner leaf's synthesised port name are distinct; both resolve
-    their register clock/reset through the container."""
-    label = ("a reusable-IP passthrough container and the top-down leaf "
-             "behind it keep separate register-bus port names")
+    """The top-down leaf behind a reusable-IP passthrough container takes
+    the container's registerPorts: key as its port name, its handler takes
+    the same name, and both blocks resolve their register clock/reset
+    through the container."""
+    label = ("the top-down leaf behind a reusable-IP passthrough container "
+             "takes the container's register-bus port name")
     fixture, project_path, db_path = _make_fixture(PASSTHROUGH_REUSABLE_IP_SAMPLER)
     try:
         code, output = _build(project_path, db_path)
@@ -1419,9 +1440,15 @@ def run_passthrough_reusable_ip_container_inner_leaf_port():
                   f"{containerPort!r}, expected 'regs'")
             failed = True
         leafPort = _registerBusPort(db_path, 'sampler')
-        if leafPort != 'apbReg':
+        if leafPort != 'regs':
             print(f"FAIL: {label}: sampler's registerBusPort is "
-                  f"{leafPort!r}, expected 'apbReg'")
+                  f"{leafPort!r}, expected 'regs'")
+            failed = True
+        handlerMap = _connectionMaps(db_path)['u_sampler_regs']
+        expectedMap = ('sampler', 'regs', 'regs', 'apbReg/../../yaml/shared.yaml')
+        if handlerMap != expectedMap:
+            print(f"FAIL: {label}: u_sampler_regs's connectionMap is "
+                  f"{handlerMap}, expected {expectedMap}")
             failed = True
         containerBus = _registerBusDomain(db_path, 'wrapIP')
         leafBus = _registerBusDomain(db_path, 'sampler')
@@ -1469,6 +1496,773 @@ connections:
         ('wrap', 'Every instance must use the same clock/reset pair for its register port'))
 
 
+# Two serving routers: 'outerDecode' in 'top' and 'innerDecode' nested in
+# 'mid', with registerDecoderPort `outer_decoder_port` and
+# `inner_decoder_port`, both on interface 'apbReg'. The reused block has one
+# instance under each router. With `reuse_wrap`, that block is the
+# router-less passthrough 'wrap' holding leafA; otherwise it is leafA
+# itself. Neither authors registerPorts:.
+def _two_router_reuse_design(outer_decoder_port, inner_decoder_port, reuse_wrap):
+    if reuse_wrap:
+        reused_blocks = render_plain_block('wrap') + render_plain_block('leafA')
+        reused_instances = (
+            "    uWrapTop:   { container: top, instanceType: wrap, addressGroup: top }\n"
+            "    uWrapMid:   { container: mid, instanceType: wrap, addressGroup: mid }\n"
+            "    uLeafA:     { container: wrap, instanceType: leafA }\n")
+    else:
+        reused_blocks = render_plain_block('leafA')
+        reused_instances = (
+            "    uLeafATop:  { container: top, instanceType: leafA, addressGroup: top }\n"
+            "    uLeafAMid:  { container: mid, instanceType: leafA, addressGroup: mid }\n")
+    outer_router = render_router(
+        'outerDecode', 'top', register_decoder_port=outer_decoder_port)
+    inner_router = render_router(
+        'innerDecode', 'mid', register_decoder_port=inner_decoder_port,
+        address_increment='0x1000', max_address_spaces=4)
+    return f"""include:
+    - shared.yaml
+
+blocks:
+{render_plain_block('top')}{render_plain_block('mid')}{render_plain_block('cpu')}{outer_router}{inner_router}{reused_blocks}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uOuter:     {{ container: top, instanceType: outerDecode }}
+    uMid:       {{ container: top, instanceType: mid, addressGroup: top }}
+    uInner:     {{ container: mid, instanceType: innerDecode }}
+{reused_instances}
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uOuter }}
+
+{REGISTER}"""
+
+
+APB_REG_KEY = 'apbReg/../../yaml/shared.yaml'
+
+
+def run_passthrough_reused_under_disagreeing_routers_takes_interface_name():
+    """The routers offer 'wrap' and leafA the names 'outerDecoder' and
+    'innerDecoder', so both blocks take the interface name 'apbReg'; each
+    router's dispatch keeps its own source port."""
+    return _expect_register_bus_maps(
+        "a passthrough reused under two routers with different "
+        "registerDecoderPort takes the interface name as its port",
+        _two_router_reuse_design('outerDecoder', 'innerDecoder', True),
+        {'uLeafA': ('wrap', 'apbReg', 'apbReg', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'apbReg', 'apbReg', APB_REG_KEY)},
+        {'wrap': 'apbReg', 'leafA': 'apbReg'},
+        connections={'uWrapTop': ('uOuter', 'outerDecoder_uWrapTop', 'apbReg'),
+                     'uWrapMid': ('uInner', 'innerDecoder_uWrapMid', 'apbReg')},
+        swap=('uWrapTop', 'uWrapMid'))
+
+
+def run_leaf_reused_under_disagreeing_routers_takes_interface_name():
+    return _expect_register_bus_maps(
+        "a plain leaf reused under two routers with different "
+        "registerDecoderPort takes the interface name as its port",
+        _two_router_reuse_design('outerDecoder', 'innerDecoder', False),
+        {'u_leafA_regs': ('leafA', 'apbReg', 'apbReg', APB_REG_KEY)},
+        {'leafA': 'apbReg'},
+        connections={'uLeafATop': ('uOuter', 'outerDecoder_uLeafATop', 'apbReg'),
+                     'uLeafAMid': ('uInner', 'innerDecoder_uLeafAMid', 'apbReg')},
+        swap=('uLeafATop', 'uLeafAMid'))
+
+
+def _two_router_reuse_agreeing_builds(reuse_wrap, block):
+    label = (f"'{block}' reused under two routers that agree on "
+             f"registerDecoderPort builds")
+    fixture, project_path, db_path = _make_fixture(
+        _two_router_reuse_design('apbReg', 'apbReg', reuse_wrap))
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: {label}\n{output}")
+            return False
+        port = _registerBusPort(db_path, block)
+        if port != 'apbReg':
+            print(f"FAIL: {label}: {block}'s registerBusPort is {port!r}, "
+                  f"expected 'apbReg'")
+            return False
+        print(f"PASS: {label}")
+        return True
+    finally:
+        shutil.rmtree(fixture)
+
+
+def run_passthrough_reused_under_agreeing_routers_builds():
+    return _two_router_reuse_agreeing_builds(True, 'wrap')
+
+
+def run_leaf_reused_under_agreeing_routers_builds():
+    return _two_router_reuse_agreeing_builds(False, 'leafA')
+
+
+# A passthrough wrapper authoring registerPorts: on its own interface
+# 'ipReg', holding plain leaf 'leafA' that infers its register binding.
+IP_REG_INTERFACE = """    ipReg:
+        desc: "IP-local APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+"""
+
+IP_REG_WRAP = f"""blocks:
+{render_leaf('wrapIP', interface='ipReg')}{render_plain_block('leafA')}"""
+
+IP_REG_TOP_INSTANCES = f"""{render_plain_block('top')}{render_plain_block('cpu')}{ROUTER}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uWrapIP:    {{ container: top, instanceType: wrapIP, addressGroup: top }}
+"""
+
+IP_REG_CONNECTIONS = """
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+"""
+
+
+def _registerBusWiring(db_path):
+    """Every connections and connectionMaps row and every block's
+    registerBusPort, as sorted tuples, so two builds of one design compare
+    independent of row order."""
+    conn = sqlite3.connect(db_path)
+    try:
+        return (
+            sorted(conn.execute(
+                'select src, srcport, dst, dstport, interfaceKey, interfaceName '
+                'from connections')),
+            sorted(conn.execute(
+                'select block, portName, instance, instancePortName, interfaceKey '
+                'from connectionMaps')),
+            sorted(conn.execute(
+                'select distinct blocks.block, blockClocksResets.registerBusPort '
+                'from blockClocksResets join blocks '
+                'on blocks.blockKey = blockClocksResets.blockKey'), key=repr),
+        )
+    finally:
+        conn.close()
+
+
+def _swapInstanceLines(design, first, second):
+    """`design` with the declarations of instances `first` and `second`
+    exchanged."""
+    lines = design.split('\n')
+    a = next(i for i, line in enumerate(lines) if line.startswith(f"    {first}:"))
+    b = next(i for i, line in enumerate(lines) if line.startswith(f"    {second}:"))
+    lines[a], lines[b] = lines[b], lines[a]
+    return '\n'.join(lines)
+
+
+def _expect_register_bus_maps(label, design, maps, ports, files=None,
+                              connections=None, swap=None):
+    """Build `design` and assert the connectionMaps rows of the instances in
+    `maps` ({instance: (block, portName, instancePortName, interfaceKey)}),
+    the registerBusPort of the blocks in `ports` ({block: port}) and the
+    connections into the instances in `connections` ({dst: (src, srcport,
+    dstport)}). With `swap` (two instance names), also build `design` with
+    those two instances declared in the other order and assert the
+    register-bus wiring is identical. `files` ({name: content}) are written
+    into the fixture's yaml/ directory alongside top.yaml."""
+    fixture, project_path, db_path = _make_fixture(design, files=files)
+    try:
+        code, output = _build(project_path, db_path)
+        if code != 0:
+            print(f"FAIL: {label}\n{output}")
+            return False
+        failed = False
+        gotMaps = _connectionMaps(db_path)
+        for instance, expected in maps.items():
+            if gotMaps.get(instance) != expected:
+                print(f"FAIL: {label}: connectionMap into '{instance}' is "
+                      f"{gotMaps.get(instance)}, expected {expected}")
+                failed = True
+        for block, expected in ports.items():
+            got = _registerBusPort(db_path, block)
+            if got != expected:
+                print(f"FAIL: {label}: {block}'s registerBusPort is {got!r}, "
+                      f"expected {expected!r}")
+                failed = True
+        wiring = _registerBusWiring(db_path)
+        gotConnections = {dst: (src, srcport, dstport)
+                          for src, srcport, dst, dstport, _key, _name in wiring[0]}
+        for dst, expected in (connections or {}).items():
+            if gotConnections.get(dst) != expected:
+                print(f"FAIL: {label}: connection into '{dst}' is "
+                      f"{gotConnections.get(dst)}, expected {expected}")
+                failed = True
+    finally:
+        shutil.rmtree(fixture)
+    if swap is not None:
+        fixture, project_path, db_path = _make_fixture(
+            _swapInstanceLines(design, *swap), files=files)
+        try:
+            code, output = _build(project_path, db_path)
+            if code != 0:
+                print(f"FAIL: {label}: with {swap[0]} and {swap[1]} swapped\n{output}")
+                return False
+            swapped = _registerBusWiring(db_path)
+        finally:
+            shutil.rmtree(fixture)
+        for name, got, expected in zip(
+                ('connections', 'connectionMaps', 'registerBusPort'), swapped, wiring):
+            if got != expected:
+                print(f"FAIL: {label}: {name} rows change when {swap[0]} and "
+                      f"{swap[1]} are swapped: {got}, expected {expected}")
+                failed = True
+    print(f"{'FAIL' if failed else 'PASS'}: {label}")
+    return not failed
+
+
+def _inner_leaf_follows_authored_boundary(label, design, ipRegFile, files=None):
+    """The wrapper's inner connectionMap and the leaf's handler connectionMap
+    both carry the wrapper's own port 'regs' on its interface 'ipReg',
+    declared in `ipRegFile`, and the handler's port takes that name."""
+    ipRegKey = f'ipReg/../../yaml/{ipRegFile}'
+    return _expect_register_bus_maps(
+        label, design,
+        {'uLeafA': ('wrapIP', 'regs', 'regs', ipRegKey),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', ipRegKey)},
+        {'leafA': 'regs'},
+        files=files)
+
+
+def run_passthrough_authored_boundary_inner_leaf_cross_file():
+    """The wrapper and its leaf live in child.yaml, which cannot see the
+    router's 'apbReg' declared in the including top.yaml."""
+    shared = APB_PREAMBLE[:APB_PREAMBLE.index('interfaces:')]
+    child = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+{IP_REG_WRAP}
+instances:
+    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+
+{REGISTER}"""
+    design = f"""include:
+    - shared.yaml
+    - child.yaml
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - {{ structure: apbAddrSt, structureType: addr_t }}
+            - {{ structure: apbDataSt, structureType: data_t }}
+
+blocks:
+{IP_REG_TOP_INSTANCES}{IP_REG_CONNECTIONS}"""
+    return _inner_leaf_follows_authored_boundary(
+        "an inferring leaf behind an authored passthrough boundary in "
+        "another file takes the boundary's interface",
+        design, 'child.yaml', files={'shared.yaml': shared, 'child.yaml': child})
+
+
+def run_passthrough_authored_boundary_inner_leaf_single_file():
+    design = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+{IP_REG_WRAP}{IP_REG_TOP_INSTANCES}    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+{IP_REG_CONNECTIONS}
+
+{REGISTER}"""
+    return _inner_leaf_follows_authored_boundary(
+        "an inferring leaf behind an authored passthrough boundary in "
+        "the same file takes the boundary's interface",
+        design, 'top.yaml')
+
+
+def _authored_wrapper_two_router_design(inner_decoder_port, leaf_block):
+    """The authored wrapper 'wrapIP' holding `leaf_block` (leafA), with one
+    wrapper instance under each of routers 'uOuter' (registerDecoderPort
+    'apbReg') and 'uInner' (`inner_decoder_port`)."""
+    inner_router = render_router(
+        'innerDecode', 'mid', register_decoder_port=inner_decoder_port,
+        address_increment='0x1000', max_address_spaces=4)
+    return f"""include:
+    - shared.yaml
+
+blocks:
+{render_plain_block('top')}{render_plain_block('mid')}{render_plain_block('cpu')}{render_router('outerDecode', 'top')}{inner_router}{render_leaf('wrapIP')}{leaf_block}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uOuter:     {{ container: top, instanceType: outerDecode }}
+    uMid:       {{ container: top, instanceType: mid, addressGroup: top }}
+    uInner:     {{ container: mid, instanceType: innerDecode }}
+    uWrapTop:   {{ container: top, instanceType: wrapIP, addressGroup: top }}
+    uWrapMid:   {{ container: mid, instanceType: wrapIP, addressGroup: mid }}
+    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uOuter }}
+
+{REGISTER}"""
+
+
+def run_authored_wrapper_under_disagreeing_routers_names_leaf_port():
+    """The wrapper, not either router, is the plain leaf's nearest boundary
+    under both routers, so the leaf and its handler take the wrapper's port
+    'regs' whichever router is found first."""
+    return _expect_register_bus_maps(
+        "a plain leaf behind an authored wrapper reused under two routers "
+        "with different registerDecoderPort takes the wrapper's port name",
+        _authored_wrapper_two_router_design(
+            'customDecoder', render_plain_block('leafA')),
+        {'uLeafA': ('wrapIP', 'regs', 'regs', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', APB_REG_KEY)},
+        {'leafA': 'regs'},
+        connections={'uWrapTop': ('uOuter', 'apbReg_uWrapTop', 'regs'),
+                     'uWrapMid': ('uInner', 'customDecoder_uWrapMid', 'regs')},
+        swap=('uWrapTop', 'uWrapMid'))
+
+
+def run_registerports_leaf_under_disagreeing_routers_names_handler_port():
+    """A leaf declaring registerPorts: names its handler's port after its
+    own key 'regs', so routers with different registerDecoderPort serve it
+    alike."""
+    return _expect_register_bus_maps(
+        "a leaf declaring registerPorts: behind an authored wrapper reused "
+        "under two routers with different registerDecoderPort names its "
+        "handler's port after its own key",
+        _authored_wrapper_two_router_design(
+            'customDecoder', render_leaf('leafA')),
+        {'uLeafA': ('wrapIP', 'regs', 'regs', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', APB_REG_KEY)},
+        {'leafA': 'regs'},
+        connections={'uWrapTop': ('uOuter', 'apbReg_uWrapTop', 'regs'),
+                     'uWrapMid': ('uInner', 'customDecoder_uWrapMid', 'regs')},
+        swap=('uWrapTop', 'uWrapMid'))
+
+
+def run_authored_wrapper_under_agreeing_routers_names_inner_port():
+    """Routers agreeing on registerDecoderPort 'apbReg': the authored
+    wrapper, not either router, is the plain leaf's nearest boundary, so
+    the leaf and its handler take the wrapper's port 'regs'."""
+    return _expect_register_bus_maps(
+        "a plain leaf behind an authored wrapper reused under two routers "
+        "agreeing on registerDecoderPort takes the wrapper's port name",
+        _authored_wrapper_two_router_design('apbReg', render_plain_block('leafA')),
+        {'uLeafA': ('wrapIP', 'regs', 'regs', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', APB_REG_KEY)},
+        {'leafA': 'regs'},
+        swap=('uWrapTop', 'uWrapMid'))
+
+
+def _two_boundary_design(wrapA, wrapB, interfaces=''):
+    """One router serving authored wrappers 'wrapA' and 'wrapB', each
+    holding an instance of the same plain leaf 'leafA'."""
+    return f"""include:
+    - shared.yaml
+{interfaces}
+blocks:
+{render_plain_block('top')}{render_plain_block('cpu')}{ROUTER}{wrapA}{wrapB}{render_plain_block('leafA')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uWrapA:     {{ container: top, instanceType: wrapA, addressGroup: top }}
+    uWrapB:     {{ container: top, instanceType: wrapB, addressGroup: top }}
+    uLeafA1:    {{ container: wrapA, instanceType: leafA }}
+    uLeafA2:    {{ container: wrapB, instanceType: leafA }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+{REGISTER}"""
+
+
+def run_leaf_behind_boundaries_with_different_interfaces_rejected():
+    interfaces = ("\ninterfaces:\n"
+                  + IP_REG_INTERFACE.replace('ipReg:', 'ipRegA:')
+                  + IP_REG_INTERFACE.replace('ipReg:', 'ipRegB:'))
+    design = _two_boundary_design(
+        render_leaf('wrapA', interface='ipRegA'),
+        render_leaf('wrapB', interface='ipRegB'), interfaces)
+    return _expect_diagnostic(
+        "a plain leaf behind two authored boundaries on different "
+        "interfaces is rejected, naming each boundary once",
+        design,
+        ("Block 'leafA' declares no registerPorts: and infers its "
+         "register-bus interface from the nearest authored boundary of each "
+         "instance, but its instances infer different interfaces",
+         "the registerPorts: boundary of block 'wrapA' supplies interface "
+         "'ipRegA' (file ../../yaml/top.yaml)",
+         "the registerPorts: boundary of block 'wrapB' supplies interface "
+         "'ipRegB' (file ../../yaml/top.yaml)",
+         "Give the boundaries the same registerPorts: interface, or use a "
+         "separate block per boundary: a block has one register port type.",
+         'Found 1 Error.'),
+        forbidden=("router 'uAPBDecode'",))
+
+
+def run_leaf_behind_boundaries_with_different_port_names_takes_interface_name():
+    """The boundaries offer leafA the names 'regsA' and 'regsB' on one
+    interface, so leafA and its handler take the interface name 'apbReg';
+    each boundary's inner map feeds it from that boundary's own port."""
+    design = _two_boundary_design(
+        render_leaf('wrapA', port_name='regsA'),
+        render_leaf('wrapB', port_name='regsB'))
+    return _expect_register_bus_maps(
+        "a plain leaf behind two authored boundaries on one interface with "
+        "different port names takes the interface name as its port",
+        design,
+        {'uLeafA1': ('wrapA', 'regsA', 'apbReg', APB_REG_KEY),
+         'uLeafA2': ('wrapB', 'regsB', 'apbReg', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'apbReg', 'apbReg', APB_REG_KEY)},
+        {'leafA': 'apbReg'},
+        connections={'uWrapA': ('uAPBDecode', 'apbReg_uWrapA', 'regsA'),
+                     'uWrapB': ('uAPBDecode', 'apbReg_uWrapB', 'regsB')},
+        swap=('uLeafA1', 'uLeafA2'))
+
+
+def run_three_level_chain_follows_authored_wrapper():
+    """router > authored wrapper > plain container > plain leaf: the plain
+    container and the leaf both take the wrapper's port and interface."""
+    design = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_plain_block('top')}{render_plain_block('cpu')}{ROUTER}{render_leaf('wrapIP', interface='ipReg')}{render_plain_block('mid')}{render_plain_block('leafA')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uWrapIP:    {{ container: top, instanceType: wrapIP, addressGroup: top }}
+    uMid:       {{ container: wrapIP, instanceType: mid }}
+    uLeafA:     {{ container: mid, instanceType: leafA }}
+{IP_REG_CONNECTIONS}
+{REGISTER}"""
+    ipRegKey = 'ipReg/../../yaml/top.yaml'
+    return _expect_register_bus_maps(
+        "a plain container and plain leaf chained behind an authored "
+        "wrapper both take the wrapper's port and interface",
+        design,
+        {'uMid': ('wrapIP', 'regs', 'regs', ipRegKey),
+         'uLeafA': ('mid', 'regs', 'regs', ipRegKey),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', ipRegKey)},
+        {'mid': 'regs', 'leafA': 'regs'})
+
+
+def run_innermost_authored_boundary_wins():
+    """router > authored outer wrapper > authored inner wrapper > plain
+    leaf: the leaf takes the inner wrapper's port and interface."""
+    design = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_plain_block('top')}{render_plain_block('cpu')}{ROUTER}{render_leaf('wrapOuter', port_name='outerRegs')}{render_leaf('wrapInner', port_name='innerRegs', interface='ipReg')}{render_plain_block('leafA')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uWrapOuter: {{ container: top, instanceType: wrapOuter, addressGroup: top }}
+    uWrapInner: {{ container: wrapOuter, instanceType: wrapInner }}
+    uLeafA:     {{ container: wrapInner, instanceType: leafA }}
+{IP_REG_CONNECTIONS}
+{REGISTER}"""
+    ipRegKey = 'ipReg/../../yaml/top.yaml'
+    return _expect_register_bus_maps(
+        "a plain leaf behind two nested authored boundaries takes the "
+        "inner boundary's port and interface",
+        design,
+        {'uLeafA': ('wrapInner', 'innerRegs', 'innerRegs', ipRegKey),
+         'u_leafA_regs': ('leafA', 'innerRegs', 'innerRegs', ipRegKey)},
+        {'leafA': 'innerRegs'})
+
+
+def run_inferred_interface_shadowed_in_leaf_file_rejected():
+    """The wrapper's 'ipReg' is declared in wrap.yaml; the leaf's own file
+    leaf.yaml declares a different 'ipReg', so the inferred name would
+    resolve to the wrong interface where the leaf's handler is emitted."""
+    wrap = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_leaf('wrapIP', interface='ipReg')}"""
+    leaf = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_plain_block('leafA')}
+{REGISTER}"""
+    design = f"""include:
+    - shared.yaml
+    - wrap.yaml
+    - leaf.yaml
+
+blocks:
+{IP_REG_TOP_INSTANCES}    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+{IP_REG_CONNECTIONS}"""
+    return _expect_diagnostic(
+        "an inferred interface name that resolves to a different interface "
+        "in the leaf's own file is rejected",
+        design,
+        ("Block 'leafA' declares no registerPorts: and infers register-bus "
+         "interface 'ipReg' declared in file ../../yaml/wrap.yaml, but in "
+         "file ../../yaml/leaf.yaml, where its register-bus rows are "
+         "synthesised, that name resolves to the interface declared in file "
+         "../../yaml/leaf.yaml.",
+         "declare registerPorts: on block 'leafA'.",
+         'Found 1 Error.'),
+        files={'wrap.yaml': wrap, 'leaf.yaml': leaf})
+
+
+
+# wrap.yaml declares 'ipReg' and the authored wrapper 'wrapIP' on it; the
+# plain leaf 'leafA' behind it infers 'ipReg'.
+IP_REG_WRAP_FILE = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_leaf('wrapIP', interface='ipReg')}"""
+
+# leaf.yaml sees wrap.yaml's 'ipReg', so the leaf's own handler rows resolve.
+IP_REG_LEAF_FILE = f"""include:
+    - shared.yaml
+    - wrap.yaml
+
+blocks:
+{render_plain_block('leafA')}
+{REGISTER}"""
+
+
+def _wrapped_leaf_top(interfaces=''):
+    """top.yaml declaring instance 'uLeafA' inside 'wrapIP'; its passthrough
+    connectionMap is synthesised here."""
+    return f"""include:
+    - shared.yaml
+    - wrap.yaml
+    - leaf.yaml
+{interfaces}
+blocks:
+{IP_REG_TOP_INSTANCES}    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+{IP_REG_CONNECTIONS}"""
+
+
+def run_inferred_interface_shadowed_in_instance_file_rejected():
+    """The leaf's own file resolves 'ipReg' to the wrapper's interface, but
+    top.yaml, which declares instance 'uLeafA' and so receives its
+    passthrough connectionMap, declares a different 'ipReg'."""
+    interfaces = ("\ninterfaces:\n"
+                  + IP_REG_INTERFACE.replace('IP-local APB register bus', 'top-local shadow'))
+    return _expect_diagnostic(
+        "an inferred interface name that resolves to a different interface "
+        "in the file declaring the inner instance is rejected",
+        _wrapped_leaf_top(interfaces),
+        ("Block 'leafA' declares no registerPorts: and infers register-bus "
+         "interface 'ipReg' declared in file ../../yaml/wrap.yaml, but in "
+         "file ../../yaml/top.yaml, where its register-bus rows are "
+         "synthesised, that name resolves to the interface declared in file "
+         "../../yaml/top.yaml.",
+         'Found 1 Error.'),
+        files={'wrap.yaml': IP_REG_WRAP_FILE, 'leaf.yaml': IP_REG_LEAF_FILE})
+
+
+def run_inferred_interface_not_visible_in_instance_file_rejected():
+    """router > wrapIP > mid > mid2 > leafA: mid.yaml declares the plain
+    containers and instance 'uMid2' but sees no 'ipReg', so the
+    passthrough connectionMap into 'uMid2' cannot name it."""
+    mid = f"""include:
+    - shared.yaml
+
+blocks:
+{render_plain_block('mid')}{render_plain_block('mid2')}
+instances:
+    uMid2:      {{ container: mid, instanceType: mid2 }}
+"""
+    leaf = f"""include:
+    - shared.yaml
+    - wrap.yaml
+    - mid.yaml
+
+blocks:
+{render_plain_block('leafA')}
+instances:
+    uLeafA:     {{ container: mid2, instanceType: leafA }}
+
+{REGISTER}"""
+    design = f"""include:
+    - shared.yaml
+    - wrap.yaml
+    - mid.yaml
+    - leaf.yaml
+
+blocks:
+{IP_REG_TOP_INSTANCES}    uMid:       {{ container: wrapIP, instanceType: mid }}
+{IP_REG_CONNECTIONS}"""
+    return _expect_diagnostic(
+        "an inferred interface name not visible in the file declaring the "
+        "inner instance is rejected",
+        design,
+        ("Block 'mid2' declares no registerPorts: and infers register-bus "
+         "interface 'ipReg' declared in file ../../yaml/wrap.yaml, but in "
+         "file ../../yaml/mid.yaml, where its register-bus rows are "
+         "synthesised, no interface of that name is visible.",
+         'Found 1 Error.'),
+        files={'wrap.yaml': IP_REG_WRAP_FILE, 'mid.yaml': mid, 'leaf.yaml': leaf})
+
+
+def run_inferred_interface_through_include_builds():
+    """top.yaml sees the wrapper's 'ipReg' only through its include of
+    wrap.yaml, which is the same interface."""
+    return _inner_leaf_follows_authored_boundary(
+        "an inferred interface visible through an include in the file "
+        "declaring the inner instance builds",
+        _wrapped_leaf_top(), 'wrap.yaml',
+        files={'wrap.yaml': IP_REG_WRAP_FILE, 'leaf.yaml': IP_REG_LEAF_FILE})
+
+
+def run_inferred_interface_through_diamond_include_builds():
+    """'ipReg' lives in ifc.yaml, included by wrap.yaml and leaf.yaml, both
+    included by top.yaml: every file resolves it to the one interface."""
+    ifc = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}"""
+    wrap = f"""include:
+    - shared.yaml
+    - ifc.yaml
+
+blocks:
+{render_leaf('wrapIP', interface='ipReg')}"""
+    leaf = f"""include:
+    - shared.yaml
+    - ifc.yaml
+
+blocks:
+{render_plain_block('leafA')}
+{REGISTER}"""
+    return _inner_leaf_follows_authored_boundary(
+        "an inferred interface reached through a diamond include builds",
+        _wrapped_leaf_top(), 'ifc.yaml',
+        files={'ifc.yaml': ifc, 'wrap.yaml': wrap, 'leaf.yaml': leaf})
+
+
+def _mixed_source_design(wrap_interface, leaf_block):
+    """'leafA' served directly by router 'uAPBDecode' (instance
+    'uLeafDirect') and also behind the authored wrapper 'wrapIP' on
+    `wrap_interface` (instance 'uLeafA')."""
+    return f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_plain_block('top')}{render_plain_block('cpu')}{ROUTER}{render_leaf('wrapIP', interface=wrap_interface)}{leaf_block}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uWrapIP:    {{ container: top, instanceType: wrapIP, addressGroup: top }}
+    uLeafDirect: {{ container: top, instanceType: leafA, addressGroup: top }}
+    uLeafA:     {{ container: wrapIP, instanceType: leafA }}
+{IP_REG_CONNECTIONS}
+{REGISTER}"""
+
+
+# The router's interface as the disagreement lists it.
+MIXED_ROUTER_SOURCE = ("router 'uAPBDecode' (block 'apbDecode') supplies "
+                       "interface 'apbReg' (file ../../yaml/shared.yaml)")
+
+
+def run_leaf_under_router_and_boundary_different_interfaces_rejected():
+    return _expect_diagnostic(
+        "a plain leaf served by a router and by an authored boundary on "
+        "another interface is rejected, naming the router's interface",
+        _mixed_source_design('ipReg', render_plain_block('leafA')),
+        (MIXED_ROUTER_SOURCE,
+         "the registerPorts: boundary of block 'wrapIP' supplies interface "
+         "'ipReg' (file ../../yaml/top.yaml)",
+         "Make the registerPorts: boundary of block 'wrapIP' use interface "
+         "'apbReg', the upstreamPort interface of router 'uAPBDecode', or "
+         "use a separate block per boundary: a block has one register port type.",
+         'Found 1 Error.'),
+        forbidden=('Give the boundaries the same registerPorts: interface',))
+
+
+def run_leaf_under_router_and_boundary_different_port_names_takes_interface_name():
+    """The router offers leafA 'apbReg' and the boundary offers 'regs' on
+    the same interface, so leafA takes the interface name 'apbReg'."""
+    return _expect_register_bus_maps(
+        "a plain leaf served by a router and by an authored boundary on "
+        "the same interface with another port name takes the interface name",
+        _mixed_source_design('apbReg', render_plain_block('leafA')),
+        {'uLeafA': ('wrapIP', 'regs', 'apbReg', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'apbReg', 'apbReg', APB_REG_KEY)},
+        {'leafA': 'apbReg'},
+        connections={'uLeafDirect': ('uAPBDecode', 'apbReg_uLeafDirect', 'apbReg'),
+                     'uWrapIP': ('uAPBDecode', 'apbReg_uWrapIP', 'regs')},
+        swap=('uLeafDirect', 'uLeafA'))
+
+
+def run_registerports_leaf_under_router_and_boundary_builds():
+    return _expect_register_bus_maps(
+        "a leaf declaring registerPorts: served by a router and by an "
+        "authored boundary builds",
+        _mixed_source_design('apbReg', render_leaf('leafA')),
+        {'uLeafA': ('wrapIP', 'regs', 'regs', APB_REG_KEY),
+         'u_leafA_regs': ('leafA', 'regs', 'regs', APB_REG_KEY)},
+        {'leafA': 'regs'},
+        swap=('uLeafDirect', 'uLeafA'))
+
+
+def run_leaf_under_routers_with_different_interfaces_rejected():
+    """Two routers agreeing on registerDecoderPort but on different
+    upstreamPort interfaces, with no authored boundary to change."""
+    inner_router = render_router(
+        'innerDecode', 'mid', upstream_port='ipReg',
+        address_increment='0x1000', max_address_spaces=4)
+    design = f"""include:
+    - shared.yaml
+
+interfaces:
+{IP_REG_INTERFACE}
+blocks:
+{render_plain_block('top')}{render_plain_block('mid')}{render_plain_block('cpu')}{render_router('outerDecode', 'top')}{inner_router}{render_plain_block('leafA')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uOuter:     {{ container: top, instanceType: outerDecode }}
+    uMid:       {{ container: top, instanceType: mid, addressGroup: top }}
+    uInner:     {{ container: mid, instanceType: innerDecode }}
+    uLeafATop:  {{ container: top, instanceType: leafA, addressGroup: top }}
+    uLeafAMid:  {{ container: mid, instanceType: leafA, addressGroup: mid }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uOuter }}
+
+{REGISTER}"""
+    return _expect_diagnostic(
+        "a plain leaf served by two routers on different interfaces is "
+        "rejected without boundary advice",
+        design,
+        ("router 'uOuter' (block 'outerDecode') supplies interface "
+         "'apbReg' (file ../../yaml/shared.yaml)",
+         "router 'uInner' (block 'innerDecode') supplies interface "
+         "'ipReg' (file ../../yaml/top.yaml)",
+         "Use a separate block per boundary: a block has one register port type.",
+         'Found 1 Error.'),
+        forbidden=('Give the boundaries', 'Make the registerPorts: boundary'))
+
 def _run():
     print("=" * 72)
     print("TESTING GENERATED REGISTER-DECODE CLOCK DOMAIN")
@@ -1499,6 +2293,28 @@ def _run():
         run_passthrough_container_bus_mismatch_rejected,
         run_passthrough_reusable_ip_container_inner_leaf_port,
         run_passthrough_container_instances_disagree_rejected,
+        run_passthrough_reused_under_disagreeing_routers_takes_interface_name,
+        run_leaf_reused_under_disagreeing_routers_takes_interface_name,
+        run_passthrough_reused_under_agreeing_routers_builds,
+        run_leaf_reused_under_agreeing_routers_builds,
+        run_passthrough_authored_boundary_inner_leaf_cross_file,
+        run_passthrough_authored_boundary_inner_leaf_single_file,
+        run_authored_wrapper_under_disagreeing_routers_names_leaf_port,
+        run_registerports_leaf_under_disagreeing_routers_names_handler_port,
+        run_authored_wrapper_under_agreeing_routers_names_inner_port,
+        run_leaf_behind_boundaries_with_different_interfaces_rejected,
+        run_leaf_behind_boundaries_with_different_port_names_takes_interface_name,
+        run_three_level_chain_follows_authored_wrapper,
+        run_innermost_authored_boundary_wins,
+        run_inferred_interface_shadowed_in_leaf_file_rejected,
+        run_inferred_interface_shadowed_in_instance_file_rejected,
+        run_inferred_interface_not_visible_in_instance_file_rejected,
+        run_inferred_interface_through_include_builds,
+        run_inferred_interface_through_diamond_include_builds,
+        run_leaf_under_router_and_boundary_different_interfaces_rejected,
+        run_leaf_under_router_and_boundary_different_port_names_takes_interface_name,
+        run_registerports_leaf_under_router_and_boundary_builds,
+        run_leaf_under_routers_with_different_interfaces_rejected,
     )]
     print()
     print("=" * 72)

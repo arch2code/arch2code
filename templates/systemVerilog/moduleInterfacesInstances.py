@@ -27,7 +27,7 @@ def render(args, prj, data):
     out.append("(")
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
     # Module-local parameterizable type/struct declarations. SV cannot
     # parameterize a package, so a parameterized block declares the

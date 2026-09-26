@@ -36,16 +36,14 @@ def render(args, prj, data):
     out.append(importPackages(args, prj, startingContext, data))
     out.append("(")
 
-    # A router's declared clk/rst_n carry no domain meaning. busClock/busReset,
-    # from getBDBusClockReset, are the container nets its one instance's map
-    # resolves to; the module's ports and every flop below use them.
-    decode_clk = data['busClock']
-    decode_rst = data['busReset']
+    # The router's ports keep their declared names, like any other block's;
+    # its parent binds them to the container nets. Every flop below runs on
+    # the declared port carrying the register bus (busClockPort/busResetPort).
+    decode_clk = data['busClockPort']
+    decode_rst = data['busResetPort']
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(
-        data, prj, indent,
-        dict(data, **intf_gen_utils.bus_clock_reset_port_data(data, decode_clk, decode_rst))))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']

@@ -25,15 +25,11 @@ def getParentStructures(prj, d):
 def render(args, prj, data):
     global regs_intf, regs_addr_t, regs_data_t, regs_clk, regs_rst
 
-    # <block>_regs is a register-bus endpoint: it declares neither clocks: nor
-    # resets: of its own, so its declared set is always the generic implicit
-    # clk/rst_n and carries no domain meaning. busClock/busReset
-    # (getBDBusClockReset) is the container net its one instance's binds
-    # resolved to - a router's own instance map, or for a handler the leaf's
-    # registerPorts: clock or the clock its instance map binds to the bus -
-    # and is what the module's own port and every flop use.
-    regs_clk = data['busClock']
-    regs_rst = data['busReset']
+    # <block>_regs is a register-bus endpoint whose clock/reset ports are
+    # named after the leaf nets they bind to. Every flop runs on the declared
+    # port carrying the register bus (busClockPort/busResetPort).
+    regs_clk = data['busClockPort']
+    regs_rst = data['busResetPort']
 
     regs_intf = data['addressDecode'].get('registerBusPort', None)
     if not regs_intf:
@@ -113,8 +109,7 @@ def render(args, prj, data):
         needs_genvar=any(r.get('isParameterizable') for r in data['registers'].values())
                      or any(m.get('isParameterizable') for m in data['memories'].values()),
         interfaces_ports=section_intf_ports(prj, data),
-        clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(
-            intf_gen_utils.bus_clock_reset_port_data(data, regs_clk, regs_rst)),
+        clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(data),
         regs_clk=regs_clk,
         regs_rst=regs_rst,
         address_mask=section_address_mask(prj, data),

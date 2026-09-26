@@ -27,9 +27,9 @@ feed in a non-default domain and with no feed clock at all. A generated decode
 tree inherits the feed's domain, so those two builds are the non-default-domain
 and default-domain shapes of both generators, and each module must spell the same
 clock in its port list and in every flop. The non-default-domain build is a real
-one, not a shape that collapses to `clk`: its router and handler both declare
-`clkSlow` and neither declares `clk` at all, so an emitter left on the bare macro
-(which captures the identifier `clk`) fails there.
+one, not a shape that collapses to `clk`: its handler declares `clkSlow` and no
+`clk` at all, so an emitter left on the bare macro (which captures the identifier
+`clk`) fails there, and its router keeps its declared `clk` bound onto `clkSlow`.
 
 The flop macro library itself is checked as library content, discovered rather
 than listed, so a family added to `common/systemVerilog/flops.sv` is covered
@@ -453,6 +453,9 @@ REGS_LEAF = 'rtl/leafA.sv'
 # (templates/systemVerilog/apbDecodeModule.py) reading the same bus domain, and
 # its own emission site for every flop in the dispatch path.
 REGS_ROUTER = 'rtl/apbDecode.sv'
+# The container instantiating both, whose binds carry each module's own port
+# names onto the bus nets.
+REGS_CONTAINER = 'rtl/top.sv'
 
 
 # --------------------------------------------------- clk-member fixture --
@@ -791,7 +794,8 @@ def _generate_regs(feed_clock, bridge_memories=False):
         raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
 
     emitted = dict()
-    for rel in ('rtl/top_package.sv', REGS_LEAF, REGS_HANDLER, REGS_ROUTER):
+    for rel in ('rtl/top_package.sv', REGS_LEAF, REGS_HANDLER, REGS_ROUTER,
+                REGS_CONTAINER):
         gen = _arch2code('--db', db, '-r', '--systemVerilog',
                          '--file', os.path.join(fixture, rel), cwd=fixture)
         if gen.returncode != 0:
@@ -1357,6 +1361,38 @@ def check_one_clock_thread_per_clock(emitted):
         raise AssertionError(
             "fastProd SC wrapper must gate every clock through the one shared "
             "clock_gen body")
+    return True
+
+
+def check_gated_clock_rejects_off_step_half_period(emitted):
+    """Gated lockstep toggles a clock only on lockstep step boundaries, so a half
+    period that is not a whole number of steps would run at the wrong edges.
+
+    The check sits where the free-running loop ends and gated mode begins, ahead
+    of the first gated edge, so the free-running loop carries no check, and it
+    compares integer sc_time ticks so the check is exact."""
+    text = emitted['verif/fastProd_hdl_sc_wrapper.h']
+    start = text.index('void clock_gen(sc_signal<bool> &sig, const sc_time &half)')
+    body = text[start:text.index('\n    }\n', start)]
+    free = body.index('while (!socketSyncTimeGated()) {')
+    free_toggle = body.index('wait(half);')
+    check = body.index('Q_ASSERT(half.value() % step.value() == 0,')
+    edge = body.index('socketSyncWaitClockEdge();')
+    if not free < free_toggle < check < edge:
+        raise AssertionError(
+            "fastProd SC wrapper clock_gen must check the half period after the "
+            "free-running loop and before its first gated edge")
+    for needle in ('const sc_time step = socketSyncClockHalfPeriod();',
+                   'sig.name()', 'half.to_string()', 'step.to_string()',
+                   'is not a whole multiple of the lockstep step',
+                   'lockstep co-simulation cannot represent it',
+                   'Declare a period that is a whole multiple of ',
+                   '(step + step).to_string()',
+                   'or set PYSOCKET_LOCKSTEP=0 to run free-running.'):
+        _expect(body, needle, 'the fatal names the clock, its half period and '
+                'the step, and says how to recover', 'fastProd SC wrapper clock_gen')
+    if body.count('Q_ASSERT(') != 1:
+        raise AssertionError("fastProd SC wrapper clock_gen must assert once")
     return True
 
 
@@ -2088,32 +2124,35 @@ def check_regs_handler_default_domain(emitted):
 # --------------------------------------------------- apbDecode router --
 
 def check_router_non_default_domain(emitted):
-    """The generated router of a bus in a non-default domain declares that clock
-    and uses it in every flop.
+    """The generated router of a bus in a non-default domain keeps its declared
+    clk/rst_n ports, uses them in every flop, and is bound onto the bus nets by
+    its container.
 
-    Port list and flop bodies are asserted together because the router's port
-    list has come from the derived set since before its flops did: the two are
-    separate emission sites reading the same domain, and only comparing them
-    catches one moving without the other."""
+    Port list, flop bodies and the container's binds are asserted together: they
+    are separate emission sites naming the same ports, and only comparing them
+    catches one moving without the others."""
     text = emitted[REGS_ROUTER]
     line = _block_module_input_line(text, 'apbDecode module')
-    if line != 'input clkSlow, rstBus_n':
+    if line != 'input clk, rst_n':
         raise AssertionError(f"apbDecode port list is {line!r}, expected "
-                             f"'input clkSlow, rstBus_n'")
-    _assert_flops_clocked_by(text, 'clkSlow', 'rstBus_n', 'apbDecode')
+                             f"'input clk, rst_n'")
+    _assert_flops_clocked_by(text, 'clk', 'rst_n', 'apbDecode')
+    _assert_instance_tail(_instance_binds(emitted[REGS_CONTAINER], 'top module'),
+                          'top module',
+                          {'uAPBDecode': [('clk', 'clkSlow'), ('rst_n', 'rstBus_n')]})
     # The generator has three flop-emitting sites in separate code - the parent
     # request capture template, the per-child select template, and the response
     # path appended by hand - so each is pinned by a shape only that site
     # produces. Without this the fixture could quietly stop reaching one.
     for why, pattern in (
             ('the parent request capture',
-             r"`DFF_DOM\(clkSlow, rstBus_n, paddr_q, apbReg\.paddr\)"),
+             r"`DFF_DOM\(clk, rst_n, paddr_q, apbReg\.paddr\)"),
             ('the transaction-active flop',
-             r"`SCFF_DOM\(clkSlow, rstBus_n, trans_active, set_trans_active, pready\)"),
+             r"`SCFF_DOM\(clk, rst_n, trans_active, set_trans_active, pready\)"),
             ('the per-child select flop',
-             r"`SCFF_DOM\(clkSlow, rstBus_n, apbReg_uLeafA_psel, apbReg_uLeafA_next_psel,"),
+             r"`SCFF_DOM\(clk, rst_n, apbReg_uLeafA_psel, apbReg_uLeafA_next_psel,"),
             ('the parent response path',
-             r"`DFF_DOM\(clkSlow, rstBus_n, pready, apbReg_next_pready\)")):
+             r"`DFF_DOM\(clk, rst_n, pready, apbReg_next_pready\)")):
         if not re.search(pattern, text):
             raise AssertionError(
                 f"apbDecode emits nothing matching {pattern!r}, so {why} is not "
@@ -2126,10 +2165,21 @@ def check_router_and_handler_share_the_bus_domain(emitted):
 
     They are the two ends of one APB segment, so a mismatch would put a clock
     crossing on the handshake itself. Two generators read the domain separately,
-    and this is the only case that compares their answers."""
-    domains = {where: {arg for _name, arg in _flop_calls(emitted[rel])}
-               for where, rel in (('apbDecode', REGS_ROUTER),
-                                  ('leafA_regs', REGS_HANDLER))}
+    and this is the only case that compares their answers. Each module's flop
+    clock is its own port name, so it is followed through the binds up to the
+    net of the container both sit in: the router's own instance in top, the
+    handler's through its leaf."""
+    topBinds = {inst: dict(binds) for inst, binds in
+                _instance_binds(emitted[REGS_CONTAINER], 'top module').items()}
+    leafBinds = {inst: dict(binds) for inst, binds in
+                 _instance_binds(emitted[REGS_LEAF], 'leafA module').items()}
+    handler = next(name for name in leafBinds if name.endswith('leafA_regs'))
+    domains = {
+        'apbDecode': {topBinds['uAPBDecode'][arg]
+                      for _name, arg in _flop_calls(emitted[REGS_ROUTER])},
+        'leafA_regs': {topBinds['uLeafA'][leafBinds[handler][arg]]
+                       for _name, arg in _flop_calls(emitted[REGS_HANDLER])},
+    }
     if domains['apbDecode'] != domains['leafA_regs'] or len(domains['apbDecode']) != 1:
         raise AssertionError(
             f"the router is clocked by {sorted(domains['apbDecode'])} and its "
@@ -2224,9 +2274,10 @@ def check_regs_handler_bridge_instances(emitted):
 
 def check_regs_handler_bridged_pslverr(emitted):
     """A bridged handler routes pslverr through the bridge's own err, not the
-    unconditional 1'b0 a same-domain handler emits."""
+    unconditional 1'b0 a same-domain handler emits. The handler's register
+    port takes leafA's registerPorts: key, render_leaf's default 'regs'."""
     text = emitted[REGS_HANDLER]
-    _expect(text, 'assign apbReg.pslverr = slverr;', 'a bridged handler routes '
+    _expect(text, 'assign regs.pslverr = slverr;', 'a bridged handler routes '
             'pslverr through slverr', 'leafA_regs')
     _refute(text, "pslverr = 1'b0", 'a bridged handler never falls back to the '
             'unconditional 1\'b0', 'leafA_regs')
@@ -2344,6 +2395,211 @@ def check_router_default_domain(emitted):
                              f"'input clk, rst_n'")
     _assert_flops_clocked_by(text, 'clk', 'rst_n', 'default-domain apbDecode')
     return True
+
+
+# ------------------------------------------- router bound onto bus nets --
+#
+# A hasVl router whose implicit clk/rst_n the instance map binds onto
+# container nets of other names (busClk/busRst_n). The router module, its
+# verilated SV wrapper and the container instantiating it are three emission
+# sites for the same port names, and each pair must agree for the result to
+# elaborate, so the fixture is linted rather than only read. With
+# extra_reset the router also declares rstExtra_n, mapped onto the same
+# busRst_n net as rst_n: two ports on one net, each needing its own bind.
+ROUTER_PORTS_PROJECT = """yamlFormat: 2
+projectName: routerPorts
+topInstance: uTop
+
+projectFiles:
+    - ../../yaml/top.yaml
+
+clocks:
+    busClk: { desc: "the register bus clock", default: true, period: 1, timeUnit: ns }
+
+resets:
+    busRst_n: { desc: "the register bus reset", default: true, clock: busClk }
+
+dirs:
+    root: ../..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:  { alignment: memsize, sizeRoundUpPowerOf2: true, sortDescending: true }
+    registers: { alignment: 8, sortDescending: true }
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+"""
+
+ROUTER_PORTS_ROUTER = 'rtl/apbDecode.sv'
+ROUTER_PORTS_WRAPPER = 'verif/apbDecode_hdl_sv_wrapper.sv'
+ROUTER_PORTS_CONTAINER = 'rtl/top.sv'
+# Every RTL file the container's elaboration reaches, in dependency order.
+ROUTER_PORTS_RTL = ('rtl/top_package.sv', 'rtl/cpu.sv', ROUTER_PORTS_ROUTER,
+                    'rtl/leafA_regs.sv', 'rtl/leafA.sv', ROUTER_PORTS_CONTAINER)
+
+
+def _router_ports_design(extra_reset):
+    busDomain = ('        clocks:\n            busClk: { default: true }\n'
+                 '        resets:\n            busRst_n: { clock: busClk }\n')
+    routerLines = '        hasVl: true\n'
+    extraMap = ''
+    if extra_reset:
+        routerLines += ('        resets:\n'
+                        '            rst_n:      { default: true }\n'
+                        '            rstExtra_n: { }\n')
+        extraMap = ', rstExtra_n: busRst_n'
+    busMap = 'clocks: { clk: busClk }, resets: { rst_n: busRst_n }'
+    return (APB_PREAMBLE + "\nblocks:\n"
+            + render_plain_block('top', extra_block_lines=busDomain)
+            + render_plain_block('cpu')
+            + render_router('apbDecode', 'top', extra_block_lines=routerLines)
+            + render_leaf('leafA')
+            + f"""
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu, {busMap} }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: busClk }}, resets: {{ rst_n: busRst_n{extraMap} }} }}
+    uLeafA:     {{ container: top, instanceType: leafA, addressGroup: top, {busMap} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+registers:
+    - {{ register: cfgA, regType: rw, block: leafA, structure: cfgRegSt, desc: "leafA configuration" }}
+""")
+
+
+def _generate_router_ports(extra_reset):
+    return _generate_clk_member(
+        project=ROUTER_PORTS_PROJECT, design=_router_ports_design(extra_reset),
+        files=(*ROUTER_PORTS_RTL, ROUTER_PORTS_WRAPPER),
+        prefix='routerports_', db_name='routerPorts.db')
+
+
+def _lint(fixture, top_module, files, where):
+    """verilator --lint-only of `files` elaborated from `top_module`, with the
+    flag shape of check_regs_handler_bridged_lints_clean."""
+    common_dir = os.path.dirname(FLOPS_SV)
+    intf_dirs = [os.path.join(base_dir, 'interfaces', name) for name in ('apb', 'status')]
+    cmd = (['verilator', '--lint-only', '--no-timing',
+            '--top-module', top_module, '+libext+.sv', '-y', common_dir,
+            f'+incdir+{common_dir}']
+           + [arg for d in intf_dirs for arg in ('-y', d, f'+incdir+{d}')]
+           + [FLOPS_SV, ASSERTS_SVH]
+           + [os.path.join(fixture, rel) for rel in files])
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(f"{where} fails to lint:\n{result.stdout}{result.stderr}")
+    return True
+
+
+def _check_router_bound_onto_bus_nets(fixture, emitted, port_line, binds):
+    text = emitted[ROUTER_PORTS_ROUTER]
+    line = _block_module_input_line(text, 'apbDecode module')
+    if line != port_line:
+        raise AssertionError(f"apbDecode port list is {line!r}, expected {port_line!r}")
+    _assert_flops_clocked_by(text, 'clk', 'rst_n', 'apbDecode')
+    _assert_instance_tail(
+        _instance_binds(emitted[ROUTER_PORTS_CONTAINER], 'top module'), 'top module',
+        {'uAPBDecode': binds})
+    _lint(fixture, 'apbDecode_hdl_sv_wrapper',
+          ('rtl/top_package.sv', ROUTER_PORTS_ROUTER, ROUTER_PORTS_WRAPPER),
+          'the router through its verilated SV wrapper')
+    return _lint(fixture, 'routerPorts_top', ROUTER_PORTS_RTL,
+                 'the container instantiating the router')
+
+
+def check_router_keeps_declared_ports(fixture, emitted):
+    """A router whose clk/rst_n its instance binds to busClk/busRst_n declares
+    clk/rst_n like any other block, so its verilated SV wrapper, which binds the
+    declared names, and its container both elaborate."""
+    return _check_router_bound_onto_bus_nets(
+        fixture, emitted, 'input clk, rst_n',
+        [('clk', 'busClk'), ('rst_n', 'busRst_n')])
+
+
+def check_router_two_resets_on_one_net(fixture, emitted):
+    """Two router resets bound to the same bus net each get their own bind:
+    no pin is bound twice and neither reset is left unconnected."""
+    return _check_router_bound_onto_bus_nets(
+        fixture, emitted, 'input clk, rst_n, rstExtra_n',
+        [('clk', 'busClk'), ('rst_n', 'busRst_n'), ('rstExtra_n', 'busRst_n')])
+
+
+# A router declaring neither clk nor rst_n: its one clock regClk carries two
+# resets, and addressBlock: clock:/reset: name regClk and the non-default
+# regBusRst_n as the register bus's own.
+ROUTER_BUS_PORTS_ROUTER = render_router(
+    'apbDecode', 'top', extra_block_lines=(
+        '        hasVl: true\n'
+        '        clocks:\n'
+        '            regClk: { default: true }\n'
+        '        resets:\n'
+        '            regRst_n:    { default: true, clock: regClk }\n'
+        '            regBusRst_n: { clock: regClk }\n')) + (
+    '            clock: regClk\n'
+    '            reset: regBusRst_n\n')
+
+
+def _router_bus_ports_design():
+    busDomain = ('        clocks:\n            busClk: { default: true }\n'
+                 '        resets:\n            busRst_n: { clock: busClk }\n')
+    busMap = 'clocks: { clk: busClk }, resets: { rst_n: busRst_n }'
+    return (APB_PREAMBLE + "\nblocks:\n"
+            + render_plain_block('top', extra_block_lines=busDomain)
+            + render_plain_block('cpu')
+            + ROUTER_BUS_PORTS_ROUTER
+            + render_leaf('leafA')
+            + f"""
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu, {busMap} }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ regClk: busClk }},
+                  resets: {{ regRst_n: busRst_n, regBusRst_n: busRst_n }} }}
+    uLeafA:     {{ container: top, instanceType: leafA, addressGroup: top, {busMap} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+registers:
+    - {{ register: cfgA, regType: rw, block: leafA, structure: cfgRegSt, desc: "leafA configuration" }}
+""")
+
+
+def check_router_runs_on_its_addressblock_bus_ports(fixture, emitted):
+    """A router whose addressBlock: names regClk/regBusRst_n as its bus clock
+    and reset declares its own ports and runs every flop on that pair: not
+    on clk/rst_n, which it does not declare, nor on its default reset
+    regRst_n, nor on the container nets busClk/busRst_n its instance binds
+    them to."""
+    text = emitted[ROUTER_PORTS_ROUTER]
+    line = _block_module_input_line(text, 'apbDecode module')
+    if line != 'input regClk, regRst_n, regBusRst_n':
+        raise AssertionError(f"apbDecode port list is {line!r}, expected "
+                             f"'input regClk, regRst_n, regBusRst_n'")
+    _assert_flops_clocked_by(text, 'regClk', 'regBusRst_n', 'apbDecode')
+    for name in ('clk', 'rst_n'):
+        if re.search(rf'\b{name}\b', text):
+            raise AssertionError(
+                f"apbDecode names {name!r}, which it does not declare; its bus "
+                f"clock and reset are regClk and regBusRst_n")
+    _assert_instance_tail(
+        _instance_binds(emitted[ROUTER_PORTS_CONTAINER], 'top module'), 'top module',
+        {'uAPBDecode': [('regClk', 'busClk'), ('regRst_n', 'busRst_n'),
+                        ('regBusRst_n', 'busRst_n')]})
+    _lint(fixture, 'apbDecode_hdl_sv_wrapper',
+          ('rtl/top_package.sv', ROUTER_PORTS_ROUTER, ROUTER_PORTS_WRAPPER),
+          'the router through its verilated SV wrapper')
+    return _lint(fixture, 'routerPorts_top', ROUTER_PORTS_RTL,
+                 'the container instantiating the router')
 
 
 def _assert_router_rejected(feed_clock, router_clocks, expected_clocks):
@@ -2464,6 +2720,8 @@ def main():
              check_sc_clock_per_declared_period),
             ('one clock thread per clock over the shared gated toggler',
              check_one_clock_thread_per_clock),
+            ('a gated clock rejects a half period off the lockstep step',
+             check_gated_clock_rejects_off_step_half_period),
             ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
             ('each reset releases after its own releaseCycles edges of its '
@@ -2544,6 +2802,30 @@ def main():
              lambda emitted, fixture=fixture: check_regs_handler_bridged_lints_clean(
                  fixture, emitted)),
         )]
+    finally:
+        shutil.rmtree(fixture)
+
+    for label, extra_reset, check in (
+            ('a router bound onto bus nets keeps its declared clk/rst_n and '
+             'lints clean with its wrapper and container',
+             False, check_router_keeps_declared_ports),
+            ('a router with two resets on one bus net binds each reset once',
+             True, check_router_two_resets_on_one_net)):
+        fixture, emitted = _generate_router_ports(extra_reset)
+        try:
+            ok.append(_run_case(label, lambda: check(fixture, emitted)))
+        finally:
+            shutil.rmtree(fixture)
+
+    fixture, emitted = _generate_clk_member(
+        project=ROUTER_PORTS_PROJECT, design=_router_bus_ports_design(),
+        files=(*ROUTER_PORTS_RTL, ROUTER_PORTS_WRAPPER),
+        prefix='routerbusports_', db_name='routerPorts.db')
+    try:
+        ok.append(_run_case(
+            "a router runs on its addressBlock: bus clock and reset ports, "
+            "not clk/rst_n", lambda: check_router_runs_on_its_addressblock_bus_ports(
+                fixture, emitted)))
     finally:
         shutil.rmtree(fixture)
 

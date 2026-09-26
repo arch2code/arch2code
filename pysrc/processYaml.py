@@ -1659,9 +1659,8 @@ class projectOpen:
             # _resolveRegisterHandlerBinds renames its clock/reset pair onto
             # them) are the router's or handler's OWN declared port name
             # carrying the register bus - a block-level fact repeated on
-            # every row the same way, read by getBDBusClockReset so
-            # bus_clock_reset_port_data does not re-derive the
-            # addressBlock: override rule itself.
+            # every row the same way. The router's flops name them, so the
+            # template does not re-derive the addressBlock: override rule.
             ret['busClockPort'] = row['busClockPort']
             ret['busResetPort'] = row['busResetPort']
             if row['kind'] == 'clock':
@@ -1695,9 +1694,10 @@ class projectOpen:
         # Called for every block. busClock/busReset are the block's
         # register-bus domain, registerClock/registerReset (clockTree.py's
         # _resolveRouterBusClockReset/_resolveRegisterHandlerBinds), already
-        # read into `ret` by getBDClocksResets. For a router or a synthesised
-        # <block>_regs handler the block's own default clock/reset name
-        # carries no domain meaning, so templates read busClock/busReset.
+        # read into `ret` by getBDClocksResets: for a router, the container
+        # nets its bus clock/reset ports bind to; for a synthesised
+        # <block>_regs handler, whose ports are named after the leaf nets
+        # they bind to, also its own bus port names.
         # A block with no register-bus role carries None in both.
         ret['busClock'] = ret['registerClock']
         ret['busReset'] = ret['registerReset']
@@ -2423,13 +2423,6 @@ class projectOpen:
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
                 childTypeKey, instInfo['variant'], parentParamNames)
-            # A register-bus endpoint child (a router or a synthesised
-            # <block>_regs handler) declares its own module port under
-            # registerClock/registerReset,
-            # not its raw declared clk/rst_n: clockTree.py's rows() already
-            # emits that bind row with childPort = registerClock/
-            # registerReset (whichever entry is the one that resolved to
-            # it), so this reads unmodified.
             instInfo['clockResetBinds'] = self.getBDInstanceClockResetBinds(inst)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
@@ -3448,10 +3441,10 @@ class projectOpen:
             # post-parse pass emitted: `block:` names the owning leaf,
             # `instance:` names this handler instance, `interface:`
             # carries the leaf-scoped register-bus interface, and
-            # `instancePortName` carries the handler's canonical port
-            # name (registerDecoderPort, e.g. `apbReg`). The
-            # connectionMap's `port:` field is the leaf-side authored
-            # port name and is *not* the handler's port.
+            # `instancePortName` carries the handler's port name, the
+            # leaf's own register-bus port name. The
+            # connectionMap's `port:` field is the leaf-side port of the
+            # same name, read for the leaf's view, not the handler's.
             for cm in self.data.get('connectionMaps', {}).values():
                 instKey = cm.get('instanceKey')
                 if not instKey:
@@ -4243,7 +4236,8 @@ class projectCreate:
         tree = clockTree.build(
             self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
             self.flatData['memories'], self.flatData['memoryConnections'],
-            self.flatData['connectionMaps'], registerBusPassthroughs,
+            self.flatData['registerConnections'], self.flatData['connectionMaps'],
+            registerBusPassthroughs,
             self._blocksDeclaringNoResets,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)

@@ -81,10 +81,9 @@ def _assert_leaf_interface_scoping(prj):
     assert lad.get('registerBusPort') == 'regs', \
         f"ip leaf registerBusPort expected 'regs', got {lad.get('registerBusPort')}"
 
-    # The leaf-to-handler connectionMap is where the leaf-scoped `ipReg`
-    # and the router-side `apbReg` port meet: the leaf side carries
-    # `ipReg` on port `regs`, the handler side carries the router's
-    # `apbReg` port name.
+    # The leaf-to-handler connectionMap carries the leaf-scoped `ipReg`
+    # from the leaf's port `regs` to the handler's port, which takes the
+    # leaf's registerPorts: key `regs`.
     handler_maps = find_connection_maps(prj, instance='uIpRegs')
     assert len(handler_maps) == 1, \
         f"expected one uIpRegs leaf-to-handler connectionMap, got {len(handler_maps)}"
@@ -93,8 +92,8 @@ def _assert_leaf_interface_scoping(prj):
         f"uIpRegs connectionMap interface expected 'ipReg', got {cm.get('interface')}"
     assert cm.get('port') == 'regs', \
         f"uIpRegs connectionMap port expected 'regs', got {cm.get('port')}"
-    assert cm.get('instancePort') == 'apbReg', \
-        f"uIpRegs connectionMap instancePort expected 'apbReg', got {cm.get('instancePort')}"
+    assert cm.get('instancePort') == 'regs', \
+        f"uIpRegs connectionMap instancePort expected 'regs', got {cm.get('instancePort')}"
 
     # Handler block / instance synthesised once for the reused `ip` block.
     handler_block_key, handler_block_row = find_block(prj, 'ipRegs')

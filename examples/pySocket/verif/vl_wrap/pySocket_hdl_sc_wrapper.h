@@ -242,23 +242,32 @@ private:
     sc_signal<bool> rst_n;
     sc_time clk_half_;
 
-    // Free-run: toggle every half period. Gated lockstep: the quantum thread
-    // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
-    // time, and a clock toggles once its own half period has accumulated, so a
-    // slower clock keeps its period at quantum resolution and no clock can
-    // free-run during wait(ack).
+    // Free-run: toggle every half period until gated lockstep begins; gating
+    // only ever switches on. Gated lockstep: the quantum thread broadcasts one
+    // edge request per socketSyncClockHalfPeriod() of advanced time, and a
+    // clock toggles once its own half period has accumulated, so a slower
+    // clock keeps its period at quantum resolution and no clock can free-run
+    // during wait(ack). A half period that is not a whole number of lockstep
+    // steps would be silently moved onto the step grid, so it is fatal on entry
+    // to gated mode.
     void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        while (!socketSyncTimeGated()) {
+            wait(half);
+            sig.write(!sig.read());
+        }
+        const sc_time step = socketSyncClockHalfPeriod();
+        Q_ASSERT(half.value() % step.value() == 0,
+                 std::string("clock ") + sig.name() + " half period "
+                 + half.to_string() + " is not a whole multiple of the lockstep step "
+                 + step.to_string() + "; lockstep co-simulation cannot represent it. "
+                 "Declare a period that is a whole multiple of " + (step + step).to_string()
+                 + ", or set PYSOCKET_LOCKSTEP=0 to run free-running.");
         sc_time gated = SC_ZERO_TIME;
         while (true) {
-            if (socketSyncTimeGated()) {
-                socketSyncWaitClockEdge();
-                gated += socketSyncClockHalfPeriod();
-                if (gated >= half) {
-                    gated -= half;
-                    sig.write(!sig.read());
-                }
-            } else {
-                wait(half);
+            socketSyncWaitClockEdge();
+            gated += step;
+            if (gated >= half) {
+                gated -= half;
                 sig.write(!sig.read());
             }
         }

@@ -268,21 +268,6 @@ def sv_clock_reset_input_lines(block_data):
     return ',\n'.join(f"{direction} {name}"
                       for name, direction in clock_reset_ports(block_data))
 
-# A router or handler's declared clock/reset port matching busClockPort/
-# busResetPort (getBDBusClockReset, the already-resolved port names) is
-# renamed to busClock/busReset for
-# sv_clock_reset_input_lines, without disturbing block_data's own declared
-# rows for other emission sites.
-def bus_clock_reset_port_data(block_data, bus_clock, bus_reset):
-    busClockPort = block_data['busClockPort']
-    busResetPort = block_data['busResetPort']
-    return {
-        'clocks': [dict(row, clock=bus_clock) if row['clock'] == busClockPort else row
-                  for row in block_data['clocks']],
-        'resets': [dict(row, reset=bus_reset) if row['reset'] == busResetPort else row
-                  for row in block_data['resets']],
-    }
-
 def sv_clock_reset_binds(block_data):
     return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
 
@@ -305,15 +290,15 @@ def sv_default_domain_aliases(block_data):
         out.append(f"wire rst_n = {defaultReset};")
     return out
 
-def sv_gen_ports(data, prj, indent, block_data):
+def sv_gen_ports(data, prj, indent):
     out = []
     for sourceType in data['ports']:
         for port, port_data in data['ports'][sourceType].items():
             connectionData = port_data.get('connection', {})
             intf_data = get_intf_data(connectionData, prj)
-            intf_type = get_intf_type(intf_data['interfaceType'], block_data)
+            intf_type = get_intf_type(intf_data['interfaceType'], data)
             out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
-    out.append(f"{indent}{sv_clock_reset_input(block_data)}")
+    out.append(f"{indent}{sv_clock_reset_input(data)}")
     out.append(");\n")
     return out
 

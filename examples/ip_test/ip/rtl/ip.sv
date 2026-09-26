@@ -73,7 +73,7 @@ import ip_package::*;
 
 // Instances
 ip_ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) uIpRegs (
-    .ipReg (regs),
+    .regs (regs),
     .ipMem (ipMem_reg),
     .ipFixedMem (ipFixedMem_reg),
     .ipNonConstMem (ipNonConstMem_reg),

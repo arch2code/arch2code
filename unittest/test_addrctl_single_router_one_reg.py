@@ -114,8 +114,8 @@ def _run():
             f"connectionMap interface expected 'apbReg', got {cm.get('interface')}"
         assert cm.get('port') == 'regs', \
             f"connectionMap port (leaf-side) expected 'regs', got {cm.get('port')}"
-        assert cm.get('instancePort') == 'apbReg', \
-            f"connectionMap instancePort (handler-side) expected 'apbReg', got {cm.get('instancePort')}"
+        assert cm.get('instancePort') == 'regs', \
+            f"connectionMap instancePort (handler-side) expected 'regs', got {cm.get('instancePort')}"
 
         # ---- INSTANCES_WITH_REGAPB ----
         instances_with_regapb = prj.config.getConfig('INSTANCES_WITH_REGAPB', failOk=True)

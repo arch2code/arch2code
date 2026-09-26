@@ -5654,7 +5654,9 @@ def run_hasvl_port_reset_cases():
                 run_hasvl_topdown_register_bus_port_excluded(),
                 run_hasvl_topdown_extra_port_still_rejected(),
                 run_hasvl_passthrough_register_bus_port_excluded(),
-                run_hasvl_passthrough_extra_port_still_rejected()))
+                run_hasvl_passthrough_extra_port_still_rejected(),
+                run_hasvl_memory_connection_port_rejected(),
+                run_hasvl_register_connection_port_rejected()))
 
 
 # ------------------------------------------------------- name collisions --
@@ -6244,6 +6246,88 @@ def run_memory_accessor_without_default_clock_cases():
     ])
 
 
+REGISTER_ACCESSOR_NO_DEFAULT_CLOCK_DESIGN = APB_PREAMBLE + """
+blocks:
+    top_tb: { desc: "top", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    cpu: { desc: "cpu", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    router:
+        desc: "router"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x1000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    regOwner: { desc: "owns a register", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    accessor:
+        desc: "hardware accessor of the register"
+        hasVl: {hasVl}
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+{accessorClocks}            clkO: { direction: output }
+
+instances:
+    top_tb:    { container: top_tb, instanceType: top_tb }
+    uCpu:      { container: top_tb, instanceType: cpu }
+    uRouter:   { container: top_tb, instanceType: router }
+    uRegOwner: { container: top_tb, instanceType: regOwner, addressGroup: top }
+    uAccessor: { container: top_tb, instanceType: accessor,
+                 clocks: { {accessorMap}clkO: ~ } }
+
+connections:
+    - { interface: apbReg, src: uCpu, dst: uRouter }
+
+registers:
+    - { register: cfg, regType: rw, block: regOwner, structure: cfgRegSt, desc: "cfg" }
+
+registerConnections:
+    - { register: cfg, block: regOwner, instance: uAccessor }
+"""
+
+
+def run_register_accessor_without_default_clock_cases():
+    """A registerConnections accessor takes its block's default clock, so an
+    accessor whose every clock is an output is rejected, with or without
+    hasVl. Given an input clock, it builds and its view opens."""
+    def design(hasVl, accessorClocks, accessorMap):
+        return REGISTER_ACCESSOR_NO_DEFAULT_CLOCK_DESIGN.replace(
+            '{hasVl}', hasVl).replace('{accessorClocks}', accessorClocks).replace(
+            '{accessorMap}', accessorMap)
+
+    def accessorViewOpens(db_path):
+        prj = projectOpen(db_path)
+        accessorKey = next(key for key, row in prj.data['blocks'].items()
+                           if row['block'] == 'accessor')
+        prj.getBlockData(accessorKey)
+
+    needles = ("Instance 'uAccessor' of block 'accessor' accesses register 'cfg' "
+               "of block 'regOwner', but 'accessor' has no default clock (every "
+               "declared clock is direction: output). A register accessor takes "
+               "its block's default clock. Give 'accessor' an input clock.",
+               "Found 1 Error.")
+    return all([
+        _expect_diagnostic(
+            "a hasVl register accessor with no default clock is rejected",
+            needles, design=design('true', '', ''), projectDomains=''),
+        _expect_diagnostic(
+            "a register accessor with no default clock is rejected",
+            needles, design=design('false', '', ''), projectDomains=''),
+        _expect_builds(
+            "the register accessor given an input clock builds",
+            accessorViewOpens,
+            design=design('false', '            clk: { }\n', 'clk: clk, '),
+            projectDomains=''),
+    ])
+
+
 def run_memory_accessor_without_default_clock_unreachable_rejected():
     """An accessor with no default clock is rejected inside a root-project
     container that nothing instantiates. A child project's uninstantiated
@@ -6354,6 +6438,572 @@ def run_memory_on_owner_output_clock_cases():
     ])
 
 
+# ------------------------------------ reused container, per-occurrence --
+
+# Two testbench clocks with distinct periods and resets with distinct
+# releaseCycles, so a standalone attribute taken from one occurrence of a
+# reused container is distinguishable from the other's.
+REUSED_CONTAINER_DOMAINS = """
+clocks:
+    clkA: { desc: "A", default: true, period: 7, timeUnit: ns }
+    clkB: { desc: "B", period: 9, timeUnit: ns }
+resets:
+    rstA_n:  { desc: "A", default: true, clock: clkA, releaseCycles: 3 }
+    rstA2_n: { desc: "A, released later", clock: clkA, releaseCycles: 5 }
+    rstB_n:  { desc: "B", clock: clkB, releaseCycles: 11 }
+"""
+
+
+def _reused_container_design(wrapInstances, leafClocks=''):
+    """hasVl 'leaf' inside 'wrap', and 'wrap' instantiated by
+    `wrapInstances`: one declared instance of 'leaf', reached once per
+    'wrap' occurrence."""
+    return f"""blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkA: {{ default: true }}
+            clkB: {{ }}
+        resets:
+            rstA_n:  {{ clock: clkA, default: true }}
+            rstA2_n: {{ clock: clkA }}
+            rstB_n:  {{ clock: clkB }}
+    wrap: {{ desc: "reused container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    leaf:
+        desc: "hasVl leaf"
+        hasVl: true
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+{leafClocks}
+instances:
+    top_tb: {{ container: top_tb, instanceType: top_tb, instGroup: top }}
+{wrapInstances}    uLeaf:  {{ container: wrap, instanceType: leaf, instGroup: top }}
+"""
+
+
+def _wrap_instance(name, clock, reset):
+    return (f"    {name}: {{ container: top_tb, instanceType: wrap, instGroup: top, "
+            f"clocks: {{ clk: {clock} }}, resets: {{ rst_n: {reset} }} }}\n")
+
+
+def _leaf_standalone_attrs(db_path):
+    """(period, timeUnit, releaseCycles) the view gives 'leaf's clk/rst_n."""
+    prj = projectOpen(db_path)
+    blockKey = next(key for key, row in prj.data['blocks'].items()
+                    if row['block'] == 'leaf')
+    view = prj.getBlockData(blockKey)
+    (clockRow,) = view['clocks']
+    (resetRow,) = view['resets']
+    return clockRow['period'], clockRow['timeUnit'], resetRow['releaseCycles']
+
+
+def run_reused_container_period_cases():
+    """A declared instance inside a container instantiated twice is reached
+    once per occurrence, and each occurrence's binding counts: two that
+    resolve the leaf's clock or reset to different testbench nets are a
+    disagreement in either declaration order, reported by hierarchical
+    path."""
+    wrapA = _wrap_instance('uWrapA', 'clkA', 'rstA_n')
+    wrapB = _wrap_instance('uWrapB', 'clkB', 'rstB_n')
+    wrapA2 = _wrap_instance('uWrapB', 'clkA', 'rstA2_n')
+    results = []
+    for label, order, pairs in (
+            ("A then B", wrapA + wrapB, "top_tb.uWrapA.uLeaf=clkA, top_tb.uWrapB.uLeaf=clkB"),
+            ("B then A", wrapB + wrapA, "top_tb.uWrapB.uLeaf=clkB, top_tb.uWrapA.uLeaf=clkA")):
+        results.append(_expect_diagnostic(
+            f"a reused container's two occurrences resolving a period-less "
+            f"leaf clock to different testbench clocks are rejected ({label})",
+            ("Block 'leaf' clock 'clk' declares no period:", pairs, 'Found 1 Error.'),
+            design=_reused_container_design(order),
+            projectDomains=REUSED_CONTAINER_DOMAINS))
+    for label, order, pairs in (
+            ("A then A2", wrapA + wrapA2, "top_tb.uWrapA.uLeaf=rstA_n, top_tb.uWrapB.uLeaf=rstA2_n"),
+            ("A2 then A", wrapA2 + wrapA, "top_tb.uWrapB.uLeaf=rstA2_n, top_tb.uWrapA.uLeaf=rstA_n")):
+        results.append(_expect_diagnostic(
+            f"a reused container's two occurrences resolving the leaf reset "
+            f"to different testbench resets are rejected ({label})",
+            ("Block 'leaf' reset 'rst_n' does not resolve to one testbench reset",
+             pairs, 'Found 1 Error.'),
+            design=_reused_container_design(order),
+            projectDomains=REUSED_CONTAINER_DOMAINS))
+
+    def expectAttrs(expected):
+        def check(db_path):
+            actual = _leaf_standalone_attrs(db_path)
+            if actual != expected:
+                raise AssertionError(
+                    f"leaf period/timeUnit/releaseCycles is {actual}, expected {expected}")
+        return check
+
+    # The leaf's own period: wins over the disagreement, and its reset
+    # takes the project default release count.
+    results.append(_expect_builds(
+        "a reused container whose leaf clock declares period: builds",
+        viewCheck=expectAttrs((5, 'ns', 3)),
+        design=_reused_container_design(
+            wrapA + wrapB,
+            leafClocks="        clocks:\n            clk: { default: true, period: 5, timeUnit: ns }\n"),
+        projectDomains=REUSED_CONTAINER_DOMAINS))
+    results.append(_expect_builds(
+        "a reused container whose occurrences agree on the testbench clock "
+        "and reset builds, with that clock's period",
+        viewCheck=expectAttrs((9, 'ns', 11)),
+        design=_reused_container_design(
+            wrapB.replace('uWrapB', 'uWrapA') + wrapB),
+        projectDomains=REUSED_CONTAINER_DOMAINS))
+    return all(results)
+
+
+# ------------------------------- top-down port clock across instances --
+
+TOPDOWN_PORT_DOMAINS = """
+clocks:
+    clkA: { desc: "A", default: true, period: 7, timeUnit: ns }
+    clkB: { desc: "B", period: 9, timeUnit: ns }
+resets:
+    rstA_n: { desc: "A", default: true, clock: clkA }
+    rstB_n: { desc: "B", clock: clkB }
+"""
+
+
+def _topdown_port_design(leafDomains, leafMaps, connections, hasVl='false'):
+    """Two instances of 'leaf', each driving its undeclared port 'out' to its
+    own sink."""
+    mapA, mapB = leafMaps
+    return f"""{HASVL_PORT_INTF}blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clkA: {{ default: true }}
+            clkB: {{ }}
+        resets:
+            rstA_n: {{ clock: clkA }}
+            rstB_n: {{ clock: clkB }}
+    leaf:
+        desc: "leaf instantiated twice"
+        hasVl: {hasVl}
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+{leafDomains}    sink: {{ desc: "sink", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+instances:
+    top_tb: {{ container: top_tb, instanceType: top_tb, instGroup: top }}
+    uLeafA: {{ container: top_tb, instanceType: leaf, instGroup: top{mapA} }}
+    uLeafB: {{ container: top_tb, instanceType: leaf, instGroup: top{mapB} }}
+    uSinkA: {{ container: top_tb, instanceType: sink, instGroup: top, clocks: {{ clk: clkA }}, resets: {{ rst_n: rstA_n }} }}
+    uSinkB: {{ container: top_tb, instanceType: sink, instGroup: top, clocks: {{ clk: clkB }}, resets: {{ rst_n: rstB_n }} }}
+connections:
+{connections}"""
+
+
+def run_topdown_port_conflicting_block_clocks_cases():
+    """An undeclared (top-down) port is one port of the block's module, so
+    every connection reaching it, through any instance, must put it on the
+    same block clock, for every block as for a declared port. Two instances
+    binding the one block clock to different container clocks agree, as do
+    two instances whose clocks: remap puts the port on one block clock."""
+    twoClocks = ("        clocks:\n"
+                 "            clkA: { default: true }\n"
+                 "            clkB: { }\n"
+                 "        resets:\n"
+                 "            rstA_n: { clock: clkA }\n"
+                 "            rstB_n: { clock: clkB }\n")
+    connA = "    - { interface: dataIf, src: uLeafA, srcport: out, dst: uSinkA, dstport: in, clock: clkA }\n"
+    connB = "    - { interface: dataIf, src: uLeafB, srcport: out, dst: uSinkB, dstport: in, clock: clkB }\n"
+    results = []
+    for label, conns, first, second in (
+            ("A then B", connA + connB, ('clkA', 'uLeafA'), ('clkB', 'uLeafB')),
+            ("B then A", connB + connA, ('clkB', 'uLeafB'), ('clkA', 'uLeafA'))):
+        results.append(_expect_diagnostic(
+            f"two instances putting one top-down port on different block "
+            f"clocks are rejected ({label})",
+            ("Top-down port 'out' of block 'leaf'",
+             f"on block clock '{first[0]}' through instance '{first[1]}'",
+             f"on block clock '{second[0]}' through instance '{second[1]}'",
+             "Either declare port 'out' in block 'leaf''s ports: with its "
+             "clock: (a connection clock: reaching it must then agree), or map "
+             "each instance's clocks: so every connection puts 'out' on the "
+             "same block clock.",
+             'Found 1 Error.'),
+            design=_topdown_port_design(twoClocks, ('', ''), conns),
+            projectDomains=TOPDOWN_PORT_DOMAINS))
+
+    def outOnLeafClkA(db_path):
+        domainClock = _port_domain(db_path, 'leaf', 'out')
+        if domainClock != 'clkA':
+            raise AssertionError(f"'out' has domainClock {domainClock!r}, expected 'clkA'")
+
+    results.append(_expect_builds(
+        "an instance clocks: remap that puts every connection's top-down "
+        "port on the same block clock builds",
+        viewCheck=outOnLeafClkA,
+        design=_topdown_port_design(
+            twoClocks,
+            ('', ", clocks: { clkA: clkB, clkB: clkA }, "
+                 "resets: { rstA_n: rstB_n, rstB_n: rstA_n }"),
+            connA + connB),
+        projectDomains=TOPDOWN_PORT_DOMAINS))
+
+    oneClock = ("        clocks:\n"
+                "            clk: { default: true, period: 5, timeUnit: ns }\n"
+                "        resets:\n"
+                "            rst_n: { clock: clk }\n")
+
+    def outOnLeafClk(db_path):
+        domainClock = _port_domain(db_path, 'leaf', 'out')
+        if domainClock != 'clk':
+            raise AssertionError(f"'out' has domainClock {domainClock!r}, expected 'clk'")
+
+    results.append(_expect_builds(
+        "two instances binding one block clock to different container "
+        "clocks put a top-down port on the same block clock",
+        viewCheck=outOnLeafClk,
+        design=_topdown_port_design(
+            oneClock,
+            (", clocks: { clk: clkA }, resets: { rst_n: rstA_n }",
+             ", clocks: { clk: clkB }, resets: { rst_n: rstB_n }"),
+            connA + connB, hasVl='true'),
+        projectDomains=TOPDOWN_PORT_DOMAINS))
+    return all(results)
+
+
+# ------------------ register bus on a leaf's non-default, reset clock --
+
+BUS_ON_SECOND_CLOCK_DOMAINS = """
+clocks:
+    clkA: { desc: "a", default: true, period: 7, timeUnit: ns }
+    clkB: { desc: "b", period: 9, timeUnit: ns }
+resets:
+    rstA_n: { desc: "a", default: true, clock: clkA }
+    rstB_n: { desc: "b", clock: clkB }
+"""
+
+
+def _bus_on_second_clock_design(leafResets, registerPorts):
+    """A register leaf with clocks clkA (default) and clkB, served by a
+    router on clkB."""
+    return f"""{APB_PREAMBLE}
+blocks:
+    top_tb:
+        desc: "top"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        clocks:
+            clkA: {{ default: true }}
+            clkB: {{ }}
+        resets:
+            rstA_n: {{ clock: clkA }}
+            rstB_n: {{ clock: clkB }}
+    cpu: {{ desc: "cpu", hasMdl: false, hasRtl: false, hasTb: false, hasVl: false }}
+    router:
+        desc: "router"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x1000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leaf:
+        desc: "leaf"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        clocks:
+            clkA: {{ default: true }}
+            clkB: {{ }}
+        resets:
+{leafResets}{registerPorts}
+instances:
+    top_tb:  {{ container: top_tb, instanceType: top_tb }}
+    uCpu:    {{ container: top_tb, instanceType: cpu, clocks: {{ clk: clkB }}, resets: {{ rst_n: rstB_n }} }}
+    uRouter: {{ container: top_tb, instanceType: router, clocks: {{ clk: clkB }}, resets: {{ rst_n: rstB_n }} }}
+    uLeaf:   {{ container: top_tb, instanceType: leaf, addressGroup: top }}
+
+connections:
+    - {{ interface: apbReg, src: uCpu, dst: uRouter }}
+
+registers:
+    - {{ register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "cfg" }}
+"""
+
+
+def run_register_bus_on_leaf_non_default_clock_cases():
+    """A leaf whose default clock has no reset, with its register bus on a
+    second clock that has one: the synthesised handler binds the bus clock
+    and its reset, for a reusable-IP leaf (registerPorts:) and a top-down
+    one. A bus clock with no reset is reported against the leaf, never its
+    generated handler."""
+    rstB = "            rstB_n: { clock: clkB }\n"
+    rstA = "            rstA_n: { clock: clkA }\n"
+    ipPorts = "        registerPorts:\n            apbReg: { interface: apbReg, clock: clkB }\n"
+
+    def handlerOnBus(db_path):
+        binds = regdecode._instanceBinds(db_path)['u_leaf_regs']
+        if binds != {'clkB': 'clkB', 'rstB_n': 'rstB_n'}:
+            raise AssertionError(f"u_leaf_regs binds {binds}, expected clkB/rstB_n")
+        busDomain = regdecode._registerBusDomain(db_path, 'leaf_regs')
+        if busDomain != ('clkB', 'rstB_n'):
+            raise AssertionError(f"leaf_regs register bus is {busDomain}, expected clkB/rstB_n")
+
+    return all((
+        _expect_builds(
+            "a reusable-IP leaf whose default clock has no reset, with its "
+            "register bus on a clock that has one, builds",
+            viewCheck=handlerOnBus,
+            design=_bus_on_second_clock_design(rstB, ipPorts),
+            projectDomains=BUS_ON_SECOND_CLOCK_DOMAINS),
+        _expect_builds(
+            "a top-down leaf whose default clock has no reset, served on a "
+            "clock that has one, builds",
+            viewCheck=handlerOnBus,
+            design=_bus_on_second_clock_design(rstB, ''),
+            projectDomains=BUS_ON_SECOND_CLOCK_DOMAINS),
+        _expect_diagnostic_without(
+            "a leaf whose register bus clock has no reset is rejected against "
+            "the leaf itself",
+            ("Block 'leaf' hosts its register bus on clock 'clkB', but that "
+             "clock has no selected reset", 'Found 1 Error.'),
+            'leaf_regs',
+            design=_bus_on_second_clock_design(rstA, ipPorts),
+            projectDomains=BUS_ON_SECOND_CLOCK_DOMAINS),
+    ))
+
+
+# ------------------- local reset net consumed only by a register handler --
+
+HANDLER_LOCAL_RESET_DOMAINS = """
+clocks:
+    clk:  { desc: "a", default: true, period: 7, timeUnit: ns }
+    clkB: { desc: "b", period: 9, timeUnit: ns }
+resets:
+    rst_n:  { desc: "a", default: true, clock: clk }
+    rstB_n: { desc: "b", clock: clkB }
+"""
+
+
+def _handler_local_reset_design(busOnClkB):
+    """Leaf 'leaf' owns a register and hosts child 'uRg', which drives local
+    reset net 'lrst' on the leaf's clk. With `busOnClkB` false, lrst is the
+    only reset candidate of the leaf's register bus clock clk. With it true,
+    the register bus runs on clkB and its reset rB_n instead, so nothing
+    consumes lrst."""
+    if busOnClkB:
+        leafDomains = ("        clocks:\n"
+                       "            clk: { default: true }\n"
+                       "            clkB: { }\n"
+                       "        resets:\n"
+                       "            rB_n: { clock: clkB }\n")
+        portClock = ", clock: clkB"
+        busMap = ", clocks: { clk: clkB }, resets: { rst_n: rstB_n }"
+        leafMap = ", resets: { rB_n: rstB_n }"
+    else:
+        leafDomains = ("        clocks:\n"
+                       "            clk: { default: true }\n"
+                       "        resets: {}\n")
+        portClock = busMap = leafMap = ""
+    return f"""{APB_PREAMBLE}
+blocks:
+    top_tb:
+        desc: "top"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        clocks:
+            clk: {{ default: true }}
+            clkB: {{ }}
+        resets:
+            rst_n: {{ clock: clk }}
+            rstB_n: {{ clock: clkB }}
+    cpu: {{ desc: "cpu", hasMdl: false, hasRtl: false, hasTb: false, hasVl: false }}
+    router:
+        desc: "router"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x1000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    rg:
+        desc: "reset generator"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+        clocks:
+            clk: {{ default: true }}
+        resets:
+            ro_n: {{ direction: output, clock: clk }}
+    leaf:
+        desc: "leaf"
+        hasMdl: false
+        hasRtl: false
+        hasTb: false
+        hasVl: false
+{leafDomains}        registerPorts:
+            apbReg: {{ interface: apbReg{portClock} }}
+
+instances:
+    top_tb:  {{ container: top_tb, instanceType: top_tb }}
+    uCpu:    {{ container: top_tb, instanceType: cpu{busMap} }}
+    uRouter: {{ container: top_tb, instanceType: router{busMap} }}
+    uLeaf:   {{ container: top_tb, instanceType: leaf, addressGroup: top{leafMap} }}
+    uRg:     {{ container: leaf, instanceType: rg, resets: {{ ro_n: lrst }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCpu, dst: uRouter }}
+
+registers:
+    - {{ register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "cfg" }}
+"""
+
+
+def run_handler_consumes_local_reset_cases():
+    """A local reset net the leaf's register handler alone consumes is
+    consumed once the handler is bound to its register bus reset. A local
+    net nothing consumes after that is still rejected."""
+    def handlerOnLocalReset(db_path):
+        binds = regdecode._instanceBinds(db_path)['u_leaf_regs']
+        if binds != {'clk': 'clk', 'lrst': 'lrst'}:
+            raise AssertionError(f"u_leaf_regs binds {binds}, expected clk/lrst")
+
+    return all((
+        _expect_builds(
+            "a local reset net consumed only by the register handler builds",
+            viewCheck=handlerOnLocalReset,
+            design=_handler_local_reset_design(False),
+            projectDomains=HANDLER_LOCAL_RESET_DOMAINS),
+        _expect_diagnostic(
+            "a local reset net left unconsumed once the register handler "
+            "binds another reset is rejected",
+            ("Container 'leaf' net 'lrst', driven by instance 'uRg' output "
+             "'ro_n', has no consumer.", 'Found 1 Error.'),
+            design=_handler_local_reset_design(True),
+            projectDomains=HANDLER_LOCAL_RESET_DOMAINS),
+    ))
+
+
+def run_hasvl_memory_connection_port_rejected():
+    """Negative, memoryConnections branch: a hasVl leaf with resets: {}
+    reaches a parent-owned memory, which gives it port 'tbl' on its default
+    clock; that clock has no reset for the port's BFM."""
+    design = """types:
+    dataT: { width: 8, desc: "payload word" }
+    memAddrT: { width: 3, desc: "memory address" }
+
+structures:
+    memSt:
+        data: { varType: dataT, desc: "memory payload" }
+    memAddrSt:
+        address: { varType: memAddrT, desc: "memory address" }
+
+blocks:
+    top_tb:
+        desc: "testbench container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    leaf:
+        desc: "hasVl memory accessor with no resets"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        resets: {}
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf,   instGroup: top }
+
+memories:
+    - { memory: tbl, block: top_tb, structure: memSt, addressStruct: memAddrSt, wordLines: 4, ports: [p], desc: "parent-owned table" }
+
+memoryConnections:
+    - { memory: tbl, block: top_tb, instance: uLeaf, port: p }
+"""
+    return _expect_diagnostic(
+        "a memoryConnections port of a hasVl block needs a selected reset on "
+        "the block default clock",
+        ("Block 'leaf' (hasVl): port(s) tbl are timed by clock 'clk', which "
+         "has no selected reset", "The co-simulation wrapper's BFM needs one",
+         'Found 1 Error.'),
+        design=design, projectDomains=PROJECT_DOMAINS)
+
+
+def run_hasvl_register_connection_port_rejected():
+    """Negative, registerConnections branch: a hasVl register accessor with
+    resets: {} reaches another leaf's register, which gives it port 'cfgA'
+    on its default clock; that clock has no reset for the port's BFM."""
+    accessor = """    regAccessor:
+        desc: "reaches leafA's register"
+        hasMdl: true
+        clocks:
+            objClk: { }
+        resets:
+            objRst_n: { clock: objClk }
+"""
+    design = regdecode.OBJECT_ACCESS
+    assert accessor in design, "the regAccessor block replacement did not match"
+    design = design.replace(accessor, """    regAccessor:
+        desc: "reaches leafA's register"
+        hasMdl: true
+        hasVl: true
+        hasRtl: true
+        clocks:
+            objClk: { }
+        resets: {}
+""")
+
+    def check():
+        fixture, project_path, db_path = regdecode._make_fixture(design)
+        try:
+            code, output = regdecode._build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code == 0 or 'Traceback' in output:
+            raise AssertionError(f"the build did not report a diagnostic.\n{output}")
+        for needle in ("Block 'regAccessor' (hasVl): port(s) cfgA are timed by "
+                       "clock 'objClk', which has no selected reset",
+                       "The co-simulation wrapper's BFM needs one", 'Found 1 Error.'):
+            if needle not in output:
+                raise AssertionError(f"diagnostic does not mention '{needle}'.\n{output}")
+        return True
+    return _run_case(
+        "a registerConnections port of a hasVl block needs a selected reset "
+        "on the block default clock", check)
+
+
 def _run():
     print("=" * 72)
     print("TESTING PER-BLOCK CLOCK AND RESET DERIVATION")
@@ -6364,6 +7014,7 @@ def _run():
         ("Template-facing view", (run_view_build,
                                   run_default_clock_port_resolution_cases,
                                   run_declared_port_connection_clock_mismatch_rejected,
+                                  run_topdown_port_conflicting_block_clocks_cases,
                                   run_connectionmaps_boundary_derives_inside_out,
                                   run_boundary_port_clock_agreement_cases,
                                   run_chained_boundary_port_cases,
@@ -6392,6 +7043,7 @@ def _run():
                                    run_memory_stated_clock_on_no_default_clock_block_accepted,
                                    run_memory_on_owner_output_clock_cases,
                                    run_memory_accessor_without_default_clock_cases,
+                                   run_register_accessor_without_default_clock_cases,
                                    run_memory_accessor_without_default_clock_unreachable_rejected,
                                    run_memory_accessor_uninstantiated_container_domain_cases)),
         ("regAccess memory bridge reset", (run_regaccess_memory_bridge_clock_no_reset_rejected,
@@ -6408,11 +7060,14 @@ def _run():
           run_router_bus_async_reset_rejected,
           run_router_with_children_rejected,
           run_multi_clock_router_bus_reset_rejected_as_multi_clock,
-          run_passthrough_register_ports_without_bus_reset_rejected)),
+          run_passthrough_register_ports_without_bus_reset_rejected,
+          run_register_bus_on_leaf_non_default_clock_cases,
+          run_handler_consumes_local_reset_cases)),
         ("hasVl BFM port reset", (run_hasvl_port_reset_cases,)),
         ("Name collisions", (run_collision_cases,)),
         ("Graph shape", (run_clock_tree_shape_cases,)),
-        ("Standalone attribute resolution", (run_standalone_period_cases,)),
+        ("Standalone attribute resolution", (run_standalone_period_cases,
+                                             run_reused_container_period_cases)),
         ("Reset-clock membership", (run_top_rejects_reset_on_unbound_clock,
                                        run_standalone_rejects_reset_on_output_clock)),
         ("End-of-run report", (run_end_of_run_report_cases,)),

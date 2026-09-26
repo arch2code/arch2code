@@ -269,39 +269,59 @@ def _findPrimaryRouter(prj, routers, router_instance, reachable, topBlockKeys):
     return primary_candidates[0]
 
 
-def _leafRegisterBinding(prj, leafBlock, servingRouter, addressBusTypes,
-                         routerInterfaceCache):
-    """Resolve a routed leaf's register-bus binding as
-    (portName, interfaceName, ifaceRow, ifaceContext, authored).
-
-    A reusable IP block authors its own register-bus surface in
-    `registerPorts:` and is the only kind that must declare it; the
-    authored row carries the leaf-local interface so `<block>Base.h`
-    stays self-contained across the projects that instantiate the IP.
-
-    A top-down leaf authors no register port and infers its
-    register-bus interface and canonical port from the serving router's
-    addressBlock declaration. `authored` distinguishes the two so
-    callers run the cross-interface compatibility check only when the
-    leaf names its own interface.
+def _authoredRegisterPort(block):
+    """Resolve a block's authored `registerPorts:` row as
+    (portName, interfaceName, ifaceContext).
 
     Multiple registerPorts: rows are rejected by the block parse hook."""
-    registerPorts = leafBlock.get('registerPorts')
-    if registerPorts:
-        portName = next(iter(registerPorts.keys()))
-        regPortRow = registerPorts[portName]
-        leafIfaceKey = regPortRow['interfaceKey']
-        leafIfaceContext = qualifiedKeyContext(
-            regPortRow['interface'], leafIfaceKey, 'registerPorts interface')
-        leafIfaceRow = prj.flatData['interfaces'][leafIfaceKey]
-        return portName, regPortRow['interface'], leafIfaceRow, leafIfaceContext, True
+    registerPorts = block['registerPorts']
+    portName = next(iter(registerPorts.keys()))
+    regPortRow = registerPorts[portName]
+    ifaceContext = qualifiedKeyContext(
+        regPortRow['interface'], regPortRow['interfaceKey'], 'registerPorts interface')
+    return portName, regPortRow['interface'], ifaceContext
 
-    routerInterface, routerIfaceRow, routerIfaceContext = \
+
+def _leafRegisterBinding(prj, servingRouter, boundaryBlock,
+                         addressBusTypes, routerInterfaceCache):
+    """Resolve the register-bus binding one serving context offers a
+    top-down leaf, as (portName, interfaceName, ifaceContext).
+
+    A top-down leaf authors no register port. Each serving context offers
+    it the nearest authored boundary: `boundaryBlock`, the innermost
+    router-less passthrough container between the leaf and the serving
+    router that authors `registerPorts:`, or, when there is none (None),
+    the serving router's registerDecoderPort and register-bus interface."""
+    if boundaryBlock is not None:
+        return _authoredRegisterPort(boundaryBlock)
+
+    routerInterface, _routerIfaceRow, routerIfaceContext = \
         _resolveRouterRegisterBusInterface(
             prj, servingRouter, addressBusTypes, routerInterfaceCache,
         )
     portName = servingRouter['addressBlock']['registerDecoderPort']
-    return portName, routerInterface, routerIfaceRow, routerIfaceContext, False
+    return portName, routerInterface, routerIfaceContext
+
+
+def _checkInferredInterfaceScope(prj, blockName, interfaceName, ifaceContext,
+                                 emitContext):
+    """A synthesised row for an inferring block names its register-bus
+    interface unqualified in `emitContext`; that name must resolve there to
+    the interface the binding was inferred from."""
+    _row, visibleContext = prj.lookupInScope('interfaces', emitContext, interfaceName)
+    if visibleContext == ifaceContext:
+        return
+    if visibleContext is None:
+        seen = "no interface of that name is visible"
+    else:
+        seen = f"that name resolves to the interface declared in file {visibleContext}"
+    _exit_with_error(
+        f"Block '{blockName}' declares no registerPorts: and infers "
+        f"register-bus interface '{interfaceName}' declared in file "
+        f"{ifaceContext}, but in file {emitContext}, where its register-bus "
+        f"rows are synthesised, {seen}. Rename one of the interfaces, or "
+        f"declare registerPorts: on block '{blockName}'."
+    )
 
 
 def _addressBusInterfaceTypes(prj):
@@ -736,43 +756,132 @@ def postProcess(prj):
             f"skill §5)."
         )
 
-    def _routerServingLeaf(leafBlockKey):
-        # Return any router serving an instance of this leaf block, walking
-        # outward through router-less single-consumer containers when the
-        # leaf's own immediate container hosts no router itself. All
-        # routers reaching this leaf must agree on registerDecoderPort (the
-        # handler block has one port name); picking any one is fine. Only
-        # instances in this build's hierarchy are considered.
+    def _servingRouters(blockKey):
+        # Every (router instance, nearest authored boundary block) pair
+        # serving an instance of this block, walking outward through
+        # router-less single-consumer containers when the instance's own
+        # container hosts no router itself. The boundary is the innermost
+        # such container that authors registerPorts:, or None when there
+        # is none. Only instances in this build's hierarchy are considered.
+        serving = []
         for _instRow in prj.flatData['instances'].values():
             if _instRow['instanceKey'] not in reachable:
                 continue
-            if _instRow['instanceTypeKey'] != leafBlockKey:
+            if _instRow['instanceTypeKey'] != blockKey:
                 continue
             containerKey = _instRow['containerKey']
             routerInst = decoderContainer.get(containerKey)
             if routerInst is not None:
-                return routers[routerInst['instanceTypeKey']]
-            if containerKey in passthroughConsumer:
-                servingRouter = _routerServingLeaf(containerKey)
-                if servingRouter is not None:
-                    return servingRouter
-        return None
+                pairs = [(routerInst, None)]
+            elif containerKey in passthroughConsumer:
+                pairs = _servingRouters(containerKey)
+                containerRow = blockInfo[containerKey]
+                if containerRow.get('registerPorts'):
+                    pairs = [(servingInst, containerRow) for servingInst, _outer in pairs]
+            else:
+                continue
+            for pair in pairs:
+                if pair not in serving:
+                    serving.append(pair)
+        return serving
+
+    def _routerServingLeaf(blockKey):
+        # Return the register-bus binding (portName, interfaceName,
+        # ifaceContext) of this block, or None when no router serves it. A
+        # block with registerPorts: binds its authored row. A block without
+        # it has one register-bus port for all its instances, so its binding
+        # depends on the block alone: every instance must infer the same
+        # interface from its nearest authored boundary, else its serving
+        # router. The port takes the name every instance infers, or the
+        # interface name when they infer different names; each instance's
+        # connection carries its own wiring.
+        serving = _servingRouters(blockKey)
+        if not serving:
+            return None
+        blockRow = blockInfo[blockKey]
+        if blockRow.get('registerPorts'):
+            return _authoredRegisterPort(blockRow)
+        sources = []
+        for servingInst, boundary in serving:
+            routerBlock = routers[servingInst['instanceTypeKey']]
+            if boundary is not None:
+                source = f"the registerPorts: boundary of block '{boundary['block']}'"
+            else:
+                source = (f"router '{servingInst['instance']}' (block "
+                          f"'{routerBlock['block']}')")
+            entry = (source, _leafRegisterBinding(
+                prj, routerBlock, boundary, addressBusTypes,
+                routerInterfaceCache,
+            ))
+            if entry not in sources:
+                sources.append(entry)
+        interfaces = []
+        for _source, (_port, interface, context) in sources:
+            if (interface, context) not in interfaces:
+                interfaces.append((interface, context))
+        if len(interfaces) > 1:
+            listing = []
+            for source, (_port, interface, context) in sources:
+                entry = f"{source} supplies interface '{interface}' (file {context})"
+                if entry not in listing:
+                    listing.append(entry)
+            # A router cannot declare registerPorts:, so an authored
+            # boundary disagreeing with a router must match the router's
+            # upstreamPort interface instead.
+            routerSources = [
+                (servingInst, routers[servingInst['instanceTypeKey']])
+                for servingInst, boundary in serving if boundary is None
+            ]
+            boundaryBlocks = []
+            for _servingInst, boundary in serving:
+                if boundary is not None and boundary['block'] not in boundaryBlocks:
+                    boundaryBlocks.append(boundary['block'])
+            routerInterfaces = {
+                routerBlock['addressBlock']['upstreamPort']
+                for _servingInst, routerBlock in routerSources
+            }
+            separate = "a separate block per boundary: a block has one register port type."
+            if not routerSources:
+                fix = f"Give the boundaries the same registerPorts: interface, or use {separate}"
+            elif boundaryBlocks and len(routerInterfaces) == 1:
+                routerNames = ', '.join(
+                    f"'{servingInst['instance']}'" for servingInst, _routerBlock in routerSources)
+                blockNames = ', '.join(f"'{name}'" for name in boundaryBlocks)
+                fix = (f"Make the registerPorts: boundary of block {blockNames} "
+                       f"use interface '{next(iter(routerInterfaces))}', the "
+                       f"upstreamPort interface of router {routerNames}, or "
+                       f"use {separate}")
+            else:
+                fix = f"Use {separate}"
+            _exit_with_error(
+                f"Block '{blockRow['block']}' declares no registerPorts: and "
+                f"infers its register-bus interface from the nearest authored "
+                f"boundary of each instance, but its instances infer "
+                f"different interfaces: {'; '.join(listing)}. {fix}"
+            )
+        interfaceName, ifaceContext = interfaces[0]
+        portNames = {port for _source, (port, _interface, _context) in sources}
+        portName = next(iter(portNames)) if len(portNames) == 1 else interfaceName
+        return portName, interfaceName, ifaceContext
+
+    # Resolved before any synthesis, passthrough containers ahead of the
+    # leaves behind them, so a binding conflict names the container.
+    servingByBlock = {
+        blockKey: _routerServingLeaf(blockKey)
+        for blockKey in (*passthroughConsumer, *blocksNeedingHandler)
+    }
 
     for leafBlockKey, leafBlockSimple in blocksNeedingHandler.items():
         leafBlock = blockInfo[leafBlockKey]
         leafContext = leafBlock['_context']
 
-        # The handler block's register-bus port is named after the
-        # router's registerDecoderPort, not the leaf's authored port.
-        # This matches the legacy convention: every <leaf>Regs block
-        # exposes the same canonical port name (typically `apbReg`).
-        # The leaf-side port name (`portName`) appears on the
-        # connectionMap's parent-boundary `port:` field. For a reusable
-        # IP it is the authored `registerPorts:` key (e.g. `regs`); for
-        # a top-down leaf it is the router's `registerDecoderPort`, the
-        # synthesised canonical register-bus port.
-        servingRouter = _routerServingLeaf(leafBlockKey)
-        if servingRouter is None:
+        # The handler's register-bus port takes the leaf's own port name
+        # (`portName`), which also appears on the connectionMap's
+        # parent-boundary `port:` field: the authored `registerPorts:` key
+        # (e.g. `regs`) for a reusable IP, or the per-block name
+        # _routerServingLeaf resolves for a top-down leaf.
+        serving = servingByBlock[leafBlockKey]
+        if serving is None:
             _exit_with_error(
                 f"Leaf block '{leafBlockSimple}' needs a register "
                 f"handler but no router was found serving any of its "
@@ -781,17 +890,14 @@ def postProcess(prj):
                 f"in a container that a router serves and that holds no "
                 f"other register consumer."
             )
-        handlerPort = servingRouter['addressBlock']['registerDecoderPort']
-
-        # A reusable IP authors its register-bus interface in
-        # registerPorts:; a top-down leaf infers it from the serving
-        # router (legacy inference behaviour). The handler block emits
-        # this interface for its register storage either way.
-        portName, leafInterfaceName, _leafIfaceRow, _leafIfaceContext, _authored = \
-            _leafRegisterBinding(
-                prj, leafBlock, servingRouter, addressBusTypes,
-                routerInterfaceCache,
-            )
+        # A reusable IP authors its register-bus binding in registerPorts:;
+        # a top-down leaf infers it from the nearest authored boundary, or
+        # else the serving router. The handler block emits this interface
+        # for its register storage either way.
+        portName, leafInterfaceName, leafIfaceContext = serving
+        if not leafBlock.get('registerPorts'):
+            _checkInferredInterfaceScope(
+                prj, leafBlockSimple, leafInterfaceName, leafIfaceContext, leafContext)
 
         # The handler inherits the leaf block's parameters so it emits
         # module parameters and selects the leaf's module-local
@@ -806,7 +912,7 @@ def postProcess(prj):
                 parentParams,
             )
         connection_map['port'] = portName
-        connection_map['instancePort'] = handlerPort
+        connection_map['instancePort'] = portName
 
         _section(leafContext, 'blocks')[reg_block] = block_def
         _section(leafContext, 'instances')[instance_name] = instance_def
@@ -876,16 +982,16 @@ def postProcess(prj):
                     routerInterfaceCache,
             )
             # The router-to-leaf port name is the leaf's authored
-            # registerPorts: key (reusable IP) or the router's
-            # registerDecoderPort (top-down leaf or passthrough
+            # registerPorts: key (reusable IP) or the per-block name
+            # _routerServingLeaf resolves (top-down leaf or passthrough
             # container). Cross-interface compatibility of an authored
             # leaf is checked at the end of projectCreate by validatePorts,
             # which reads registerPorts: as part of the leaf's declared-
             # port surface; synthesis only emits the bind here.
-            portName = _leafRegisterBinding(
-                prj, leafBlock, routerBlock, addressBusTypes,
-                routerInterfaceCache,
-            )[0]
+            if leafBlock.get('registerPorts'):
+                portName = _authoredRegisterPort(leafBlock)[0]
+            else:
+                portName = servingByBlock[instanceTypeKey][0]
 
             listOfInstances.append(instRow['instanceKey'])
             connection = {
@@ -1046,23 +1152,24 @@ def postProcess(prj):
         _section(routerInstRow['_context'], 'connectionMaps').append(connection_map)
 
     # ---- Passthrough boundary maps (router-less containers) ----
-    # Each passthrough container bridges its boundary port, as
-    # _leafRegisterBinding names it, to its single inner consumer: one
-    # connectionMap per chain level.
+    # Each passthrough container bridges its boundary port to its single
+    # inner consumer's port, each named per block by _routerServingLeaf:
+    # one connectionMap per chain level.
     registerBusPassthrough = dict()
     for containerBlockKey, consumerInstRow in passthroughConsumer.items():
         containerBlockRow = blockInfo[containerBlockKey]
         consumerBlock = blockInfo[consumerInstRow['instanceTypeKey']]
-        servingRouter = _routerServingLeaf(containerBlockKey)
-        boundaryPort = _leafRegisterBinding(
-            prj, containerBlockRow, servingRouter, addressBusTypes,
-            routerInterfaceCache,
-        )[0]
-        innerPort, innerInterface, _innerIfaceRow, _innerIfaceContext, _authored = \
-            _leafRegisterBinding(
-                prj, consumerBlock, servingRouter, addressBusTypes,
-                routerInterfaceCache,
-            )
+        boundaryPort, _boundaryInterface, _boundaryContext = \
+            servingByBlock[containerBlockKey]
+        if consumerBlock.get('registerPorts'):
+            innerPort, innerInterface, _innerIfaceContext = \
+                _authoredRegisterPort(consumerBlock)
+        else:
+            innerPort, innerInterface, innerIfaceContext = \
+                servingByBlock[consumerInstRow['instanceTypeKey']]
+            _checkInferredInterfaceScope(
+                prj, consumerBlock['block'], innerInterface, innerIfaceContext,
+                consumerInstRow['_context'])
         connection_map = {
             'interface': innerInterface,
             'block': containerBlockRow['block'],
