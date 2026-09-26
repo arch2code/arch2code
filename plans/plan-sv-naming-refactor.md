@@ -88,7 +88,15 @@
   leaves the file and reports a TODO that says what to do, and a conflict it
   cannot resolve halts the chain before any damage. One general guard covers
   each class of case; there is no ownership inference. `make migrate` never
-  runs or reads version control.
+  runs or reads version control. Changing a prefix that is already set
+  stays a manual job: the user renames the files first, then runs `make
+  migrate`. Migrate does not try to detect the old prefix. The fileMap
+  comment and the new-project scaffold say so.
+- **One SV namespace (user, 2026-09-25):** SV module and package names are
+  checked for duplicates together, because Verilator treats them as one
+  namespace and a name is also a file stem. Prefixes may use only letters,
+  digits and `_`, and SV names may not contain `$`, because every name ends
+  up in a filename.
 - **Per-project fileMap (user, 2026-09-25):** each block's and context's
   artifacts are named and placed by the owning project's merged fileMap, the
   same way that project names them standalone. A composing root must not

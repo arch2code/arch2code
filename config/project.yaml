@@ -112,7 +112,9 @@ fileGeneration:
     #   logical extension keys to real ones. basePath must reference a dirs: key.
     # The owning project's filename prefix goes in front: svFilePrefix for an
     #   entry with sv/svh exts, fwFilePrefix for basePath fwInc, scFilePrefix for
-    #   the rest. A project-mode name is literal and takes no prefix.
+    #   the rest. A project-mode name is literal and takes no prefix. To change
+    #   a prefix that is already set, rename the files by hand first, then run
+    #   make migrate.
     # A composed build names and places each block's and context's files by the
     #   fileMap of the project that owns it, as that project does on its own,
     #   including entry kinds the composing project lacks. Project-mode entries

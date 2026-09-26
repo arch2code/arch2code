@@ -42,7 +42,9 @@ projectFiles:
 # The top level instance of the design
 topInstance: {name}_tb
 
-# Filename prefixes. An omitted key and "" both mean no prefix.
+# Filename prefixes. An omitted key and "" both mean no prefix. To change a
+# prefix that is already set, rename the files by hand first, then run
+# make migrate.
 # svFilePrefix: ""  # Prefix for generated SystemVerilog filenames and matching module names
 # scFilePrefix: ""  # Prefix for generated SystemC filenames
 # fwFilePrefix: ""  # Prefix for generated firmware filenames

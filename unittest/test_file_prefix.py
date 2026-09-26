@@ -26,6 +26,10 @@ parameterized registrars:
 - a prefix that makes two projects' blocks or packages share an SV name is
   rejected naming both projects, and so are two blocks that share a C++ name
   while their SV names differ;
+- a block foo_package beside a context foo fails make db, because SV modules
+  and packages share one namespace and one file stem;
+- an svFilePrefix or scFilePrefix holding '$', and a block whose SV name
+  holds '$', fail make db;
 - make db rejects two Config declarations sharing one name, a block named
   like another block's Verilated wrapper, a package name that is not an SV
   identifier and an RTL block named like an SV keyword;
@@ -522,8 +526,8 @@ def check_collisions():
     ok = True
     rootBlocks = ("'rootProj'", "'childProj'")
     cases = (
-        (blockCollision, "SystemVerilog module name 'rootLeaf'", rootBlocks, 'block SV'),
-        (packageCollision, "SystemVerilog package name 'rootTop_package'", rootBlocks,
+        (blockCollision, "SystemVerilog module or package name 'rootLeaf'", rootBlocks, 'block SV'),
+        (packageCollision, "SystemVerilog module or package name 'rootTop_package'", rootBlocks,
          'package SV'),
         (cppBlockCollision, "C++ module name 'foo_bar'",
          ("'bar' (project 'foo')", "'foo_bar' (project 'foo_bar')"), 'block C++'),
@@ -654,9 +658,65 @@ instances:
     return expect_db_failure(
         "a block named like a Verilated wrapper", single_project('wrapclash', design),
         'yaml/project.yaml',
-        ["SystemVerilog module name 'leaf_hdl_sv_wrapper'",
+        ["SystemVerilog module or package name 'leaf_hdl_sv_wrapper'",
          "the Verilated wrapper of block 'leaf' (project 'wrapclash')",
          "block 'leaf_hdl_sv_wrapper' (project 'wrapclash')"])
+
+
+def check_module_package_shared_name():
+    # Block foo_package and context foo's package both write rtl/foo_package.sv
+    # and declare one Verilator design-unit name.
+    design = """include:
+    - foo.yaml
+blocks:
+    top: { desc: "top" }
+    foo_package: { desc: "RTL block named like context foo's package" }
+instances:
+    uTop: { container: top, instanceType: top }
+    uFoo: { container: top, instanceType: foo_package }
+"""
+    files = single_project('svns', design)
+    files['yaml/foo.yaml'] = """constants:
+    FOO_W: { value: 4, desc: "gives the context a package" }
+"""
+    return expect_db_failure(
+        "a block foo_package beside a context foo", files, 'yaml/project.yaml',
+        ["SystemVerilog module or package name 'foo_package'",
+         "the module of block 'foo_package' (project 'svns')",
+         "the package of context 'foo.yaml' (project 'svns')"])
+
+
+def check_dollar_prefix():
+    design = """blocks:
+    top: { desc: "top" }
+instances:
+    uTop: { container: top, instanceType: top }
+"""
+    ok = True
+    for key in ('svFilePrefix', 'scFilePrefix'):
+        files = single_project('dollarprefix', design)
+        files['yaml/project.yaml'] += f'{key}: "a$"\n'
+        ok = expect_db_failure(
+            f"{key} a$", files, 'yaml/project.yaml',
+            [f"{key} 'a$' in project",
+             "may contain only letters, digits and '_'",
+             "the prefix ends up in filenames"]) and ok
+    return ok
+
+
+def check_dollar_module_name():
+    design = """blocks:
+    top: { desc: "top", hasRtl: false }
+    a$b: { desc: "RTL block whose SV name holds a dollar" }
+instances:
+    uTop: { container: top, instanceType: top }
+    uAb: { container: top, instanceType: a$b }
+"""
+    return expect_db_failure(
+        "an RTL block named a$b", single_project('dollarblock', design), 'yaml/project.yaml',
+        ["SystemVerilog module name 'a$b'",
+         "block 'a$b' (project 'dollarblock')",
+         "'$' is not allowed even though SystemVerilog permits it"])
 
 
 def expect_db_success(label, files, projectFile):
@@ -1062,6 +1122,7 @@ def main():
               check_prefix_chain_after_new_block_halts, check_prefix_chain_from_main_halts,
               check_settled_prefixed_twin_migrates,
               check_config_name_collision, check_wrapper_module_collision,
+              check_module_package_shared_name, check_dollar_prefix, check_dollar_module_name,
               check_illegal_package_name, check_model_only_blocks_not_sv_names,
               check_keyword_module_name, check_sweep_keeps_current_file,
               check_wrapper_body_name)

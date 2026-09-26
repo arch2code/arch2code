@@ -119,8 +119,12 @@ def rejectSharedName(names, kind, entity, describe, remedy):
             exit(warningAndErrorReport())
         keyByName[name] = key
 
-# A plain SystemVerilog identifier (IEEE 1800 5.6).
-SV_IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_$]*')
+# A plain SystemVerilog identifier (IEEE 1800 5.6) without '$', because every
+# SV name is also a filename stem.
+SV_IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+# The characters a filename prefix may use.
+FILE_PREFIX_CHARS = re.compile(r'[A-Za-z0-9_]*')
 
 # The reserved keywords of IEEE 1800-2017 Annex B, none of which an identifier
 # may spell.
@@ -169,7 +173,8 @@ def rejectIllegalSvName(names, kind, describe, remedy):
     for key, name in names.items():
         if not SV_IDENTIFIER.fullmatch(name):
             printError(f"SystemVerilog {kind} name '{name}' of {describe(key)} is not a "
-                       f"legal SystemVerilog identifier; {remedy}.")
+                       f"legal SystemVerilog identifier. The name is also a filename, so '$' "
+                       f"is not allowed even though SystemVerilog permits it; {remedy}.")
             exit(warningAndErrorReport())
         if name in SV_KEYWORDS:
             printError(f"SystemVerilog {kind} name '{name}' of {describe(key)} is a "
@@ -1529,7 +1534,7 @@ class projectOpen:
         ret['blockUsesClog2'] = blockUsesClog2
 
     def getBDSvWrapperNames(self, ret):
-        # Verilated wrapper design-unit names (projectCreate.deriveSvModuleNames),
+        # Verilated wrapper design-unit names (projectCreate.deriveSvWrapperNames),
         # plus the SC wrapper's class shape. One standalone SV top per label,
         # each scaffolded and verilated as a fixed-width model: the owner's
         # declarations under the block's name, the labels this build declares
@@ -4070,14 +4075,13 @@ class projectCreate:
         self.calcForeignConfigHeaders()
         self.deriveSvWrapperNames()
         self.calcRegistrarPairs()
-        self.deriveSvModuleNames()
         # reject address-enum identity collisions before the enums are emitted
         self.validateAddressGroupEnumIdentity()
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
         self.saveIncludeFiles()
-        self.validateSvPackageNames()
+        self.validateSvDesignUnitNames()
         # The project's top context: the defining context of the topInstance's
         # block. Its include chain spans the whole build, so it keys the single
         # per-project (mode: project) artifact, the rtl.f verilator file list.
@@ -4681,11 +4685,11 @@ class projectCreate:
                 for v in entry['vlVariants']}
         self.config.setConfig('SVWRAPPERNAMES', self.svWrapperNames, bin=True)
 
-    def deriveSvModuleNames(self):
-        # Every SV module a build emits: block modules, Verilated wrapper bodies,
-        # standalone variant tops, foreign tops and pair tops. Two of them
-        # sharing a name are two files declaring one module, which Verilator
-        # rejects, so they are checked together.
+    def validateSvDesignUnitNames(self):
+        # Every SV module and package a build emits. Verilator keeps modules
+        # and packages in one namespace, and each name is also its file's stem,
+        # so two of them sharing a name are checked together. Whether a context
+        # emits a package is only final once the address enums are added.
         blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         condRows = {k: artifactPaths.blockCondRow(row, blocksWithParams)
@@ -4694,34 +4698,38 @@ class projectCreate:
             return self.projectLayout[project]['fileMap']
         def ownerFileMap(blockKey):
             return projectFileMap(self.contextOwningProject[blockByKey[blockKey]['_context']])
-        emitted = dict()
+        modules = dict()
         for blockKey, names in self.svWrapperNames.items():
             fileMap = ownerFileMap(blockKey)
             if artifactPaths.fileMapCondMatch(fileMap['rtlModule'], condRows[blockKey]):
-                emitted[('block', blockKey)] = self.blockSvModuleName[blockKey]
+                modules[('block', blockKey)] = self.blockSvModuleName[blockKey]
             if artifactPaths.fileMapCondMatch(fileMap['vlSvWrap'], condRows[blockKey]):
-                emitted[('wrapper', blockKey)] = names['bodyModule']
+                modules[('wrapper', blockKey)] = names['bodyModule']
                 for v, name in names['variantTops'].items():
-                    emitted[('variantTop', blockKey, v)] = name
+                    modules[('variantTop', blockKey, v)] = name
         for declaringProject, childKey in self.config.getConfig('FOREIGNCONFIGHEADERS'):
             if artifactPaths.fileMapCondMatch(projectFileMap(declaringProject)['vlSvWrapForeign'],
                                               condRows[childKey]):
                 tops = self.svWrapperNames[childKey]['foreignVariantTops'][declaringProject]
                 for v, name in tops.items():
-                    emitted[('foreignTop', declaringProject, childKey, v)] = name
+                    modules[('foreignTop', declaringProject, childKey, v)] = name
         for (parentKey, childKey), pair in self.config.getConfig('REGISTRARPAIRS').items():
             if not artifactPaths.fileMapCondMatch(ownerFileMap(parentKey)['vlSvWrapPair'],
                                                   condRows[childKey]):
                 continue
             for registration in pair['verifRegistrations']:
                 if registration['pairSpecific']:
-                    emitted[('pairTop', parentKey, childKey, registration['variant'])] = \
+                    modules[('pairTop', parentKey, childKey, registration['variant'])] = \
                         registration['topModule']
+        packages = {('package', context): self.contextSvPackageName[context]
+                    for context in self.includeValid
+                    if self.contextFileEmitted(projectFileMap(self.contextOwningProject[context])['package'],
+                                               context)}
 
         def describeBlock(blockKey):
             row = blockByKey[blockKey]
             return f"block '{row['block']}' (project '{self.contextOwningProject[row['_context']]}')"
-        def describe(key):
+        def describeModule(key):
             if key[0] == 'block':
                 return describeBlock(key[1])
             if key[0] == 'wrapper':
@@ -4733,29 +4741,24 @@ class projectCreate:
                         f"of {describeBlock(key[2])}")
             return (f"the variant '{key[3]}' pair top of {describeBlock(key[1])} "
                     f"containing {describeBlock(key[2])}")
-        rejectIllegalSvName(emitted, "module", describe,
-                            "rename the block or change its project's svFilePrefix")
-        rejectSharedName(emitted, "SystemVerilog module name", "design units", describe,
-                         "rename one block or give its project a distinct svFilePrefix")
-
-    def validateSvPackageNames(self):
-        # Every SV package a build emits has a legal, unique name. Whether a
-        # context emits one is only final once the address enums are added.
-        emitted = {context: self.contextSvPackageName[context] for context in self.includeValid
-                   if self.contextFileEmitted(
-                       self.projectLayout[self.contextOwningProject[context]]['fileMap']['package'],
-                       context)}
-        def describeContext(context):
-            return f"'{context}' (project '{self.contextOwningProject[context]}')"
-        def describeContextFile(context):
-            owner = self.contextOwningProject[context]
+        def describeContextFile(key):
+            owner = self.contextOwningProject[key[1]]
             prefix = self.projectLayout[owner]['filePrefix']['sv']
             prefixNote = f", svFilePrefix '{prefix}'" if prefix else ''
-            return f"context '{context}' (project '{owner}'{prefixNote})"
-        rejectIllegalSvName(emitted, "package", describeContextFile,
+            return f"context '{key[1]}' (project '{owner}'{prefixNote})"
+        def describe(key):
+            if key[0] == 'package':
+                return (f"the package of context '{key[1]}' "
+                        f"(project '{self.contextOwningProject[key[1]]}')")
+            return f"the module of {describeModule(key)}"
+        rejectIllegalSvName(modules, "module", describeModule,
+                            "rename the block or change its project's svFilePrefix")
+        rejectIllegalSvName(packages, "package", describeContextFile,
                             "set includeName in that file or rename the file")
-        rejectSharedName(emitted, "SystemVerilog package name", "contexts",
-                         describeContext, "give one context a distinct includeName")
+        rejectSharedName(modules | packages, "SystemVerilog module or package name",
+                         "design units", describe,
+                         "rename one block, give one context a distinct includeName, or "
+                         "give one project a distinct svFilePrefix")
 
     def _resolveDirMacros(self, dirsDict, baseDir):
         # Resolve a project's dirs: block into an absolute macro dict, seeded
@@ -4831,14 +4834,15 @@ class projectCreate:
     def _filePrefixes(self, proj, projectLabel):
         # An omitted key means no prefix. The SV names a prefix produces are
         # checked as identifiers once they exist (deriveModuleIdentities,
-        # deriveSvModuleNames).
+        # validateSvDesignUnitNames).
         prefixes = dict()
         for kind, key in self.FILE_PREFIX_KEYS.items():
             value = proj.get(key, '')
             if not isinstance(value, str):
                 self.logError(f"{key} in project '{projectLabel}' must be a string, got {value!r}")
-            elif os.sep in value:
-                self.logError(f"{key} '{value}' in project '{projectLabel}' must not contain '{os.sep}'")
+            elif not FILE_PREFIX_CHARS.fullmatch(value):
+                self.logError(f"{key} '{value}' in project '{projectLabel}' may contain only "
+                              f"letters, digits and '_', because the prefix ends up in filenames")
             prefixes[kind] = value
         return prefixes
 
