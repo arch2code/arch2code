@@ -5634,6 +5634,52 @@ resets:
         design=design, projectDomains=projectDomains)
 
 
+def _hasvl_inner_map_port_design(leafDomains):
+    """hasVl 'leaf' has no ports: and no connection reaches it; its only
+    port 'data' is the inner end of hasVl-false 'wrap's connectionMaps row,
+    so it is on leaf's default clock clk."""
+    return HASVL_PORT_INTF + f"""blocks:
+    top_tb: {{ desc: top, hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    prod: {{ desc: prod, hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    wrap: {{ desc: wrap, hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }}
+    leaf:
+        desc: leaf
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        hasTb: false
+{leafDomains}instances:
+    top_tb: {{ container: top_tb, instanceType: top_tb, instGroup: top }}
+    uProd: {{ container: top_tb, instanceType: prod, instGroup: top }}
+    uWrap: {{ container: top_tb, instanceType: wrap, instGroup: top }}
+    uLeaf: {{ container: wrap, instanceType: leaf, instGroup: top }}
+connections:
+    - {{ interface: dataIf, src: uProd, srcport: data, dst: uWrap, dstport: exposed }}
+connectionMaps:
+    - {{ interface: dataIf, block: wrap, direction: dst, instance: uLeaf, port: exposed, instancePort: data }}
+"""
+
+
+def run_hasvl_inner_connectionmaps_port_rejected():
+    """Negative, inner connectionMaps port: 'leaf' declares resets: {}, and
+    its port 'data', reached only as the inner end of 'wrap's
+    connectionMaps row, is on clock clk, which has no reset for the port's
+    BFM."""
+    return _expect_diagnostic(
+        "a hasVl block's inner connectionMaps port needs a selected reset on its clock",
+        ("The co-simulation wrapper's BFM needs one", 'leaf', 'data', 'clk'),
+        design=_hasvl_inner_map_port_design('        resets: {}\n'), projectDomains='')
+
+
+def run_hasvl_inner_connectionmaps_port_positive():
+    """Positive control: the same design with a reset on 'leaf's clk builds."""
+    return _expect_builds(
+        "a hasVl block's inner connectionMaps port on a clock with a reset builds",
+        design=_hasvl_inner_map_port_design(
+            '        clocks: { clk: { } }\n        resets: { rst_n: { clock: clk } }\n'),
+        projectDomains='')
+
+
 def run_hasvl_port_reset_cases():
     return all((run_hasvl_port_ambiguous_reset_rejected(),
                 run_hasvl_port_no_reset_at_all_rejected(),
@@ -5649,7 +5695,9 @@ def run_hasvl_port_reset_cases():
                 run_hasvl_passthrough_register_bus_port_excluded(),
                 run_hasvl_passthrough_extra_port_still_rejected(),
                 run_hasvl_memory_connection_port_rejected(),
-                run_hasvl_register_connection_port_rejected()))
+                run_hasvl_register_connection_port_rejected(),
+                run_hasvl_inner_connectionmaps_port_rejected(),
+                run_hasvl_inner_connectionmaps_port_positive()))
 
 
 # ------------------------------------------------------- name collisions --
@@ -7792,6 +7840,40 @@ def run_odd_picosecond_period_rejected_cases():
     ))
 
 
+def _block_clock_period_design(clockBody):
+    return """blocks:
+    top_tb: { desc: "testbench container", hasVl: false, hasMdl: false, hasTb: false, hasRtl: false }
+    leaf:
+        desc: "hasVl leaf with one block clock"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: """ + clockBody + """
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top }
+"""
+
+
+def run_block_clock_period_authored_falsy_cases():
+    """A block clock's authored period: 0, false or "0" is not a positive
+    integer and is rejected rather than read as undeclared. An omitted
+    period builds."""
+    return all((
+        *(_expect_diagnostic(
+            f"a block clock with period: {authored} is rejected",
+            ("clocks: entry 'clk' declares period:", 'not a positive integer'),
+            design=_block_clock_period_design(f"{{ period: {authored} }}"), projectDomains='')
+          for authored in ('0', 'false', '"0"')),
+        _expect_builds(
+            "control: a block clock with no period: builds",
+            design=_block_clock_period_design("{ }"), projectDomains=''),
+    ))
+
+
 def _run():
     print("=" * 72)
     print("TESTING PER-BLOCK CLOCK AND RESET DERIVATION")
@@ -7860,7 +7942,8 @@ def _run():
                              run_object_access_name_cases,
                              run_inferred_port_name_collision_cases,
                              run_inferred_boundary_port_name_cases)),
-        ("Clock period resolution", (run_odd_picosecond_period_rejected_cases,)),
+        ("Clock period resolution", (run_odd_picosecond_period_rejected_cases,
+                                     run_block_clock_period_authored_falsy_cases)),
         ("Graph shape", (run_clock_tree_shape_cases,)),
         ("Standalone attribute resolution", (run_standalone_period_cases,
                                              run_reused_container_period_cases)),

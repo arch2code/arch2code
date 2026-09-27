@@ -8795,10 +8795,11 @@ class projectCreate:
     # positive-integer coercion as the project's own clocks when the block
     # declares one, but unlike the project's this field has no schema default
     # (standalone resolution distinguishes declared from undeclared), so an
-    # undeclared period is left alone rather than coerced. This node is also
-    # not projectScope, so the hook's context argument is the block's own file.
+    # omitted period, stored as "", is left alone; any authored value,
+    # 0 and false included, is checked. This node is also not projectScope,
+    # so the hook's context argument is the block's own file.
     def _post_resolveBlockClockPeriod(self, itemkey, item, yamlFile):
-        if item['period'] and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, 'period'):
+        if item['period'] != "" and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, 'period'):
             self._rejectOddPicosecondPeriod(itemkey, item, yamlFile)
         return item
 

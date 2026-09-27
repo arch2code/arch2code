@@ -1686,11 +1686,15 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
 
     # The co-simulation wrapper resets each port's BFM with the port clock's
     # selected reset, so every clock timing a port of a hasVl block needs one:
-    # declared, connection-derived, boundary, memory and register ports. Only
-    # blocks declared in the root project are checked.
+    # declared, connection-derived, boundary, inner connectionMaps, memory and
+    # register ports. Only blocks declared in the root project are checked.
     portDomainsByBlock = dict()
     for (outerBlockKey, boundaryPortName), (domainClock, _) in boundaryDomains.items():
         portDomainsByBlock.setdefault(outerBlockKey, []).append((boundaryPortName, domainClock))
+    innerMapPortsByBlock = dict()
+    for connMap in connectionMaps.values():
+        innerMapPortsByBlock.setdefault(
+            instances[connMap['instanceKey']]['instanceTypeKey'], []).append(connMap['instancePortName'])
     connectionEndsByBlock = dict()
     for connRow in connections.values():
         for end in connRow['ends'].values():
@@ -1735,6 +1739,16 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                 continue
             portClock = topDownClock[(blockKey, portName)]
             bucket = portsByClock.setdefault(portClock, [])
+            if portName not in bucket:
+                bucket.append(portName)
+        # An inner connectionMaps port that no connection reaches and the
+        # block does not declare is on the block default clock.
+        connectionPorts = {end['portName'] for _, end in connectionEndsByBlock.get(blockKey, [])}
+        for portName in innerMapPortsByBlock.get(blockKey, []):
+            if (portName in boundaryPorts or portName in connectionPorts
+                    or _declaredPortClock(blocks, domains, blockKey, portName) is not None):
+                continue
+            bucket = portsByClock.setdefault(domain.defaultClock, [])
             if portName not in bucket:
                 bucket.append(portName)
         for portName in objectPortsByBlock.get(blockKey, []):
