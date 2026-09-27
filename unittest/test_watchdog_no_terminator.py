@@ -20,7 +20,7 @@ property but a static property of the configuration: a run that can never end
 usually makes fine progress, so a design that tickles would otherwise hold the
 fallback off forever.
 
-Rule 3 - the stall path is unchanged. The two paths share a wall-clock bound and
+Rule 3 - the stall path still fires. The two paths share a wall-clock bound and
 a loop, so a change to one can silently disarm the other.
 
 Rule 4 - the wall-clock bound is load-bearing, not decoration. It is the whole

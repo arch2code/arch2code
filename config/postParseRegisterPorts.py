@@ -1,9 +1,8 @@
-"""New-schema post-parse pass for register-bus distribution.
+"""Post-parse pass for register-bus distribution.
 
 Activated when at least one block declares `addressBlock:`; a no-op
-otherwise. This is the sole register-bus distribution pass. The
-register-bus interface and per-router attributes come exclusively from
-per-block `addressBlock:` / `registerPorts:` declarations.
+otherwise. The register-bus interface and per-router attributes come
+exclusively from per-block `addressBlock:` / `registerPorts:` declarations.
 
 Responsibilities:
   1. Build the router index from `prj.flatData['blocks']` rows that
@@ -389,8 +388,7 @@ def postProcess(prj):
     routers = _collectRouterBlocks(blockInfo)
     if not routers:
         # No addressBlock: routers are declared, so no register-bus
-        # decode pass runs for this project (the project either has no
-        # register bus at all or has not adopted the addressBlock: schema).
+        # decode pass runs for this project (the project has no register bus).
         # REGAPB_PASSTHROUGH is persisted regardless: projectCreate reads it
         # unconditionally.
         prj.config.setConfig("REGAPB_PASSTHROUGH", {}, bin=True)
@@ -549,8 +547,7 @@ def postProcess(prj):
     # itself a consumer of its parent. A container's status depends on its
     # children's, so the set grows by fixed point. The design root has no
     # parent to feed it and is never a passthrough; an unresolved chain
-    # ending there is reported as unserved further down. topBlockKeys was
-    # already computed above, ahead of the primary-router resolution.
+    # ending there is reported as unserved further down.
     consumerBlockKeys = set(blocksNeedingHandler)
     # A nested-router container is fed by an authored master connection or
     # by router-to-router dispatch, never by passthrough synthesis, even
@@ -696,16 +693,12 @@ def postProcess(prj):
                 f"router but also owns firmware-accessible registers/memories. "
                 f"The nested-router dispatch cannot also deliver this block's "
                 f"own register handler. Move those registers/memories onto a "
-                f"child leaf that the inner decoder serves (see the "
-                f"design-register-decode skill §1 nested-router case)."
+                f"child leaf that the inner decoder serves."
             )
 
-        # Check 3 (defensive fail-loud): a router that also owns a regAccess
-        # memory. Must precede Check 1's `if isRouter: continue`, which would
-        # otherwise let this slip through unreported. Without it, calcAddresses
-        # raises a KeyError (a router instance carries no addressGroup, so the
-        # space check's AddressGroups lookup on it fails), and clockTree.build()
-        # would report a misleading bridged-memory reset error.
+        # Check 3: a router owning a regAccess memory. Must precede Check 1's
+        # `if isRouter: continue`; later passes would fail on it with a
+        # KeyError or a misleading reset error.
         if isRouter and blockKey in regAccessMemoryByBlock:
             _exit_with_error(
                 f"block '{blockRow['block']}' is a register-decode router "
@@ -715,11 +708,8 @@ def postProcess(prj):
                 f"router serves."
             )
 
-        # Check 4: a router that owns registers; Check 3 has already
-        # reported a regAccess memory, so the block owns a register here. Its
-        # module is generated whole from its addressBlock:, so the
-        # <block>_regs handler Step 4 would synthesise inside it has nowhere
-        # to go.
+        # Check 4: a router owning registers. Its module is generated whole
+        # from addressBlock:, so a <block>_regs handler has nowhere to go.
         if isRouter and ownsRegisters:
             _exit_with_error(
                 f"block '{blockRow['block']}' is a register-decode router "
@@ -752,8 +742,7 @@ def postProcess(prj):
             f"nested register-decode router, or passes the register bus "
             f"through to a single register consumer) but declares no "
             f"registerPorts:. A reusable IP must declare its register-bus "
-            f"boundary under registerPorts: (see the design-register-decode "
-            f"skill §5)."
+            f"boundary under registerPorts:."
         )
 
     def _servingRouters(blockKey):
@@ -864,6 +853,77 @@ def postProcess(prj):
         portName = next(iter(portNames)) if len(portNames) == 1 else interfaceName
         return portName, interfaceName, ifaceContext
 
+    def _checkInferredPortName(leafBlockKey, portName):
+        # An inferred register-bus port joins the leaf's and its handler's
+        # port namespaces. Checked here as well as in the clock tree, which
+        # merges same-named connection ports whatever their protocol and
+        # cannot name the boundary the name came from.
+        blockRow = blockInfo[leafBlockKey]
+        names = dict()
+        for row in prj.flatData['registers'].values():
+            if row['blockKey'] == leafBlockKey:
+                names.setdefault(row['register'], 'register')
+        for row in prj.flatData['memories'].values():
+            if row['blockKey'] == leafBlockKey:
+                names.setdefault(row['memory'], 'memory')
+        for name in (blockRow.get('ports') or {}):
+            names.setdefault(name, 'port')
+        for name in (blockRow.get('clocks') or {}):
+            names.setdefault(name, 'clock')
+        for name in (blockRow.get('resets') or {}):
+            names.setdefault(name, 'reset')
+        for connRow in prj.flatData['connections'].values():
+            for end in connRow['ends'].values():
+                if end['instanceTypeKey'] == leafBlockKey:
+                    names.setdefault(end['portName'], 'connection port')
+        for connMap in prj.flatData['connectionMaps'].values():
+            if connMap['blockKey'] == leafBlockKey:
+                names.setdefault(connMap['portName'], 'connectionMaps port')
+            instTypeKey = prj.flatData['instances'][connMap['instanceKey']]['instanceTypeKey']
+            if instTypeKey == leafBlockKey:
+                names.setdefault(connMap['instancePortName'], 'connectionMaps port')
+        for row in prj.flatData['registerConnections'].values():
+            if prj.flatData['instances'][row['instanceKey']]['instanceTypeKey'] == leafBlockKey:
+                names.setdefault(row['register'], 'registerConnections port')
+        for row in prj.flatData['memoryConnections'].values():
+            if row['instanceKey'] and \
+                    prj.flatData['instances'][row['instanceKey']]['instanceTypeKey'] == leafBlockKey:
+                names.setdefault(row['memory'], 'memoryConnections port')
+        if portName not in names:
+            return
+        origins = []
+        for servingInst, boundary in _servingRouters(leafBlockKey):
+            if boundary is not None:
+                if _authoredRegisterPort(boundary)[0] == portName:
+                    origin = f"registerPorts: key '{portName}' of block '{boundary['block']}'"
+                    if origin not in origins:
+                        origins.append(origin)
+                continue
+            routerBlock = routers[servingInst['instanceTypeKey']]
+            if routerBlock['addressBlock']['registerDecoderPort'] == portName:
+                origin = (f"addressBlock: registerDecoderPort '{portName}' of "
+                          f"router block '{routerBlock['block']}'")
+                if origin not in origins:
+                    origins.append(origin)
+        if origins:
+            source = ' and '.join(origins)
+            renameSource = f"rename the {source}"
+        else:
+            source = (f"its register-bus interface name '{portName}', since its "
+                      f"instances infer different port names")
+            renameSource = "rename the interface"
+        block = blockRow['block']
+        kind = names[portName]
+        _exit_with_error(
+            f"Block '{block}' declares no registerPorts: and takes its "
+            f"register-bus port name '{portName}' from {source}, but block "
+            f"'{block}' already uses '{portName}' as a {kind}. The "
+            f"register-bus port name must differ from every register, "
+            f"memory, port, clock and reset of the block. Rename the {kind} "
+            f"'{portName}' of block '{block}', {renameSource}, or give block "
+            f"'{block}' its own registerPorts: entry."
+        )
+
     # Resolved before any synthesis, passthrough containers ahead of the
     # leaves behind them, so a binding conflict names the container.
     servingByBlock = {
@@ -898,6 +958,7 @@ def postProcess(prj):
         if not leafBlock.get('registerPorts'):
             _checkInferredInterfaceScope(
                 prj, leafBlockSimple, leafInterfaceName, leafIfaceContext, leafContext)
+            _checkInferredPortName(leafBlockKey, portName)
 
         # The handler inherits the leaf block's parameters so it emits
         # module parameters and selects the leaf's module-local
@@ -944,8 +1005,8 @@ def postProcess(prj):
                 if containerKey not in passthroughConsumer:
                     _exit_with_error(
                         f"Leaf instance '{instRow['instance']}' "
-                        f"(block '{instanceTypeKey}') is in container "
-                        f"'{containerKey}' which is not served by any "
+                        f"(block '{instRow['instanceType']}') is in container "
+                        f"'{instRow['container']}' which is not served by any "
                         f"router, directly or through single-consumer "
                         f"containers. Place the instance in a router's "
                         f"container, or in a container that a router "
@@ -1159,10 +1220,10 @@ def postProcess(prj):
     for containerBlockKey, consumerInstRow in passthroughConsumer.items():
         containerBlockRow = blockInfo[containerBlockKey]
         consumerBlock = blockInfo[consumerInstRow['instanceTypeKey']]
-        boundaryPort, _boundaryInterface, _boundaryContext = \
+        boundaryPort, boundaryInterface, boundaryContext = \
             servingByBlock[containerBlockKey]
         if consumerBlock.get('registerPorts'):
-            innerPort, innerInterface, _innerIfaceContext = \
+            innerPort, innerInterface, innerIfaceContext = \
                 _authoredRegisterPort(consumerBlock)
         else:
             innerPort, innerInterface, innerIfaceContext = \
@@ -1170,8 +1231,49 @@ def postProcess(prj):
             _checkInferredInterfaceScope(
                 prj, consumerBlock['block'], innerInterface, innerIfaceContext,
                 consumerInstRow['_context'])
+        # The map's interface: types the container's boundary port, so it
+        # carries the container's own interface, authored or inferred; the
+        # inner side is typed by the consumer's own register-bus row. The two
+        # must share one packed form under every container instance's
+        # variant.
+        containerAuthored = bool(containerBlockRow.get('registerPorts'))
+        if not containerAuthored:
+            _checkInferredInterfaceScope(
+                prj, containerBlockRow['block'], boundaryInterface, boundaryContext,
+                consumerInstRow['_context'])
+        if containerAuthored:
+            boundaryOrigin = "its registerPorts: interface"
+            fix = (f"give the registerPorts: interfaces of blocks "
+                   f"'{containerBlockRow['block']}' and '{consumerBlock['block']}' "
+                   f"the same packed form")
+        else:
+            boundaryOrigin = "the interface it infers"
+            fix = (f"give the registerPorts: interface of block "
+                   f"'{consumerBlock['block']}' the same packed form as "
+                   f"'{boundaryInterface}'")
+        for containerInstRow in prj.flatData['instances'].values():
+            if containerInstRow['instanceKey'] not in reachable:
+                continue
+            if containerInstRow['instanceTypeKey'] != containerBlockKey:
+                continue
+            prj.checkInterfacePair(
+                prj.data['interfaces'][boundaryContext][boundaryInterface],
+                prj.data['interfaces'][innerIfaceContext][innerInterface],
+                consumerInstRow['instanceTypeKey'],
+                consumerInstRow['variant'] or '',
+                f"Router-less container '{containerBlockRow['block']}' "
+                f"(instance '{containerInstRow['instance']}') passes the "
+                f"register bus on interface '{boundaryInterface}' "
+                f"({boundaryOrigin}) to instance "
+                f"'{consumerInstRow['instance']}' of block "
+                f"'{consumerBlock['block']}', whose registerPorts: interface "
+                f"is '{innerInterface}'. Both interfaces carry the one bus, so "
+                f"they must have the same packed form; {fix}",
+                boundaryContext, innerIfaceContext,
+                containerBlockKey, containerInstRow['variant'] or '',
+            )
         connection_map = {
-            'interface': innerInterface,
+            'interface': boundaryInterface,
             'block': containerBlockRow['block'],
             'port': boundaryPort,
             'direction': 'dst',
@@ -1193,7 +1295,8 @@ def postProcess(prj):
     # ---- Emit per owner context ----
     # Every synthesised connection/connectionMap here is a register-bus feed,
     # and neither row states clock:. A top-down leaf's register-bus port
-    # takes whichever of its clocks the instance map binds to the bus clock.
+    # runs on the leaf clock, bound to the bus clock, that owns the leaf
+    # reset bound to the bus reset.
     # A nested router's feed carries no clock: at all; a nested router on a
     # non-default clock names it on its own addressBlock: instead.
     for ownerContext, sections in perContext.items():

@@ -1,23 +1,13 @@
 # clkGen - a fixture for output clocks, output resets, local nets, an
 # export and a `~` binding.
 #
-# clkDivider produces clkDiv (an output clock) and rstDivRaw_n, its own raw
-# output reset belonging to clkDiv (an output reset belongs to the clock it
-# is released into, here the block's own output rather than an input).
-# clkGen re-declares clkDiv as its own output and binds uDivider's clkDiv
-# straight onto it: that binding is the export that lets clkGen's own
-# co-simulation wrapper observe clkDiv without generating it.
-# clkDivider's rstDivRaw_n is bound to a name clkGen does not declare
-# (rstDivRaw_n): a local net, visible only inside clkGen, wired as an
-# internal `wire`. Rather than releasing the clkDiv domain directly off that
-# raw reset, uRstSync takes it in as an asynchronous-assert input and
-# releases rstDivInt_n synchronously to clkDiv: the raw reset is asserted
-# whenever uDivider's own rstRef_n is asserted, which is exactly when clkDiv
-# is invalid. clkDivider also carries a second, deliberately unused output
-# tap (clkDivBy2) bound to `~` at uDivider, so the generated RTL shows an
-# output left explicitly unconnected rather than dropped. u_clkGen's own
-# clkDiv output is left `~` one level up, in clkGen_tb: nothing above clkGen
-# consumes it once the wrapper observes it directly at clkGen's own boundary.
+# - uDivider's clkDiv is bound onto clkGen's own clkDiv output (the export),
+#   so clkGen's co-simulation wrapper observes it without generating it.
+# - uDivider's rstDivRaw_n drives a local net of the same name; uRstSync
+#   asserts from it asynchronously and releases rstDivInt_n synchronously
+#   to clkDiv.
+# - uDivider's clkDivBy2, and u_clkGen's clkDiv in clkGen_tb, are bound to
+#   `~`, so the generated RTL shows outputs left explicitly unconnected.
 
 blocks:
     clkGen_tb:

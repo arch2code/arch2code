@@ -41,4 +41,36 @@ clkGen_clkConsumer uConsumer (
 
 // GENERATED_CODE_END
 
+// Checks on clkGen's internal reset and consumer, sampled on clkRef so they
+// still fire if clkDiv stops.
+`ifndef SYNTHESIS
+localparam int unsigned DIV_PERIOD = 8;   // clkRef cycles per clkDiv period
+localparam int unsigned RST_RELEASE_LIMIT = 4 * DIV_PERIOD;
+typedef logic [$bits(uConsumer.count)-1:0] consumer_count_t;
+`DFF_INST(int unsigned, releaseCycles)
+`DFF_INST(int unsigned, stallCycles)
+`DFF_INST(consumer_count_t, lastCount)
+
+always_comb begin
+    n_lastCount = uConsumer.count;
+    n_releaseCycles = releaseCycles;
+    if (releaseCycles < RST_RELEASE_LIMIT) begin
+        n_releaseCycles = releaseCycles + 1;
+    end
+    n_stallCycles = '0;
+    if (rstDivInt_n && uConsumer.count == lastCount) begin
+        n_stallCycles = stallCycles + 1;
+    end
+end
+
+always_ff @(posedge clkRef) begin
+    if (!rstRef_n) begin
+        `qAssertFatal(!rstDivInt_n, "rstDivInt_n is not asserted while rstRef_n is asserted")
+    end else begin
+        `qAssertFatal(rstDivInt_n || releaseCycles < RST_RELEASE_LIMIT, "rstDivInt_n was not released after rstRef_n released")
+        `qAssertFatal(stallCycles <= DIV_PERIOD, "uConsumer count stopped advancing after reset release")
+    end
+end
+`endif
+
 endmodule: clkGen

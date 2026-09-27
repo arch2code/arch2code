@@ -97,7 +97,7 @@ def render(args, prj, data):
 
     # A bridged memory crosses from the bus domain to its own
     # memory domain through memory_reg_bridge; a same-domain handler has none
-    # and every new pslverr/gate emission below stays empty.
+    # and every pslverr/gate emission below stays empty.
     bridged_memories = [m for m in data['memories'].values() if m['bridged']]
     has_bridge = bool(bridged_memories)
 

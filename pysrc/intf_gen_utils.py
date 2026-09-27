@@ -245,14 +245,9 @@ def clock_reset_ports(block_data):
     return ([(row['clock'], row['direction']) for row in block_data['clocks']]
             + [(row['reset'], row['direction']) for row in block_data['resets']])
 
-# Two spellings of the same list. The ORDER is global, which is why both are
-# built on clock_reset_ports rather than each assembling its own. The
-# spelling belongs to the GENERATOR, not to the kind of module it emits: the
-# block module port list joins clocks and resets onto one line, the verilated
-# SV wrapper declares one per line, and <block>_regs is a third generator that
-# also declares one per line in an RTL module
-# (templates/systemVerilog/moduleRegs.py), so it shares the wrapper's spelling
-# rather than the block module's.
+# Two spellings of the same list, both built on clock_reset_ports so they share
+# one order. The block module port list joins clocks and resets onto one line;
+# the verilated SV wrapper and <block>_regs declare one per line.
 def sv_clock_reset_input(block_data):
     # Grouped by consecutive direction, so an all-input block still emits the
     # single joined 'input clk, rst_n' the block module generator always has.
@@ -271,15 +266,9 @@ def sv_clock_reset_input_lines(block_data):
 def sv_clock_reset_binds(block_data):
     return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
 
-# The bare flop macros (`DFF`, `DFF_INST`, ...) expand to the literal
-# identifier `clk`, and hand-written RTL names `rst_n` directly. A block whose
-# own clock or reset port carries some other name still needs those two
-# identifiers to resolve, so the generated region aliases them onto the
-# block's default clock and its selected reset, only when
-# each exists and the block does not already declare a port of that name: a
-# block whose declared clocks are all direction: output has no default clock
-# and gets no clk alias, and a clock the block does declare - wherever it
-# sits in the order - must not be shadowed.
+# The bare flop macros expand to `clk`, and hand-written RTL names `rst_n`, so
+# a block with other names aliases them onto its default clock and selected
+# reset, when each exists and no declared port already has that name.
 def sv_default_domain_aliases(block_data):
     out = []
     defaultClock = block_data['defaultClock']

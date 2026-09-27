@@ -759,10 +759,10 @@ class Schema:
                 if not validator:
                     continue
 
-                # Checked on EVERY validator, before the rule_type gate
-                # (SCHEMA_SPECIFICATION.md rule 5 is unconditional): an unknown
-                # scope would otherwise reach lookupInScope as a context name and
-                # fail far from the schema line that caused it.
+                # Checked on every validator, before the rule_type gate,
+                # because the scope rule applies whatever the rule type: an
+                # unknown scope would otherwise reach lookupInScope as a context
+                # name and fail far from the schema line that caused it.
                 if validator.scope not in (None, 'global', 'project'):
                     printError(
                         f"Bad schema detected in {schema_file}. "

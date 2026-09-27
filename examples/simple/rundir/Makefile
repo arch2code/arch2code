@@ -26,10 +26,8 @@ endif
 # consumer's Q_ASSERT is the checker); u_consumer verilated proves model -> RTL
 # (the RTL consumer's qAssertFatal is the checker).
 #
-# There is deliberately no whole-DUT target here. --vlInst simple replaces
-# u_simple, whose doneTest thread is the run's only end-of-test voter, leaving
-# nothing to check the RTL. The watchdog now ends that run rather than letting it
-# hang, but a target that can only report its own emptiness is not worth having.
+# No whole-DUT target: --vlInst simple replaces u_simple, whose doneTest thread
+# is the only end-of-test voter, so nothing would check the RTL.
 run-vl:
 	$(MAKE) all VL_DUT=1
 	$(MAKE) run-vl-producer VL_DUT=1

@@ -3,14 +3,11 @@
 bus clock and reset of routers, handlers, served leaves and passthrough
 containers, and the diagnostics when they disagree.
 
-A router or a synthesised `<block>_regs` handler does not inherit its domain
-from a clock: literal stamped onto a synthesised connection; clocks are
-block-scoped, and the project-scoped `clock:` fields that mechanism depended
-on do not exist: a router's own domain is bound like any other instance, by an
-ordinary `clocks:`/`resets:` map on the router instance itself, and a
-handler's domain follows automatically - the leaf's own declared
-`registerPorts:` clock for a reusable IP, or for a top-down leaf whichever
-of its clocks the instance map binds to the bus.
+A router's domain is bound like any other instance's, by the
+`clocks:`/`resets:` map on the router instance. A synthesised `<block>_regs`
+handler's domain follows its leaf: the declared `registerPorts:` clock for a
+reusable IP; for a top-down leaf, the leaf clock bound to the bus clock that
+owns the leaf reset bound to the bus reset.
 
 Assertions are on the derived clock set per block (`blockClocksResets`,
 which a block's own declaration and its instances' binds produce) and on
@@ -1061,7 +1058,7 @@ connections:
         "a top-down leaf none of whose reset ports is bound to the bus's "
         "selected reset is rejected",
         design,
-        ('sampler', "none of its declared reset ports is bound to the register bus's selected reset"))
+        ('sampler', "none of its declared reset ports is bound to the register bus's reset"))
 
 
 def run_top_down_leaf_instances_disagree_rejected():
@@ -1213,7 +1210,26 @@ connections:
                   f"expected each port bound by its own name")
             failed = True
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
-        return not failed
+        # Every router port's BFM runs on the router's bus clock/reset, the
+        # upstream port and each dispatch port alike, not on the clock's
+        # default reset rst_n.
+        bfmLabel = ("every router port, upstream and dispatch, binds its BFM "
+                    "to the addressBlock: reset: bus reset")
+        portDomains = {name: (row['domainClock'], row['domainReset'])
+                       for portType in view['ports'].values()
+                       for name, row in portType.items()}
+        bfmFailed = False
+        if 'apbReg' not in portDomains or len(portDomains) < 2:
+            print(f"FAIL: {bfmLabel}: router ports are {list(portDomains)}, expected "
+                  f"the upstream 'apbReg' and a dispatch port")
+            bfmFailed = True
+        wrong = {name: domain for name, domain in portDomains.items()
+                 if domain != ('clk', 'rstBus_n')}
+        if wrong:
+            print(f"FAIL: {bfmLabel}: ports {wrong} are not on ('clk', 'rstBus_n')")
+            bfmFailed = True
+        print(f"{'FAIL' if bfmFailed else 'PASS'}: {bfmLabel}")
+        return not failed and not bfmFailed
     finally:
         shutil.rmtree(fixture)
 

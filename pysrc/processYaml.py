@@ -521,9 +521,9 @@ class projectOpen:
         by the column each getBD* helper keys on: blockClocksResets,
         blockParameterizedDecls, portDomains and containerLocalNets by
         blockKey, instanceClockResetBinds by instanceKey, memoryClocks by
-        memoryBlockKey. None of the six names collides with a schema table
-        (self.schema.tables) or an existing self.data key, so self.data is
-        the right home for them.
+        memoryBlockKey. blockParameterizedDecls is derived by
+        projectCreate.deriveParameterizedDeclSets(); the others are derived by
+        clockTree.build() and persisted by projectCreate._persistClockTree().
         """
         derivedTables = {
             'blockClocksResets': ('blockKey', 'kind, orderIndex'),
@@ -1604,11 +1604,9 @@ class projectOpen:
         }
 
     def getBDParameterizedDecls(self, ret):
-        # Per-block module-local parameterized declaration set, derived and
-        # persisted by projectCreate.deriveParameterizedDeclSets() into the
-        # non-schema blockParameterizedDecls table, loaded into self.data by
-        # _loadDerivedTables() and joined here to the types / structures rows
-        # for the declaration bodies. A block with no parameterized decls is a
+        # Per-block module-local parameterized declaration set, from the
+        # blockParameterizedDecls table, joined here to the types / structures
+        # rows for the declaration bodies. A block with no parameterized decls is a
         # legitimate optional relationship, so an absent key reads as none.
         # Emission order is the persisted orderIndex (types/sub-structures
         # before the structures that use them) for emitters that declare
@@ -1627,19 +1625,8 @@ class projectOpen:
         ret['parameterizedDecls'] = decls
 
     def getBDClocksResets(self, ret):
-        # The block's own declared clock and reset sets, materialised by
-        # clockTree.build() and persisted by projectCreate._persistClockTree()
-        # into the non-schema blockClocksResets table, loaded into self.data by
-        # _loadDerivedTables() in the persisted canonical order - declaration
-        # order, clocks before resets - so a consumer never re-walks the
-        # block's declarations. Every block has at least one clock row (the
-        # implicit clk when none is declared), so the key is guaranteed here,
-        # unlike the optional relationships getBDInstanceClockResetBinds and
-        # getBDParameterizedDecls read (the other two derived-table helpers
-        # with a per-key `.get(key, [])`; getBDMemoryClock is guaranteed-key
-        # like this one).
-        # Each row carries every field a consumer needs (period / timeUnit /
-        # the reset's own clock / async) without a second lookup.
+        # The block's declared clocks then resets, in declaration order, from
+        # the blockClocksResets table. Every block has at least one clock row.
         ret['clocks'] = list()
         ret['resets'] = list()
         ret['defaultClock'] = None
@@ -1711,32 +1698,26 @@ class projectOpen:
 
     def getBDInstanceClockResetBinds(self, instanceKey):
         # The clock and reset binds a container emits for one child instance,
-        # derived by clockTree.build() and persisted by
-        # projectCreate._persistClockTree() into the
-        # non-schema instanceClockResetBinds table, loaded into self.data by
-        # _loadDerivedTables(). 'port' is the child module's own port name and
-        # 'signal' is the container's signal for the same clock or reset; the
-        # two differ whenever the child's project and the container's project
-        # name that domain differently, or the container declares nothing of
-        # that name and its own default drives the port instead. An instance
-        # with no binds is a legitimate optional relationship, so an absent
-        # key reads as none. Read in the persisted order - the CHILD's
-        # canonical order, clocks then resets - so the bind list reads
-        # position for position against the child's port list.
+        # from the instanceClockResetBinds table. 'port' is the child module's
+        # own port name and 'signal' is the container's signal for the same
+        # clock or reset; the two differ whenever the child's project and the
+        # container's project name that domain differently, or the container
+        # declares nothing of that name and its own default drives the port
+        # instead. An instance with no binds is a legitimate optional
+        # relationship, so an absent key reads as none. Read in the persisted
+        # order - the CHILD's canonical order, clocks then resets - so the bind
+        # list reads position for position against the child's port list.
         return [{'port': row['childPort'], 'signal': row['parentSignal']}
                 for row in self.data['instanceClockResetBinds'].get(instanceKey, [])]
 
     def getBDMemoryClock(self, memoryBlockKey):
         # The clock the memory primitive is instantiated on, and the selected
-        # reset of that clock for the register bridge's memory side (None
-        # when the clock has no selected reset; only a memory served across
-        # a crossing needs one), derived by clockTree.build()
-        # and persisted by projectCreate._persistClockTree() into the
-        # non-schema memoryClocks table, loaded into self.data by
-        # _loadDerivedTables(). The clock is always one the owning block
-        # declares, so the emitted bind names a port of the module the
-        # memory sits in. A memoryClocks row per memory is a contract:
-        # clockTree.rows() only skips one when the owning block has no
+        # reset of that clock for the register bridge's memory side (None when
+        # the clock has no selected reset; only a memory served across a
+        # crossing needs one), from the memoryClocks table. The clock is always
+        # one the owning block declares, so the emitted bind names a port of the
+        # module the memory sits in. A memoryClocks row per memory is a
+        # contract: clockTree.rows() only skips one when the owning block has no
         # default clock, which is already a logged error that exits before
         # persist.
         return self.data['memoryClocks'][memoryBlockKey][0]
@@ -1744,11 +1725,9 @@ class projectOpen:
     def getBDLocalNets(self, blockKey):
         # A container's own local nets: one internal wire per net a child
         # instance's output drives under a name the container itself does
-        # not declare, in declaration order. Derived by
-        # clockTree.build() and persisted by projectCreate._persistClockTree()
-        # into the non-schema containerLocalNets table, loaded into
-        # self.data by _loadDerivedTables(). A block with no local nets is
-        # a legitimate optional relationship, so an absent key reads as none.
+        # not declare, in declaration order, from the containerLocalNets
+        # table. A block with no local nets is a legitimate optional
+        # relationship, so an absent key reads as none.
         return [{'name': row['netName']}
                 for row in self.data['containerLocalNets'].get(blockKey, [])]
 
@@ -2272,7 +2251,13 @@ class projectOpen:
     def getBDDeclaredPortInterfaceKey(self, instanceKey, portName):
         instData = self.data['instances'][instanceKey]
         blockData = self.data['blocks'][instData['instanceTypeKey']]
-        return self._resolveDeclaredPortInterfaceKey(blockData, portName)
+        declaredInterfaceKey = self._resolveDeclaredPortInterfaceKey(blockData, portName)
+        if declaredInterfaceKey:
+            return declaredInterfaceKey
+        registerPort = (blockData.get('registerPorts') or {}).get(portName)
+        if registerPort:
+            return registerPort['interfaceKey']
+        return ''
 
     def _resolveDeclaredPortInterfaceKey(self, blockData, portName):
         # Resolve a block's declared `ports:` row to a qualified interfaceKey
@@ -2976,31 +2961,6 @@ class projectOpen:
                 'payloads': payloads,
             }
 
-        addressBusInterfaceTypes = {
-            row.get('interface_type')
-            for row in self.data.get('interface_defs', {}).values()
-            if isinstance(row, dict) and row.get('addressBus')
-        }
-
-        def registerBusChildBind(childBlockKey, portName):
-            # A routed leaf's register-bus ingress is not declared in
-            # `ports:`. Its child interface is read from the leaf-to-handler
-            # connectionMap the post-parse pass emitted (block: this leaf,
-            # port: the leaf-side register-bus port), so projectOpen reads the
-            # resolved design rather than the leaf's parse-time `registerPorts:`
-            # construct. The addressBus filter keeps a datapath connectionMap on
-            # the same leaf from being mistaken for the register bus.
-            for cm in self.data['connectionMaps'].values():
-                if cm.get('blockKey') != childBlockKey or cm.get('port') != portName:
-                    continue
-                interfaceKey = cm.get('interfaceKey')
-                if not interfaceKey:
-                    continue
-                ifaceRow = self.data['interfaces'].get(interfaceKey)
-                if ifaceRow and ifaceRow.get('interfaceType') in addressBusInterfaceTypes:
-                    return interfaceKey, ifaceRow.get('interface')
-            return None
-
         def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection,
                      parentConfigOverride=None):
             if connVal['_context'] == '_global':
@@ -3033,10 +2993,13 @@ class projectOpen:
                         f"could not be resolved while building the block view.")
                     exit(warningAndErrorReport())
             else:
-                registerBind = registerBusChildBind(childBlockKey, portName)
-                if not registerBind:
+                # A register-bus ingress is declared in registerPorts:
+                # rather than ports:.
+                registerPort = (childBlock.get('registerPorts') or {}).get(portName)
+                if not registerPort:
                     return None
-                childInterfaceKey, childInterfaceName = registerBind
+                childInterfaceKey = registerPort['interfaceKey']
+                childInterfaceName = registerPort['interface']
                 declaredDirection = None
                 if childInterfaceName == parentInterfaceName:
                     return None
@@ -3241,15 +3204,8 @@ class projectOpen:
                     temp['connection']['interfaceKey'] = connVal['interfaceKey']
                     self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
                 ports[portName] = temp
-        # A connection-port row carries its connection's fields at the top level,
-        # so the row itself is the connection-shaped row getBDPortDomain reads.
         for portRow in ports.values():
-            instanceKey = next(iter(portRow['instance']))
-            # A plain connections: row's own portName IS already the boundary
-            # name (getBDPortDomain's own docstring rule 2), so it doubles as
-            # boundaryPortName here.
-            domainClock = self.getBDPortDomain(ret, portRow['clock'], instanceKey,
-                                               portRow['name'], portRow['name'])
+            domainClock = self.getBDPortDomain(ret, portRow['name'])
             self._stampPortDomain(ret, portRow, domainClock)
         ret['ports']['connections'] = dict(ports)
         portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
@@ -3259,24 +3215,10 @@ class projectOpen:
             newPorts = dict()
             for conn, connVal in ret[connType].items():
                 self.getBDAddPort(ports, newPorts, connVal[portType['portName']], connVal)
-            # For these three the connection-shaped source row is kept whole under
-            # 'connection' rather than merged in, so that is what carries the clock.
             for portRow in newPorts.values():
-                # connectionMapPorts/registerPorts/memoryPorts rows carry no
-                # clock: of their own: a connectionMaps: port resolves
-                # through portDomains (rule 2 below) before this would ever
-                # matter, and register/memory rows have no such field at all.
-                # A connectionMapPorts row is keyed by instancePortName
-                # (portRow['name']), the ROUTED INSTANCE's own port name, not
-                # the boundary's; portDomains is keyed by the boundary name,
-                # which the row's own 'connection' (dict(connMap)) still
-                # carries under its own 'portName' field. registerPorts/
-                # memoryPorts have no such boundary/instance split, so their
-                # own name IS the boundary name already.
-                boundaryPortName = (portRow['connection']['portName']
-                                    if connType == 'connectionMapPorts' else portRow['name'])
-                domainClock = self.getBDPortDomain(ret, None, None, portRow['name'],
-                                                   boundaryPortName)
+                # A connectionMapPorts row's name is this block's own port
+                # name (instancePortName), which is what portDomains is keyed by.
+                domainClock = self.getBDPortDomain(ret, portRow['name'])
                 self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
 
@@ -3285,17 +3227,23 @@ class projectOpen:
         register-bus port (ret['registerBusPort']) takes
         registerClock/registerReset instead: a registerPorts: reset: picks
         one of several unmarked resets on the bus clock, which the
-        clock's shared selectedReset cannot express.
+        clock's shared selectedReset cannot express. A generated router is
+        single-clock and runs entirely on its bus clock and reset, so every
+        one of its ports takes busClockPort/busResetPort, which honour an
+        addressBlock: reset: that differs from the clock's selected reset.
         """
-        if portRow['name'] == ret['registerBusPort']:
+        if ret['addressDecode']['isApbRouter']:
+            portRow['domainClock'] = ret['busClockPort']
+            portRow['domainReset'] = ret['busResetPort']
+        elif portRow['name'] == ret['registerBusPort']:
             portRow['domainClock'] = ret['registerClock']
             portRow['domainReset'] = ret['registerReset']
         else:
             portRow['domainClock'] = domainClock
             portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
 
-    def getBDPortDomain(self, ret, clockName, instanceKey, portName, boundaryPortName):
-        """The block's OWN clock that a boundary port lies in,
+    def getBDPortDomain(self, ret, portName):
+        """The block's OWN clock that its port `portName` lies in,
         in rule order:
 
         1. `ret['qualBlock']`'s own `ports:`/`registerPorts:`/
@@ -3303,51 +3251,27 @@ class projectOpen:
            explicitly - block-local. A reaching connection's clock: must
            agree with it, and so must a `ports:` boundary port's derived
            clock (rule 2); clockTree.build() rejects either disagreement.
-        2. A connectionMaps: boundary port: the persisted inside-out
-           fact clockTree.build() computed (the non-schema portDomains
-           table), keyed by `boundaryPortName` - the container's own
-           boundary port name, which for a connectionMapPorts-sourced row
-           (dict(connMap), getBDConnectionMaps) differs from `portName`
-           itself (instancePortName, the routed instance's own port name);
-           the caller resolves which name is which.
-        3. A declared port naming no clock: - the block default clock.
-        4. The one INPUT block clock of the port's own instance whose
-           consumer edge resolves to `clockName` - only a connections: row
-           carries one, and the caller passes None for every other
-           row shape - read back from the instance bind
-           (getBDInstanceClockResetBinds) rather than a name-equality
-           check, since an instance map may rename the block's own clock
-           away from the container's. Unstated (`clockName` falsy) means
-           the block default clock; `instanceKey` is then unused.
-
-        A connection naming a clock: no input clock of a top-down port's
-        instance resolves to, or that more than one resolves to, is rejected
-        at build time; reaching that case here is an internal error,
-        not a user-input one.
+        2. The persisted fact clockTree.build() computed (the non-schema
+           portDomains table), keyed by the block's own port name: a
+           connectionMaps: boundary port's inside-out derived clock, or a
+           top-down port's block clock collected from every connection
+           reaching it.
+        3. Otherwise the block default clock: a declared port naming no
+           clock:, a port reached only through a connectionMaps: row with
+           no connection and no declaration, or a register/memory accessor
+           port.
         """
         blockRow = self.data['blocks'][ret['qualBlock']]
         declaredRow = clockTree.declaredPortRow(blockRow, portName)
         if declaredRow is not None and declaredRow['clock']:
             return declaredRow['clock']
-        # A connectionMaps: row's boundary port: a direct index by the
-        # boundary's own name, no fallback. clockTree.build() reports every
-        # boundary port it cannot derive, so a boundary port reaching this
-        # view always has a row.
-        for row in self.data['portDomains'].get(ret['qualBlock'], []):
-            if row['portName'] == boundaryPortName:
-                return row['domainClock']
-        if declaredRow is not None or not clockName:
-            return ret['defaultClock']
-        clockNames = {row['clock'] for row in ret['clocks']}
-        matches = [bind['port'] for bind in self.getBDInstanceClockResetBinds(instanceKey)
-                  if bind['signal'] == clockName and bind['port'] in clockNames]
-        if len(matches) == 1:
-            return matches[0]
-        raise AssertionError(
-            f"getBDPortDomain: connection clock '{clockName}' does not "
-            f"resolve to exactly one input clock of instance "
-            f"{instanceKey!r} (block {ret['qualBlock']!r}): got "
-            f"{matches}; clockTree.build() should have rejected this")
+        # clockTree.build() reports every boundary port it cannot derive, so
+        # a boundary port reaching this view always has a row.
+        persistedClocks = {row['portName']: row['domainClock']
+                           for row in self.data['portDomains'].get(ret['qualBlock'], [])}
+        if portName in persistedClocks:
+            return persistedClocks[portName]
+        return ret['defaultClock']
 
     def getBDPortDomainReset(self, ret, clockName):
         """The selected reset of a boundary port's domain clock.
@@ -3361,7 +3285,7 @@ class projectOpen:
         clock set, because getBDPortDomain returns one; that clock may have no
         selected reset (a domain with no reset at all), in which
         case there is none to bind here either. `_stampPortDomain` overrides
-        this result for the block's own register-bus port.
+        this result for the block's own register-bus port and every router port.
         """
         return next(row['selectedReset'] for row in ret['clocks']
                     if row['clock'] == clockName)
@@ -4026,7 +3950,7 @@ class projectCreate:
     # section owns it completely, which keeps the exactly-one-default rule trivial
     # and avoids the vestigial rows a base/pro/user merge would leave behind. The
     # names are the ones every hand-written module and flop macro already use, so
-    # an untouched project resolves to today's behaviour. The reset states no
+    # a project declaring none needs no edits. The reset states no
     # clock: on purpose - an unstated clock: is the project's own default clock,
     # which need not be named clk when the project declares its own clocks.
     IMPLICIT_PROJECT_DECLARATIONS = {
@@ -4235,7 +4159,8 @@ class projectCreate:
         registerBusPassthroughs = self.config.getConfig('REGAPB_PASSTHROUGH')
         tree = clockTree.build(
             self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
-            self.flatData['memories'], self.flatData['memoryConnections'],
+            self.flatData['memories'], self.flatData['registers'],
+            self.flatData['memoryConnections'],
             self.flatData['registerConnections'], self.flatData['connectionMaps'],
             registerBusPassthroughs,
             self._blocksDeclaringNoResets,
@@ -5325,6 +5250,19 @@ class projectCreate:
         connection_maps = flat_rows('connectionMaps')
         block_rows = flat_rows('blocks')
 
+        # The child side of a connectionMap is typed by the child's declared
+        # surface, its ports: row, else its registerPorts: row, else the
+        # map's interface, as in projectOpen.getBDDeclaredPortInterfaceKey.
+        def child_port_interface(block_row, cm):
+            portName = cm['instancePortName']
+            declaredPort = (block_row.get('ports') or {}).get(portName)
+            if declaredPort:
+                return declaredPort['interfaceKey']
+            registerPort = (block_row.get('registerPorts') or {}).get(portName)
+            if registerPort:
+                return registerPort['interfaceKey']
+            return cm['interfaceKey']
+
         # A block that declares its own `params:` is leaf-parameterizable and
         # must carry isParameterizable=true so getBlockConfigView surfaces the
         # per-variant Config descriptors that emit `<block><Variant>Config`
@@ -5502,9 +5440,10 @@ class projectCreate:
             #    map binds the block's own parent-facing port, so a
             #    parameterizable interface is on its own surface.
             for cm in connection_maps:
-                if (cm['isParameterizable'] and
-                        (cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set)):
+                if cm['blockKey'] == qualBlock and cm['isParameterizable']:
                     add_interface(cm['interfaceKey'], own_surface=True)
+                if cm['instanceKey'] in qual_block_inst_set:
+                    add_interface(child_port_interface(block_row, cm), own_surface=True)
 
             # 4. Registers owned by this block (or parent block when this is
             #    a regHandler).
@@ -7130,22 +7069,14 @@ class projectCreate:
     def _normalizeClockResetShortForm(self, item, yamlFile, anchor):
         """Rewrite a block's clocks:/resets: short form into the mapping form.
 
-        `clocks: [clkSlow]` and `resets: [rst_n]` mean the mapping form with
-        every field defaulted. Rewritten here, before schema processing, so
-        the schema sees
-        only the mapping shape - a pre-parse normaliser rather than a second
-        schema shape for the same subtable. The clock list's single-entry
-        limit is not enforced here: a multi-entry clock list normalises into
-        several input clocks with none marked default, which clockTree
-        already rejects.
+        `clocks: [clkSlow]` means the mapping form with every field defaulted,
+        so the schema sees only one shape. A multi-entry clock list normalises
+        into several clocks with none marked default, which clockTree rejects.
 
-        An explicitly empty `resets: {}` or `resets: []` means "no reset",
-        distinct from omitting resets: entirely (implicit rst_n). The generic
-        optional-subtable field processing does not keep that distinction -
-        an empty collection and an absent key are both falsy - so it is
-        recorded in parse-time state keyed by (yamlFile, block name), the same
-        pattern _evalNodes uses, rather than a schema field the block row
-        would otherwise have to carry for every block just to say "no".
+        An explicitly empty `resets:` means "no reset", distinct from omitting
+        it (implicit rst_n). Generic field processing treats both as falsy, so
+        the distinction is recorded in parse-time state keyed by
+        (yamlFile, block name).
         """
         if 'resets' in item and not item['resets']:
             self._blocksDeclaringNoResets.add((yamlFile, anchor))
@@ -8835,12 +8766,29 @@ class projectCreate:
                 f"anything else becomes C++ that silently does the wrong thing - a "
                 f"reset never asserted, a clock with no period - or does not "
                 f"compile at all.")
-            return
+            return False
         item[field] = count
+        return True
+
+    def _rejectOddPicosecondPeriod(self, itemkey, item, context):
+        # The co-simulation wrapper toggles a clock every half period at the
+        # 1 ps SystemC time resolution, so a period of an odd number of
+        # picoseconds would silently run at another frequency. A period in
+        # ns or us is a whole multiple of 1000 ps, so only ps can be odd.
+        if item['timeUnit'] != 'ps' or item['period'] % 2 == 0:
+            return
+        self.logError(
+            f"In {self.diagnosticLocation(context, item.get('lc'))}, clocks: "
+            f"entry '{itemkey}' declares period: {item['period']} ps, an odd "
+            f"number of picoseconds. The simulation clock toggles every half "
+            f"period at a 1 ps time resolution, so its period must be an even "
+            f"number of picoseconds. Use an even period, such as "
+            f"{item['period'] + 1} ps.")
 
     # projectScope: the hook's context argument is the declaring projectName, not a file
     def _post_resolveClockPeriod(self, itemkey, item, projectName):
-        self._resolvePositiveCount('clocks', itemkey, item, projectName, 'period')
+        if self._resolvePositiveCount('clocks', itemkey, item, projectName, 'period'):
+            self._rejectOddPicosecondPeriod(itemkey, item, projectName)
         return item
 
     # A block clock's period (standalone-simulation only): the same
@@ -8850,8 +8798,8 @@ class projectCreate:
     # undeclared period is left alone rather than coerced. This node is also
     # not projectScope, so the hook's context argument is the block's own file.
     def _post_resolveBlockClockPeriod(self, itemkey, item, yamlFile):
-        if item['period']:
-            self._resolvePositiveCount('clocks', itemkey, item, yamlFile, 'period')
+        if item['period'] and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, 'period'):
+            self._rejectOddPicosecondPeriod(itemkey, item, yamlFile)
         return item
 
     # projectScope: the hook's context argument is the declaring projectName, not a file

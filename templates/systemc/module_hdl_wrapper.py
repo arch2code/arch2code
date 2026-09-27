@@ -206,9 +206,7 @@ def render_sc(args, prj, data):
 
     def sec_end_of_simulation(args, prj, data):
         # An output clock with no edge or an output reset never released is
-        # reported here rather than left to a silent, activity-free run. The
-        # wrapper observes the block's own output clocks and resets; internal
-        # nets are not visible here.
+        # reported here rather than left to a silent, activity-free run.
         lines = [f'if (!{row["clock"]}_edges_) {{ std::cerr << "warning: '
                 f'clock \'{row["clock"]}\' produced no edge by end of run" '
                 f'<< std::endl; }}'

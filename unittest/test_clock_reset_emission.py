@@ -75,7 +75,7 @@ FLOPS_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'flops.sv')
 # reset on `~rst_n`, no `_CLK`/`_DOM`, `FPGA_INIT_FLOPS` for the initial-only
 # branch, and `DFF_KEEP_INST`.
 FORK_SV = os.path.join(test_dir, 'fixtures', 'debayer_flops.sv')
-# flops.sv as it was before the reset-style selector: FPGA `initial` default, ASIC opt-in.
+# A flops.sv without the reset-style selector: FPGA `initial` default, ASIC opt-in.
 PRE_SELECTOR_SV = os.path.join(test_dir, 'fixtures', 'flops_pre_selector.sv')
 ASSERTS_SVH = os.path.join(base_dir, 'common', 'systemVerilog', 'asserts.svh')
 BRIDGE_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_reg_bridge.sv')
@@ -1325,8 +1325,8 @@ def check_sc_clock_per_declared_period(emitted):
     from its declared period and unit.
 
     A single hardcoded half period is only meaningful while every clock runs at
-    1 ns, which is the defect the declared period exists to fix. The clock is an
-    sc_signal, not an sc_clock, because socket lockstep must be able to stop it."""
+    1 ns. The clock is an sc_signal, not an sc_clock, because socket lockstep
+    must be able to stop it."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
     for decl in ('sc_signal<bool> clk;', 'sc_signal<bool> clkSlow;',
                  'sc_signal<bool> clkPico;'):
@@ -1437,8 +1437,8 @@ def check_release_counts_own_clock(emitted):
 
 
 def check_release_is_not_absolute_time(emitted):
-    """No wrapper waits an absolute time: that is the period-coupled release the
-    cycle count replaces, and it deasserted after a single edge at period 10."""
+    """No wrapper waits an absolute time: that would be a period-coupled release,
+    which would deassert after a single edge at period 10."""
     for rel, text in emitted.items():
         if rel.endswith('_hdl_sc_wrapper.h'):
             _refute(text, 'wait(5, SC_NS)',

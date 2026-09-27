@@ -189,10 +189,8 @@ end
 `endif
 
 
-// Single-domain aliases, reset by the port named rst_n. Each is one line so
-// that a _CLK variant and its _DOM body can never describe different
-// hardware. Outside the branches above because all three define the same
-// _DOM signatures.
+// Single-domain aliases, reset by the port named rst_n. Outside the branches
+// above because all three define the same _DOM signatures.
 `define DFF_CLK(clkSig, q, d)               `DFF_DOM(clkSig, rst_n, q, d)
 `define DFFR_CLK(clkSig, q, d, rval)        `DFFR_DOM(clkSig, rst_n, q, d, rval)
 `define DFFNR_CLK(clkSig, q, d)             `DFFNR_DOM(clkSig, rst_n, q, d)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Router block (addressBlock:) also owns a regAccess memory.
 
-Diagnostic emitted by Check 3 in `config/postParseRegisterPorts.py`.
+A router owns no firmware-accessible memories, so the build must reject it.
 
 Control case: the same regAccess memory declared on the served leaf
 instead of the router must build cleanly.

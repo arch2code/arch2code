@@ -54,24 +54,18 @@ static uint64_t elapsedNsec(struct timespec &start, bool &running)
     return (now.tv_sec * SECS_TO_NANO + now.tv_nsec) - (start.tv_sec * SECS_TO_NANO + start.tv_nsec);
 }
 
-// The periodic wake keeps events in the queue, so a model whose stimulus arrives
-// from outside does not end on starvation. Two independent paths, each bounded
-// by wall clock rather than simulation time, since a design whose clock still
-// runs advances simulation time forever.
+// The periodic wake keeps events queued, so a model driven from outside does not
+// end on starvation. Two paths, each bounded by wall clock, since a running
+// clock advances simulation time forever.
 //
-// Stall: armed only once every registered enabler has voted it on, so a design
-// that registers none is never watched, and every tickle restarts its timer
-// because a tickle is evidence of progress.
+// Stall: armed once every registered enabler has voted it on; every tickle
+// restarts its timer, since a tickle is evidence of progress.
 //
-// No terminator: no end-of-test voter and no --scTimeLimit, so nothing in the
-// run is able to end it. A latched end-of-test disarms it too, since a run that
-// has already ended demonstrably could - forceEndOfTest() ends a run without
-// registering a voter. A static property of the configuration rather than a
-// stall - such a run usually makes fine progress - so tickles must not restart
-// its timer. Waiting out the wall clock is what keeps it off runs whose voters
-// register lazily from firmware or host threads. Its condition can only go
-// true->false - voters only increment, maxRuntimeUS is fixed at command-line
-// parse, end-of-test only latches - so the timer is never rearmed.
+// No terminator: no end-of-test voter, no --scTimeLimit and no latched
+// end-of-test (forceEndOfTest() ends a run without a voter). A static property
+// of the configuration, so tickles do not restart its timer; the wall-clock
+// wait keeps it off runs whose voters register lazily. Its condition only goes
+// true->false, so the timer is never rearmed.
 void watchDogHandler(void)
 {
     logging &lg = logging::GetInstance();

@@ -5,10 +5,7 @@ A container with no `addressBlock:` router of its own may still sit between
 a router and the one register consumer it holds: the container gets a
 synthesised boundary port and `connectionMaps` row feeding that consumer,
 and the outer router dispatches to the container's own instance exactly as
-it would to a leaf. Four variants: a reusable-IP leaf fed this way, a
-top-down leaf inferring its register bus through the same path, a two-level
-chain of router-less containers, and a block reused both directly under a
-router and through a passthrough container.
+it would to a leaf.
 """
 
 import sys
@@ -28,6 +25,7 @@ from _addrctl_helpers import (
     render_plain_block,
     render_router,
 )
+from test_addrctl_parameterized_reg_iface import PARAM_PREAMBLE
 
 
 def _run_single_consumer():
@@ -354,12 +352,375 @@ registers:
         cleanup(paths)
 
 
+def _run_boundary_key_distinct_from_leaf_register():
+    label = ("top-down leaf behind an authored boundary 'regs' keeps its "
+             "register 'cfgA' and bus port 'regs' distinct")
+    print(label)
+    ARCH_YAML = (
+        APB_PREAMBLE
+        + """
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('wrap')
+        + render_plain_block('leaf')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgA, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+    )
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        leaf_key, _ = find_block(prj, 'leaf')
+        leaf = prj.getBlockData(leaf_key)
+        assert leaf['registerBusPort'] == 'regs', \
+            f"leaf registerBusPort expected 'regs', got {leaf['registerBusPort']!r}"
+        leaf_bus = leaf['ports']['connectionMaps']['regs']
+        assert leaf_bus['connection']['interface'] == 'apbReg', \
+            f"leaf bus port 'regs' expected interface 'apbReg', got {leaf_bus['connection']['interface']!r}"
+        assert 'cfgA' not in leaf['ports']['connectionMaps'], \
+            "the register name must not appear as a register-bus port on the leaf"
+
+        handler_key, _ = find_block(prj, 'leaf_regs')
+        handler = prj.getBlockData(handler_key)
+        assert list(handler['ports']['connectionMaps']) == ['regs'], \
+            f"handler bus ports expected ['regs'], got {list(handler['ports']['connectionMaps'])}"
+        assert list(handler['ports']['registers']) == ['cfgA'], \
+            f"handler register ports expected ['cfgA'], got {list(handler['ports']['registers'])}"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
+def _run_authored_boundary_keeps_its_interface():
+    label = ("authored passthrough boundary keeps its own interface over a "
+             "compatible inner reusable IP interface")
+    print(label)
+    ARCH_YAML = (
+        APB_PREAMBLE
+        + """    ipReg:
+        desc: "32-bit register bus of the inner IP"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('wrap')
+        + render_leaf('leaf', interface='ipReg')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+    )
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        boundary_maps = find_connection_maps(prj, instance='uLeaf')
+        assert len(boundary_maps) == 1, \
+            f"expected 1 boundary connectionMap onto uLeaf, got {len(boundary_maps)}"
+        assert boundary_maps[0]['interface'] == 'apbReg', \
+            f"boundary connectionMap interface expected 'apbReg', got {boundary_maps[0]['interface']!r}"
+
+        # The container's boundary port carries its authored interface and
+        # bridges to the inner IP's own interface inside the container.
+        wrap_key, _ = find_block(prj, 'wrap')
+        wrap = prj.getBlockData(wrap_key)
+        wrap_port = wrap['ports']['connections']['regs']
+        assert wrap_port['connection']['interfaceKey'].startswith('apbReg/'), \
+            f"wrap port 'regs' expected interface apbReg, got {wrap_port['connection']['interfaceKey']!r}"
+        wrap_map = next(iter(wrap['connectionMaps'].values()))
+        assert wrap_map['crossInterface']['parentInterface'] == 'apbReg', \
+            f"wrap map parent side expected 'apbReg', got {wrap_map['crossInterface']['parentInterface']!r}"
+        assert wrap_map['crossInterface']['childInterface'] == 'ipReg', \
+            f"wrap map child side expected 'ipReg', got {wrap_map['crossInterface']['childInterface']!r}"
+
+        # The inner IP keeps its own interface on its register-bus port.
+        leaf_key, _ = find_block(prj, 'leaf')
+        leaf = prj.getBlockData(leaf_key)
+        leaf_port = leaf['ports']['connectionMaps']['regs']
+        assert leaf_port['connection']['interface'] == 'ipReg', \
+            f"leaf port 'regs' expected interface 'ipReg', got {leaf_port['connection']['interface']!r}"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
+def _run_parameterised_container_checked_at_instance_variant():
+    label = ("parameterised passthrough container bound at 32 bits wraps a "
+             "non-parameterised 32-bit IP")
+    print(label)
+    ARCH_YAML = (
+        PARAM_PREAMBLE.replace("value: 32\n            maxValue: 32",
+                               "value: 16\n            maxValue: 32")
+        + """
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+    wrap:
+        desc: "Parameterised router-less container"
+        hasMdl: true
+        params: [PARAM_REG_DATA_WIDTH]
+        registerPorts:
+            regs: { interface: paramReg }
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('leaf')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v32 }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+parameters:
+    wrap:
+        v32:
+            PARAM_REG_DATA_WIDTH: 32
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+    )
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        boundary_maps = find_connection_maps(prj, instance='uLeaf')
+        assert len(boundary_maps) == 1 and boundary_maps[0]['interface'] == 'paramReg', \
+            f"expected one boundary connectionMap on paramReg, got {boundary_maps}"
+        # The leaf's own surface is its apbReg register bus, so it stays a
+        # non-parameterised block although the map carries paramReg.
+        _leaf_key, leaf_row = find_block(prj, 'leaf')
+        assert not leaf_row['isParameterizable'], \
+            "leaf must not be parameterizable: its surface is its own apbReg"
+        _wrap_key, wrap_row = find_block(prj, 'wrap')
+        assert wrap_row['isParameterizable'], "wrap must be parameterizable"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
+def _run_inferring_container_bridges_compatible_ip():
+    label = ("passthrough container with no registerPorts: carries the "
+             "router's interface over a compatible inner IP interface")
+    print(label)
+    ARCH_YAML = (
+        APB_PREAMBLE
+        + """    ipReg:
+        desc: "32-bit register bus of the inner IP"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+    wrap:
+        desc: "Router-less container, no registerPorts:"
+        hasMdl: true
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('leaf', interface='ipReg')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+    )
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        boundary_maps = find_connection_maps(prj, instance='uLeaf')
+        assert len(boundary_maps) == 1 and boundary_maps[0]['interface'] == 'apbReg', \
+            f"expected one boundary connectionMap on apbReg, got {boundary_maps}"
+        wrap_key, _ = find_block(prj, 'wrap')
+        wrap = prj.getBlockData(wrap_key)
+        wrap_port = wrap['ports']['connections']['apbReg']
+        assert wrap_port['connection']['interfaceKey'].startswith('apbReg/'), \
+            f"wrap port expected interface apbReg, got {wrap_port['connection']['interfaceKey']!r}"
+        wrap_map = next(iter(wrap['connectionMaps'].values()))
+        assert wrap_map['crossInterface']['childInterface'] == 'ipReg', \
+            f"wrap map child side expected 'ipReg', got {wrap_map['crossInterface']['childInterface']!r}"
+        leaf_key, _ = find_block(prj, 'leaf')
+        leaf = prj.getBlockData(leaf_key)
+        leaf_port = leaf['ports']['connectionMaps']['regs']
+        assert leaf_port['connection']['interface'] == 'ipReg', \
+            f"leaf port expected interface 'ipReg', got {leaf_port['connection']['interface']!r}"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
+def _register_port_only_leaf_design(preamble, wrap, leaf, uwrap, parameters=''):
+    return (
+        preamble
+        + """
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + wrap
+        + leaf
+        + f"""
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    {uwrap}
+    uLeaf:      {{ container: wrap, instanceType: leaf }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+{parameters}"""
+    )
+
+
+def _run_register_port_only_leaf_keeps_its_interface():
+    label = ("registerPorts:-only inner IP, with no registers or memories, "
+             "keeps its own interface behind an authored boundary")
+    print(label)
+    ARCH_YAML = _register_port_only_leaf_design(
+        APB_PREAMBLE + """    ipReg:
+        desc: "32-bit register bus of the inner IP"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+""",
+        render_leaf('wrap'), render_leaf('leaf', interface='ipReg'),
+        "uWrap:      { container: top, instanceType: wrap, addressGroup: top }")
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        wrap_key, _ = find_block(prj, 'wrap')
+        wrap = prj.getBlockData(wrap_key)
+        wrap_map = next(iter(wrap['connectionMaps'].values()))
+        assert wrap_map['crossInterface']['parentInterface'] == 'apbReg' \
+            and wrap_map['crossInterface']['childInterface'] == 'ipReg', \
+            f"expected an apbReg-to-ipReg thunker in wrap, got {wrap_map.get('crossInterface')}"
+        leaf_key, _ = find_block(prj, 'leaf')
+        leaf = prj.getBlockData(leaf_key)
+        leaf_port = leaf['ports']['connectionMaps']['regs']
+        assert leaf_port['connection']['interface'] == 'ipReg', \
+            f"leaf port expected interface 'ipReg', got {leaf_port['connection']['interface']!r}"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
+def _run_register_port_only_leaf_behind_parameterised_container():
+    label = ("registerPorts:-only inner IP behind a parameterised container "
+             "keeps its own non-parameterised interface")
+    print(label)
+    ARCH_YAML = _register_port_only_leaf_design(
+        PARAM_PREAMBLE.replace("value: 32\n            maxValue: 32",
+                               "value: 16\n            maxValue: 32"),
+        """    wrap:
+        desc: "Parameterised router-less container"
+        hasMdl: true
+        params: [PARAM_REG_DATA_WIDTH]
+        registerPorts:
+            regs: { interface: paramReg }
+""",
+        render_leaf('leaf'),
+        "uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v32 }",
+        """
+parameters:
+    wrap:
+        v32:
+            PARAM_REG_DATA_WIDTH: 32
+""")
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        leaf_key, leaf_row = find_block(prj, 'leaf')
+        assert not leaf_row['isParameterizable'], \
+            "leaf must not be parameterizable: its surface is its own apbReg"
+        leaf = prj.getBlockData(leaf_key)
+        leaf_port = leaf['ports']['connectionMaps']['regs']
+        assert leaf_port['connection']['interface'] == 'apbReg', \
+            f"leaf port expected interface 'apbReg', got {leaf_port['connection']['interface']!r}"
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
+
 def run_all_tests():
     results = [
         _run_single_consumer(),
         _run_top_down_inner_leaf(),
         _run_two_level_chain(),
         _run_block_reuse(),
+        _run_boundary_key_distinct_from_leaf_register(),
+        _run_authored_boundary_keeps_its_interface(),
+        _run_parameterised_container_checked_at_instance_variant(),
+        _run_inferring_container_bridges_compatible_ip(),
+        _run_register_port_only_leaf_keeps_its_interface(),
+        _run_register_port_only_leaf_behind_parameterised_container(),
     ]
     return 0 if all(results) else 1
 

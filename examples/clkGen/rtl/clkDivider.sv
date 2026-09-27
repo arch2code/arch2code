@@ -18,13 +18,8 @@ module clkGen_clkDivider
 // Instances
 // GENERATED_CODE_END
 
-// Free-running divider, reset by its own reference reset (rst_n = rstRef_n,
-// allowed: it is this block's own input, not an invented crossing) rather
-// than left with no reset at all: DFFNR_INST's flop carries no initial
-// value in 4-state simulation and would hold X forever. Toggles clkDiv every
-// DIV_HALF_COUNT clkRef cycles, resuming from reset release, so the domain
-// runs at a defined rate from then on. clkDivBy2 is a second tap on the
-// same edge, bound to `~` by every instance in this fixture.
+// The divider is reset by rstRef_n rather than left unreset: a DFFNR_INST
+// flop has no initial value in 4-state simulation and would hold X forever.
 localparam int unsigned DIV_HALF_COUNT = 4;
 typedef logic [$clog2(DIV_HALF_COUNT)-1:0] div_count_t;
 

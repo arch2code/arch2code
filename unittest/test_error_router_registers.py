@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Router block (addressBlock:) also owns registers.
 
-Diagnostic emitted by Check 4 in `config/postParseRegisterPorts.py`.
+A router owns no firmware-accessible registers, so the build must reject it.
 
 Control case: the same register declared on the served leaf instead of
 the router must build cleanly.

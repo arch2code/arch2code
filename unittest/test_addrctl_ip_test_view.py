@@ -141,6 +141,19 @@ def _assert_nested_router_subtree(prj):
             f"uBridgeAPBDecode->{leaf} must not carry _context '_global'"
 
 
+def _assert_unreachable_router_ports_on_bus_domain(prj):
+    """The child project's router ipStdDecode has no instance under this
+    build's top, yet its view still stamps every port with its own bus
+    clock/reset ports."""
+    router_key, _ = find_block(prj, 'ipStdDecode')
+    ports = prj.getBlockData(router_key)['ports']
+    domains = {name: (row['domainClock'], row['domainReset'])
+               for port_type in ports.values() for name, row in port_type.items()}
+    assert domains, "ipStdDecode view has no ports"
+    wrong = {name: domain for name, domain in domains.items() if domain != ('clk', 'rst_n')}
+    assert not wrong, f"ipStdDecode ports {wrong} expected on ('clk', 'rst_n')"
+
+
 def _run():
     print("migrated ip_test view assertions")
     db_path = _build_ip_test_db()
@@ -149,6 +162,7 @@ def _run():
         _assert_leaf_interface_scoping(prj)
         _assert_primary_serves_leaves_and_nested_router(prj)
         _assert_nested_router_subtree(prj)
+        _assert_unreachable_router_ports_on_bus_domain(prj)
         assert_no_global_register_binds(prj)
         print("PASS: ip_test view assertions")
         return True

@@ -14,6 +14,11 @@ A container is also rejected as a passthrough when it owns firmware-
 accessible registers or memories itself, since its own handler is already
 the one consumer its boundary can serve, or when it is the design root,
 which has no parent to be fed from.
+
+A leaf's register-bus port name, authored or inferred, must not already
+name one of its registers or ports, and each passthrough boundary's
+interface, authored or inferred, must share the inner consumer's packed form
+at every container instance's variant.
 """
 
 import sys
@@ -26,6 +31,7 @@ from _addrctl_helpers import (
     render_plain_block,
     render_router,
 )
+from test_addrctl_parameterized_reg_iface import PARAM_PREAMBLE
 
 
 INNER_CONSUMER_ADDRESS_GROUP = (
@@ -227,6 +233,228 @@ registers:
 """
 )
 
+# A plain leaf behind an authored boundary takes the boundary's
+# registerPorts: key as its register-bus port name; here that key is also
+# the name of one of the leaf's own registers.
+INFERRED_PORT_NAME_COLLIDES_WITH_REGISTER = (
+    APB_PREAMBLE
+    + """
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+"""
+    + render_plain_block('cpu')
+    + render_router('apbDecode', 'top')
+    + render_leaf('wrap', port_name='cfgA')
+    + render_plain_block('leaf')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgA, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+)
+
+# A reusable IP's authored registerPorts: key is also the name of one of
+# its own registers.
+AUTHORED_PORT_NAME_COLLIDES_WITH_REGISTER = (
+    APB_PREAMBLE
+    + """
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+"""
+    + render_plain_block('cpu')
+    + render_router('apbDecode', 'top')
+    + render_leaf('leaf', port_name='cfgA')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uLeaf:      { container: top, instanceType: leaf, addressGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfgA, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+)
+
+# The router and the passthrough boundary carry a 32-bit data bus; the
+# inner reusable IP declares a 64-bit one.
+WIDE_REG_PREAMBLE = """constants:
+    ADDR_WIDTH:      { value: 32, desc: "Register bus address width" }
+    DATA_WIDTH:      { value: 32, desc: "Register bus data width" }
+    WIDE_DATA_WIDTH: { value: 64, desc: "Wide register bus data width" }
+    REG_WIDTH:       { value: 16, desc: "Register payload width" }
+
+types:
+    apbAddrT:  { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT:  { width: DATA_WIDTH, desc: "APB data" }
+    wideDataT: { width: WIDE_DATA_WIDTH, desc: "Wide APB data" }
+    cfgT:      { width: REG_WIDTH,  desc: "Register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    wideDataSt:
+        data: { varType: wideDataT, generator: data }
+    cfgRegSt:
+        value: { varType: cfgT, generator: register, desc: "Register payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+    wideReg:
+        desc: "APB register bus with 64-bit data"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: wideDataSt, structureType: data_t }
+"""
+
+PASSTHROUGH_BOUNDARY_WIDTH_MISMATCH = (
+    WIDE_REG_PREAMBLE
+    + """
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+"""
+    + render_plain_block('cpu')
+    + render_router('apbDecode', 'top')
+    + render_leaf('wrap')
+    + render_leaf('leaf', interface='wideReg')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+)
+
+# The same 32/64 mismatch through a container that authors no
+# registerPorts: and infers the router's interface.
+INFERRING_PASSTHROUGH_WIDTH_MISMATCH = PASSTHROUGH_BOUNDARY_WIDTH_MISMATCH.replace(
+    "    wrap:\n        desc: \"Routed leaf block 'wrap'\"\n        hasMdl: true\n"
+    "        registerPorts:\n            regs: { interface: apbReg }\n",
+    "    wrap:\n        desc: \"Router-less container\"\n        hasMdl: true\n")
+
+# A 16-bit router feeds a parameterised container whose instance is bound
+# at 16 bits, against a default of 32, and which wraps a 32-bit IP. Only
+# the instance's variant exposes the mismatch.
+PARAMETERISED_CONTAINER_VARIANT_MISMATCH = (
+    PARAM_PREAMBLE
+    .replace('DATA_WIDTH: { value: 32', 'DATA_WIDTH: { value: 16', 1)
+    .replace("types:\n", "types:\n    leafDataT: { width: 32, desc: \"IP data\" }\n", 1)
+    .replace("structures:\n", "structures:\n    leafDataSt:\n"
+             "        data: { varType: leafDataT, generator: data }\n", 1)
+    + """    leafReg:
+        desc: "32-bit register bus of the inner IP"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: leafDataSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+    wrap:
+        desc: "Parameterised router-less container"
+        hasMdl: true
+        params: [PARAM_REG_DATA_WIDTH]
+        registerPorts:
+            regs: { interface: paramReg }
+"""
+    + render_plain_block('cpu')
+    + render_router('apbDecode', 'top')
+    + render_leaf('leaf', interface='leafReg')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v16 }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+parameters:
+    wrap:
+        v16:
+            PARAM_REG_DATA_WIDTH: 16
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+)
+
+# A plain leaf takes the boundary key 'cfgA' as its bus port name while an
+# authored data connection already gives it a port named 'cfgA'.
+INFERRED_PORT_NAME_COLLIDES_WITH_CONNECTION_PORT = (
+    APB_PREAMBLE
+    + """    dataIf:
+        desc: "Data stream"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: cfgRegSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+"""
+    + render_plain_block('cpu')
+    + render_plain_block('src')
+    + render_router('apbDecode', 'top')
+    + render_leaf('wrap', port_name='cfgA')
+    + render_plain_block('leaf')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uSrc:       { container: wrap, instanceType: src }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+    - { interface: dataIf, src: uSrc, dst: uLeaf, dstport: cfgA }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+)
+
 
 def _expect_diagnostic(label, arch_yaml, required_substrings):
     print(label)
@@ -327,15 +555,113 @@ def run_direct_leaf_missing_address_group_rejected():
     )
 
 
-def run_wrap_not_reached_by_any_router_is_unserved_not_d2():
+def run_wrap_not_reached_by_any_router_is_unserved():
     return _expect_diagnostic(
         "a passthrough container no router ever reaches reports its inner "
-        "leaf as unserved rather than raising d2 on an empty slot list",
+        "leaf as unserved",
         WRAP_NOT_REACHED_BY_ANY_ROUTER,
         [
             "'leaf'",
             "no router was found serving any of its instances, directly "
             "or through single-consumer containers",
+        ],
+    )
+
+
+def run_inferred_port_name_colliding_with_register_rejected():
+    return _expect_diagnostic(
+        "a plain leaf whose inferred register-bus port name is also one of "
+        "its register names is rejected",
+        INFERRED_PORT_NAME_COLLIDES_WITH_REGISTER,
+        [
+            "Block 'leaf' declares no registerPorts: and takes its "
+            "register-bus port name 'cfgA' from registerPorts: key 'cfgA' of "
+            "block 'wrap', but block 'leaf' already uses 'cfgA' as a register.",
+            "Rename the register 'cfgA' of block 'leaf', rename the "
+            "registerPorts: key 'cfgA' of block 'wrap', or give block 'leaf' "
+            "its own registerPorts: entry.",
+        ],
+    )
+
+
+def run_authored_port_name_colliding_with_register_rejected():
+    return _expect_diagnostic(
+        "a reusable IP whose registerPorts: key is also one of its register "
+        "names is rejected",
+        AUTHORED_PORT_NAME_COLLIDES_WITH_REGISTER,
+        [
+            "Block 'leaf' uses the name 'cfgA' for both a registerPort and a "
+            "register;",
+            "must be pairwise distinct within a block. Rename one of them.",
+        ],
+    )
+
+
+def run_passthrough_boundary_width_mismatch_rejected():
+    return _expect_diagnostic(
+        "a passthrough boundary whose authored interface differs in packed "
+        "width from the inner consumer's interface is rejected",
+        PASSTHROUGH_BOUNDARY_WIDTH_MISMATCH,
+        [
+            "Router-less container 'wrap' (instance 'uWrap') passes the "
+            "register bus on interface 'apbReg' (its registerPorts: "
+            "interface) to instance 'uLeaf' of block 'leaf', whose "
+            "registerPorts: interface is 'wideReg'. Both interfaces carry the "
+            "one bus, so they must have the same packed form; give the "
+            "registerPorts: interfaces of blocks 'wrap' and 'leaf' the same "
+            "packed form",
+            "field 'data' of apbReg/apbDataSt has _bitWidth 32",
+            "field 'data' of wideReg/wideDataSt has _bitWidth 64",
+        ],
+    )
+
+
+def run_inferring_passthrough_width_mismatch_rejected():
+    return _expect_diagnostic(
+        "a passthrough container with no registerPorts: whose inferred "
+        "interface differs in packed width from the inner consumer's is "
+        "rejected",
+        INFERRING_PASSTHROUGH_WIDTH_MISMATCH,
+        [
+            "Router-less container 'wrap' (instance 'uWrap') passes the "
+            "register bus on interface 'apbReg' (the interface it infers) to "
+            "instance 'uLeaf' of block 'leaf', whose registerPorts: interface "
+            "is 'wideReg'. Both interfaces carry the one bus, so they must have "
+            "the same packed form; give the registerPorts: interface of block "
+            "'leaf' the same packed form as 'apbReg'",
+            "field 'data' of apbReg/apbDataSt has _bitWidth 32",
+        ],
+    )
+
+
+def run_parameterised_container_variant_mismatch_rejected():
+    return _expect_diagnostic(
+        "a parameterised passthrough container is checked at its instance's "
+        "variant (16 bits) rather than its default (32 bits) against a "
+        "32-bit inner IP",
+        PARAMETERISED_CONTAINER_VARIANT_MISMATCH,
+        [
+            "Router-less container 'wrap' (instance 'uWrap') passes the "
+            "register bus on interface 'paramReg'",
+            "field 'data' of paramReg/paramRegDataSt has _bitWidth 16",
+            "field 'data' of leafReg/leafDataSt has _bitWidth 32",
+        ],
+    )
+
+
+def run_inferred_port_name_colliding_with_connection_port_rejected():
+    return _expect_diagnostic(
+        "a plain leaf whose inferred register-bus port name is also a port "
+        "an authored connection gives it is rejected",
+        INFERRED_PORT_NAME_COLLIDES_WITH_CONNECTION_PORT,
+        [
+            "Block 'leaf' declares no registerPorts: and takes its "
+            "register-bus port name 'cfgA' from registerPorts: key 'cfgA' of "
+            "block 'wrap', but block 'leaf' already uses 'cfgA' as a "
+            "connection port.",
+            "Rename the connection port 'cfgA' of block 'leaf', rename the "
+            "registerPorts: key 'cfgA' of block 'wrap', or give block 'leaf' "
+            "its own registerPorts: entry.",
         ],
     )
 
@@ -348,7 +674,13 @@ def run_all_tests():
         run_container_owning_registers_is_not_a_passthrough_reusable_ip(),
         run_root_hosting_unserved_leaf_is_not_a_passthrough(),
         run_direct_leaf_missing_address_group_rejected(),
-        run_wrap_not_reached_by_any_router_is_unserved_not_d2(),
+        run_wrap_not_reached_by_any_router_is_unserved(),
+        run_inferred_port_name_colliding_with_register_rejected(),
+        run_authored_port_name_colliding_with_register_rejected(),
+        run_passthrough_boundary_width_mismatch_rejected(),
+        run_inferring_passthrough_width_mismatch_rejected(),
+        run_parameterised_container_variant_mismatch_rejected(),
+        run_inferred_port_name_colliding_with_connection_port_rejected(),
     ]
     return 0 if all(results) else 1
 

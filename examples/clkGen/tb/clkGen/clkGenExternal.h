@@ -38,14 +38,17 @@ public:
 
     // clkGen has no boundary ports for the External to drive: the divider
     // free-runs off clkRef/rstRef_n and the consumer free-runs off the
-    // divided clock it is handed, neither one checked by an assertion here.
-    // What the External owns is the run window: it must outlast a verilated
-    // DUT's reset release (a few clkRef edges) and several clkDiv edges
-    // beyond that, across every --vlInst configuration make -j8
-    // clk-gen exercises.
+    // divided clock it is handed. The External owns the run window and, when
+    // a verilated divider is present, checks the clkDiv it produces. Models
+    // are unclocked, so a model-only run has no clkDiv to check. The
+    // synchronised reset and the consumer are internal to clkGen's RTL and
+    // are checked there.
     void stimulusThread(void);
 
 private:
+    sc_signal_in_if<bool> *findClkDiv(void);
+    void checkClkDiv(sc_signal_in_if<bool> &clkDiv);
+
     endOfTest eot_{true};   // registers this thread as a voter
 
 };

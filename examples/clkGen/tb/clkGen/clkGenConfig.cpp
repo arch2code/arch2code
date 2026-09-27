@@ -37,10 +37,7 @@ public:
 
     bool createTestBench(void) override
     {
-        // clkGen has no boundary data ports (only its clock/reset boundary),
-        // so there is nothing for the External to drive and no BFM to check
-        // a transfer against: the run window itself, closed by the
-        // External's stimulusThread once it has elapsed, is the one test.
+        // The one test is the External's run window (see clkGenExternal.h).
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "clkGenRunWindow"
