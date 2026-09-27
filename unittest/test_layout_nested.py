@@ -56,22 +56,22 @@ def _generate_tree():
         proj = os.path.join(tmp, 'prj', 'yaml', 'nestedProject.yaml')
         db = os.path.join(tmp, 'nested.db')
 
-        # Run the generator with cwd inside the temp project copy so that any
-        # relative path resolution stays sandboxed in tmp. Snapshot the repo
-        # root before/after: a hierarchical node-relative segment resolved
-        # against cwd used to leak a stray tree (e.g. rtl/rtl.f) to the process
-        # cwd, so assert generation creates nothing outside tmp.
-        before = set(os.listdir(base_dir))
-        built = _arch2code('--yaml', proj, '--db', db, cwd=tmp)
+        # Run the generator from an empty directory of its own. Every path it
+        # writes must come from the project layout, never from the process
+        # cwd: a node-relative segment resolved against cwd used to leak a stray
+        # tree (e.g. rtl/rtl.f) there. Other suites write to the repo root
+        # concurrently, so the repo root cannot serve as the witness.
+        runCwd = os.path.join(tmp, 'run_cwd')
+        os.mkdir(runCwd)
+        built = _arch2code('--yaml', proj, '--db', db, cwd=runCwd)
         assert built.returncode == 0, \
             f"db build failed:\n{built.stdout}\n{built.stderr}"
-        made = _arch2code('--db', db, '-r', '--newmodule', cwd=tmp)
+        made = _arch2code('--db', db, '-r', '--newmodule', cwd=runCwd)
         assert made.returncode == 0, \
             f"newmodule failed:\n{made.stdout}\n{made.stderr}"
-        after = set(os.listdir(base_dir))
-        leaked = after - before
+        leaked = os.listdir(runCwd)
         assert not leaked, \
-            f"generation created entries outside tmp at {base_dir}: {sorted(leaked)}"
+            f"generation wrote relative to the process cwd: {sorted(leaked)}"
 
         generated = []
         for root, _dirs, files in os.walk(tmp):
