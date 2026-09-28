@@ -312,10 +312,14 @@ xproj-inherit:
 #               falling back to the constant's declared default of 8. The gate
 #               also asserts the diagnostic names the container site
 #               xpCpBadWrap at variant use.
-# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+# cpLayout also runs gen: rendering the leaf's view reaches the connection
+# through its port, a cross-interface bind whose ends sit in the container, not
+# in the rendered block. Adjudicated at db and never built. Shares no
+# sub-project, so needs no ordering.
 xproj-container-layout:
 	make -C $(XPROJ_PARAM_DIR)/cpLayout clean
 	make -C $(XPROJ_PARAM_DIR)/cpLayout -j db
+	make -C $(XPROJ_PARAM_DIR)/cpLayout -j gen
 	# The aborted db build leaves a partial file behind, which would satisfy
 	# the db target and make the assertion below vacuous; clean it away first.
 	make -C $(XPROJ_PARAM_DIR)/cpLayoutBad clean
