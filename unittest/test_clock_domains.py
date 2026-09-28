@@ -7932,10 +7932,10 @@ def run_topinstance_block_not_contained_cases():
     ))
 
 
-def _expect_with_files(label, design, files, projectFiles):
+def _expect_with_files(label, design, files, projectFiles, needles=None):
     """Build `design` as top.yaml with `files` (fixture-relative path -> text)
-    beside it and `projectFiles` entries listed ahead of top.yaml; it must
-    build."""
+    beside it and `projectFiles` entries listed ahead of top.yaml. With
+    `needles` the build must fail naming each; without, it must build."""
     def check():
         fixture, project_path, db_path = _make_fixture(design=design)
         try:
@@ -7953,8 +7953,15 @@ def _expect_with_files(label, design, files, projectFiles):
             code, output = _build(project_path, db_path)
         finally:
             shutil.rmtree(fixture)
-        if code != 0:
-            raise AssertionError(f"the build failed.\n{output}")
+        if needles is None:
+            if code != 0:
+                raise AssertionError(f"the build failed.\n{output}")
+            return True
+        if code == 0 or 'Traceback' in output:
+            raise AssertionError(f"the build did not report a diagnostic.\n{output}")
+        for needle in needles:
+            if needle not in output:
+                raise AssertionError(f"missing {needle!r} in:\n{output}")
         return True
     return _run_case(label, check)
 
@@ -7979,6 +7986,17 @@ def run_instance_and_connection_container_cases():
                      "    uSideLeaf: { container: side,   instanceType: spare, instGroup: top }\n")
     cross = "    - { interface: dataIf, name: crossLink, src: uProd, dst: uSideLeaf }\n"
     down = "    - { interface: dataIf, name: downLink, src: u_dut, dst: uProd }\n"
+    def plainBlocks(*names):
+        return ''.join(f"    {name}: {{ desc: \"{name}\", hasVl: false, hasMdl: false, "
+                       f"hasTb: false, hasRtl: false }}\n" for name in names)
+    selfLoop = "    uSelf:  { container: spare, instanceType: spare, instGroup: top }\n"
+    cycleBlocks = plainBlocks('cycA', 'cycB')
+    cycleInstances = ("    uCyc:   { container: dut,  instanceType: cycA, instGroup: top }\n"
+                      "    uCycB:  { container: cycA, instanceType: cycB, instGroup: top }\n"
+                      "    uCycA:  { container: cycB, instanceType: cycA, instGroup: top }\n")
+    loneBlocks = plainBlocks('loneA', 'loneB')
+    loneInstances = ("    uLoneB: { container: loneA, instanceType: loneB, instGroup: top }\n"
+                     "    uLoneA: { container: loneB, instanceType: loneA, instGroup: top }\n")
     # A child project's own instance may share the root topInstance's name.
     childProject = ("yamlFormat: 2\n"
                     "projectName: clkChild\n"
@@ -7998,6 +8016,21 @@ def run_instance_and_connection_container_cases():
                    "\n"
                    "instances:\n"
                    "    top_tb: { container: childBox, instanceType: childLeaf, instGroup: top }\n")
+    # A child project whose own topInstance keeps its self-referencing row,
+    # which is no containment cycle in the composed build.
+    childTopProject = childProject.replace("projectName: clkChild\n",
+                                           "projectName: clkChild\ntopInstance: childTop\n")
+    childTopDesign = ("blocks:\n"
+                      "    childTopBlock: { desc: \"child top\", hasVl: false, hasMdl: false, "
+                      "hasTb: false, hasRtl: false }\n"
+                      "    childLeaf:     { desc: \"child leaf\", hasVl: false, hasMdl: false, "
+                      "hasTb: false, hasRtl: false }\n"
+                      "\n"
+                      "instances:\n"
+                      "    childTop:   { container: childTopBlock, instanceType: childTopBlock, instGroup: top }\n"
+                      "    uChildLeaf: { container: childTopBlock, instanceType: childLeaf,     instGroup: top }\n")
+    childSelfLoop = "    uChildLoop: { container: childLeaf, instanceType: childLeaf, instGroup: top }\n"
+    childLoopLine = f"child.yaml:{len((childTopDesign + childSelfLoop).splitlines())},"
     # Two instances of container 'part', one declared in the included file
     # that declares the block, joined by a connection.
     partDesign = ("blocks:\n"
@@ -8060,12 +8093,45 @@ def run_instance_and_connection_container_cases():
              "joins 'u_dut' in container 'top_tb' and 'uProd' in container 'dut'",
              "link a block to its own child with a connectionMaps entry", 'Found 1 Error.'),
             extraConnections=down),
+        _expect_diagnostic(
+            "a block containing an instance of itself is rejected",
+            (_design_line(_default_design(extraInstances=selfLoop), "uSelf:"),
+             "block 'spare' contains 'uSelf' (spare). A block cannot contain itself, "
+             "directly or through the blocks it contains.", 'Found 1 Error.'),
+            extraInstances=selfLoop),
+        _expect_diagnostic(
+            "a two-block containment cycle below the topInstance is rejected",
+            (_design_line(_default_design(cycleInstances, '', cycleBlocks), "uCycA:"),
+             "block 'cycA' contains 'uCycB' (cycB), which contains 'uCycA' (cycA). "
+             "A block cannot contain itself", 'Found 1 Error.'),
+            extraBlocks=cycleBlocks, extraInstances=cycleInstances),
+        _expect_diagnostic(
+            "a containment cycle the topInstance does not reach is rejected",
+            (_design_line(_default_design(loneInstances, '', loneBlocks), "uLoneA:"),
+             "block 'loneA' contains 'uLoneB' (loneB), which contains 'uLoneA' (loneA). "
+             "A block cannot contain itself", 'Found 1 Error.'),
+            extraBlocks=loneBlocks, extraInstances=loneInstances),
         _expect_with_files(
             "a child project's ordinary instance named like the root topInstance builds",
             _default_design(),
             {'child/prj/yaml/childProject.yaml': childProject,
              'child/yaml/child.yaml': childDesign},
             "    - ../../child/prj/yaml/childProject.yaml\n"),
+        _expect_with_files(
+            "a child project's self-referencing topInstance is no containment cycle",
+            _default_design(),
+            {'child/prj/yaml/childProject.yaml': childTopProject,
+             'child/yaml/child.yaml': childTopDesign},
+            "    - ../../child/prj/yaml/childProject.yaml\n"),
+        _expect_with_files(
+            "a child project's self-loop other than its topInstance is rejected",
+            _default_design(),
+            {'child/prj/yaml/childProject.yaml': childTopProject,
+             'child/yaml/child.yaml': childTopDesign + childSelfLoop},
+            "    - ../../child/prj/yaml/childProject.yaml\n",
+            (childLoopLine,
+             "block 'childLeaf' contains 'uChildLoop' (childLeaf). A block cannot contain "
+             "itself, directly or through the blocks it contains.", 'Found 1 Error.')),
         _expect_with_files(
             "a connection to an instance of the same container declared in an included file builds",
             "include:\n    - part.yaml\n\n" + _default_design(partInstances, partLink),

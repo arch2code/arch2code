@@ -166,6 +166,7 @@ apbDecode:
 mixed:
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
 	make -C $(MIXED_DIR)/rundir run
+	make -C $(MIXED_DIR)/rundir -j run VL_DUT=1
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket

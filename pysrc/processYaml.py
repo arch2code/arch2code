@@ -4137,6 +4137,7 @@ class projectCreate:
         # all files fully parsed: validate the whole-project ipParameters linkage
         self._validateIpParametersLinkage()
         self._validateTopInstanceBlockNotContained()
+        self._validateContainmentAcyclic()
         self._validateConnectionContainers()
         # run any user provided post processing
         self.postYamlExternalScript()
@@ -8662,6 +8663,51 @@ class projectCreate:
                     f"so its block is not instantiated inside another block. Either "
                     f"give '{row['instance']}' a different instanceType, or point "
                     f"topInstance at the root of the hierarchy.")
+
+    def _validateContainmentAcyclic(self):
+        # A block may not contain itself, directly or through the blocks it
+        # contains. The root topInstance forms no edge, and a composed child
+        # project keeps its own topInstance's self-referencing row.
+        edges = dict()
+        for row in self.flatData['instances'].values():
+            if row['container'] == '_topInstance':
+                continue
+            if (row['containerKey'] == row['instanceTypeKey']
+                    and row['_context'] not in self.specialContexts):
+                child = self.childProjectRaw.get(self.contextOwningProject[row['_context']])
+                if child is not None and row['instance'] == child['raw'].get('topInstance'):
+                    continue
+            edges.setdefault(row['containerKey'], []).append(row)
+        # Depth-first in declaration order; each back edge closes one cycle.
+        state = dict()
+        path = []
+        cycles = []
+
+        def visit(blockKey):
+            state[blockKey] = 'open'
+            for row in edges.get(blockKey, ()):
+                childKey = row['instanceTypeKey']
+                if state.get(childKey) == 'open':
+                    start = next((i for i, r in enumerate(path) if r['containerKey'] == childKey), len(path))
+                    cycles.append(path[start:] + [row])
+                elif childKey not in state:
+                    path.append(row)
+                    visit(childKey)
+                    path.pop()
+            state[blockKey] = 'closed'
+
+        for blockKey in edges:
+            if blockKey not in state:
+                visit(blockKey)
+        for cycle in cycles:
+            closing = cycle[-1]
+            chain = f"block '{cycle[0]['container']}' contains '{cycle[0]['instance']}' ({cycle[0]['instanceType']})"
+            chain += ''.join(f", which contains '{r['instance']}' ({r['instanceType']})" for r in cycle[1:])
+            printError(
+                f"In {self.diagnosticLocation(closing['_context'], closing.get('lc'))}, {chain}. "
+                f"A block cannot contain itself, directly or through the blocks it contains.")
+        if cycles:
+            exit(warningAndErrorReport())
 
     def _validateConnectionContainers(self):
         # A connection joins two instances of one container. The topInstance is

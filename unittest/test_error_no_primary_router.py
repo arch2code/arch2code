@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Zero primary-router candidates.
+"""A cyclic router placement is rejected as a containment cycle.
 
-Diagnostic emitted by `_findPrimaryRouter` in
-`config/postParseRegisterPorts.py`. Asserts the diagnostic lists every
-router instance and identifies the missing-root condition.
-
-The fixture constructs a deliberately cyclic placement below a plain
-top block `tb`: container block `scopeA` holds `uRouterA` plus an
-instance of `scopeB`, while `scopeB` holds `uRouterB` plus an instance
-of `scopeA`. Each router's upward walk lands in the other router's
-served container, so neither qualifies as the dispatch-tree root and
-the post-parse pass must diagnose the missing primary. The cycle sits
-below the topInstance, whose block is instantiated nowhere else.
+Every router being contained by another router's served scope (zero
+primary-router candidates for `_findPrimaryRouter` in
+`config/postParseRegisterPorts.py`) needs the router containers to
+contain each other, which is a containment cycle. projectCreate rejects
+the cycle before post-parse router inference runs, naming the cycle as
+a path at the instance row that closes it.
 
 Topology (must be rejected — cyclic placement)::
 
@@ -23,13 +18,10 @@ Topology (must be rejected — cyclic placement)::
             +-- uScopeAInB (instanceType=scopeA)
                 +-- (scopeA holds routerA + a scopeB ... cycle)
 
-    scopeA contains scopeB; scopeB contains scopeA. Walking up from
-    uRouterA lands inside uRouterB's served scope, and walking up
-    from uRouterB lands inside uRouterA's served scope. Neither
-    router can be the dispatch-tree root, so the diagnostic must
-    list every router instance + block name.
+    scopeA contains scopeB; scopeB contains scopeA.
 """
 
+import os
 import sys
 
 from _addrctl_helpers import (
@@ -68,25 +60,42 @@ instances:
 )
 
 
+# The line of the instance row that closes the cycle.
+CLOSING_LINE = next(
+    n for n, line in enumerate(ARCH_YAML.splitlines(), 1) if 'uScopeAInB:' in line)
+
 REQUIRED_SUBSTRINGS = [
+    "block 'scopeA' contains 'uScopeBInA' (scopeB), which contains "
+    "'uScopeAInB' (scopeA). A block cannot contain itself, directly or "
+    "through the blocks it contains.",
+    "Found 1 Error.",
+]
+
+FORBIDDEN_SUBSTRINGS = [
+    "Traceback",
     "No primary router could be inferred",
-    "uRouterA",
-    "uRouterB",
-    "routerA",
-    "routerB",
 ]
 
 
 def _run():
-    print("zero primary-router candidates")
+    print("cyclic router placement rejected as a containment cycle")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
         combined = completed.stdout + completed.stderr
-        for needle in REQUIRED_SUBSTRINGS:
+        # The diagnostic location of the closing row: its file, then the line.
+        location = f"{os.path.basename(arch_paths[0])}:{CLOSING_LINE},"
+        for needle in [location] + REQUIRED_SUBSTRINGS:
             if needle not in combined:
                 print(
                     f"FAIL: diagnostic missing substring '{needle}'.\n"
+                    f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
+                )
+                return False
+        for needle in FORBIDDEN_SUBSTRINGS:
+            if needle in combined:
+                print(
+                    f"FAIL: output contains '{needle}'.\n"
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
