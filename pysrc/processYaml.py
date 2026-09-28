@@ -8007,33 +8007,41 @@ class projectCreate:
         return ret
 
 
-    # handle special case where the top block does not have a container
     def _auto_container(self, section, itemkey, item, field, yamlFile, processed):
+        # The root project's topInstance: a child project's instance of the same
+        # name is an ordinary instance.
+        isTop = (itemkey == self.topInstance
+                 and yamlFile not in self.specialContexts
+                 and self.contextOwningProject[yamlFile] == self.config.getConfig('PROJECTNAME'))
         if field not in item:
-            if itemkey == self.topInstance:
+            location = self.diagnosticLocation(yamlFile, processed.get('lc'))
+            if isTop:
                 self.logError(
-                    f"In {self.diagnosticLocation(yamlFile, item.lc)}, topInstance "
-                    f"'{itemkey}' declares no container:. "
-                    f"The topInstance is the topmost instance, so its container is its "
-                    f"own block (container: {item['instanceType']}).")
-            self.logError(
-                f"In {self.diagnosticLocation(yamlFile, item.lc)}, instance "
-                f"'{itemkey}' declares no container:. Every "
-                f"instance other than the topInstance names the block that contains "
-                f"it in container:.")
+                    f"In {location}, topInstance '{itemkey}' declares no container: "
+                    f"field. The topInstance is the topmost instance, so its container "
+                    f"is its own block (container: {item['instanceType']}).")
+            else:
+                self.logError(
+                    f"In {location}, instance '{itemkey}' declares no container: field. "
+                    f"Every instance other than the topInstance names the block that "
+                    f"contains it in container:.")
         ret = item[field]
-        # if the instance matches the defined top instance override the container
-        # the override allows for nested projects
-        if itemkey == self.topInstance:
-            if ret != item['instanceType']:
+        if not isTop:
+            if ret == "_topInstance":
                 self.logError(
-                    f"In {self.diagnosticLocation(yamlFile, item.lc)}, topInstance "
-                    f"'{itemkey}' declares container "
-                    f"'{ret}'. The topInstance is the topmost instance, so its "
-                    f"container is its own block (container: {item['instanceType']}); "
-                    f"point topInstance at the root of the hierarchy.")
-            ret = "_topInstance"
-        return ret
+                    f"In {self.diagnosticLocation(yamlFile, processed.get('lc'))}, instance "
+                    f"'{itemkey}' declares container '_topInstance'. '_topInstance' is "
+                    f"reserved for the topInstance; name the block that contains "
+                    f"'{itemkey}' in container:.")
+            return ret
+        if ret != item['instanceType']:
+            self.logError(
+                f"In {self.diagnosticLocation(yamlFile, processed.get('lc'))}, topInstance "
+                f"'{itemkey}' declares container '{ret}'. The topInstance is the topmost "
+                f"instance, so its container is its own block (container: "
+                f"{item['instanceType']}); point topInstance at the root of the hierarchy.")
+        # The topInstance's self-reference container becomes the _topInstance root marker.
+        return "_topInstance"
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
         ret=item.get(field, None)
@@ -8641,41 +8649,46 @@ class projectCreate:
         # A second instance of the top block would sit inside another block,
         # above the topInstance or, when reachable from it, recursing forever.
         instances = self.flatData['instances'].values()
-        for top in [row for row in instances if row['container'] == '_topInstance']:
-            for row in instances:
-                if row is not top and row['instanceTypeKey'] == top['instanceTypeKey']:
-                    self.logError(
-                        f"In {self.diagnosticLocation(row['_context'])}, instance "
-                        f"'{row['instance']}' in container '{row['container']}' has "
-                        f"instanceType '{row['instanceType']}', the block of topInstance "
-                        f"'{top['instance']}'. The topInstance is the topmost instance, "
-                        f"so its block is not instantiated inside another block. Either "
-                        f"give '{row['instance']}' a different instanceType, or point "
-                        f"topInstance at the root of the hierarchy.")
+        top = next((row for row in instances if row['container'] == '_topInstance'), None)
+        if top is None:
+            return
+        for row in instances:
+            if row is not top and row['instanceTypeKey'] == top['instanceTypeKey']:
+                self.logError(
+                    f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, instance "
+                    f"'{row['instance']}' in container '{row['container']}' has "
+                    f"instanceType '{row['instanceType']}', the block of topInstance "
+                    f"'{top['instance']}'. The topInstance is the topmost instance, "
+                    f"so its block is not instantiated inside another block. Either "
+                    f"give '{row['instance']}' a different instanceType, or point "
+                    f"topInstance at the root of the hierarchy.")
 
     def _validateConnectionContainers(self):
         # A connection joins two instances of one container. The topInstance is
         # in none: its row carries the _topInstance marker, so it is named first.
         instances = self.flatData['instances']
-        for conn in self.flatData['connections'].values():
+
+        def where(conn):
             if conn['name']:
                 label = f"connection '{conn['name']}'"
             else:
                 ends = [f"'{conn[end]}'" + (f" port '{conn[end + 'port']}'" if conn[end + 'port'] else "")
                         for end in ('src', 'dst')]
                 label = f"connection {conn['interface']} from {ends[0]} to {ends[1]}"
-            location = self.diagnosticLocation(conn['_context'])
+            return f"In {self.diagnosticLocation(conn['_context'], conn.get('lc'))}, {label}"
+
+        for conn in self.flatData['connections'].values():
             for end in ('src', 'dst'):
                 if instances[conn[end + 'Key']]['container'] == '_topInstance':
                     self.logError(
-                        f"In {location}, {label} has topInstance '{conn[end]}' as its "
+                        f"{where(conn)} has topInstance '{conn[end]}' as its "
                         f"{end}. A connection joins two instances in the same container, "
                         f"and the topInstance, the topmost instance, is in none. Link "
                         f"the top block to its child with a connectionMaps entry instead.")
             src, dst = instances[conn['srcKey']], instances[conn['dstKey']]
             if src['containerKey'] != dst['containerKey']:
                 self.logError(
-                    f"In {location}, {label} joins '{conn['src']}' in container "
+                    f"{where(conn)} joins '{conn['src']}' in container "
                     f"'{src['container']}' and '{conn['dst']}' in container '{dst['container']}'. "
                     f"A connection joins two instances in the same container; link a "
                     f"block to its own child with a connectionMaps entry instead.")

@@ -7891,87 +7891,185 @@ def run_block_clock_period_authored_falsy_cases():
     ))
 
 
+def _design_line(text, needle):
+    """'top.yaml:<n>,', the diagnostic location of the design line holding
+    `needle`, with the comma that ends it so line 4 never matches line 45."""
+    lines = [n for n, line in enumerate(text.splitlines(), 1) if needle in line]
+    if len(lines) != 1:
+        raise AssertionError(f"the design has {len(lines)} lines holding {needle!r}")
+    return f"top.yaml:{lines[0]},"
+
+
+def _default_design(extraInstances='', extraConnections='', extraBlocks=''):
+    return DESIGN.format(consumerDomains='', containerDomains='', extraInstances=extraInstances,
+                         connectionClock='', extraConnections=extraConnections,
+                         extraBlocks=extraBlocks, extraSections='')
+
+
 def run_topinstance_block_not_contained_cases():
     """The topInstance is the topmost instance, so no other instance has its
     block as instanceType, whether inside the hierarchy it roots, where the
     copy recurses through itself, or in a block outside it."""
+    loop = "    uLoop:  { container: dut,    instanceType: top_tb, instGroup: top }\n"
+    other = ("    other:  { desc: \"block outside the hierarchy\", hasVl: false, "
+             "hasMdl: false, hasTb: false, hasRtl: false }\n")
+    copy = "    uCopy:  { container: other,  instanceType: top_tb, instGroup: top }\n"
     return all((
-        _expect_builds(
-            "control: the top block instantiated only as the topInstance builds"),
         _expect_diagnostic(
             "a copy of the top block inside the hierarchy it roots is rejected",
-            ("instance 'uLoop' in container 'dut' has instanceType 'top_tb', "
+            (_design_line(_default_design(extraInstances=loop), "uLoop:"),
+             "instance 'uLoop' in container 'dut' has instanceType 'top_tb', "
              "the block of topInstance 'top_tb'",
              "The topInstance is the topmost instance", 'Found 1 Error.'),
-            extraInstances="    uLoop:  { container: dut,    instanceType: top_tb, instGroup: top }\n"),
+            extraInstances=loop),
         _expect_diagnostic(
             "a copy of the top block in a block outside the hierarchy is rejected",
-            ("instance 'uCopy' in container 'other' has instanceType 'top_tb', "
+            (_design_line(_default_design(extraInstances=copy, extraBlocks=other), "uCopy:"),
+             "instance 'uCopy' in container 'other' has instanceType 'top_tb', "
              "the block of topInstance 'top_tb'",
              "The topInstance is the topmost instance", 'Found 1 Error.'),
-            extraBlocks="    other:  { desc: \"block outside the hierarchy\", hasVl: false, "
-                        "hasMdl: false, hasTb: false, hasRtl: false }\n",
-            extraInstances="    uCopy:  { container: other,  instanceType: top_tb, instGroup: top }\n"),
+            extraBlocks=other, extraInstances=copy),
     ))
+
+
+def _expect_with_files(label, design, files, projectFiles):
+    """Build `design` as top.yaml with `files` (fixture-relative path -> text)
+    beside it and `projectFiles` entries listed ahead of top.yaml; it must
+    build."""
+    def check():
+        fixture, project_path, db_path = _make_fixture(design=design)
+        try:
+            for relPath, text in files.items():
+                path = os.path.join(fixture, relPath)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w') as f:
+                    f.write(text)
+            with open(project_path) as f:
+                project = f.read()
+            if "projectFiles:\n" not in project:
+                raise AssertionError(f"the fixture's project file has no projectFiles:.\n{project}")
+            with open(project_path, 'w') as f:
+                f.write(project.replace("projectFiles:\n", "projectFiles:\n" + projectFiles, 1))
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code != 0:
+            raise AssertionError(f"the build failed.\n{output}")
+        return True
+    return _run_case(label, check)
 
 
 def run_instance_and_connection_container_cases():
     """The topInstance's container: is its own block, every other instance
     names its container, and a connection joins two instances of one
     container, so the topInstance is never a connection end."""
-    def design(old='', new=''):
-        text = DESIGN.format(consumerDomains='', containerDomains='', extraInstances='',
-                             connectionClock='', extraConnections='', extraBlocks='',
-                             extraSections='')
+    def design(old, new):
+        text = _default_design()
         if old not in text:
             raise AssertionError(f"the design names no {old!r}")
         return text.replace(old, new)
     topRow = "top_tb: { container: top_tb, instanceType: top_tb,"
+    spareRow = "uSpare: { container: dut,    instanceType: spare,"
+    fromTop = ("    - { interface: dataIf, src: top_tb, srcport: down, "
+               "dst: u_dut, dstport: up }\n")
+    toTop = "    - { interface: dataIf, name: upLink, src: u_dut, dst: top_tb }\n"
+    side = ("    side:   { desc: \"second container\", hasVl: false, hasMdl: false, "
+            "hasTb: false, hasRtl: false }\n")
+    sideInstances = ("    uSide:     { container: top_tb, instanceType: side,  instGroup: top }\n"
+                     "    uSideLeaf: { container: side,   instanceType: spare, instGroup: top }\n")
+    cross = "    - { interface: dataIf, name: crossLink, src: uProd, dst: uSideLeaf }\n"
+    down = "    - { interface: dataIf, name: downLink, src: u_dut, dst: uProd }\n"
+    # A child project's own instance may share the root topInstance's name.
+    childProject = ("yamlFormat: 2\n"
+                    "projectName: clkChild\n"
+                    "\n"
+                    "projectFiles:\n"
+                    "    - ../../yaml/child.yaml\n"
+                    f"{PROJECT_DOMAINS}"
+                    "\n"
+                    "dirs:\n"
+                    "    root: ../..\n"
+                    f"{PROJECT_TAIL}")
+    childDesign = ("blocks:\n"
+                   "    childBox:  { desc: \"child container\", hasVl: false, hasMdl: false, "
+                   "hasTb: false, hasRtl: false }\n"
+                   "    childLeaf: { desc: \"child leaf\", hasVl: false, hasMdl: false, "
+                   "hasTb: false, hasRtl: false }\n"
+                   "\n"
+                   "instances:\n"
+                   "    top_tb: { container: childBox, instanceType: childLeaf, instGroup: top }\n")
+    # Two instances of container 'part', one declared in the included file
+    # that declares the block, joined by a connection.
+    partDesign = ("blocks:\n"
+                  "    part: { desc: \"container declared in an included file\", hasVl: false, "
+                  "hasMdl: false, hasTb: false, hasRtl: false }\n"
+                  "    partLeaf: { desc: \"leaf declared in an included file\", hasVl: false, "
+                  "hasMdl: false, hasTb: false, hasRtl: false }\n"
+                  "\n"
+                  "instances:\n"
+                  "    uPartA: { container: part, instanceType: partLeaf, instGroup: top }\n")
+    partInstances = ("    uPart:  { container: top_tb, instanceType: part,  instGroup: top }\n"
+                     "    uPartB: { container: part,   instanceType: spare, instGroup: top }\n")
+    partLink = "    - { interface: dataIf, name: partLink, src: uPartA, dst: uPartB }\n"
     return all((
         _expect_builds("control: a self-referencing topInstance and peer connections build"),
         _expect_diagnostic(
             "a topInstance in another block's container is rejected",
-            ("topInstance 'top_tb' declares container 'dut'",
+            (_design_line(_default_design(), topRow),
+             "topInstance 'top_tb' declares container 'dut'",
              "its container is its own block (container: top_tb)", 'Found 1 Error.'),
             design=design(topRow, "top_tb: { container: dut, instanceType: top_tb,")),
         _expect_diagnostic(
             "a topInstance with no container: is rejected",
-            ("topInstance 'top_tb' declares no container:",
+            (_design_line(_default_design(), topRow),
+             "topInstance 'top_tb' declares no container: field.",
              "its container is its own block (container: top_tb)", 'Found 1 Error.'),
             design=design(topRow, "top_tb: { instanceType: top_tb,")),
         _expect_diagnostic(
             "an instance with no container: is rejected",
-            ("instance 'uSpare' declares no container:", 'Found 1 Error.'),
-            design=design("uSpare: { container: dut,    instanceType: spare,",
-                          "uSpare: { instanceType: spare,")),
+            (_design_line(_default_design(), spareRow),
+             "instance 'uSpare' declares no container: field.", 'Found 1 Error.'),
+            design=design(spareRow, "uSpare: { instanceType: spare,")),
+        _expect_diagnostic(
+            "an instance other than the topInstance naming the _topInstance marker is rejected",
+            (_design_line(_default_design(), spareRow),
+             "instance 'uSpare' declares container '_topInstance'. '_topInstance' is "
+             "reserved for the topInstance", 'Found 1 Error.'),
+            design=design(spareRow, "uSpare: { container: _topInstance, instanceType: spare,")),
         _expect_diagnostic(
             "a connection from the topInstance is rejected",
-            ("connection dataIf from 'top_tb' port 'down' to 'u_dut' port 'up' has "
+            (_design_line(_default_design(extraConnections=fromTop), "src: top_tb"),
+             "connection dataIf from 'top_tb' port 'down' to 'u_dut' port 'up' has "
              "topInstance 'top_tb' as its src", "connectionMaps entry", 'Found 1 Error.'),
-            extraConnections="    - { interface: dataIf, src: top_tb, srcport: down, "
-                             "dst: u_dut, dstport: up }\n"),
+            extraConnections=fromTop),
         _expect_diagnostic(
             "a connection to the topInstance is rejected",
-            ("connection 'upLink' has topInstance 'top_tb' as its dst",
+            (_design_line(_default_design(extraConnections=toTop), "name: upLink"),
+             "connection 'upLink' has topInstance 'top_tb' as its dst",
              "connectionMaps entry", 'Found 1 Error.'),
-            extraConnections="    - { interface: dataIf, name: upLink, src: u_dut, "
-                             "dst: top_tb }\n"),
+            extraConnections=toTop),
         _expect_diagnostic(
             "a connection between instances of unrelated containers is rejected",
-            ("joins 'uProd' in container 'dut' and 'uSideLeaf' in container 'side'",
+            (_design_line(_default_design(sideInstances, cross, side), "name: crossLink"),
+             "joins 'uProd' in container 'dut' and 'uSideLeaf' in container 'side'",
              "A connection joins two instances in the same container", 'Found 1 Error.'),
-            extraBlocks="    side:   { desc: \"second container\", hasVl: false, hasMdl: false, "
-                        "hasTb: false, hasRtl: false }\n",
-            extraInstances="    uSide:     { container: top_tb, instanceType: side,  instGroup: top }\n"
-                           "    uSideLeaf: { container: side,   instanceType: spare, instGroup: top }\n",
-            extraConnections="    - { interface: dataIf, name: crossLink, src: uProd, "
-                             "dst: uSideLeaf }\n"),
+            extraBlocks=side, extraInstances=sideInstances, extraConnections=cross),
         _expect_diagnostic(
             "a connection from a container to its own child is rejected",
-            ("joins 'u_dut' in container 'top_tb' and 'uProd' in container 'dut'",
+            (_design_line(_default_design(extraConnections=down), "name: downLink"),
+             "joins 'u_dut' in container 'top_tb' and 'uProd' in container 'dut'",
              "link a block to its own child with a connectionMaps entry", 'Found 1 Error.'),
-            extraConnections="    - { interface: dataIf, name: downLink, src: u_dut, "
-                             "dst: uProd }\n"),
+            extraConnections=down),
+        _expect_with_files(
+            "a child project's ordinary instance named like the root topInstance builds",
+            _default_design(),
+            {'child/prj/yaml/childProject.yaml': childProject,
+             'child/yaml/child.yaml': childDesign},
+            "    - ../../child/prj/yaml/childProject.yaml\n"),
+        _expect_with_files(
+            "a connection to an instance of the same container declared in an included file builds",
+            "include:\n    - part.yaml\n\n" + _default_design(partInstances, partLink),
+            {'yaml/part.yaml': partDesign}, ""),
     ))
 
 

@@ -5,21 +5,23 @@ Diagnostic emitted by `_findPrimaryRouter` in
 `config/postParseRegisterPorts.py`. Asserts the diagnostic lists every
 router instance and identifies the missing-root condition.
 
-The fixture constructs a deliberately cyclic placement: container block
-`scopeA` holds `uRouterA` plus an instance of `scopeB`, while
-`scopeB` holds `uRouterB` plus an instance of `scopeA`. Each router's
-upward walk lands in the other router's served container, so neither
-qualifies as the dispatch-tree root and the post-parse pass must
-diagnose the missing primary.
+The fixture constructs a deliberately cyclic placement below a plain
+top block `tb`: container block `scopeA` holds `uRouterA` plus an
+instance of `scopeB`, while `scopeB` holds `uRouterB` plus an instance
+of `scopeA`. Each router's upward walk lands in the other router's
+served container, so neither qualifies as the dispatch-tree root and
+the post-parse pass must diagnose the missing primary. The cycle sits
+below the topInstance, whose block is instantiated nowhere else.
 
 Topology (must be rejected — cyclic placement)::
 
-    uTop (instanceType=scopeA)
-    +-- uRouterA (routerA, served scope = scopeA)
-    +-- uScopeBInA (instanceType=scopeB)
-        +-- uRouterB (routerB, served scope = scopeB)
-        +-- uScopeAInB (instanceType=scopeA)
-            +-- (scopeA holds routerA + a scopeB ... cycle)
+    uTop (instanceType=tb)
+    +-- uScopeA (instanceType=scopeA)
+        +-- uRouterA (routerA, served scope = scopeA)
+        +-- uScopeBInA (instanceType=scopeB)
+            +-- uRouterB (routerB, served scope = scopeB)
+            +-- uScopeAInB (instanceType=scopeA)
+                +-- (scopeA holds routerA + a scopeB ... cycle)
 
     scopeA contains scopeB; scopeB contains scopeA. Walking up from
     uRouterA lands inside uRouterB's served scope, and walking up
@@ -42,6 +44,9 @@ ARCH_YAML = (
     APB_PREAMBLE
     + """
 blocks:
+    tb:
+        desc: "Top block — holds the scopeA instance the cycle hangs from"
+        hasMdl: true
     scopeA:
         desc: "Container A — holds routerA plus a scopeB instance"
         hasMdl: true
@@ -53,7 +58,8 @@ blocks:
     + render_router('routerB', 'groupB')
     + """
 instances:
-    uTop:        { container: scopeA, instanceType: scopeA }
+    uTop:        { container: tb,     instanceType: tb }
+    uScopeA:     { container: tb,     instanceType: scopeA }
     uRouterA:    { container: scopeA, instanceType: routerA }
     uRouterB:    { container: scopeB, instanceType: routerB }
     uScopeBInA:  { container: scopeA, instanceType: scopeB }
