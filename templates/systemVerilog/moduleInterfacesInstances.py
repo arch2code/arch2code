@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from pysrc.processYaml import camelCase
-from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
+from templates.systemVerilog.package import instanceParameterSpelling, moduleParameterDecl, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
@@ -93,7 +93,7 @@ def render(args, prj, data):
         inst_params = ' '
         if value['svInstanceParams']:
             inst_params += '#('
-            inst_params += ", ".join([f".{param['param']}({param['spelling']})" for param in value['svInstanceParams']])
+            inst_params += ", ".join([f".{param['param']}({instanceParameterSpelling(prj, param)})" for param in value['svInstanceParams']])
             inst_params += ') '
 
         out.append(f"{value['instanceTypeSvModuleName']}{inst_params}{value['instance']} (")

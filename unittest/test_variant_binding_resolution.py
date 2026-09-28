@@ -19,7 +19,8 @@ Six cells, each a case that once failed beside a control that already worked:
    the leaf's, which meets the connection through its own port.
 5. A binding naming an enum member or a constant of an included context is
    spelled by name in the make-generated parent top.sv, which imports that
-   context's package and lints. Control: a constant of the parent's own
+   context's package and lints with no warning suppressed. The enum member is
+   size-cast to the parameter's width. Control: a constant of the parent's own
    context adds no import.
 6. In the cell 2 composed root, scopeA's 'v0' of the leaf is container-sourced
    and scopeB's is a literal. Only wrapA's pair is pair-specific. Control:
@@ -454,7 +455,7 @@ def _run_checked(cmd, work):
     return result.returncode, result.stdout + result.stderr
 
 
-def _generated_top_sv(value, lintFlags):
+def _generated_top_sv(value):
     """Generate the fixture with make and lint it; return (top.sv, failure)."""
     if shutil.which('verilator') is None:
         raise RuntimeError("verilator is not on PATH")
@@ -474,8 +475,8 @@ def _generated_top_sv(value, lintFlags):
             top = f.read()
         rtl = [os.path.join('rtl', name) for name in
                ('modes_package.sv', 'arch_package.sv', 'leaf.sv', 'top.sv')]
-        rc, out = _run_checked(['verilator', '--lint-only', '--top-module', 'top',
-                                *lintFlags, *rtl], work)
+        rc, out = _run_checked(['verilator', '--lint-only', '--top-module', 'top', *rtl],
+                               work)
         if rc != 0:
             return top, f"verilator --lint-only failed for MODE: {value}\n{out[-3000:]}"
         return top, None
@@ -489,18 +490,19 @@ def _generated_imports(top):
 
 def test_named_binding_sv_instantiation():
     _header("a named binding is spelled by name in a parent that imports its package")
-    # modeT is two bits wide, so FAST widens into the int-typed MODE parameter.
+    # modeT is two bits wide, so FAST is size-cast to the int unsigned MODE
+    # parameter; constants are already 32 bits and stay bare.
     cases = [
-        ('FAST', ['-Wno-WIDTHEXPAND'], ['import arch_package::*;', 'import modes_package::*;']),
-        ('MODE_FAST', [], ['import arch_package::*;', 'import modes_package::*;']),
-        ('MODE_LOCAL', [], ['import arch_package::*;']),
+        ('FAST', "32'(FAST)", ['import arch_package::*;', 'import modes_package::*;']),
+        ('MODE_FAST', 'MODE_FAST', ['import arch_package::*;', 'import modes_package::*;']),
+        ('MODE_LOCAL', 'MODE_LOCAL', ['import arch_package::*;']),
     ]
     ok = True
-    for value, lintFlags, imports in cases:
-        top, failure = _generated_top_sv(value, lintFlags)
+    for value, spelling, imports in cases:
+        top, failure = _generated_top_sv(value)
         failures = [failure] if failure else []
-        if top is not None and f'leaf #(.MODE({value})) uLeaf' not in top:
-            failures.append(f"top.sv does not spell .MODE({value})")
+        if top is not None and f'leaf #(.MODE({spelling})) uLeaf' not in top:
+            failures.append(f"top.sv does not spell .MODE({spelling})")
         if top is not None and _generated_imports(top) != imports:
             failures.append(f"top.sv imports {_generated_imports(top)}, expected {imports}")
         for failure in failures:

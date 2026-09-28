@@ -24,6 +24,19 @@ def moduleParameterDecl(prj, param):
     type_str, value_str = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
     return f"parameter {type_str} {param['param']} = {value_str}"
 
+
+def instanceParameterSpelling(prj, param):
+    """SV override value for a child instance parameter. An enum member is
+    narrower than the parameter it binds, so it is cast to the declared type.
+    A two-word type is not a legal casting_type (IEEE 1800-2017 A.8.4), so an
+    unsigned type is spelled as a size cast, which keeps the enum's unsigned
+    base."""
+    if not param['isEnumMember']:
+        return param['spelling']
+    type_str, _ = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
+    cast = {'int unsigned': '32', 'longint unsigned': '64'}.get(type_str, type_str)
+    return f"{cast}'({param['spelling']})"
+
 # args from generator line
 # prj object
 # data set dict

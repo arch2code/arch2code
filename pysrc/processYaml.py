@@ -2024,8 +2024,9 @@ class projectOpen:
         if instanceData['inheritContainerParam']:
             # Every child param is a validated subset of the container's, so
             # each is spelled as that same-named parent parameter.
-            return [{'param': paramRow['param'], 'spelling': paramRow['param']}
-                   for paramRow in childBlock['params']]
+            return [{'param': paramRow['param'], 'spelling': paramRow['param'],
+                     'isEnumMember': False, 'paramSourceKey': paramRow['paramSourceKey']}
+                    for paramRow in childBlock['params']]
         descriptor = self.instanceVariantDescriptor(instanceData)
         containerSourced = descriptor['containerSourced']
         valueSymbols = descriptor['valueSymbols']
@@ -2033,6 +2034,7 @@ class projectOpen:
         result = []
         for paramRow in childBlock['params']:
             paramName = paramRow['param']
+            isEnumMember = False
             if paramName in containerSourced:
                 # The container's parameter, whose name need not match, so the
                 # parent-name test below cannot find it.
@@ -2041,10 +2043,13 @@ class projectOpen:
                 spelling = paramName
             elif paramName in valueSymbols:
                 spelling = valueSymbols[paramName]['spelling']
+                isEnumMember = valueSymbols[paramName]['isEnumMember']
                 consts[valueSymbols[paramName]['key']] = 0
             else:
                 spelling = str(values[paramName])
-            result.append({'param': paramName, 'spelling': spelling})
+            result.append({'param': paramName, 'spelling': spelling,
+                           'isEnumMember': isEnumMember,
+                           'paramSourceKey': paramRow['paramSourceKey']})
         return result
 
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
@@ -4252,7 +4257,8 @@ class projectCreate:
                         # standalone top has no such scope and uses `values`
                         # instead. The key names the context the parent imports.
                         'valueSymbols': {
-                            param: {'spelling': row['value'], 'key': row['valueKey']}
+                            param: {'spelling': row['value'], 'key': row['valueKey'],
+                                    'isEnumMember': row['valueKey'] in self.qualEnums}
                             for param, row in variantRows.items()
                             if row['valueKey']},
                     }
