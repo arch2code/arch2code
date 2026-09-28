@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Variant bindings resolve through the same identities every consumer uses.
 
-Four cells, each a case that once failed beside a control that already worked:
+Six cells, each a case that once failed beside a control that already worked:
 
 1. A binding value naming an enum member resolves like a literal of the same
    value. Control: the literal.
@@ -17,6 +17,12 @@ Four cells, each a case that once failed beside a control that already worked:
    parameters of equal value do not bind directly. Control: both sourced from
    the same container parameter do. Every block view renders in both, including
    the leaf's, which meets the connection through its own port.
+5. An enum-member binding value is spelled by name in the parent's SV
+   instantiation, inside a module that imports the enum's package, which is
+   not the parent's own. Control: the literal is spelled as the literal.
+6. In the cell 2 composed root, scopeA's 'v0' of the leaf is container-sourced
+   and scopeB's is a literal. Only wrapA's pair is pair-specific. Control:
+   wrapA's pair.
 """
 
 import os
@@ -25,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from types import SimpleNamespace
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -33,6 +40,8 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from pysrc.systemVerilogGenerator import systemVerilogGenerator
+from templates.systemVerilog import moduleInterfacesInstances
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -394,6 +403,118 @@ def test_container_sourced_ends_compare_by_supplier():
     return True
 
 
+# --- Cell 5: enum-member binding in the parent's SV instantiation ------------
+
+# The enum lives in its own context, so the parent imports a package other
+# than its own.
+ENUM_RTL_MODES = """types:
+  modeT:
+    desc: "Available modes"
+    enum:
+      - {enumName: SLOW, value: 0, desc: "Slow"}
+      - {enumName: FAST, value: 3, desc: "Fast"}
+"""
+
+ENUM_RTL_ARCH = """include: [modes.yaml]
+ipParameters:
+  constants:
+    MODE: {value: 0, maxValue: 7, desc: "Behavioral mode"}
+types:
+  dummyT: {width: 8, desc: "Makes this context include-valid"}
+blocks:
+  top: {desc: "Root", hasMdl: true, hasRtl: true}
+  leaf: {desc: "Parameterized leaf", params: [MODE], hasMdl: true, hasRtl: true}
+instances:
+  uTop: {container: top, instanceType: top}
+  uLeaf: {container: top, instanceType: leaf, variant: fast}
+parameters:
+  leaf:
+    fast:
+      MODE: __VALUE__
+"""
+
+
+def _top_sv(value):
+    work = _write_tree({
+        'project.yaml': _project_yaml('enumSvBinding', ['arch.yaml'], 'uTop'),
+        'arch.yaml': ENUM_RTL_ARCH.replace('__VALUE__', value),
+        'modes.yaml': ENUM_RTL_MODES,
+    })
+    try:
+        db, out, rc = _build_db(work, 'project.yaml')
+        if rc != 0:
+            print(f"  FAIL: binding MODE to {value} was rejected\n{out[-3000:]}")
+            return None, None
+        prj = projectOpen(db)
+        topKey = _block_key(prj, 'top')
+        context = prj.data['blocks'][topKey]['_context']
+        data = prj.getBlockData(topKey, trimRegLeafInstance=False)
+        data.update(prj.getContextData([context], systemVerilogGenerator.dataTypeMappings))
+        data['importPackages'] = None
+        rendered = moduleInterfacesInstances.render(SimpleNamespace(fileMapKey=None), prj, data)
+        enumContext = next(row['_context'] for row in prj.data['types'].values()
+                           if row['type'] == 'modeT')
+        if enumContext == context:
+            print("  FAIL: the fixture declares the enum in the parent's own context")
+            return None, None
+        package = prj.contextSvPackageName[enumContext]
+        _close_db()
+        return rendered, package
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_enum_member_binding_sv_instantiation():
+    _header("an enum-member binding is spelled by name in the parent's SV instantiation")
+    control, _package = _top_sv('3')
+    if control is None or '#(.MODE(3))' not in control:
+        print(f"  FAIL: control literal binding did not emit .MODE(3)\n{control}")
+        return False
+    rendered, package = _top_sv('FAST')
+    if rendered is None:
+        return False
+    if '#(.MODE(FAST))' not in rendered:
+        print(f"  FAIL: enum binding did not emit .MODE(FAST)\n{rendered}")
+        return False
+    if f'import {package}::*;' not in rendered:
+        print(f"  FAIL: the module naming FAST does not import {package}\n{rendered}")
+        return False
+    print("  PASS")
+    return True
+
+
+# --- Cell 6: pair-specific registration follows the declaring project -------
+
+def test_pair_specific_follows_declaring_project():
+    _header("a pair is pair-specific only when its own declaration is container-sourced")
+    work = _composed_scope('B')
+    bArch = os.path.join(work, 'b', 'arch.yaml')
+    with open(bArch) as f:
+        text = f.read()
+    with open(bArch, 'w') as f:
+        f.write(text.replace('W: {containerParam: B}', 'W: 4'))
+    try:
+        db, out, rc = _build_db(work, 'top/project.yaml')
+        if rc != 0:
+            print(f"  FAIL: db build failed\n{out[-3000:]}")
+            return False
+        prj = projectOpen(db)
+        leafKey = _block_key(prj, 'leaf')
+        specific = {name: prj.registrarPairs[(_block_key(prj, name), leafKey)]['ownerPairSpecific']
+                    for name in ('wrapA', 'wrapB')}
+        _close_db()
+        if specific != {'wrapA': True, 'wrapB': False}:
+            print(f"  FAIL: ownerPairSpecific is {specific}; only scopeA's 'v0' is "
+                  f"container-sourced")
+            return False
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+    print("  PASS")
+    return True
+
+
 def _run_cell(cell):
     try:
         return cell()
@@ -409,6 +530,8 @@ def run_all_tests():
         test_container_sourced_checked_against_own_declaration,
         test_inactive_container_view_renders,
         test_container_sourced_ends_compare_by_supplier,
+        test_enum_member_binding_sv_instantiation,
+        test_pair_specific_follows_declaring_project,
     ]
     results = [_run_cell(cell) for cell in cells]
     return 0 if all(results) else 1

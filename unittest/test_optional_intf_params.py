@@ -1413,6 +1413,126 @@ projectFiles:
               "the message names the missing backing parameter")
 
 
+PARAM_TYPE_THUNKER_ARCH_YAML = """interface_defs:
+  ty_proto:
+    parameters:
+      p_ty: {datatype: type}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ty_proto'
+      multicycle_types: []
+
+constants:
+  FW: {value: 8, desc: "fixed type width"}
+  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}
+
+types:
+  fT: {width: FW, desc: "fixed type whose width names a constant"}
+  pT: {width: PW, isParameterizable: true, desc: "parameterizable type"}
+
+interfaces:
+  ifFixed:
+    interfaceType: ty_proto
+    desc: "fixed type payload, the connection's interface"
+    structures:
+      - {structure: fT, structureType: p_ty}
+  ifParam:
+    interfaceType: ty_proto
+    desc: "parameterizable type payload, the consumer port's interface"
+    structures:
+      - {structure: pT, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer:
+    desc: "Producer block"
+    ports:
+      outA: {interface: ifFixed, direction: src}
+  consumer:
+    desc: "Consumer block"
+    params: [PW]
+    ports:
+      inA: {interface: ifParam, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer}
+  uConsumer: {container: top, instanceType: consumer, variant: v0}
+
+connections:
+  - {interface: ifFixed, src: uProducer, srcport: outA, dst: uConsumer, dstport: inA}
+
+parameters:
+  consumer:
+    v0: {PW: 8}
+"""
+
+
+def test_param_type_payload_thunker_spelling():
+    """A thunker member spells both arms of `_qualified_payload_type_name` for
+    a `type` payload. The connection binds the fixed `fT` (width FW) and the
+    consumer port binds the parameterizable `pT` (width PW), so the
+    non-templated `top` adapts them. The fixed side spells its resolved
+    literal width, not the constant name, which is as ambiguous across
+    imported contexts as the type name. The parameterizable side spells the
+    alias template and its width against the consumer's per-variant Config."""
+    print("\n[thunker] a type payload spells the fixed and the parameterizable arm")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_thunker_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(PARAM_TYPE_THUNKER_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'paramTypeThunkerProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: paramTypeThunker
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'paramTypeThunker.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode != 0:
+            check(False, "type payload thunker build must succeed:\n"
+                          f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+            return
+
+        proj = projectOpen(dbPath)
+        top = proj.getBlockData(proj.getQualBlock('top'))
+        flagged = cross_interface_end(top)
+        if flagged is None:
+            check(False, "exactly one cross-interface bind is flagged on the fixture")
+            return
+        context = proj.data['types'][flagged['thunker']['payloads'][0]['structureKey']]['_context']
+        ns = intf_gen_utils.cpp_namespace_name(proj.contextModuleIdentity[context])
+        config = 'paramTypeThunker_consumerV0Config'
+        check_equal(
+            intf_gen_utils.sc_declare_thunkers(top, proj, '', top),
+            [f'ty_proto_port_thunker<{ns}::fT, 8, {ns}::pT<{config}>, {config}::PW, '
+             'false> thunker_outA_uConsumer;'],
+            "the fixed type spells its literal width and the parameterizable "
+            "type spells its alias and width against the bound Config")
+
+
 def test_cross_interface_bind_kind_mismatch():
     """A cross-interface bind where the same structureType is bound to a
     `types` row on one interface and a `structures` row on the other must
@@ -1581,6 +1701,7 @@ def main():
     test_param_type_variant_channel_width()
     test_param_type_payload_missing_backing_param()
     test_param_type_payload_connectionmap_missing_backing_param()
+    test_param_type_payload_thunker_spelling()
     test_cross_interface_bind_kind_mismatch()
 
     print("\n" + "=" * 72)

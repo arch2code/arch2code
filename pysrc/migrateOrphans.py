@@ -142,8 +142,8 @@ MIGRATE_EDIT = "edit"
 # keeps the same entry name and the same {hdr: h, src: cpp}, so it cancels out of
 # every legacy-minus-current diff and this sweep cannot express anything about it.
 # Its scaffold-owned out-of-region content DID change (fw_ns and the standard
-# includes moved into regions), so a tree still holding the legacy shape needs its
-# includeFW pair deleted and re-scaffolded, which is not a fileMap-diff operation;
+# includes moved into regions), so newmodule migrates a legacy-shaped header in
+# place, which is not a fileMap-diff operation;
 # `config` (VariantConfig) never existed in the old map either, but its own later
 # retirement left a surviving empty header behind, which RETIRED_CONTEXT_SIBLINGS
 # below sweeps by its still-current `include` sibling.

@@ -4346,9 +4346,11 @@ class projectCreate:
             factoryProjects[(inst['containerKey'], inst['instanceTypeKey'])] = (
                 f"{owner}.{self.blockModuleName[inst['containerKey']]}."
                 f"{self.blockModuleName[inst['instanceTypeKey']]}")
-            containerSourced = inst['inheritContainerParam'] or any(
-                d['variant'] == inst['variant'] and d['containerSourced']
-                for d in descriptors.get(inst['instanceTypeKey'], []))
+            if inst['inheritContainerParam']:
+                containerSourced = True
+            else:
+                descriptor = selectedDescriptor(inst)
+                containerSourced = descriptor is not None and bool(descriptor['containerSourced'])
             if containerSourced:
                 pairSpecificChildren.add((owner, inst['instanceTypeKey']))
 

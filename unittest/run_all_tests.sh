@@ -524,6 +524,12 @@ python3 test_optional_intf_params.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: variant binding resolution"
+echo "------------------------------------------------------------------------"
+python3 test_variant_binding_resolution.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: Error Handling (unresolvable interface hdlparam)"
 echo "------------------------------------------------------------------------"
 python3 test_error_intf_hdlparam_unresolved.py || FAILED=1

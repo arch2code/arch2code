@@ -353,10 +353,14 @@ xproj-container-layout:
 #                (24); the inner sibling stays a literal 16 at both. The alt
 #                site agrees and the use site disagrees, so db must REJECT
 #                naming the use site, not the first site enumerated (alt).
-# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+# inhLayout also runs gen: rendering an inheriting leaf's view reaches its
+# connection through its port, with both ends in the container, not in the
+# rendered block. Adjudicated at db and never built. Shares no sub-project, so
+# needs no ordering.
 xproj-inherit-layout:
 	make -C $(XPROJ_PARAM_DIR)/inhLayout clean
 	make -C $(XPROJ_PARAM_DIR)/inhLayout -j db
+	make -C $(XPROJ_PARAM_DIR)/inhLayout -j gen
 	# The aborted db build leaves a partial file behind, which would satisfy
 	# the db target and make the assertion below vacuous; clean it away first.
 	make -C $(XPROJ_PARAM_DIR)/inhLayoutBad clean

@@ -1,7 +1,11 @@
 # Plan #125 post-merge follow-ups — defects deferred out of the origin/main merge
 
-- **Status:** PLANNED (2026-09-21). No code written beyond the interim guards
-  named below, which landed inside the merge itself.
+- **Status:** DONE (2026-09-28). The user withdrew §5.6 and §5.7 on
+  2026-09-23, when the APB socket lost its decode and PSLVERR (base 707eeb76,
+  9b2a0017). Every other item landed on this branch, except one §4 test (the
+  thunker spelling of a type payload), which is in the working tree with an
+  added SV enum-binding test and not yet committed. Each section opens with
+  its own status.
 - **Branch:** `feature/125-a2c-20-followup-issues`, after the merge of
   `origin/main` (d7897c62: PRs #124/#131 sockets, #128 AXI user structs and
   optional payloads, #134 arbitration, #135 Pune fixes, #140 Verilator
@@ -38,6 +42,17 @@ consumer after `make clean` in that consumer.
 ---
 
 ## 2. Socket shell on a parameterizable block
+
+**Landed (base 9cf57b7d).** `validateSocketOnParameterizedBlock` and
+`test_error_socket_parameterized.py` are gone. `blockRegistrar.py` emits the
+`_socket` registrations from the registrar view's `socketRegistrations`, and
+`_variant_config_names` is gone from `constructorSocket.py`.
+`unittest/test_socket_parameterized_registrar.py` is the positive test. A new
+guard, `validateParameterizedSocketHasModel`, rejects `hasSkt` on a
+parameterizable block with no model, because only a block with a model gets a
+registrar (`test_error_socket_parameterized_no_model.py`). The scratch example
+became a committed one, `examples/xprojParam/sktAsm`. `make xproj-socket`
+builds and runs it, and it is in `PIPELINE_TARGETS` (base 551b2ed7).
 
 ### 2.1 Problem
 
@@ -95,6 +110,11 @@ workspace is affected by the guard.
 ---
 
 ## 3. connectionMap boundary validation (`unittest/test_validate_ports.py`)
+
+**Landed (base 9cf57b7d).** `validatePorts` calls
+`validateConnectionMapBoundaries` after `validateRtlHierarchy`. All five tests
+in `test_validate_ports.py` exist, and both runners enrol the suite
+(`run_all_tests_parallel.sh`, `run_all_tests.sh`).
 
 ### 3.1 Problem
 
@@ -188,9 +208,10 @@ mismatch (`unittest/test_optional_intf_params.py`). The following variant
 paths have no unit test, and the first three sit on code the merge touched:
 
 - **connectionMap with a type payload** sized by a root parameter, where the
-  child lacks the parameter. The connectionMaps loop of
-  `_validateParameterizedConnectionEndpoints` (`pysrc/processYaml.py:6354`)
-  did not recognise `types`-kind payloads until the merge review caught it;
+  child lacks the parameter. *Landed (base 9cf57b7d):*
+  `test_param_type_payload_connectionmap_missing_backing_param`. The
+  connectionMaps loop of `_validateParameterizedConnectionEndpoints`
+  (`pysrc/processYaml.py:6354`) did not recognise `types`-kind payloads until the merge review caught it;
   the fix has no test. Mirror `test_param_type_payload_missing_backing_param`
   with a `connectionMaps:` entry instead of a connection.
 - **Thunker member spelling with a type payload.** Every thunker spelling
@@ -200,14 +221,27 @@ paths have no unit test, and the first three sit on code the merge touched:
   where `<Config>` is the bound side's `<owner>_<block><V>Config`. The type is
   an alias template (`templates/systemc/includes.py`);
   a fixed type whose width names a constant spells the resolved literal.
+  *Uncommitted (working tree):* `test_param_type_payload_thunker_spelling` in
+  `unittest/test_optional_intf_params.py`. One thunker carries both arms, a
+  fixed `fT` of width `FW` on the connection and a parameterizable `pT` on the
+  consumer port. It fails if either arm or the bound Config changes.
 - **Direct-copy verdict for type payloads.** `unittest/test_payload_direct_copy.py`
   checks structure signatures only; add a `types` pair (equal and differing
-  `typeStorage`) and an enum pair to the verdict test.
+  `typeStorage`) and an enum pair to the verdict test. *Landed (base
+  9cf57b7d):* `test_type_and_enum_pair_verdicts`.
 - **Container parameter inheritance with a type payload.** None of the eight
   inheritance suites binds one; add a type payload to
-  `unittest/test_inherit_container_param.py`'s fixture.
+  `unittest/test_inherit_container_param.py`'s fixture. *Landed (base
+  9cf57b7d):* the positive fixture binds `pT` and asserts
+  `pT<Config>, Config::WIDTH`.
 - **Cross-project variant with a type payload** in
-  `unittest/test_param_cross_project_linkage.py`.
+  `unittest/test_param_cross_project_linkage.py`. *Landed (base 9cf57b7d):*
+  `test_one_interface_at_equal_valued_configs_binds_directly_type_payload`.
+- **Enum-member variant binding in SV.** Added after this plan was written.
+  *Uncommitted (working tree):* cell 5 of
+  `unittest/test_variant_binding_resolution.py`. A parent RTL block must emit
+  `.MODE(FAST)` for a `MODE: FAST` binding and import the package that
+  declares the enum. A literal binding is the control.
 
 Acceptance: each new test fails when its guard is reverted (verify by
 temporarily reverting the connectionMaps `declKind` line for the first one).
@@ -216,12 +250,21 @@ temporarily reverting the connectionMaps `declKind` line for the first one).
 
 ## 5. Socket runtime and decode defects inherited from main
 
-All code in this section is byte-identical to origin/main; the #125 branch
-never touched it. Raise each as an issue against main's socket feature
-(#124/#131) and fix on a branch from main, so the fix reaches both lines.
+**Status.** 5.1 to 5.5 and 5.8 landed on this branch, not on a branch from
+main. 5.6 and 5.7 are withdrawn. None was raised as an issue against main.
+
+When this plan was written, all code in this section was byte-identical to
+origin/main and the #125 branch had not touched it. Raise each as an issue
+against main's socket feature (#124/#131) and fix on a branch from main, so
+the fix reaches both lines.
 Items 5.1 to 5.3 need a design decision before code.
 
 ### 5.1 AXI wire format has no width or burst bound
+
+**Landed (base bcd54c7c).** Both socket overloads `static_assert`
+`D::_byteWidth * 256 <= SOCKET_AXI_BURST_BYTES`, and the write side also
+asserts `D::_byteWidth <= 16`. Each message names the wire struct and its
+Python ctypes mirrors.
 
 `interfaces/axi_write/axi_write_port_socket.h:33-34` declares
 `uint8_t data[SOCKET_AXI_BURST_BYTES]` (4096, `common/systemc/socketTransport.h:152`)
@@ -235,6 +278,11 @@ ctypes mirror, or widen the wire format. The read side has the same shape.
 
 ### 5.2 Socket overloads accept only absent USER payloads
 
+**Landed (base bcd54c7c).** The wire format carries USER payloads
+(`SOCKET_AXI_USER_BYTES`, mirrored in the two Python examples). The overloads
+take `ARU`/`RU` and `AWU`/`WU`/`BU` as template parameters, and a
+`static_assert` bounds the width of each.
+
 `axi_read_port_socket.h:50,264` and `axi_write_port_socket.h:51,251` take
 `std::monostate` for every USER slot. The catalog view sets `hasPortSocket`
 from the interface definition alone (`pysrc/processYaml.py:1512`), so a design
@@ -245,6 +293,9 @@ port and the bound payload.
 
 ### 5.3 Write BFM dummy beat spelled with an absent WUSER
 
+**Landed (base bcd54c7c).** The dummy beat is
+`axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>`.
+
 `interfaces/axi_write/axi_write_bfm.h:133` constructs
 `axiWriteDataSt<DATA_T, STRB_T, std::monostate, ID, IDW>` and passes it to
 `sendDataCycle`, which takes the exact envelope `axiWriteDataSt<D, S, WU, ID, IDW>`.
@@ -253,6 +304,11 @@ Not socket-specific, but it arrived with the same feature.
 
 ### 5.4 Lockstep acknowledgement wait has no exit predicate
 
+**Landed (base bcd54c7c, on the `g_rx_alive` flag from 3afe7ea1).**
+`wait_for_ack` samples `g_rx_alive` on each pass and returns false once the
+receive thread has exited. The quantum loop then leaves and calls
+`free_run_after_link_loss()`.
+
 `common/systemc/socketSync.cpp:273` `wait_for_ack` loops on delta cycles until
 the acknowledgement arrives. If the peer disconnects while a wait is pending
 the receive thread reports closure but the loop never observes it, and the
@@ -260,6 +316,11 @@ kernel spins forever. Add a connected-and-running predicate to the loop and
 return (or raise the end-of-test vote) when it drops.
 
 ### 5.5 Lockstep state crosses threads unsynchronised
+
+**Landed (base 3afe7ea1, bcd54c7c).** `g_python_ready` (3afe7ea1) and
+`g_at_boundary` (bcd54c7c) are `std::atomic<bool>`. The quantum thread
+captures the epoch on the kernel side once it sees readiness, so the receive
+thread no longer reads kernel time.
 
 `socketSync.cpp:27,32,33,34` declare `g_python_ready`, `g_at_boundary`,
 `g_lockstep_epoch_ns`, `g_lockstep_epoch_set` as plain globals. The receive
@@ -272,8 +333,10 @@ process instead of reading kernel time itself.
 
 ### 5.6 APB socket decode excludes memory windows
 
-**Closed (base 707eeb76).** The APB socket no longer decodes addresses or
-raises PSLVERR, and `_blockRegisterWordDecode` is gone.
+**Withdrawn (user ruling 2026-09-23).** The APB socket lost its decode
+instead. It no longer decodes addresses or raises PSLVERR, and
+`_blockRegisterWordDecode` is gone (base 707eeb76, plan note 9b2a0017).
+`interfaces/apb/apb_port_socket.h` has no PSLVERR.
 
 `pysrc/processYaml.py:1380` `_blockRegisterWordDecode` skips
 `regType == 'memory'` and returns `None` when no register offsets remain. The
@@ -285,8 +348,9 @@ the decode view, or reject socket drive ports onto memory-only targets at db.
 
 ### 5.7 APB target selected by first connection match on block type
 
-**Closed (base 707eeb76).** `_socketApbTargetBlockKey` went with the socket's
-register map, so the socket no longer looks up a target.
+**Withdrawn (user ruling 2026-09-23).** Base 707eeb76 removed
+`_socketApbTargetBlockKey` with the socket's register map. The socket no
+longer looks up a target.
 
 `pysrc/processYaml.py:1443` `_socketApbTargetBlockKey` scans all project
 connections and returns the first whose source or destination instance has
@@ -297,9 +361,9 @@ instance, not derived from block type.
 
 ### 5.8 `INSTANCES_WITH_REGAPB` read as optional
 
-**Closed.** Base 707eeb76 removed the socket catalog read. The router read in
-`getBDAddressDecode` now uses a plain `getConfig`, like the other required
-keys.
+**Landed (base 707eeb76, 9b2a0017).** Base 707eeb76 removed the socket
+catalog read. Base 9b2a0017 made the router read in `getBDAddressDecode` a
+plain `getConfig`, like the other required keys.
 
 `pysrc/processYaml.py:1416` (and 2280) read the fact with `failOk=True` and
 return `None` when absent, while `config/postParseRegisterPorts.py` always
@@ -308,6 +372,12 @@ persists it. Read it directly so a broken producer fails at the source.
 ---
 
 ## 6. Cleanups
+
+**Landed.** Base 9cf57b7d removed the `thunker` guards, and
+`.get('thunker') or {}` has no hits under `pysrc/`. `templates/` spells no
+literal `'Config'`; the word appears only in comments. `_cm_synth_conn` in
+`templates/systemc/testbench.py` has sat below the import groups since the
+merge (eee2e06a).
 
 - `pysrc/processYaml.py:3294,3299`: `(crossBind.get('thunker') or {}).get('payloads', []) or []`
   guards a state that cannot exist. A cross-interface end is only emitted when

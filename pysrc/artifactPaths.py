@@ -3,7 +3,7 @@ Every tool that writes or inspects generated files resolves both here, so
 the path rule exists once."""
 
 import os
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport
 from pysrc.migrateCommon import userRegionLines, _regions, _find
 from pysrc.variantSelection import standaloneVariantDescriptors
 
@@ -434,8 +434,14 @@ def getLegacyFwHeaders(prj, rows):
         path = row['files']['hdr']
         if not os.path.isfile(path):
             continue
-        with open(path, 'r', errors='replace') as f:
-            text = f.read()
+        try:
+            with open(path, 'r') as f:
+                text = f.read()
+        except UnicodeDecodeError as exc:
+            printWarning(f"Skipping the legacy firmware header check of {path}: "
+                         f"{exc.reason} at byte {exc.start}. If it still wraps its "
+                         f"regions in the legacy fw_ns block, remove that block by hand.")
+            continue
         if legacyFwWrapper(text) is not None:
             legacy.add(os.path.abspath(path))
     return sorted(legacy)
