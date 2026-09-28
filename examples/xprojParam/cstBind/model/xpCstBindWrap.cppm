@@ -27,6 +27,7 @@ import xpCstIp_xpCstDut.base;
 import xpCstBind_xpCstChkInc.base;
 import xpCstBind_xpCstSrcOwn.base;
 import xpCstBind_xpCstChkOwn.base;
+import xpCstBind_xpCstBindTop;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
 // A #include here closes the preamble and attaches to THIS module; use it only for
@@ -34,6 +35,7 @@ import xpCstBind_xpCstChkOwn.base;
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace xpCstIp_ns;
 using namespace xpCstBind_xpCstSup_ns;
+using namespace xpCstBind_xpCstBindTop_ns;
 export SC_MODULE(xpCstBindWrap), public blockBase, public xpCstBindWrapBase
 {
 private:

@@ -17,9 +17,10 @@ Six cells, each a case that once failed beside a control that already worked:
    parameters of equal value do not bind directly. Control: both sourced from
    the same container parameter do. Every block view renders in both, including
    the leaf's, which meets the connection through its own port.
-5. An enum-member binding value is spelled by name in the parent's SV
-   instantiation, inside a module that imports the enum's package, which is
-   not the parent's own. Control: the literal is spelled as the literal.
+5. A binding naming an enum member or a constant of an included context is
+   spelled by name in the make-generated parent top.sv, which imports that
+   context's package and lints. Control: a constant of the parent's own
+   context adds no import.
 6. In the cell 2 composed root, scopeA's 'v0' of the leaf is container-sourced
    and scopeB's is a literal. Only wrapA's pair is pair-specific. Control:
    wrapA's pair.
@@ -31,7 +32,6 @@ import subprocess
 import sys
 import tempfile
 import traceback
-from types import SimpleNamespace
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -40,8 +40,6 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
-from pysrc.systemVerilogGenerator import systemVerilogGenerator
-from templates.systemVerilog import moduleInterfacesInstances
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -403,11 +401,13 @@ def test_container_sourced_ends_compare_by_supplier():
     return True
 
 
-# --- Cell 5: enum-member binding in the parent's SV instantiation ------------
+# --- Cell 5: named bindings in the parent's generated SV instantiation ------
 
-# The enum lives in its own context, so the parent imports a package other
-# than its own.
-ENUM_RTL_MODES = """types:
+# modes.yaml is its own context, so a binding naming FAST or MODE_FAST needs
+# the parent to import a package other than its own.
+NAMED_RTL_MODES = """constants:
+  MODE_FAST: {value: 3, desc: "Fast mode value"}
+types:
   modeT:
     desc: "Available modes"
     enum:
@@ -415,10 +415,12 @@ ENUM_RTL_MODES = """types:
       - {enumName: FAST, value: 3, desc: "Fast"}
 """
 
-ENUM_RTL_ARCH = """include: [modes.yaml]
+NAMED_RTL_ARCH = """include: [modes.yaml]
 ipParameters:
   constants:
     MODE: {value: 0, maxValue: 7, desc: "Behavioral mode"}
+constants:
+  MODE_LOCAL: {value: 2, desc: "Declared in the parent's own context"}
 types:
   dummyT: {width: 8, desc: "Makes this context include-valid"}
 blocks:
@@ -433,55 +435,82 @@ parameters:
       MODE: __VALUE__
 """
 
+NAMED_RTL_MAKEFILE = """PROJECTNAME = namedSvBinding
+TB_TOP_MODULE = top
+HDL_TOP_MODULE = top
+A2C_PRJ_YAML = $(REPO_ROOT)/project.yaml
+include $(A2C_ROOT)/include/make/a2c-common.mk
+.PHONY: clean
+clean::
+	rm -rf $(A2C_SQLDB_DOTFILE) $(A2C_SQLDB_FILE) $(GEN_BUILD_DIR)
+"""
 
-def _top_sv(value):
+
+def _run_checked(cmd, work):
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(cmd, cwd=work, capture_output=True, text=True,
+                            timeout=600, env=env)
+    return result.returncode, result.stdout + result.stderr
+
+
+def _generated_top_sv(value, lintFlags):
+    """Generate the fixture with make and lint it; return (top.sv, failure)."""
+    if shutil.which('verilator') is None:
+        raise RuntimeError("verilator is not on PATH")
     work = _write_tree({
-        'project.yaml': _project_yaml('enumSvBinding', ['arch.yaml'], 'uTop'),
-        'arch.yaml': ENUM_RTL_ARCH.replace('__VALUE__', value),
-        'modes.yaml': ENUM_RTL_MODES,
+        'project.yaml': _project_yaml('namedSvBinding', ['arch.yaml'], 'uTop'),
+        'arch.yaml': NAMED_RTL_ARCH.replace('__VALUE__', value),
+        'modes.yaml': NAMED_RTL_MODES,
+        'Makefile': NAMED_RTL_MAKEFILE,
     })
     try:
-        db, out, rc = _build_db(work, 'project.yaml')
+        make = ['make', '-j4', f'REPO_ROOT={work}', f'A2C_ROOT={base_dir}']
+        for target in ('clean', 'db', 'newmodule', 'gen'):
+            rc, out = _run_checked(make + [target], work)
+            if rc != 0:
+                return None, f"make {target} failed for MODE: {value}\n{out[-3000:]}"
+        with open(os.path.join(work, 'rtl', 'top.sv')) as f:
+            top = f.read()
+        rtl = [os.path.join('rtl', name) for name in
+               ('modes_package.sv', 'arch_package.sv', 'leaf.sv', 'top.sv')]
+        rc, out = _run_checked(['verilator', '--lint-only', '--top-module', 'top',
+                                *lintFlags, *rtl], work)
         if rc != 0:
-            print(f"  FAIL: binding MODE to {value} was rejected\n{out[-3000:]}")
-            return None, None
-        prj = projectOpen(db)
-        topKey = _block_key(prj, 'top')
-        context = prj.data['blocks'][topKey]['_context']
-        data = prj.getBlockData(topKey, trimRegLeafInstance=False)
-        data.update(prj.getContextData([context], systemVerilogGenerator.dataTypeMappings))
-        data['importPackages'] = None
-        rendered = moduleInterfacesInstances.render(SimpleNamespace(fileMapKey=None), prj, data)
-        enumContext = next(row['_context'] for row in prj.data['types'].values()
-                           if row['type'] == 'modeT')
-        if enumContext == context:
-            print("  FAIL: the fixture declares the enum in the parent's own context")
-            return None, None
-        package = prj.contextSvPackageName[enumContext]
-        _close_db()
-        return rendered, package
+            return top, f"verilator --lint-only failed for MODE: {value}\n{out[-3000:]}"
+        return top, None
     finally:
-        _close_db()
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_enum_member_binding_sv_instantiation():
-    _header("an enum-member binding is spelled by name in the parent's SV instantiation")
-    control, _package = _top_sv('3')
-    if control is None or '#(.MODE(3))' not in control:
-        print(f"  FAIL: control literal binding did not emit .MODE(3)\n{control}")
-        return False
-    rendered, package = _top_sv('FAST')
-    if rendered is None:
-        return False
-    if '#(.MODE(FAST))' not in rendered:
-        print(f"  FAIL: enum binding did not emit .MODE(FAST)\n{rendered}")
-        return False
-    if f'import {package}::*;' not in rendered:
-        print(f"  FAIL: the module naming FAST does not import {package}\n{rendered}")
-        return False
-    print("  PASS")
-    return True
+def _generated_imports(top):
+    return [line for line in top.splitlines() if line.startswith('import ')]
+
+
+def test_named_binding_sv_instantiation():
+    _header("a named binding is spelled by name in a parent that imports its package")
+    # modeT is two bits wide, so FAST widens into the int-typed MODE parameter.
+    cases = [
+        ('FAST', ['-Wno-WIDTHEXPAND'], ['import arch_package::*;', 'import modes_package::*;']),
+        ('MODE_FAST', [], ['import arch_package::*;', 'import modes_package::*;']),
+        ('MODE_LOCAL', [], ['import arch_package::*;']),
+    ]
+    ok = True
+    for value, lintFlags, imports in cases:
+        top, failure = _generated_top_sv(value, lintFlags)
+        failures = [failure] if failure else []
+        if top is not None and f'leaf #(.MODE({value})) uLeaf' not in top:
+            failures.append(f"top.sv does not spell .MODE({value})")
+        if top is not None and _generated_imports(top) != imports:
+            failures.append(f"top.sv imports {_generated_imports(top)}, expected {imports}")
+        for failure in failures:
+            print(f"  FAIL: {failure}")
+        if failures:
+            print(top)
+            ok = False
+    if ok:
+        print("  PASS")
+    return ok
 
 
 # --- Cell 6: pair-specific registration follows the declaring project -------
@@ -530,7 +559,7 @@ def run_all_tests():
         test_container_sourced_checked_against_own_declaration,
         test_inactive_container_view_renders,
         test_container_sourced_ends_compare_by_supplier,
-        test_enum_member_binding_sv_instantiation,
+        test_named_binding_sv_instantiation,
         test_pair_specific_follows_declaring_project,
     ]
     results = [_run_cell(cell) for cell in cells]

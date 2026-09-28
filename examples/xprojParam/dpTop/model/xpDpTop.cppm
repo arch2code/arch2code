@@ -14,11 +14,13 @@ export module xpDpTop.block;
 import xpDpTop.base;
 import xpDpTop.xpDpWrap.config;
 import xpDpTop_xpDpWrap.base;
+import xpDpLeaf;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
 // A #include here closes the preamble and attaches to THIS module; use it only for
 // headers that name module or Config types.
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace xpDpLeaf_ns;
 export SC_MODULE(xpDpTop), public blockBase, public xpDpTopBase
 {
 private:

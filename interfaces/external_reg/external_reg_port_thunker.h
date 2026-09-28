@@ -6,7 +6,6 @@
 #include "../../common/systemc/q_assert.h"
 #include "external_reg_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
-#include <optional>
 #include <string>
 
 // external_reg_port_thunker
@@ -32,17 +31,16 @@
 //     crosses with reg_write_cmd(), which leaves the far mirror alone.
 //   * read-back, owner -> driver: reg_read() observes write() and the value
 //     crosses with write().
-//   * mirror, both ways: wait_mirror() observes a mirror change and the value
-//     crosses with update_mirror(). A driver's reg_write() is a command plus a
-//     mirror change, so it arrives as both. The echo of a forwarded mirror
-//     value is recognised and not sent back, so a newer value published on the
-//     origin side meanwhile is not overwritten by the stale one.
+//   * mirror, owner -> driver: wait_mirror() observes a mirror change and the
+//     value crosses with update_mirror().
 // Each leg runs on its own thread; a single loop would impose an ordering the
 // protocol does not have. DirectData gates every copy site.
 //
-// update_mirror() is on the owner interface only. In the producer shapes the
-// parent side is the owner but is reached through its driver interface, so
-// the down -> up mirror leg casts to the owner interface of the same channel.
+// The register owner is the only mirror publisher; the driver interface has no
+// call that changes the mirror. The mirror therefore crosses one way, from the
+// owner's side to the driver's, and the driver side is a copy of the owner's
+// latest publication. In the consumer shapes the child owns the register
+// (down -> up); in the producer shapes the parent does (up -> down).
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction.
@@ -152,20 +150,14 @@ private:
     {
         sc_core::sc_spawn( [this]() { this->thunkInCommand(); } );
         sc_core::sc_spawn( [this]() { this->thunkInReadBack(); } );
-        sc_core::sc_spawn( [this]() {
-            this->mirrorLeg( this->upIn(), &m_down_channel, m_up_mirror_echo, m_down_mirror_echo ); } );
-        sc_core::sc_spawn( [this]() {
-            this->mirrorLeg( &m_down_channel, this->upIn(), m_down_mirror_echo, m_up_mirror_echo ); } );
+        sc_core::sc_spawn( [this]() { this->thunkInMirror(); } );
     }
 
     void spawnOut()
     {
         sc_core::sc_spawn( [this]() { this->thunkOutCommand(); } );
         sc_core::sc_spawn( [this]() { this->thunkOutReadBack(); } );
-        sc_core::sc_spawn( [this]() {
-            this->mirrorLeg( this->upOut(), &m_down_channel, m_up_mirror_echo, m_down_mirror_echo ); } );
-        sc_core::sc_spawn( [this]() {
-            this->mirrorLeg( &m_down_channel, this->upOutOwner(), m_down_mirror_echo, m_up_mirror_echo ); } );
+        sc_core::sc_spawn( [this]() { this->thunkOutMirror(); } );
     }
 
     external_reg_in_if<UpT>* upIn()
@@ -176,14 +168,6 @@ private:
     external_reg_out_if<UpT>* upOut()
     {
         return m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
-    }
-
-    external_reg_in_if<UpT>* upOutOwner()
-    {
-        external_reg_in_if<UpT>* owner = dynamic_cast<external_reg_in_if<UpT>*>( upOut() );
-        Q_ASSERT_CTX( owner != nullptr, m_down_channel.name(),
-                      "external_reg thunker: parent driver interface is not an external_reg channel" );
-        return owner;
     }
 
     void thunkInCommand()
@@ -238,25 +222,29 @@ private:
         }
     }
 
-    // Forwards each mirror change on src to dst. echoIntoSrc holds the value
-    // the opposite leg last forwarded into src; the change it causes is that
-    // leg's own echo and is dropped once instead of being sent back.
-    template <class SrcIf, class DstIf, class From, class To>
-    void mirrorLeg( SrcIf* src, DstIf* dst, std::optional<From>& echoIntoSrc, std::optional<To>& echoIntoDst )
+    void thunkInMirror()
     {
-        static_assert( !DirectData || sizeof(To) == sizeof(From), "external_reg data_t direct copy requires equal payload size" );
+        external_reg_in_if<UpT>* up = upIn();
         while (true) {
-            src->wait_mirror();
-            From inVal = src->readNonBlocking();
-            const bool isEcho = echoIntoSrc && *echoIntoSrc == inVal;
-            echoIntoSrc.reset();
-            if (isEcho) {
-                continue;
-            }
-            To outVal;
+            m_down_channel.wait_mirror();
+            DownT inVal = m_down_channel.readNonBlocking();
+            UpT   outVal;
+            static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "external_reg data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
-            echoIntoDst = outVal;
-            dst->update_mirror( outVal );
+            up->update_mirror( outVal );
+        }
+    }
+
+    void thunkOutMirror()
+    {
+        external_reg_out_if<UpT>* up = upOut();
+        while (true) {
+            up->wait_mirror();
+            UpT   inVal = up->readNonBlocking();
+            DownT outVal;
+            static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "external_reg data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( outVal, inVal );
+            m_down_channel.update_mirror( outVal );
         }
     }
 
@@ -273,11 +261,9 @@ private:
     // declared default: the emitted adapter constructor call is fixed at four
     // arguments and carries no initial value, so a register-backed connection's
     // default_value cannot reach it. Only a reader that samples before the first
-    // update can observe the difference; the mirror legs sample only after one.
+    // update can observe the difference; the mirror leg samples only after one.
     typename DownT::_packedSt m_down_initial{};
     external_reg_channel<DownT> m_down_channel;
-    std::optional<UpT>   m_up_mirror_echo;
-    std::optional<DownT> m_down_mirror_echo;
 };
 
 #endif // EXTERNAL_REG_PORT_THUNKER_H

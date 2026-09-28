@@ -9,8 +9,10 @@ module;
 export module xpCstBind_xpCstBindWrap.base;
 import xpCstIp;
 import xpCstBind_xpCstSup;
+import xpCstBind_xpCstBindTop;
 using namespace xpCstIp_ns;
 using namespace xpCstBind_xpCstSup_ns;
+using namespace xpCstBind_xpCstBindTop_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

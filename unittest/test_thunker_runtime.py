@@ -29,8 +29,9 @@ and pinned here so a future edit that weakens it is visible:
   matched.
 - The bridge is transparent to each protocol's notification semantics: one
   `status` notification per upstream notification (including repeated
-  commands), `external_reg` commands that leave the mirror alone, mirror
-  publications that cross with their notification in both directions, and
+  commands), `external_reg` commands that leave the mirror alone, owner mirror
+  publications that cross to the driver with their notification in all four
+  shapes and never come back to the owner, and
   `memory`/`apb` read data that is never converted before it is filled.
 
 The build is done here rather than by a project makefile because the harness is
@@ -70,10 +71,11 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
         '-ldl', '-lrt', '-lsystemc', '-pthread']
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
-# plus twelve notification-semantics and unfilled-read-data harnesses. Pinned so
+# twelve notification-semantics and unfilled-read-data harnesses, and eight
+# external_reg mirror-publisher harnesses (four shapes, two verdicts). Pinned so
 # a harness that stopped being constructed fails here rather than reducing the
 # evidence silently.
-EXPECTED_CHECKS = 605
+EXPECTED_CHECKS = 757
 
 
 def toolchain_env():
@@ -156,7 +158,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert failures == 'failures:0', f"{output}"
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} payload and beat-count checks across 40 harnesses, 0 failures")
+    print(f"  {count} payload and beat-count checks across 48 harnesses, 0 failures")
 
 
 def run_all_tests():

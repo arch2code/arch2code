@@ -7,6 +7,8 @@ module;
 #include "blockBase.h"
 
 export module xpDpTop.base;
+import xpDpLeaf;
+using namespace xpDpLeaf_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

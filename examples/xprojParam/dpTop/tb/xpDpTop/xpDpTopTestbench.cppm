@@ -12,12 +12,14 @@ module;
 export module xpDpTop.testbench;
 import xpDpTop.base;
 import xpDpTop.external;
+import xpDpLeaf;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
 // A #include here closes the preamble and attaches to THIS module; use it only for
 // headers that name module or Config types.
 // GENERATED_CODE_BEGIN --template=testbench --section=header
 
+using namespace xpDpLeaf_ns;
 
 export class xpDpTopTestbench: public sc_module, public blockBase, public xpDpTopChannels {
 

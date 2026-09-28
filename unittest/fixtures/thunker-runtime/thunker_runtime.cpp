@@ -42,7 +42,8 @@
 //
 // A further set of harnesses pins the protocols' notification semantics:
 // status commands, the separate external_reg command, read-back and mirror
-// legs, and memory/apb read data that reqReceive() never fills.
+// legs, the external_reg owner as sole mirror publisher in all four shapes,
+// and memory/apb read data that reqReceive() never fills.
 
 #include "apb_port_thunker.h"
 #include "axi4_stream_port_thunker.h"
@@ -753,7 +754,7 @@ struct externalRegConsumerHarness : sc_core::sc_module
             pace();
             UpT v;
             v.value = dataVal( i );
-            upChan.reg_write( v );
+            upChan.reg_write_cmd( v );
         }
     }
 
@@ -806,7 +807,7 @@ struct externalRegProducerHarness : sc_core::sc_module
             pace();
             DownT v;
             v.value = dataVal( i );
-            childPort->reg_write( v );
+            childPort->reg_write_cmd( v );
         }
     }
 
@@ -833,9 +834,9 @@ struct externalRegProducerHarness : sc_core::sc_module
 };
 
 // external_reg leg separation. A command (reg_write_cmd) notifies the owner and
-// leaves both mirrors alone; a mirror publication (update_mirror) crosses as a
-// mirror update with its notification; a driver's reg_write() is both. Values
-// that originate on one side are checked unconverted on that side, so a mirror
+// leaves both mirrors alone; the owner's mirror publication (update_mirror)
+// crosses to the driver as a mirror update with its notification. Values that
+// originate on one side are checked unconverted on that side, so a mirror
 // echoed back through the bridge (and truncated by the packed arm) fails.
 template <class T>
 static T payloadOf( std::uint32_t v )
@@ -889,13 +890,13 @@ struct externalRegMirrorConsumerHarness : sc_core::sc_module
         expectEqual( label, upMirrorEvents, 1 );
         expectEqual( label, downMirrorEvents, 1 );
 
-        upChan.reg_write( payloadOf<UpT>( dataVal( 2 ) ) );
+        upChan.reg_write_cmd( payloadOf<UpT>( dataVal( 2 ) ) );
         pace();
         expectEqual( label, cmdBeats, 3 );
-        expectEqual( label, childPort->readNonBlocking().value, bridged( dataVal( 2 ), Direct ) );
-        expectEqual( label, upChan.readNonBlocking().value, dataVal( 2 ) );
-        expectEqual( label, upMirrorEvents, 2 );
-        expectEqual( label, downMirrorEvents, 2 );
+        expectEqual( label, childPort->readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, upChan.readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
 
         // Two publications one delta apart: the bridge's echo of the first
         // must not overwrite the second on either side.
@@ -982,13 +983,13 @@ struct externalRegMirrorProducerHarness : sc_core::sc_module
         expectEqual( label, upMirrorEvents, 1 );
         expectEqual( label, downMirrorEvents, 1 );
 
-        childPort->reg_write( payloadOf<DownT>( dataVal( 2 ) ) );
+        childPort->reg_write_cmd( payloadOf<DownT>( dataVal( 2 ) ) );
         pace();
         expectEqual( label, cmdBeats, 3 );
-        expectEqual( label, upChan.readNonBlocking().value, bridged( dataVal( 2 ), Direct ) );
-        expectEqual( label, childPort->readNonBlocking().value, dataVal( 2 ) );
-        expectEqual( label, upMirrorEvents, 2 );
-        expectEqual( label, downMirrorEvents, 2 );
+        expectEqual( label, upChan.readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, childPort->readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
 
         upChan.update_mirror( payloadOf<UpT>( dataVal( 3 ) ) );
         sc_core::wait( sc_core::SC_ZERO_TIME );
@@ -1026,6 +1027,172 @@ struct externalRegMirrorProducerHarness : sc_core::sc_module
 
     void upMirrorWatch() { while (true) { upChan.wait_mirror(); ++upMirrorEvents; } }
     void downMirrorWatch() { while (true) { childPort->wait_mirror(); ++downMirrorEvents; } }
+};
+
+// external_reg mirror publisher: the owner publishes back to back and the
+// driver side must settle on the owner's last value, with the owner's own
+// mirror never written by the bridge. One sequence runs in all four shapes.
+// Publications land in one delta, one delta apart and 1 ns apart, and one
+// returns to the value before it. The lossy steps republish a value whose
+// packed image the driver already holds, so the packed arm forwards a mirror
+// that does not change. Where the shape leaves the driver-side mirror
+// writable (the consumer shapes' parent channel), a stray write there in the
+// same delta as an owner publication must lose to the owner and never reach
+// the owner's mirror.
+template <class OwnerT, bool Direct>
+struct externalRegMirrorPublisher : sc_core::sc_module
+{
+    const char* label;
+    std::uint32_t published = 0;
+    int ownerOverwrites = 0;
+
+    externalRegMirrorPublisher( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), label( label_ )
+    {
+        SC_HAS_PROCESS( externalRegMirrorPublisher );
+        SC_THREAD( publish );
+        SC_THREAD( ownerWatch );
+    }
+
+    virtual external_reg_in_if<OwnerT>* owner() = 0;
+    virtual std::uint32_t driverMirror() = 0;
+    virtual void stray( std::uint32_t ) {}
+
+    void post( std::uint32_t v )
+    {
+        published = v;
+        owner()->update_mirror( payloadOf<OwnerT>( v ) );
+    }
+
+    void settle()
+    {
+        pace();
+        expectEqual( label, driverMirror(), bridged( published, Direct ) );
+        expectEqual( label, owner()->readNonBlocking().value, published );
+    }
+
+    void publish()
+    {
+        pace();
+        post( dataVal( 0 ) );
+        post( dataVal( 1 ) );
+        settle();
+        post( dataVal( 2 ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 3 ) );
+        settle();
+        post( dataVal( 4 ) );
+        sc_core::wait( 1, sc_core::SC_NS );
+        post( dataVal( 5 ) );
+        settle();
+        post( dataVal( 5 ) & PAYLOAD_MASK );
+        settle();
+        post( dataVal( 6 ) );
+        settle();
+        post( dataVal( 7 ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 6 ) );
+        settle();
+        post( dataVal( 8 ) );
+        post( dataVal( 8 ) & PAYLOAD_MASK );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 9 ) );
+        settle();
+        stray( dataVal( 10 ) );
+        post( dataVal( 11 ) );
+        settle();
+        post( dataVal( 12 ) );
+        stray( dataVal( 13 ) );
+        settle();
+        expectEqual( label, ownerOverwrites, 0 );
+    }
+
+    // Every change of the owner's mirror must be the owner's own publication.
+    void ownerWatch()
+    {
+        while (true) {
+            owner()->wait_mirror();
+            if (owner()->readNonBlocking().value != published) ++ownerOverwrites;
+        }
+    }
+};
+
+// connections shape: parent driver on upChan, child owner behind the bridge.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishConsumerHarness : externalRegMirrorPublisher<DownT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_in<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<DownT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ) {}
+
+    external_reg_in_if<DownT>* owner() override { return childPort.operator->(); }
+    std::uint32_t driverMirror() override { return upChan.readNonBlocking().value; }
+    void stray( std::uint32_t v ) override { upChan.update_mirror( payloadOf<UpT>( v ) ); }
+};
+
+// connectionMap shape: as above through an unbound parent in port.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishUpPortConsumerHarness : externalRegMirrorPublisher<DownT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_in<UpT> upPort;
+    external_reg_in<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishUpPortConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<DownT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), upPort( "upPort" ), childPort( "childPort" ),
+        thunker( "thunker", upPort, childPort, "tb" )
+    {
+        upPort( upChan );
+    }
+
+    external_reg_in_if<DownT>* owner() override { return childPort.operator->(); }
+    std::uint32_t driverMirror() override { return upChan.readNonBlocking().value; }
+    void stray( std::uint32_t v ) override { upChan.update_mirror( payloadOf<UpT>( v ) ); }
+};
+
+// producer (out) shape: parent owner on upChan, child driver behind the bridge.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishProducerHarness : externalRegMirrorPublisher<UpT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_out<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<UpT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ) {}
+
+    external_reg_in_if<UpT>* owner() override { return &upChan; }
+    std::uint32_t driverMirror() override { return childPort->readNonBlocking().value; }
+};
+
+// producer (out) port shape: as above through an unbound parent out port.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishUpPortProducerHarness : externalRegMirrorPublisher<UpT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_out<UpT> upPort;
+    external_reg_out<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishUpPortProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<UpT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), upPort( "upPort" ), childPort( "childPort" ),
+        thunker( "thunker", upPort, childPort, "tb" )
+    {
+        upPort( upChan );
+    }
+
+    external_reg_in_if<UpT>* owner() override { return &upChan; }
+    std::uint32_t driverMirror() override { return childPort->readNonBlocking().value; }
 };
 
 // ===========================================================================
@@ -1246,6 +1413,16 @@ int sc_main( int, char*[] )
     externalRegMirrorConsumerHarness<maskASt, maskBSt, true> extMirC1( "extMirC1", "external_reg legs in direct" );
     externalRegMirrorProducerHarness<maskASt, maskBSt, false> extMirP0( "extMirP0", "external_reg legs out packed" );
     externalRegMirrorProducerHarness<maskASt, maskBSt, true> extMirP1( "extMirP1", "external_reg legs out direct" );
+
+    // -- external_reg mirror: owner publications converge on the driver ------
+    externalRegPublishConsumerHarness<maskASt, maskBSt, false> extPubC0( "extPubC0", "external_reg publish in packed" );
+    externalRegPublishConsumerHarness<maskASt, maskBSt, true> extPubC1( "extPubC1", "external_reg publish in direct" );
+    externalRegPublishUpPortConsumerHarness<maskASt, maskBSt, false> extPubUpC0( "extPubUpC0", "external_reg publish in up-port packed" );
+    externalRegPublishUpPortConsumerHarness<maskASt, maskBSt, true> extPubUpC1( "extPubUpC1", "external_reg publish in up-port direct" );
+    externalRegPublishProducerHarness<maskASt, maskBSt, false> extPubP0( "extPubP0", "external_reg publish out packed" );
+    externalRegPublishProducerHarness<maskASt, maskBSt, true> extPubP1( "extPubP1", "external_reg publish out direct" );
+    externalRegPublishUpPortProducerHarness<maskASt, maskBSt, false> extPubUpP0( "extPubUpP0", "external_reg publish out up-port packed" );
+    externalRegPublishUpPortProducerHarness<maskASt, maskBSt, true> extPubUpP1( "extPubUpP1", "external_reg publish out up-port direct" );
 
     // -- read data never filled by reqReceive() must not be converted --------
     // Packed data verdict only: the direct arm bit_casts and packs nothing.

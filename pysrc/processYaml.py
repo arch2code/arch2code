@@ -2014,8 +2014,9 @@ class projectOpen:
             return ''
         return declaredPorts[portName]['interfaceKey']
 
-    def _resolveSvInstanceParams(self, instanceData, parentParamNames):
-        # Param-override list for a sub-block instance's SV #(...).
+    def _resolveSvInstanceParams(self, instanceData, parentParamNames, consts):
+        # Param-override list for a sub-block instance's SV #(...). A constant
+        # named by a binding is recorded in consts so its package is imported.
         childTypeKey = instanceData['instanceTypeKey']
         childBlock = self.data['blocks'][childTypeKey]
         if not childBlock['params']:
@@ -2039,7 +2040,8 @@ class projectOpen:
             elif paramName in parentParamNames:
                 spelling = paramName
             elif paramName in valueSymbols:
-                spelling = valueSymbols[paramName]
+                spelling = valueSymbols[paramName]['spelling']
+                consts[valueSymbols[paramName]['key']] = 0
             else:
                 spelling = str(values[paramName])
             result.append({'param': paramName, 'spelling': spelling})
@@ -2115,7 +2117,7 @@ class projectOpen:
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['instanceTypeSvModuleName'] = self.blockSvModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
-                instInfo, parentParamNames)
+                instInfo, parentParamNames, ret['temp']['consts'])
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
@@ -4244,12 +4246,13 @@ class projectCreate:
                             for param, row in variantRows.items()
                             if row['containerParam']},
                         # Params bound by naming a constant, mapped to that
-                        # name. A sub-block instantiation sits inside a parent
-                        # module and emits the name, so a parent parameter of
-                        # that name flows its value down; a standalone top has
-                        # no such scope and uses `values` instead.
+                        # name and its qualified key. A sub-block instantiation
+                        # sits inside a parent module and emits the name, so a
+                        # parent parameter of that name flows its value down; a
+                        # standalone top has no such scope and uses `values`
+                        # instead. The key names the context the parent imports.
                         'valueSymbols': {
-                            param: row['value']
+                            param: {'spelling': row['value'], 'key': row['valueKey']}
                             for param, row in variantRows.items()
                             if row['valueKey']},
                     }
