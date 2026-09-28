@@ -3,6 +3,7 @@
 #include "logging.h"
 #include "simController.h"
 #include "systemc.h"
+#include "instanceFactory.h"
 #include "watchDog.h"
 #include "q_assert.h"
 import a2c.endOfTest;
@@ -28,6 +29,61 @@ void watchDog::disableWatchdog(void)
     enabled = false;
     enableVotes--;
 };
+
+
+// Instantiable watchDog block. sc_main runs watchDogHandler() for every
+// project, so the block adds only the "systemCWatchdog" startup vote, which a
+// design counts in setStartupVoters(), and stopping the run at end-of-test.
+SC_MODULE(watchDogBlock), public blockBase
+{
+private:
+    struct registerBlock
+    {
+        registerBlock()
+        {
+            // watchDog is a framework-shared block owned by no user project, so
+            // it registers under the unqualified (empty) projectName.
+            instanceFactory::registerBlock("watchDog_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<watchDogBlock>(blockName, variant, bbMode));}, "", "" );
+        }
+    };
+    static registerBlock registerBlock_;
+public:
+    watchDogBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~watchDogBlock() override = default;
+    void setTimed(int nsec, timedDelayMode mode) override {};
+    void setLogging(verbosity_e verbosity) override {};
+private:
+    void startupVoteAndStop(void);
+};
+
+
+SC_HAS_PROCESS(watchDogBlock);
+
+watchDogBlock::registerBlock watchDogBlock::registerBlock_; //register the block with the factory
+
+watchDogBlock::watchDogBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("watchDog", name(), bbMode)
+{
+    log_.logPrint("watchDog initialized.", LOG_IMPORTANT );
+    SC_THREAD(startupVoteAndStop);
+}
+
+void watchDogBlock::startupVoteAndStop(void)
+{
+    endOfTestState &eot = endOfTestState::GetInstance();
+    log_.logPrint("Startup delay begin", LOG_IMPORTANT);
+    wait(simController::startupDelay);
+    log_.logPrint("Startup delay " + simController::startupDelay.to_string() + " complete", LOG_IMPORTANT);
+    simController::advanceStartupPhase("systemCWatchdog");
+    // Polled: forceEndOfTest() latches end-of-test without notifying eotEvent.
+    while (!eot.isEndOfTest())
+    {
+        wait(watchDog::timeout);
+    }
+    wait(sc_time(1, SC_US));
+    sc_stop();
+}
 
 
 enum timeConversionT {

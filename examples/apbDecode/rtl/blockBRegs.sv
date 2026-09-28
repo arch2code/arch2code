@@ -132,9 +132,12 @@ module apbDecode_blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTable.read_data[95:64]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTable_rd_enable = ~blockBTable_rd_capture;
+                    nxt_blockBTable_rd_enable = (apb_addr[3:0] inside {4'h0, 4'h4, 4'h8}) & ~blockBTable_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;

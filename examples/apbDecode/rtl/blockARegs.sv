@@ -213,9 +213,12 @@ module apbDecode_blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable0.read_data[62:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable0_rd_enable = ~blockATable0_rd_capture;
+                    nxt_blockATable0_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockATable0_rd_capture;
                 end
                 [REG_BLOCKA_BLOCKATABLE1:REG_BLOCKA_BLOCKATABLE1 + REG_BLOCKA_BLOCKATABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
@@ -231,9 +234,12 @@ module apbDecode_blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable1.read_data[62:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable1_rd_enable = ~blockATable1_rd_capture;
+                    nxt_blockATable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockATable1_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;

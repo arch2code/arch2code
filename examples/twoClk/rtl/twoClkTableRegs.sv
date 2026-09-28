@@ -115,7 +115,10 @@ module twoClk_twoClkTableRegs
                                 nxt_rd_slverr = tbl_err;
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)

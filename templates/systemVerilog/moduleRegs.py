@@ -816,23 +816,33 @@ def section_03b_mems(mem_data):
             s_1 += [ f"                nxt_rd_slverr = {mem_intf}_err;" ]
             s_1 += [ f"            end" ]
             s_1 += [ f"        end" ]
-        s_1 +=     [ f"        default: ;" ]
+        s_1 += [ f"        default: begin" ]
+        s_1 += [ f"            nxt_rd_ready = 1'b1;" ]
+        s_1 += [ f"            nxt_rd_data = '0;" ]
+        s_1 += [ f"        end" ]
         s_1 += [ f"    endcase" ]
         s_1 += [ f"end" ]
         return string_joiner(s_1, '\n')
 
+    word_offsets = []
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
+        word_offsets.append(f"{mem_data['rowwidth']}'h{o:x}")
         s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
         s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
         s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
         s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}.read_data[{u}:{l}]);" ]
         s_1 += [ f"            end" ]
         s_1 += [ f"        end" ]
-    s_1 +=     [ f"        default: ;" ]
+    s_1 += [ f"        default: begin" ]
+    s_1 += [ f"            nxt_rd_ready = 1'b1;" ]
+    s_1 += [ f"            nxt_rd_data = '0;" ]
+    s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ~{mem_intf}_rd_capture;" ]
+    # An offset that is no word of the row completes without a memory read,
+    # so no stray rd_capture reaches the next access.
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{mem_data['rowwidth']-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
 
     return string_joiner(s_1, '\n')
@@ -854,18 +864,25 @@ def section_03b_memregs(reg_data):
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    word_offsets = []
     for seg in segments_enum:
         _, (o, u, l, w, _) = seg
         o_rel = o - addr_l  # offset relative to base of mem mod bus width
+        word_offsets.append(f"{rowwidth}'h{o_rel:x}")
         s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
         s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
         s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
         s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}.read_data[{u}:{l}]);" ]
         s_1 += [ f"            end" ]
         s_1 += [ f"        end" ]
-    s_1 +=     [ f"        default: ;" ]
+    s_1 += [ f"        default: begin" ]
+    s_1 += [ f"            nxt_rd_ready = 1'b1;" ]
+    s_1 += [ f"            nxt_rd_data = '0;" ]
+    s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ~{mem_intf}_rd_capture;" ]
+    # An offset that is no word of the row completes without a memory read,
+    # so no stray rd_capture reaches the next access.
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth}-1:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     
     return string_joiner(s_1, '\n')

@@ -44,7 +44,8 @@ clkGen_clkConsumer uConsumer (
 // Checks on clkGen's internal reset and consumer, sampled on clkRef so they
 // still fire if clkDiv stops.
 `ifndef SYNTHESIS
-localparam int unsigned DIV_PERIOD = 8;   // clkRef cycles per clkDiv period
+import clkGen_package::*;
+localparam int unsigned DIV_PERIOD = 2 * CLK_GEN_DIV_HALF_COUNT;   // clkRef cycles per clkDiv period
 localparam int unsigned RST_RELEASE_LIMIT = 4 * DIV_PERIOD;
 typedef logic [$bits(uConsumer.count)-1:0] consumer_count_t;
 `DFF_INST(int unsigned, releaseCycles)

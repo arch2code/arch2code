@@ -8,6 +8,7 @@
 import a2c.endOfTest;
 #include "workerThread.h"
 #include "testController.h"
+#include "simController.h"
 
 import mixed;
 
@@ -41,7 +42,7 @@ public:
         mixed_test_ns::test_mixed_structs::test();
 
         testController &controller = testController::GetInstance();
-        controller.set_test_names({
+        std::list<std::string> testNames = {
             "test_mem_hier_blockd_write",
             "test_mem_hier_blockd_read",
             "test_mem_hier_cpu_read",
@@ -50,7 +51,14 @@ public:
             "test_mem_local_cpu_rw",
             "test_mem_37bit_cpu_rw",
             "test_reg_cpu_rwg"
-        });
+        };
+        // blockD's model runs the blockd tests, so they do not exist when the
+        // whole mixed DUT is verilated.
+        if (simController::vlInst == "mixed") {
+            testNames.remove("test_mem_hier_blockd_write");
+            testNames.remove("test_mem_hier_blockd_read");
+        }
+        controller.set_test_names(testNames);
 
 
         //create hierarchy

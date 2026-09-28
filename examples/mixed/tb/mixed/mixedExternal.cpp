@@ -2,6 +2,7 @@
 
 import a2c.endOfTest;
 #include "mixedExternal.h"
+#include "testController.h"
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
@@ -22,5 +23,13 @@ mixedExternal::mixedExternal(sc_module_name modulename) :
 
     SC_THREAD(eotThread);
 // GENERATED_CODE_END
+    SC_THREAD(doneTest);
+}
 
+void mixedExternal::doneTest(void)
+{
+    endOfTest eot;
+    eot.registerVoter();
+    testController::GetInstance().wait_all_tests_complete();
+    eot.setEndOfTest(true);
 }

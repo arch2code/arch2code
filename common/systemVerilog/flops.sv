@@ -59,6 +59,12 @@
 `endif
 `endif
 
+// The reset is a _DOM macro argument, so a define of RST would change
+// nothing; it fails to compile, the same way, rather than being ignored.
+`ifdef RST
+`A2C_RST_IS_UNSUPPORTED_SELECT_A2C_RESET_SYNC_ASYNC_OR_NONE_AND_PASS_THE_RESET_TO_THE_DOM_MACROS
+`endif
+
 `ifdef A2C_RESET_SYNC
 // Synchronous, active-low reset applied in the clocked always_ff.
 

@@ -34,6 +34,9 @@ public:
 
 // GENERATED_CODE_END
 
+    // End-of-test voter that stays when mixed is verilated and blockB's
+    // model voter is gone.
+    void doneTest(void);
 };
 
 #endif /* MIXED_EXTERNAL_H */

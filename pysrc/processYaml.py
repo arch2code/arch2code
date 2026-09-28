@@ -4136,6 +4136,8 @@ class projectCreate:
         self.processYamls()
         # all files fully parsed: validate the whole-project ipParameters linkage
         self._validateIpParametersLinkage()
+        self._validateTopInstanceBlockNotContained()
+        self._validateConnectionContainers()
         # run any user provided post processing
         self.postYamlExternalScript()
         # create database indexes
@@ -8007,10 +8009,29 @@ class projectCreate:
 
     # handle special case where the top block does not have a container
     def _auto_container(self, section, itemkey, item, field, yamlFile, processed):
+        if field not in item:
+            if itemkey == self.topInstance:
+                self.logError(
+                    f"In {self.diagnosticLocation(yamlFile, item.lc)}, topInstance "
+                    f"'{itemkey}' declares no container:. "
+                    f"The topInstance is the topmost instance, so its container is its "
+                    f"own block (container: {item['instanceType']}).")
+            self.logError(
+                f"In {self.diagnosticLocation(yamlFile, item.lc)}, instance "
+                f"'{itemkey}' declares no container:. Every "
+                f"instance other than the topInstance names the block that contains "
+                f"it in container:.")
         ret = item[field]
         # if the instance matches the defined top instance override the container
         # the override allows for nested projects
         if itemkey == self.topInstance:
+            if ret != item['instanceType']:
+                self.logError(
+                    f"In {self.diagnosticLocation(yamlFile, item.lc)}, topInstance "
+                    f"'{itemkey}' declares container "
+                    f"'{ret}'. The topInstance is the topmost instance, so its "
+                    f"container is its own block (container: {item['instanceType']}); "
+                    f"point topInstance at the root of the hierarchy.")
             ret = "_topInstance"
         return ret
 
@@ -8616,6 +8637,49 @@ class projectCreate:
                     self.logError(f"In {self.diagnosticLocation(yamlFile)}: ipParameters constant '{name}' is not consumed by any "
                                   f"block param; every exposed ipParameters constant must back >=1 block param")
 
+    def _validateTopInstanceBlockNotContained(self):
+        # A second instance of the top block would sit inside another block,
+        # above the topInstance or, when reachable from it, recursing forever.
+        instances = self.flatData['instances'].values()
+        for top in [row for row in instances if row['container'] == '_topInstance']:
+            for row in instances:
+                if row is not top and row['instanceTypeKey'] == top['instanceTypeKey']:
+                    self.logError(
+                        f"In {self.diagnosticLocation(row['_context'])}, instance "
+                        f"'{row['instance']}' in container '{row['container']}' has "
+                        f"instanceType '{row['instanceType']}', the block of topInstance "
+                        f"'{top['instance']}'. The topInstance is the topmost instance, "
+                        f"so its block is not instantiated inside another block. Either "
+                        f"give '{row['instance']}' a different instanceType, or point "
+                        f"topInstance at the root of the hierarchy.")
+
+    def _validateConnectionContainers(self):
+        # A connection joins two instances of one container. The topInstance is
+        # in none: its row carries the _topInstance marker, so it is named first.
+        instances = self.flatData['instances']
+        for conn in self.flatData['connections'].values():
+            if conn['name']:
+                label = f"connection '{conn['name']}'"
+            else:
+                ends = [f"'{conn[end]}'" + (f" port '{conn[end + 'port']}'" if conn[end + 'port'] else "")
+                        for end in ('src', 'dst')]
+                label = f"connection {conn['interface']} from {ends[0]} to {ends[1]}"
+            location = self.diagnosticLocation(conn['_context'])
+            for end in ('src', 'dst'):
+                if instances[conn[end + 'Key']]['container'] == '_topInstance':
+                    self.logError(
+                        f"In {location}, {label} has topInstance '{conn[end]}' as its "
+                        f"{end}. A connection joins two instances in the same container, "
+                        f"and the topInstance, the topmost instance, is in none. Link "
+                        f"the top block to its child with a connectionMaps entry instead.")
+            src, dst = instances[conn['srcKey']], instances[conn['dstKey']]
+            if src['containerKey'] != dst['containerKey']:
+                self.logError(
+                    f"In {location}, {label} joins '{conn['src']}' in container "
+                    f"'{src['container']}' and '{conn['dst']}' in container '{dst['container']}'. "
+                    f"A connection joins two instances in the same container; link a "
+                    f"block to its own child with a connectionMaps entry instead.")
+
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be
         # >= this binding's value, otherwise worst-case address sizing (sourced
@@ -8745,7 +8809,7 @@ class projectCreate:
             f"default clock; {fix}, or make '{defaultReset['clock']}' the default "
             f"clock.")
 
-    def _resolvePositiveCount(self, section, itemkey, item, projectName, field):
+    def _resolvePositiveCount(self, section, itemkey, item, context, scopeLabel, field):
         # One rule for the count fields the co-simulation wrapper interpolates
         # verbatim, so authored and defaulted values are indistinguishable
         # downstream. Coercion is not cosmetic: an optional(N) schema default is
@@ -8759,8 +8823,8 @@ class projectCreate:
             count = 0
         if count < 1:
             self.logError(
-                f"In {self.diagnosticLocation(projectName, item.get('lc'))} "
-                f"(project '{projectName}'), {section}: entry '{itemkey}' declares "
+                f"In {self.diagnosticLocation(context, item.get('lc'))}{scopeLabel}, "
+                f"{section}: entry '{itemkey}' declares "
                 f"{field}: {value!r}, which is not a positive integer. The "
                 f"generated co-simulation wrapper interpolates it verbatim, so "
                 f"anything else becomes C++ that silently does the wrong thing - a "
@@ -8787,7 +8851,8 @@ class projectCreate:
 
     # projectScope: the hook's context argument is the declaring projectName, not a file
     def _post_resolveClockPeriod(self, itemkey, item, projectName):
-        if self._resolvePositiveCount('clocks', itemkey, item, projectName, 'period'):
+        if self._resolvePositiveCount('clocks', itemkey, item, projectName,
+                                      f" (project '{projectName}')", 'period'):
             self._rejectOddPicosecondPeriod(itemkey, item, projectName)
         return item
 
@@ -8799,7 +8864,7 @@ class projectCreate:
     # 0 and false included, is checked. This node is also not projectScope,
     # so the hook's context argument is the block's own file.
     def _post_resolveBlockClockPeriod(self, itemkey, item, yamlFile):
-        if item['period'] != "" and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, 'period'):
+        if item['period'] != "" and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, "", 'period'):
             self._rejectOddPicosecondPeriod(itemkey, item, yamlFile)
         return item
 
@@ -8807,7 +8872,8 @@ class projectCreate:
     def _post_resolveReset(self, itemkey, item, projectName):
         # A section carries one post hook, looked up by section name, so every
         # per-row rule this section has runs from here.
-        self._resolvePositiveCount('resets', itemkey, item, projectName, 'releaseCycles')
+        self._resolvePositiveCount('resets', itemkey, item, projectName,
+                                   f" (project '{projectName}')", 'releaseCycles')
         # An unstated clock: means the project's own default clock. Resolved once
         # here, for authored and injected rows alike, so no consumer re-implements
         # the rule and none sees an empty resets.clock. Total by construction:

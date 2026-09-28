@@ -9,6 +9,9 @@
 # - uDivider's clkDivBy2, and u_clkGen's clkDiv in clkGen_tb, are bound to
 #   `~`, so the generated RTL shows outputs left explicitly unconnected.
 
+constants:
+    CLK_GEN_DIV_HALF_COUNT: { value: 4, desc: "clkRef cycles per clkDiv half period" }
+
 blocks:
     clkGen_tb:
         desc: "Testbench container for clkGen (root container); declares clkRef purely to pass it down to u_clkGen by name match"

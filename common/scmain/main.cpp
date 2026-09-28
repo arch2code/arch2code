@@ -268,8 +268,8 @@ int sc_main(int argc, char* argv[])
         endOfTestState::GetInstance().setStartupComplete();
     });
 
-    // Stall detection, available to EVERY project without declaring a block.
-    // Inert until the design registers an enabler and votes it on.
+    // Watchdog for every run: stall detection once all enablers vote it on,
+    // and the no-terminator check.
     sc_spawn([]() { watchDogHandler(); });
 
     std::stringstream exitMsg;

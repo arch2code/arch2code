@@ -20,8 +20,8 @@ module clkGen_clkDivider
 
 // The divider is reset by rstRef_n rather than left unreset: a DFFNR_INST
 // flop has no initial value in 4-state simulation and would hold X forever.
-localparam int unsigned DIV_HALF_COUNT = 4;
-typedef logic [$clog2(DIV_HALF_COUNT)-1:0] div_count_t;
+import clkGen_package::*;
+typedef logic [$clog2(CLK_GEN_DIV_HALF_COUNT)-1:0] div_count_t;
 
 `DFFR_INST(div_count_t, divCount, '0)
 `DFFR_INST(logic, clkDivReg, 1'b0)
@@ -29,7 +29,7 @@ typedef logic [$clog2(DIV_HALF_COUNT)-1:0] div_count_t;
 always_comb begin
     n_divCount = divCount + 1'b1;
     n_clkDivReg = clkDivReg;
-    if (divCount == div_count_t'(DIV_HALF_COUNT - 1)) begin
+    if (divCount == div_count_t'(CLK_GEN_DIV_HALF_COUNT - 1)) begin
         n_divCount = '0;
         n_clkDivReg = ~clkDivReg;
     end

@@ -108,6 +108,7 @@ void cpu::fwTest(void)
          ss << "CPU Read verify failed. Expected 0x1234567812345678, got 0x" 
             << std::hex << valHigh << std::setw(8) << std::setfill('0') << valLow;
          log_.logPrint(ss.str(), LOG_ALWAYS);
+         errorCode::fail(ss.str());
     }
     
     controller.test_complete(test_read);
@@ -145,6 +146,7 @@ void cpu::fwTest(void)
             << ", got 0x"
             << std::hex << valHigh << std::setw(8) << std::setfill('0') << valLow;
          log_.logPrint(ss.str(), LOG_ALWAYS);
+         errorCode::fail(ss.str());
     }
 
     controller.test_complete(test_write);
@@ -189,6 +191,7 @@ void cpu::fwTest(void)
             << ", got row" << std::dec << ext_idx0 << "=0x" << std::hex << ext_rd0
             << " row" << std::dec << ext_idx1 << "=0x" << std::hex << ext_rd1;
          log_.logPrint(ss.str(), LOG_ALWAYS);
+         errorCode::fail(ss.str());
     }
 
     controller.test_complete(test_ext);
@@ -220,6 +223,7 @@ void cpu::fwTest(void)
            << ", got row" << std::dec << local_idx0 << "=0x" << std::hex << local_init0
            << " row" << std::dec << local_idx1 << "=0x" << std::hex << local_init1;
         log_.logPrint(ss.str(), LOG_ALWAYS);
+        errorCode::fail(ss.str());
     }
     
     // Now write new values
@@ -256,6 +260,7 @@ void cpu::fwTest(void)
             << ", got row" << std::dec << local_idx0 << "=0x" << std::hex << local_rd0
             << " row" << std::dec << local_idx1 << "=0x" << std::hex << local_rd1;
          log_.logPrint(ss.str(), LOG_ALWAYS);
+         errorCode::fail(ss.str());
     }
 
     controller.test_complete(test_local);
@@ -322,6 +327,7 @@ void cpu::test_mem_37bit_cpu_rw(void)
         if (read_val != expected_val) {
             log_.logPrint(std::format("blockBTable37Bit INITIAL read FAILED idx={} expected=0x{:x} got=0x{:x}", 
                                      idx, expected_val, read_val), LOG_ALWAYS);
+            errorCode::fail("blockBTable37Bit initial read mismatch");
         }
     }
     
@@ -357,6 +363,7 @@ void cpu::test_mem_37bit_cpu_rw(void)
         if (read_val != expected_val) {
             log_.logPrint(std::format("blockBTable37Bit WRITE verify FAILED idx={} expected=0x{:x} got=0x{:x}", 
                                      idx, expected_val, read_val), LOG_ALWAYS);
+            errorCode::fail("blockBTable37Bit write/readback mismatch");
         }
     }
     
@@ -381,6 +388,7 @@ void cpu::test_mem_37bit_cpu_rw(void)
         if (read_val != expected_val) {
             log_.logPrint(std::format("blockATable37Bit INITIAL read FAILED idx={} expected=0x{:x} got=0x{:x}", 
                                      idx, expected_val, read_val), LOG_ALWAYS);
+            errorCode::fail("blockATable37Bit initial read mismatch");
             all_passed = false;
         }
     }
@@ -417,6 +425,7 @@ void cpu::test_mem_37bit_cpu_rw(void)
         if (read_val != expected_val) {
             log_.logPrint(std::format("blockATable37Bit WRITE verify FAILED idx={} expected=0x{:x} got=0x{:x}", 
                                      idx, expected_val, read_val), LOG_ALWAYS);
+            errorCode::fail("blockATable37Bit write/readback mismatch");
             all_passed = false;
         }
     }

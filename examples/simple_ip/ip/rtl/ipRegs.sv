@@ -310,9 +310,12 @@ module ip_ipRegs
                                 nxt_rd_data = ipRegDataSt'(ipFixedMem.read_data[7:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_ipFixedMem_rd_enable = ~ipFixedMem_rd_capture;
+                    nxt_ipFixedMem_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~ipFixedMem_rd_capture;
                 end
                 [REG_IP_IPNONCONSTMEM:REG_IP_IPNONCONSTMEM + REG_IP_IPNONCONSTMEM_SIZE - 32'd4]: begin
                     case (apb_addr[1:0])
@@ -322,9 +325,12 @@ module ip_ipRegs
                                 nxt_rd_data = ipRegDataSt'(ipNonConstMem.read_data[7:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_ipNonConstMem_rd_enable = ~ipNonConstMem_rd_capture;
+                    nxt_ipNonConstMem_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~ipNonConstMem_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;

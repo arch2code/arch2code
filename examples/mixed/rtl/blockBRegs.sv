@@ -198,9 +198,12 @@ module mixed_blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTable1.read_data[63:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTable1_rd_enable = ~blockBTable1_rd_capture;
+                    nxt_blockBTable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockBTable1_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
@@ -210,9 +213,12 @@ module mixed_blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTableExt.read_data[4:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTableExt_rd_enable = ~blockBTableExt_rd_capture;
+                    nxt_blockBTableExt_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockBTableExt_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
@@ -228,9 +234,12 @@ module mixed_blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTable37Bit.read_data[36:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTable37Bit_rd_enable = ~blockBTable37Bit_rd_capture;
+                    nxt_blockBTable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockBTable37Bit_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;

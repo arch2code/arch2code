@@ -134,9 +134,12 @@ module mixed_blockARegs
                                 nxt_rd_data = apbDataSt'(blockATableLocal.read_data[6:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
+                    nxt_blockATableLocal_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockATableLocal_rd_capture;
                 end
                 [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
@@ -152,9 +155,12 @@ module mixed_blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable37Bit.read_data[36:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable37Bit_rd_enable = ~blockATable37Bit_rd_capture;
+                    nxt_blockATable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockATable37Bit_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;

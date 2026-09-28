@@ -7862,15 +7862,116 @@ def run_block_clock_period_authored_falsy_cases():
     """A block clock's authored period: 0, false or "0" is not a positive
     integer and is rejected rather than read as undeclared. An omitted
     period builds."""
+    def noProjectLabel():
+        # The block's own file is the diagnostic's context, not a project.
+        fixture, project_path, db_path = _make_fixture(
+            design=_block_clock_period_design("{ period: 0 }"), projectDomains='')
+        try:
+            code, output = _build(project_path, db_path)
+        finally:
+            shutil.rmtree(fixture)
+        if code == 0 or 'not a positive integer' not in output:
+            raise AssertionError(f"the block clock period: 0 was not rejected.\n{output}")
+        if "(project '" in output:
+            raise AssertionError(
+                f"the block clock diagnostic labels the block's yaml file as a "
+                f"project.\n{output}")
+        return True
+
     return all((
         *(_expect_diagnostic(
             f"a block clock with period: {authored} is rejected",
             ("clocks: entry 'clk' declares period:", 'not a positive integer'),
             design=_block_clock_period_design(f"{{ period: {authored} }}"), projectDomains='')
           for authored in ('0', 'false', '"0"')),
+        _run_case("the block clock diagnostic names no project", noProjectLabel),
         _expect_builds(
             "control: a block clock with no period: builds",
             design=_block_clock_period_design("{ }"), projectDomains=''),
+    ))
+
+
+def run_topinstance_block_not_contained_cases():
+    """The topInstance is the topmost instance, so no other instance has its
+    block as instanceType, whether inside the hierarchy it roots, where the
+    copy recurses through itself, or in a block outside it."""
+    return all((
+        _expect_builds(
+            "control: the top block instantiated only as the topInstance builds"),
+        _expect_diagnostic(
+            "a copy of the top block inside the hierarchy it roots is rejected",
+            ("instance 'uLoop' in container 'dut' has instanceType 'top_tb', "
+             "the block of topInstance 'top_tb'",
+             "The topInstance is the topmost instance", 'Found 1 Error.'),
+            extraInstances="    uLoop:  { container: dut,    instanceType: top_tb, instGroup: top }\n"),
+        _expect_diagnostic(
+            "a copy of the top block in a block outside the hierarchy is rejected",
+            ("instance 'uCopy' in container 'other' has instanceType 'top_tb', "
+             "the block of topInstance 'top_tb'",
+             "The topInstance is the topmost instance", 'Found 1 Error.'),
+            extraBlocks="    other:  { desc: \"block outside the hierarchy\", hasVl: false, "
+                        "hasMdl: false, hasTb: false, hasRtl: false }\n",
+            extraInstances="    uCopy:  { container: other,  instanceType: top_tb, instGroup: top }\n"),
+    ))
+
+
+def run_instance_and_connection_container_cases():
+    """The topInstance's container: is its own block, every other instance
+    names its container, and a connection joins two instances of one
+    container, so the topInstance is never a connection end."""
+    def design(old='', new=''):
+        text = DESIGN.format(consumerDomains='', containerDomains='', extraInstances='',
+                             connectionClock='', extraConnections='', extraBlocks='',
+                             extraSections='')
+        if old not in text:
+            raise AssertionError(f"the design names no {old!r}")
+        return text.replace(old, new)
+    topRow = "top_tb: { container: top_tb, instanceType: top_tb,"
+    return all((
+        _expect_builds("control: a self-referencing topInstance and peer connections build"),
+        _expect_diagnostic(
+            "a topInstance in another block's container is rejected",
+            ("topInstance 'top_tb' declares container 'dut'",
+             "its container is its own block (container: top_tb)", 'Found 1 Error.'),
+            design=design(topRow, "top_tb: { container: dut, instanceType: top_tb,")),
+        _expect_diagnostic(
+            "a topInstance with no container: is rejected",
+            ("topInstance 'top_tb' declares no container:",
+             "its container is its own block (container: top_tb)", 'Found 1 Error.'),
+            design=design(topRow, "top_tb: { instanceType: top_tb,")),
+        _expect_diagnostic(
+            "an instance with no container: is rejected",
+            ("instance 'uSpare' declares no container:", 'Found 1 Error.'),
+            design=design("uSpare: { container: dut,    instanceType: spare,",
+                          "uSpare: { instanceType: spare,")),
+        _expect_diagnostic(
+            "a connection from the topInstance is rejected",
+            ("connection dataIf from 'top_tb' port 'down' to 'u_dut' port 'up' has "
+             "topInstance 'top_tb' as its src", "connectionMaps entry", 'Found 1 Error.'),
+            extraConnections="    - { interface: dataIf, src: top_tb, srcport: down, "
+                             "dst: u_dut, dstport: up }\n"),
+        _expect_diagnostic(
+            "a connection to the topInstance is rejected",
+            ("connection 'upLink' has topInstance 'top_tb' as its dst",
+             "connectionMaps entry", 'Found 1 Error.'),
+            extraConnections="    - { interface: dataIf, name: upLink, src: u_dut, "
+                             "dst: top_tb }\n"),
+        _expect_diagnostic(
+            "a connection between instances of unrelated containers is rejected",
+            ("joins 'uProd' in container 'dut' and 'uSideLeaf' in container 'side'",
+             "A connection joins two instances in the same container", 'Found 1 Error.'),
+            extraBlocks="    side:   { desc: \"second container\", hasVl: false, hasMdl: false, "
+                        "hasTb: false, hasRtl: false }\n",
+            extraInstances="    uSide:     { container: top_tb, instanceType: side,  instGroup: top }\n"
+                           "    uSideLeaf: { container: side,   instanceType: spare, instGroup: top }\n",
+            extraConnections="    - { interface: dataIf, name: crossLink, src: uProd, "
+                             "dst: uSideLeaf }\n"),
+        _expect_diagnostic(
+            "a connection from a container to its own child is rejected",
+            ("joins 'u_dut' in container 'top_tb' and 'uProd' in container 'dut'",
+             "link a block to its own child with a connectionMaps entry", 'Found 1 Error.'),
+            extraConnections="    - { interface: dataIf, name: downLink, src: u_dut, "
+                             "dst: uProd }\n"),
     ))
 
 
@@ -7902,7 +8003,9 @@ def _run():
                                run_async_reset_bound_by_name_cases,
                                run_async_reset_bound_by_map_cases,
                                run_output_clock_bindable_cases,
-                               run_topdown_port_on_no_default_clock_block_cases)),
+                               run_topdown_port_on_no_default_clock_block_cases,
+                               run_topinstance_block_not_contained_cases,
+                               run_instance_and_connection_container_cases)),
         ("Domain agreement", (run_domain_agreement_cases,)),
         ("Instance bind pairs", (run_bind_pair_cases,)),
         ("Instance maps", (run_instance_maps_cases,)),

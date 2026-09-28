@@ -249,8 +249,8 @@ def clock_reset_ports(block_data):
 # one order. The block module port list joins clocks and resets onto one line;
 # the verilated SV wrapper and <block>_regs declare one per line.
 def sv_clock_reset_input(block_data):
-    # Grouped by consecutive direction, so an all-input block still emits the
-    # single joined 'input clk, rst_n' the block module generator always has.
+    # Grouped by consecutive direction, so an all-input block emits one
+    # joined 'input clk, rst_n'.
     groups = []
     for name, direction in clock_reset_ports(block_data):
         if groups and groups[-1][0] == direction:

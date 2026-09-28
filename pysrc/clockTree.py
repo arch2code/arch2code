@@ -1553,11 +1553,6 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             instanceKey = end['instanceKey']
             instRow = instances[instanceKey]
             containerKey = instRow['containerKey']
-            if containerKey == ClockTree.ROOT_KEY:
-                # The topInstance's own binding to the testbench is
-                # resolved separately by `_bindTopInstance`; nothing to
-                # resolve against here.
-                continue
             endBlockKey = end['instanceTypeKey']
             portName = end['portName']
             declaredClock = _declaredPortClock(blocks, domains, endBlockKey, portName)

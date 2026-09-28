@@ -21,7 +21,7 @@ def create_test_files(arch_content, project_extra=""):
     arch_basename = os.path.basename(arch_path)
     project_content = f"""yamlFormat: 2
 projectName: validate_ports_test
-topInstance: u_top
+topInstance: top_tb
 
 dirs:
   root: ..

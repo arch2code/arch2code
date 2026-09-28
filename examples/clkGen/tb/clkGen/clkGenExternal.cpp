@@ -3,6 +3,7 @@
 #include "testController.h"
 #include "q_assert.h"
 #include "simController.h"
+import clkGen;
 
 // GENERATED_CODE_PARAM --block=clkGen
 
@@ -30,12 +31,15 @@ clkGenExternal::clkGenExternal(sc_module_name modulename) :
     SC_THREAD(stimulusThread);
 }
 
-// clkDivider toggles clkDiv every DIV_HALF_COUNT (4) cycles of the 10 ns clkRef.
-static const sc_time clkDivHalfPeriod(40, SC_NS);
-// The first clkDiv edge is expected at 70 ns: rstRef_n releases after 3
-// clkRef cycles, then one half period of counting. The limit is a margin
-// over that.
-static const sc_time clkDivFirstEdgeLimit(160, SC_NS);
+// The clkRef period of prj/yaml/project.yaml's clocks:. The generated
+// co-simulation wrapper keeps it private, so it is restated here.
+static const sc_time clkRefPeriod(10, SC_NS);
+// clkDivider toggles clkDiv every CLK_GEN_DIV_HALF_COUNT clkRef cycles.
+static constexpr unsigned divPeriod = 2 * clkGen_ns::CLK_GEN_DIV_HALF_COUNT;   // clkRef cycles per clkDiv period
+static const sc_time clkDivHalfPeriod = clkGen_ns::CLK_GEN_DIV_HALF_COUNT * clkRefPeriod;
+// The first clkDiv edge is expected one half period after rstRef_n releases,
+// 3 clkRef cycles in. The limit is two clkDiv periods.
+static const sc_time clkDivFirstEdgeLimit = 2 * divPeriod * clkRefPeriod;
 static const sc_time runWindow(500, SC_NS);
 
 // Bound the run, long enough for the RTL checks to fire, then vote.
