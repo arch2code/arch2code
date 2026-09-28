@@ -491,4 +491,3 @@ the code wrong and made the compiler structurally unable to report it; BUG 13 ma
 the runtime unable to report it either. Fixing BUG 10 alone removes this instance
 but leaves `isp_lut` arithmetic unverified against RTL. Fixing BUG 13 alone leaves
 every other parameterized signed type in every other module silently unsigned.
-

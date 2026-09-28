@@ -59,4 +59,3 @@ xviMidTop::xviMidTop(sc_module_name blockName, const char * variant, blockBaseMo
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

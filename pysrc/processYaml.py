@@ -522,6 +522,7 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
@@ -1671,6 +1672,7 @@ class projectOpen:
                 'configModule':        None,
                 'inheritContainer':    True,
                 'containerTyped':      True,
+                'containerSourcedKeys': {},
                 # This site names the child at its container's active Config, so
                 # non-model replacement lookup uses that container's label.
                 'forwardsContainerVariant': True,
@@ -1688,6 +1690,14 @@ class projectOpen:
         # family of C++ types the factory key cannot select from; the container
         # names the class at the createInstance site and imports its module.
         container_typed = descriptor is not None and bool(descriptor['containerSourced'])
+        # Per container-sourced param, the backing constant of the parameter
+        # of THIS instance's container that supplies it.
+        container_sourced_keys = dict()
+        if container_typed:
+            containerParams = {row['param']: row['paramSourceKey'] for row in
+                               self.data['blocks'][instanceData['containerKey']]['params']}
+            container_sourced_keys = {param: containerParams[source] for param, source
+                                      in descriptor['containerSourced'].items()}
 
         return {
             'isParameterizable': is_parameterizable,
@@ -1697,6 +1707,7 @@ class projectOpen:
             'configModule':      config_module,
             'inheritContainer':  False,
             'containerTyped':    container_typed,
+            'containerSourcedKeys': container_sourced_keys,
             'forwardsContainerVariant': container_typed,
         }
 
@@ -2146,7 +2157,7 @@ class projectOpen:
             childOwner = self.contextOwningProject[self.data['blocks'][childTypeKey]['_context']]
             if configFields['hasOwnParams']:
                 instInfo['createInstanceProjectName'] = \
-                    self.registrarPairs[(qualBlock, childTypeKey)]['factoryProject']
+                    self.pairFactoryProjects[(qualBlock, childTypeKey)]
             elif childOwner != assemblerProject:
                 instInfo['createInstanceProjectName'] = childOwner
             else:
@@ -2580,7 +2591,8 @@ class projectOpen:
 
     def _paramValueAtEnd(self, configSelection, constantKey):
         # Resolved value of one root parameter at one connection end: a
-        # resolved literal, or a ('container', key) token for a value still
+        # resolved literal, or a ('container', key) token naming the backing
+        # constant of the container parameter that supplies a value still
         # generic where the container is rendered. Equal returns, literal or
         # token, mean the two ends share one emitted type.
         if configSelection is None or configSelection['inheritContainer'] \
@@ -2591,8 +2603,8 @@ class projectOpen:
             return self.data['constants'][constantKey]['value']
         nameByKey = {key: name for name, key in descriptor['paramSourceKeys'].items()}
         name = nameByKey[constantKey]
-        if name in descriptor['containerSourced']:
-            return ('container', constantKey)
+        if name in configSelection['containerSourcedKeys']:
+            return ('container', configSelection['containerSourcedKeys'][name])
         return descriptor['values'][name]
 
     def bindsDirectly(self, parentInterface, childInterfaceKey,
@@ -4174,9 +4186,14 @@ class projectCreate:
         for row in self.flatData['blocksparams'].values():
             paramsByBlock.setdefault(row['blockKey'], []).append(row)
 
+        resolver = ValueResolver(self)
+
         def resolvedValue(row):
+            # A named binding value is a constant or an enum member.
             valueKey = row['valueKey']
-            return constants[valueKey]['value'] if valueKey else row['value']
+            if valueKey:
+                return resolver.lookupNamedRow(valueKey, 'variant binding value')['value']
+            return row['value']
 
         configModules = self.config.getConfig('CONFIGMODULES')
         descriptors = dict()
@@ -4317,10 +4334,18 @@ class projectCreate:
         # owner's VlRegistrar TU then #includes pair-top headers only that build
         # generates, so a composing build must not compile it.
         pairSpecificChildren = set()
+        # A pair's factory domain depends only on its identities, so it exists
+        # for every contained instance: block artifacts are rendered for blocks
+        # outside this build's tree too, and a build composing one of them
+        # registers the pair under this same domain.
+        factoryProjects = dict()
         for inst in self.flatData['instances'].values():
             if inst['containerKey'] not in blocks:
                 continue
             owner = self.contextOwningProject[blocks[inst['containerKey']]['_context']]
+            factoryProjects[(inst['containerKey'], inst['instanceTypeKey'])] = (
+                f"{owner}.{self.blockModuleName[inst['containerKey']]}."
+                f"{self.blockModuleName[inst['instanceTypeKey']]}")
             containerSourced = inst['inheritContainerParam'] or any(
                 d['variant'] == inst['variant'] and d['containerSourced']
                 for d in descriptors.get(inst['instanceTypeKey'], []))
@@ -4385,7 +4410,7 @@ class projectCreate:
                         'pairVlStem': (
                             f'p{len(parentSvName)}_{parentSvName}_'
                             f'c{len(childSvName)}_{childSvName}'),
-                        'factoryProject': f'{pairOwner}.{parentIdentity}.{childIdentity}',
+                        'factoryProject': factoryProjects[pairKey],
                         'variantDescriptors': {},
                         'modelRegistrations': [],
                         'verifRegistrations': [],
@@ -4515,6 +4540,7 @@ class projectCreate:
                         f"{owner} and {current}")
                 topOwners[top] = current
         self.config.setConfig('REGISTRARPAIRS', pairs, bin=True)
+        self.config.setConfig('PAIRFACTORYPROJECTS', factoryProjects, bin=True)
 
     def declaredVariantLabels(self):
         # Per block, the variant labels the block itself declares, in the order
@@ -5826,16 +5852,17 @@ class projectCreate:
             # comes from the instance row, so existence and the domain relation
             # are decidable only per site. Inheritance is single level: a
             # declaration reaches its immediate container and no further.
+            # Keyed by declaring project too: projects composed into one build
+            # may each declare the same variant label, and a site is checked
+            # only against the declaration it resolves to.
             sourced_rows = dict()
             for r in flat_rows('parametersvariantsparams'):
                 if r['containerParam']:
-                    # Keyed by (block, variant): a variant label may be declared
-                    # by more than one project, and every declaration of the
-                    # label a site names is checked.
                     sourced_rows.setdefault(
-                        (r['blockKey'], r['variant']), list()).append(r)
+                        (r['blockKey'], r['projectName'], r['variant']), list()).append(r)
             if not sourced_rows:
                 return
+            variant_declarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
             # Block-level enclosure aggregated over every site a block is
             # instantiated at: enough to tell an author who reached one level too
             # far from one who named a parameter no enclosing block declares.
@@ -5865,7 +5892,8 @@ class projectCreate:
                 if variant == '':
                     continue
                 childKey = inst['instanceTypeKey']
-                rows = sourced_rows.get((childKey, variant), list())
+                declaringProject = variant_declarers[inst['instanceKey']]
+                rows = sourced_rows.get((childKey, declaringProject, variant), list())
                 if not rows:
                     continue
                 childName = block_name[childKey]

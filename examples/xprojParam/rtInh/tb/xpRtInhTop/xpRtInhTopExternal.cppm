@@ -73,4 +73,3 @@ void xpRtInhTopExternal::fwThread(void)
 {
     workerFactory::startSystemCThread("fw", &fwEvent);
 }
-

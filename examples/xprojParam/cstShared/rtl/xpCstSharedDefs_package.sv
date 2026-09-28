@@ -1,5 +1,5 @@
 
-// 
+//
 // GENERATED_CODE_PARAM --project=xpCstShared --context=../../yaml/xpCstSharedDefs.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package xpCstSharedDefs_package;

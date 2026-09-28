@@ -54,4 +54,3 @@ xpMtxCompTopExternal::xpMtxCompTopExternal(sc_module_name modulename) :
     SC_THREAD(eotThread);
     // GENERATED_CODE_END
 };
-

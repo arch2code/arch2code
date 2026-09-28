@@ -82,4 +82,3 @@ void xpInhDrv<Config>::drive(void)
         out2->push(sample);
     }
 }
-

@@ -110,4 +110,3 @@ void tbPeer<Config>::inThread(void)
     log_.logPrint(std::format("Test {} complete ({})", test_name, this->name()), LOG_ALWAYS);
     controller.test_complete(test_name);
 }
-

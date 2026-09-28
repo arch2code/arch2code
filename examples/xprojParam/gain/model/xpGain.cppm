@@ -81,4 +81,3 @@ void xpGain<Config>::driveVideo(void)
         videoOut->push(sample);
     }
 }
-

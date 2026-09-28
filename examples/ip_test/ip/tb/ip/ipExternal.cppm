@@ -86,4 +86,3 @@ void ipExternal::stimulusThread(void)
 
     eot_.setEndOfTest(true);
 }
-

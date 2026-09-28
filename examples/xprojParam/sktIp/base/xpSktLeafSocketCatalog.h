@@ -1,6 +1,6 @@
 #ifndef XPSKTLEAF_SOCKETCATALOG_H
 #define XPSKTLEAF_SOCKETCATALOG_H
-// 
+//
 
 // GENERATED_CODE_PARAM --block=xpSktLeaf
 // GENERATED_CODE_BEGIN --template=socketCatalog --section=header

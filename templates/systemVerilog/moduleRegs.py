@@ -821,7 +821,9 @@ module {{ modulename }}
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
+        {%- if section_03a %}
         {{ section_03a | indent(8) }}
+        {%- endif %}
         if (rd_select) begin
             case (apb_addr) inside
                 {{ section_03b | indent(16) }}

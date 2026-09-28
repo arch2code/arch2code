@@ -94,4 +94,3 @@ void xpTwoCtxDut<Config>::relay(void)
         valOut->push(out);
     }
 }
-

@@ -59,6 +59,12 @@ int main() { return fw_ns::probe(); }
 """
 
 
+HEADER_INCLUDES_BEGIN = '// GENERATED_CODE_BEGIN --template=structures --section=headerIncludes'
+TYPES_BEGIN = '// GENERATED_CODE_BEGIN --template=includes --section=types'
+USER_IN_WRAPPER = 'static int userInWrapper = 1;'
+USER_BLOCK = ['namespace fw_ns {', 'inline constexpr int userCalibration = 42;', '}']
+
+
 def _fail(msg):
     print(f"FAIL: {msg}")
     return False
@@ -73,17 +79,51 @@ def _context_namespace(text, relPath):
     return names.pop()
 
 
-def _legacy_shape(text):
-    """The header with a scaffold-owned `namespace fw_ns {` block opened after
-    the headerIncludes region and closed before the include guard's #endif."""
-    lines = text.splitlines()
-    begin = next(i for i, line in enumerate(lines)
-                 if line.startswith('// GENERATED_CODE_BEGIN --template=structures --section=headerIncludes'))
+def _insert_after_end(lines, beginPrefix, newLines):
+    begin = next(i for i, line in enumerate(lines) if line.startswith(beginPrefix))
     end = next(i for i in range(begin, len(lines)) if lines[i].startswith('// GENERATED_CODE_END'))
+    lines[end + 1:end + 1] = newLines
+
+
+def _legacy_shape(text):
+    """The header with the old scaffold's `namespace fw_ns {` block opened after
+    the headerIncludes region and closed before the include guard's #endif, and a
+    user line inside that block between the types and enums regions."""
+    lines = text.splitlines()
     guard = max(i for i, line in enumerate(lines) if line.startswith('#endif'))
     lines[guard:guard] = ['} // end of namespace fw_ns']
-    lines[end + 1:end + 1] = ['namespace fw_ns {']
+    _insert_after_end(lines, TYPES_BEGIN, [USER_IN_WRAPPER])
+    _insert_after_end(lines, HEADER_INCLUDES_BEGIN, ['namespace fw_ns {'])
     return '\n'.join(lines) + '\n'
+
+
+def _migrated_shape(text):
+    """What migrating `_legacy_shape(text)` yields: the scaffold block is gone and
+    the user line keeps its fw_ns scope in a block of its own."""
+    lines = text.splitlines()
+    _insert_after_end(lines, TYPES_BEGIN,
+                      ['namespace fw_ns {', USER_IN_WRAPPER, '} // namespace fw_ns'])
+    return '\n'.join(lines) + '\n'
+
+
+def _user_block_shape(text):
+    """A current-format header with a user-authored fw_ns block after the
+    headerIncludes region, where the old scaffold opened its block."""
+    lines = text.splitlines()
+    _insert_after_end(lines, HEADER_INCLUDES_BEGIN, USER_BLOCK)
+    return '\n'.join(lines) + '\n'
+
+
+def _compile(work, nsByHeader):
+    probe = os.path.join(work, 'probe.cpp')
+    with open(probe, 'w') as f:
+        f.write(PROBE.replace('{nsA}', nsByHeader[PROJECT_HEADERS[1][1]])
+                     .replace('{nsB}', nsByHeader[PROJECT_HEADERS[2][1]]))
+    includeDirs = [os.path.dirname(os.path.join(work, relPath)) for _, relPath in PROJECT_HEADERS]
+    includeDirs.append(os.path.join(base_dir, 'common', 'systemc'))
+    cmd = ['clang++', '-std=c++23', '-fsyntax-only', '-Wall', '-Wextra', '-Wno-unused-variable', probe]
+    cmd += [f'-I{d}' for d in includeDirs]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
 
 def _run():
@@ -120,21 +160,14 @@ def _run():
             if 'struct pixelSt {' not in headers[relPath]:
                 return _fail(f"{relPath} lacks struct pixelSt:\n{headers[relPath]}")
 
-        probe = os.path.join(work, 'probe.cpp')
-        with open(probe, 'w') as f:
-            f.write(PROBE.replace('{nsA}', nsByHeader[PROJECT_HEADERS[1][1]])
-                         .replace('{nsB}', nsByHeader[PROJECT_HEADERS[2][1]]))
-        includeDirs = [os.path.dirname(os.path.join(work, relPath)) for _, relPath in PROJECT_HEADERS]
-        includeDirs.append(os.path.join(base_dir, 'common', 'systemc'))
-        cmd = ['clang++', '-std=c++23', '-fsyntax-only', '-Wall', '-Wextra', '-Wno-unused-variable', probe]
-        cmd += [f'-I{d}' for d in includeDirs]
-        compiled = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        compiled = _compile(work, nsByHeader)
         if compiled.returncode != 0:
             return _fail(f"root firmware header does not compile:\n{compiled.stderr}")
 
-        # A header still carrying the legacy scaffold-owned `namespace fw_ns {`
-        # block around its regions is warned about at database time and
-        # re-scaffolded by newmodule, both under the project that owns it.
+        # A header still carrying the old scaffold's `namespace fw_ns {` block
+        # around its regions is warned about at database time and migrated in
+        # place by newmodule, both under the project that owns it; user text
+        # inside that block survives with its fw_ns scope.
         rootRel = PROJECT_HEADERS[3][1]
         rootPath = os.path.join(work, rootRel)
         with open(rootPath, 'w') as f:
@@ -150,11 +183,36 @@ def _run():
             return _fail(f"--newmodule with a legacy header failed:\n{made.stdout}\n{made.stderr}")
         gen = generate(rootDb, rootPath)
         if gen.returncode != 0:
-            return _fail(f"regenerating the re-scaffolded header failed:\n{gen.stdout}\n{gen.stderr}")
+            return _fail(f"regenerating the migrated header failed:\n{gen.stdout}\n{gen.stderr}")
         with open(rootPath) as f:
-            rescaffolded = f.read()
-        if rescaffolded != headers[rootRel]:
-            return _fail(f"re-scaffolded {rootRel} differs from the fresh header:\n{rescaffolded}")
+            migrated = f.read()
+        if migrated != _migrated_shape(headers[rootRel]):
+            return _fail(f"migrated {rootRel} is not the fresh header plus the user line:\n{migrated}")
+        compiled = _compile(work, nsByHeader)
+        if compiled.returncode != 0:
+            return _fail(f"migrated root firmware header does not compile:\n{compiled.stderr}")
+
+        # A current-format header whose user region holds its own fw_ns block is
+        # not the legacy shape: no warning, and newmodule and gen leave it intact.
+        userBlock = _user_block_shape(headers[rootRel])
+        with open(rootPath, 'w') as f:
+            f.write(userBlock)
+        db, built = build_db(work)
+        if built.returncode != 0:
+            return _fail(f"database build with a user fw_ns block failed:\n{built.stdout}\n{built.stderr}")
+        if 'scaffold-owned namespace fw_ns block' in built.stdout + built.stderr:
+            return _fail(f"user fw_ns block reported as legacy:\n{built.stdout}\n{built.stderr}")
+        rootDb = db_for_project(work, db, ROOT_PROJECT_NAME)
+        made = newmodule(rootDb)
+        if made.returncode != 0:
+            return _fail(f"--newmodule with a user fw_ns block failed:\n{made.stdout}\n{made.stderr}")
+        gen = generate(rootDb, rootPath)
+        if gen.returncode != 0:
+            return _fail(f"regenerating a header with a user fw_ns block failed:\n{gen.stdout}\n{gen.stderr}")
+        with open(rootPath) as f:
+            kept = f.read()
+        if kept != userBlock:
+            return _fail(f"{rootRel} with a user fw_ns block was changed:\n{kept}")
 
         print("PASS")
         return True

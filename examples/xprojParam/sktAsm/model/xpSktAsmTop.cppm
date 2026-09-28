@@ -90,4 +90,3 @@ void xpSktAsmTop::eotStopSim(void)
     }
     sc_stop();
 }
-

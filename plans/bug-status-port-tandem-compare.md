@@ -227,4 +227,3 @@ plan file yet.
 The old `mixed` registrar-orphan deferral is closed. The earlier C2/L2b, C5/L5,
 registrar S5, cross-project clangd, composed VL, and wrapper P2 items are also
 closed and must not be carried forward as open work.
-

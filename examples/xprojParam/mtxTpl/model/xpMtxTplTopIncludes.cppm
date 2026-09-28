@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpMtxTpl --context=../../yaml/xpMtxTplTop.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

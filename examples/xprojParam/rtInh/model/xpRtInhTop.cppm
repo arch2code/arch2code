@@ -77,4 +77,3 @@ xpRtInhTop::xpRtInhTop(sc_module_name blockName, const char * variant, blockBase
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

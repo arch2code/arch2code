@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpCppLeaf --context=../../yaml/xpCppLeaf.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

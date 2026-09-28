@@ -223,7 +223,7 @@ def create(prj):
         printWarning(f"firmware header {legacyFile} wraps its generated regions in a "
                      f"scaffold-owned namespace fw_ns block, which nests the context namespace")
     if legacyFwHeaders:
-        printWarning("run 'make newmodule' to re-scaffold legacy firmware headers")
+        printWarning("run 'make newmodule' to migrate legacy firmware headers")
 
     # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
     for row in rows:

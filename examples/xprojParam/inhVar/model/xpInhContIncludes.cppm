@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpInhVar --context=../../yaml/xpInhCont.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

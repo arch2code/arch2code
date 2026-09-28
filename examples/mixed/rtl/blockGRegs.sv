@@ -51,7 +51,6 @@ module blockGRegs
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
-        
         if (rd_select) begin
             case (apb_addr) inside
                 REG_BLOCKG_RWG : begin

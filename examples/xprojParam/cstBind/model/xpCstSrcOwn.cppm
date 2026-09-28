@@ -102,4 +102,3 @@ void xpCstSrcOwn<Config>::drive(void)
             LOG_IMPORTANT);
     }
 }
-

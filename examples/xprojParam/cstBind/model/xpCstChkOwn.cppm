@@ -109,4 +109,3 @@ void xpCstChkOwn<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)CS_OWN_WIDTH), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

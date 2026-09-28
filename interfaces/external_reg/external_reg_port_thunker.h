@@ -3,8 +3,10 @@
 #define EXTERNAL_REG_PORT_THUNKER_H
 
 #include "../../common/systemc/bitTwiddling.h"
+#include "../../common/systemc/q_assert.h"
 #include "external_reg_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
+#include <optional>
 #include <string>
 
 // external_reg_port_thunker
@@ -23,13 +25,24 @@
 // and unpacking it field by field. It defaults to false, which is always
 // correct and merely slower, so a hand-written instantiation need not supply it.
 //
-// One data_t, four copy sites. external_reg is the only bidirectional
-// single-payload protocol here: the same declared data_t types the register
-// write value (reg_write / read) and the register read-back value (write /
-// reg_read), so DirectData gates both legs of both construction shapes. The
-// two legs are independently event-driven, so each shape spawns two forwarding
-// threads rather than one; a single loop cannot serve them without imposing an
-// ordering the protocol does not have.
+// external_reg carries one data_t over three independently notified legs, and
+// the bridge forwards each with the call that raises the same notification on
+// the far side (see external_reg_channel.h):
+//   * command, driver -> owner: read() observes reg_write_event and the value
+//     crosses with reg_write_cmd(), which leaves the far mirror alone.
+//   * read-back, owner -> driver: reg_read() observes write() and the value
+//     crosses with write().
+//   * mirror, both ways: wait_mirror() observes a mirror change and the value
+//     crosses with update_mirror(). A driver's reg_write() is a command plus a
+//     mirror change, so it arrives as both. The echo of a forwarded mirror
+//     value is recognised and not sent back, so a newer value published on the
+//     origin side meanwhile is not overwritten by the stale one.
+// Each leg runs on its own thread; a single loop would impose an ordering the
+// protocol does not have. DirectData gates every copy site.
+//
+// update_mirror() is on the owner interface only. In the producer shapes the
+// parent side is the owner but is reached through its driver interface, so
+// the down -> up mirror leg casts to the owner interface of the same channel.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction.
@@ -42,7 +55,7 @@
 // first iteration, since the port's interface is not available until SystemC
 // elaboration completes):
 //   * connectionMap shape (consumer child, up port) — up is a parent port
-//     external_reg_in<UpT>&, resolved lazily in the two thunkIn* threads.
+//     external_reg_in<UpT>&, resolved lazily in the forwarding threads.
 //   * connections shape (consumer child, up channel) — up is the parent-side
 //     channel bound directly by its external_reg_in_if<UpT> interface base,
 //     captured immediately.
@@ -53,7 +66,7 @@
 //   * producer (out) port shape (producer child, up port) — as the producer
 //     shape, but the up side is an unbound parent port external_reg_out<UpT>&
 //     (e.g. a testbench External's inherited <DUT>Inverted boundary port),
-//     resolved lazily in the two thunkOut* threads. Used when a parameterized
+//     resolved lazily in the forwarding threads. Used when a parameterized
 //     producer instance feeds a non-parameterized boundary at an
 //     excluded-instance (tb/DUT) boundary.
 //
@@ -79,8 +92,7 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
     {
         downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkInWrite(); } );
-        sc_core::sc_spawn( [this]() { this->thunkInRead(); } );
+        spawnIn();
     }
 
     // connections shape: parent-side channel bound by its interface base.
@@ -95,8 +107,7 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
     {
         downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkInWrite(); } );
-        sc_core::sc_spawn( [this]() { this->thunkInRead(); } );
+        spawnIn();
     }
 
     // producer (out) shape: the downstream child end is the register driver;
@@ -113,8 +124,7 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
     {
         downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOutWrite(); } );
-        sc_core::sc_spawn( [this]() { this->thunkOutRead(); } );
+        spawnOut();
     }
 
     // producer (out) port shape: the up side is an unbound parent OUT port
@@ -132,13 +142,32 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
     {
         downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOutWrite(); } );
-        sc_core::sc_spawn( [this]() { this->thunkOutRead(); } );
+        spawnOut();
     }
 
 private:
-    // Resolve the up-side consumer interface once. For the port shape, sc_port
-    // binding is complete by the time a spawned thread first runs.
+    // Every up-side interface is resolved inside the spawned thread: for the
+    // port shapes, sc_port binding is complete only once elaboration ends.
+    void spawnIn()
+    {
+        sc_core::sc_spawn( [this]() { this->thunkInCommand(); } );
+        sc_core::sc_spawn( [this]() { this->thunkInReadBack(); } );
+        sc_core::sc_spawn( [this]() {
+            this->mirrorLeg( this->upIn(), &m_down_channel, m_up_mirror_echo, m_down_mirror_echo ); } );
+        sc_core::sc_spawn( [this]() {
+            this->mirrorLeg( &m_down_channel, this->upIn(), m_down_mirror_echo, m_up_mirror_echo ); } );
+    }
+
+    void spawnOut()
+    {
+        sc_core::sc_spawn( [this]() { this->thunkOutCommand(); } );
+        sc_core::sc_spawn( [this]() { this->thunkOutReadBack(); } );
+        sc_core::sc_spawn( [this]() {
+            this->mirrorLeg( this->upOut(), &m_down_channel, m_up_mirror_echo, m_down_mirror_echo ); } );
+        sc_core::sc_spawn( [this]() {
+            this->mirrorLeg( &m_down_channel, this->upOutOwner(), m_down_mirror_echo, m_up_mirror_echo ); } );
+    }
+
     external_reg_in_if<UpT>* upIn()
     {
         return m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
@@ -149,11 +178,16 @@ private:
         return m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
     }
 
-    void thunkInWrite()
+    external_reg_in_if<UpT>* upOutOwner()
     {
-        // Register-write leg, parent -> child: the thunker takes the role of
-        // the register owner on the parent channel and of the driver on the
-        // owned channel.
+        external_reg_in_if<UpT>* owner = dynamic_cast<external_reg_in_if<UpT>*>( upOut() );
+        Q_ASSERT_CTX( owner != nullptr, m_down_channel.name(),
+                      "external_reg thunker: parent driver interface is not an external_reg channel" );
+        return owner;
+    }
+
+    void thunkInCommand()
+    {
         external_reg_in_if<UpT>* up = upIn();
         while (true) {
             UpT   inVal;
@@ -161,14 +195,12 @@ private:
             up->read( inVal );
             static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "external_reg data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
-            m_down_channel.reg_write( outVal );
+            m_down_channel.reg_write_cmd( outVal );
         }
     }
 
-    void thunkInRead()
+    void thunkInReadBack()
     {
-        // Read-back leg, child -> parent: the child register owner publishes
-        // its value on the owned channel; republish it on the parent channel.
         external_reg_in_if<UpT>* up = upIn();
         while (true) {
             DownT inVal;
@@ -180,11 +212,8 @@ private:
         }
     }
 
-    void thunkOutWrite()
+    void thunkOutCommand()
     {
-        // Register-write leg, child -> parent: mirrors thunkInWrite() with the
-        // channel and interface roles exchanged and every Up<->Down type
-        // swapped.
         external_reg_out_if<UpT>* up = upOut();
         while (true) {
             DownT inVal;
@@ -192,14 +221,12 @@ private:
             m_down_channel.read( inVal );
             static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "external_reg data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
-            up->reg_write( outVal );
+            up->reg_write_cmd( outVal );
         }
     }
 
-    void thunkOutRead()
+    void thunkOutReadBack()
     {
-        // Read-back leg, parent -> child: mirrors thunkInRead() with the
-        // channel and interface roles exchanged.
         external_reg_out_if<UpT>* up = upOut();
         while (true) {
             UpT   inVal;
@@ -208,6 +235,28 @@ private:
             static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "external_reg data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
             m_down_channel.write( outVal );
+        }
+    }
+
+    // Forwards each mirror change on src to dst. echoIntoSrc holds the value
+    // the opposite leg last forwarded into src; the change it causes is that
+    // leg's own echo and is dropped once instead of being sent back.
+    template <class SrcIf, class DstIf, class From, class To>
+    void mirrorLeg( SrcIf* src, DstIf* dst, std::optional<From>& echoIntoSrc, std::optional<To>& echoIntoDst )
+    {
+        static_assert( !DirectData || sizeof(To) == sizeof(From), "external_reg data_t direct copy requires equal payload size" );
+        while (true) {
+            src->wait_mirror();
+            From inVal = src->readNonBlocking();
+            const bool isEcho = echoIntoSrc && *echoIntoSrc == inVal;
+            echoIntoSrc.reset();
+            if (isEcho) {
+                continue;
+            }
+            To outVal;
+            copyPayload<DirectData>( outVal, inVal );
+            echoIntoDst = outVal;
+            dst->update_mirror( outVal );
         }
     }
 
@@ -224,10 +273,11 @@ private:
     // declared default: the emitted adapter constructor call is fixed at four
     // arguments and carries no initial value, so a register-backed connection's
     // default_value cannot reach it. Only a reader that samples before the first
-    // update can observe the difference, and readNonBlocking() has no caller
-    // anywhere in the tree today.
+    // update can observe the difference; the mirror legs sample only after one.
     typename DownT::_packedSt m_down_initial{};
     external_reg_channel<DownT> m_down_channel;
+    std::optional<UpT>   m_up_mirror_echo;
+    std::optional<DownT> m_down_mirror_echo;
 };
 
 #endif // EXTERNAL_REG_PORT_THUNKER_H

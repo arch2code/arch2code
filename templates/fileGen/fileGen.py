@@ -6,6 +6,12 @@ from pysrc.intf_gen_utils import FW_NAMESPACE
 from pysrc.genFileParam import contextParamTail, contextParamMode
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 
+# The copyright comment line of a TemplateCustom scaffold; an empty statement
+# yields a bare `//` rather than one with a trailing space.
+def _copyright_comment(data):
+    statement = data["fileGeneration"]["fileCopyrightStatement"]
+    return f'// {statement}' if statement else '//'
+
 # Redefine the pattern to follow the format defined by dvt templates (i.e __name__, or __{name}__)
 class TemplateCustom(Template):
     delimiter = '__'
@@ -213,7 +219,7 @@ def blockModule_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
-    out.append('};\n\n')
+    out.append('};\n')
     return("".join(out))
 
 # C++20 module interface unit for a parameterizable (hasOwnParams) synthesized
@@ -243,7 +249,7 @@ def blockRegsModule_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
-    out.append('};\n\n')
+    out.append('};\n')
     return("".join(out))
 
 # Per-block trampoline registrar module interface unit. The whole module
@@ -455,7 +461,7 @@ def vlScWrap_hdr(args, prj, data):
 tandem_hdrTemplate = \
 """#ifndef __MODULENAME___TANDEM_H
 #define __MODULENAME___TANDEM_H
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tandem --section=tandem
@@ -471,10 +477,10 @@ def tandem_hdr(args, prj, data):
     t = TemplateCustom(tandem_hdrTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(),
                          'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+                         'copyright':_copyright_comment(data)}))
 
 tandem_srcTemplate = \
-"""// __copyright__
+"""__copyright__
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tandemConstructor --section=initTandem
 
@@ -487,7 +493,7 @@ tandem_srcTemplate = \
 def tandem_src(args, prj, data):
     t = TemplateCustom(tandem_srcTemplate)
     return(t.substitute({'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+                         'copyright':_copyright_comment(data)}))
 
 # C++20 module interface unit for a block's Python-socket shell, laid out like
 # blockModule_cppm: global module fragment, preamble, exported class, then the
@@ -517,7 +523,7 @@ def socket_cppm(args, prj, data):
 socketCatalog_hdrTemplate = \
 """#ifndef __MODULENAME___SOCKETCATALOG_H
 #define __MODULENAME___SOCKETCATALOG_H
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=socketCatalog --section=header
@@ -530,7 +536,7 @@ def socketCatalog_hdr(args, prj, data):
     t = TemplateCustom(socketCatalog_hdrTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(),
                          'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+                         'copyright':_copyright_comment(data)}))
 
 socketCatalog_pyTemplate = \
 """# GENERATED_CODE_PARAM --block=__modulename__
@@ -551,7 +557,7 @@ def socketCatalog_py(args, prj, data):
 # The scaffold owns only the overridable bodies between the class and registration
 # regions.
 tbConfigTemplate = \
-"""// __copyright__
+"""__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
@@ -595,7 +601,7 @@ def _tb_subst(data):
         'modulename':   data["block"],
         'tbclassname':  data["block"],
         'variantparam': _tb_variant_param(data),
-        'copyright':    data["fileGeneration"]["fileCopyrightStatement"],
+        'copyright':    _copyright_comment(data),
     }
     return subst
 
@@ -686,13 +692,13 @@ def tbExternal_cppm(args, prj, data):
     out.append('\n')
     out.append('    // Register your stimulus thread here (see the member slot above for the pair).\n')
     out.append('    // SC_THREAD(stimulusThread);\n')
-    out.append('};\n\n')
+    out.append('};\n')
     return("".join(out))
 
 include_cppmTemplate = \
 """
 // GENERATED_CODE_PARAM __paramtail__
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 // GENERATED_CODE_END
@@ -717,13 +723,13 @@ def include_cppm(args, prj, data):
     return(t.substitute({
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 includeFW_hdrTemplate = \
 """
 #ifndef __HEADERGUARD___
 #define __HEADERGUARD___
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
@@ -746,7 +752,7 @@ def includeFW_hdr(args, prj, data):
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 # Structurally empty today - codeMapping['fw'] declares no 'split' feature, so both
 # regions render nothing but their markers. The file is kept as reserved headroom:
@@ -755,7 +761,7 @@ def includeFW_hdr(args, prj, data):
 # header include and the fw `using`).
 includeFW_srcTemplate = \
 """
-// __copyright__
+__copyright__
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 // GENERATED_CODE_END
@@ -768,11 +774,11 @@ def includeFW_src(args, prj, data):
         'fwnamespace':FW_NAMESPACE,
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 package_svTemplate = \
 """
-// __copyright__
+__copyright__
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 // GENERATED_CODE_END
@@ -782,7 +788,7 @@ def package_sv(args, prj, data):
     return(t.substitute({
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 # Per-project verilator file list. The +libext line and --project stamp are
 # the create-only skeleton; rtlDotF fills the region from COMPILECONTEXTS.
@@ -801,7 +807,7 @@ regAddresses_hdrTemplate = \
 """
 #ifndef __HEADERGUARD___
 #define __HEADERGUARD___
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM --project=__project__
 // GENERATED_CODE_BEGIN --template=includes --section=addresses
@@ -816,4 +822,4 @@ def regAddresses_hdr(args, prj, data):
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'project':data["project"],
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))

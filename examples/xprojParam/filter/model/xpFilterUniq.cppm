@@ -81,4 +81,3 @@ void xpFilterUniq<Config>::filterVideo(void)
         videoOut->push(sample);
     }
 }
-

@@ -27,6 +27,11 @@ and pinned here so a future edit that weakens it is visible:
 - Every sink loop runs forever and counts; the totals are asserted after the
   kernel drains, so a duplicated transaction fails even though every value
   matched.
+- The bridge is transparent to each protocol's notification semantics: one
+  `status` notification per upstream notification (including repeated
+  commands), `external_reg` commands that leave the mirror alone, mirror
+  publications that cross with their notification in both directions, and
+  `memory`/`apb` read data that is never converted before it is filled.
 
 The build is done here rather than by a project makefile because the harness is
 not a generated artifact of any project: it needs no database, and no example
@@ -64,10 +69,11 @@ DEFINES = ['-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES', '-DBOOST_
 LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
         '-ldl', '-lrt', '-lsystemc', '-pthread']
 
-# Twelve consumer-shape, twelve producer-shape and two port-shape harnesses.
-# Pinned so a harness that stopped being constructed fails here rather than
-# reducing the evidence silently.
-EXPECTED_CHECKS = 388
+# Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
+# plus twelve notification-semantics and unfilled-read-data harnesses. Pinned so
+# a harness that stopped being constructed fails here rather than reducing the
+# evidence silently.
+EXPECTED_CHECKS = 605
 
 
 def toolchain_env():
@@ -150,7 +156,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert failures == 'failures:0', f"{output}"
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} payload and beat-count checks across 28 harnesses, 0 failures")
+    print(f"  {count} payload and beat-count checks across 40 harnesses, 0 failures")
 
 
 def run_all_tests():

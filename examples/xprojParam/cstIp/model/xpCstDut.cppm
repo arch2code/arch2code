@@ -91,4 +91,3 @@ void xpCstDut<Config>::forward(void)
         out->push(sample);
     }
 }
-

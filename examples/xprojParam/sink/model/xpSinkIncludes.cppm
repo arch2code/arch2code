@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpSink --context=../../yaml/xpSink.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

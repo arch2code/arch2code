@@ -80,4 +80,3 @@ xpSktAsmTopExternal::xpSktAsmTopExternal(sc_module_name modulename) :
     // Register your stimulus thread here (see the member slot above for the pair).
     // SC_THREAD(stimulusThread);
 };
-

@@ -1,4 +1,4 @@
-// 
+//
 
 // GENERATED_CODE_PARAM --block=xpMtxCompTop
 // GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites

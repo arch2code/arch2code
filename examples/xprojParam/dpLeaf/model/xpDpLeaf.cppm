@@ -83,4 +83,3 @@ void xpDpLeaf<Config>::forward(void)
         out->push(sample);
     }
 }
-

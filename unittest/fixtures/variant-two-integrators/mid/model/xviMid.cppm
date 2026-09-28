@@ -107,4 +107,3 @@ xviMid::xviMid(sc_module_name blockName, const char * variant, blockBaseMode bbM
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

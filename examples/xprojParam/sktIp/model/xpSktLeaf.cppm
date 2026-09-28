@@ -75,4 +75,3 @@ void xpSktLeaf<Config>::driveSamples(void)
         out->push(sample);
     }
 }
-

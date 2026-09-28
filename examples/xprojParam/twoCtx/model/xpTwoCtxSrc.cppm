@@ -78,4 +78,3 @@ void xpTwoCtxSrc<Config>::drive(void)
         out->push(sample);
     }
 }
-

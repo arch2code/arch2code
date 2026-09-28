@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpUniq --context=../../yaml/xpUniqTop.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

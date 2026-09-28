@@ -84,7 +84,7 @@ class newModule:
         self.cleanup_stale_segment_files(prj, rows, blockCondData, 'registrar')
         self.cleanup_stale_segment_files(prj, rows, blockCondData, 'vl_wrap')
         self.cleanup_retired_context_files(prj, rows)
-        self.remove_legacy_fw_headers(prj, rows)
+        self.migrate_legacy_fw_headers(prj, rows)
 
         self.project_create_from_rows(fileGenerationConfig, rows, prj, args)
         self.context_create_from_rows(fileGenerationConfig, rows, prj, args)
@@ -198,11 +198,13 @@ class newModule:
             print(f"Removing stale retired file {staleFile}")
             os.remove(staleFile)
 
-    def remove_legacy_fw_headers(self, prj, rows):
-        # context_create_from_rows scaffolds the current shape in the same run.
+    def migrate_legacy_fw_headers(self, prj, rows):
         for legacyFile in artifactPaths.getLegacyFwHeaders(prj, rows):
-            print(f"Re-scaffolding legacy firmware header {legacyFile}")
-            os.remove(legacyFile)
+            print(f"Migrating legacy firmware header {legacyFile}")
+            with open(legacyFile, 'r') as f:
+                text = f.read()
+            with open(legacyFile, 'w') as f:
+                f.write(artifactPaths.unwrapLegacyFwHeader(text))
 
     def project_create_from_rows(self, fileGenerationConfig, rows, prj, args):
         # One artifact per project, anchored at the top context; only the

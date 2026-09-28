@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpGain --context=../../yaml/xpGainUniq.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

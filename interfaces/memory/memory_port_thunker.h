@@ -157,13 +157,12 @@ private:
             upIn->reqReceive( isWrite, addrIn, dataIn );
             static_assert( !DirectAddr || sizeof(DownA) == sizeof(UpA), "memory addr_t direct copy requires equal payload size" );
             copyPayload<DirectAddr>( addrOut, addrIn );
-            // For reads dataIn is unused; for writes it carries the
-            // upstream write payload. Convert it unconditionally — the
-            // downstream request() ignores the data on reads, and on
-            // writes the converted value is what must reach the
-            // downstream completer.
-            static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "memory data_t direct copy requires equal payload size" );
-            copyPayload<DirectData>( dataOut, dataIn );
+            // reqReceive() fills dataIn only for a write; a read carries
+            // no data toward the completer.
+            if (isWrite) {
+                static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "memory data_t direct copy requires equal payload size" );
+                copyPayload<DirectData>( dataOut, dataIn );
+            }
             // request() blocks until the read response arrives, and posts
             // the write without waiting for writes.
             m_down_channel.request( isWrite, addrOut, dataOut );
@@ -201,12 +200,12 @@ private:
             m_down_channel.reqReceive( isWrite, addrIn, dataIn );
             static_assert( !DirectAddr || sizeof(UpA) == sizeof(DownA), "memory addr_t direct copy requires equal payload size" );
             copyPayload<DirectAddr>( addrOut, addrIn );
-            // For reads dataIn is unused; for writes it carries the
-            // child-side write payload. Convert it unconditionally — the
-            // up-side request() ignores the data on reads, and on writes
-            // the converted value is what must reach the up-side completer.
-            static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "memory data_t direct copy requires equal payload size" );
-            copyPayload<DirectData>( dataOut, dataIn );
+            // reqReceive() fills dataIn only for a write; a read carries
+            // no data toward the completer.
+            if (isWrite) {
+                static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "memory data_t direct copy requires equal payload size" );
+                copyPayload<DirectData>( dataOut, dataIn );
+            }
             upOut->request( isWrite, addrOut, dataOut );
             if (!isWrite) {
                 // Convert the up-side read response back to down-side

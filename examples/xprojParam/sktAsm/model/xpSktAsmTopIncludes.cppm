@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpSktAsm --context=../../yaml/xpSktAsmTop.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

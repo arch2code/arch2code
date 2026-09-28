@@ -42,7 +42,7 @@ Project makefiles wrap this as `make db` followed by generation targets
 such as `make gen`, but the Python dispatch still follows this split.
 Run `make clean` before rebuilding after any change under `builder/base`. The db
 target depends only on YAML, so a Python, schema, or template edit leaves a stale
-db in place and `make gen` reuses it. Use make with `-j` for performance. 
+db in place and `make gen` reuses it. Use make with `-j` for performance.
 
 1. `projectCreate` builds the database.
   - Entry point: `arch2code.py` with both `--yaml` and `--db`.

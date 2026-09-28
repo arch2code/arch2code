@@ -1,5 +1,5 @@
 
-// 
+//
 // GENERATED_CODE_PARAM --project=xpSink --context=../../yaml/xpSinkUniq.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package xpSinkUniq_package;

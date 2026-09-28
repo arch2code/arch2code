@@ -73,4 +73,3 @@ void simple_ipExternal::fwThread(void)
 {
     workerFactory::startSystemCThread("fw", &fwEvent);
 }
-

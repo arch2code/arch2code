@@ -1,5 +1,5 @@
 
-// 
+//
 // GENERATED_CODE_PARAM --project=vlInh --context=../../yaml/vliCont.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package vlInh_vliCont_package;

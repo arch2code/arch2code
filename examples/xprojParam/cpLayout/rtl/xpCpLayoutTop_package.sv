@@ -1,5 +1,5 @@
 
-// 
+//
 // GENERATED_CODE_PARAM --project=xpCpLayout --context=../../yaml/xpCpLayoutTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package xpCpLayoutTop_package;

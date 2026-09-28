@@ -1,5 +1,5 @@
 
-// 
+//
 // GENERATED_CODE_PARAM --project=xpInhVar --context=../../yaml/xpInhCont.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package xpInhCont_package;

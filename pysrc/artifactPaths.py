@@ -4,7 +4,7 @@ the path rule exists once."""
 
 import os
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.migrateCommon import userRegionLines
+from pysrc.migrateCommon import userRegionLines, _regions, _find
 from pysrc.variantSelection import standaloneVariantDescriptors
 
 def fileNamePrefix(fileDefinition, layout):
@@ -362,11 +362,68 @@ def getRetiredContextFiles(prj, rows):
     return sorted(stale)
 
 
+LEGACY_FW_OPEN = 'namespace fw_ns {'
+LEGACY_FW_CLOSE = '} // end of namespace fw_ns'
+
+
+def legacyFwWrapper(text):
+    """Old firmware header scaffolds wrapped the constants, types, enums and
+    structures regions in one `namespace fw_ns {` block of their own: opened
+    between the headerIncludes and constants regions, closed after the last
+    region by the scaffold's `} // end of namespace fw_ns` line. The regions now
+    open the context's namespace under fw_ns, which that block would nest a
+    second time. Returns the (open, close) line indices of that block, or None
+    when the header does not have exactly that shape, so a user's own fw_ns
+    block anywhere else is never taken for it."""
+    regions = _regions(text)
+    headerIncludes = _find(regions, 'structures', 'headerIncludes')
+    constants = _find(regions, 'includes', 'constants')
+    if headerIncludes is None or constants is None:
+        return None
+    lines = text.splitlines()
+    opens = [i for i in range(headerIncludes.end + 1, constants.begin)
+             if lines[i].strip() == LEGACY_FW_OPEN]
+    closes = [i for i in range(regions[-1].end + 1, len(lines))
+              if lines[i].strip() == LEGACY_FW_CLOSE]
+    if len(opens) != 1 or len(closes) != 1:
+        return None
+    return opens[0], closes[0]
+
+
+def unwrapLegacyFwHeader(text):
+    """The legacy header with its scaffold-owned fw_ns block removed. User text
+    that sat inside that block keeps its fw_ns scope: each non-blank user span
+    between the block's open and close is wrapped in its own fw_ns block."""
+    openIdx, closeIdx = legacyFwWrapper(text)
+    lines = text.splitlines()
+    spans = []
+    for i, _ in userRegionLines(text):
+        if not openIdx < i < closeIdx:
+            continue
+        if spans and spans[-1][-1] == i - 1:
+            spans[-1].append(i)
+        else:
+            spans.append([i])
+    wrapped = {span[0]: span[-1] for span in spans
+               if any(lines[i].strip() for i in span)}
+    out = []
+    spanEnd = None
+    for i, line in enumerate(lines):
+        if i in (openIdx, closeIdx):
+            continue
+        if i in wrapped:
+            out.append(LEGACY_FW_OPEN)
+            spanEnd = wrapped[i]
+        out.append(line)
+        if i == spanEnd:
+            out.append('} // namespace fw_ns')
+            spanEnd = None
+    return '\n'.join(out) + ('\n' if text.endswith('\n') else '')
+
+
 def getLegacyFwHeaders(prj, rows):
-    """Owned firmware headers whose scaffold still wraps the generated regions in
-    its own `namespace fw_ns {` block. The regions now open the context's own
-    namespace under fw_ns, which that block would nest a second time, so the
-    header is re-scaffolded. Returns absolute paths, sorted."""
+    """Owned firmware headers still carrying the legacy scaffold-owned fw_ns
+    block (see legacyFwWrapper). Returns absolute paths, sorted."""
     projectName = prj.config.getConfig('PROJECTNAME')
     legacy = set()
     for row in rows:
@@ -379,6 +436,6 @@ def getLegacyFwHeaders(prj, rows):
             continue
         with open(path, 'r', errors='replace') as f:
             text = f.read()
-        if any(line.strip() == 'namespace fw_ns {' for _, line in userRegionLines(text)):
+        if legacyFwWrapper(text) is not None:
             legacy.add(os.path.abspath(path))
     return sorted(legacy)

@@ -84,4 +84,3 @@ void xpTwoCtxSnk<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)TC_GAIN_X2), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

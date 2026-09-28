@@ -82,4 +82,3 @@ void xpMtxSrcLit::drive(void)
             (uint64_t)sample.tag, (uint64_t)sample.data, (uint64_t)sample.mark), LOG_IMPORTANT);
     }
 }
-

@@ -90,4 +90,3 @@ void xpSktChk<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)SK_PIXEL_WIDTH), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

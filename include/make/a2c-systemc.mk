@@ -233,13 +233,14 @@ endif
 
 # Actual target of the binary - depends on all .o files and, under VL_DUT, on the
 # verilated library LD_FLAGS links in. Only the objects are named on the command
-# line; the library reaches the link through -l.
+# line, once each ($^ drops an object listed twice); the library reaches the link
+# through -l.
 $(BIN_DIR)/$(BIN) : $(OBJ) $(VL_WRAP_LIB)
 ifndef USE_VCS
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) -o $@ $(OBJ) $(LD_FLAGS)
+	$(CXX) -o $@ $(filter-out $(VL_WRAP_LIB),$^) $(LD_FLAGS)
 endif
 
 # -O3 compiles: the systemc runtime files above, the user's EXTRA_O3_CPP_SRC and

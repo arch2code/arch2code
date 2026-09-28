@@ -95,4 +95,3 @@ void xpTwoCtxBare<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)DP_WIDTH, (uint64_t)TC_GAIN), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

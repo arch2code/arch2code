@@ -85,4 +85,3 @@ void xpCstSharedSrc<Config>::drive(void)
             LOG_IMPORTANT);
     }
 }
-
