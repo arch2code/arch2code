@@ -140,11 +140,18 @@ private:
         // binding is complete by the time the spawned thread first runs.
         status_in_if<UpT>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
+        static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "status data_t direct copy requires equal payload size" );
+        // Seed the owned channel with the up side's current value. reg_write()
+        // does not notify, so no reader sees an update that never happened.
+        {
+            DownT seed;
+            copyPayload<DirectData>( seed, upIn->readNonBlocking() );
+            m_down_channel.reg_write( seed );
+        }
         while (true) {
             UpT   inVal;
             DownT outVal;
             upIn->read( inVal );
-            static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
             m_down_channel.reg_write_cmd( outVal );
         }
@@ -159,11 +166,18 @@ private:
         // channel iface or (port shape) the lazily-bound parent out port.
         status_out_if<UpT>* upOut =
             m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
+        static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "status data_t direct copy requires equal payload size" );
+        // The up side carries the connection's initial value, so the child's
+        // readNonBlocking() of its own out port starts there too.
+        {
+            DownT seed;
+            copyPayload<DirectData>( seed, upOut->readNonBlocking() );
+            m_down_channel.reg_write( seed );
+        }
         while (true) {
             DownT inVal;
             UpT   outVal;
             m_down_channel.read( inVal );
-            static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
             upOut->reg_write_cmd( outVal );
         }
@@ -175,15 +189,9 @@ private:
     status_out<UpT>*     m_up_out_port;
     // status_channel's initial-value parameter defaults to
     // `typename T::_packedSt(0)`, which is not a valid expression when the
-    // packed form is a word array, so the owned channel is always handed an
-    // explicit zero. Declared before m_down_channel so it is initialized first.
-    //
-    // The owned channel therefore starts at zero rather than at the connection's
-    // declared default: the emitted adapter constructor call is fixed at four
-    // arguments and carries no initial value, so a register-backed status
-    // connection's default_value cannot reach it. Only a reader that samples
-    // before the first update can observe the difference, and readNonBlocking()
-    // has no caller anywhere in the tree today.
+    // packed form is a word array, so the owned channel is constructed with an
+    // explicit zero and takes the up side's value when the forwarding thread
+    // starts. Declared before m_down_channel so it is initialized first.
     typename DownT::_packedSt m_down_initial{};
     status_channel<DownT> m_down_channel;
 };

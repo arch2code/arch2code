@@ -24,10 +24,10 @@ module memory_reg_bridge #(
     parameter type data_t = logic,
     parameter type addr_t = logic
 ) (
-    input  bus_clk, input bus_rst_n,
-    input  mem_clk, input mem_rst_n,
+    input  logic bus_clk, input logic bus_rst_n,
+    input  logic mem_clk, input logic mem_rst_n,
     // bus domain
-    input  req, input wr, input addr_t addr, input data_t wdata,
+    input  logic req, input logic wr, input addr_t addr, input data_t wdata,
     output logic done, output logic err, output data_t rdata,
     // memory domain
     memory_if.src mem_port
@@ -282,7 +282,8 @@ module memory_reg_bridge #(
                     n_req_latch = 1'b0;
                     done = 1'b1;
                     err_new = err_hold;
-                    rdata_new = rdata_hold;
+                    // rdata_hold is unreset and unwritten on an err answer.
+                    rdata_new = err_hold ? bus_rdata_q : rdata_hold;
                     n_bus_state = BUS_WAIT_ACK_LOW;
                 end
             end

@@ -27,6 +27,23 @@ import argparse
 # any string found after this is treated as global file level information processed
 # and stored in params
 
+def paramLineParser():
+    # The argument parser for a GENERATED_CODE_PARAM line's tail.
+    parser = argparse.ArgumentParser(description="SystemC generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-b', '--block', type=str, help='Block name' )
+    parser.add_argument('--context', action='append', type=str, help='Yaml file context for generation' )
+    parser.add_argument('--scope', type=str, help='hierarchy scope eg top' )
+    parser.add_argument('--variant', type=str, help='Block variant name' )
+    parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
+    parser.add_argument('--project', type=str, help='Owning projectName; names the owner of a project-mode artifact or of a block whose bare name several projects declare')
+    parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
+    parser.add_argument('--mode', type=str, default='', help='File level mode option' )
+    parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )
+    parser.add_argument('--inst', type=str, help='instance name' )
+    parser.add_argument('--excludeInst', type=str, help='Instance to exclude' )
+    return parser
+
+
 class codeText:
     originalFileContents = None
     fileName = ""
@@ -108,20 +125,7 @@ class codeText:
     # this is the parser for GENERATED_CODE_PARAM lines. The use case is for file global configuration eg block to
     # prevent the need to duplicate on every input section
     def parseParam(self, cmdLine):
-        parser = argparse.ArgumentParser(description="SystemC generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument('-b', '--block', type=str, help='Block name' )
-        parser.add_argument('--context', action='append', type=str, help='Yaml file context for generation' )
-        parser.add_argument('--scope', type=str, help='hierarchy scope eg top' )
-        parser.add_argument('--variant', type=str, help='Block variant name' )
-        parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
-        parser.add_argument('--project', type=str, help='Owning projectName; names the owner of a project-mode artifact or of a block whose bare name several projects declare')
-        parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
-        parser.add_argument('--mode', type=str, default='', help='File level mode option' )
-        parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )
-        parser.add_argument('--inst', type=str, help='instance name' )
-        parser.add_argument('--excludeInst', type=str, help='Instance to exclude' )
-
-        self.params = parser.parse_args(cmdLine.split(' '))
+        self.params = paramLineParser().parse_args(cmdLine.split(' '))
         self.block = self.params.block
         self.parent = self.params.parent
         if not self.params:

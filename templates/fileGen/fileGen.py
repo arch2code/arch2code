@@ -660,16 +660,23 @@ _TB_EXTERNAL_STIMULUS_GUIDE = [
     '// latches it. Nothing else bounds the run: scTimeLimit is unset by default',
     '// and the framework watchdog\'s periodic wake rules out event starvation, so',
     '// a test that never votes hangs rather than reaching final().',
+    '// The testbench config\'s createTestBench() seeds testController with the',
+    '// placeholder test "test_replace_me", and its final() fails unless every',
+    '// seeded test has completed. Rename the placeholder there, use the same',
+    '// name below, and add #include "testController.h" to the user #includes slot.',
     '// Uncomment the lines below and the matching pair in the constructor body',
     '// to get a test that terminates cleanly, then drive the DUT inside the',
     '// thread.',
     '//',
     '// void stimulusThread(void)',
     '// {',
-    '//     wait(SC_ZERO_TIME);',
+    '//     testController &tests = testController::GetInstance();',
+    '//     tests.register_test_name("test_replace_me");',
+    '//     tests.wait_test("test_replace_me");',
     '//',
     '//     // ... drive the DUT here ...',
     '//',
+    '//     tests.test_complete("test_replace_me");',
     '//     eot_.setEndOfTest(true);',
     '// }',
     '//',
@@ -768,11 +775,10 @@ def includeFW_hdr(args, prj, data):
                                     contextParamMode(data["target"])),
         'copyright':_copyright_comment(data)}))
 
-# Structurally empty today - codeMapping['fw'] declares no 'split' feature, so both
-# regions render nothing but their markers. The file is kept as reserved headroom:
-# adding a split fw feature makes it carry out-of-line definitions with no scaffold
-# change, because the cppIncludes region already owns the whole preamble (the paired
-# header include and the fw `using`).
+# Out-of-line definitions for fw features that codeMapping['fw'] marks 'split'. The
+# cppIncludes region owns the whole preamble (the paired header include and the fw
+# `using`), so a split fw feature fills the file with no scaffold change; with none,
+# both regions render only their markers.
 includeFW_srcTemplate = \
 """
 __copyright__

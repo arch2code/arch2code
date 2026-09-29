@@ -55,10 +55,8 @@ from pysrc.migrateOrphans import (
     _dispositionMap,
     _literalDeletePaths,
     _reconstructContexts,
-    _retiredSiblingPaths,
     LEGACY_FILEMAP,
     LEGACY_LITERAL_DELETE,
-    RETIRED_CONTEXT_SIBLINGS,
     MIGRATE_DELETE,
     MIGRATE_PORT,
     MIGRATE_EDIT,
@@ -68,6 +66,12 @@ from pysrc.migrateOrphans import (
     TODO_PORT,
     TODO_UNMANIFESTED_SRC_DIR,
     TODO_USER_INCLUDE,
+)
+
+from pysrc.artifactPaths import (
+    RETIRED_CONTEXT_SIBLINGS,
+    _retiredSiblingPaths,
+    getRetiredContextFiles,
 )
 
 HIER_FIXTURE = os.path.join(test_dir, 'fixtures', 'hier-layout')
@@ -194,6 +198,7 @@ class _FakePrj:
             "vlWrapDirs": [os.path.join(root, "verif", "vl_wrap")],
         }
         self.config = _FakeConfig({"INCLUDEFILES": includeFiles, "PROJECTNAME": "t",
+                                   "FILEMAP": self.filemap,
                                    "BUILDMANIFEST": manifest, "TOPCONTEXT": "top.yaml",
                                    "REGISTRARPAIRS": {}, "CONFIGMODULES": {},
                                    "FOREIGNCONFIGHEADERS": {},
@@ -536,6 +541,24 @@ def test_retired_sibling_path_resolves_beside_current_artifact():
               "retired sibling paths resolve beside each owned Includes.cppm")
 
 
+def test_retired_context_file_named_from_include_name():
+    """The retired header was named from the context's includeName, not its
+    YAML file name, so newmodule's cleanup must find it by includeName."""
+    print("test_retired_context_file_named_from_include_name")
+    with tempfile.TemporaryDirectory() as root:
+        model = os.path.join(root, "model")
+        retired = os.path.join(model, "topCtxVariantConfig.h")
+        fileNamed = os.path.join(model, "topVariantConfig.h")
+        for path in (retired, fileNamed):
+            os.makedirs(model, exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write("// GENERATED_CODE_BEGIN --template=config\n")
+        prj = _FakePrj(root)
+        prj.includeName["top.yaml"] = "topCtx"
+        check(getRetiredContextFiles(prj) == [os.path.abspath(retired)],
+              "retired header found by includeName; file-name stem ignored")
+
+
 def test_retired_context_sibling_functional():
     """The retired `config` fileMap entry (VariantConfig.h) can still be
     sitting beside its current `include` sibling in a tree that has not run
@@ -635,6 +658,7 @@ if __name__ == "__main__":
     test_literal_delete_resolves_against_layout()
     test_unmanifested_src_dir_reported_and_clears()
     test_retired_sibling_path_resolves_beside_current_artifact()
+    test_retired_context_file_named_from_include_name()
     test_retired_context_sibling_functional()
     test_retired_context_sibling_hierarchical()
     test_retired_context_sibling_without_marker_reported()

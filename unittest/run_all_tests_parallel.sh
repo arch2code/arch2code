@@ -53,6 +53,9 @@ EXAMPLE_READERS=(
     test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
     test_sv_names_match_file_stem.py  # reads every examples/ tree
     test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
+    test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
+    test_db_failure_no_stale_artifact.py      # reads examples/simple + xprojParam/cpLayoutBad (copytree)
+    test_tb_variant_plain_block.py            # reads examples/helloWorld (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

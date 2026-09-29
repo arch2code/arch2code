@@ -1396,6 +1396,32 @@ def check_gated_clock_rejects_off_step_half_period(emitted):
     return True
 
 
+def check_gated_clock_free_runs_after_link_loss(emitted):
+    """Losing the sync link clears gating and wakes the gated wait once, so a
+    clock that only waits for the next edge request would stop for the rest of
+    the run. The gated loop re-checks gating after every wake, before counting
+    the wake as an edge, and leaves for a free-running loop that never returns
+    to gated mode."""
+    text = emitted['verif/fastProd_hdl_sc_wrapper.h']
+    start = text.index('void clock_gen(sc_signal<bool> &sig, const sc_time &half)')
+    body = text[start:text.index('\n    }\n', start)]
+    edge = body.index('socketSyncWaitClockEdge();')
+    recheck = body.index('if (!socketSyncTimeGated()) {', edge)
+    leave = body.index('break;', recheck)
+    count = body.index('gated += step;', edge)
+    if not edge < recheck < leave < count:
+        raise AssertionError(
+            "fastProd SC wrapper clock_gen must re-check socketSyncTimeGated() "
+            "after each gated wake and leave before counting it as an edge")
+    tail = body[count:]
+    free = tail.index('while (true) {\n            wait(half);\n'
+                      '            sig.write(!sig.read());')
+    if 'socketSyncWaitClockEdge' in tail[free:]:
+        raise AssertionError(
+            "fastProd SC wrapper clock_gen must free-run after gating ends")
+    return True
+
+
 def check_reset_signal_per_reset(emitted):
     """One sc_signal<bool> per resolved reset, born released."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
@@ -2722,6 +2748,8 @@ def main():
              check_one_clock_thread_per_clock),
             ('a gated clock rejects a half period off the lockstep step',
              check_gated_clock_rejects_off_step_half_period),
+            ('a gated clock free-runs once the sync link is lost',
+             check_gated_clock_free_runs_after_link_loss),
             ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
             ('each reset releases after its own releaseCycles edges of its '

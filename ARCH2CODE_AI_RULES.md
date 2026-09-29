@@ -240,7 +240,7 @@ addressObjects:
 # Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
-#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
+#     includeFW: {name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
 #     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
@@ -1778,7 +1778,7 @@ fileGeneration:
     # Add firmware includes (only if you need FW headers generated)
     includeFW: { 
       name: "IncludesFW", 
-      ext: {hdr: "h"}, 
+      ext: {hdr: "h", src: "cpp"}, 
       cond: {smartInclude: true}, 
       mode: context, 
       basePath: fwInc, 
@@ -1797,7 +1797,7 @@ fileGeneration:
 ```
 
 **Notes:**
-- The `includeFW` mapping generates header files in the `fwInc` directory (typically `$root/fw/include`)
+- The `includeFW` mapping generates a header and a source file (`<context>IncludesFW.{h,cpp}`) in the `fwInc` directory (typically `$root/fw/include`)
 - `smartInclude: true` means files are only created if there is register or memory content to export
 - `mode: context` generates one file per YAML file (not per block)
 - `mode: project` generates exactly one file for the whole product, keyed to its top context

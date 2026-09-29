@@ -111,11 +111,9 @@ class BlockDomains:
     independent of its children, connections and containment.
 
     `selectedReset` is per clock; for a container it is recomputed once its
-    local reset nets are known. `registerClock`/`registerReset` are where the
-    register bus lands: for a router or handler, the container net its bus port
-    binds to; for a served leaf or passthrough container, its own port names.
-    They are filled in by the register-bus resolution passes and stay None on
-    other blocks.
+    local reset nets are known. `registerClock`/`registerReset` are the clock
+    and reset a served leaf or passthrough container runs its register bus on,
+    and a handler's copy of its leaf's. They stay None on other blocks.
     """
 
     def __init__(self, blockKey, block, clocks, resets, defaultClock, selectedReset,
@@ -138,28 +136,18 @@ class BlockDomains:
         self.names = names
         self.registerClock = None
         self.registerReset = None
-        # The router's or handler's OWN declared clock/reset PORT NAME
-        # carrying the register bus: `_routerBusPorts` for a router, the
-        # leaf's registerClock/registerReset names for a handler once
-        # `_resolveRegisterHandlerBinds` renames its pair onto them. Unlike
-        # registerClock/registerReset this is always a port of THIS block,
-        # never a container net, so it is what the router's own flops name.
-        # None on a block that is neither a router nor a handler.
+        # A router's or handler's own clock/reset port carrying the register
+        # bus, always a port of this block, never a container net. None on
+        # any other block.
         self.busClockPort = None
         self.busResetPort = None
         # A served leaf's or passthrough container's own port carrying the
-        # register bus: the `registerPorts:` key, or the port
-        # postParseRegisterPorts synthesises for a top-down leaf or
-        # passthrough container. It is also a synthesised connectionMaps
-        # boundary port, so the co-simulation wrapper reset check skips it
-        # by name and leaves it to the register-bus reset check. None for
-        # other blocks.
+        # register bus. The co-simulation wrapper reset check skips it by
+        # name. None on any other block.
         self.registerBusPort = None
-        # Standalone (`hasVl`) build attributes: per input clock its
-        # period/timeUnit, per input reset its releaseCycles. Each is the
-        # declared value, else the testbench value it resolves to uniquely
-        # across the block's instances, else the schema default. Empty for a
-        # block that is never a standalone target.
+        # Standalone attributes, filled by _resolveStandaloneAttrs for every
+        # input clock (period/timeUnit) and input reset (releaseCycles) of
+        # every block.
         self.resolvedPeriod = dict()
         self.resolvedTimeUnit = dict()
         self.resolvedReleaseCycles = dict()
@@ -518,15 +506,9 @@ class ClockTree:
         blockClocksResetsRows = list()
         memoryClocksRows = list()
         for blockKey, domain in self.blocks.items():
-            # registerClock/registerReset/registerBusPort and
-            # busClockPort/busResetPort are block-level facts, repeated onto
-            # every row of the block so getBDClocksResets reads them off any
-            # one row with no second table. period/timeUnit hold the RESOLVED
-            # standalone-simulation value for an input clock: the declared
-            # value when present, else the one resolved from the testbench
-            # clock every instance of the block resolves to. An output clock
-            # keeps its declared value, which is always empty. releaseCycles
-            # is the same resolution for a reset; None on a clock row.
+            # The register-bus fields are block-level, repeated on every row
+            # of the block. An output clock keeps its declared period, which
+            # is always empty.
             for orderIndex, (name, clockDecl) in enumerate(domain.clocks.items()):
                 blockClocksResetsRows.append(
                     (blockKey, 'clock', name, orderIndex, clockDecl.desc,
@@ -547,9 +529,8 @@ class ClockTree:
                      domain.resolvedReleaseCycles.get(name),
                      domain.registerBusPort))
             for memDomain in domain.memories:
-                if memDomain.clock:
-                    memoryClocksRows.append(
-                        (memDomain.memoryBlockKey, memDomain.clock, memDomain.reset))
+                memoryClocksRows.append(
+                    (memDomain.memoryBlockKey, memDomain.clock, memDomain.reset))
 
         instanceClockResetBindsRows = list()
         containerLocalNetsRows = list()
@@ -1510,8 +1491,10 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                 f"parent cannot drive or name. Declare '{domainClock}' as an "
                 f"output clock or reset instead.")
             return None
-        declaredRow = (blocks[outerBlockKey].get('ports') or {}).get(boundaryPortName)
-        if declaredRow is not None:
+        declaredRow = declaredPortRow(blocks[outerBlockKey], boundaryPortName)
+        # A handler's clock is renamed onto its leaf's register clock after
+        # this derivation, so a handler's boundary agrees by construction.
+        if declaredRow is not None and not innerDomain.isRegHandler:
             declaredClock = declaredRow['clock'] or domains[outerBlockKey].defaultClock
             if declaredClock != domainClock:
                 verb = 'set' if declaredRow['clock'] else 'declare'
@@ -1640,8 +1623,7 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     # binds of this build's making to check.
     reachableInstances = _reachableInstanceKeys(containers, root)
 
-    _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContainer,
-                               reachableInstances, diag)
+    _resolveRouterBusClockReset(domains, instances, blocks, reachableInstances, diag)
     _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
                                  consumerNetByContainer, reachableInstances,
                                  registerBusPassthroughs, diag)
@@ -1728,7 +1710,7 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
         # the connection branch skips every port already bucketed here.
         boundaryPorts = set(boundaryClocks)
         boundaryClocks.pop(domain.registerBusPort, None)
-        for portName, declaredRow in blockRow.get('ports', {}).items():
+        for portName, declaredRow in (blockRow.get('ports') or {}).items():
             boundaryClocks.pop(portName, None)
             clockName = declaredRow['clock'] or domain.defaultClock
             portsByClock.setdefault(clockName, []).append(portName)
@@ -1796,20 +1778,18 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                 f"co-simulation wrapper's BFM needs one; mark a reset on "
                 f"'{clockName}' default: true or declare one.")
 
-    # A block clock hosting a register bus (a router's, a served
-    # leaf's, or a passthrough container's registerClock) must
+    # A served leaf's or passthrough container's register bus clock must
     # have a selected reset. A reusable IP with resets: {} and no
     # registerPorts: reset: would otherwise reach generation with
-    # registerReset None. A router with none is rejected earlier, in
-    # _resolveRouterBusClockReset. Only those three block kinds set
-    # registerClock; every other block keeps both None.
+    # registerReset None. A router with none is rejected in
+    # _resolveRouterBusClockReset.
     for domain in domains.values():
         if domain.registerClock is not None and domain.registerReset is None:
             diag.logError(
                 f"Block '{domain.block}' hosts its register bus on clock "
                 f"'{domain.registerClock}', but that clock has no selected "
-                f"reset. A router's, a served leaf's or a passthrough "
-                f"container's register bus clock must have one. Declare a "
+                f"reset. A served leaf's or a passthrough container's "
+                f"register bus clock must have one. Declare a "
                 f"reset on '{domain.registerClock}', or mark one of its "
                 f"resets default: true.")
 
@@ -2217,19 +2197,14 @@ def _routerBusPorts(routerBlockKey, blocks, domains):
     return clockPort, resetPort
 
 
-def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContainer,
-                                reachableInstances, diag):
-    """Set each router's bus port names and its registerClock/registerReset,
-    the container nets its bus ports bind to at its one reachable instance. An
-    unreachable instance belongs to a child project's standalone harness and is
-    ignored. A reachable router declaring more than one clock, or whose bus
-    clock has no selected input reset, is rejected here, before the leaves it
-    serves look for that reset.
+def _resolveRouterBusClockReset(domains, instances, blocks, reachableInstances, diag):
+    """Set each router's bus port names. A reachable router declaring more
+    than one clock, or whose bus clock has no selected input reset, is rejected
+    here, before the leaves it serves look for that reset. An unreachable
+    instance belongs to a child project's standalone harness and is ignored.
     """
-    instanceByBlock = dict()
-    for instanceKey, instRow in instances.items():
-        if instanceKey in reachableInstances:
-            instanceByBlock.setdefault(instRow['instanceTypeKey'], instanceKey)
+    reachableBlocks = {instances[instanceKey]['instanceTypeKey']
+                       for instanceKey in reachableInstances}
 
     for blockKey, domain in domains.items():
         if not domain.isRouter:
@@ -2240,10 +2215,7 @@ def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContain
         clockPort, resetPort = _routerBusPorts(blockKey, blocks, domains)
         domain.busClockPort = clockPort
         domain.busResetPort = resetPort
-        instanceKey = instanceByBlock.get(blockKey)
-        if instanceKey is None:
-            # No reachable instance: instantiated only in a child project's
-            # standalone harness. registerClock/registerReset stay unset.
+        if blockKey not in reachableBlocks:
             continue
         # A generated apbDecode router is single-clock by design: every
         # flop and port is clocked by the register-bus clock, so a second
@@ -2256,8 +2228,6 @@ def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContain
                           f"clocked by the register bus it routes. Declare at most one "
                           f"clock in the router's 'clocks:'. "
                           f"{_diagLoc(diag, blocks[blockKey])}")
-        containerKey = instances[instanceKey]['containerKey']
-        consumerNet = consumerNetByContainer[containerKey]
         # A stated addressBlock: reset: is a synchronous input, checked in
         # BlockDomains.build(); the clock's selected reset may instead be one
         # of the router's output resets, which the bus does not drive.
@@ -2279,8 +2249,6 @@ def _resolveRouterBusClockReset(domains, instances, blocks, consumerNetByContain
                 f"and the leaves it serves take that same reset, so the router "
                 f"needs an input reset on '{clockPort}'. {fix} "
                 f"{_diagLoc(diag, blocks[blockKey]['addressBlock'])}")
-        domain.registerClock = consumerNet.get((instanceKey, clockPort))
-        domain.registerReset = consumerNet.get((instanceKey, resetPort))
 
 
 def _resolveRegisterHandlerBinds(domains, containers, instances, connections, blocks,
@@ -2411,6 +2379,32 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
                             'register')
             _rebindConsumer(leafContainer, instanceKey, bridgedResetName,
                             bridgedResetName, 'register')
+
+    # A `registerPorts:` block with no handler (a nested-router container,
+    # or a leaf exposing only a register bus) gets the same check at every
+    # instance a router serves. An instance nothing serves is a nested-router
+    # container fed directly; its inner side is a connectionMaps boundary.
+    def isServed(instanceKey):
+        if instances[instanceKey]['containerKey'] in registerBusPassthroughs:
+            return True
+        return any(connRow['dstKey'] == instanceKey
+                   and domains[instances[connRow['srcKey']]['instanceTypeKey']].isRouter
+                   for connRow in connections.values())
+
+    for blockKey, blockRow in blocks.items():
+        registerPorts = blockRow.get('registerPorts')
+        if not registerPorts or blockKey in resolvedBlocks:
+            continue
+        domain = domains[blockKey]
+        regRow = next(iter(registerPorts.values()))
+        clockPortName = regRow['clock'] or domain.defaultClock
+        _checkRegisterPortsOnBus(
+            blockKey, blockRow['block'], clockPortName, regRow['reset'],
+            regRow['reset'] or domain.selectedReset.get(clockPortName),
+            [instanceKey for instanceKey in instancesByBlock.get(blockKey, [])
+             if isServed(instanceKey)],
+            instances, domains, connections, blocks, consumerNetByContainer,
+            registerBusPassthroughs, resolveBlock, diag)
 
 
 def _rebindConsumer(container, instanceKey, oldBlockPort, newBlockPort, kind):

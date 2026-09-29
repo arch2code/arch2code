@@ -228,7 +228,6 @@ def ext_module_header(args, prj, data):
     ]
     if holdsPeers:
         out += _ext_channel_includes(prj, data)
-    if holdsPeers:
         for proto in sorted(sc_thunker_protocols(data, prj)):
             out.append(f'#include "{proto}_port_thunker.h"')
     return "\n".join(out)

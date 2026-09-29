@@ -28,8 +28,9 @@
 // its optional user-signal and id members, likewise rdata for axiReadRespSt, so
 // the envelope corresponds when the payload verdict holds and the optional
 // members are the same C++ type on both sides (kDirectAddr / kDirectData
-// below). Both default to false, which is always correct and merely slower,
-// so a hand-written instantiation need not supply them.
+// below). Both default to false, which is always correct and merely slower.
+// They precede the optional parameters, so a hand-written instantiation that
+// supplies any user-signal or id parameter must spell both verdicts first.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape

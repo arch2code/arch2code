@@ -33,6 +33,12 @@ and pinned here so a future edit that weakens it is visible:
   publications that cross to the driver with their notification in all four
   shapes and never come back to the owner, and
   `memory`/`apb` read data that is never converted before it is filled.
+- A `status` bridge hands the child the up side's initial value without
+  notifying any reader.
+- `axi_read` and `axi_write` run with their optional user-signal and id
+  parameters, once with matching types on both sides and once without, so the
+  arm each value arrives through shows the optional arguments bound their own
+  slots.
 
 The build is done here rather than by a project makefile because the harness is
 not a generated artifact of any project: it needs no database, and no example
@@ -71,11 +77,12 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
         '-ldl', '-lrt', '-lsystemc', '-pthread']
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
-# twelve notification-semantics and unfilled-read-data harnesses, and eight
-# external_reg mirror-publisher harnesses (four shapes, two verdicts). Pinned so
-# a harness that stopped being constructed fails here rather than reducing the
-# evidence silently.
-EXPECTED_CHECKS = 757
+# twelve notification-semantics and unfilled-read-data harnesses, eight
+# external_reg mirror-publisher harnesses (four shapes, two verdicts), four
+# status initial-value harnesses, and four axi_read/axi_write harnesses with the
+# optional parameters. Pinned so a harness that stopped being constructed fails
+# here rather than reducing the evidence silently.
+EXPECTED_CHECKS = 931
 
 
 def toolchain_env():
@@ -158,7 +165,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert failures == 'failures:0', f"{output}"
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} payload and beat-count checks across 48 harnesses, 0 failures")
+    print(f"  {count} payload and beat-count checks across 56 harnesses, 0 failures")
 
 
 def run_all_tests():

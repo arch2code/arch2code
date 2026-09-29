@@ -198,13 +198,11 @@ def section_address_constants(data):
 
 def section_wr_ready_bridge_gate(bridged_memories):
     """Per-bridged-memory pready/pslverr gate, appended after the write case's
-    unconditional ACK: once THIS memory's own access is selected, the bridge's
-    done/err (not the unconditional ACK) decide when the write completes.
+    unconditional ACK: while a bridged memory is selected, its bridge's
+    done/err decide when the write completes.
 
-    A parameterizable memory's wr_sel is set here too, procedurally, in the
-    same always_comb that drives its own _update vector, matching the
-    fixed-width path's own wr_sel assignment: one assignment discipline for
-    every write-side select, bridged or not, parameterizable or not."""
+    A parameterizable memory's wr_sel is assigned here, in the always_comb
+    that drives its _update vector, as the fixed-width path assigns its own."""
     lines = []
     for mem_data in bridged_memories:
         mem_intf = mem_data['memory']

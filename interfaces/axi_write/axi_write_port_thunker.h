@@ -32,11 +32,11 @@
 // S wstrb; every other member is the same fixed type on both sides, so
 // corresponding payload storage makes the whole envelope correspond. strb_t has
 // no copy site of its own — it is the second parameter of the data envelope — so
-// the data envelope copy is gated by DirectData && DirectStrb. The response leg
-// carries the non-templated axiWriteRespSt, identical on both sides, so it takes
-// copyPayload's identity arm and needs no verdict. All three default to false,
-// which is always correct and merely slower, so a hand-written instantiation
-// need not supply them.
+// the data envelope copy is gated by DirectData && DirectStrb. The response
+// envelope carries no required payload and needs no verdict. All three default
+// to false, which is always correct and merely slower. They precede the
+// optional parameters, so a hand-written instantiation that supplies any
+// user-signal or id parameter must spell all three verdicts first.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape

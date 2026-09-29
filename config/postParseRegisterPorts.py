@@ -727,8 +727,7 @@ def postProcess(prj):
             )
 
         # Check 3: a router owning a regAccess memory. Must precede Check 1's
-        # `if isRouter: continue`; later passes would fail on it with a
-        # KeyError or a misleading reset error.
+        # `if isRouter: continue`.
         if isRouter and blockKey in regAccessMemoryByBlock:
             _exit_with_error(
                 f"block '{blockRow['block']}' is a register-decode router "
@@ -1059,7 +1058,7 @@ def postProcess(prj):
                     innerRow = passthroughConsumer[instanceTypeKey]
                     _exit_with_error(
                         f"Instance '{instRow['instance']}' (block "
-                        f"'{instanceTypeKey}') passes the register bus "
+                        f"'{instRow['instanceType']}') passes the register bus "
                         f"from router '{parentRouter['instance']}' "
                         f"(addressGroup '{routerAddressGroup}') to "
                         f"'{innerRow['instance']}' and must carry "
@@ -1093,13 +1092,8 @@ def postProcess(prj):
                 'srcport': f"{regDecoderPort}_{instRow['instance']}",
                 'interfaceName': f"{regDecoderPort}_{instRow['instance']}",
             }
-            # This connection's own clock: is left unstated: a connection's
-            # clock: names a CONTAINER net, while a reusable IP's
-            # registerPorts: clock: is block-local. Stamping the block-local
-            # name here would fail the connection clock: check whenever an
-            # instance map renames it (e.g. registerPorts: clock: regClk
-            # mapped regClk: apbClk). getBDPortDomain reads the leaf's own
-            # registerPorts: row directly instead.
+            # No clock: here: a connection's clock: names a container net,
+            # but a registerPorts: clock: is block-local.
             # Owner context is the container that holds both
             # endpoints. The router's own YAML file does not see
             # leaf-scoped interfaces; the container's file does, via
@@ -1359,12 +1353,8 @@ def postProcess(prj):
         }
 
     # ---- Emit per owner context ----
-    # Every synthesised connection/connectionMap here is a register-bus feed,
-    # and neither row states clock:. A top-down leaf's register-bus port
-    # runs on the leaf clock, bound to the bus clock, that owns the leaf
-    # reset bound to the bus reset.
-    # A nested router's feed carries no clock: at all; a nested router on a
-    # non-default clock names it on its own addressBlock: instead.
+    # No synthesised register-bus feed states clock:; clockTree derives each
+    # feed's domain from the instance binds.
     for ownerContext, sections in perContext.items():
         ordered = dict()
         for sectionName in ('blocks', 'instances', 'connections', 'connectionMaps'):

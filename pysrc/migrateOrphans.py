@@ -65,7 +65,8 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.artifactPaths import artifactRows, currentArtifactRows, expandNewModulePath, unprefixedStem
+from pysrc.artifactPaths import (_retiredSiblingPaths, artifactRows, currentArtifactRows,
+                                 expandNewModulePath, unprefixedStem)
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +159,9 @@ LEGACY_FILEMAP = {
     # is `port` like `tbExternal`: never deleted, only reported when its legacy
     # path diverges from the current one.
     "vlScWrap":   {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},              "cond": {"hasVl": True},                                 "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_PORT, "legacy": True},
-    # The testbench top holds no user CODE in any measured instance (39 across
-    # base, pro and the isp workspace): every user slot is empty and the only text
-    # outside a generated region is the include-guard triple, which the `.cppm`
-    # form does not have. That evidence says "regenerate, do not transplant slots",
+    # The testbench top holds no user CODE: every user slot is empty and the only
+    # text outside a generated region is the include-guard triple, which the
+    # `.cppm` form does not have. That evidence says "regenerate, do not transplant slots",
     # and `make gen` does recreate the module unit in full.
     # What it does NOT license is dropping the file-level GENERATED_CODE_PARAM
     # line, which is not generated content either: its `--variant=` selects which
@@ -195,14 +195,6 @@ LEGACY_LITERAL_DELETE = [
     ("vl_wrap", "vl_wrap.h"),
     ("vl_wrap", "vl_wrap.sv"),
 ]
-
-# Retired context-mode fileMap entries, keyed by the still-current entry whose
-# artifact they were scaffolded beside. `config` (VariantConfig.h) carried no
-# content but the include guard and markers, and sat beside the current entry's
-# `<context>Includes.cppm` in both layouts, so that artifact's directory is
-# where a surviving copy is found.
-RETIRED_CONTEXT_SIBLINGS = {"include": [("VariantConfig", "h")]}
-
 
 # Applied-edit kinds.
 ORPHAN_DELETE = "ORPHAN_DELETE"              # generated orphan deleted
@@ -451,32 +443,6 @@ def _literalDeletePaths(prj, report):
             _reportMissingBasePath(report, f"literal:{fileName}", segment)
             continue
         paths.add(os.path.abspath(os.path.join(segments[segment]["path"], fileName)))
-    return paths
-
-
-def _retiredSiblingPaths(prj):
-    """Absolute candidate paths of a retired context-mode artifact named in
-    RETIRED_CONTEXT_SIBLINGS, one entry per still-current sibling context file
-    this project owns. Mirrors `_reconstructContexts`'s expandedType/includeFiles
-    walk and `migrateProjectParam._contextModeFiles`'s ownership guard, so the
-    same directory and ownership rules that place the surviving current artifact
-    locate the retired one beside it, in either layout."""
-    projectName = prj.config.getConfig("PROJECTNAME")
-    includeFiles = prj.config.getConfig("INCLUDEFILES")
-    paths = set()
-    for currentFileType, siblings in RETIRED_CONTEXT_SIBLINGS.items():
-        for ext in prj.filemap[currentFileType]["ext"].values():
-            expandedType = f"{currentFileType}_{ext}"
-            if expandedType not in includeFiles:
-                continue
-            for context, entry in includeFiles[expandedType].items():
-                if prj.contextOwningProject[context] != projectName:
-                    continue
-                placementDir = os.path.dirname(entry["fileName"])
-                includeName = prj.includeName[context]
-                for name, retiredExt in siblings:
-                    paths.add(os.path.join(placementDir,
-                                           f"{includeName}{name}.{retiredExt}"))
     return paths
 
 

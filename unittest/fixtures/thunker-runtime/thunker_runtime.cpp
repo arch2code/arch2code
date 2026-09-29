@@ -47,6 +47,8 @@
 
 #include "apb_port_thunker.h"
 #include "axi4_stream_port_thunker.h"
+#include "axi_read_port_thunker.h"
+#include "axi_write_port_thunker.h"
 #include "external_reg_port_thunker.h"
 #include "memory_port_thunker.h"
 #include "pop_ack_port_thunker.h"
@@ -60,10 +62,10 @@
 
 static constexpr std::uint32_t PAYLOAD_MASK = 0xFFFFu;
 
-#define A2C_TEST_PAYLOAD( NAME )                                                \
+#define A2C_TEST_PAYLOAD( NAME, PACKED )                                        \
     struct NAME                                                                 \
     {                                                                           \
-        using _packedSt = std::uint32_t;                                        \
+        using _packedSt = PACKED;                                               \
         static constexpr unsigned _bitWidth = 16;                               \
         static constexpr unsigned _byteWidth = sizeof( _packedSt );             \
         /* Masking pack/unpack, as generated structures emit. */                \
@@ -78,8 +80,13 @@ static constexpr std::uint32_t PAYLOAD_MASK = 0xFFFFu;
         std::uint32_t value = 0;                                                \
     }
 
-A2C_TEST_PAYLOAD( maskASt );
-A2C_TEST_PAYLOAD( maskBSt );
+A2C_TEST_PAYLOAD( maskASt, std::uint32_t );
+A2C_TEST_PAYLOAD( maskBSt, std::uint32_t );
+// The AXI envelopes pack a nested payload through a uint64_t view of its
+// _packedSt, so a narrower packed form would carry stack residue into the
+// neighbouring field.
+A2C_TEST_PAYLOAD( wideASt, std::uint64_t );
+A2C_TEST_PAYLOAD( wideBSt, std::uint64_t );
 
 static_assert( sizeof( maskASt ) == sizeof( maskBSt ) );
 static_assert( std::is_trivially_copyable_v<maskASt> && std::is_trivially_copyable_v<maskBSt> );
@@ -393,6 +400,79 @@ struct statusProducerHarness : sc_core::sc_module
             upChan.read( v );
             ++beats;
             if (i < TRANSFERS) expectEqual( label, v.value, bridged( dataVal( i ), Direct ) );
+        }
+    }
+};
+
+// status initial value: the up side's value at construction reaches the child
+// before any update, and seeding it is not an update, so no reader is woken.
+static constexpr std::uint32_t STATUS_INITIAL = 0x5A5Au;
+
+template <class UpT, class DownT, bool Direct>
+struct statusInitialConsumerHarness : sc_core::sc_module
+{
+    status_channel<UpT> upChan;
+    status_in<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int beats = 0;
+
+    statusInitialConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( statusInitialConsumerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            DownT v;
+            childPort->read( v );
+            ++beats;
+        }
+    }
+};
+
+template <class UpT, class DownT, bool Direct>
+struct statusInitialProducerHarness : sc_core::sc_module
+{
+    status_channel<UpT> upChan;
+    status_out<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int beats = 0;
+
+    statusInitialProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( statusInitialProducerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+        expectEqual( label, upChan.readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            UpT v;
+            upChan.read( v );
+            ++beats;
         }
     }
 };
@@ -1326,6 +1406,172 @@ struct axi4StreamProducerHarness : sc_core::sc_module
 };
 
 // ===========================================================================
+// axi_read / axi_write with the optional user-signal and id parameters
+// ===========================================================================
+// The verdicts precede the optional parameters. Each harness is run with the
+// same user types on both sides, where the class takes the direct arm, and with
+// different ones, where it must fall back to packed; the arm the values arrive
+// through shows the optional arguments reached their own slots. A non-default
+// id width shows UpIDW/DownIDW are the ones in use.
+static constexpr unsigned AXI_IDW = 6;
+static std::uint32_t axiIdVal( int i ) { return (std::uint32_t)( 0x21 + i ); }
+
+template <class UpARU, class UpRU, class DownARU, class DownRU>
+struct axiReadConsumerHarness : sc_core::sc_module
+{
+    static constexpr bool kAddr = std::is_same_v<UpARU, DownARU>;
+    static constexpr bool kData = std::is_same_v<UpRU, DownRU>;
+    using UpAddr = axiReadAddressSt<wideASt, UpARU, _axiIdT, AXI_IDW>;
+    using DownAddr = axiReadAddressSt<wideBSt, DownARU, _axiIdT, AXI_IDW>;
+    using UpResp = axiReadRespSt<wideASt, UpRU, _axiIdT, AXI_IDW>;
+    using DownResp = axiReadRespSt<wideBSt, DownRU, _axiIdT, AXI_IDW>;
+
+    axi_read_channel<wideASt, wideASt, UpARU, UpRU, _axiIdT, AXI_IDW> upChan;
+    axi_read_in<wideBSt, wideBSt, DownARU, DownRU, _axiIdT, AXI_IDW> childPort;
+    axi_read_port_thunker<wideASt, wideASt, wideBSt, wideBSt, true, true,
+                          UpARU, UpRU, _axiIdT, AXI_IDW,
+                          DownARU, DownRU, _axiIdT, AXI_IDW> thunker;
+    const char* label;
+    int beats = 0;
+
+    axiReadConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( axiReadConsumerHarness );
+        SC_THREAD( drive );
+        SC_THREAD( sink );
+    }
+
+    void drive()
+    {
+        for (int i = 0; i < TRANSFERS; ++i) {
+            UpAddr addr;
+            addr.arid = (_axiIdT)axiIdVal( i );
+            addr.araddr.value = addrVal( i );
+            addr.arlen = 0;
+            addr.arsize = 2;
+            addr.arburst = AXIBURST_INCR;
+            addr.user.value = userVal( i );
+            upChan.sendAddr( addr, std::nullopt );
+            UpResp resp;
+            upChan.receiveData( resp );
+            ++beats;
+            expectEqual( label, resp.rid, axiIdVal( i ) );
+            expectEqual( label, resp.rdata.value, bridged( dataVal( i ), kData ) );
+            expectEqual( label, resp.rresp, AXIRESP_EXOKAY );
+            expectEqual( label, resp.rlast ? 1u : 0u, 1u );
+            expectEqual( label, resp.user.value, bridged( destVal( i ), kData ) );
+        }
+    }
+
+    void sink()
+    {
+        for (int i = 0;; ++i) {
+            DownAddr addr;
+            childPort->receiveAddr( addr );
+            if (i < TRANSFERS) {
+                expectEqual( label, addr.arid, axiIdVal( i ) );
+                expectEqual( label, addr.araddr.value, bridged( addrVal( i ), kAddr ) );
+                expectEqual( label, addr.arburst, AXIBURST_INCR );
+                expectEqual( label, addr.user.value, bridged( userVal( i ), kAddr ) );
+            }
+            DownResp resp;
+            resp.rid = addr.arid;
+            resp.rdata.value = dataVal( i );
+            resp.rresp = AXIRESP_EXOKAY;
+            resp.rlast = true;
+            resp.user.value = destVal( i );
+            childPort->sendData( resp );
+        }
+    }
+};
+
+template <class UpAWU, class UpWU, class UpBU, class DownAWU, class DownWU, class DownBU>
+struct axiWriteConsumerHarness : sc_core::sc_module
+{
+    static constexpr bool kAddr = std::is_same_v<UpAWU, DownAWU>;
+    static constexpr bool kData = std::is_same_v<UpWU, DownWU>;
+    static constexpr bool kResp = std::is_same_v<UpBU, DownBU>;
+    using UpAddr = axiWriteAddressSt<wideASt, UpAWU, _axiIdT, AXI_IDW>;
+    using DownAddr = axiWriteAddressSt<wideBSt, DownAWU, _axiIdT, AXI_IDW>;
+    using UpData = axiWriteDataSt<wideASt, wideASt, UpWU, _axiIdT, AXI_IDW>;
+    using DownData = axiWriteDataSt<wideBSt, wideBSt, DownWU, _axiIdT, AXI_IDW>;
+    using UpResp = axiWriteRespSt<UpBU, _axiIdT, AXI_IDW>;
+    using DownResp = axiWriteRespSt<DownBU, _axiIdT, AXI_IDW>;
+
+    axi_write_channel<wideASt, wideASt, wideASt, UpAWU, UpWU, UpBU, _axiIdT, AXI_IDW> upChan;
+    axi_write_in<wideBSt, wideBSt, wideBSt, DownAWU, DownWU, DownBU, _axiIdT, AXI_IDW> childPort;
+    axi_write_port_thunker<wideASt, wideASt, wideASt, wideBSt, wideBSt, wideBSt,
+                           true, true, true,
+                           UpAWU, UpWU, UpBU, _axiIdT, AXI_IDW,
+                           DownAWU, DownWU, DownBU, _axiIdT, AXI_IDW> thunker;
+    const char* label;
+    int beats = 0;
+
+    axiWriteConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( axiWriteConsumerHarness );
+        SC_THREAD( drive );
+        SC_THREAD( sink );
+    }
+
+    void drive()
+    {
+        for (int i = 0; i < TRANSFERS; ++i) {
+            UpAddr addr;
+            addr.awid = (_axiIdT)axiIdVal( i );
+            addr.awaddr.value = addrVal( i );
+            addr.awlen = 0;
+            addr.awsize = 2;
+            addr.awburst = AXIBURST_INCR;
+            addr.user.value = userVal( i );
+            upChan.sendAddr( addr, std::nullopt );
+            UpData data;
+            data.wid = (_axiIdT)axiIdVal( i );
+            data.wdata.value = dataVal( i );
+            data.wstrb.value = idVal( i );
+            data.wlast = true;
+            data.user.value = destVal( i );
+            upChan.sendData( data );
+            UpResp resp;
+            upChan.receiveResp( resp );
+            ++beats;
+            expectEqual( label, resp.bid, axiIdVal( i ) );
+            expectEqual( label, resp.bresp, AXIRESP_EXOKAY );
+            expectEqual( label, resp.user.value, bridged( userVal( i ) ^ 0x00FF0000u, kResp ) );
+        }
+    }
+
+    void sink()
+    {
+        for (int i = 0;; ++i) {
+            DownAddr addr;
+            childPort->receiveAddr( addr );
+            DownData data;
+            childPort->receiveData( data );
+            if (i < TRANSFERS) {
+                expectEqual( label, addr.awid, axiIdVal( i ) );
+                expectEqual( label, addr.awaddr.value, bridged( addrVal( i ), kAddr ) );
+                expectEqual( label, addr.user.value, bridged( userVal( i ), kAddr ) );
+                expectEqual( label, data.wid, axiIdVal( i ) );
+                expectEqual( label, data.wdata.value, bridged( dataVal( i ), kData ) );
+                expectEqual( label, data.wstrb.value, bridged( idVal( i ), kData ) );
+                expectEqual( label, data.wlast ? 1u : 0u, 1u );
+                expectEqual( label, data.user.value, bridged( destVal( i ), kData ) );
+            }
+            DownResp resp;
+            resp.bid = addr.awid;
+            resp.bresp = AXIRESP_EXOKAY;
+            resp.user.value = userVal( i ) ^ 0x00FF0000u;
+            childPort->sendResp( resp );
+        }
+    }
+};
+
+// ===========================================================================
 // Explicit instantiation of every new template, at both verdict settings and,
 // for the two multi-payload protocols, at complementary verdict subsets.
 // ===========================================================================
@@ -1342,6 +1588,13 @@ template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, tru
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, false>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, true>;
 template class apb_port_thunker<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>;
+template class axi_read_port_thunker<wideASt, wideASt, wideBSt, wideBSt, true, true,
+                                    wideASt, wideASt, _axiIdT, AXI_IDW,
+                                    wideBSt, wideBSt, _axiIdT, AXI_IDW>;
+template class axi_write_port_thunker<wideASt, wideASt, wideASt, wideBSt, wideBSt, wideBSt,
+                                     true, true, true,
+                                     wideASt, wideASt, wideASt, _axiIdT, AXI_IDW,
+                                     wideBSt, wideBSt, wideBSt, _axiIdT, AXI_IDW>;
 template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
                                         maskBSt, maskBSt, maskBSt,
                                         true, false, true, maskASt, maskBSt>;
@@ -1409,6 +1662,10 @@ int sc_main( int, char*[] )
     statusCommandConsumerHarness<maskASt, maskBSt, true> statusCmdC1( "statusCmdC1", "status cmd in direct" );
     statusCommandProducerHarness<maskASt, maskBSt, false> statusCmdP0( "statusCmdP0", "status cmd out packed" );
     statusCommandProducerHarness<maskASt, maskBSt, true> statusCmdP1( "statusCmdP1", "status cmd out direct" );
+    statusInitialConsumerHarness<maskASt, maskBSt, false> statusInitC0( "statusInitC0", "status initial in packed" );
+    statusInitialConsumerHarness<maskASt, maskBSt, true> statusInitC1( "statusInitC1", "status initial in direct" );
+    statusInitialProducerHarness<maskASt, maskBSt, false> statusInitP0( "statusInitP0", "status initial out packed" );
+    statusInitialProducerHarness<maskASt, maskBSt, true> statusInitP1( "statusInitP1", "status initial out direct" );
     externalRegMirrorConsumerHarness<maskASt, maskBSt, false> extMirC0( "extMirC0", "external_reg legs in packed" );
     externalRegMirrorConsumerHarness<maskASt, maskBSt, true> extMirC1( "extMirC1", "external_reg legs in direct" );
     externalRegMirrorProducerHarness<maskASt, maskBSt, false> extMirP0( "extMirP0", "external_reg legs out packed" );
@@ -1434,6 +1691,14 @@ int sc_main( int, char*[] )
         apbUnfilledC( "apbUnfilledC", "apb in unfilled read data" );
     apbProducerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
         apbUnfilledP( "apbUnfilledP", "apb out unfilled read data" );
+
+    // -- axi_read / axi_write with the optional parameters ------------------
+    axiReadConsumerHarness<wideASt, wideASt, wideASt, wideASt> axiRdSame( "axiRdSame", "axi_read optional same types" );
+    axiReadConsumerHarness<wideASt, wideASt, wideBSt, wideBSt> axiRdDiff( "axiRdDiff", "axi_read optional different types" );
+    axiWriteConsumerHarness<wideASt, wideASt, wideASt, wideASt, wideASt, wideASt>
+        axiWrSame( "axiWrSame", "axi_write optional same types" );
+    axiWriteConsumerHarness<wideASt, wideASt, wideASt, wideBSt, wideBSt, wideBSt>
+        axiWrDiff( "axiWrDiff", "axi_write optional different types" );
 
     // -- port shapes: the lazily resolved up side, both directions ----------
     rawUpPortConsumerHarness<maskASt, maskBSt, false> rawUpC( "rawUpC", "raw in up-port packed" );
@@ -1479,6 +1744,10 @@ int sc_main( int, char*[] )
     expectEqual( "statusCmdP0 beats", statusCmdP0.beats, STATUS_SEQUENCE_NOTIFICATIONS );
     expectEqual( "statusCmdP1 reference", statusCmdP1.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );
     expectEqual( "statusCmdP1 beats", statusCmdP1.beats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusInitC0 beats", statusInitC0.beats, 0 );
+    expectEqual( "statusInitC1 beats", statusInitC1.beats, 0 );
+    expectEqual( "statusInitP0 beats", statusInitP0.beats, 0 );
+    expectEqual( "statusInitP1 beats", statusInitP1.beats, 0 );
     expectEqual( "extMirC0 commands", extMirC0.cmdBeats, 3 );
     expectEqual( "extMirC1 commands", extMirC1.cmdBeats, 3 );
     expectEqual( "extMirP0 commands", extMirP0.cmdBeats, 3 );
@@ -1487,6 +1756,10 @@ int sc_main( int, char*[] )
     expectEqual( "memUnfilledP beats", memUnfilledP.beats, 2 * TRANSFERS );
     expectEqual( "apbUnfilledC beats", apbUnfilledC.beats, 2 * TRANSFERS );
     expectEqual( "apbUnfilledP beats", apbUnfilledP.beats, 2 * TRANSFERS );
+    expectEqual( "axiRdSame beats", axiRdSame.beats, TRANSFERS );
+    expectEqual( "axiRdDiff beats", axiRdDiff.beats, TRANSFERS );
+    expectEqual( "axiWrSame beats", axiWrSame.beats, TRANSFERS );
+    expectEqual( "axiWrDiff beats", axiWrDiff.beats, TRANSFERS );
     expectEqual( "unfilled read data converted", g_unfilledPacks, 0 );
 
     std::printf( "checks:%d failures:%d\n", g_checks, g_failures );

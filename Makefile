@@ -54,7 +54,6 @@ AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
 AXISOCKET_MASTER_DIR = examples/axiSocketMaster
 AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
-XIF_DIR = examples/xif
 
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 

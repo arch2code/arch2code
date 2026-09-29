@@ -85,18 +85,9 @@ def expandDirMacros(myFile):
     return _expand_with_macros(myFile, dirMacros)
 
 def sanitizeIdentifierToken(name):
-    # Core-owned identifier sanitization for a project/include/block token: map
-    # the two characters illegal in a C++ module-name / identifier segment to
-    # underscore. Owned here in core (not in the template layer) because
-    # projectCreate builds the owner-qualified foreign-Config file stub from it;
-    # the template layer's cpp_module_name imports this same primitive so the
-    # two cannot drift.
-    #
-    # NOT module-specific despite where it is most visible: three domains depend
-    # on it — C++20 module names, `_ns` namespace names, and the `<project>_`
-    # prefix on foreign Config STRUCT names. Any tightening for module-name
-    # legality alone would silently change struct and namespace spellings too, so
-    # keep the rule to what is illegal in a plain identifier segment.
+    # Maps the characters illegal in a C++ identifier segment to underscore.
+    # Module names, `_ns` namespaces and foreign Config struct names all share
+    # this rule, so tightening it for one changes the spelling of all three.
     return name.replace('-', '_').replace('.', '_')
 
 def configStructName(stem, variant):
@@ -181,7 +172,7 @@ def rejectIllegalSvName(names, kind, describe, remedy):
             exit(warningAndErrorReport())
 
 def leadsWithProject(name, projectName):
-    # The '_' boundary keeps 'debayering' from counting as led by 'debayer'.
+    # The '_' boundary keeps 'fooBar' from counting as led by 'foo'.
     name = sanitizeIdentifierToken(name)
     projectName = sanitizeIdentifierToken(projectName)
     return name == projectName or name.startswith(projectName + '_')
@@ -1573,30 +1564,14 @@ class projectOpen:
         ret['defaultClock'] = None
         ret['defaultReset'] = None
         for row in self.data['blockClocksResets'][ret['qualBlock']]:
-            # registerClock/registerReset (clockTree.py's register-bus
-            # resolution) are a block-level fact repeated on every row of the
-            # block; read once here rather than a second table.
+            # The register-bus fields are block-level, repeated on every row.
             ret['registerClock'] = row['registerClock']
             ret['registerReset'] = row['registerReset']
-            # registerBusPort is a served leaf's own port name carrying the
-            # register bus (clockTree.py's BlockDomains.registerBusPort);
-            # getBDPorts stamps it with registerClock/registerReset.
             ret['registerBusPort'] = row['registerBusPort']
-            # busClockPort/busResetPort (clockTree.py's _routerBusPorts /
-            # the handler's own registerClock/registerReset names, once
-            # _resolveRegisterHandlerBinds renames its clock/reset pair onto
-            # them) are the router's or handler's OWN declared port name
-            # carrying the register bus - a block-level fact repeated on
-            # every row the same way. The router's flops name them, so the
-            # template does not re-derive the addressBlock: override rule.
             ret['busClockPort'] = row['busClockPort']
             ret['busResetPort'] = row['busResetPort']
             if row['kind'] == 'clock':
-                # period/timeUnit are the RESOLVED standalone-simulation
-                # values clockTree._resolveStandaloneAttrs() persisted: the
-                # clock's own declared value when
-                # present, else the value resolved from the testbench clock
-                # every instance of the block resolves to.
+                # period/timeUnit are the resolved standalone values.
                 entry = {'clock': row['itemKey'], 'desc': row['desc'],
                          'direction': row['direction'], 'default': bool(row['isDefault']),
                          'period': row['period'], 'timeUnit': row['timeUnit'],
@@ -1606,11 +1581,8 @@ class projectOpen:
                     ret['defaultClock'] = entry['clock']
                     ret['defaultReset'] = entry['selectedReset']
             else:
-                # releaseCycles is the same resolution for a reset. An
-                # asynchronous reset input belongs to no clock (row['clock']
-                # is empty); it counts its release cycles on the block
-                # DEFAULT clock instead, so the wrapper's
-                # reset_driver counts edges of that clock's own signal.
+                # An asynchronous reset belongs to no clock, so it counts
+                # its release cycles on the block default clock.
                 ret['resets'].append({'reset': row['itemKey'], 'desc': row['desc'],
                                       'direction': row['direction'],
                                       'default': bool(row['isDefault']),
@@ -1619,16 +1591,9 @@ class projectOpen:
                                       'releaseCycles': row['releaseCycles']})
 
     def getBDBusClockReset(self, ret):
-        # Called for every block. busClock/busReset are the block's
-        # register-bus domain, registerClock/registerReset (clockTree.py's
-        # _resolveRouterBusClockReset/_resolveRegisterHandlerBinds), already
-        # read into `ret` by getBDClocksResets: for a router, the container
-        # nets its bus clock/reset ports bind to; for a synthesised
-        # <block>_regs handler, whose ports are named after the leaf nets
-        # they bind to, also its own bus port names.
-        # A block with no register-bus role carries None in both.
+        # Called for every block. busClock is the block's register-bus
+        # clock, None for a block with no register-bus role.
         ret['busClock'] = ret['registerClock']
-        ret['busReset'] = ret['registerReset']
 
         # A handler's own memoriesParent entries (getBDRegistersMemories) are
         # bridged exactly when their memory-side domainClock differs
@@ -1657,10 +1622,7 @@ class projectOpen:
         # the clock has no selected reset; only a memory served across a
         # crossing needs one), from the memoryClocks table. The clock is always
         # one the owning block declares, so the emitted bind names a port of the
-        # module the memory sits in. A memoryClocks row per memory is a
-        # contract: clockTree.rows() only skips one when the owning block has no
-        # default clock, which is already a logged error that exits before
-        # persist.
+        # module the memory sits in.
         return self.data['memoryClocks'][memoryBlockKey][0]
 
     def getBDLocalNets(self, blockKey):
@@ -8734,7 +8696,7 @@ class projectCreate:
                                     f"parsed into a special context")
                             else:
                                 owningProject = self.contextOwningProject[yamlFile]
-                                varInfo = self.data[targetSection].get(owningProject, {}).get(ret[field])
+                                varInfo = self.data[targetSection][owningProject].get(ret[field])
                                 if varInfo:
                                     ret[field+'Key'] = varInfo[validator['field']] + '/' + owningProject
                                 else:
@@ -10161,23 +10123,8 @@ class projectCreate:
                           f"'{item['param']}' states neither a value nor a container source; every "
                           f"parameter of a declared variant must be bound or container-sourced")
             return item
-        blockParamKey = item['blockParamKey']
-        if blockParamKey not in self.flatData['blocksparams']:
-            # blockParam is a combo foreign key onto blocksparams, so a variant
-            # binding row that exists always carries a resolved block param.
-            printError(f"Generator bug in _post_validateVariantBindingSizing: variant "
-                       f"'{item['variant']}' binding of param '{item['param']}' carries unresolved "
-                       f"block param '{blockParamKey}'")
-            exit(warningAndErrorReport())
-        blockParam = self.flatData['blocksparams'][blockParamKey]
+        blockParam = self.flatData['blocksparams'][item['blockParamKey']]
         backingKey = blockParam['paramSourceKey']
-        if backingKey not in self.flatData['constants']:
-            # paramSource is a foreign key onto constants, so a block-param row
-            # that exists always carries a resolved backing constant.
-            printError(f"Generator bug in _post_validateVariantBindingSizing: block param "
-                       f"'{blockParam['block']}.{blockParam['param']}' carries unresolved backing "
-                       f"constant '{backingKey}'")
-            exit(warningAndErrorReport())
         backing = self.flatData['constants'][backingKey]
         if hasContainer:
             # The container's parameters cannot be resolved here: a parse-time

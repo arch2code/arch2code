@@ -342,7 +342,8 @@ TIE_BLOCK = """    sampler:
 # decode walk (`_resolveRouterBusClockReset`/`_resolveRegisterHandlerBinds`)
 # still finds the router and its served leaf when they sit one container level
 # below the design root, not just at it (the shape every other fixture here
-# uses).
+# uses). ipBlock's registerPorts: names apbClk, the clock its inner router
+# runs on.
 IPBLOCK_TWO_CLOCKS = """        clocks:
             clk:    { default: true }
             apbClk: { }
@@ -355,7 +356,7 @@ FEED_AT_CONTAINER_INSTANCE = f"""include:
     - shared.yaml
 
 blocks:
-{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{render_leaf('ipBlock', port_name='apbReg', extra_block_lines=IPBLOCK_TWO_CLOCKS)}{ROUTER}{render_leaf('leafA')}
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{render_leaf('ipBlock', port_name='apbReg', extra_block_lines=IPBLOCK_TWO_CLOCKS, port_extra=', clock: apbClk')}{ROUTER}{render_leaf('leafA')}
 instances:
     uTop:       {{ container: top, instanceType: top }}
     uCPU:       {{ container: top, instanceType: cpu }}
@@ -579,8 +580,9 @@ def _registerBusPort(db_path, block_name):
 
 def _registerBusDomain(db_path, block_name):
     """(registerClock, registerReset) persisted on every one of a block's own
-    blockClocksResets rows (clockTree.py's register-bus resolution): a router's or a
-    synthesised `<block>_regs` handler's own bus clock/reset, a block-level
+    blockClocksResets rows (clockTree.py's register-bus resolution): a served
+    leaf's, passthrough container's or synthesised `<block>_regs` handler's
+    own bus clock/reset, a block-level
     fact rather than a per-instance bind, so it is not exposed through
     instanceClockResetBinds."""
     conn = sqlite3.connect(db_path)
@@ -793,9 +795,8 @@ def run_feed_at_container_instance():
     served leaf as a sibling: the register-decode walk
     (`_resolveRouterBusClockReset`, `_resolveRegisterHandlerBinds`) must find
     them one container level below the design root, not just at it. Both
-    instances are mapped onto ipBlock's own non-default apbClk, so the
-    router's and the handler's own bus clock/reset (a block-level fact, not
-    a per-instance bind) are asserted directly."""
+    instances are mapped onto ipBlock's own non-default apbClk; the handler's
+    own bus clock/reset is a block-level fact, asserted directly."""
     label = ("a router and its served leaf, nested inside a container "
              "instance, still resolve their bus clock/reset")
     fixture, project_path, db_path = _make_fixture(FEED_AT_CONTAINER_INSTANCE)
@@ -817,13 +818,10 @@ def run_feed_at_container_instance():
             print(f"FAIL: {label}: instance 'uLeafA' port 'clk' "
                   f"binds to {got!r}, expected 'apbClk'")
             failed = True
-        # The router's own bus clock/reset is the CONTAINER's (ipBlock's own)
-        # net name: its instance is one level below the
-        # design root, and this is the fact that walk must still resolve.
-        routerBus = _registerBusDomain(db_path, 'apbDecode')
-        if routerBus != ('apbClk', 'apbRst_n'):
-            print(f"FAIL: {label}: apbDecode's bus clock/reset is {routerBus}, "
-                  f"expected ('apbClk', 'apbRst_n')")
+        got = binds.get('uAPBDecode', {}).get('rst_n')
+        if got != 'apbRst_n':
+            print(f"FAIL: {label}: instance 'uAPBDecode' port 'rst_n' "
+                  f"binds to {got!r}, expected 'apbRst_n'")
             failed = True
         # The handler's own bus clock/reset mirrors leafA's own registerPorts:
         # selection - leafA's OWN clock/reset port NAME,
@@ -838,6 +836,74 @@ def run_feed_at_container_instance():
     finally:
         shutil.rmtree(fixture)
 
+
+
+def _nested_router_container_design(router_map):
+    """ipBlock's registerPorts: declares apbClk; `router_map` binds the inner
+    router's clock."""
+    return f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{render_leaf('ipBlock', port_name='apbReg', extra_block_lines=IPBLOCK_TWO_CLOCKS, port_extra=', clock: apbClk')}{ROUTER}{render_leaf('leafA')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uIp:        {{ container: top, instanceType: ipBlock }}
+    uAPBDecode: {{ container: ipBlock, instanceType: apbDecode{router_map} }}
+    uLeafA:     {{ container: ipBlock, instanceType: leafA, addressGroup: top }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uIp, dstport: apbReg }}
+
+{REGISTER}"""
+
+
+def run_nested_router_container_register_port_mismatch_rejected():
+    return _expect_diagnostic(
+        "a nested-router container's registerPorts: clock: disagreeing with "
+        "its inner router's bound clock is rejected",
+        _nested_router_container_design(''),
+        ("Port 'apbReg' of block 'ipBlock' is declared on clock 'apbClk'",
+         "inner port 'uAPBDecode.apbReg'"))
+
+
+def _register_bus_only_leaf_design(leaf_map):
+    """leafA declares only a register bus (no registers) on its apbClk;
+    `leaf_map` binds that clock at the instance served by the router on
+    'top's clk."""
+    return f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{render_leaf('leafA', extra_block_lines=IPBLOCK_TWO_CLOCKS, port_extra=', clock: apbClk')}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uLeafA:     {{ container: top, instanceType: leafA, addressGroup: top{leaf_map} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+"""
+
+
+def run_register_bus_only_leaf_mismatch_rejected():
+    return _expect_diagnostic(
+        "a register-bus-only leaf's registerPorts: clock: not bound to the "
+        "router's bus clock is rejected",
+        _register_bus_only_leaf_design(''),
+        ("Instance 'uLeafA' of block 'leafA' declares its register port on "
+         "clock 'apbClk'", 'registerPorts: clock:'))
+
+
+def run_register_bus_only_leaf_agreeing_builds():
+    return _case(
+        "a register-bus-only leaf whose registerPorts: clock: is bound to the "
+        "router's bus clock builds",
+        _register_bus_only_leaf_design(
+            ",\n                  clocks: { apbClk: clk }, resets: { apbRst_n: rst_n }"),
+        {'uLeafA': {'apbClk': 'clk'}})
 
 def run_composed_child_respells_the_clock():
     """The respelling case becomes an explicit-map case: a composed child's
@@ -2290,6 +2356,9 @@ def _run():
         run_reusable_ip_register_port_clock_rename,
         run_object_access_keeps_its_own_domain,
         run_feed_at_container_instance,
+        run_nested_router_container_register_port_mismatch_rejected,
+        run_register_bus_only_leaf_mismatch_rejected,
+        run_register_bus_only_leaf_agreeing_builds,
         run_composed_child_respells_the_clock,
         run_child_harness_accessor_domain_not_checked,
         run_child_harness_accessor_without_default_clock_rejected,

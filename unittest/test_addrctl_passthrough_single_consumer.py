@@ -351,6 +351,83 @@ registers:
         cleanup(paths)
 
 
+
+def _run_passthrough_instantiated_twice():
+    label = "passthrough container instantiated twice under one router"
+    print(label)
+    ARCH_YAML = (
+        APB_PREAMBLE
+        + """
+blocks:
+    top:
+        desc: "Top container carrying the router"
+        hasMdl: true
+    wrapT:
+        desc: "Router-less container instantiated twice"
+        hasMdl: true
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('leaf')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap0:     { container: top, instanceType: wrapT, addressGroup: top }
+    uWrap1:     { container: top, instanceType: wrapT, addressGroup: top }
+    uLeaf:      { container: wrapT, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
+"""
+    )
+    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    paths = [project_path, db_path] + arch_paths
+    try:
+        prj = projectOpen(db_path)
+        wrap0_key, wrap0_row = find_instance(prj, 'uWrap0')
+        wrap1_key, wrap1_row = find_instance(prj, 'uWrap1')
+
+        for name in ('uWrap0', 'uWrap1'):
+            assert len(find_connections(prj, src='uAPBDecode', dst=name)) == 1, \
+                f"expected one uAPBDecode->{name} dispatch"
+        assert find_connections(prj, dst='uLeaf') == [], \
+            "the inner consumer must not receive a direct router dispatch"
+        assert len(find_connection_maps(prj, instance='uLeaf')) == 1, \
+            "expected one boundary connectionMap onto uLeaf, shared by both slots"
+
+        instances_with_regapb = prj.config.getConfig(
+            'INSTANCES_WITH_REGAPB', failOk=True)
+        for key in (wrap0_key, wrap1_key):
+            assert key in instances_with_regapb, \
+                f"INSTANCES_WITH_REGAPB missing '{key}'"
+
+        passthroughs = prj.config.getConfig('REGAPB_PASSTHROUGH', failOk=True)
+        wrap_block_key = wrap0_row['instanceTypeKey']
+        slots = passthroughs[wrap_block_key]['slotInstanceKeys']
+        assert slots == [wrap0_key, wrap1_key], \
+            f"passthrough slotInstanceKeys expected [{wrap0_key!r}, {wrap1_key!r}], got {slots}"
+
+        assert wrap0_row['addressID'] != wrap1_row['addressID'], \
+            f"both slots got addressID {wrap0_row['addressID']!r}"
+
+        router_key, _ = find_block(prj, 'apbDecode')
+        data = prj.getBlockData(router_key)
+        from templates.systemc.constructor import addressDecoder
+        rendered = "\n".join(addressDecoder(None, prj, data))
+        for port in ('&apbReg_uWrap0', '&apbReg_uWrap1'):
+            assert port in rendered, \
+                f"expected '{port}' in rendered decoder table:\n{rendered}"
+
+        print("PASS")
+        return True
+    finally:
+        cleanup(paths)
+
 def _run_boundary_key_distinct_from_leaf_register():
     label = ("top-down leaf behind an authored boundary 'regs' keeps its "
              "register 'cfgA' and bus port 'regs' distinct")
@@ -720,6 +797,7 @@ def run_all_tests():
         _run_top_down_inner_leaf(),
         _run_two_level_chain(),
         _run_block_reuse(),
+        _run_passthrough_instantiated_twice(),
         _run_boundary_key_distinct_from_leaf_register(),
         _run_authored_boundary_keeps_its_interface(),
         _run_inferring_container_bridges_compatible_ip(),

@@ -845,11 +845,11 @@ def wrap_module_namespace(args, data, lines):
     namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
-def cpp_fw_namespace_name(includeName):
+def cpp_fw_namespace_name(contextModuleIdentity):
     # A context's firmware declarations live in their own namespace nested under
     # fw_ns, so two contexts declaring the same type name stay distinct when one
     # firmware header includes both.
-    return f'{FW_NAMESPACE}::{cpp_module_name(includeName)}'
+    return f'{FW_NAMESPACE}::{cpp_module_name(contextModuleIdentity)}'
 
 def fw_namespace_surface(data):
     # Opens the context's firmware namespace and folds it into fw_ns, so firmware

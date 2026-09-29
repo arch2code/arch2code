@@ -403,6 +403,36 @@ registers:
 )
 
 
+# A router-less container holding two register consumers: a passthrough
+# forwards the bus to exactly one.
+CONTAINER_WITH_TWO_CONSUMERS = (
+    APB_PREAMBLE
+    + """
+blocks:
+    top:
+        desc: "Top container (carries the primary router)"
+        hasMdl: true
+    wrap:
+        desc: "Router-less container holding two consumers"
+        hasMdl: true
+"""
+    + render_router('apbDecode', 'top')
+    + render_leaf('leafA')
+    + render_leaf('leafB')
+    + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top }
+    uLeafA:     { container: wrap, instanceType: leafA }
+    uLeafB:     { container: wrap, instanceType: leafB }
+
+registers:
+    - { register: cfgA, regType: rw, block: leafA, structure: cfgRegSt, desc: "" }
+    - { register: cfgB, regType: rw, block: leafB, structure: cfgRegSt, desc: "" }
+"""
+)
+
 def _expect_diagnostic(label, arch_yaml, required_substrings):
     print(label)
     db_path, project_path, arch_paths, completed = build_database(
@@ -441,7 +471,7 @@ def run_container_slot_must_carry_router_address_group():
         "router's addressGroup:",
         CONTAINER_MISSING_ADDRESS_GROUP,
         [
-            "'uIsolated'",
+            "'uIsolated' (block 'unservedContainer')",
             "must carry addressGroup: top",
         ],
     )
@@ -601,6 +631,18 @@ def run_inferred_port_name_colliding_with_connection_port_rejected():
     )
 
 
+
+def run_container_with_two_consumers_rejected():
+    return _expect_diagnostic(
+        "a router-less container holding two register consumers is rejected",
+        CONTAINER_WITH_TWO_CONSUMERS,
+        [
+            "Container block 'wrap' hosts 2 instances that need a register "
+            "bus (uLeafA (block leafA), uLeafB (block leafB))",
+            "can pass the bus through to exactly one such instance",
+        ],
+    )
+
 def run_all_tests():
     results = [
         run_inner_consumer_must_not_carry_address_group(),
@@ -615,6 +657,7 @@ def run_all_tests():
         run_passthrough_boundary_width_mismatch_rejected(),
         run_inferring_passthrough_width_mismatch_rejected(),
         run_inferred_port_name_colliding_with_connection_port_rejected(),
+        run_container_with_two_consumers_rejected(),
     ]
     return 0 if all(results) else 1
 
