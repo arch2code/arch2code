@@ -2441,7 +2441,9 @@ class projectOpen:
                       and (self.contextOwningProject[instanceData['_context']],
                            instanceData['addressGroup']) == groupKey]
             routed.sort(key=lambda instanceData: instanceData['addressID'])
-            if not routed:
+            # A referenced child project's standalone harness router is outside
+            # this build's tree; its view still renders, with no channels.
+            if not routed and qualDecoder in self.reachableInstances:
                 printError(f"Router block '{blockRow['block']}' declares address group "
                            f"'{addressGroupLabel(groupKey)}' but no instance in this "
                            f"build's design tree is routed to it, so the decoder has no "
@@ -4329,6 +4331,7 @@ class projectCreate:
         self.validateBlockParamScopeUniqueness()
         self.resolveInstanceVariantDeclarers()
         self._validateTopInstanceDeclared()
+        self._validateTopInstanceBlockNotRouter()
         self._validateTopInstanceBlockNotContained()
         # reject a block that contains itself before anything descends the
         # hierarchy: post-parse scripts and port validation both do, and
@@ -10011,6 +10014,27 @@ class projectCreate:
             f"Declare the topInstance row '{self.topInstance}' in the yaml of project "
             f"'{projectName}' (container: its own block). Its block may be a testbench "
             f"block from a composed child project.")
+
+    def _validateTopInstanceBlockNotRouter(self):
+        # A project's top block is its testbench: nothing contains it, so a
+        # decode router there has no container to decode for. A composed
+        # child's own root row declares that child's top block. The root
+        # project's row is checked first, so its own choice is what is named.
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        instances = self.flatData['instances'].values()
+        tops = ([row for row in instances if row['container'] == '_topInstance']
+                + [row for row in instances if self.isComposedChildRootRow(row)])
+        for row in tops:
+            if not blockByKey[row['instanceTypeKey']].get('addressBlock'):
+                continue
+            project = self.contextOwningProject[row['_context']]
+            self.logError(
+                f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, topInstance "
+                f"'{row['instance']}' of project '{project}' has instanceType "
+                f"'{row['instanceType']}', which declares addressBlock:. A project's "
+                f"topInstance block is its testbench, which no block contains, so it has no "
+                f"container to decode for and cannot be a decode router. Instantiate the "
+                f"router inside the testbench block instead.")
 
     def _validateTopInstanceBlockNotContained(self):
         # A second instance of the top block would sit inside another block,

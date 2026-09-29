@@ -493,6 +493,12 @@ python3 test_error_topinstance_not_root_owned.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: a decode router as the topInstance's block"
+echo "------------------------------------------------------------------------"
+python3 test_error_topinstance_router.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: transit vs own-surface classification at a connection"
 echo "------------------------------------------------------------------------"
 python3 test_transit_surface_classification.py || FAILED=1

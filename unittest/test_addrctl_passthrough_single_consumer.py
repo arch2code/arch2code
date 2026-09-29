@@ -25,7 +25,6 @@ from _addrctl_helpers import (
     render_plain_block,
     render_router,
 )
-from test_addrctl_parameterized_reg_iface import PARAM_PREAMBLE
 
 
 def _run_single_consumer():
@@ -481,68 +480,6 @@ registers:
         cleanup(paths)
 
 
-def _run_parameterised_container_checked_at_instance_variant():
-    label = ("parameterised passthrough container bound at 32 bits wraps a "
-             "non-parameterised 32-bit IP")
-    print(label)
-    ARCH_YAML = (
-        PARAM_PREAMBLE.replace("value: 32\n            maxValue: 32",
-                               "value: 16\n            maxValue: 32")
-        + """
-blocks:
-    top:
-        desc: "Top container carrying the router"
-        hasMdl: true
-    wrap:
-        desc: "Parameterised router-less container"
-        hasMdl: true
-        params: [PARAM_REG_DATA_WIDTH]
-        registerPorts:
-            regs: { interface: paramReg }
-"""
-        + render_plain_block('cpu')
-        + render_router('apbDecode', 'top')
-        + render_leaf('leaf')
-        + """
-instances:
-    uTop:       { container: top, instanceType: top }
-    uCPU:       { container: top, instanceType: cpu }
-    uAPBDecode: { container: top, instanceType: apbDecode }
-    uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v32 }
-    uLeaf:      { container: wrap, instanceType: leaf }
-
-parameters:
-    wrap:
-        v32:
-            PARAM_REG_DATA_WIDTH: 32
-
-connections:
-    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
-
-registers:
-    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
-"""
-    )
-    db_path, project_path, arch_paths = build_database(ARCH_YAML)
-    paths = [project_path, db_path] + arch_paths
-    try:
-        prj = projectOpen(db_path)
-        boundary_maps = find_connection_maps(prj, instance='uLeaf')
-        assert len(boundary_maps) == 1 and boundary_maps[0]['interface'] == 'paramReg', \
-            f"expected one boundary connectionMap on paramReg, got {boundary_maps}"
-        # The leaf's own surface is its apbReg register bus, so it stays a
-        # non-parameterised block although the map carries paramReg.
-        _leaf_key, leaf_row = find_block(prj, 'leaf')
-        assert not leaf_row['isParameterizable'], \
-            "leaf must not be parameterizable: its surface is its own apbReg"
-        _wrap_key, wrap_row = find_block(prj, 'wrap')
-        assert wrap_row['isParameterizable'], "wrap must be parameterizable"
-        print("PASS")
-        return True
-    finally:
-        cleanup(paths)
-
-
 def _run_inferring_container_bridges_compatible_ip():
     label = ("passthrough container with no registerPorts: carries the "
              "router's interface over a compatible inner IP interface")
@@ -608,7 +545,7 @@ registers:
         cleanup(paths)
 
 
-def _register_port_only_leaf_design(preamble, wrap, leaf, uwrap, parameters=''):
+def _register_port_only_leaf_design(preamble, wrap, leaf, uwrap):
     return (
         preamble
         + """
@@ -631,7 +568,7 @@ instances:
 
 connections:
     - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
-{parameters}"""
+"""
     )
 
 
@@ -670,32 +607,100 @@ def _run_register_port_only_leaf_keeps_its_interface():
         cleanup(paths)
 
 
+# A register bus stays fixed-width, so a parameterised container carries its
+# parameter on a non-bus port. Its bus, wrapReg, is fixed-width but named
+# apart from the leaf's apbReg, so the leaf keeping its own interface is
+# still observable.
+PARAMETERISED_WRAP_PREAMBLE = (
+    """ipParameters:
+    constants:
+        SAMPLE_WIDTH: { value: 16, maxValue: 32, desc: "Sample payload width" }
+    types:
+        samplePixelT: { width: SAMPLE_WIDTH, maxBitwidth: 32, desc: "Parameterised sample word" }
+
+"""
+    + APB_PREAMBLE
+    .replace("types:\n", "types:\n"
+             "    sampleTagT: { width: 8, desc: \"Sample tag\" }\n", 1)
+    .replace("structures:\n", "structures:\n"
+             "    sampleSt:\n"
+             "        tag:  { varType: sampleTagT, desc: \"Sample tag\" }\n"
+             "        data: { varType: samplePixelT, desc: \"Parameterised payload\" }\n", 1)
+    + """    wrapReg:
+        desc: "The container's own fixed-width register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+    sampleIf:
+        desc: "Parameterised sample stream, not a register bus"
+        interfaceType: push_ack
+        structures:
+            - { structure: sampleSt, structureType: data_t }
+"""
+)
+
+
 def _run_register_port_only_leaf_behind_parameterised_container():
     label = ("registerPorts:-only inner IP behind a parameterised container "
              "keeps its own non-parameterised interface")
     print(label)
-    ARCH_YAML = _register_port_only_leaf_design(
-        PARAM_PREAMBLE.replace("value: 32\n            maxValue: 32",
-                               "value: 16\n            maxValue: 32"),
-        """    wrap:
+    # _register_port_only_leaf_design's topology plus a sink for wrap's sample
+    # port, bound at the same variant so the channel between them agrees.
+    ARCH_YAML = (
+        PARAMETERISED_WRAP_PREAMBLE
+        + """
+blocks:
+    top:
+        desc: "Top container carrying the router; model-only, so its unparameterised module never names the sample payload"
+        hasMdl: true
+        hasRtl: false
+    wrap:
         desc: "Parameterised router-less container"
         hasMdl: true
-        params: [PARAM_REG_DATA_WIDTH]
+        params: [SAMPLE_WIDTH]
         registerPorts:
-            regs: { interface: paramReg }
-""",
-        render_leaf('leaf'),
-        "uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v32 }",
-        """
+            regs: { interface: wrapReg }
+        ports:
+            sample: { interface: sampleIf, direction: src }
+    snk:
+        desc: "Consumer of wrap's parameterised sample port"
+        hasMdl: true
+        params: [SAMPLE_WIDTH]
+        ports:
+            sample: { interface: sampleIf, direction: dst }
+"""
+        + render_plain_block('cpu')
+        + render_router('apbDecode', 'top')
+        + render_leaf('leaf')
+        + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v32 }
+    uSnk:       { container: top, instanceType: snk, variant: v32 }
+    uLeaf:      { container: wrap, instanceType: leaf }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+    - { interface: sampleIf, src: uWrap, srcport: sample, dst: uSnk, dstport: sample }
+
 parameters:
     wrap:
         v32:
-            PARAM_REG_DATA_WIDTH: 32
-""")
+            SAMPLE_WIDTH: 32
+    snk:
+        v32:
+            SAMPLE_WIDTH: 32
+"""
+    )
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
         prj = projectOpen(db_path)
+        _wrap_key, wrap_row = find_block(prj, 'wrap')
+        assert wrap_row['isParameterizable'], "wrap must be parameterizable"
         leaf_key, leaf_row = find_block(prj, 'leaf')
         assert not leaf_row['isParameterizable'], \
             "leaf must not be parameterizable: its surface is its own apbReg"
@@ -717,7 +722,6 @@ def run_all_tests():
         _run_block_reuse(),
         _run_boundary_key_distinct_from_leaf_register(),
         _run_authored_boundary_keeps_its_interface(),
-        _run_parameterised_container_checked_at_instance_variant(),
         _run_inferring_container_bridges_compatible_ip(),
         _run_register_port_only_leaf_keeps_its_interface(),
         _run_register_port_only_leaf_behind_parameterised_container(),

@@ -17,8 +17,7 @@ which has no parent to be fed from.
 
 A leaf's register-bus port name, authored or inferred, must not already
 name one of its registers or ports, and each passthrough boundary's
-interface, authored or inferred, must share the inner consumer's packed form
-at every container instance's variant.
+interface, authored or inferred, must share the inner consumer's packed form.
 """
 
 import sys
@@ -31,7 +30,6 @@ from _addrctl_helpers import (
     render_plain_block,
     render_router,
 )
-from test_addrctl_parameterized_reg_iface import PARAM_PREAMBLE
 
 
 INNER_CONSUMER_ADDRESS_GROUP = (
@@ -366,57 +364,6 @@ INFERRING_PASSTHROUGH_WIDTH_MISMATCH = PASSTHROUGH_BOUNDARY_WIDTH_MISMATCH.repla
     "        registerPorts:\n            regs: { interface: apbReg }\n",
     "    wrap:\n        desc: \"Router-less container\"\n        hasMdl: true\n")
 
-# A 16-bit router feeds a parameterised container whose instance is bound
-# at 16 bits, against a default of 32, and which wraps a 32-bit IP. Only
-# the instance's variant exposes the mismatch.
-PARAMETERISED_CONTAINER_VARIANT_MISMATCH = (
-    PARAM_PREAMBLE
-    .replace('DATA_WIDTH: { value: 32', 'DATA_WIDTH: { value: 16', 1)
-    .replace("types:\n", "types:\n    leafDataT: { width: 32, desc: \"IP data\" }\n", 1)
-    .replace("structures:\n", "structures:\n    leafDataSt:\n"
-             "        data: { varType: leafDataT, generator: data }\n", 1)
-    + """    leafReg:
-        desc: "32-bit register bus of the inner IP"
-        interfaceType: apb
-        structures:
-            - { structure: apbAddrSt, structureType: addr_t }
-            - { structure: leafDataSt, structureType: data_t }
-
-blocks:
-    top:
-        desc: "Top container (carries the primary router)"
-        hasMdl: true
-    wrap:
-        desc: "Parameterised router-less container"
-        hasMdl: true
-        params: [PARAM_REG_DATA_WIDTH]
-        registerPorts:
-            regs: { interface: paramReg }
-"""
-    + render_plain_block('cpu')
-    + render_router('apbDecode', 'top')
-    + render_leaf('leaf', interface='leafReg')
-    + """
-instances:
-    uTop:       { container: top, instanceType: top }
-    uCPU:       { container: top, instanceType: cpu }
-    uAPBDecode: { container: top, instanceType: apbDecode }
-    uWrap:      { container: top, instanceType: wrap, addressGroup: top, variant: v16 }
-    uLeaf:      { container: wrap, instanceType: leaf }
-
-parameters:
-    wrap:
-        v16:
-            PARAM_REG_DATA_WIDTH: 16
-
-connections:
-    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
-
-registers:
-    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
-"""
-)
-
 # A plain leaf takes the boundary key 'cfgA' as its bus port name while an
 # authored data connection already gives it a port named 'cfgA'.
 INFERRED_PORT_NAME_COLLIDES_WITH_CONNECTION_PORT = (
@@ -610,8 +557,10 @@ def run_passthrough_boundary_width_mismatch_rejected():
             "one bus, so they must have the same packed form; give the "
             "registerPorts: interfaces of blocks 'wrap' and 'leaf' the same "
             "packed form",
-            "field 'data' of apbReg/apbDataSt has _bitWidth 32",
-            "field 'data' of wideReg/wideDataSt has _bitWidth 64",
+            "parent field 'data' has _bitWidth 32 at bit offset 0 in "
+            "structure 'apbDataSt'",
+            "child field 'data' has _bitWidth 64 at bit offset 0 in "
+            "structure 'wideDataSt'",
         ],
     )
 
@@ -629,22 +578,8 @@ def run_inferring_passthrough_width_mismatch_rejected():
             "is 'wideReg'. Both interfaces carry the one bus, so they must have "
             "the same packed form; give the registerPorts: interface of block "
             "'leaf' the same packed form as 'apbReg'",
-            "field 'data' of apbReg/apbDataSt has _bitWidth 32",
-        ],
-    )
-
-
-def run_parameterised_container_variant_mismatch_rejected():
-    return _expect_diagnostic(
-        "a parameterised passthrough container is checked at its instance's "
-        "variant (16 bits) rather than its default (32 bits) against a "
-        "32-bit inner IP",
-        PARAMETERISED_CONTAINER_VARIANT_MISMATCH,
-        [
-            "Router-less container 'wrap' (instance 'uWrap') passes the "
-            "register bus on interface 'paramReg'",
-            "field 'data' of paramReg/paramRegDataSt has _bitWidth 16",
-            "field 'data' of leafReg/leafDataSt has _bitWidth 32",
+            "parent field 'data' has _bitWidth 32 at bit offset 0 in "
+            "structure 'apbDataSt'",
         ],
     )
 
@@ -679,7 +614,6 @@ def run_all_tests():
         run_authored_port_name_colliding_with_register_rejected(),
         run_passthrough_boundary_width_mismatch_rejected(),
         run_inferring_passthrough_width_mismatch_rejected(),
-        run_parameterised_container_variant_mismatch_rejected(),
         run_inferred_port_name_colliding_with_connection_port_rejected(),
     ]
     return 0 if all(results) else 1

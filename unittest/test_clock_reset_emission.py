@@ -2306,7 +2306,7 @@ def check_leaf_binds_its_bridged_handler(emitted):
 # reached through the emitted rtl/leafA.sv hierarchy under test.
 _BRIDGED_LINT_WRAPPER = """\
 module leafA_regs_lint_top
-    import regsEmit_shared_package::*;
+    import shared_package::*;
 (
     input clk, clkSlow, rstMain_n, rstBus_n
 );
@@ -2512,7 +2512,7 @@ def _check_router_bound_onto_bus_nets(fixture, emitted, port_line, binds):
     _lint(fixture, 'apbDecode_hdl_sv_wrapper',
           ('rtl/top_package.sv', ROUTER_PORTS_ROUTER, ROUTER_PORTS_WRAPPER),
           'the router through its verilated SV wrapper')
-    return _lint(fixture, 'routerPorts_top', ROUTER_PORTS_RTL,
+    return _lint(fixture, 'top', ROUTER_PORTS_RTL,
                  'the container instantiating the router')
 
 
@@ -2598,7 +2598,7 @@ def check_router_runs_on_its_addressblock_bus_ports(fixture, emitted):
     _lint(fixture, 'apbDecode_hdl_sv_wrapper',
           ('rtl/top_package.sv', ROUTER_PORTS_ROUTER, ROUTER_PORTS_WRAPPER),
           'the router through its verilated SV wrapper')
-    return _lint(fixture, 'routerPorts_top', ROUTER_PORTS_RTL,
+    return _lint(fixture, 'top', ROUTER_PORTS_RTL,
                  'the container instantiating the router')
 
 
