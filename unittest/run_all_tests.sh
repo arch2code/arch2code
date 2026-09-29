@@ -793,6 +793,12 @@ python3 test_vl_sc_wrap_name.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: generated clock_gen falls back to free-running after lockstep link loss"
+echo "------------------------------------------------------------------------"
+python3 test_clockgen_link_loss.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

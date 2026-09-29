@@ -1415,23 +1415,14 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     # the container never exports is an error, since the parent cannot drive
     # or name that domain.
     boundaryResults = dict()
-    derivingBoundary = set()
 
     def deriveBoundary(boundaryKey):
         # Memoised so a chained map resolves its inner boundary port first,
-        # whatever the declaration order.
-        if boundaryKey in boundaryResults:
-            return boundaryResults[boundaryKey]
-        if boundaryKey in derivingBoundary:
-            raise AssertionError(
-                f"clockTree.build: connectionMaps boundary port "
-                f"{boundaryKey!r} chains back to itself, which the instance "
-                f"hierarchy cannot produce")
-        derivingBoundary.add(boundaryKey)
-        result = deriveOneBoundary(connMapByBoundary[boundaryKey])
-        derivingBoundary.remove(boundaryKey)
-        boundaryResults[boundaryKey] = result
-        return result
+        # whatever the declaration order. Each map names a child instance of
+        # its block and containment is acyclic, so a chain always ends.
+        if boundaryKey not in boundaryResults:
+            boundaryResults[boundaryKey] = deriveOneBoundary(connMapByBoundary[boundaryKey])
+        return boundaryResults[boundaryKey]
 
     def deriveOneBoundary(connMap):
         outerBlockKey = connMap['blockKey']
@@ -1492,9 +1483,13 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                 f"output clock or reset instead.")
             return None
         declaredRow = declaredPortRow(blocks[outerBlockKey], boundaryPortName)
-        # A handler's clock is renamed onto its leaf's register clock after
-        # this derivation, so a handler's boundary agrees by construction.
-        if declaredRow is not None and not innerDomain.isRegHandler:
+        # The generated handler and passthrough bus maps are checked against
+        # the bus in _resolveRegisterHandlerBinds instead.
+        isRegisterPort = boundaryPortName in (blocks[outerBlockKey].get('registerPorts') or {})
+        if isRegisterPort and (innerDomain.isRegHandler
+                               or outerBlockKey in registerBusPassthroughs):
+            declaredRow = None
+        if declaredRow is not None:
             declaredClock = declaredRow['clock'] or domains[outerBlockKey].defaultClock
             if declaredClock != domainClock:
                 verb = 'set' if declaredRow['clock'] else 'declare'
@@ -2382,8 +2377,10 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
 
     # A `registerPorts:` block with no handler (a nested-router container,
     # or a leaf exposing only a register bus) gets the same check at every
-    # instance a router serves. An instance nothing serves is a nested-router
-    # container fed directly; its inner side is a connectionMaps boundary.
+    # instance a router or passthrough serves. Any other instance is fed by
+    # an authored connection, checked only when that connection states
+    # clock:; a nested-router container's inner side is also a
+    # connectionMaps boundary.
     def isServed(instanceKey):
         if instances[instanceKey]['containerKey'] in registerBusPassthroughs:
             return True
@@ -2399,8 +2396,7 @@ def _resolveRegisterHandlerBinds(domains, containers, instances, connections, bl
         regRow = next(iter(registerPorts.values()))
         clockPortName = regRow['clock'] or domain.defaultClock
         _checkRegisterPortsOnBus(
-            blockKey, blockRow['block'], clockPortName, regRow['reset'],
-            regRow['reset'] or domain.selectedReset.get(clockPortName),
+            blockKey, blockRow['block'], clockPortName, regRow['reset'], regRow['reset'],
             [instanceKey for instanceKey in instancesByBlock.get(blockKey, [])
              if isServed(instanceKey)],
             instances, domains, connections, blocks, consumerNetByContainer,

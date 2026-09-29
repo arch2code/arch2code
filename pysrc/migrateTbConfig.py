@@ -10,12 +10,12 @@ generated regions, and all three edits are mandatory — a Config.cpp carrying o
 the first no longer builds:
 
   1. INSERT the `prerequisites` and `registration` region markers, and DELETE the
-     framework prerequisites the first of them now emits (`<string>`,
+     framework prerequisites the first of them emits (`<string>`,
      `instanceFactory.h`, `testBenchConfigFactory.h`, `import a2c.endOfTest;`).
      Whatever else the legacy preamble held, `systemc.h` included, is user content
      and is moved, in order, into the seeded user slot below the new region.
   2. RENAME the bare `--template=tbConfig` region to `--section=class`. The
-     template now routes on `--section`, and a region command with none arrives as
+     template routes on `--section`, and a region command with none arrives as
      the EMPTY STRING, so gen aborts with
      `ValueError: Unknown section '' for template 'tbConfig'`.
   3. DELETE the stranded out-of-class definition

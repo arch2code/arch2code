@@ -905,6 +905,141 @@ def run_register_bus_only_leaf_agreeing_builds():
             ",\n                  clocks: { apbClk: clk }, resets: { apbRst_n: rst_n }"),
         {'uLeafA': {'apbClk': 'clk'}})
 
+
+# A passthrough container whose registerPorts: names apbClk, holding a
+# top-down leaf whose default clock is not its register-bus clock.
+_WRAPV_CLOCKS = ("        clocks:\n"
+                 "            clk:    { default: true }\n"
+                 "            apbClk: { }\n"
+                 "        resets:\n"
+                 "            rst_n:    { clock: clk }\n"
+                 "            apbRst_n: { clock: apbClk }\n")
+_LEAFV_BLOCK = """    leafV:
+        desc: "top-down leaf; default clock is not its bus clock"
+        hasMdl: true
+        clocks:
+            coreClk: { default: true }
+            busClk:  { }
+        resets:
+            coreRst_n: { clock: coreClk }
+            busRst_n:  { clock: busClk }
+"""
+PASSTHROUGH_TOP_DOWN_OFF_DEFAULT = f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{render_leaf('wrapV', port_name='apbReg', extra_block_lines=_WRAPV_CLOCKS, port_extra=', clock: apbClk')}{_LEAFV_BLOCK}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uWrapV:     {{ container: top, instanceType: wrapV, addressGroup: top }}
+    uLeafV:     {{ container: wrapV, instanceType: leafV,
+                  clocks: {{ coreClk: clk, busClk: apbClk }},
+                  resets: {{ coreRst_n: rst_n, busRst_n: apbRst_n }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+registers:
+    - {{ register: cfgV, regType: rw, block: leafV, structure: cfgRegSt, desc: "leafV configuration" }}
+"""
+
+
+def run_passthrough_top_down_leaf_off_default_clock_builds():
+    return _case(
+        "a passthrough registerPorts: clock: over a top-down leaf whose "
+        "default clock is not its bus clock builds",
+        PASSTHROUGH_TOP_DOWN_OFF_DEFAULT,
+        {'uLeafV': {'busClk': 'apbClk', 'coreClk': 'clk'}})
+
+
+# A reusable-IP leaf with registers whose registerPorts: clock: is not its
+# default clock, so its handler boundary runs off the default clock.
+_LEAFH_BLOCK = render_leaf('leafH', extra_block_lines=(
+    "        clocks:\n"
+    "            coreClk: { default: true }\n"
+    "            busClk:  { }\n"
+    "        resets:\n"
+    "            coreRst_n: { clock: coreClk }\n"
+    "            busRst_n:  { clock: busClk }\n"), port_extra=', clock: busClk')
+HANDLER_OFF_DEFAULT = f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{_LEAFH_BLOCK}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uLeafH:     {{ container: top, instanceType: leafH, addressGroup: top,
+                  clocks: {{ coreClk: clk, busClk: apbClk }},
+                  resets: {{ coreRst_n: rst_n, busRst_n: apbRst_n }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+registers:
+    - {{ register: cfgH, regType: rw, block: leafH, structure: cfgRegSt, desc: "leafH configuration" }}
+"""
+
+
+def run_handler_leaf_off_default_clock_builds():
+    return _case(
+        "a reusable-IP leaf whose registerPorts: clock: is not its default "
+        "clock builds through its handler",
+        HANDLER_OFF_DEFAULT,
+        {'uLeafH': {'busClk': 'apbClk', 'coreClk': 'clk'}})
+
+
+# A container whose registerPorts: runs on busClk, bridged by an authored
+# connectionMap to a plain port of a hand-written inner block bound onto the
+# container's coreClk: the bus would cross clocks unsynchronised.
+_WRAPC_CLOCKS = ("        clocks:\n"
+                 "            coreClk: { default: true }\n"
+                 "            busClk:  { }\n"
+                 "        resets:\n"
+                 "            coreRst_n: { clock: coreClk }\n"
+                 "            busRst_n:  { clock: busClk }\n")
+AUTHORED_MAP_OFF_BUS_CLOCK = f"""include:
+    - shared.yaml
+
+blocks:
+{TOP_TWO_CLOCKS}{render_plain_block('cpu')}{ROUTER}{render_leaf('wrapC', extra_block_lines=_WRAPC_CLOCKS, port_extra=', clock: busClk')}    innerI:
+        desc: "hand-written block exposing the bus as a plain port"
+        hasMdl: true
+        ports:
+            apb: {{ interface: apbReg, direction: dst }}
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uCPU:       {{ container: top, instanceType: cpu }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode,
+                  clocks: {{ clk: apbClk }}, resets: {{ rst_n: apbRst_n }} }}
+    uWrapC:     {{ container: top, instanceType: wrapC, addressGroup: top,
+                  clocks: {{ coreClk: clk, busClk: apbClk }},
+                  resets: {{ coreRst_n: rst_n, busRst_n: apbRst_n }} }}
+    uI:         {{ container: wrapC, instanceType: innerI,
+                  clocks: {{ clk: coreClk }}, resets: {{ rst_n: coreRst_n }} }}
+
+connections:
+    - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}
+
+connectionMaps:
+    - {{ interface: apbReg, block: wrapC, port: regs, direction: dst, instance: uI, instancePort: apb }}
+"""
+
+
+def run_authored_map_off_bus_clock_rejected():
+    return _expect_diagnostic(
+        "a registerPorts: port bridged by an authored connectionMap to an "
+        "inner port on another clock is rejected",
+        AUTHORED_MAP_OFF_BUS_CLOCK,
+        ("Port 'regs' of block 'wrapC' is declared on clock 'busClk'",
+         "inner port 'uI.apb'"))
+
+
 def run_composed_child_respells_the_clock():
     """The respelling case becomes an explicit-map case: a composed child's
     own instance (uLeafIp, of a block declared in a second project) binds
@@ -2359,6 +2494,9 @@ def _run():
         run_nested_router_container_register_port_mismatch_rejected,
         run_register_bus_only_leaf_mismatch_rejected,
         run_register_bus_only_leaf_agreeing_builds,
+        run_passthrough_top_down_leaf_off_default_clock_builds,
+        run_handler_leaf_off_default_clock_builds,
+        run_authored_map_off_bus_clock_rejected,
         run_composed_child_respells_the_clock,
         run_child_harness_accessor_domain_not_checked,
         run_child_harness_accessor_without_default_clock_rejected,

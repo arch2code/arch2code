@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""The six new protocol port thunkers bridge a payload at runtime, not just at compile time.
+"""The payload-carrying protocol port thunkers bridge a payload at runtime, not just at compile time.
 
-`interfaces/<proto>/<proto>_port_thunker.h` exists for `axi4_stream`,
-`external_reg`, `memory`, `pop_ack`, `raw` and `status` as well as for the seven
-protocols that already had one. A header that compiles but is never run proves
-nothing about the adapter: a forwarding loop that deadlocks, drops a beat,
-duplicates one, or selects the wrong arm of `copyPayload` compiles perfectly.
+A `interfaces/<proto>/<proto>_port_thunker.h` header that compiles but is never
+run proves nothing about the adapter: a forwarding loop that deadlocks, drops a
+beat, duplicates one, or selects the wrong arm of `copyPayload` compiles
+perfectly.
 
 This suite therefore builds and RUNS `fixtures/thunker-runtime/thunker_runtime.cpp`
-under the SystemC kernel. That program instantiates every one of the six templates
+under the SystemC kernel. That program instantiates each covered template
 explicitly and drives real transactions through each, in both forwarding
 directions and at both settings of the adapter's direct-copy verdict.
 
@@ -33,8 +32,10 @@ and pinned here so a future edit that weakens it is visible:
   publications that cross to the driver with their notification in all four
   shapes and never come back to the owner, and
   `memory`/`apb` read data that is never converted before it is filled.
-- A `status` bridge hands the child the up side's initial value without
-  notifying any reader.
+- A `status` bridge hands the child the up side's initial value in every
+  shape and through a chain of two bridges without notifying any reader, and
+  a child's write before its first `wait()` reaches the parent whichever
+  process the kernel runs first.
 - `axi_read` and `axi_write` run with their optional user-signal and id
   parameters, once with matching types on both sides and once without, so the
   arm each value arrives through shows the optional arguments bound their own
@@ -42,7 +43,7 @@ and pinned here so a future edit that weakens it is visible:
 
 The build is done here rather than by a project makefile because the harness is
 not a generated artifact of any project: it needs no database, and no example
-design exercises these six protocols across a cross-interface bind. The
+design exercises every one of these protocols across a cross-interface bind. The
 toolchain, defines, warning set and libraries mirror `include/make/a2c-systemc.mk`,
 so a header that trips a warning the real model build treats as an error fails
 here too.
@@ -78,11 +79,13 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
 # twelve notification-semantics and unfilled-read-data harnesses, eight
-# external_reg mirror-publisher harnesses (four shapes, two verdicts), four
-# status initial-value harnesses, and four axi_read/axi_write harnesses with the
-# optional parameters. Pinned so a harness that stopped being constructed fails
-# here rather than reducing the evidence silently.
-EXPECTED_CHECKS = 931
+# external_reg mirror-publisher harnesses (four shapes, two verdicts), eight
+# status initial-value harnesses in the channel and up-port shapes, four chained
+# status initial-value harnesses, four status time-zero write harnesses, and
+# four axi_read/axi_write harnesses with the optional parameters. Pinned so a
+# harness that stopped being constructed fails here rather than reducing the
+# evidence silently.
+EXPECTED_CHECKS = 959
 
 
 def toolchain_env():
@@ -165,7 +168,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert failures == 'failures:0', f"{output}"
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} payload and beat-count checks across 56 harnesses, 0 failures")
+    print(f"  {count} payload and beat-count checks across 68 harnesses, 0 failures")
 
 
 def run_all_tests():

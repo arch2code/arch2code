@@ -573,8 +573,8 @@ tbConfigTemplate = \
     bool createTestBench(void) override
     {
         // Seed the testController with this testbench's tests, before sc_start().
-        // Nothing registers or completes the placeholder name, so final() fails
-        // until it is replaced by names a model or BFM thread runs to completion.
+        // final() fails until every name here has been registered and completed
+        // by a model, BFM or External thread; replace the placeholder with them.
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "test_replace_me"

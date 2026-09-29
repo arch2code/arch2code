@@ -282,8 +282,8 @@ module memory_reg_bridge #(
                     n_req_latch = 1'b0;
                     done = 1'b1;
                     err_new = err_hold;
-                    // rdata_hold is unreset and unwritten on an err answer.
-                    rdata_new = err_hold ? bus_rdata_q : rdata_hold;
+                    // rdata_hold is unreset and loaded only by a read without err.
+                    rdata_new = (err_hold || latched_wr) ? bus_rdata_q : rdata_hold;
                     n_bus_state = BUS_WAIT_ACK_LOW;
                 end
             end

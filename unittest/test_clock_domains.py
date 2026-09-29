@@ -8044,6 +8044,31 @@ def run_instance_and_connection_container_cases():
     partInstances = ("    uPart:  { container: top_tb, instanceType: part,  instGroup: top }\n"
                      "    uPartB: { container: part,   instanceType: spare, instGroup: top }\n")
     partLink = "    - { interface: dataIf, name: partLink, src: uPartA, dst: uPartB }\n"
+    # connectionMaps naming the topInstance itself, the shape that would
+    # otherwise chain boundary a to b and back, and one naming a grandchild.
+    selfMaps = ("\nconnectionMaps:\n"
+                "    - { interface: dataIf, block: top_tb, port: a, direction: dst, "
+                "instance: top_tb, instancePort: b }\n"
+                "    - { interface: dataIf, block: top_tb, port: b, direction: dst, "
+                "instance: top_tb, instancePort: a }\n")
+    grandchildMap = ("\nconnectionMaps:\n"
+                     "    - { interface: dataIf, block: top_tb, port: feed, direction: dst, "
+                     "instance: uProd, instancePort: in }\n")
+    childRootMap = ("\nconnectionMaps:\n"
+                    "    - { interface: dataIf, block: childTopBlock, port: a, direction: dst, "
+                    "instance: childTop, instancePort: b }\n")
+    childRootMapDesign = ("types:\n    childT: { width: 8, desc: \"child word\" }\n\n"
+                          "structures:\n    childSt:\n"
+                          "        data: { varType: childT, desc: \"child word\" }\n\n"
+                          "interfaces:\n    childIf:\n        desc: \"child stream\"\n"
+                          "        interfaceType: push_ack\n        structures:\n"
+                          "            - { structure: childSt, structureType: data_t }\n\n"
+                          + childTopDesign + childRootMap.replace('dataIf', 'childIf'))
+
+    def mapDesign(sections):
+        return DESIGN.format(consumerDomains='', containerDomains='', extraInstances='',
+                             connectionClock='', extraConnections='', extraBlocks='',
+                             extraSections=sections)
     return all((
         _expect_builds("control: a self-referencing topInstance and peer connections build"),
         _expect_diagnostic(
@@ -8133,6 +8158,27 @@ def run_instance_and_connection_container_cases():
             (childLoopLine,
              "block 'childLeaf' contains 'uChildLoop' (childLeaf). A block cannot contain "
              "itself, directly or through the blocks it contains.", 'Found 1 Error.')),
+        _expect_diagnostic(
+            "a connectionMaps entry naming the topInstance itself is rejected",
+            (_design_line(mapDesign(selfMaps), "port: a,"),
+             "connectionMaps entry for port 'a' of block 'top_tb' names instance "
+             "'top_tb', which is not a child instance of 'top_tb'",
+             "name an instance declared with container: top_tb", 'Found 1 Error.'),
+            extraSections=selfMaps),
+        _expect_diagnostic(
+            "a connectionMaps entry naming a grandchild instance is rejected",
+            (_design_line(mapDesign(grandchildMap), "port: feed,"),
+             "connectionMaps entry for port 'feed' of block 'top_tb' names instance "
+             "'uProd', which is not a child instance of 'top_tb'", 'Found 1 Error.'),
+            extraSections=grandchildMap),
+        _expect_with_files(
+            "a connectionMaps entry naming a child project's own topInstance is rejected",
+            _default_design(),
+            {'child/prj/yaml/childProject.yaml': childTopProject,
+             'child/yaml/child.yaml': childRootMapDesign},
+            "    - ../../child/prj/yaml/childProject.yaml\n",
+            ("connectionMaps entry for port 'a' of block 'childTopBlock' names instance "
+             "'childTop', which is not a child instance of 'childTopBlock'", 'Found 1 Error.')),
         _expect_with_files(
             "a connection to an instance of the same container declared in an included file builds",
             "include:\n    - part.yaml\n\n" + _default_design(partInstances, partLink),

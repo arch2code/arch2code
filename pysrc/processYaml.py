@@ -4303,6 +4303,7 @@ class projectCreate:
         # before the post-parse rebuild below
         self.generateHierarchy()
         self._validateConnectionContainers()
+        self._validateConnectionMapContainers()
         # run any user provided post processing
         self.postYamlExternalScript()
         # create database indexes
@@ -10101,6 +10102,26 @@ class projectCreate:
                     f"'{src['container']}' and '{conn['dst']}' in container '{dst['container']}'. "
                     f"A connection joins two instances in the same container; link a "
                     f"block to its own child with a connectionMaps entry instead.")
+
+    def _validateConnectionMapContainers(self):
+        # A connectionMaps entry joins a block to one of its own child
+        # instances. A composed child's root row names its own block as its
+        # container but is no child of it.
+        instances = self.flatData['instances']
+        for connMap in self.flatData['connectionMaps'].values():
+            instRow = instances[connMap['instanceKey']]
+            if (instRow['containerKey'] == connMap['blockKey']
+                    and not self.isComposedChildRootRow(instRow)):
+                continue
+            where = self.diagnosticLocation(connMap['_context'], connMap.get('lc'))
+            self.logError(
+                f"In {where}, connectionMaps entry for port '{connMap['portName']}' of "
+                f"block '{connMap['block']}' names instance '{connMap['instance']}', "
+                f"which is not a child instance of '{connMap['block']}'. A "
+                f"connectionMaps entry joins a block's own port to a port of one of "
+                f"its child instances; name an instance declared with container: "
+                f"{connMap['block']}, or join sibling instances with a connections: "
+                f"entry instead.")
 
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be

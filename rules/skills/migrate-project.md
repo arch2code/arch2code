@@ -51,9 +51,11 @@ a template traceback and half-regenerate the tree:
    `scFilePrefix` or `fwFilePrefix` where it had none, every owned artifact of that
    kind is renamed, so each file still at its unprefixed name in the same
    directory is moved byte for byte to its prefixed name (user code included).
-   Changing one non-empty prefix to another is not migrated. If a move cannot be
-   made safely, the phase reports it, moves nothing further, and the sweep exits 2
-   before any other phase runs, which halts `make migrate`. The rest of the sweep
+   Changing one non-empty prefix to another is not migrated. A move that cannot
+   be made safely is reported, and the sweep then exits 2 before any other phase
+   runs, which halts `make migrate`. On `TODO_FILE_PREFIX_CHAIN` no file is moved
+   at all. On `TODO_FILE_PREFIX_BOTH_EXIST` only the conflicting file stays put;
+   every other pending file is still moved under `--write`. The rest of the sweep
    then removes the stale purely-generated orphans the form
    changes left behind (every delete marker-guarded by `GENERATED_CODE_BEGIN`,
    never `git`), and reports the files it cannot touch (`TODO_PORT`,

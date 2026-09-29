@@ -75,14 +75,15 @@ private:
     sc_signal<bool> rst_n;
     sc_time clk_half_;
 
-    // Free-run: toggle every half period until gated lockstep begins; gating
-    // only ever switches on. Gated lockstep: the quantum thread broadcasts one
-    // edge request per socketSyncClockHalfPeriod() of advanced time, and a
-    // clock toggles once its own half period has accumulated, so a slower
-    // clock keeps its period at quantum resolution and no clock can free-run
-    // during wait(ack). A half period that is not a whole number of lockstep
-    // steps would be silently moved onto the step grid, so it is fatal on entry
-    // to gated mode.
+    // Free-run: toggle every half period until gated lockstep begins. Gated
+    // lockstep: the quantum thread broadcasts one edge request per
+    // socketSyncClockHalfPeriod() of advanced time, and a clock toggles once
+    // its own half period has accumulated, so a slower clock keeps its period
+    // at quantum resolution and no clock can free-run during wait(ack). A half
+    // period that is not a whole number of lockstep steps would be silently
+    // moved onto the step grid, so it is fatal on entry to gated mode. Losing
+    // the sync link ends gating for good and wakes the gated wait without an
+    // edge, so the clock returns to free-running.
     void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
         while (!socketSyncTimeGated()) {
             wait(half);
@@ -98,11 +99,18 @@ private:
         sc_time gated = SC_ZERO_TIME;
         while (true) {
             socketSyncWaitClockEdge();
+            if (!socketSyncTimeGated()) {
+                break;
+            }
             gated += step;
             if (gated >= half) {
                 gated -= half;
                 sig.write(!sig.read());
             }
+        }
+        while (true) {
+            wait(half);
+            sig.write(!sig.read());
         }
     }
 

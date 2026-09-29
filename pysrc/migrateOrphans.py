@@ -65,7 +65,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.artifactPaths import (_retiredSiblingPaths, artifactRows, currentArtifactRows,
+from pysrc.artifactPaths import (retiredSiblingPaths, artifactRows, currentArtifactRows,
                                  expandNewModulePath, unprefixedStem)
 
 
@@ -161,9 +161,9 @@ LEGACY_FILEMAP = {
     "vlScWrap":   {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},              "cond": {"hasVl": True},                                 "mode": "block",   "basePath": "vl_wrap", "migrate": MIGRATE_PORT, "legacy": True},
     # The testbench top holds no user CODE: every user slot is empty and the only
     # text outside a generated region is the include-guard triple, which the
-    # `.cppm` form does not have. That evidence says "regenerate, do not transplant slots",
-    # and `make gen` does recreate the module unit in full.
-    # What it does NOT license is dropping the file-level GENERATED_CODE_PARAM
+    # `.cppm` form does not have. So nothing is transplanted: `make gen`
+    # recreates the module unit in full.
+    # That does not extend to dropping the file-level GENERATED_CODE_PARAM
     # line, which is not generated content either: its `--variant=` selects which
     # DUT variant this TB drives and is a user edit (a create-only re-scaffold
     # seeds the block's first declared variant). So the pair is `port`, not
@@ -535,7 +535,7 @@ def sweepOrphans(prj, write=False):
     perFileDeleteMap = {ft: fd for ft, fd in _dispositionMap(MIGRATE_DELETE).items()
                         if fd["basePath"] not in fullyGenerated}
     literalDeletes = _literalDeletePaths(prj, report)
-    retired = _retiredSiblingPaths(prj)
+    retired = retiredSiblingPaths(prj)
     deleteTargets = expandFileMap(prj, perFileDeleteMap, report, contexts)
     deleteTargets.update(dict.fromkeys(literalDeletes | retired))
     # A literal/retired target that happens to sit inside a still-fully-generated

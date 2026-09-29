@@ -340,13 +340,11 @@ def getStaleSegmentFiles(prj, rows, blockCondData, basePath):
 RETIRED_CONTEXT_SIBLINGS = {"include": [("VariantConfig", "h")]}
 
 
-def _retiredSiblingPaths(prj):
+def retiredSiblingPaths(prj):
     """Absolute candidate paths of a retired context-mode artifact named in
     RETIRED_CONTEXT_SIBLINGS, one entry per still-current sibling context file
-    this project owns. Mirrors `migrateOrphans._reconstructContexts`'s expandedType/includeFiles
-    walk and `migrateProjectParam._contextModeFiles`'s ownership guard, so the
-    same directory and ownership rules that place the surviving current artifact
-    locate the retired one beside it, in either layout."""
+    this project owns, placed in the directory of that current file, in either
+    layout."""
     projectName = prj.config.getConfig("PROJECTNAME")
     includeFiles = prj.config.getConfig("INCLUDEFILES")
     fileMap = prj.config.getConfig("FILEMAP")
@@ -373,7 +371,7 @@ def getRetiredContextFiles(prj):
     `--template=config` region is reported, so a user file of that name is
     never touched. Returns absolute paths, sorted."""
     stale = set()
-    for candidate in _retiredSiblingPaths(prj):
+    for candidate in retiredSiblingPaths(prj):
         if not os.path.isfile(candidate):
             continue
         with open(candidate, 'r', errors='replace') as f:

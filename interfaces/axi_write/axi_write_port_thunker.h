@@ -26,17 +26,17 @@
 // DirectAddr, DirectData and DirectStrb are the generator's verdicts for the
 // three payload pairs this protocol carries (addr_t, data_t and strb_t, in that
 // order): true when the pair's two declarations emit identical member storage.
-// The copies here are on the envelopes rather than the payloads themselves,
-// which is sound because the only parameter-dependent members are
-// axiWriteAddressSt<A>'s A awaddr and axiWriteDataSt<D, S>'s D wdata and
-// S wstrb; every other member is the same fixed type on both sides, so
-// corresponding payload storage makes the whole envelope correspond. strb_t has
-// no copy site of its own — it is the second parameter of the data envelope — so
-// the data envelope copy is gated by DirectData && DirectStrb. The response
-// envelope carries no required payload and needs no verdict. All three default
-// to false, which is always correct and merely slower. They precede the
-// optional parameters, so a hand-written instantiation that supplies any
-// user-signal or id parameter must spell all three verdicts first.
+// The copies here are on the envelopes rather than the payloads themselves.
+// Besides awaddr, wdata and wstrb, an envelope's parameter-dependent members are
+// its optional user-signal and id members, so an envelope corresponds when its
+// payload verdicts hold and those members are the same C++ type on both sides
+// (kDirectAddr / kDirectData / kDirectResp below). strb_t has no copy site of
+// its own, so the data envelope copy is gated by DirectData && DirectStrb. The
+// response envelope carries no required payload and is decided from its
+// optional members alone. All three verdicts default to false, which is always
+// correct and merely slower. They precede the optional parameters, so a
+// hand-written instantiation that supplies any user-signal or id parameter must
+// spell all three verdicts first.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -91,9 +91,7 @@
 // (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
 // the direct-copy verdicts (DirectAddr, DirectData, DirectStrb), up-optional
 // (in interface_defs order: AWU, WU, BU, ID/IDW), down-optional (AWU, WU, BU,
-// ID/IDW). The verdicts cover the required payloads only; the optional
-// payloads correspond exactly when both sides spell the same C++ type, which
-// the class decides itself below.
+// ID/IDW).
 template <class UpA, class UpD, class UpS,
           class DownA, class DownD, class DownS,
           bool DirectAddr = false, bool DirectData = false, bool DirectStrb = false,
@@ -102,13 +100,7 @@ template <class UpA, class UpD, class UpS,
 class axi_write_port_thunker
 {
     static_assert(UpIDW == DownIDW, "a cross-interface bind must carry the same id_t width on both ends");
-    // Envelope-level direct-copy verdicts. The generator's verdicts cover the
-    // required payloads (the data envelope carries both data_t and strb_t, so
-    // it needs both); the envelope also corresponds only when the optional
-    // user-signal and id members are the same C++ type on both sides (the id
-    // width is already equal). The response envelope carries no required
-    // payload, so its verdict is decided from those members alone. A false
-    // verdict is always correct, only slower.
+    // Envelope-level direct-copy verdicts (see the header comment).
     static constexpr bool kDirectAddr = DirectAddr && std::is_same_v<UpAWU, DownAWU> && std::is_same_v<UpID, DownID>;
     static constexpr bool kDirectData = DirectData && DirectStrb && std::is_same_v<UpWU, DownWU> && std::is_same_v<UpID, DownID>;
     static constexpr bool kDirectResp = std::is_same_v<UpBU, DownBU> && std::is_same_v<UpID, DownID>;

@@ -1,12 +1,11 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 //
-// Runtime acceptance harness for the six protocol port thunkers that carry a
-// payload and had no adapter until now: axi4_stream, external_reg, memory,
-// pop_ack, raw and status. Driven by unittest/test_thunker_runtime.py.
+// Runtime acceptance harness for the payload-carrying protocol port thunkers:
+// apb, axi_read, axi_write, axi4_stream, external_reg, memory, pop_ack, raw and
+// status. Driven by unittest/test_thunker_runtime.py.
 //
-// Every one of the six templates is explicitly instantiated - as
-// proto/model/test/test_port_thunker.cpp does for the other seven - AND run
-// under the SystemC kernel, with the value observed on the far side asserted
+// Every template here is explicitly instantiated AND run under the SystemC
+// kernel, with the value observed on the far side asserted
 // against the value sent. A compile-only check would not distinguish a bridge
 // that forwards from one that deadlocks, drops or duplicates.
 //
@@ -57,6 +56,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <systemc.h>
 
@@ -465,6 +465,208 @@ struct statusInitialProducerHarness : sc_core::sc_module
         pace();
         expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
         expectEqual( label, upChan.readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            UpT v;
+            upChan.read( v );
+            ++beats;
+        }
+    }
+};
+
+// The lazy port shapes resolve the up side only once binding completes, so
+// their seed is taken from the bound parent port rather than a captured iface.
+template <class UpT, class DownT, bool Direct>
+struct statusInitialUpPortConsumerHarness : sc_core::sc_module
+{
+    status_channel<UpT> upChan;
+    status_in<UpT> upPort;
+    status_in<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int beats = 0;
+
+    statusInitialUpPortConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), upPort( "upPort" ),
+        childPort( "childPort" ), thunker( "thunker", upPort, childPort, "tb" ), label( label_ )
+    {
+        upPort( upChan );
+        SC_HAS_PROCESS( statusInitialUpPortConsumerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            DownT v;
+            childPort->read( v );
+            ++beats;
+        }
+    }
+};
+
+template <class UpT, class DownT, bool Direct>
+struct statusInitialUpPortProducerHarness : sc_core::sc_module
+{
+    status_channel<UpT> upChan;
+    status_out<UpT> upPort;
+    status_out<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int beats = 0;
+
+    statusInitialUpPortProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), upPort( "upPort" ),
+        childPort( "childPort" ), thunker( "thunker", upPort, childPort, "tb" ), label( label_ )
+    {
+        upPort( upChan );
+        SC_HAS_PROCESS( statusInitialUpPortProducerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+        expectEqual( label, upChan.readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            UpT v;
+            upChan.read( v );
+            ++beats;
+        }
+    }
+};
+
+// Two thunkers in a chain, as a transit container produces: the inner one's up
+// side is a port bound to the outer one's owned channel. A container builds its
+// children before its own members, so the inner seed can run first; it must
+// still see the parent's value. Both construction orders are run.
+template <bool InnerFirst>
+struct statusChainConsumerHarness : sc_core::sc_module
+{
+    using Outer = status_port_thunker<maskASt, maskBSt, false>;
+    using Inner = status_port_thunker<maskBSt, maskASt, false>;
+    status_channel<maskASt> upChan;
+    status_in<maskBSt> midPort;
+    status_in<maskASt> childPort;
+    std::unique_ptr<Outer> outer;
+    std::unique_ptr<Inner> inner;
+    const char* label;
+    int beats = 0;
+
+    statusChainConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), midPort( "midPort" ),
+        childPort( "childPort" ), label( label_ )
+    {
+        if (InnerFirst) inner = std::make_unique<Inner>( "inner", midPort, childPort, "tb" );
+        outer = std::make_unique<Outer>( "outer", upChan, midPort, "tb" );
+        if (!InnerFirst) inner = std::make_unique<Inner>( "inner", midPort, childPort, "tb" );
+        SC_HAS_PROCESS( statusChainConsumerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            maskASt v;
+            childPort->read( v );
+            ++beats;
+        }
+    }
+};
+
+template <bool InnerFirst>
+struct statusChainProducerHarness : sc_core::sc_module
+{
+    using Outer = status_port_thunker<maskASt, maskBSt, false>;
+    using Inner = status_port_thunker<maskBSt, maskASt, false>;
+    status_channel<maskASt> upChan;
+    status_out<maskBSt> midPort;
+    status_out<maskASt> childPort;
+    std::unique_ptr<Outer> outer;
+    std::unique_ptr<Inner> inner;
+    const char* label;
+    int beats = 0;
+
+    statusChainProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), midPort( "midPort" ),
+        childPort( "childPort" ), label( label_ )
+    {
+        if (InnerFirst) inner = std::make_unique<Inner>( "inner", midPort, childPort, "tb" );
+        outer = std::make_unique<Outer>( "outer", upChan, midPort, "tb" );
+        if (!InnerFirst) inner = std::make_unique<Inner>( "inner", midPort, childPort, "tb" );
+        SC_HAS_PROCESS( statusChainProducerHarness );
+        SC_THREAD( sample );
+        SC_THREAD( sink );
+    }
+
+    void sample()
+    {
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, STATUS_INITIAL );
+        expectEqual( label, upChan.readNonBlocking().value, STATUS_INITIAL );
+    }
+
+    void sink()
+    {
+        while (true) {
+            maskASt v;
+            upChan.read( v );
+            ++beats;
+        }
+    }
+};
+
+// A child producer that writes before its first wait() may run before or after
+// the adapter's thread; the kernel does not fix the order. The write must reach
+// the parent either way, so both creation orders are run.
+static constexpr std::uint32_t STATUS_TIME_ZERO = 0x1234u;
+
+template <class UpT, class DownT, bool Direct, bool WriterFirst>
+struct statusTimeZeroProducerHarness : sc_core::sc_module
+{
+    status_channel<UpT> upChan;
+    status_out<DownT> childPort;
+    std::unique_ptr<status_port_thunker<UpT, DownT, Direct>> thunker;
+    int beats = 0;
+
+    statusTimeZeroProducerHarness( sc_core::sc_module_name n )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", STATUS_INITIAL ), childPort( "childPort" )
+    {
+        SC_HAS_PROCESS( statusTimeZeroProducerHarness );
+        if (WriterFirst) SC_THREAD( drive );
+        thunker = std::make_unique<status_port_thunker<UpT, DownT, Direct>>( "thunker", upChan, childPort, "tb" );
+        if (!WriterFirst) SC_THREAD( drive );
+        SC_THREAD( sink );
+    }
+
+    void drive()
+    {
+        DownT v;
+        v.value = STATUS_TIME_ZERO;
+        childPort->write( v );
     }
 
     void sink()
@@ -1666,6 +1868,18 @@ int sc_main( int, char*[] )
     statusInitialConsumerHarness<maskASt, maskBSt, true> statusInitC1( "statusInitC1", "status initial in direct" );
     statusInitialProducerHarness<maskASt, maskBSt, false> statusInitP0( "statusInitP0", "status initial out packed" );
     statusInitialProducerHarness<maskASt, maskBSt, true> statusInitP1( "statusInitP1", "status initial out direct" );
+    statusInitialUpPortConsumerHarness<maskASt, maskBSt, false> statusInitUpC0( "statusInitUpC0", "status initial in up-port packed" );
+    statusInitialUpPortConsumerHarness<maskASt, maskBSt, true> statusInitUpC1( "statusInitUpC1", "status initial in up-port direct" );
+    statusInitialUpPortProducerHarness<maskASt, maskBSt, false> statusInitUpP0( "statusInitUpP0", "status initial out up-port packed" );
+    statusInitialUpPortProducerHarness<maskASt, maskBSt, true> statusInitUpP1( "statusInitUpP1", "status initial out up-port direct" );
+    statusChainConsumerHarness<true> statusChainC0( "statusChainC0", "status chain in inner-first" );
+    statusChainConsumerHarness<false> statusChainC1( "statusChainC1", "status chain in outer-first" );
+    statusChainProducerHarness<true> statusChainP0( "statusChainP0", "status chain out inner-first" );
+    statusChainProducerHarness<false> statusChainP1( "statusChainP1", "status chain out outer-first" );
+    statusTimeZeroProducerHarness<maskASt, maskBSt, false, true> statusT0W0( "statusT0W0" );
+    statusTimeZeroProducerHarness<maskASt, maskBSt, false, false> statusT0A0( "statusT0A0" );
+    statusTimeZeroProducerHarness<maskASt, maskBSt, true, true> statusT0W1( "statusT0W1" );
+    statusTimeZeroProducerHarness<maskASt, maskBSt, true, false> statusT0A1( "statusT0A1" );
     externalRegMirrorConsumerHarness<maskASt, maskBSt, false> extMirC0( "extMirC0", "external_reg legs in packed" );
     externalRegMirrorConsumerHarness<maskASt, maskBSt, true> extMirC1( "extMirC1", "external_reg legs in direct" );
     externalRegMirrorProducerHarness<maskASt, maskBSt, false> extMirP0( "extMirP0", "external_reg legs out packed" );
@@ -1748,6 +1962,23 @@ int sc_main( int, char*[] )
     expectEqual( "statusInitC1 beats", statusInitC1.beats, 0 );
     expectEqual( "statusInitP0 beats", statusInitP0.beats, 0 );
     expectEqual( "statusInitP1 beats", statusInitP1.beats, 0 );
+    expectEqual( "statusInitUpC0 beats", statusInitUpC0.beats, 0 );
+    expectEqual( "statusInitUpC1 beats", statusInitUpC1.beats, 0 );
+    expectEqual( "statusInitUpP0 beats", statusInitUpP0.beats, 0 );
+    expectEqual( "statusInitUpP1 beats", statusInitUpP1.beats, 0 );
+    expectEqual( "statusChainC0 beats", statusChainC0.beats, 0 );
+    expectEqual( "statusChainC1 beats", statusChainC1.beats, 0 );
+    expectEqual( "statusChainP0 beats", statusChainP0.beats, 0 );
+    expectEqual( "statusChainP1 beats", statusChainP1.beats, 0 );
+    // One notification, carrying the time-zero write, in either process order.
+    expectEqual( "statusT0W0 value", statusT0W0.upChan.readNonBlocking().value, STATUS_TIME_ZERO );
+    expectEqual( "statusT0W0 beats", statusT0W0.beats, 1 );
+    expectEqual( "statusT0A0 value", statusT0A0.upChan.readNonBlocking().value, STATUS_TIME_ZERO );
+    expectEqual( "statusT0A0 beats", statusT0A0.beats, 1 );
+    expectEqual( "statusT0W1 value", statusT0W1.upChan.readNonBlocking().value, STATUS_TIME_ZERO );
+    expectEqual( "statusT0W1 beats", statusT0W1.beats, 1 );
+    expectEqual( "statusT0A1 value", statusT0A1.upChan.readNonBlocking().value, STATUS_TIME_ZERO );
+    expectEqual( "statusT0A1 beats", statusT0A1.beats, 1 );
     expectEqual( "extMirC0 commands", extMirC0.cmdBeats, 3 );
     expectEqual( "extMirC1 commands", extMirC1.cmdBeats, 3 );
     expectEqual( "extMirP0 commands", extMirP0.cmdBeats, 3 );

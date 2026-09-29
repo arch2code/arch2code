@@ -82,7 +82,7 @@ class newModule:
         self.block_create_from_rows(fileGenerationConfig, rows, blockCondData, prj, args)
         self.registrar_create_from_rows(fileGenerationConfig, rows, prj, args)
 
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'registrar')
+        self.cleanup_stale_registrar_files(prj, rows, blockCondData)
         self.cleanup_stale_vl_wrap_files(fileGenerationConfig, prj, rows, blockCondData, args)
         self.cleanup_retired_context_files(prj)
         self.migrate_legacy_fw_headers(prj, rows)
@@ -188,15 +188,15 @@ class newModule:
                 continue
             self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
-    def cleanup_stale_segment_files(self, prj, rows, blockCondData, basePath):
+    def cleanup_stale_registrar_files(self, prj, rows, blockCondData):
         # newmodule owns segment scaffolding, so it also deletes the generated
-        # files in owned segment directories the current contract no longer
+        # files in owned registrar directories the current contract no longer
         # names.
         expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
-            prj, rows, blockCondData, basePath)
+            prj, rows, blockCondData, 'registrar')
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
-            print(f"Removing stale {basePath} file {staleFile}")
+            print(f"Removing stale registrar file {staleFile}")
             os.remove(staleFile)
 
     def cleanup_stale_vl_wrap_files(self, fileGenerationConfig, prj, rows, blockCondData, args):

@@ -70,7 +70,7 @@ from pysrc.migrateOrphans import (
 
 from pysrc.artifactPaths import (
     RETIRED_CONTEXT_SIBLINGS,
-    _retiredSiblingPaths,
+    retiredSiblingPaths,
     getRetiredContextFiles,
 )
 
@@ -531,7 +531,7 @@ def test_retired_sibling_path_resolves_beside_current_artifact():
     print("test_retired_sibling_path_resolves_beside_current_artifact")
     with tempfile.TemporaryDirectory() as root:
         prj = _FakePrj(root)
-        paths = _retiredSiblingPaths(prj)
+        paths = retiredSiblingPaths(prj)
         model = os.path.join(root, "model")
         expected = {os.path.join(model, f"{stem}{name}.{ext}")
                     for stem in ("top", "usr")
