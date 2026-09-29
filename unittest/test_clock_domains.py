@@ -8073,13 +8073,14 @@ def run_instance_and_connection_container_cases():
             "a connection from the topInstance is rejected",
             (_design_line(_default_design(extraConnections=fromTop), "src: top_tb"),
              "connection dataIf from 'top_tb' port 'down' to 'u_dut' port 'up' has "
-             "topInstance 'top_tb' as its src", "connectionMaps entry", 'Found 1 Error.'),
+             "topInstance 'top_tb' as its src",
+             "connect the sibling instances inside it (container: top_tb)", 'Found 1 Error.'),
             extraConnections=fromTop),
         _expect_diagnostic(
             "a connection to the topInstance is rejected",
             (_design_line(_default_design(extraConnections=toTop), "name: upLink"),
              "connection 'upLink' has topInstance 'top_tb' as its dst",
-             "connectionMaps entry", 'Found 1 Error.'),
+             "connect the sibling instances inside it (container: top_tb)", 'Found 1 Error.'),
             extraConnections=toTop),
         _expect_diagnostic(
             "a connection between instances of unrelated containers is rejected",

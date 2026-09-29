@@ -42,7 +42,8 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectOpen, expandNewModulePath, qualifyModuleIdentity
+from pysrc.processYaml import projectOpen, qualifyModuleIdentity
+from pysrc.artifactPaths import expandNewModulePath
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'nested-ownership')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -110,8 +111,8 @@ def _newmodule_no_token(work):
     Ownership for BLOCK scaffolds is resolved from the DB by the generator gate,
     not from a token, so a block scaffold carries `--block` (never `--project`).
     The project-mode rtl.f carries `--project` directly. Context-mode scaffolds
-    (Includes.cppm/VariantConfig.h/_package.sv/IncludesFW.*, identified by their
-    `--context` token) carry BOTH `--context` (canonical yamlContext key) and
+    (Includes.cppm/_package.sv/IncludesFW.*, identified by their `--context`
+    token) carry BOTH `--context` (canonical yamlContext key) and
     `--project` (the context's owning project) — the S3-context dual stamp, so an
     owned file resolves ownership through `--project` and renders through
     `--context`. Build the fixture db, run `--newmodule` in the same temp tree,

@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=rstSync
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: clkGen_rstSync
-module clkGen_rstSync
+//module as defined by block: rstSync
+module rstSync
 
 (
     input clk, rstIn_n, output rstOut_n
@@ -35,4 +35,4 @@ end
 
 assign rstOut_n = rstSync2_n;
 
-endmodule: clkGen_rstSync
+endmodule: rstSync

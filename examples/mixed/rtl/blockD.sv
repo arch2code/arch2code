@@ -1,10 +1,10 @@
 // GENERATED_CODE_PARAM --block=blockD
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: mixed_blockD
-module mixed_blockD
+//module as defined by block: blockD
+module blockD
 // Generated Import package statement(s)
-import mixed_mixedInclude_package::*;
-import mixed_mixedBlockC_package::*;
+import mixedInclude_package::*;
+import mixedBlockC_package::*;
 import mixed_package::*;
 (
     rdy_vld_if.src cStuffIf,
@@ -80,4 +80,4 @@ assign blockBTable1.wr_en      = rst_n & ~blockBTable1_seeded;
 assign blockBTable1.addr       = '0;
 assign blockBTable1.write_data = BLOCKBTABLE1_SEED;
 
-endmodule: mixed_blockD
+endmodule: blockD

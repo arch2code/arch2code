@@ -1,0 +1,26 @@
+# The consuming assembler. Declares no v0 of its own; the collision is entirely inside wrapTop.yaml.
+include:
+    - ../../projWrap/yaml/wrapTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+        hasRtl: false
+    drv:
+        desc: "stimulus source on the wrapper's boundary interface"
+        params: [WRAP_W]
+        ports:
+            out: { interface: wrapIf, direction: src }
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uDrv:  { container: top, instanceType: drv,     variant: v0 }
+    uWrap: { container: top, instanceType: wrapBlk, variant: v0 }
+
+connections:
+    - { interface: wrapIf, src: uDrv, srcport: out, dst: uWrap, dstport: in }
+
+parameters:
+    drv:
+        v0:
+            WRAP_W: 8

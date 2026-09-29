@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=twoClkSlowTick
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: twoClk_twoClkSlowTick
-module twoClk_twoClkSlowTick
+//module as defined by block: twoClkSlowTick
+module twoClkSlowTick
 // Generated Import package statement(s)
 import twoClkIp_package::*;
 (
@@ -48,4 +48,4 @@ import twoClkIp_package::*;
         end
     end
 
-endmodule: twoClk_twoClkSlowTick
+endmodule: twoClkSlowTick

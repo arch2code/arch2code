@@ -1,0 +1,76 @@
+# `top` is hasVl: true and declares no params: of its own; it is
+# isParameterizable only because it contains two parameterized children
+# (leafA, leafB) joined by a parameter-typed channel, each frozen at variant
+# v0. This is the shape module_hdl_wrapper.py's --section=body dispatch must
+# take as non-parameterizable (no #(parameter...) list): `top`'s own module
+# has no parameter port list to render one against.
+
+ipParameters:
+    constants:
+        WIDTH: { value: 8, maxValue: 32, desc: "Parameterizable payload width" }
+    types:
+        pixelT: { width: WIDTH, maxBitwidth: 32, desc: "Parameterizable payload" }
+
+types:
+    tagT: { width: 8, desc: "Sample tag" }
+
+structures:
+    xferSt:
+        tag:  { varType: tagT,   desc: "Sample tag" }
+        data: { varType: pixelT, desc: "Parameterizable payload" }
+
+interfaces:
+    xferIf:
+        desc: "Parameterized push/ack channel"
+        interfaceType: push_ack
+        structures:
+            - { structure: xferSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "Root testbench container"
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    top:
+        desc: "hasVl transit container: no own params, hosts two parameterized children"
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+    leafA:
+        desc: "Parameterized producer leaf"
+        params: [WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        ports:
+            out: { interface: xferIf, direction: src }
+    leafB:
+        desc: "Parameterized consumer leaf"
+        params: [WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        ports:
+            in: { interface: xferIf, direction: dst }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+    u_top:  { container: top_tb, instanceType: top,    instGroup: top }
+    uLeafA: { container: top,    instanceType: leafA,  instGroup: top, variant: v0 }
+    uLeafB: { container: top,    instanceType: leafB,  instGroup: top, variant: v0 }
+
+connections:
+    - { interface: xferIf, src: uLeafA, srcport: out, dst: uLeafB, dstport: in }
+
+parameters:
+    leafA:
+        v0:
+            WIDTH: 8
+    leafB:
+        v0:
+            WIDTH: 8

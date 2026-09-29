@@ -1,0 +1,124 @@
+# Endpoint IP for the three-party parameterization matrix. It owns the two
+# endpoint roles - a producer and a consumer - in a literal and a parameterized
+# spelling each, so an assembler can pick either spelling per end independently
+# of what it declares for the channel.
+#
+# Every declaration here is the endpoint's OWN: each of the four blocks declares
+# a port on an interface this file owns, never on the assembler's channel
+# interface. That is what makes each port an independent party at the junction -
+# a different interfaceKey from the channel is always adapted, so the port's
+# parameterization is decided here and the channel's is decided by the
+# assembler.
+#
+# The two parameterized spellings carry SEPARATE parameters (MI_SRC_WIDTH,
+# MI_DST_WIDTH) with different declared maxBitwidth, so a cell with more than
+# one parameterized party pairs genuinely different emitted member storage
+# (uint32_t against uint64_t against the assembler's uint16_t). The RESOLVED
+# per-field widths are all 12, because validatePorts requires exact per-field
+# width and offset agreement at every payload position; a resolved-width
+# difference is rejected at make db and cannot be carried at runtime.
+
+ipParameters:
+    constants:
+        MI_SRC_WIDTH: { value: 12, maxValue: 32, desc: "Producer-side pixel width" }
+        MI_DST_WIDTH: { value: 12, maxValue: 64, desc: "Consumer-side pixel width" }
+    types:
+        # Different maxBitwidth on purpose: the emitted container follows the
+        # declared bound, not the resolved width, so the two sides of a
+        # parameterized-against-parameterized pair store the same 12 bits in a
+        # 32-bit and a 64-bit member respectively.
+        miSrcPixelT: { width: MI_SRC_WIDTH, maxBitwidth: 32, desc: "Producer parameterizable pixel word" }
+        miDstPixelT: { width: MI_DST_WIDTH, maxBitwidth: 64, desc: "Consumer parameterizable pixel word" }
+
+types:
+    miTagT:      { width: 8,  desc: "Sample sequence tag; low packed position" }
+    miMarkT:     { width: 8,  desc: "Trailing marker; sits above the pixel so a wrong-width pixel shifts it" }
+    miLitPixelT: { width: 12, desc: "Literal pixel word at the same resolved width as the parameterized ones" }
+
+structures:
+    # Four payloads with one identical packed sequence: tag@0 w8, data@8 w12,
+    # mark@20 w8. They differ only in how the middle field is declared, which is
+    # the whole point: the packed form is what the layout gate compares and the
+    # member storage is what the adapter has to bridge.
+    miSrcLitSt:
+        tag:  { varType: miTagT,      desc: "Sample sequence tag" }
+        data: { varType: miLitPixelT, desc: "Literal pixel payload" }
+        mark: { varType: miMarkT,     desc: "Trailing marker" }
+    miSrcParSt:
+        tag:  { varType: miTagT,      desc: "Sample sequence tag" }
+        data: { varType: miSrcPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: miMarkT,     desc: "Trailing marker" }
+    miDstLitSt:
+        tag:  { varType: miTagT,      desc: "Sample sequence tag" }
+        data: { varType: miLitPixelT, desc: "Literal pixel payload" }
+        mark: { varType: miMarkT,     desc: "Trailing marker" }
+    miDstParSt:
+        tag:  { varType: miTagT,      desc: "Sample sequence tag" }
+        data: { varType: miDstPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: miMarkT,     desc: "Trailing marker" }
+
+interfaces:
+    miSrcLitIf:
+        desc: "Producer port interface, literal payload"
+        interfaceType: push_ack
+        structures:
+            - { structure: miSrcLitSt, structureType: data_t }
+    miSrcParIf:
+        desc: "Producer port interface, parameterized payload"
+        interfaceType: push_ack
+        structures:
+            - { structure: miSrcParSt, structureType: data_t }
+    miDstLitIf:
+        desc: "Consumer port interface, literal payload"
+        interfaceType: push_ack
+        structures:
+            - { structure: miDstLitSt, structureType: data_t }
+    miDstParIf:
+        desc: "Consumer port interface, parameterized payload"
+        interfaceType: push_ack
+        structures:
+            - { structure: miDstParSt, structureType: data_t }
+
+blocks:
+    xpMtxSrcLit:
+        desc: "Producer with a literal port payload"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: miSrcLitIf, direction: src }
+    xpMtxSrcPar:
+        desc: "Producer with a parameterized port payload"
+        params: [MI_SRC_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: miSrcParIf, direction: src }
+    xpMtxDstLit:
+        desc: "Consumer with a literal port payload"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: miDstLitIf, direction: dst }
+    xpMtxDstPar:
+        desc: "Consumer with a parameterized port payload"
+        params: [MI_DST_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: miDstParIf, direction: dst }
+
+parameters:
+    xpMtxSrcPar:
+        v0:
+            MI_SRC_WIDTH: 12
+    xpMtxDstPar:
+        v0:
+            MI_DST_WIDTH: 12

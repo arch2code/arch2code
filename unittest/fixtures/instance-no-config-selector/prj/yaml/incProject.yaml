@@ -1,0 +1,31 @@
+# Single-project cell: a parameterized leaf instantiated with no Config selector.
+
+yamlFormat: 2
+projectName: incTest
+
+projectFiles:
+    - ../../yaml/incTop.yaml
+
+topInstance: incTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

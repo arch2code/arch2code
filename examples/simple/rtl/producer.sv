@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: simple_producer
-module simple_producer
+//module as defined by block: producer
+module producer
 // Generated Import package statement(s)
 import simple_package::*;
 (
@@ -57,4 +57,4 @@ import simple_package::*;
         end
     end
 
-endmodule: simple_producer
+endmodule: producer

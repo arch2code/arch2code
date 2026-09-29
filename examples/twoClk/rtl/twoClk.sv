@@ -18,38 +18,38 @@ import twoClk_package::*;
     apb_if #(.addr_t(twoClkRegAddrSt), .data_t(twoClkRegDataSt)) twoClkReg_uTable();
 
 // Instances
-twoClkIp_twoClkIpSrc uIpSrc (
+twoClkIpSrc uIpSrc (
     .out (out_0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-twoClk_twoClkSink uSink (
+twoClkSink uSink (
     .in (out_0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-twoClk_twoClkSlowTick uSlowTick (
+twoClkSlowTick uSlowTick (
     .out (out_1),
     .clkTick (clkSlow),
     .rstTick_n (rstSlow_n)
 );
 
-twoClk_twoClkSlowSink uSlowSink (
+twoClkSlowSink uSlowSink (
     .in (out_1),
     .clkSlow (clkSlow),
     .rstSlow_n (rstSlow_n)
 );
 
-twoClk_twoClkDecode uDecode (
+twoClkDecode uDecode (
     .twoClkReg (twoClkReg),
     .twoClkReg_uTable (twoClkReg_uTable),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-twoClk_twoClkTable uTable (
+twoClkTable uTable (
     .twoClkReg (twoClkReg_uTable),
     .clk (clk),
     .clkSlow (clkSlow),

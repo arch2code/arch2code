@@ -41,6 +41,7 @@ blocks:
     top:
         desc: "Top container"
         hasMdl: true
+        hasRtl: false
     paramOwner:
         desc: "Consumes PARAM_WORD_LINES only to validate ipParameters linkage"
         hasMdl: true
@@ -53,7 +54,12 @@ blocks:
 instances:
     uTop:       { container: top, instanceType: top }
     uAPBDecode: { container: top, instanceType: apbDecode }
-    uLeaf:      { container: top, instanceType: wordLineLeaf, addressGroup: top }
+    uLeaf:      { container: top, instanceType: wordLineLeaf, addressGroup: top, variant: wl0 }
+
+parameters:
+    wordLineLeaf:
+        wl0:
+            PARAM_WORD_LINES: 4
 
 registers:
     - { register: wordMemReg, regType: memory, block: wordLineLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: PARAM_WORD_LINES, desc: "Memory register with parameterized depth" }
@@ -93,6 +99,7 @@ blocks:
     top:
         desc: "Top container"
         hasMdl: true
+        hasRtl: false
     paramOwner:
         desc: "Consumes PARAM_BUS_WIDTH only to validate ipParameters linkage"
         hasMdl: true
@@ -112,8 +119,16 @@ blocks:
 
 instances:
     uTop: { container: top, instanceType: top }
-    uSrc: { container: top, instanceType: srcBlock }
-    uDst: { container: top, instanceType: dstBlock }
+    uSrc: { container: top, instanceType: srcBlock, variant: bus0 }
+    uDst: { container: top, instanceType: dstBlock, variant: bus0 }
+
+parameters:
+    srcBlock:
+        bus0:
+            PARAM_BUS_WIDTH: 16
+    dstBlock:
+        bus0:
+            PARAM_BUS_WIDTH: 16
 
 connections:
     - { interface: paramBus, src: uSrc, srcport: out, dst: uDst, dstport: in }

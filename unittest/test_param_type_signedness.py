@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Signedness of the emitted C++ type alias for parameterizable types.
+"""Signedness of the emitted C++ type declaration for parameterizable types.
 
 `includeTypes` (templates/systemc/includes.py) has two arms. The
 non-parameterizable arm emits `platformDataType`, which already encodes
-`isSigned`. The parameterizable arm emits its own container, because a
-parameterizable type must be sized by `maxBitwidth` (the worst case across
-variants) and not by `realwidth` (the width at default parameter values, which
-is what `platformDataType` is derived from). That container must still honour
-`isSigned`, otherwise a declared-signed field silently becomes unsigned in the
-model while the SystemVerilog emitter keeps it signed.
+`isSigned`. The parameterizable arm emits a value-keyed declaration (`T_v`,
+templated on the constant's own width parameter) plus a `Config`-keyed alias
+(`T`) that binds it. The value-keyed declaration must be sized by
+`maxBitwidth` (the worst case across variants) and not by `realwidth` (the
+width at default parameter values, which is what `platformDataType` is
+derived from), and it must still honour `isSigned`, otherwise a
+declared-signed field silently becomes unsigned in the model while the
+SystemVerilog emitter keeps it signed.
 
 Cases asserted against rendered text:
-- signed parameterizable scalar   -> `using T = int64_t`
-- unsigned parameterizable scalar -> `using T = uint64_t`
+- signed parameterizable scalar   -> `T_v = int64_t`, aliased via `T_v<Config::WIDTH>`
+- unsigned parameterizable scalar -> `T_v = uint64_t`, aliased via `T_v<Config::WIDTH>`
 - signed non-parameterizable      -> unchanged `typedef int16_t T`
 - signed parameterizable multi-word (maxBitwidth > 64) keeps `uint64_t word[N]`;
   that shape has no arithmetic operators, so signedness is not observable on it
@@ -20,7 +22,8 @@ Cases asserted against rendered text:
 
 signedParamT resolves to 8 bits at default parameters but can reach 40, so its
 `platformDataType` is int8_t. The exact expected text therefore also pins the
-container to the worst case rather than to the default-parameter width.
+value-keyed declaration to the worst case rather than to the default-parameter
+width.
 """
 
 import os
@@ -121,15 +124,18 @@ def _renderTypes(prj):
     return includeTypes(SimpleNamespace(mode='module'), prj, data)
 
 
-def _aliasLine(rendered, typeName):
+def _lineContaining(rendered, needle):
+    """First rendered line containing needle. Callers pass a leading space (or
+    other word-boundary character) so e.g. `signedParamT` does not match
+    inside `unsignedParamT`."""
     for line in rendered.split('\n'):
-        if f' {typeName} ' in line or f' {typeName};' in line:
+        if needle in line:
             return line.strip()
     return None
 
 
 def test_param_type_alias_signedness():
-    print(f"\n{'='*70}\nTest: parameterizable type alias honours isSigned\n{'='*70}")
+    print(f"\n{'='*70}\nTest: parameterizable type declaration honours isSigned\n{'='*70}")
     arch_path = _write_temp(ARCH, '.yaml', 'arch_signedness_')
     project_path = _write_temp(
         PROJECT.format(arch_basename=os.path.basename(arch_path)),
@@ -141,23 +147,30 @@ def test_param_type_alias_signedness():
         rendered = _renderTypes(projectOpen(db_path))
 
         expected = {
-            'signedParamT':
-                'template<typename Config> using signedParamT = int64_t; '
+            ' signedParamT_v':
+                'template<uint32_t WIDTH> using signedParamT_v = int64_t; '
                 '// [max:40] signed parameterizable scalar',
-            'unsignedParamT':
-                'template<typename Config> using unsignedParamT = uint64_t; '
+            ' signedParamT =':
+                'template<typename Config> using signedParamT = signedParamT_v<Config::WIDTH>;',
+            ' unsignedParamT_v':
+                'template<uint32_t WIDTH> using unsignedParamT_v = uint64_t; '
                 '// [max:40] unsigned parameterizable scalar',
-            'signedFixedT':
-                'typedef int16_t signedFixedT; // [12] signed non parameterizable',
-            'signedWideParamT':
-                'template<typename Config> struct signedWideParamT { uint64_t word[ 2 ]; }; '
+            ' unsignedParamT =':
+                'template<typename Config> using unsignedParamT = unsignedParamT_v<Config::WIDTH>;',
+            ' signedWideParamT_v':
+                'template<uint32_t WIDE_WIDTH> struct signedWideParamT_v { uint64_t word[ 2 ]; }; '
                 '// [max:128] signed parameterizable multi word',
+            ' signedWideParamT =':
+                'template<typename Config> using signedWideParamT = '
+                'signedWideParamT_v<Config::WIDE_WIDTH>;',
+            ' signedFixedT':
+                'typedef int16_t signedFixedT; // [12] signed non parameterizable',
         }
         ok = True
-        for typeName, want in expected.items():
-            got = _aliasLine(rendered, typeName)
+        for needle, want in expected.items():
+            got = _lineContaining(rendered, needle)
             if got != want:
-                print(f"  FAIL: {typeName}\n    expected: {want}\n    got:      {got}")
+                print(f"  FAIL: {needle}\n    expected: {want}\n    got:      {got}")
                 ok = False
             else:
                 print(f"  ok: {got}")
@@ -166,7 +179,7 @@ def test_param_type_alias_signedness():
             print("\n  Rendered types section:")
             print('    ' + '\n    '.join(rendered.split('\n')))
             return False
-        print("  PASS: parameterizable aliases honour isSigned")
+        print("  PASS: parameterizable declarations honour isSigned")
         return True
     except Exception as exc:
         print(f"  FAIL: {exc}")

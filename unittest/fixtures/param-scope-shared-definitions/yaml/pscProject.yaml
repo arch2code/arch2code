@@ -1,0 +1,15 @@
+# One constant declared in a definitions-only file (no blocks:) and named by
+# blocks in two including files builds; one declaration, two consumers.
+yamlFormat: 2
+projectName: pscScope
+
+projectFiles:
+    - pscTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

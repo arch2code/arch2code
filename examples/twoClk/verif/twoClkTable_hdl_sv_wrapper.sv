@@ -35,7 +35,7 @@ module twoClkTable_hdl_sv_wrapper
     assign #0 twoClkReg_prdata = twoClkReg.prdata;
     assign #0 twoClkReg_pslverr = twoClkReg.pslverr;
 
-    twoClk_twoClkTable dut (
+    twoClkTable dut (
         .twoClkReg(twoClkReg), // apb_if.dst
         .clk(clk),
         .clkSlow(clkSlow),

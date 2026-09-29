@@ -237,10 +237,11 @@ addressObjects:
     alignment: 8
     sortDescending: true
 
-# Optional: Only needed for firmware header generation
+# Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
-#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "FW includes"}
+#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
@@ -250,7 +251,7 @@ addressObjects:
 - The `root` directory in `dirs` is required and serves as the base for all other paths
 - `$a2c` is automatically defined and points to the arch2code installation directory
 - **File generation defaults are inherited** from `builder/base/config/project.yaml` - no need to define fileMap unless customizing
-- Only add `fileGeneration.fileMap.includeFW` if your project needs firmware header files
+- Add `fileGeneration.fileMap.includeFW` only if your project needs firmware header files, and `fileGeneration.fileMap.regAddresses` only if it needs per-product address defines. Both ship commented out in `builder/base/config/project.yaml`
 - Prefer `project.yaml` `instanceGroups:` and `addressObjects:` for new
   address-policy rows. Legacy `addressControl.yaml` rows are still accepted;
   this path is expected to be deprecated, and if both spellings exist, they
@@ -316,6 +317,8 @@ structures:
 ---
 
 ## Low-Level Architecture Elements
+
+**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:` (and `registerConnections:` when used). Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks below may stay expanded so every key is easy to scan.
 
 All types, consts, structs should be managed in the yaml, not in the user code
 
@@ -590,15 +593,17 @@ blocks:
 
 parameters:
   ip:
-    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
-    - {variant: variant0, param: IP_MEM_DEPTH, value: 16}
-    - {variant: variant0, param: IP_NONCONST_DEPTH, value: 24}
-    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
-    - {variant: variant1, param: IP_MEM_DEPTH, value: 8}
-    - {variant: variant1, param: IP_NONCONST_DEPTH, value: 12}
+    variant0:
+      IP_DATA_WIDTH: 8
+      IP_MEM_DEPTH: 16
+      IP_NONCONST_DEPTH: 24
+    variant1:
+      IP_DATA_WIDTH: 12
+      IP_MEM_DEPTH: 8
+      IP_NONCONST_DEPTH: 12
 ```
 
-`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants.
+`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants. A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
 
 ---
 
@@ -627,7 +632,7 @@ Based on `builder/interfaces/` directory:
 | `notify_ack` | Notify-acknowledge | Event notifications |
 | `memory` | Memory interface | SRAM/ROM access |
 | `external_reg` | External register | Register access |
-| `raw` | Raw signals | Custom protocols |
+| `raw` | Handshake-less data bus (**last resort**) | Legacy / external boundary pinouts only |
 
 ### Interface Definition Syntax
 
@@ -756,11 +761,59 @@ interfaces:
       - {structure: fifo_data_t, structureType: rdata_t}
 ```
 
+#### raw (Last Resort — Handshake-Less Boundary)
+
+**`raw` is supported but is an interface of last resort.** Prefer `rdy_vld`,
+`push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at
+design **boundaries** when adapting to **legacy / external IP** whose pinout is
+a free-running data bus with **no ready/valid/ack wires** (validity is usually
+encoded in the payload, e.g. CSI-style `fv`/`lv`). Do **not** use `raw` for new
+internal pipeline links between arch2code blocks.
+
+**Signals:**
+- `data`: Data payload only (no handshake pins)
+
+**Protocol:**
+- **RTL:** Free-running `data` sampled on clock. There is no backpressure on the
+  wire; the consumer cannot stall the producer in hardware.
+- **SystemC:** Blocking `write()` / `read()` rendezvous. This is *not* the same
+  as RTL sampling semantics, and timed/tandem runs can diverge if delay is
+  enabled on a `raw` port.
+- **Not `status`:** Same wire shape as `status`, but different SystemC meaning —
+  `status` is publish/sample; `raw` is a one-shot transfer that blocks both
+  sides until the beat is consumed.
+
+**Why it is problematic (even though supported):**
+1. No hardware backpressure — flow control cannot be expressed on the interface.
+2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
+3. `raw_channel` drives both handshake directions off one `sc_event`. `write()`
+   returns only once the consumer has taken the value, so no beat is lost, but
+   each side is woken once more per beat than a two-event channel would need.
+4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
+5. Easy to misuse in place of `status` or a real streaming protocol.
+
+**Example (boundary only):**
+```yaml
+interfaces:
+  csi_video_in:
+    interfaceType: raw
+    desc: "Legacy CSI-2 pixel bus at the chip/IP boundary"
+    structures:
+      - {structure: video_csi_t, structureType: data_t}
+```
+
 **AI Agent Guidance:**
 - For streaming data with backpressure, use `rdy_vld`
 - For register access, use `apb` or `lmmi`
 - For command-response patterns, use `req_ack`
 - For FIFO-like interfaces, use `push_ack` (write) and `pop_ack` (read)
+- Prefer `rdy_vld` / `push_ack` / `pop_ack` / `axi4_stream` for new streams
+- Use `raw` only at chip/IP boundaries to match legacy handshake-less pinouts
+- Do not use `raw` between new arch2code blocks; convert to a handshaked
+  protocol at the first internal hop
+- Do not confuse `raw` with `status` (same wires; different SystemC semantics)
+- If proposing `raw`, confirm with the user that a handshaked protocol is
+  impossible for that boundary
 - The `structureType` must match what the interface definition expects
 - Check `builder/interfaces/<type>/<type>_if.yaml` for structureType requirements
 
@@ -904,48 +957,23 @@ instances:
 ```yaml
 instances:
   # Top-level self-referential instance
-  top:
-    container: top
-    instanceType: top
-    instGroup: top
+  top: {container: top, instanceType: top, instGroup: top}
   
   # Simple functional instances
-  u_processor:
-    container: top
-    instanceType: cpu
-    instGroup: main
+  u_processor: {container: top, instanceType: cpu, instGroup: main}
   
-  u_memory:
-    container: top
-    instanceType: ram_block
-    instGroup: main
+  u_memory: {container: top, instanceType: ram_block, instGroup: main}
   
   # Memory-mapped register block
-  u_control_regs:
-    container: top
-    instanceType: control_registers
-    instGroup: peripherals
-    addressGroup: system_addr_space
-    addressID: 0x0  # Explicit address ID
+  u_control_regs: {container: top, instanceType: control_registers, instGroup: peripherals, addressGroup: system_addr_space, addressID: 0x0}  # Explicit address ID
   
   # Instance with multiple address spaces
-  u_dma:
-    container: top
-    instanceType: dma_controller
-    instGroup: peripherals
-    addressGroup: system_addr_space
-    addressMultiples: 4  # Allocates 4 address spaces
+  u_dma: {container: top, instanceType: dma_controller, instGroup: peripherals, addressGroup: system_addr_space, addressMultiples: 4}  # Allocates 4 address spaces
   
   # Hierarchical instances (instance within instance)
-  u_subsystem_a:
-    container: top
-    instanceType: subsystem_a
-    instGroup: subsystems
+  u_subsystem_a: {container: top, instanceType: subsystem_a, instGroup: subsystems}
   
-  u_module_x:
-    container: subsystem_a  # Parent is subsystem_a
-    instanceType: module_x
-    instGroup: subsystem_a_modules
+  u_module_x: {container: subsystem_a, instanceType: module_x, instGroup: subsystem_a_modules}  # Parent is subsystem_a
 ```
 
 **AI Agent Guidance:**
@@ -1000,26 +1028,15 @@ connections:
 ```yaml
 connections:
   # Simple point-to-point connection
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_stream, src: u_producer, dst: u_consumer}
   
   # Multiple connections with same interface type (use name for disambiguation)
-  - interface: apb_bus
-    src: u_cpu
-    dst: u_peripheral_a
-    name: cpu_to_periph_a
+  - {interface: apb_bus, src: u_cpu, dst: u_peripheral_a, name: cpu_to_periph_a}
   
-  - interface: apb_bus
-    src: u_cpu
-    dst: u_peripheral_b
-    name: cpu_to_periph_b
+  - {interface: apb_bus, src: u_cpu, dst: u_peripheral_b, name: cpu_to_periph_b}
   
   # Connection with custom channel name
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
-    interfaceName: custom_channel_name
+  - {interface: data_stream, src: u_producer, dst: u_consumer, interfaceName: custom_channel_name}
 ```
 
 #### Naming Precedence Rules (Critical for AI Agents)
@@ -1093,16 +1110,11 @@ instances:
 
 # Connection at top level
 connections:
-  - interface: xxx
-    src: u_bob
-    dst: u_adam  # Connection to adam block
+  - {interface: xxx, src: u_bob, dst: u_adam}  # Connection to adam block
 
 # Map adam's dst interface down to colin instance
 connectionMaps:
-  - interface: xxx
-    block: adam
-    direction: dst      # adam is destination in connection
-    instance: u_colin   # Route to colin inside adam
+  - {interface: xxx, block: adam, direction: dst, instance: u_colin}   # Route to colin inside adam
 ```
 
 **Flow:** `u_bob` → `u_adam` (boundary) → `u_colin` (internal)
@@ -1135,20 +1147,11 @@ instances:
 
 # Connection with different port names at each end
 connections:
-  - interface: xxx
-    src: u_bob
-    srcport: dave   # Bob's port named "dave"
-    dst: u_adam
-    dstport: eric   # Adam's port named "eric"
+  - {interface: xxx, src: u_bob, srcport: dave, dst: u_adam, dstport: eric}   # Adam's port named "eric"
 
 # Map with port matching
 connectionMaps:
-  - interface: xxx
-    block: adam
-    direction: dst
-    port: eric          # MUST match dstport from connection
-    instance: u_colin
-    instancePort: fred  # Colin's internal port named "fred"
+  - {interface: xxx, block: adam, direction: dst, port: eric, instance: u_colin, instancePort: fred}  # Colin's internal port named "fred"
 ```
 
 **Port Names Generated:**
@@ -1312,10 +1315,7 @@ blocks:
       registerDecoderPort: cpu_apb_reg # canonical downstream register-bus port
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 ```
 
 #### Complete Example with Generated Router and Auto-Generated Handlers
@@ -1341,10 +1341,7 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # 2. Define your block with registers (a routed leaf)
 blocks:
@@ -1354,46 +1351,22 @@ blocks:
     hasMdl: true
 
 instances:
-  u_dma_controller:
-    container: top              # same container as u_apb_decode (co-location)
-    instanceType: dma_controller
-    instGroup: peripherals
-    addressGroup: system        # names the router's addressBlock.addressGroup
+  u_dma_controller: {container: top, instanceType: dma_controller, instGroup: peripherals, addressGroup: system}        # names the router's addressBlock.addressGroup
 
 # 3. Define registers for the block
 registers:
-  - register: config
-    regType: rw
-    block: dma_controller
-    structure: dma_config_t
-    desc: "DMA configuration register"
+  - {register: config, regType: rw, block: dma_controller, structure: dma_config_t, desc: "DMA configuration register"}
   
-  - register: status
-    regType: ro
-    block: dma_controller
-    structure: dma_status_t
-    desc: "DMA status register"
+  - {register: status, regType: ro, block: dma_controller, structure: dma_status_t, desc: "DMA status register"}
   
-  - register: external_ctrl
-    regType: ext
-    block: dma_controller
-    structure: dma_external_t
-    desc: "External control register"
+  - {register: external_ctrl, regType: ext, block: dma_controller, structure: dma_external_t, desc: "External control register"}
 
-  - register: lookup_table
-    regType: memory
-    block: lut_core
-    structure: lut_entry_t
-    addressStruct: lut_addr_t
-    wordLines: 256
-    desc: "Lookup table memory register"
+  - {register: lookup_table, regType: memory, block: lut_core, structure: lut_entry_t, addressStruct: lut_addr_t, wordLines: 256, desc: "Lookup table memory register"}
 
 # 4. Author ONLY the upstream feed into the primary router. Here the CPU and the
 #    router share container `top`, so just a connection (no connectionMap).
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Behind the Scenes:**
@@ -1425,28 +1398,18 @@ When a block is instantiated multiple times, register connections specify which 
 
 ```yaml
 registerConnections:
-  - register: <register_name>
-    block: <block_name>
-    instance: <instance_name>
+  - {register: <register_name>, block: <block_name>, instance: <instance_name>}
 ```
 
 **Example:**
 ```yaml
 registers:
-  - register: config
-    regType: rw
-    block: uart
-    structure: uart_config_t
-    desc: "UART configuration"
+  - {register: config, regType: rw, block: uart, structure: uart_config_t, desc: "UART configuration"}
 
 registerConnections:
-  - register: config
-    block: uart
-    instance: u_uart_0
+  - {register: config, block: uart, instance: u_uart_0}
   
-  - register: config
-    block: uart
-    instance: u_uart_1
+  - {register: config, block: uart, instance: u_uart_1}
 ```
 
 ### Memory Definitions
@@ -1492,42 +1455,16 @@ memories:
 ```yaml
 # FW-accessible memory (triggers dma_controller_regs auto-generation)
 memories:
-  - memory: buffer_mem
-    block: dma_controller
-    structure: buffer_data_t
-    addressStruct: buffer_addr_t
-    wordLines: BUFFER_SIZE  # References constant
-    desc: "DMA buffer memory"
-    regAccess: true  # Makes it FW-accessible, triggers dma_controller_regs generation
-    memoryType: dualPort
+  - {memory: buffer_mem, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: BUFFER_SIZE, desc: "DMA buffer memory", regAccess: true, memoryType: dualPort}  # Makes it FW-accessible, triggers dma_controller_regs generation
 
   # Parameterized FW-accessible memory
-  - memory: ip_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_mem_addr_st
-    wordLines: IP_MEM_DEPTH  # Uses IP_MEM_DEPTH.maxValue for address sizing
-    desc: "Parameterized IP memory"
-    regAccess: true
+  - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized IP memory", regAccess: true}  # Uses IP_MEM_DEPTH.maxValue for address sizing
 
   # Pure block-param wordLines; sizing uses max variant binding
-  - memory: ip_nonconst_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_mem_addr_st
-    wordLines: IP_NONCONST_DEPTH
-    desc: "Memory depth supplied only by parameters variants"
-    regAccess: true
+  - {memory: ip_nonconst_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_NONCONST_DEPTH, desc: "Memory depth supplied only by parameters variants", regAccess: true}
 
   # Local flop-based memory (no FW access)
-  - memory: fifo_storage
-    block: fifo
-    structure: fifo_entry_t
-    addressStruct: fifo_addr_t
-    wordLines: 16
-    desc: "FIFO storage"
-    local: true
-    regAccess: false  # No FW access, internal only
+  - {memory: fifo_storage, block: fifo, structure: fifo_entry_t, addressStruct: fifo_addr_t, wordLines: 16, desc: "FIFO storage", local: true, regAccess: false}  # No FW access, internal only
 ```
 
 **Important:** When `regAccess: true`:
@@ -1750,16 +1687,11 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # AUTHOR the upstream feed (CPU and router share container → connection only)
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 
 # YOU DECLARE: routed leaf with registers
 blocks:
@@ -1767,17 +1699,10 @@ blocks:
     desc: "DMA controller"
 
 instances:
-  u_dma_controller:
-    container: top              # co-located with u_apb_decode
-    instanceType: dma_controller
-    addressGroup: system        # names the router's addressBlock.addressGroup
+  u_dma_controller: {container: top, instanceType: dma_controller, addressGroup: system}        # names the router's addressBlock.addressGroup
 
 registers:
-  - register: config
-    regType: rw
-    block: dma_controller
-    structure: config_t
-    desc: "Config"
+  - {register: config, regType: rw, block: dma_controller, structure: config_t, desc: "Config"}
 
 # ARCH2CODE AUTO-CREATES:
 # Block dma_controller_regs (handler) + its instance inside dma_controller,
@@ -1842,7 +1767,9 @@ These defaults are automatically inherited from `builder/base/config/project.yam
 
 #### When to Customize
 
-The **only common customization** is adding firmware include file generation:
+The common customization is uncommenting one of the two fileMap entries that
+ship commented out in `builder/base/config/project.yaml`: firmware include file
+generation, and per-product address defines.
 
 ```yaml
 # In your project.yaml
@@ -1855,7 +1782,17 @@ fileGeneration:
       cond: {smartInclude: true}, 
       mode: context, 
       basePath: fwInc, 
+      langDomain: fw,
       desc: "Firmware include file"
+    }
+    # Add per-product address defines (only if you need them)
+    regAddresses: {
+      name: "regAddresses",
+      ext: {hdr: "h"},
+      mode: project,
+      basePath: model,
+      langDomain: sc,
+      desc: "Per-project instance and register address defines"
     }
 ```
 
@@ -1863,7 +1800,9 @@ fileGeneration:
 - The `includeFW` mapping generates header files in the `fwInc` directory (typically `$root/fw/include`)
 - `smartInclude: true` means files are only created if there is register or memory content to export
 - `mode: context` generates one file per YAML file (not per block)
-- This is commented out by default in `builder/base/config/project.yaml` (line 63)
+- `mode: project` generates exactly one file for the whole product, keyed to its top context
+- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`
+- Both are commented out by default in `builder/base/config/project.yaml`
 
 #### Custom Copyright Statement
 
@@ -2294,10 +2233,7 @@ blocks:
       registerDecoderPort: reg_bus
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # 4. Define your routed leaf with registers
 blocks:
@@ -2307,31 +2243,17 @@ blocks:
     hasMdl: true
 
 instances:
-  u_my_module:
-    container: top        # co-located with u_apb_decode
-    instanceType: my_module
-    instGroup: peripherals
-    addressGroup: system  # names the router's addressBlock.addressGroup
+  u_my_module: {container: top, instanceType: my_module, instGroup: peripherals, addressGroup: system}  # names the router's addressBlock.addressGroup
 
 # 5. Define registers
 registers:
-  - register: config
-    regType: rw
-    block: my_module
-    structure: config_reg_t
-    desc: "Configuration register"
+  - {register: config, regType: rw, block: my_module, structure: config_reg_t, desc: "Configuration register"}
   
-  - register: status
-    regType: ro
-    block: my_module
-    structure: status_reg_t
-    desc: "Status register"
+  - {register: status, regType: ro, block: my_module, structure: status_reg_t, desc: "Status register"}
 
 # 6. Author ONLY the upstream feed into the primary router
 connections:
-  - interface: reg_bus
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: reg_bus, src: u_cpu, dst: u_apb_decode}
 ```
 
 **What Gets Auto-Generated:**
@@ -2371,9 +2293,7 @@ interfaces:
       - {structure: stream_data_t, structureType: data_t}
 
 connections:
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_stream, src: u_producer, dst: u_consumer}
 ```
 
 ### 6. Command-Response Pattern
@@ -2614,31 +2534,25 @@ myBlock::myBlock(...)
 }
 ```
 
-##### SystemC Includes (`model/*Includes.h`)
+##### SystemC Includes (`model/*Includes.cppm`)
+
+A context's types are a single C++20 module interface unit. There is no paired
+`.h`/`.cpp`.
 
 ```
-PARAM: --context=<yaml_file>
+PARAM: --project=<project> --context=<yaml_file> --mode=module
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
-| `headers` | *(none)* | Include guards and header includes (use `--fileMapKey=include_hdr`) |
-| `structures` | `headerIncludes` | Forward declarations and structure dependencies |
+| `moduleScaffold` | `moduleHeader` | Global module fragment `#include`s plus `export module <context>;` |
+| `headers` | *(none)* | `import` + `using namespace` for each context this one depends on |
 | `includes` | `constants` | `constexpr` constant definitions |
 | `includes` | `types` | Typedef definitions |
 | `includes` | `enums` | Enum definitions |
 | `structures` | *(none)* | Full structure class definitions |
-
-##### SystemC Includes (`model/*Includes.cpp`)
-
-```
-PARAM: --context=<yaml_file>
-```
-
-| Template | Section | Content |
-|----------|---------|---------|
-| `structures` | `cppIncludes` | Implementation includes |
-| `structures` | `cpp` | Structure method implementations |
+| `structures` | `testStructsHeader` | Structure round-trip test class declaration |
+| `structures` | `testStructsCPP` | Structure round-trip test implementation |
 
 ##### SystemC Firmware Includes (`fw/include/*IncludesFW.h/.cpp`)
 
@@ -2663,10 +2577,15 @@ PARAM: --block=<block>Regs
 | `blockRegs` | `init` | Register handler constructor init list |
 | `blockRegs` | `body` | Register handler constructor body |
 
-##### SystemC Address Constants (`model/regAddresses.h`)
+##### SystemC Address Constants (`regAddresses.h` / `*RegAddresses.h`)
+
+Scaffolded by the opt-in `regAddresses` fileMap entry, `mode: project`, one file
+per product. The basename is that entry's `name:` verbatim and its directory is
+its `basePath:` segment, so the path is per project (`model/regAddresses.h` in
+`examples/apbDecode`, `fw/include/axi4sRegAddresses.h` in `examples/axi4sDemo`).
 
 ```
-PARAM: --block=<top_block>
+PARAM: --project=<projectName>
 ```
 
 | Template | Section | Content |
@@ -2711,22 +2630,22 @@ graph TB
 
 The External gets all instances from `debayer_tb` **except** `u_debayer`. Connections between `u_debayer` and the other instances become the External's ports, which the Testbench binds.
 
-**Without `--excludeInst` (no surrounding blocks):**
+**Without `--excludeInst` (External is the DUT's inverse test surface):**
 
 ```mermaid
 graph TB
-    subgraph YAML2 ["YAML: simple_tb (wrapper block)"]
-        DUT_Y2["u_simple<br/>(DUT instance — only child)"]
+    subgraph YAML2 ["YAML: pySocket (DUT block)"]
+        DUT_Y2["pySocket<br/>(DUT block — named directly by --block)"]
     end
 
     subgraph GEN2 ["Generator produces"]
         direction LR
-        subgraph TB_MOD2 ["Testbench module<br/>--block=simple"]
-            DUT2["u_simple<br/>(DUT)"]
+        subgraph TB_MOD2 ["Testbench module<br/>--block=pySocket"]
+            DUT2["pySocket<br/>(DUT)"]
             EXT_REF2["external<br/>(External obj)"]
             DUT2 --- EXT_REF2
         end
-        subgraph EXT_MOD2 ["External module<br/>--block=simple_tb<br/>(no --excludeInst)"]
+        subgraph EXT_MOD2 ["External module<br/>--block=pySocket<br/>(no --excludeInst)"]
             EMPTY["(no sub-instances)"]
         end
         EXT_REF2 -. "DUT's external<br/>ports exposed" .-> EXT_MOD2
@@ -2735,17 +2654,23 @@ graph TB
     YAML2 --> GEN2
 ```
 
-When the `_tb` wrapper holds only the DUT instance and nothing else, `--excludeInst` is not needed — the External has no sub-instances to manage. This is uncommon; most real testbenches have surrounding blocks.
+Without `--excludeInst`, `--block` names the **DUT block itself**, not a `_tb` container, and the External has no sub-instances to manage — every stimulus is hand-written in its user region. The DUT still instantiates its own children; that happens in the DUT's own generated region, not the External's. There need not be a `_tb` container at all (`examples/simple_ip/ip` and `examples/ip_test/ip` have none), and where one exists it may be bypassed deliberately: `pySocket_tb` does hold a peer (`u_dut`), yet `examples/pySocket` still uses `--block=pySocket` with hand-written stimulus. This is uncommon; most real testbenches have surrounding blocks.
 
 **File-to-PARAM mapping:**
 
 | File | `--block` | `--excludeInst` | Template | Section |
 |------|-----------|------------------|----------|---------|
-| `*Testbench.h` | DUT block | *(none)* | `testbench` | `header` |
-| `*Testbench.cpp` | DUT block | *(none)* | `testbench` | `init` |
-| `*Config.cpp` | DUT block | *(none)* | `tbConfig` | *(none)* |
-| `*External.h` | TB wrapper block | DUT instance | `tbExternal` | `header` |
-| `*External.cpp` | TB wrapper block | DUT instance | `tbExternal` | `init`, `body` |
+| `*Testbench.cppm` | DUT block | *(none)* | `moduleScaffold` | `testBenchModuleHeader` |
+| `*Testbench.cppm` | DUT block | *(none)* | `moduleExport` | *(`--fileMapKey=testBench`)* |
+| `*Testbench.cppm` | DUT block | *(none)* | `testbench` | `header`, `init` |
+| `*Config.cpp` | DUT block | *(none)* | `tbConfig` | `prerequisites`, `class`, `registration` |
+| `*External.cppm` | TB wrapper block | DUT instance | `moduleScaffold` | `tbExternalModuleHeader` |
+| `*External.cppm` | TB wrapper block | DUT instance | `moduleExport` | *(`--fileMapKey=tbExternal`)* |
+| `*External.cppm` | TB wrapper block | DUT instance | `tbExternal` | `header`, `init`, `body` |
+
+The two `.cppm` files are C++20 module interface units and carry `--mode=module`
+on their `GENERATED_CODE_PARAM` line. `*Config.cpp` stays a plain translation
+unit.
 
 ##### SystemVerilog Package (`rtl/*_package.sv`)
 
@@ -2869,14 +2794,12 @@ instances:
   u_apb_decode: { container: debayer_tb, instanceType: apb_decode,   instGroup: top }
 ```
 
-The five testbench files use these PARAM lines:
+The three testbench files use these PARAM lines:
 
 ```cpp
-// debayerTestbench.h   — GENERATED_CODE_PARAM --block=debayer
-// debayerTestbench.cpp — GENERATED_CODE_PARAM --block=debayer
-// debayerConfig.cpp    — GENERATED_CODE_PARAM --block=debayer
-// debayerExternal.h    — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
-// debayerExternal.cpp  — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
+// debayerTestbench.cppm — GENERATED_CODE_PARAM --block=debayer --mode=module
+// debayerConfig.cpp     — GENERATED_CODE_PARAM --block=debayer
+// debayerExternal.cppm  — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer --mode=module
 ```
 
 **Result:**
@@ -2989,9 +2912,7 @@ structures:
 ```yaml
 # ❌ BAD - instances don't exist
 connections:
-  - interface: data_if
-    src: u_nonexistent
-    dst: u_also_missing
+  - {interface: data_if, src: u_nonexistent, dst: u_also_missing}
 
 # ✅ GOOD - instances defined
 instances:
@@ -2999,9 +2920,7 @@ instances:
   u_consumer: {container: top, instanceType: consumer, instGroup: main}
 
 connections:
-  - interface: data_if
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_if, src: u_producer, dst: u_consumer}
 ```
 
 ### 5. Address Space Conflicts
@@ -3120,17 +3039,10 @@ blocks:
 ```yaml
 # ❌ BAD - a routed leaf with no router serving its container
 registers:
-  - register: config
-    regType: rw
-    block: my_module
-    structure: config_t
-    desc: "Configuration register"
+  - {register: config, regType: rw, block: my_module, structure: config_t, desc: "Configuration register"}
 
 instances:
-  u_my_module:
-    container: top
-    instanceType: my_module
-    addressGroup: system
+  u_my_module: {container: top, instanceType: my_module, addressGroup: system}
 
 # ERROR (from postParseRegisterPorts.py):
 #   Leaf instance 'u_my_module' (block 'my_module') is in container 'top'
@@ -3152,16 +3064,11 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top            # same container as u_my_module
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}            # same container as u_my_module
 
 # Author ONLY the upstream feed into the primary router
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Why:** The router is a generated `addressBlock:` block; it must be instanced in
@@ -3253,7 +3160,7 @@ Key templates in `builder/templates/systemc/`:
 | `structures.py` | Structure classes | Structure definitions |
 | `headers.py` | Header file generation | Include guards, imports |
 | `includes.py` | Include file generation | `*Includes.h/cpp` |
-| `testbench.py` | Testbench generation | `*Testbench.h/cpp` |
+| `testbench.py` | Testbench generation | `*Testbench.cppm`, `*External.cppm`, `*Config.cpp` |
 
 ### Understanding Generated Code
 
@@ -3409,16 +3316,10 @@ interfaces:
 # Ensure proper hierarchy
 instances:
   # Parent must exist first
-  u_parent:
-    container: top
-    instanceType: parent
-    instGroup: main
+  u_parent: {container: top, instanceType: parent, instGroup: main}
   
   # Child references parent as container
-  u_child:
-    container: parent  # Must match instanceType of u_parent
-    instanceType: child
-    instGroup: sub
+  u_child: {container: parent, instanceType: child, instGroup: sub}  # Must match instanceType of u_parent
 ```
 
 #### Issue 4: "Address group 'X' not defined"
@@ -3441,9 +3342,7 @@ blocks:
 
 instances:
   u_apb_decode: {container: top, instanceType: apb_decode}
-  u_module:
-    container: top
-    addressGroup: system  # Must match a router's addressBlock.addressGroup
+  u_module: {container: top, addressGroup: system}  # Must match a router's addressBlock.addressGroup
 ```
 
 #### Issue 5: "Constant 'X' not defined"
@@ -3524,9 +3423,7 @@ instances:
 
 # 4. Check connection
 connections:
-  - interface: data_if
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_if, src: u_producer, dst: u_consumer}
 ```
 
 #### Issue 7: Generated code doesn't compile
@@ -3606,17 +3503,11 @@ blocks:
 # 2. Co-locate the router with the leaf, tag the leaf's addressGroup
 instances:
   u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
-  u_module:
-    container: top
-    instanceType: module
-    instGroup: main
-    addressGroup: system  # names the router's addressBlock.addressGroup
+  u_module: {container: top, instanceType: module, instGroup: main, addressGroup: system}  # names the router's addressBlock.addressGroup
 
 # 3. Author ONLY the upstream feed into the primary router
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Common Mistakes:**
@@ -3642,11 +3533,7 @@ blocks:
     addressBlock: { addressGroup: system, upstreamPort: cpu_apb_reg, registerDecoderPort: cpu_apb_reg, addressIncrement: 0x01000000, maxAddressSpaces: 16, varType: system_addr_id_t, enumPrefix: SYSTEM_ADDR_ }
 
 registers:
-  - register: config
-    regType: rw
-    block: my_module  # Triggers auto-generation of my_module_regs
-    structure: config_t
-    desc: "Config"
+  - {register: config, regType: rw, block: my_module, structure: config_t, desc: "Config"}  # Triggers auto-generation of my_module_regs
 ```
 
 #### Issue 10: Verilator compilation fails
@@ -3689,6 +3576,7 @@ registers:
 | `axi_write` | AXI4 | Bidirectional | Memory write | Multiple |
 | `status` | None | Unidirectional | Static signals | `data_t` |
 | `notify_ack` | notify/ack | Unidirectional | Event notification | `data_t` |
+| `raw` | None (SC rendezvous only) | Unidirectional | **Last resort** — legacy/external handshake-less boundary | `data_t` |
 
 #### Interface Files Location
 
@@ -3802,7 +3690,9 @@ project_name/
 │   └── vl_wrap/              # Verilator wrappers
 ├── tb/                        # Testbenches
 │   └── <module>/
-│       └── <module>Testbench.h/cpp
+│       ├── <module>Testbench.cppm
+│       ├── <module>External.cppm
+│       └── <module>Config.cpp
 ├── fw/                        # Firmware (optional)
 │   └── includes/
 ├── Makefile

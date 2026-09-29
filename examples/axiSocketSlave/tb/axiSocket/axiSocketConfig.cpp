@@ -1,7 +1,15 @@
 //
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=axiSocket
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
+#include "instanceFactory.h"
+#include "testBenchConfigFactory.h"
+import a2c.endOfTest;
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+#include "systemc.h"
 #include <cstring>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,16 +17,16 @@
 #include <sys/wait.h>
 #include <cstdio>
 
-#include "instanceFactory.h"
 #include "socketFactory.h"
 #include "socketSync.h"
 #include "socketTransport.h"
-#include "testBenchConfigFactory.h"
-import a2c.endOfTest;
 #include "testController.h"
 #include "axiSocketSocketCatalog.h"
 
 namespace {
+
+// Instance paths of the socket shells; axiSocketSlave.py spells the same paths.
+constexpr const char *SHELL_INSTANCE = "axiSocketSlave_tb.u_axiSocket";
 
 std::string resolveAxiSocketSlaveScriptPath()
 {
@@ -54,22 +62,11 @@ std::string resolveAxiSocketSlaveScriptPath()
 }
 
 } // namespace
-
-// GENERATED_CODE_PARAM --block=axiSocket
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class axiSocketConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("axiSocket", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<axiSocketConfig>());}, is_default_testbench_v<axiSocketConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~axiSocketConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -88,9 +85,14 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("axiSocketSlave_tb.u_axiSocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE, "socket");
 
-        if (!axiSocketSocketCatalog::registerAll()) {
+        if (!axiSocketSocketCatalog::registerInstance(SHELL_INSTANCE)) {
+            return false;
+        }
+        if (axiSocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
@@ -148,12 +150,18 @@ public:
             std::remove(sc_ports_file.c_str());
         }
 
-        if (!axiSocketSocketCatalog::handshakeAll()) {
+        if (!socketFactory::handshakeAll()) {
             socketFactory::shutdownAll();
             return false;
         }
 
         socketSyncStartRxThread();
+        // Model-only testbench: hold sc_start until the sidecar is lockstep-ready,
+        // otherwise its first request can race the reset release.
+        if (!socketSyncWaitPythonReady()) {
+            socketFactory::shutdownAll();
+            return false;
+        }
 
         testController &controller = testController::GetInstance();
         controller.set_test_names({
@@ -179,6 +187,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
@@ -187,4 +196,18 @@ public:
     }
 
 };
-axiSocketConfig::registerTestBenchConfig axiSocketConfig::registerTestBenchConfig_;
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (axiSocketConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_axiSocketConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("axiSocket", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<axiSocketConfig>());}, is_default_testbench_v<axiSocketConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _axiSocketConfig_registered = (register_axiSocketConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

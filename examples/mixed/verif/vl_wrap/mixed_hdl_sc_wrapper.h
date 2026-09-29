@@ -1,15 +1,14 @@
 #ifndef MIXED_HDL_SC_WRAPPER_H_
 #define MIXED_HDL_SC_WRAPPER_H_
 
-#include "systemc.h"
-#include "instanceFactory.h"
-
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import mixed.base;
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "mixed_hdl_sv_wrapper.h"
 #else
@@ -26,7 +25,6 @@ import mixed;
 using namespace mixed_ns;
 import mixed_mixedBlockC;
 using namespace mixed_mixedBlockC_ns;
-#include "mixedVariantConfig.h"
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"

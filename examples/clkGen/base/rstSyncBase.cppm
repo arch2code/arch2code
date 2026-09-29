@@ -17,7 +17,7 @@ public:
     virtual ~rstSyncBase() = default;
 
 
-    rstSyncBase(std::string name, const char * variant) 
+    rstSyncBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class rstSyncInverted : public virtual blockPortBase
 public:
 
 
-    rstSyncInverted(std::string name) 
+    rstSyncInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class rstSyncChannels
 public:
 
 
-    rstSyncChannels(std::string name, std::string srcName) 
+    rstSyncChannels(std::string name, std::string srcName)
     {};
     void bind( rstSyncBase *a, rstSyncInverted *b)
     {

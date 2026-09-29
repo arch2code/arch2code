@@ -17,6 +17,12 @@ struct _pySocket_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<pySocket_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "pySocket");
+        instanceFactory::registerBlock(
+            "pySocket_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<pySocket_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "pySocket");
     }
 };
 static _pySocket_vl_registrar _pySocket_vl_registrar_instance;

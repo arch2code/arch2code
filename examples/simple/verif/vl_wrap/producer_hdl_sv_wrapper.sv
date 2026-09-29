@@ -35,7 +35,7 @@ module producer_hdl_sv_wrapper
     assign #0 tag1_data = tag1.data;
     assign #0 tag1.ack = tag1_ack;
 
-    simple_producer dut (
+    producer dut (
         .tag0(tag0), // push_ack_if.src
         .tag1(tag1), // push_ack_if.src
         .clk(clk),

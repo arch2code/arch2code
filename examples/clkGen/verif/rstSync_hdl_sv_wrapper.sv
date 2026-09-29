@@ -11,7 +11,7 @@ module rstSync_hdl_sv_wrapper
     input rstIn_n,
     output rstOut_n
 );
-    clkGen_rstSync dut (
+    rstSync dut (
         .clk(clk),
         .rstIn_n(rstIn_n),
         .rstOut_n(rstOut_n)

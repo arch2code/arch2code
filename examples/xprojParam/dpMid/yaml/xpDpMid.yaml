@@ -1,0 +1,71 @@
+# The mid-level IP of the three-level depth family: the ISP analogue. It
+# instantiates the leaf IP and exposes the leaf's stream on its own boundary.
+#
+# Two structural constraints forced the shape of this file, and both are results
+# of the experiment rather than authoring taste:
+#
+# 1. A block that carries a parameterizable payload on its own boundary must
+#    declare params:, so a transit container over a parameterizable IP is always
+#    a class template.
+# 2. A project that declares instances must name a topInstance, and an instance
+#    may not name a variant that project's own closure does not declare. So a
+#    reusable IP that contains another IP must carry its own standalone top AND
+#    must declare, itself, every variant it names - including variants it has
+#    nothing to say about.
+
+include:
+    - ../../dpLeaf/yaml/xpDpLeaf.yaml
+
+# The container IP's OWN algorithm knob, deliberately spelled differently from
+# the leaf's DP_ALGO so the non-matching-name case is exercised. It is declared
+# here, and consumed by this file's own block, so the orphan rule is satisfied.
+ipParameters:
+    constants:
+        MID_ALGO: { value: 2, maxValue: 7, desc: "The algorithm this container asks its leaves for" }
+
+blocks:
+    xpDpMid:
+        desc: "Mid-level IP (ISP analogue) containing one leaf instance"
+        # The leaf's parameterizable dpIf appears on this block's own boundary,
+        # so this block must be a class template and must declare the params its
+        # surface names. DP_WIDTH is reached by include: scope; DP_ALGO is not
+        # named here because it appears in no width on this surface.
+        params: [DP_WIDTH, MID_ALGO]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            # Deliberately not named in/out: a connectionMap's channel name is
+            # the container PORT name and a plain connection's is the source
+            # PORT name, so a boundary port sharing a name with a contained
+            # instance's port collides at gen time (connectSingle vs
+            # connectDouble on one channel name).
+            midIn:  { interface: dpIf, direction: dst }
+            midOut: { interface: dpIf, direction: src }
+
+instances:
+    # Two leaf instances in a chain rather than one. That is forced, not chosen:
+    # a connectionMap thunker member is named after the mapped INSTANCE alone, so
+    # mapping this block's in and out ports onto one child emits two members
+    # called thunker_uLeaf and the generated container does not compile.
+    uLeafA:     { container: xpDpMid,    instanceType: xpDpLeaf,   instGroup: top, variant: customer }
+    uLeafB:     { container: xpDpMid,    instanceType: xpDpLeaf,   instGroup: top, variant: customer }
+
+connections:
+    - { interface: dpIf, src: uLeafA, srcport: out, dst: uLeafB, dstport: in, name: midLink }
+
+connectionMaps:
+    - { interface: dpIf, block: xpDpMid, port: midIn,  direction: dst, instance: uLeafA, instancePort: in }
+    - { interface: dpIf, block: xpDpMid, port: midOut, direction: src, instance: uLeafB, instancePort: out }
+
+parameters:
+    # The leaf variant this container instantiates. Neither parameter is bound to
+    # a value here: both are sourced from parameters of the containing block, so
+    # whatever this container is configured at reaches its leaves. DP_ALGO is
+    # sourced from a container parameter of a DIFFERENT name; DP_WIDTH from one
+    # of the same name.
+    xpDpLeaf:
+        customer:
+            DP_ALGO:  { containerParam: MID_ALGO }
+            DP_WIDTH: { containerParam: DP_WIDTH }

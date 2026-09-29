@@ -1,0 +1,7 @@
+# projB's own leaf, reached through projB's projectFiles: closure. Includes
+# the shared definitions file that neither projA nor projB owns.
+include:
+    - ../../shared/yaml/sharedDefs.yaml
+
+types:
+    projBLeafT: { width: 4, desc: "type authored in projB's own leaf" }

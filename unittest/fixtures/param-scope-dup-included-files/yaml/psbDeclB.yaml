@@ -1,0 +1,4 @@
+# Definitions-only file (no blocks:), the other included file declaring DUP_W.
+ipParameters:
+    constants:
+        DUP_W: { value: 3, maxValue: 16, desc: "declared in the second included file" }

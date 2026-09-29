@@ -1,6 +1,42 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 import pysrc.emissionUtils as emissionUtils
 
+
+def constantTypeValue(value):
+    """SV type and literal, sized for the declared parameter range."""
+    bound = max(abs(value['value']), abs(value['maxValue'])) if value['isParameterizable'] else abs(value['value'])
+    match value['valueType']:
+        case 'uint':
+            if bound <= 0xFFFFFFFF:
+                return 'int unsigned', f"32'h{value['value']:09_X}"
+            return 'longint unsigned', f"64'h{value['value']:019_X}"
+        case 'int':
+            sign = '-' if value['value'] < 0 else ''
+            if bound <= 0x7FFFFFFF:
+                return 'int', f"{sign}32'sh{abs(value['value']):09_X}"
+            return 'longint', f"{sign}64'sh{abs(value['value']):019_X}"
+        case _:
+            return value['valueType'], str(value['value'])
+
+
+def moduleParameterDecl(prj, param):
+    """SV module parameter declaration, typed and defaulted from its backing constant."""
+    type_str, value_str = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
+    return f"parameter {type_str} {param['param']} = {value_str}"
+
+
+def instanceParameterSpelling(prj, param):
+    """SV override value for a child instance parameter. An enum member is
+    narrower than the parameter it binds, so it is cast to the declared type.
+    A two-word type is not a legal casting_type (IEEE 1800-2017 A.8.4), so an
+    unsigned type is spelled as a size cast, which keeps the enum's unsigned
+    base."""
+    if not param['isEnumMember']:
+        return param['spelling']
+    type_str, _ = constantTypeValue(prj.data['constants'][param['paramSourceKey']])
+    cast = {'int unsigned': '32', 'longint unsigned': '64'}.get(type_str, type_str)
+    return f"{cast}'({param['spelling']})"
+
 # args from generator line
 # prj object
 # data set dict
@@ -38,12 +74,15 @@ def parameterizedDeclLines(parameterizedDecls, prj, blockParams):
     can re-emit them as a comma-separated parameter-port-list localparam when a
     port width must resolve them ahead of the port list.
 
-    `blockParams` is the owning block's param rows (each {'param','paramKey'}).
+    `blockParams` is the owning block's param rows. Each is keyed by its
+    paramSource link - the backing constant's own key - because the symbols being
+    spelled are constant keys; paramKey qualifies the param name with the file
+    declaring the block and matches only when the two coincide.
     A symbol that is one of the block's params stays symbolic (its SV parameter
     name). A symbol already selected as an earlier localparam in this declaration
     set is spelled by that localparam name. Any other symbol is spelled from its
     persisted constant value as an SV literal."""
-    paramNameByKey = {p['paramKey']: p['param'] for p in blockParams}
+    paramNameByKey = {p['paramSourceKey']: p['param'] for p in blockParams}
     localConstNameByKey = {
         decl['declKey']: decl['body']['constant']
         for decl in parameterizedDecls
@@ -93,7 +132,7 @@ def render(args, prj, data):
     indent  = ' ' *4
     if data['context'] is None:
         return out
-    packageName = prj.contextModuleIdentity[data['context'][0]] + '_package'
+    packageName = prj.contextSvPackageName[data['context'][0]]
 
     out += f"package {packageName};\n"
     pkg_str = importPackages(args, prj, data['context'][0], data, excludeSelf=True) 
@@ -107,33 +146,7 @@ def render(args, prj, data):
     for unusedKey, value in data['constants'].items():
         if value['isParameterizable']:
             continue
-        match value['valueType']:
-            case 'uint':
-                if value['value'] <= 0xFFFFFFFF:
-                    type_str = 'int unsigned'
-                    value_str = f"32'h{value['value']:09_X}"
-                else:
-                    type_str = 'longint unsigned'
-                    value_str = f"64'h{value['value']:019_X}"
-            case 'int':
-                if abs(value['value']) <= 0x7FFFFFFF:
-                    type_str = 'int'
-                    if value['value'] < 0:
-                        value_str = f"-32'sh{abs(value['value']):09_X}"
-                    else:
-                        value_str = f"32'sh{value['value']:09_X}"
-                else:
-                    type_str = 'longint'
-                    if value['value'] < 0:
-                        value_str = f"-64'sh{abs(value['value']):019_X}"
-                    else:
-                        value_str = f"64'sh{value['value']:019_X}"
-            case 'real':
-                type_str = 'real'
-                value_str = f"{value['value']}"
-            case _:
-                type_str = value['valueType']
-                value_str = f"{value['value']}"
+        type_str, value_str = constantTypeValue(value)
         out += f"localparam {type_str} {value['constant']} = {value_str};  // {value['desc']}\n"
     # Generate types
     out += f"\n// types\n"

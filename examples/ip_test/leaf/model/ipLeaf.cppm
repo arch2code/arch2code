@@ -5,18 +5,15 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "ipLeafVariantConfig.h"
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_test_ipLeaf.block;
 import ip_test_ipLeaf.base;
+import ip_test.ipLeaf.config;
 import ip_test_ipLeaf;
 // GENERATED_CODE_END
 // user imports here

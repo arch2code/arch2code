@@ -1,0 +1,53 @@
+# childA's own register-decode closure: a container block holding one nested
+# router that declares the address group 'top', plus two routed register leaves.
+#
+# 'top' is deliberately the same group name childB declares and the same name the
+# root declares. That is the case this fixture exists to prove: a group name is
+# owned by the project owning the declaring file, so independently authored
+# projects may each call their group 'top'. The varType / enumPrefix are distinct
+# per project, because the emitted firmware enum identity is NOT project-qualified.
+#
+# The section order (blocks, then instances, then registers) is load-bearing for
+# the negative tests, which splice extra rows in ahead of a following section key.
+
+include:
+    - ../../common/yaml/sharedTypes.yaml
+
+blocks:
+    childATop:
+        desc: "childA IP container"
+        hasMdl: true
+        hasRtl: false
+    childADecode:
+        desc: "childA register-bus router"
+        hasMdl: true
+        hasRtl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x00001000
+            maxAddressSpaces: 8
+            varType: addr_id_child_a
+            enumPrefix: ADDR_ID_CHILD_A_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    childALeafX:
+        desc: "childA routed register leaf X"
+        hasMdl: true
+        hasRtl: false
+        registerPorts:
+            regs: { interface: apbReg }
+    childALeafY:
+        desc: "childA routed register leaf Y"
+        hasMdl: true
+        hasRtl: false
+        registerPorts:
+            regs: { interface: apbReg }
+
+instances:
+    uChildADecode: { container: childATop, instanceType: childADecode, instGroup: top }
+    uChildALeafX:  { container: childATop, instanceType: childALeafX,  instGroup: top, addressGroup: top }
+    uChildALeafY:  { container: childATop, instanceType: childALeafY,  instGroup: top, addressGroup: top }
+
+registers:
+    - { register: cfg, regType: rw, block: childALeafX, structure: apbCfgSt, desc: "childA leaf X config register" }
+    - { register: cfg, regType: rw, block: childALeafY, structure: apbCfgSt, desc: "childA leaf Y config register" }

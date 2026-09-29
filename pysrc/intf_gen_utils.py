@@ -30,7 +30,9 @@ def get_intf_type(ifType, block_data):
     Returns:
         Canonical interface type (e.g., 'reg_ro' -> 'status')
     """
-    type_mappings = block_data.get('interface_type_mappings', {})
+    # An alias with no mapping row passes through unchanged: only register
+    # interface types are aliased, every other interfaceType is already canonical.
+    type_mappings = block_data['interface_type_mappings']
     return type_mappings.get(ifType, ifType)
 
 def get_intf_data(data, prj_data):
@@ -144,8 +146,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_param = dict()
     hdl_param = dict()
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
            intf_modp in interface_defs[intf_type]['modports'])
 
@@ -302,17 +303,15 @@ def sc_connect_channels(data, indent, block_data, prj=None):
 
 def sc_connect_channel_type(data, indent, block_data, prj=None):
     out = []
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     for key, value in data.items():
         channelBase = get_channel_name(value)
         if (len(value['ends']) > 2):
             intf_type = get_intf_type(value['interfaceType'], block_data)
-            multiDst = interface_defs.get(intf_type, {}).get('multiDst', False)
+            multiDst = interface_defs[intf_type]['multiDst']
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
         # Suppress direct child binds already marked by getBDCrossInterfaceBinds().
-        # The generator consumes the view annotation; it does not re-discover
-        # cross-interface semantics.
         suppressed = set()
         for flagged in _resolve_cross_interface_ends(value, prj):
             if flagged['endKey']:
@@ -338,6 +337,12 @@ def sc_instance_includes(data, prj):
     for include in includes:
         out.append(f'import {cpp_base_module_name(include)};')
     return out
+
+# Class template parameter of a parameterized BLOCK: the Config the block itself
+# is instantiated at. Per-instance spellings that defer to the container name
+# this symbol, so it resolves wherever they render inside the container's own
+# class template.
+BLOCK_CONFIG_PARAM = 'Config'
 
 def sc_payload_params(param_bindings):
     # The positional payload arguments of a channel, port or bridge, in the
@@ -375,7 +380,7 @@ def _config_qualified_name(name, is_parameterizable, config_override=None):
     # name, whichever the caller is naming.
     if not is_parameterizable:
         return name
-    suffix = config_override if config_override else 'Config'
+    suffix = config_override if config_override else BLOCK_CONFIG_PARAM
     return f"{name}<{suffix}>"
 
 def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
@@ -422,7 +427,7 @@ def sc_type_payload_name(payload, prj, config_override=None):
         # Mirror _config_qualified_name's own suffix choice: the connected
         # child's per-variant Config when supplied, else the bare `Config`
         # template parameter of a parameterizable parent.
-        config_scope = config_override if config_override else 'Config'
+        config_scope = config_override if config_override else BLOCK_CONFIG_PARAM
         width = _type_width_expr_cpp(ref['row'], prj, config_scope)
     elif ref['isParameterizable']:
         width = f"{name}::_bitWidth"
@@ -465,7 +470,7 @@ def sc_hdl_bridge_type(struct_param, prj):
         return 'bool' if w == 1 else f"sc_bv<{w}>"
     ref = prj.datatypeRef(struct_param['kind'], struct_param['structureKey'])
     if struct_param['kind'] == 'types':
-        w_expr = _type_width_expr_cpp(ref['row'], prj, 'Config')
+        w_expr = _type_width_expr_cpp(ref['row'], prj, BLOCK_CONFIG_PARAM)
         return 'bool' if _is_one(w_expr) else f"sc_bv<{w_expr}>"
     if ref['isParameterizable']:
         struct_name = sc_struct_type_name(struct_param['structure'], struct_param['structureKey'], prj)
@@ -477,47 +482,48 @@ def block_config_decl(is_parameterizable):
     return 'template<typename Config>' if is_parameterizable else ''
 
 def block_config_arg(is_parameterizable):
-    return '<Config>' if is_parameterizable else ''
+    return f'<{BLOCK_CONFIG_PARAM}>' if is_parameterizable else ''
 
 def resolve_dut_variant_selection(block_data, variant):
     # Map a generated testbench file's `GENERATED_CODE_PARAM --variant=<name>`
     # to the concrete per-variant Config and instanceFactory variant key that
     # the rest of the testbench emission threads through.
     #
-    # Reads from the block view assembled by processYaml.getBDConfigInfo()
-    # (block_data['variantConfigs'], block_data['defaultConfig'],
-    # block_data['isParameterizable']).
-    #
-    # Contract:
-    #   {'configName':     str,   # e.g. 'ipVariant0Config' or 'ipDefaultConfig'
-    #    'factoryVariant': str}   # variant string passed to instanceFactory::createInstance
     #
     # When the DUT block has own `params:`, a missing variant selects the
-    # anonymous/default variant when that descriptor exists. Otherwise, missing
-    # or unknown variants raise printError with a diagnostic listing the
-    # available variants and the canonical fix (add `--variant=<name>` to the
-    # file-level GENERATED_CODE_PARAM line).
-    #
-    # When the DUT has no own params (containers like `ip_top`), the helper
-    # tolerates a missing variant and returns the block's defaultConfig (or
-    # empty for non-parameterizable blocks).
+    # anonymous/default variant when that descriptor exists. When it has no own
+    # params (containers like `ip_top`), `--variant=` is not meaningful and
+    # must not be present on the testbench's GENERATED_CODE_PARAM line.
     is_parameterizable = bool(block_data['isParameterizable'])
     default_config = block_data['defaultConfig'] if is_parameterizable else ''
     variant_configs = block_data['variantConfigs']
     has_own_params = bool(block_data['hasOwnParams'])
     if not has_own_params:
+        if variant:
+            block_name = block_data['blockInfo']['block']
+            printError(
+                f"Testbench generation for block {block_name!r} requested "
+                f"variant {variant!r}, but the block declares no params: its "
+                f"testbench GENERATED_CODE_PARAM line must not carry "
+                f"--variant=."
+            )
+            exit(warningAndErrorReport())
         return {
             'configName':     default_config,
-            'factoryVariant': variant or '',
+            'factoryVariant': '',
         }
     available = [d['variant'] for d in variant_configs]
-    block_name = block_data['blockName']
+    # The variant list reported below belongs to the block this VIEW was built
+    # for, so the diagnostic names that block. `blockName` is not it on the
+    # External path: refactor_tbExternal repoints it at the excluded DUT before
+    # any section renders, which would name the DUT while listing the testbench
+    # container's variants.
+    block_name = block_data['blockInfo']['block']
     variant = variant or ''
     for desc in variant_configs:
         if desc['variant'] != variant:
             continue
-        config_name = cpp_descriptor_config_name(desc, default_config)
-        return {'configName': config_name, 'factoryVariant': variant}
+        return {'configName': desc['structName'], 'factoryVariant': variant}
     if not variant:
         printError(
             f"Testbench generation for parameterizable block {block_name!r} "
@@ -525,12 +531,12 @@ def resolve_dut_variant_selection(block_data, variant):
             f"because it has no anonymous/default variant. "
             f"Available variants: {available!r}."
         )
-        return {'configName': '', 'factoryVariant': ''}
+        exit(warningAndErrorReport())
     printError(
         f"Testbench generation for block {block_name!r} requested unknown "
         f"variant {variant!r}. Available variants: {available!r}."
     )
-    return {'configName': '', 'factoryVariant': ''}
+    exit(warningAndErrorReport())
 
 def _resolve_cross_interface_ends(conn_data, prj):
     # Cross-interface semantics are part of the block-data view assembled
@@ -544,76 +550,106 @@ def cpp_module_name(includeName):
     # C++20 module name spelling for a context's project-owned include identity.
     # The identity is supplied by projectCreate/projectOpen; this helper only
     # sanitizes it into a legal module-name token. The sanitization primitive is
-    # owned by core (processYaml.sanitizeModuleToken) so the template layer and
+    # owned by core (processYaml.sanitizeIdentifierToken) so the template layer and
     # the projectCreate foreign-Config stub cannot drift.
-    return processYaml.sanitizeModuleToken(includeName)
+    return processYaml.sanitizeIdentifierToken(includeName)
 
 def cpp_block_module_name(blockName):
     # C++20 module name for a parameterizable block's own interface unit
     # (`<block>.cppm`). Spelled `<block>.block` so it stays distinct from the
     # context types module (`<context>`, from `<context>Includes.cppm`) the
-    # block imports. The block-name token is sanitized the same way as
-    # cpp_module_name; the `.block` suffix is literal. The block identity comes
-    # from the block view (`data['blockName']`), not from a filename.
+    # block imports. The block identity comes from the block view
+    # (`data['blockName']`), not from a filename.
     return f'{cpp_module_name(blockName)}.block'
 
 def cpp_base_module_name(blockName):
     # C++20 module name for a block's Base/Inverted/Channels interface unit
     # (`<block>Base.cppm`). Spelled `<block>.base` so it stays distinct from the
     # block impl module (`<block>.block`, from `<block>.cppm`) and the context
-    # types module (`<context>`) the base imports. The block-name token is
-    # sanitized the same way as cpp_module_name; the `.base` suffix is literal.
-    # The block identity comes from the block view (`data['blockName']`), not
-    # from a filename.
+    # types module (`<context>`) the base imports.
     return f'{cpp_module_name(blockName)}.base'
+
+def cpp_socket_module_name(blockName):
+    # C++20 module name for a block's Python-socket shell interface unit
+    # (`<block>Socket.cppm`), distinct from the block impl module
+    # (`<block>.block`) the shell stands in for.
+    return f'{cpp_module_name(blockName)}.socket'
+
+def cpp_tb_module_name(blockName):
+    # C++20 module name for a block's testbench-top interface unit
+    # (`<block>Testbench.cppm`). Spelled `<block>.testbench` so it stays distinct
+    # from the block impl module (`<block>.block`), the base module
+    # (`<block>.base`) and the External unit (`<block>.external`) it imports.
+    return f'{cpp_module_name(blockName)}.testbench'
+
+def cpp_tb_external_module_name(blockName):
+    # C++20 module name for a block's testbench External interface unit
+    # (`<block>External.cppm`). Spelled `<block>.external` so it stays distinct
+    # from the testbench top (`<block>.testbench`) that imports it. For an
+    # External retargeted at a `_tb` container the block identity is the excluded
+    # DUT instance's module name resolved by refactor_tbExternal.
+    return f'{cpp_module_name(blockName)}.external'
 
 def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # C++20 module name for a parent-owned registrar trampoline unit. Spelled
     # `<project>.<parent>.<child>.registrar` so the same child reused under two
     # parents yields two distinct registrar modules. The identity components
-    # (project, parent, child) come from persisted data; this helper only
-    # formats the C++ module spelling. Each token is sanitized the same way as
-    # cpp_module_name; the dotted structure and `.registrar` suffix are literal.
+    # (project, parent, child) come from persisted data.
     return f'{cpp_module_name(projectName)}.{cpp_module_name(parentBlock)}.{cpp_module_name(childBlock)}.registrar'
 
-def cpp_config_module_name(projectName, childBlock):
-    # C++20 module name for the owner-qualified foreign per-variant Config module
-    # interface unit of a reused child. Spelled `<project>.<child>.config` so the
-    # same reused child yields ONE config module per owning project (NOT per
-    # parent): every parent-owned registrar and container in that project that
-    # binds a foreign variant of the child imports the same module. The identity
-    # components (project, child) come from persisted data / projectOpen views;
-    # this helper only formats the C++ module spelling. Each token is sanitized
-    # the same way as cpp_module_name; the dotted structure and `.config` suffix
-    # are literal.
-    return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.config'
 
-def cpp_variant_config_name(projectName, blockName, variant, isForeign=False):
-    # C++ struct name for a per-variant Config, spelled entirely in the template
-    # layer from the neutral (project, block, variant, isForeign) components a
-    # projectOpen view supplies. The bare tail `<block><Variant>Config` is the
-    # same-project spelling; a foreign (assembler-declared) variant is owner-
-    # qualified as `<project>_<block><Variant>Config` so two projects' same-named
-    # local variant of one reused child are DISTINCT C++ types. On a monolithic
-    # build nothing is foreign, so the bare form is emitted (byte-identical).
-    if variant == '':
-        bare = f'{blockName}Config'
-    else:
-        bare = f'{blockName}{variant[:1].upper()}{variant[1:]}Config'
-    if isForeign:
-        return f'{cpp_module_name(projectName)}_{bare}'
-    return bare
+def cpp_child_registrar_module_name(projectName, childBlock):
+    # Stable C++20 module identity for the one physical registrar aggregate
+    # owned by a (project, child) pair. Parent-specific factory domains remain
+    # inside the translation unit rather than multiplying physical modules.
+    return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.registrar'
 
-def cpp_descriptor_config_name(desc, defaultConfig):
-    # Emitted C++ struct name for one neutral per-variant descriptor from
-    # _buildVariantConfigDescriptors. A descriptor with no Config fields, or one
-    # whose value signature collapses onto the block's shared context default,
-    # emits AS `defaultConfig`; otherwise it spells the struct of its (possibly
-    # deduplicated) emit variant.
-    if not desc['values'] or desc['useDefault']:
-        return defaultConfig
-    return cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                   desc['emitVariant'], desc['isForeign'])
+# Template parameter of a Config emitted for a variant that sources parameters
+# from its container: the Config of the block the instance sits in.
+CONTAINER_CONFIG_PARAM = 'ContainerConfig'
+
+def configType(value):
+    # C++ type for a constant's Config struct member (and, value-keyed, its
+    # template value-parameter): the narrowest fixed-width int that covers both
+    # the constant's default and its declared worst case.
+    valueType = value['valueType']
+    if valueType == 'uint':
+        maxValue = max(value['value'], value['maxValue'])
+        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
+    if valueType == 'int':
+        maxAbs = max(abs(value['value']), abs(value['maxValue']))
+        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
+    if valueType == 'real':
+        return 'double'
+    return valueType
+
+def cpp_container_typed_instance_arg(instance):
+    # Explicit template argument for `instanceFactory::createInstance<Impl>` when
+    # the child is typed by the CONTAINER's Config, empty otherwise. Such a child
+    # is a family of C++ types and the factory key carries no Config dimension,
+    # so the container names the class directly.
+    selection = instance['instanceConfigSelection']
+    if not selection['containerTyped']:
+        return ''
+    return f'<{instance["instanceType"]}{cpp_config_arg(selection)}>'
+
+def sc_instance_config_imports(data):
+    out = []
+    for moduleName in sorted(data['configModules']):
+        out.append(f'import {moduleName};')
+    for key, moduleName in sorted(data['containerTypedChildModules'].items()):
+        out.append(f'import {cpp_block_module_name(moduleName)};')
+    return out
+
+def cpp_config_expression_name(expression):
+    # C++ spelling of a persisted Config expression. A containerParam binding
+    # composes the child's Config template with the concrete parent Config.
+    if expression['kind'] == 'default':
+        return expression['name']
+    name = expression['descriptor']['structName']
+    if expression['kind'] == 'template':
+        return f'{name}<{cpp_config_expression_name(expression["container"])}>'
+    return name
 
 def cpp_config_struct_name(configSelection):
     # Emitted C++ Config struct name for a neutral per-instance selection from
@@ -623,13 +659,21 @@ def cpp_config_struct_name(configSelection):
     if configSelection['inheritContainer']:
         # Contained-block config inheritance: spell the container's own template
         # symbol; C++ resolves the concrete struct at the container's site.
-        return 'Config'
+        return BLOCK_CONFIG_PARAM
     if not configSelection['isParameterizable']:
         return ''
     desc = configSelection['descriptor']
     if desc is None:
         return configSelection['defaultConfig']
-    return cpp_descriptor_config_name(desc, configSelection['defaultConfig'])
+    name = desc['structName']
+    if desc['containerSourced']:
+        # A variant that sources parameters from its container emits a Config
+        # TEMPLATE, so the site names it applied to the container's own Config:
+        # the concrete struct is resolved where the container is instantiated.
+        # Every such site renders inside a container class template, because a
+        # container that declares the sourced parameter always has own params.
+        return f'{name}<{BLOCK_CONFIG_PARAM}>'
+    return name
 
 def cpp_config_arg(configSelection):
     # SystemC template-argument suffix (`<Config>`) for a neutral per-instance
@@ -639,6 +683,11 @@ def cpp_config_arg(configSelection):
     name = cpp_config_struct_name(configSelection)
     return f'<{name}>' if configSelection['hasOwnParams'] and name else ''
 
+# Firmware artifacts of every context share one fixed namespace. Unlike the
+# per-context module namespace there is nothing to derive it from, so this is the
+# single source: the fw scaffold and the fw region emitters both spell it from here.
+FW_NAMESPACE = 'fw_ns'
+
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
 
@@ -647,16 +696,13 @@ def cpp_test_namespace_name(includeName):
     # stay separate from the functional types in cpp_namespace_name.
     return f'{cpp_module_name(includeName)}_test_ns'
 
-def cpp_context_include_lines(prj, data, context, fileMapKey):
-    # Emit the dependency lines for one context: a C++20 `import` plus its
-    # `using namespace` in cppm mode, or a textual `#include` in header mode.
-    # Shared by the SystemC class-decl templates so the import/include spelling
-    # stays consistent across them.
-    if fileMapKey == 'include_cppm':
-        moduleName = cpp_module_name(prj.contextModuleIdentity[context])
-        return [f'import {moduleName};',
-                f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
-    return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
+def cpp_context_include_lines(prj, context):
+    # The dependency lines for one context's types module: a C++20 `import` plus
+    # its `using namespace`. Shared by the SystemC class-decl templates so the
+    # import spelling stays consistent across them.
+    moduleName = cpp_module_name(prj.contextModuleIdentity[context])
+    return [f'import {moduleName};',
+            f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
 
 def sc_channel_header_includes(intf_types, block_data):
     # `#include "<chnl>_channel.h"` for each interface type's channel. Shared by
@@ -665,7 +711,14 @@ def sc_channel_header_includes(intf_types, block_data):
     return [f'#include "{get_intf_defs(intfType, block_data)["sc_channel"]["type"]}_channel.h"'
             for intfType in sorted(intf_types)]
 
-def sc_base_dependency_includes(args, prj, data):
+def cpp_own_config_import(data):
+    # Empty for a block parameterizable only through a contained child.
+    module = data['ownConfigModule']
+    if not module:
+        return []
+    return [f'import {module};']
+
+def sc_base_dependency_includes(prj, data):
     # Dependency lines a block's Base/Inverted/Channels declaration
     # (baseClassDecl) needs, returned as ordered (kind, text) pairs mirroring
     # sc_class_dependency_includes. kind is 'include' for a textual #include or
@@ -678,6 +731,9 @@ def sc_base_dependency_includes(args, prj, data):
     #     them: 'include' lines go in the global module fragment, 'import' lines
     #     after `export module`.
     out = list()
+    # A block-local derived constant may call clog2.
+    if data['blockUsesClog2']:
+        out.append(('include', '#include "clog2.h"'))
     block_intf_set = get_set_intf_types(data['interfaceTypes'], data)
     # With no interfaces the channel headers (which transitively pull the common
     # factory base) are absent, so include it directly.
@@ -685,23 +741,23 @@ def sc_base_dependency_includes(args, prj, data):
         out.append(('include', '#include "blockBase.h"'))
     for line in sc_channel_header_includes(block_intf_set, data):
         out.append(('include', line))
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
-                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
-                out.append((kind, line))
+        # INCLUDEFILES carries no include_cppm key at all for a project whose
+        # every context is smartInclude-empty, so the file type is optional here.
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                out.append(('import', line))
     return out
 
-def sc_class_dependency_includes(args, prj, data):
+def sc_class_dependency_includes(prj, data):
     # The dependency lines a block's class declaration needs, returned as
     # ordered (kind, text) pairs. kind is 'include' for a textual #include or
     # 'import' for a C++20 module import / using-namespace line.
     #
     # Two rendering contexts share this set so they cannot drift:
     #   * classDecl (classic mode) emits the lines inline, in order, ahead of
-    #     the class — preserving the historical interleaving of context imports
-    #     between the config-policy includes and apbBusDecode.h.
+    #     the class, interleaving the context imports between the config-policy
+    #     includes and apbBusDecode.h.
     #   * the block-module GMF scaffold (moduleScaffold.blockModuleHeader)
     #     splits them: 'include' lines go in the global module fragment, the
     #     'import' lines after `export module`.
@@ -739,30 +795,48 @@ def sc_class_dependency_includes(args, prj, data):
                 break
     if needsHwMemory:
         out.append(('include', '#include "hwMemory.h"'))
+    # The constructor sizes each memory with the block's word-lines expression
+    # inline (wordLinesExpr -> constReference_cpp), which may call clog2.
+    if needsHwMemory and data['blockUsesClog2']:
+        out.append(('include', '#include "clog2.h"'))
     thunker_protocols = sc_thunker_protocols(data, prj)
     for proto in sorted(thunker_protocols):
         out.append(('include', f'#include "{proto}_port_thunker.h"'))
-    for context in sorted(data.get('configIncludeContext', {})):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            out.append(('include', f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'))
-    # Owner-qualified foreign-Config modules for child instances bound to an
-    # assembler-declared variant. Each is a registrar-domain C++20 module
-    # interface unit (`<project>.<child>.config`, one per owning project); the
-    # container imports it rather than textually including a header. As an
-    # 'import' pair it is emitted inline in classic mode and, in a block-module
-    # GMF caller, after `export module` alongside the context imports.
-    for key in sorted(data['foreignConfigModules']):
-        mod = data['foreignConfigModules'][key]
-        moduleName = cpp_config_module_name(mod['project'], mod['block'])
-        out.append(('import', f'import {moduleName};'))
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+    # As an 'import' pair each is emitted inline in classic mode and, in a
+    # block-module GMF caller, after `export module` alongside the context imports.
+    for line in cpp_own_config_import(data):
+        out.append(('import', line))
+    for line in sc_instance_config_imports(data):
+        out.append(('import', line))
     for context in data['classIncludeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
-                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
-                out.append((kind, line))
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                out.append(('import', line))
     if data['addressDecode']['isApbRouter']:
         out.append(('include', '#include "apbBusDecode.h"'))
+    return out
+
+def sc_class_module_usings(prj, data):
+    # The `using namespace` lines a block's class body needs to spell imported
+    # interface-context types unqualified, ordered and deduplicated. A
+    # using-directive CLOSES the C++20 module preamble, so these are emitted at
+    # the head of the CLASS region (after the `// user imports here` slot) rather
+    # than in moduleExport, which keeps that slot a legal preamble slot for
+    # hand-authored imports. Shared by classDecl and blockRegs so the two class
+    # emitters cannot drift; mirrors moduleExport's own using sources
+    # (dependency set + interface-context set).
+    out = list()
+    seen = set()
+    for kind, line in sc_class_dependency_includes(prj, data):
+        if line.startswith('using namespace ') and line not in seen:
+            out.append(line)
+            seen.add(line)
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                if line.startswith('using namespace ') and line not in seen:
+                    out.append(line)
+                    seen.add(line)
     return out
 
 def wrap_module_namespace(args, data, lines):
@@ -770,6 +844,30 @@ def wrap_module_namespace(args, data, lines):
         return lines
     namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
+
+def cpp_fw_namespace_name(includeName):
+    # A context's firmware declarations live in their own namespace nested under
+    # fw_ns, so two contexts declaring the same type name stay distinct when one
+    # firmware header includes both.
+    return f'{FW_NAMESPACE}::{cpp_module_name(includeName)}'
+
+def fw_namespace_surface(data):
+    # Opens the context's firmware namespace and folds it into fw_ns, so firmware
+    # that opens `namespace fw_ns` reads the names unqualified.
+    own = cpp_module_name(data['contextModuleIdentity'])
+    return [f'namespace {FW_NAMESPACE}::{own} {{}}',
+            f'namespace {FW_NAMESPACE} {{ using namespace {own}; }}']
+
+def wrap_fw_namespace(args, data, lines):
+    # Each fw header region carries its own complete namespace block rather than
+    # sharing one opened outside the regions, so a region that emits nothing
+    # leaves no unbalanced brace behind. Adjacent blocks reopen the same
+    # namespace, so later regions still see earlier regions' declarations.
+    # Emission mode is exclusive, so this and wrap_module_namespace never both fire.
+    if args.mode != 'fw':
+        return lines
+    namespaceName = cpp_fw_namespace_name(data['contextModuleIdentity'])
+    return [f'namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def wrap_module_test_namespace(args, data, lines):
     if args.mode != 'module':
@@ -787,8 +885,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_modp = port_data['direction']
     intf_param = dict()
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
            intf_modp in interface_defs[intf_type]['modports'])
 
@@ -997,8 +1094,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     intf_data = get_intf_data(conn_data, prj)
     chnl_name = get_channel_name(conn_data)
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs)
 
     intf_def = interface_defs[intf_type]
@@ -1068,32 +1164,64 @@ def _payload_config_name(payload):
     return cpp_config_struct_name(configSelection) if configSelection else ''
 
 
+def _qualified_payload_type_name(payload, prj):
+    """Positional template argument(s) for one thunker payload, its type name
+    qualified by its owning context's namespace. A composed container imports
+    every child project's types module, and two projects may declare same-named
+    payloads, so the bare name can be ambiguous there. An unbound optional
+    payload names no declaration and is spelled as the absence sentinel."""
+    spelled = sc_payload_type_name(payload, prj,
+                                   config_override=(_payload_config_name(payload) or None))
+    if payload['isNull']:
+        return spelled
+    ref = prj.datatypeRef(payload['kind'], payload['structureKey'])
+    namespace = cpp_namespace_name(prj.contextModuleIdentity[ref['context']])
+    if payload['kind'] == 'types' and not ref['isParameterizable']:
+        # A type payload spells as (name, width). A fixed type's width may
+        # name a constant, which would be as ambiguous across the imported
+        # contexts as the type name itself, so the resolved width is spelled
+        # as its literal value instead. A parameterizable type's width is a
+        # Config-scoped reference and the Config struct name is already
+        # owner-qualified.
+        return f"{namespace}::{ref['name']}, {ref['width']}"
+    return f"{namespace}::{spelled}"
+
+
 def _thunker_member_type(flagged, prj):
-    # View creation resolves each side's payload bindings and Config ownership.
-    # Keep this helper limited to SystemC spelling of that already-valid view.
+    # View creation resolves each side's payload bindings, Config ownership and
+    # the direct-copy verdicts. Keep this helper limited to SystemC spelling of
+    # that already-valid view.
     #
     # The hand-written thunker template fixes its argument order as up-required,
-    # down-required, up-optional, down-optional, so each side is split at its own
-    # required/optional boundary and the other side is spliced in between, the
-    # same prefix/suffix cut a BFM declaration uses for its Verilated bridge
-    # group. Declared order is preserved within every group and no payload is
-    # reordered.
+    # down-required, one verdict bool per required payload pair, up-optional,
+    # down-optional. Each side is split at its own required/optional boundary and
+    # the other side is spliced in between, the same prefix/suffix cut a BFM
+    # declaration uses for its Verilated bridge group. Declared order is
+    # preserved within every group and no payload is reordered.
+    #
+    # Each bool tells the thunker's copy sites for that payload pair that the two
+    # declarations emit identical member storage, so the value may be transferred
+    # whole rather than packed and unpacked field by field. The class template
+    # defaults every flag to false, so a false verdict is spelled explicitly only
+    # to keep the slots positional. The verdicts sit before the optional group
+    # because that group's trailing unbound run is dropped and left to the
+    # template's defaults; a trailing bool would then land in a payload slot.
     thunker = flagged['thunker']
     channel_type = thunker['channelType']
     up_required, up_optional = sc_split_payload_params(
         [payload for payload in thunker['payloads'] if payload['side'] == 'parent'])
     down_required, down_optional = sc_split_payload_params(
         [payload for payload in thunker['payloads'] if payload['side'] == 'child'])
-    # Every group is full length, so a payload one side leaves unbound still
-    # holds its slot and no payload shifts into another's; drop the trailing
-    # unbound run and let the template's defaults supply the sentinel, exactly as
-    # the channel and BFM declarations do.
-    payloads = sc_payload_params(up_required + down_required + up_optional + down_optional)
-    args = [
-        sc_payload_type_name(payload, prj,
-                             config_override=(_payload_config_name(payload) or None))
-        for payload in payloads
-    ]
+    args = [_qualified_payload_type_name(payload, prj)
+            for payload in up_required + down_required]
+    args += ['true' if pair['directCopy'] else 'false'
+             for pair in thunker['payloadPairs']]
+    # Every optional group is full length, so a payload one side leaves unbound
+    # still holds its slot and no payload shifts into another's; drop the
+    # trailing unbound run and let the template's defaults supply the sentinel,
+    # exactly as the channel and BFM declarations do.
+    args += [_qualified_payload_type_name(payload, prj)
+             for payload in sc_payload_params(up_optional + down_optional)]
     return f"{channel_type}_port_thunker<{', '.join(args)}>"
 
 
@@ -1107,72 +1235,45 @@ def _thunker_member_name(flagged, conn_data, is_connection_map):
     return f"thunker_{get_channel_name(conn_data)}_{inst}"
 
 
-def sc_declare_thunkers(data, prj, indent, block_data):
-    # Emit one thunker member declaration per flagged cross-interface end
-    # across both connections (data['connectDouble']) and connectionMaps.
-    # Returns [] when no flagged ends exist, preserving byte-identical output
-    # for projects with no cross-interface binds.
-    out = []
+def _flagged_thunker_ends(data, prj):
+    # Every cross-interface end this container adapts, in emission order, as
+    # (flagged end, owning connection row, is_connection_map). Three collections
+    # carry them: peer-to-peer channel connections, connectionMap binds whose
+    # child end is the local end of the map, and testbench External DUT-boundary
+    # binds (connections pruned to an excluded DUT instance, a flat dict rather
+    # than grouped by channelType, whose surviving end is a contained instance
+    # port and so takes the peer-to-peer member naming).
     if prj is None:
-        return out
-    # Peer-to-peer channel connections.
+        return
     for channelType in data.get("connectDouble", {}):
-        for key, value in data["connectDouble"][channelType].items():
-            flagged_ends = _resolve_cross_interface_ends(value, prj)
-            if not flagged_ends:
-                continue
-            for flagged in flagged_ends:
-                member_type = _thunker_member_type(flagged, prj)
-                member_name = _thunker_member_name(flagged, value, is_connection_map=False)
-                out.append(f"{indent}{member_type} {member_name};")
-    # connectionMap binds: the child end is the local end of the map.
-    for key, value in data.get("connectionMaps", {}).items():
-        flagged_ends = _resolve_cross_interface_ends(value, prj)
-        if not flagged_ends:
-            continue
-        for flagged in flagged_ends:
-            member_type = _thunker_member_type(flagged, prj)
-            member_name = _thunker_member_name(flagged, value, is_connection_map=True)
-            out.append(f"{indent}{member_type} {member_name};")
-    # Testbench External DUT-boundary binds: connections pruned to an excluded
-    # DUT instance whose surviving end is a cross-interface bind. Flat dict
-    # (not grouped by channelType like connectDouble); the peer-to-peer member
-    # naming applies since the surviving end is a contained instance port.
+        for value in data["connectDouble"][channelType].values():
+            for flagged in _resolve_cross_interface_ends(value, prj):
+                yield flagged, value, False
+    for value in data.get("connectionMaps", {}).values():
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            yield flagged, value, True
     for value in data.get("prunedConnections", {}).values():
-        flagged_ends = _resolve_cross_interface_ends(value, prj)
-        if not flagged_ends:
-            continue
-        for flagged in flagged_ends:
-            member_type = _thunker_member_type(flagged, prj)
-            member_name = _thunker_member_name(flagged, value, is_connection_map=False)
-            out.append(f"{indent}{member_type} {member_name};")
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            yield flagged, value, False
+
+
+def sc_declare_thunkers(data, prj, indent, block_data):
+    # Emit one thunker member declaration per flagged cross-interface end.
+    out = []
+    for flagged, value, is_connection_map in _flagged_thunker_ends(data, prj):
+        member_type = _thunker_member_type(flagged, prj)
+        member_name = _thunker_member_name(flagged, value, is_connection_map)
+        out.append(f"{indent}{member_type} {member_name};")
     return out
 
 
 def sc_thunker_protocols(data, prj):
     # Return the set of SystemC channel type stems (e.g. 'rdy_vld',
     # 'req_ack') for which this container emits at least one thunker. Callers
-    # use the set to emit the matching `<channel_type>_port_thunker.h`
-    # include. Empty set means no thunker include is required.
+    # use the set to emit the matching `<channel_type>_port_thunker.h` include.
     protocols = set()
-    if prj is None:
-        return protocols
-    for channelType in data.get("connectDouble", {}):
-        for value in data["connectDouble"][channelType].values():
-            for flagged in _resolve_cross_interface_ends(value, prj):
-                protocol = (flagged.get('thunker') or {}).get('channelType')
-                if protocol:
-                    protocols.add(protocol)
-    for value in data.get("connectionMaps", {}).values():
-        for flagged in _resolve_cross_interface_ends(value, prj):
-            protocol = (flagged.get('thunker') or {}).get('channelType')
-            if protocol:
-                protocols.add(protocol)
-    for value in data.get("prunedConnections", {}).values():
-        for flagged in _resolve_cross_interface_ends(value, prj):
-            protocol = (flagged.get('thunker') or {}).get('channelType')
-            if protocol:
-                protocols.add(protocol)
+    for flagged, _value, _is_connection_map in _flagged_thunker_ends(data, prj):
+        protocols.add(flagged['thunker']['channelType'])
     return protocols
 
 def inverse_portdir(port):
@@ -1204,11 +1305,11 @@ def get_sorted_memories(data):
     mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
     return mems
 
-def sc_concrete_dut(sv_wrapper, declared_variants):
-    # Select the non-templated SC wrapper's single DUT top: first-declared
-    # variant's trampoline when the block declares variants, body DUT otherwise.
-    if declared_variants:
-        v = next(iter(declared_variants))
+def sc_concrete_dut(sv_wrapper, standalone_variants):
+    # Select the non-templated SC wrapper's single DUT top: the first standalone
+    # variant's trampoline when the block has any, the body DUT otherwise.
+    if standalone_variants:
+        v = next(iter(standalone_variants))
         return {
             'svModule':  sv_wrapper['variantTops'][v],
             'dutClass':  sv_wrapper['variantDutClasses'][v],
@@ -1224,11 +1325,12 @@ def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type
     
     Args:
-        intf_type: Interface type name
+        intf_type: Canonical interface type name (resolve aliases with
+                   get_intf_type first)
         block_data: Block data dict containing interface_defs
-    
+
     Returns:
-        Interface definition dict or None if not found
+        Interface definition dict. Raises KeyError naming the type when the
+        block's view carries no row for it.
     """
-    interface_defs = block_data.get('interface_defs', {})
-    return interface_defs.get(intf_type, None)
+    return block_data['interface_defs'][intf_type]

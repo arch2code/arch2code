@@ -5,19 +5,16 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_ipStdTop.block;
 import ip_ipStdTop.base;
+import ip.config;
 import ip;
 import ip_ipTop;
 import ip_ipStdMaster.base;
@@ -49,7 +46,7 @@ public:
     std::shared_ptr<ipBase<ipVariant0Config>> uIp;
 
     // cross-interface thunkers
-    push_ack_port_thunker<ipStdData8St, ipDataSt<ipVariant0Config>> thunker_out0_uIp;
+    push_ack_port_thunker<ip_ipTop_ns::ipStdData8St, ip_ns::ipDataSt<ipVariant0Config>, false> thunker_out0_uIp;
 
     ipStdTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ipStdTop() override = default;
@@ -82,7 +79,7 @@ ipStdTop::ipStdTop(sc_module_name blockName, const char * variant, blockBaseMode
         ,uIpStdMaster(std::dynamic_pointer_cast<ipStdMasterBase>(instanceFactory::createInstance(name(), "uIpStdMaster", "ipStdMaster", "", "ip")))
         ,uIpStdDriver(std::dynamic_pointer_cast<ipStdDriverBase>(instanceFactory::createInstance(name(), "uIpStdDriver", "ipStdDriver", "", "ip")))
         ,uIpStdDecode(std::dynamic_pointer_cast<ipStdDecodeBase>(instanceFactory::createInstance(name(), "uIpStdDecode", "ipStdDecode", "", "ip")))
-        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "ip")))
+        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "ip.ip_ipStdTop.ip")))
         ,thunker_out0_uIp("thunker_out0_uIp", out0, uIp->ipDataIf, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body

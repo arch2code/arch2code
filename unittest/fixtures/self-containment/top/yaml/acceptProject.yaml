@@ -1,0 +1,19 @@
+yamlFormat: 2
+
+# Assembler composing both root-declaration idioms as children. Neither child's
+# own root row is rewritten, so both reach the self-containment walk verbatim
+# and both must be accepted.
+projectName: selfContainTopProj
+
+topInstance: uAsm
+
+projectFiles:
+    - ../../childUTop/yaml/childUTopProject.yaml
+    - ../../childNamed/yaml/childNamedProject.yaml
+    - acceptTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

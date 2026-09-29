@@ -2,11 +2,11 @@
 
 // GENERATED_CODE_PARAM --block=blockGRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module mixed_blockGRegs
+module blockGRegs
     // Generated Import package statement(s)
     import mixed_package::*;
     #(
-        parameter fred,
+        parameter int unsigned fred = 32'h0000_0000,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -51,7 +51,6 @@ module mixed_blockGRegs
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
-        
         if (rd_select) begin
             case (apb_addr) inside
                 REG_BLOCKG_RWG : begin
@@ -85,5 +84,5 @@ module mixed_blockGRegs
     assign apbReg.pready  = rd_ready | wr_ready;
     assign apbReg.pslverr = 1'b0;
 
-endmodule : mixed_blockGRegs
+endmodule : blockGRegs
 // GENERATED_CODE_END

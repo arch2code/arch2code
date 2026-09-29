@@ -3,31 +3,36 @@
 #define PYSOCKET_TBINCLUDESFW_H_
 // 
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=pySocket --context=pySocket_tb.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::pySocket_tb {}
+namespace fw_ns { using namespace pySocket_tb; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns::pySocket_tb {
 //constants
 
+} // namespace fw_ns::pySocket_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns::pySocket_tb {
 // types
 typedef uint32_t param_t; // [32] Parameter type
 typedef uint16_t word16_t; // [16] Parameter type
 typedef uint8_t axis_id_t; // [8] AXI4-Stream TID/TDEST width
 
+} // namespace fw_ns::pySocket_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns::pySocket_tb {
 // enums
 enum  p2s_message_ID_t {     //Message ID
     P2S_MESSAGE_TYPE_REQUEST=0,   // Request
@@ -42,8 +47,10 @@ inline const char* p2s_message_ID_t_prt( p2s_message_ID_t val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns::pySocket_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns::pySocket_tb {
 // structures
 struct message_header_st {
     word16_t tag; //Tag
@@ -180,7 +187,7 @@ struct axis_tdest_st {
     {}
 
 };
+} // namespace fw_ns::pySocket_tb
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //PYSOCKET_TBINCLUDESFW_H_

@@ -3,34 +3,39 @@
 #define IPBRIDGEINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=ipBridge --context=../../yaml/ipBridge.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
 #include "ipIncludesFW.h"
+namespace fw_ns::ipBridge {}
+namespace fw_ns { using namespace ipBridge; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns::ipBridge {
 //constants
 
+} // namespace fw_ns::ipBridge
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns::ipBridge {
 // types
 typedef uint8_t bridgeMarkerT; // [1] 1-bit marker; bit-width matches ipDataSt::marker (packed-form compatibility)
 typedef uint8_t data8T; // [8] Fixed 8-bit bridge payload (matches ipDataSt::data under variant0)
 struct data70T { uint64_t word[ 2 ]; }; // [70] Fixed 70-bit bridge payload (matches ipDataSt::data under variant1)
 
+} // namespace fw_ns::ipBridge
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns::ipBridge {
 // enums
 enum  addr_id_bridge {       //Generated type for addressing bridge instances
     ADDR_ID_BRIDGE_UBRIDGEIP0=0,   // uBridgeIp0 instance address
@@ -45,8 +50,10 @@ inline const char* addr_id_bridge_prt( addr_id_bridge val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns::ipBridge
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns::ipBridge {
 // structures
 struct data8St {
     data8T data; //8-bit payload; matches ipDataSt::data under variant0
@@ -110,7 +117,7 @@ struct data70St {
     {}
 
 };
+} // namespace fw_ns::ipBridge
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //IPBRIDGEINCLUDESFW_H_

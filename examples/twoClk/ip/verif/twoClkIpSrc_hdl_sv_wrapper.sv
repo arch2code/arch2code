@@ -23,7 +23,7 @@ module twoClkIpSrc_hdl_sv_wrapper
     assign #0 out_data = out.data;
     assign #0 out.ack = out_ack;
 
-    twoClkIp_twoClkIpSrc dut (
+    twoClkIpSrc dut (
         .out(out), // push_ack_if.src
         .clk(clk),
         .rst_n(rst_n)

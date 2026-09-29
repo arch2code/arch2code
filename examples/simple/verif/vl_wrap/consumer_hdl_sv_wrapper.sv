@@ -35,7 +35,7 @@ module consumer_hdl_sv_wrapper
     assign #0 tag1.data = tag1_data;
     assign #0 tag1_ack = tag1.ack;
 
-    simple_consumer dut (
+    consumer dut (
         .tag0(tag0), // push_ack_if.dst
         .tag1(tag1), // push_ack_if.dst
         .clk(clk),

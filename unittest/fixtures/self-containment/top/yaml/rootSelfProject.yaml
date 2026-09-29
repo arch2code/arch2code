@@ -1,0 +1,19 @@
+yamlFormat: 2
+
+# The accepted composition plus one self-edge in the assembler's OWN yaml. The
+# assembler is the root project, so its top row is the rewritten one and this
+# second self-edge is a real containment.
+projectName: selfContainTopProj
+
+topInstance: uAsm
+
+projectFiles:
+    - ../../childUTop/yaml/childUTopProject.yaml
+    - ../../childNamed/yaml/childNamedProject.yaml
+    - rootSelfTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -1,0 +1,12 @@
+# Definitions-only project owning leafIp's ipParameters, so the leaf's owner
+# (projIp) and its params' owner (projParams) differ.
+projectName: projParams
+
+projectFiles:
+    - leafParams.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -251,8 +251,9 @@ def test_dependency_closure_orders_derived_constant_chain():
             1)
 
     temp_root, project_yaml = _build_temp_project(edit_ip_yaml)
-    db_path = _build_fresh_db_from_project(project_yaml)
+    db_path = None
     try:
+        db_path = _build_fresh_db_from_project(project_yaml)
         prj = projectOpen(db_path)
         ip_block = prj.getQualBlock('ip')
         block_data = prj.getBlockData(ip_block)
@@ -278,7 +279,7 @@ def test_dependency_closure_orders_derived_constant_chain():
                 pass
         g.db = None
         g.cur = None
-        if os.path.exists(db_path):
+        if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
         shutil.rmtree(temp_root)
 
@@ -335,8 +336,9 @@ def test_struct_array_size_uses_eval_derived_localparam():
             1)
 
     temp_root, project_yaml = _build_temp_project(edit_ip_yaml)
-    db_path = _build_fresh_db_from_project(project_yaml)
+    db_path = None
     try:
+        db_path = _build_fresh_db_from_project(project_yaml)
         prj = projectOpen(db_path)
         ip_block = prj.getQualBlock('ip')
         block_data = prj.getBlockData(ip_block)
@@ -361,7 +363,7 @@ def test_struct_array_size_uses_eval_derived_localparam():
                 pass
         g.db = None
         g.cur = None
-        if os.path.exists(db_path):
+        if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
         shutil.rmtree(temp_root)
 
@@ -403,8 +405,9 @@ def test_foreign_param_closure_not_selected_for_block():
             1)
 
     temp_root, project_yaml = _build_temp_project(edit_ip_yaml)
-    db_path = _build_fresh_db_from_project(project_yaml)
+    db_path = None
     try:
+        db_path = _build_fresh_db_from_project(project_yaml)
         prj = projectOpen(db_path)
         ip_block = prj.getQualBlock('ip')
         block_data = prj.getBlockData(ip_block)
@@ -427,7 +430,7 @@ def test_foreign_param_closure_not_selected_for_block():
                 pass
         g.db = None
         g.cur = None
-        if os.path.exists(db_path):
+        if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
         shutil.rmtree(temp_root)
 

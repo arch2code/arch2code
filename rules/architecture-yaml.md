@@ -22,6 +22,8 @@ Define elements in dependency order:
 
 ### Essential Syntax
 
+**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:`. Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks in `ARCH2CODE_AI_RULES.md` may stay expanded so every key is easy to scan.
+
 ```yaml
 # Constants
 constants:
@@ -69,10 +71,7 @@ blocks:
 
 # Instances
 instances:
-  u_my_block:
-    container: top
-    instanceType: my_block
-    instGroup: main
+  u_my_block: {container: top, instanceType: my_block, instGroup: main}
 
 # Connections (same container only)
 connections:
@@ -81,9 +80,13 @@ connections:
 # Variant parameter bindings
 parameters:
   my_block:
-    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
-    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
+    variant0:
+      IP_DATA_WIDTH: 8
+    variant1:
+      IP_DATA_WIDTH: 12
 ```
+
+A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
 
 If a block is RTL-enabled (`hasRtl: true`), every block instantiated inside it
 must also be RTL-enabled. Model-only blocks (`hasRtl: false`) may only appear
@@ -199,10 +202,7 @@ instances:
 Instances with registers need `addressGroup`:
 ```yaml
 instances:
-  u_my_block:
-    container: top
-    instanceType: my_block
-    addressGroup: system  # Required for register access
+  u_my_block: {container: top, instanceType: my_block, addressGroup: system}  # Required for register access
 ```
 
 ### 6. Missing Worst-Case Bounds for Parameterizable Values

@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockCY
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: hierInclude_blockCY
-module hierInclude_blockCY
+//module as defined by block: blockCY
+module blockCY
 // Generated Import package statement(s)
-import hierInclude_hierIncludeC_package::*;
+import hierIncludeC_package::*;
 (
     rdy_vld_if.dst x,
     input clk, rst_n
@@ -14,4 +14,4 @@ import hierInclude_hierIncludeC_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: hierInclude_blockCY
+endmodule: blockCY

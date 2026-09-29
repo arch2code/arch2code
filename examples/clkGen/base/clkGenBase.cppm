@@ -17,7 +17,7 @@ public:
     virtual ~clkGenBase() = default;
 
 
-    clkGenBase(std::string name, const char * variant) 
+    clkGenBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class clkGenInverted : public virtual blockPortBase
 public:
 
 
-    clkGenInverted(std::string name) 
+    clkGenInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class clkGenChannels
 public:
 
 
-    clkGenChannels(std::string name, std::string srcName) 
+    clkGenChannels(std::string name, std::string srcName)
     {};
     void bind( clkGenBase *a, clkGenInverted *b)
     {

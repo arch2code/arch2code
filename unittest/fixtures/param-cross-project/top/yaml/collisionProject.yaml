@@ -1,0 +1,20 @@
+yamlFormat: 2
+
+# Assembler that declares its own boundary interface under the SAME NAME as the
+# sub-projects' parameterized interface (dataIf) but with a different payload
+# width. Nothing reconciles the two packed forms, because the cross-interface
+# width check is entered only when the interface NAMES differ.
+projectName: collisionTopProj
+
+projectFiles:
+    - ../../projA/yaml/aProject.yaml
+    - ../../projC/yaml/cProject.yaml
+    - collisionTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -1,0 +1,33 @@
+# Single-project cell: a container-sourced parameterizable block asking for a
+# testbench. inheritContainerParam requires the container and the child to share
+# one owning project, so this cell is not composed.
+
+yamlFormat: 2
+projectName: itrTest
+
+projectFiles:
+    - ../../yaml/itrTop.yaml
+
+topInstance: itrTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

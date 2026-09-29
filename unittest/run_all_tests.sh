@@ -108,6 +108,30 @@ echo "Test Suite 13: Thunker View Derivation"
 echo "------------------------------------------------------------------------"
 python3 test_thunker_view.py || FAILED=1
 
+# Test 13a: C++ definition compatibility at a thunked junction
+echo ""
+echo "Test Suite 13a: Payload Direct Copy Selection"
+echo "------------------------------------------------------------------------"
+python3 test_payload_direct_copy.py || FAILED=1
+
+# Test 13b: datapath members make emitted storage undecidable
+echo ""
+echo "Test Suite 13b: Payload Datapath Storage Undecidability"
+echo "------------------------------------------------------------------------"
+python3 test_payload_datapath_storage.py || FAILED=1
+
+# Test 13c: the six new protocol thunkers forward a payload under the kernel
+echo ""
+echo "Test Suite 13c: Thunker Runtime Bridge"
+echo "------------------------------------------------------------------------"
+python3 test_thunker_runtime.py || FAILED=1
+
+# Test 13d: the power-of-two helpers obey their contracts across the 64-bit domain
+echo ""
+echo "Test Suite 13d: Bit Twiddling Runtime Contract"
+echo "------------------------------------------------------------------------"
+python3 test_bit_twiddling_runtime.py || FAILED=1
+
 # Test 14: Declared port resolved interface context
 echo ""
 echo "Test Suite 14: Declared Port Resolved Interface Context"
@@ -197,6 +221,41 @@ echo "------------------------------------------------------------------------"
 python3 test_error_variant_incomplete_params.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m2b: Variant on a block that declares no params is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_variant_on_params_less_block.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2c: Instance of a params-declaring block must select a Config"
+echo "------------------------------------------------------------------------"
+python3 test_error_instance_no_config_selector.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2d: Parameterized top instance is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_parameterized_top.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2e: Testbench on a container-sourced block is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_inherit_container_tb.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2f: One variant label declared by two containers is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_variant_label_collision.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2g: Block param backed by an eval-derived constant is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_block_param_eval_backing.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2h: A params: name resolves to exactly one visible declaration"
+echo "------------------------------------------------------------------------"
+python3 test_param_scope_uniqueness.py || FAILED=1
+
+echo ""
 echo "Test Suite 19m3: Contained-block config inheritance (inheritContainerParam)"
 echo "------------------------------------------------------------------------"
 python3 test_inherit_container_param.py || FAILED=1
@@ -230,6 +289,11 @@ echo ""
 echo "Test Suite 19o: Post-database legacy orphan sweep (migrateOrphans.py)"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_orphans.py || FAILED=1
+
+echo ""
+echo "Test Suite 19q: Testbench-family port (migrateBlockModulePort/migrateTbConfig)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_tb_port.py || FAILED=1
 
 echo ""
 echo "Test Suite 19p: Project-mode --project param + re-stamp (migrateProjectParam.py)"
@@ -283,6 +347,11 @@ ADDRCTL_TESTS=(
     "register interfaceType mismatch"           "test_error_register_interface_type_mismatch.py"
     "register packed-form mismatch"             "test_error_register_packed_form.py"
     "nested decoder exceeds parent window"      "test_error_nested_decoder_overflow.py"
+    "composed sibling address groups"           "test_addrgroup_composed_sibling_groups.py"
+    "composed decoder channel scoping"          "test_addrgroup_composed_decoder_channels.py"
+    "within-project duplicate address group"    "test_error_addrgroup_duplicate_in_project.py"
+    "address enum identity collision"           "test_error_addrgroup_vartype_collision.py"
+    "unresolved address group reference"        "test_error_addrgroup_unresolved_reference.py"
     "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
     "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
     "zero-instance exported leaf ports"         "test_zero_instance_ported_block.py"
@@ -376,9 +445,99 @@ python3 test_param_type_signedness.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: parameterized interface across project boundaries"
+echo "------------------------------------------------------------------------"
+python3 test_param_cross_project_linkage.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: scope resolution of a variant label"
+echo "------------------------------------------------------------------------"
+python3 test_variant_scope_resolution.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: owner-declared 'default' variant takes over the default Config"
+echo "------------------------------------------------------------------------"
+python3 test_default_variant_identity.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: channel parameterized by the container's own parameter"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_channel_binding.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: child variant sourcing a parameter from its container"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_inheritance.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: cross-project containerParam Verilated child runtime"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_cross_project_vl.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a block containing itself, at depth one and depth three"
+echo "------------------------------------------------------------------------"
+python3 test_error_containment_cycle.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a root topInstance declared only in a child project's files"
+echo "------------------------------------------------------------------------"
+python3 test_error_topinstance_not_root_owned.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: transit vs own-surface classification at a connection"
+echo "------------------------------------------------------------------------"
+python3 test_transit_surface_classification.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: both connection ends colliding on one portId"
+echo "------------------------------------------------------------------------"
+python3 test_error_connection_end_collision.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a register handler follows the Config of the block that owns its registers"
+echo "------------------------------------------------------------------------"
+python3 test_regs_handler_container_config.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a failed db build leaves no database for the next build"
+echo "------------------------------------------------------------------------"
+python3 test_db_failure_no_stale_artifact.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a verilated leaf reached only through inheritContainerParam"
+echo "------------------------------------------------------------------------"
+python3 test_inherit_vl_child.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: two integrators declaring variants of one reusable IP"
+echo "------------------------------------------------------------------------"
+python3 test_variant_two_integrators.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: optional interface parameters"
 echo "------------------------------------------------------------------------"
 python3 test_optional_intf_params.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: variant binding resolution"
+echo "------------------------------------------------------------------------"
+python3 test_variant_binding_resolution.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -466,6 +625,18 @@ python3 test_type_struct_field.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: socket shell on a parameterizable block is registered by the registrar"
+echo "------------------------------------------------------------------------"
+python3 test_socket_parameterized_registrar.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: socket shell on a parameterizable block without a model is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_socket_parameterized_no_model.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: arbitration trio compile-contract coverage"
 echo "------------------------------------------------------------------------"
 python3 test_arbitration_trio_coverage.py || FAILED=1
@@ -475,6 +646,144 @@ echo ""
 echo "Test Suite ${idx}: multicycle channel constructor arguments"
 echo "------------------------------------------------------------------------"
 python3 test_multicycle_ctor_args.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: A register-bus interface may not carry a parameterizable structure"
+echo "------------------------------------------------------------------------"
+python3 test_addressbus_not_parameterizable.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: container-sourced variant Verilator wrapper migration"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_vl_wrapper_migration.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: variant descriptor selector uniqueness"
+echo "------------------------------------------------------------------------"
+python3 test_descriptor_selector_uniqueness.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Project filename prefixes: svFilePrefix, scFilePrefix and fwFilePrefix"
+echo "------------------------------------------------------------------------"
+python3 test_file_prefix.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: A child project can rename many of its fileMap entries at once"
+echo "------------------------------------------------------------------------"
+python3 test_filemap_name_overrides.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: firmware header context namespaces in a composed root"
+echo "------------------------------------------------------------------------"
+python3 test_fw_context_namespace.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Unit tests for the langDomain migration phase (pysrc/migrateLangDomain.py)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_langdomain.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: nested router inheriting its container's parameters"
+echo "------------------------------------------------------------------------"
+python3 test_nested_router_inherit.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: nested router registerPorts key must match upstreamPort"
+echo "------------------------------------------------------------------------"
+python3 test_nested_router_registerports_mismatch.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: A child project's own fileMap names its artifacts inside a composing root"
+echo "------------------------------------------------------------------------"
+python3 test_per_project_filemap.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Register- and memory-connection-implied ports are independent of ports:"
+echo "------------------------------------------------------------------------"
+python3 test_ports_register_memory_connections_independent.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: register accessor emission"
+echo "------------------------------------------------------------------------"
+python3 test_register_accessor_emission.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: The builder compiles the generated context files at -O3 with no rundir help"
+echo "------------------------------------------------------------------------"
+python3 test_rundir_o3_context_src.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: sample Config members are root parameters only"
+echo "------------------------------------------------------------------------"
+python3 test_sample_config_members.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: stale registrar file cleanup"
+echo "------------------------------------------------------------------------"
+python3 test_stale_registrar_cleanup.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: stale vl_wrap file cleanup"
+echo "------------------------------------------------------------------------"
+python3 test_stale_vl_wrap_cleanup.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Generate and execute SV parameters with declared defaults and wide overrides"
+echo "------------------------------------------------------------------------"
+python3 test_sv_module_parameter_defaults.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Every committed example's SV modules and packages are named by their files"
+echo "------------------------------------------------------------------------"
+python3 test_sv_names_match_file_stem.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: parameterized register handler and router SV defaults"
+echo "------------------------------------------------------------------------"
+python3 test_sv_regs_router_parameter_defaults.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: testbench param line carries no --variant on a plain block"
+echo "------------------------------------------------------------------------"
+python3 test_tb_variant_plain_block.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: transit container Verilator wrapper"
+echo "------------------------------------------------------------------------"
+python3 test_transit_container_vl_wrapper.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: variant shared params owner selection"
+echo "------------------------------------------------------------------------"
+python3 test_variant_shared_params_owner.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Renaming the vlScWrap fileMap entry renames the header, not the class"
+echo "------------------------------------------------------------------------"
+python3 test_vl_sc_wrap_name.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

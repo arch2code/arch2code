@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=twoClkSlowSink
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: twoClk_twoClkSlowSink
-module twoClk_twoClkSlowSink
+//module as defined by block: twoClkSlowSink
+module twoClkSlowSink
 // Generated Import package statement(s)
 import twoClkIp_package::*;
 (
@@ -40,4 +40,4 @@ import twoClkIp_package::*;
         end
     end
 
-endmodule: twoClk_twoClkSlowSink
+endmodule: twoClkSlowSink

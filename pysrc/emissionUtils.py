@@ -128,19 +128,22 @@ def typeWidthExpr(value, lang, constSpelling, literalWidth):
 
 
 def constReference_cpp(constKey, prj, configScope):
-    """C++ spelling of a constant reference: its bare name, or
-    `<configScope>::<name>` when configScope is given and the constant is
-    itself parameterizable. Shared C++ constant spelling for typeWidthExpr's
-    constSpelling leaf, used both for a structure field's own width
-    (templates/systemc/includes.py, templates/systemc/structures.py) and for
-    an interface payload's type-datatype width (pysrc/intf_gen_utils.py).
+    """C++ spelling of a constant reference.
 
-    configScope is the C++ scope that prefixes a parameterizable constant, or
-    None for a bare, unqualified name. It is 'Config' for the template
-    parameter of a parameterizable class, or a connected child's own
-    per-variant Config struct name when a non-templated parent spells that
-    child's payload directly."""
-    constName = prj.data['constants'][constKey]['constant']
-    if configScope and prj.data['constants'][constKey]['isParameterizable']:
-        return f"{configScope}::{constName}"
-    return constName
+    A constant that is not parameterizable, or any constant when configScope is
+    None, spells as its bare name. A parameterizable root constant spells as
+    `<configScope>::<name>`: configScope is the C++ scope that holds the
+    resolved value, 'Config' for the template parameter of a parameterizable
+    class, or a connected child's own per-variant Config struct name when a
+    non-templated parent spells that child's payload directly. A derived (eval)
+    constant is not a member of any Config, so it spells as its canonical
+    expression, recursing over the same scope for the root constants it names;
+    parenthesised because the caller substitutes it into a larger expression."""
+    row = prj.data['constants'][constKey]
+    if not configScope or not row['isParameterizable']:
+        return row['constant']
+    if row['evalCanonical']:
+        return '(' + emitExpr(row['evalCanonical'],
+                              lambda symKey: constReference_cpp(symKey, prj, configScope),
+                              C) + ')'
+    return f"{configScope}::{row['constant']}"

@@ -7,6 +7,4 @@ parameters:
             IP_DATA_WIDTH: 8
             IP_MEM_DEPTH: 16
             IP_NONCONST_DEPTH: 24
-        # PROTOTYPE (P1): variant1 removed from the ip sub-project. variant1 of
-        # ip is now DECLARED at the higher-level assembler (ip_top.yaml) to prove
-        # a variant can be created above the sub-project without editing it.
+        # variant1 is declared where it is instantiated, in bridge/yaml/ipBridge.yaml.

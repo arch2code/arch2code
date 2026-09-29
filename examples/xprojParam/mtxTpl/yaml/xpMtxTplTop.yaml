@@ -1,0 +1,91 @@
+# Matrix row C=1, channel Config source = the container's own class template
+# parameter.
+#
+# Identical to mtxLit - same four cells over the same endpoint blocks - except
+# for one thing: the container declares its own
+# ipParameters constant and lists it in params:, so the channel payload is
+# parameterizable AND the container is emitted as `template<typename Config>`.
+# The channel type spells `mtChSt<Config>`, which resolves at the container's
+# instantiation site to the variant Config the top binds.
+#
+# Nothing elects that Config from the connection: all three parties are
+# different declarations, so both ends are adapted and channelParentConfig has
+# no unadapted end left to elect from. The container's template parameter is the
+# only thing typing the channel here.
+include:
+    - ../../mtxIp/yaml/xpMtxIp.yaml
+
+ipParameters:
+    constants:
+        MTX_CH_WIDTH: { value: 12, maxValue: 16, desc: "Channel pixel width owned by the assembling container" }
+    types:
+        mtChPixelT: { width: MTX_CH_WIDTH, maxBitwidth: 16, desc: "Parameterizable channel pixel word" }
+
+types:
+    mtChTagT:  { width: 8, desc: "Channel tag; low packed position" }
+    mtChMarkT: { width: 8, desc: "Channel trailing marker" }
+
+structures:
+    # Same packed sequence as every endpoint payload: tag@0 w8, data@8 w12,
+    # mark@20 w8.
+    mtChSt:
+        tag:  { varType: mtChTagT,   desc: "Sample sequence tag" }
+        data: { varType: mtChPixelT, desc: "Pixel payload" }
+        mark: { varType: mtChMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    mtChIf:
+        desc: "Parameterized assembler-owned channel between the two endpoint ports"
+        interfaceType: push_ack
+        structures:
+            - { structure: mtChSt, structureType: data_t }
+
+blocks:
+    xpMtxTplTop:
+        desc: "Assembler top holding the templated-container matrix row"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpMtxTplTop_tb:
+        desc: "Testbench container for xpMtxTplTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpMtxTplWrap:
+        desc: "Templated container of the four parameterized-channel cells"
+        params: [MTX_CH_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpMtxTplTop_tb: { container: xpMtxTplTop_tb, instanceType: xpMtxTplTop_tb, instGroup: top }
+    u_xpMtxTplTop:  { container: xpMtxTplTop_tb, instanceType: xpMtxTplTop,    instGroup: top }
+    uWrap:          { container: xpMtxTplTop,    instanceType: xpMtxTplWrap,   instGroup: top, variant: v0 }
+
+    # cell C1S0D0: parameterized channel, literal src port, literal dst port
+    uSrcLL: { container: xpMtxTplWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLL: { container: xpMtxTplWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C1S0D1: parameterized channel, literal src port, parameterized dst port
+    uSrcLP: { container: xpMtxTplWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLP: { container: xpMtxTplWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+    # cell C1S1D0: parameterized channel, parameterized src port, literal dst port
+    uSrcPL: { container: xpMtxTplWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPL: { container: xpMtxTplWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C1S1D1: parameterized channel, parameterized src port, parameterized dst port
+    uSrcPP: { container: xpMtxTplWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPP: { container: xpMtxTplWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+
+connections:
+    - { interface: mtChIf, src: uSrcLL, srcport: out, dst: uDstLL, dstport: in }
+    - { interface: mtChIf, src: uSrcLP, srcport: out, dst: uDstLP, dstport: in }
+    - { interface: mtChIf, src: uSrcPL, srcport: out, dst: uDstPL, dstport: in }
+    - { interface: mtChIf, src: uSrcPP, srcport: out, dst: uDstPP, dstport: in }
+
+parameters:
+    xpMtxTplWrap:
+        v0:
+            MTX_CH_WIDTH: 12

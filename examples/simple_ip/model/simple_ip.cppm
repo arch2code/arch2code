@@ -5,20 +5,17 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "push_ack_channel.h"
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module simple_ip.block;
 import simple_ip.base;
+import ip.config;
 import common_shared_types;
 import simple_ip;
 import ip;
@@ -48,8 +45,8 @@ public:
     std::shared_ptr<ipBase<ipVariant0Config>> uIp;
 
     // cross-interface thunkers
-    push_ack_port_thunker<simpleData8St, ipDataSt<ipVariant0Config>> thunker_out_uIp;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp_uIp;
+    push_ack_port_thunker<simple_ip_ns::simpleData8St, ip_ns::ipDataSt<ipVariant0Config>, false> thunker_out_uIp;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uIp_uIp;
 
     simple_ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~simple_ip() override = default;
@@ -80,7 +77,7 @@ simple_ip::simple_ip(sc_module_name blockName, const char * variant, blockBaseMo
         ,apbReg_uIp("ip_apbReg_uIp", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "simple_ip")))
         ,uDataGen(std::dynamic_pointer_cast<dataGenBase>(instanceFactory::createInstance(name(), "uDataGen", "dataGen", "", "simple_ip")))
-        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip")))
+        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip.simple_ip.ip")))
         ,thunker_out_uIp("thunker_out_uIp", out, uIp->ipDataIf, name())
         ,thunker_apbReg_uIp_uIp("thunker_apbReg_uIp_uIp", apbReg_uIp, uIp->regs, name())
 // GENERATED_CODE_END

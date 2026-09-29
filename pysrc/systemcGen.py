@@ -53,7 +53,7 @@ class genSystemC:
             else:
                 exclude = set()
             # get a block based view of the database. This is used for block definitions
-            qualBlock = prj.getQualBlock( self.code.block)
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName)
             block = prj.data['blocks'][qualBlock]['block']
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
             if not data:
@@ -69,6 +69,14 @@ class genSystemC:
         if self.code.params.context:
             # get a context view of the database. This is used for shared header files
             context = self.code.params.context
+            data = prj.getContextData(context, self.dataTypeMappings)
+            self.calcStructure(data, prj)
+        elif self.code.params.project:
+            # Project-mode artifact: owns no context of its own, its content spans
+            # the whole build. The ownership gate above guarantees the file belongs
+            # to this build, so TOPCONTEXT names the context whose include chain
+            # covers it.
+            context = [prj.config.getConfig('TOPCONTEXT')]
             data = prj.getContextData(context, self.dataTypeMappings)
             self.calcStructure(data, prj)
         else:

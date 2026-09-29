@@ -116,6 +116,14 @@ The following Stage 7 coverage was **closed 2026-06-12**:
   category (E1.1-E1.5, E2.1-E2.5, E3.1, E3.2). The deployed
   `.claude/skills/address-migration/SKILL.md` copy was synced.
 
+**Addendum 2026-08-07 —** `addressGroup` project qualification added five
+fixtures outside the Stage 7 scope: T6.1 / T6.2 (composed multi-project
+positives) and E5.1 / E5.2 / E5.3 (the new hard errors). They share the composed
+fixture tree `unittest/fixtures/addrgroup-qualification/` and the harness
+`unittest/_addrgroup_qual_helpers.py`, are registered in `ADDRCTL_TESTS`
+(`unittest/run_all_tests.sh`), and moved the parallel-runner drift guard from 89
+to 94. See [`plan-addressgroup-qualification.md`](./plan-addressgroup-qualification.md).
+
 No Stage 7 coverage rows remain open. The literal
 `unittest/run_all_tests.sh` "green" gate is currently blocked by four
 **unrelated** failures (`test_addrctl_single_router_multi_reg.py`,
@@ -333,6 +341,24 @@ silently degrade simple projects.
 | TT.3 | IP leaf whose `registerPorts:` interface is itself parameterized (register-bus structure references an `ipParameters` type). Register-side packed-form check must resolve per-variant. | Unit | `unittest/test_addrctl_parameterized_reg_iface.py` (and, if the case proves stable, fold a small variant into `ip_test`) |
 | TT.4 | Nested router whose own `addressBlock.upstreamPort` carries parameterizable structures. | Unit | `unittest/test_addrctl_parameterized_router_upstream.py` |
 
+### Composed multi-project topologies (`addressGroup` project qualification)
+
+Added 2026-08-07 with
+[`plan-addressgroup-qualification.md`](./plan-addressgroup-qualification.md). The
+group registry is keyed on `(owningProjectName, group)`, so these shapes need a
+*composed* fixture: `unittest/fixtures/addrgroup-qualification/` (root plus
+sibling `childA` / `childB` / `common`), driven through the shared harness
+`unittest/_addrgroup_qual_helpers.py`. The flat-file
+`_addrctl_helpers.make_project()` cannot express a composed project, so these
+follow the `test_nested_ownership.py` copytree pattern instead; child-owned
+artifacts are produced by flipping `PROJECTNAME` on a copy of the same composed
+database. Both are generator runs, not column reads.
+
+| ID | Shape | Mechanism | Fixture |
+| -- | ----- | --------- | ------- |
+| T6.1 | Three independently authored projects in one composed build, each declaring an address group named `top` with distinct `varType:`/`enumPrefix:`. Each project's firmware header must carry its own `addr_id_*` enum with its own address IDs restarting at 0 (a shared counter would number the six routed slots 0..5). | Unit | `unittest/test_addrgroup_composed_sibling_groups.py` |
+| T6.2 | Same composed fixture, decoder side: each child project's router must emit exactly its own two leaves as decoder channel slots, in its own contiguous slot order. Guards `getBDAddressDecode`'s `routedInstances` and the `templates/systemc/constructor.py::addressDecoder` consumption of it. The root router is excluded — its container declares no `registerPorts:` and no parent dispatches to it, so the dispatch-tree root has no upstream feed to name. | Unit | `unittest/test_addrgroup_composed_decoder_channels.py` |
+
 ## Error-Case Matrix (all unit tests)
 
 Every diagnostic in the parent plan's Stage 5.3 list and the
@@ -347,7 +373,7 @@ asserts the error string verbatim. Follow the existing
 | E1.1 | Block declares both `addressBlock:` and `registerPorts:`. | `unittest/test_error_addr_and_register_ports.py` | block name + both field names |
 | E1.2 | Leaf declares more than one `registerPorts:` row. | `unittest/test_error_multi_register_ports.py` | block name + row count |
 | E1.3 | `registerPorts:` row points at an interface whose resolved `interfaceType` has `addressBus: false`. | `unittest/test_error_register_port_not_addressbus.py` | row name + interface + `interface_defs` entry |
-| E1.4 | Two router blocks declare the same `addressBlock.addressGroup`. | `unittest/test_error_duplicate_address_group.py` | both router-block names + group name |
+| E1.4 | Two router blocks declare the same `addressBlock.addressGroup`. | `unittest/test_error_duplicate_address_group.py` | both router-block names + group name. **Narrowed 2026-08-07** to *within one project*; this single-project fixture still covers it, and E5.1 covers the composed case where the check must discriminate. |
 | E1.5 | Leaf `registerPorts:` row targets an interface defined outside the leaf's load-time scope. | `unittest/test_error_register_port_out_of_scope.py` | leaf YAML filename + `key:regs` + `field interface` + offending interface name + the "no `<section>` row named ... any context processed before this one" hint produced by the generic schema-validator enrichment in `pysrc/processYaml.py::processSimple`. The defining YAML file is not named because dependency order processes the leaf before the interface-defining file. |
 
 ### Post-parse hierarchy diagnostics (Stage 4)
@@ -389,6 +415,25 @@ decode span fits where its nominal `2^32` range would not); the `ip_test`
 view test (`test_addrctl_ip_test_view.py`) is the regression anchor. No new
 positive fixture is required.
 
+### `addressGroup` qualification diagnostics
+
+Added 2026-08-07 with
+[`plan-addressgroup-qualification.md`](./plan-addressgroup-qualification.md). All
+three are db-time and all three use the composed fixture described under T6.\*, so
+the check is exercised where it actually has to discriminate between projects. All
+three were proven to fail against the pre-change generator.
+
+| ID | Condition | Fixture | Asserted diagnostic substring |
+| -- | --------- | ------- | ----------------------------- |
+| E5.1 | One project declares the same `addressGroup` on two router blocks, in a build where two *other* projects also declare that name. `_post_registerAddressBlock`, within-project. | `unittest/test_error_addrgroup_duplicate_in_project.py` | **committed** and **verified**; `addressGroup 'top'`, both declaring blocks (`block 'childADecode2'` / `block 'childADecode'`), `duplicates a prior addressBlock:`, the owning `project 'childAProj'`, and `within a project` |
+| E5.2 | An `addressGroup:` reference names a group the referring file's own project does not declare. `_auto_addressGroup`; no outward fall to ancestor projects. | `unittest/test_error_addrgroup_unresolved_reference.py` | **committed** and **verified**; referring row `uChildA`, `address group 'top'`, referring file `rootTop.yaml`, owning `project 'rootProj'`, plus the projects observed declaring the name (`childAProj`, `childBProj`). Second case drives a name declared nowhere and asserts the "parsed so far in this build" clause is **absent** — the list is a parse-order observation, never a build-wide census |
+| E5.3 | Two address groups in different projects resolve the same `varType` (case 1) or the same `enumPrefix` (case 2). Build-wide `validateAddressGroupEnumIdentity()`, run immediately before `generateAddressEnums`. | `unittest/test_error_addrgroup_vartype_collision.py` | **committed** and **verified**; both groups in `project::group` spelling (`childAProj::top`, `childBProj::top`), both declaring blocks, and the colliding field value (`varType: 'addr_id_child_a'` / `enumPrefix: 'ADDR_ID_CHILD_A_'`) |
+
+Not covered by a fixture: the generation-time "no instance in this build's design
+tree is routed to it" error in `getBDAddressDecode` (`printError` +
+`exit(warningAndErrorReport())`). It does not fire anywhere in the corpus and
+guards the `routedInstances`-empty case that would otherwise emit malformed C++.
+
 ## Coverage Map
 
 Every code path in `postParseRegisterPorts.py` and the planned test
@@ -427,6 +472,12 @@ case (or cases) that cover it once Stage 7 is complete.
 | Parameterized router register interface | TT.4 |
 | No `_global` register-bus binds | E3.3 |
 | `registerPorts:` without backing `ports:` row | E3.4 |
+| `_post_registerAddressBlock` `(projectName, group)` registry key; two projects declaring one group name | T6.1, T6.2 |
+| `_post_registerAddressBlock` within-project duplicate declaration | E1.4 (single project), E5.1 (composed) |
+| `_auto_addressGroup` project-scoped reference resolution; `_auto_addressID` per-project counter | T6.1, E5.2 |
+| `validateAddressGroupEnumIdentity()` `varType` / `enumPrefix` collision gate | E5.3 |
+| `getBDAddressDecode` `routedInstances` qualification + reachability filter | T6.2 |
+| `getBDAddressDecode` `routedInstances` empty (generation-time error) | (no fixture; does not fire in the corpus) |
 
 ## Implementation Phasing
 

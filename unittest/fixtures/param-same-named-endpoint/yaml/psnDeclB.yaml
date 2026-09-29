@@ -1,0 +1,5 @@
+# File B: a same-named X, unrelated to A's. It backs nothing on dataIf; a
+# block reaching only this file has a different X than the interface needs.
+ipParameters:
+    constants:
+        X: { value: 4, maxValue: 8, desc: "unrelated width, same bare name as A's X" }

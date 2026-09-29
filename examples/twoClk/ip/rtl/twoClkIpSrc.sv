@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=twoClkIpSrc
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: twoClkIp_twoClkIpSrc
-module twoClkIp_twoClkIpSrc
+//module as defined by block: twoClkIpSrc
+module twoClkIpSrc
 // Generated Import package statement(s)
 import twoClkIp_package::*;
 (
@@ -33,4 +33,4 @@ import twoClkIp_package::*;
         end
     end
 
-endmodule: twoClkIp_twoClkIpSrc
+endmodule: twoClkIpSrc

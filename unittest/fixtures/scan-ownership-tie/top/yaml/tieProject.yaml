@@ -1,0 +1,15 @@
+yamlFormat: 2
+
+# Two unrelated projects each include one shared definitions file that
+# neither owns; neither lists the other, so the file ties at equal depth.
+projectName: tieProj
+
+projectFiles:
+    - ../../projA/yaml/projAProject.yaml
+    - ../../projB/yaml/projBProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

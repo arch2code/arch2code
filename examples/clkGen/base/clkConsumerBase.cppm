@@ -17,7 +17,7 @@ public:
     virtual ~clkConsumerBase() = default;
 
 
-    clkConsumerBase(std::string name, const char * variant) 
+    clkConsumerBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class clkConsumerInverted : public virtual blockPortBase
 public:
 
 
-    clkConsumerInverted(std::string name) 
+    clkConsumerInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class clkConsumerChannels
 public:
 
 
-    clkConsumerChannels(std::string name, std::string srcName) 
+    clkConsumerChannels(std::string name, std::string srcName)
     {};
     void bind( clkConsumerBase *a, clkConsumerInverted *b)
     {

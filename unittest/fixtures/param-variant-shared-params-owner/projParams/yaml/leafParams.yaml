@@ -1,0 +1,4 @@
+# leafIp's root parameter, declared once for every project that includes it.
+ipParameters:
+    constants:
+        LEAF_W: { value: 12, maxValue: 32, desc: "leaf payload width" }

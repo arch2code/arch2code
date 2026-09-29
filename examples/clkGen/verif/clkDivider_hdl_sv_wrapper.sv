@@ -13,7 +13,7 @@ module clkDivider_hdl_sv_wrapper
     input rstRef_n,
     output rstDivRaw_n
 );
-    clkGen_clkDivider dut (
+    clkDivider dut (
         .clkRef(clkRef),
         .clkDiv(clkDiv),
         .clkDivBy2(clkDivBy2),

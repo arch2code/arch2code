@@ -1,0 +1,49 @@
+# itrLeaf is parameterizable and reached only through an inheritContainerParam
+# instance, so its Config is itrCont's and it declares no variant of its own.
+# hasTb: true then asks for a testbench whose DUT variant nothing names.
+#
+# Nothing here is parameterized beyond the `params:` lists themselves: a block
+# declaring params: is parameterizable on its own, and a parameterizable
+# structure would drag in surface rules that have nothing to do with the shape
+# under test. The suite's second phase gives itrLeaf its own variant, the remedy
+# the diagnostic states.
+
+ipParameters:
+    constants:
+        ITR_ALGO: { value: 1, maxValue: 7, desc: "Algorithm select" }
+
+blocks:
+    itrTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+    itrTop_tb:
+        desc: "Testbench container for itrTop"
+        hasRtl: false
+        hasVl: false
+    itrCont:
+        desc: "Container whose declared variant supplies the leaf's Config"
+        params: [ITR_ALGO]
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    itrLeaf:
+        desc: "Leaf typed by its container's Config, asking for a testbench"
+        params: [ITR_ALGO]
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    itrTop_tb: { container: itrTop_tb, instanceType: itrTop_tb, instGroup: top }
+    u_itrTop:  { container: itrTop_tb, instanceType: itrTop,    instGroup: top }
+    uCont:     { container: itrTop,    instanceType: itrCont,   instGroup: top, variant: contA }
+    uLeaf:     { container: itrCont,   instanceType: itrLeaf,   instGroup: top, inheritContainerParam: true }
+
+parameters:
+    itrCont:
+        contA:
+            ITR_ALGO: ITR_ALGO

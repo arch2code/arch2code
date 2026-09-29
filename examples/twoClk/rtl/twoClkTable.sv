@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=twoClkTable
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: twoClk_twoClkTable
-module twoClk_twoClkTable
+//module as defined by block: twoClkTable
+module twoClkTable
 // Generated Import package statement(s)
 import twoClk_package::*;
 (
@@ -17,7 +17,7 @@ import twoClk_package::*;
     memory_if #(.data_t(twoClkTblSt), .addr_t(twoClkTblAddrSt)) tbl_reg();
 
 // Instances
-twoClk_twoClkTableRegs uTwoClkTableRegs (
+twoClkTableRegs uTwoClkTableRegs (
     .twoClkReg (twoClkReg),
     .tbl (tbl_reg),
     .clk (clk),
@@ -34,4 +34,4 @@ memory_sp #(.DEPTH(TWO_CLK_TBL_WORDS), .data_t(twoClkTblSt)) uTbl (
 
 // GENERATED_CODE_END
 
-endmodule: twoClk_twoClkTable
+endmodule: twoClkTable

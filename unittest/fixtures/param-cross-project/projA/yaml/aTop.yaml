@@ -1,0 +1,33 @@
+# projA: an independently authored parameterized IP. It declares its OWN
+# ipParameters constant WIDTH, its OWN parameterizable payload, and its OWN
+# parameterized interface dataIf.
+#
+# projB and projC declare all three under exactly the same names. That is the
+# case this fixture exists to express: parameter identity is the declaring-file
+# qualified constant key, so three same-named WIDTH constants are three distinct
+# parameter identities, and interface identity is likewise file-qualified while
+# several resolution paths compare only the bare interface NAME.
+
+ipParameters:
+    constants:
+        WIDTH: { value: 8, maxValue: 32, desc: "projA payload width" }
+    types:
+        dataT: { width: WIDTH, maxBitwidth: 32, desc: "projA parameterizable payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "projA payload" }
+
+interfaces:
+    dataIf:
+        desc: "projA parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    aIp:
+        desc: "projA parameterized source IP"
+        params: [WIDTH]
+        ports:
+            out: { interface: dataIf, direction: src }

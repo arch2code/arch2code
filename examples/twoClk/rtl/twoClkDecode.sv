@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=twoClkDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: twoClk_twoClkDecode
-module twoClk_twoClkDecode
+//module as defined by block: twoClkDecode
+module twoClkDecode
 // Generated Import package statement(s)
 import twoClk_package::*;
 (
@@ -45,9 +45,7 @@ always_comb begin
     set_trans_active = 1'b0;
     if (twoClkReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        begin
-            twoClkReg_uTable_next_psel = '1;
-        end
+        twoClkReg_uTable_next_psel = '1;
     end
 end
 
@@ -72,5 +70,5 @@ assign twoClkReg.pready  = pready;
 assign twoClkReg.prdata  = prdata;
 assign twoClkReg.pslverr = pslverr;
 
-endmodule: twoClk_twoClkDecode
+endmodule: twoClkDecode
 // GENERATED_CODE_END

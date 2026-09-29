@@ -718,14 +718,18 @@ def test_optional_tail_after_hdlparam_group(proj, consumer):
 
 
 def test_thunker_split_and_gap(proj, top):
-    """A thunker emits up-required, down-required, up-optional, down-optional.
+    """A thunker emits up-required, down-required, the direct-copy verdicts,
+    up-optional, down-optional.
 
     The cross-interface bind pairs parent `awGap` with child `awNone`. The view
     hands each side its own full-length binding list in declaration order; the
     SystemC layer splits both at their optional boundary and splices them into
     the order the hand-written template declares, then drops only the trailing
     unbound run, so the parent's bound buser_t keeps its slot behind two
-    sentinels while the child's three unbound optionals fall off the end.
+    sentinels while the child's three unbound optionals fall off the end. One
+    verdict bool per required pair sits between the required and optional
+    groups; both sides bind the same three declarations here, so every verdict
+    is true. Every bound payload is spelled qualified by its context namespace.
     """
     print("\n[thunker] each side is split at its own optional boundary")
     flagged = cross_interface_end(top)
@@ -748,27 +752,38 @@ def test_thunker_split_and_gap(proj, top):
          ('child', 'wuser_t', True, True), ('child', 'buser_t', True, True),
          ('child', 'id_t', True, True)],
         "thunker view carries each side's full binding list in declared order")
+    check_equal([pair['directCopy'] for pair in flagged['thunker']['payloadPairs']],
+                [True, True, True],
+                "one direct-copy verdict per required pair, true for identical declarations")
 
+    # Bound payloads are spelled qualified by the namespace of the context that
+    # declares them (the fixture's single arch file).
+    context = proj.data['structures'][flagged['thunker']['payloads'][0]['structureKey']]['_context']
+    ns = intf_gen_utils.cpp_namespace_name(proj.contextModuleIdentity[context])
     decls = intf_gen_utils.sc_declare_thunkers(top, proj, '', top)
     check_equal(
         decls,
-        ['axi_write_port_thunker<awAddrSt, awDataSt, awStrbSt, awAddrSt, '
-         'awDataSt, awStrbSt, std::monostate, std::monostate, userSt> '
+        [f'axi_write_port_thunker<{ns}::awAddrSt, {ns}::awDataSt, {ns}::awStrbSt, '
+         f'{ns}::awAddrSt, {ns}::awDataSt, {ns}::awStrbSt, true, true, true, '
+         f'std::monostate, std::monostate, {ns}::userSt> '
          'thunker_outAwCross_uConsumer;'],
-        "the emitted thunker is up-required, down-required, up-optional, with "
-        "the child's trailing unbound run dropped")
+        "the emitted thunker is up-required, down-required, verdicts, up-optional, "
+        "with the child's trailing unbound run dropped")
 
     # The interleave is a prefix/suffix cut of each side's declared list: the
     # emitted arguments are the parent's required group, then the child's, then
-    # the parent's optional group. Reading the groups back off the declaration
-    # keeps this coupled to the spelling the C++ template requires.
+    # the verdicts, then the parent's optional group. Reading the groups back
+    # off the declaration keeps this coupled to the spelling the C++ template
+    # requires.
     args = template_args(decls[0])
-    check_equal(args[:3], ['awAddrSt', 'awDataSt', 'awStrbSt'],
+    check_equal(args[:3], [f'{ns}::awAddrSt', f'{ns}::awDataSt', f'{ns}::awStrbSt'],
                 "the up-side required payloads lead the thunker arguments")
-    check_equal(args[3:6], ['awAddrSt', 'awDataSt', 'awStrbSt'],
+    check_equal(args[3:6], [f'{ns}::awAddrSt', f'{ns}::awDataSt', f'{ns}::awStrbSt'],
                 "the down-side required payloads follow, before any optional")
-    check_equal(args[6:], ['std::monostate', 'std::monostate', 'userSt'],
-                "the up-side optional group follows both required groups, with "
+    check_equal(args[6:9], ['true', 'true', 'true'],
+                "the direct-copy verdicts follow the required groups")
+    check_equal(args[9:], ['std::monostate', 'std::monostate', f'{ns}::userSt'],
+                "the up-side optional group follows the verdicts, with "
                 "its gaps sentinel-filled")
 
 
@@ -1008,7 +1023,7 @@ interfaces:
       - {{structure: pT, structureType: p_ty}}
 
 blocks:
-  top: {{desc: "Top block"}}
+  top: {{desc: "Top block", hasRtl: false}}
   producer: {{desc: "Producer block", params: [{producer_params}]}}
   consumer:
     desc: "Consumer block"
@@ -1018,11 +1033,17 @@ blocks:
 
 instances:
   uTop: {{container: top, instanceType: top}}
-  uProducer: {{container: top, instanceType: producer}}
-  uConsumer: {{container: top, instanceType: consumer}}
+  uProducer: {{container: top, instanceType: producer, variant: v0}}
+  uConsumer: {{container: top, instanceType: consumer, variant: v0}}
 
 connections:
   - {{interface: ifA, src: uProducer, srcport: outA, dst: uConsumer, dstport: inA}}
+
+parameters:
+  producer:
+    v0: {{{producer_params}: 6}}
+  consumer:
+    v0: {{{consumer_params}: 6}}
 """
 
 
@@ -1121,7 +1142,7 @@ interfaces:
       - {structure: pT, structureType: p_ty}
 
 blocks:
-  top: {desc: "Top block"}
+  top: {desc: "Top block", hasRtl: false}
   producer:
     desc: "Producer block"
     params: [PW]
@@ -1208,13 +1229,13 @@ def test_param_type_variant_channel_width():
         channel = intf_gen_utils.sc_gen_block_channels(conns[0], proj, top)
         check_equal(
             channel['channel_decl'],
-            'ts_proto_variant_channel<lT, clog2(40+1), pT<consumerV0Config>, '
-            'consumerV0Config::PW> outA;',
+            'ts_proto_variant_channel<lT, clog2(40+1), pT<paramTypeVariant_consumerV0Config>, '
+            'paramTypeVariant_consumerV0Config::PW> outA;',
             "the channel spells the payload's width against the same "
             "per-variant Config as its own name, not the unqualified Config "
             "scope of the non-templated top")
         check('Config::PW' not in
-              channel['channel_decl'].replace('consumerV0Config::PW', ''),
+              channel['channel_decl'].replace('paramTypeVariant_consumerV0Config::PW', ''),
               "the width never falls back to the bare, undeclared Config "
               "scope")
 
@@ -1233,18 +1254,15 @@ def test_param_type_payload_missing_backing_param():
     with tempfile.TemporaryDirectory(prefix='optional_params_param_type_missing_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
+        # An unrelated backing constant/param on the consumer only, in place
+        # of PW, so the consumer is parameterized (and its variant binds that
+        # unrelated param) but cannot size the type payload.
         arch = PARAM_TYPE_ARCH_YAML.format(
-            producer_params='PW', consumer_params='PW')
-        # Add an unrelated backing constant/param on the consumer only, in
-        # place of PW, so the consumer is parameterized but cannot size the
-        # type payload.
+            producer_params='PW', consumer_params='OTHER_W')
         arch = arch.replace(
             'constants:\n  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}\n',
             'constants:\n  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}\n'
             '  OTHER_W: {value: 6, isParameterizable: true, maxValue: 12, desc: "unrelated backing param"}\n')
-        arch = arch.replace(
-            'consumer:\n    desc: "Consumer block"\n    params: [PW]\n',
-            'consumer:\n    desc: "Consumer block"\n    params: [OTHER_W]\n')
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
             f.write(arch)
         projectPath = os.path.join(projDir, 'paramTypeMissingProject.yaml')
@@ -1278,6 +1296,241 @@ projectFiles:
               "the message states the same reason a struct payload gets")
         check("missing PW" in message,
               "the message names the missing backing parameter")
+
+
+PARAM_TYPE_CONNMAP_ARCH_YAML = """interface_defs:
+  ts_proto:
+    parameters:
+      p_ts: {datatype: typeStruct}
+      p_ty: {datatype: type, optional: true, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ts: p_ts
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ts', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ts', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ts_proto'
+      multicycle_types: []
+
+constants:
+  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}
+  OTHER_W: {value: 6, isParameterizable: true, maxValue: 12, desc: "unrelated backing param"}
+
+types:
+  lT: {widthLog2: 40, desc: "log2 type"}
+  pT: {width: PW, isParameterizable: true, desc: "parameterizable type"}
+
+interfaces:
+  ifA:
+    interfaceType: ts_proto
+    desc: "type parameter carried through a connectionMap"
+    structures:
+      - {structure: lT, structureType: p_ts}
+      - {structure: pT, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer: {desc: "Producer block", params: [PW]}
+  mid: {desc: "Container surfacing its child's port at its own boundary", params: [PW]}
+  consumer:
+    desc: "Consumer block"
+    params: [OTHER_W]
+    ports:
+      inA: {interface: ifA, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer, variant: v0}
+  uMid: {container: top, instanceType: mid, variant: m0}
+  uConsumer: {container: mid, instanceType: consumer, variant: v0}
+
+connections:
+  - {interface: ifA, src: uProducer, srcport: outA, dst: uMid, dstport: inA}
+
+connectionMaps:
+  - {interface: ifA, block: mid, port: inA, direction: dst, instance: uConsumer, instancePort: inA}
+
+parameters:
+  producer:
+    v0: {PW: 6}
+  mid:
+    m0: {PW: 6}
+  consumer:
+    v0: {OTHER_W: 6}
+"""
+
+
+def test_param_type_payload_connectionmap_missing_backing_param():
+    """A connectionMap child that lacks the type payload's backing parameter
+    is rejected. The container sizes the payload from PW and the mapped child
+    declares only OTHER_W. The connectionMaps loop of
+    `_validateParameterizedConnectionEndpoints` must reach the `types`-kind
+    payload the same way the connection loop does."""
+    print("\n[negative] a connectionMap child missing a type payload's backing parameter is rejected")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_connmap_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(PARAM_TYPE_CONNMAP_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'paramTypeConnMapProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: paramTypeConnMap
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'paramTypeConnMap.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a connectionMap child missing the type payload's backing "
+                          "parameter must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("connectionMap" in message, "the message names the connectionMap")
+        check("ifA" in message, "the message names the interface")
+        check("uConsumer" in message, "the message names the mapped child instance")
+        check("does not declare the required parameter" in message,
+              "the message states the same reason a connection end gets")
+        check("missing PW" in message,
+              "the message names the missing backing parameter")
+
+
+PARAM_TYPE_THUNKER_ARCH_YAML = """interface_defs:
+  ty_proto:
+    parameters:
+      p_ty: {datatype: type}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ty_proto'
+      multicycle_types: []
+
+constants:
+  FW: {value: 8, desc: "fixed type width"}
+  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}
+
+types:
+  fT: {width: FW, desc: "fixed type whose width names a constant"}
+  pT: {width: PW, isParameterizable: true, desc: "parameterizable type"}
+
+interfaces:
+  ifFixed:
+    interfaceType: ty_proto
+    desc: "fixed type payload, the connection's interface"
+    structures:
+      - {structure: fT, structureType: p_ty}
+  ifParam:
+    interfaceType: ty_proto
+    desc: "parameterizable type payload, the consumer port's interface"
+    structures:
+      - {structure: pT, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer:
+    desc: "Producer block"
+    ports:
+      outA: {interface: ifFixed, direction: src}
+  consumer:
+    desc: "Consumer block"
+    params: [PW]
+    ports:
+      inA: {interface: ifParam, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer}
+  uConsumer: {container: top, instanceType: consumer, variant: v0}
+
+connections:
+  - {interface: ifFixed, src: uProducer, srcport: outA, dst: uConsumer, dstport: inA}
+
+parameters:
+  consumer:
+    v0: {PW: 8}
+"""
+
+
+def test_param_type_payload_thunker_spelling():
+    """A thunker member spells both arms of `_qualified_payload_type_name` for
+    a `type` payload. The connection binds the fixed `fT` (width FW) and the
+    consumer port binds the parameterizable `pT` (width PW), so the
+    non-templated `top` adapts them. The fixed side spells its resolved
+    literal width, not the constant name, which is as ambiguous across
+    imported contexts as the type name. The parameterizable side spells the
+    alias template and its width against the consumer's per-variant Config."""
+    print("\n[thunker] a type payload spells the fixed and the parameterizable arm")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_thunker_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(PARAM_TYPE_THUNKER_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'paramTypeThunkerProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: paramTypeThunker
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'paramTypeThunker.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode != 0:
+            check(False, "type payload thunker build must succeed:\n"
+                          f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+            return
+
+        proj = projectOpen(dbPath)
+        top = proj.getBlockData(proj.getQualBlock('top'))
+        flagged = cross_interface_end(top)
+        if flagged is None:
+            check(False, "exactly one cross-interface bind is flagged on the fixture")
+            return
+        context = proj.data['types'][flagged['thunker']['payloads'][0]['structureKey']]['_context']
+        ns = intf_gen_utils.cpp_namespace_name(proj.contextModuleIdentity[context])
+        config = 'paramTypeThunker_consumerV0Config'
+        check_equal(
+            intf_gen_utils.sc_declare_thunkers(top, proj, '', top),
+            [f'ty_proto_port_thunker<{ns}::fT, 8, {ns}::pT<{config}>, {config}::PW, '
+             'false> thunker_outA_uConsumer;'],
+            "the fixed type spells its literal width and the parameterizable "
+            "type spells its alias and width against the bound Config")
 
 
 def test_cross_interface_bind_kind_mismatch():
@@ -1447,6 +1700,8 @@ def main():
     test_param_type_payload_builds_and_generates()
     test_param_type_variant_channel_width()
     test_param_type_payload_missing_backing_param()
+    test_param_type_payload_connectionmap_missing_backing_param()
+    test_param_type_payload_thunker_spelling()
     test_cross_interface_bind_kind_mismatch()
 
     print("\n" + "=" * 72)

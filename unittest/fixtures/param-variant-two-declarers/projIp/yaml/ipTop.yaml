@@ -1,0 +1,30 @@
+# projIp: the reusable leaf IP, declaring its own parameter and a v0 binding.
+
+ipParameters:
+    constants:
+        LEAF_W: { value: 12, maxValue: 32, desc: "leaf payload width" }
+    types:
+        leafT: { width: LEAF_W, maxBitwidth: 32, desc: "leaf parameterizable payload word" }
+
+structures:
+    leafSt:
+        data: { varType: leafT, desc: "leaf payload" }
+
+interfaces:
+    leafIf:
+        desc: "leaf parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafSt, structureType: data_t }
+
+blocks:
+    leafIp:
+        desc: "reusable parameterized leaf IP"
+        params: [LEAF_W]
+        ports:
+            in: { interface: leafIf, direction: dst }
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 12

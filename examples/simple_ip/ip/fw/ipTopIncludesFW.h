@@ -3,32 +3,37 @@
 #define IPTOPINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=ip --context=../../yaml/ipTop.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipIncludesFW.h"
+namespace fw_ns::ip_ipTop {}
+namespace fw_ns { using namespace ip_ipTop; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns::ip_ipTop {
 //constants
 
+} // namespace fw_ns::ip_ipTop
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns::ip_ipTop {
 // types
 typedef uint8_t ipStdMarkerT; // [1] Boundary marker bit; matches ipDataSt::marker
 typedef uint8_t ipStdData8T; // [8] Non-param 8-bit boundary payload; matches ipDataSt::data @variant0
 
+} // namespace fw_ns::ip_ipTop
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns::ip_ipTop {
 // enums
 enum  addr_id_ipstd {        //Generated type for addressing ipStd instances
     ADDR_ID_IPSTD_UIP=0 };   // uIp instance address
@@ -41,8 +46,10 @@ inline const char* addr_id_ipstd_prt( addr_id_ipstd val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns::ip_ipTop
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns::ip_ipTop {
 // structures
 struct ipStdData8St {
     ipStdData8T data; //8-bit payload; matches ipDataSt::data @variant0
@@ -74,7 +81,7 @@ struct ipStdData8St {
     {}
 
 };
+} // namespace fw_ns::ip_ipTop
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //IPTOPINCLUDESFW_H_

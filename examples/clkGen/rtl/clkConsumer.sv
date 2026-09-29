@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=clkConsumer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: clkGen_clkConsumer
-module clkGen_clkConsumer
+//module as defined by block: clkConsumer
+module clkConsumer
 
 (
     input clk, rst_n
@@ -24,4 +24,4 @@ always_comb begin
     n_count = count + 1'b1;
 end
 
-endmodule: clkGen_clkConsumer
+endmodule: clkConsumer

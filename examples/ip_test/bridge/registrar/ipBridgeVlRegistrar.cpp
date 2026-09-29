@@ -7,11 +7,16 @@
 #include "blockBase.h"
 #include "ipBridge_hdl_sc_wrapper.h"
 #include "VipBridge_hdl_sv_wrapper.h"
-#include "ipVariantConfig.h"
 
 namespace {
 struct _ipBridge_vl_registrar {
     _ipBridge_vl_registrar() {
+        instanceFactory::registerBlock(
+            "ipBridge_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipBridge_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "ipBridge");
         instanceFactory::registerBlock(
             "ipBridge_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {

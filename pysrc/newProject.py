@@ -42,6 +42,13 @@ projectFiles:
 # The top level instance of the design
 topInstance: {name}_tb
 
+# Filename prefixes. An omitted key and "" both mean no prefix. To change a
+# prefix that is already set, rename the files by hand first, then run
+# make migrate.
+# svFilePrefix: ""  # Prefix for generated SystemVerilog filenames and matching module names
+# scFilePrefix: ""  # Prefix for generated SystemC filenames
+# fwFilePrefix: ""  # Prefix for generated firmware filenames
+
 dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
   root: ../..    # project root directory relative to this project file
 
@@ -72,7 +79,7 @@ firmwareFileMapTemplate = \
   # context that has firmware-visible content. Headers appear once the design
   # declares registers or regAccess memories.
   fileMap:
-    includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, desc: "yaml based fw include file"}}
+    includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file"}}
 
 """
 

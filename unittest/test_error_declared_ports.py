@@ -218,7 +218,7 @@ def test_declared_interface_wrong_protocol():
     )
     return test_error_case(
         yaml,
-        ["cross-interface bind", "same interface meta-protocol", "req_ack", "rdy_vld"],
+        ["parent side", "child side", "same interface meta-protocol", "req_ack", "rdy_vld"],
         "Declared port interface has wrong protocol",
     )
 

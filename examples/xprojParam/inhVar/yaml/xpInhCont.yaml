@@ -1,0 +1,180 @@
+# `inheritContainerParam` under a MULTI-VARIANT container.
+#
+# The other inheritance mechanism. `containerParam:` (the dpLeaf/dpMid/dpTop
+# family) sources named parameters one at a time; `inheritContainerParam: true`
+# types a contained instance with the CONTAINER's whole Config, so the child
+# needs no variant of its own at all. Both mechanisms defer the child's Config
+# to the container, and both are therefore answered by the container naming the
+# child's implementation type at the createInstance site.
+#
+# This cell exists because the older mechanism had no site-named type and was
+# resolved through the factory KEY instead. The key carries no Config dimension,
+# so the registration could only name ONE member of the child's type family: the
+# child at the container's DEFAULT Config. Every container variant other than the
+# default therefore resolved to the wrong C++ type, the generated
+# dynamic_pointer_cast yielded nullptr, and the container dereferenced it while
+# binding the child's ports.
+#
+# The whole cell is one container block instantiated at TWO variants. `default`
+# and `alt` differ only in INH_ALGO, which - exactly like the depth family's
+# DP_ALGO - is a purely behavioural knob appearing in no width and no packed
+# position, so nothing here is decided by the layout gate.
+#
+# One authoring rule the cell also pins: the leaf must NOT also be instantiated
+# by an instance naming no variant. An inheriting site and a variant-less site
+# resolve the same factory key `(child, "", project)`, which cannot carry two
+# Configs, so `validate_inherit_container_params` rejects the pair at db-create.
+#
+# The file is named for the container block on purpose. `<contextStem>Config`
+# and the `default` variant's `<block><Variant>Config` are the same identifier
+# when the block name matches the file stem and the variant is literally named
+# `default`, which is the shape the product tree's `debayer` is in. It is what
+# made the bug invisible there: one variant, and its struct is the context
+# default the registration happened to name.
+
+ipParameters:
+    constants:
+        INH_ALGO:  { value: 1, maxValue: 7,  desc: "Algorithm select; behavioural only, appears in no width" }
+        INH_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        inhPixelT: { width: INH_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    inhTagT:  { width: 8, desc: "Sample sequence tag; lowest packed position" }
+    inhAlgoT: { width: 8, desc: "Algorithm the leaf instance resolved, stamped into the payload" }
+    inhMarkT: { width: 8, desc: "Trailing marker" }
+
+structures:
+    inhSt:
+        tag:  { varType: inhTagT,   desc: "Sample sequence tag" }
+        algo: { varType: inhAlgoT,  desc: "INH_ALGO the leaf instance resolved" }
+        data: { varType: inhPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: inhMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    inhIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: inhSt, structureType: data_t }
+
+blocks:
+    xpInhTop:
+        desc: "DUT top holding both chains"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpInhTop_tb:
+        desc: "Testbench container for xpInhTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpInhWrap:
+        desc: "Untemplated container of the two chains"
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpInhCont:
+        desc: "Multi-variant container whose leaves inherit its whole Config"
+        # The leaves' parameterizable inhIf appears on this block's own boundary,
+        # so this block is a class template and declares the params its surface
+        # names. Both params are also what the leaves inherit.
+        params: [INH_ALGO, INH_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            # Not named in/out: a connectionMap's channel name is the container
+            # PORT name and a plain connection's is the source PORT name, and the
+            # two share one namespace.
+            contIn:  { interface: inhIf, direction: dst }
+            contOut: { interface: inhIf, direction: src }
+    xpInhLeaf:
+        desc: "Leaf whose Config IS its container's: stamps the resolved INH_ALGO and forwards"
+        # Every param is a by-name subset of xpInhCont's, which
+        # inheritContainerParam requires.
+        params: [INH_ALGO, INH_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            in:  { interface: inhIf, direction: dst }
+            out: { interface: inhIf, direction: src }
+    xpInhDrv:
+        desc: "Stimulus for both chains"
+        params: [INH_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            out:  { interface: inhIf, direction: src }
+            out2: { interface: inhIf, direction: src }
+    xpInhChk:
+        desc: "Checker: asserts the algorithm the leaf stamped is the one its own Config declares"
+        params: [INH_ALGO, INH_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            in: { interface: inhIf, direction: dst }
+
+instances:
+    xpInhTop_tb: { container: xpInhTop_tb, instanceType: xpInhTop_tb, instGroup: top }
+    u_xpInhTop:  { container: xpInhTop_tb, instanceType: xpInhTop,    instGroup: top }
+    uWrap:       { container: xpInhTop,    instanceType: xpInhWrap,   instGroup: top }
+    uDrv:        { container: xpInhWrap,   instanceType: xpInhDrv,    instGroup: top, variant: drv }
+    # THE CELL. One container block, two variants. `default` is the variant whose
+    # Config struct is the context default the old registration named; `alt` is
+    # every other variant, and is the one that used to resolve to a null child.
+    uContDef:    { container: xpInhWrap,   instanceType: xpInhCont,   instGroup: top, variant: default }
+    uContAlt:    { container: xpInhWrap,   instanceType: xpInhCont,   instGroup: top, variant: alt }
+    uChkDef:     { container: xpInhWrap,   instanceType: xpInhChk,    instGroup: top, variant: chkDef }
+    uChkAlt:     { container: xpInhWrap,   instanceType: xpInhChk,    instGroup: top, variant: chkAlt }
+    # Two leaves in a chain rather than one: a connectionMap thunker member is
+    # named after the mapped INSTANCE alone, so mapping the container's two ports
+    # onto one child emits two members of the same name.
+    uLeafA:      { container: xpInhCont,   instanceType: xpInhLeaf,   instGroup: top, inheritContainerParam: true }
+    uLeafB:      { container: xpInhCont,   instanceType: xpInhLeaf,   instGroup: top, inheritContainerParam: true }
+
+connections:
+    - { interface: inhIf, src: uLeafA,   srcport: out,     dst: uLeafB,   dstport: in,     name: contLink }
+    - { interface: inhIf, src: uDrv,     srcport: out,     dst: uContDef, dstport: contIn }
+    - { interface: inhIf, src: uContDef, srcport: contOut, dst: uChkDef,  dstport: in }
+    - { interface: inhIf, src: uDrv,     srcport: out2,    dst: uContAlt, dstport: contIn }
+    - { interface: inhIf, src: uContAlt, srcport: contOut, dst: uChkAlt,  dstport: in }
+
+connectionMaps:
+    - { interface: inhIf, block: xpInhCont, port: contIn,  direction: dst, instance: uLeafA, instancePort: in }
+    - { interface: inhIf, block: xpInhCont, port: contOut, direction: src, instance: uLeafB, instancePort: out }
+
+parameters:
+    xpInhCont:
+        # Bound to the constants' own declared values, so this variant's struct
+        # IS the context default struct - the product tree's shape.
+        default:
+            INH_ALGO: INH_ALGO
+            INH_WIDTH: INH_WIDTH
+        # A second variant of the same container. Nothing else about it differs.
+        alt:
+            INH_ALGO: 6
+            INH_WIDTH: INH_WIDTH
+    xpInhDrv:
+        drv:
+            INH_WIDTH: INH_WIDTH
+    xpInhChk:
+        # Each checker reads the algorithm it should expect from its OWN Config,
+        # so the two chains expect different algorithms through an independent
+        # path from the one that reaches the leaves.
+        chkDef:
+            INH_ALGO: INH_ALGO
+            INH_WIDTH: INH_WIDTH
+        chkAlt:
+            INH_ALGO: 6
+            INH_WIDTH: INH_WIDTH

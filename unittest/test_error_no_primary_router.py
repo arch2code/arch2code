@@ -8,7 +8,7 @@ contain each other, which is a containment cycle. projectCreate rejects
 the cycle before post-parse router inference runs, naming the cycle as
 a path at the instance row that closes it.
 
-Topology (must be rejected — cyclic placement)::
+Topology (must be rejected - cyclic placement)::
 
     uTop (instanceType=tb)
     +-- uScopeA (instanceType=scopeA)
@@ -37,13 +37,13 @@ ARCH_YAML = (
     + """
 blocks:
     tb:
-        desc: "Top block — holds the scopeA instance the cycle hangs from"
+        desc: "Top block - holds the scopeA instance the cycle hangs from"
         hasMdl: true
     scopeA:
-        desc: "Container A — holds routerA plus a scopeB instance"
+        desc: "Container A - holds routerA plus a scopeB instance"
         hasMdl: true
     scopeB:
-        desc: "Container B — holds routerB plus a scopeA instance"
+        desc: "Container B - holds routerB plus a scopeA instance"
         hasMdl: true
 """
     + render_router('routerA', 'groupA')

@@ -240,7 +240,7 @@ int sc_main(int argc, char* argv[])
     }
     std::cout << endl;
 
-    std::cout << "Seed: 0x" << std::hex << randFactory::gSeed << endl;
+    std::cout << "Seed: 0x" << std::hex << randFactory::gSeed << std::dec << endl;
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     // If a valid verilated instance is provided from command line, register with factory
@@ -255,7 +255,7 @@ int sc_main(int argc, char* argv[])
 #endif
 
 
-    testBench->createTestBench();
+    const bool testBenchCreated = testBench->createTestBench();
 
     // General framework startup process: after simController::startupDelay of
     // simulation time, allow end-of-test to latch. This runs for EVERY project
@@ -278,6 +278,12 @@ int sc_main(int argc, char* argv[])
     std::string vlInst = simController::vlInst;
     if(vlInst != "" && !instanceFactory::getInstance(vlInst)) {
         errorCode::fail("Primary instance not found");
+        goto exit_goto;
+    }
+    if (!testBenchCreated) {
+        // The exit path below prints exitMsg, not errorCode's string.
+        errorCode::fail("Testbench construction failed");
+        exitMsg << errorCode::getErrorString() << endl;
         goto exit_goto;
     }
     if (try_sc_start(false, SC_ZERO_TIME) != 0) {

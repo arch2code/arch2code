@@ -1,0 +1,32 @@
+# A third project composing both integrators and declaring no xviLeaf variant of its own.
+
+yamlFormat: 2
+projectName: xviBoth
+
+topInstance: xviBoth_tb
+
+projectFiles:
+    - ../../yaml/xviBothOwn.yaml
+    - ../../../top/prj/yaml/xviTopProject.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

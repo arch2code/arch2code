@@ -1,0 +1,5 @@
+blocks:
+    cuTop: { desc: "Root block of childUTopProj" }
+
+instances:
+    uCuTop: { container: cuTop, instanceType: cuTop }

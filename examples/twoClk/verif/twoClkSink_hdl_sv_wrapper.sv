@@ -23,7 +23,7 @@ module twoClkSink_hdl_sv_wrapper
     assign #0 in.data = in_data;
     assign #0 in_ack = in.ack;
 
-    twoClk_twoClkSink dut (
+    twoClkSink dut (
         .in(in), // push_ack_if.dst
         .clk(clk),
         .rst_n(rst_n)

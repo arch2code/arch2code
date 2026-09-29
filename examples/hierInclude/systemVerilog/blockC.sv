@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: hierInclude_blockC
-module hierInclude_blockC
+//module as defined by block: blockC
+module blockC
 // Generated Import package statement(s)
-import hierInclude_hierIncludeC_package::*;
+import hierIncludeC_package::*;
 import hierInclude_package::*;
 (
     rdy_vld_if.dst eh2c,
@@ -16,7 +16,7 @@ import hierInclude_package::*;
     rdy_vld_if #(.data_t(cSt)) cx2z();
 
 // Instances
-hierInclude_blockCX uBlockCX (
+blockCX uBlockCX (
     .anInterface (eh2c),
     .b2C (b2C),
     .cx2y (cx2y),
@@ -25,13 +25,13 @@ hierInclude_blockCX uBlockCX (
     .rst_n (rst_n)
 );
 
-hierInclude_blockCY uBlockCY (
+blockCY uBlockCY (
     .x (cx2y),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-hierInclude_blockCZ uBlockCZ (
+blockCZ uBlockCZ (
     .x (cx2z),
     .clk (clk),
     .rst_n (rst_n)
@@ -39,4 +39,4 @@ hierInclude_blockCZ uBlockCZ (
 
 // GENERATED_CODE_END
 
-endmodule: hierInclude_blockC
+endmodule: blockC

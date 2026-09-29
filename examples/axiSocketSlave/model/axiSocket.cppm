@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"

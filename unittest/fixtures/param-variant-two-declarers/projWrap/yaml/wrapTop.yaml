@@ -1,0 +1,42 @@
+# projWrap: holds uLeaf at v0 and declares leafIp/v0 itself while also including
+# ipTop.yaml, which declares it too; two visible declarations, rejected.
+include:
+    - ../../projIp/yaml/ipTop.yaml
+
+ipParameters:
+    constants:
+        WRAP_W: { value: 8, maxValue: 32, desc: "wrapper payload width" }
+    types:
+        wrapT: { width: WRAP_W, maxBitwidth: 32, desc: "wrapper parameterizable payload word" }
+
+structures:
+    wrapSt:
+        data: { varType: wrapT, desc: "wrapper payload" }
+
+interfaces:
+    wrapIf:
+        desc: "wrapper parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapSt, structureType: data_t }
+
+blocks:
+    wrapBlk:
+        desc: "integration wrapper routing its boundary port to the leaf IP"
+        params: [WRAP_W]
+        ports:
+            in: { interface: wrapIf, direction: dst }
+
+instances:
+    uLeaf: { container: wrapBlk, instanceType: leafIp, variant: v0 }
+
+connectionMaps:
+    - { interface: wrapIf, block: wrapBlk, port: in, direction: dst, instance: uLeaf, instancePort: in }
+
+parameters:
+    wrapBlk:
+        v0:
+            WRAP_W: 8
+    leafIp:
+        v0:
+            LEAF_W: 8

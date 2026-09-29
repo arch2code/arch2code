@@ -3,22 +3,25 @@
 #define AXISTDINCLUDESFW_H_
 // 
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=axiSocketMaster --context=axiStd.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::axiSocketMaster_axiStd {}
+namespace fw_ns { using namespace axiSocketMaster_axiStd; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns::axiSocketMaster_axiStd {
 //constants
 
+} // namespace fw_ns::axiSocketMaster_axiStd
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns::axiSocketMaster_axiStd {
 // types
 typedef uint8_t _axiIdT; // [4] Type for axi ID tags. Used for ARID, RID, AWID, BID.
 typedef uint8_t _axiLenT; // [8] Exact number of transfers in a burst.
@@ -27,8 +30,10 @@ typedef uint8_t _axiProtT; // [3] Protection type for the AXI protocol Bit 0 - P
 typedef uint8_t _axiQoST; // [4] QoS type for the AXI protocol
 typedef uint8_t _axiRegionT; // [4] Region type for the AXI protocol
 
+} // namespace fw_ns::axiSocketMaster_axiStd
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns::axiSocketMaster_axiStd {
 // enums
 enum  _axiResponseT {        //Response type for the AXI protocol
     AXIRESP_OKAY=0,          // OKAY
@@ -109,9 +114,9 @@ inline const char* _axiWrCacheT_prt( _axiWrCacheT val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns::axiSocketMaster_axiStd
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //AXISTDINCLUDESFW_H_

@@ -20,7 +20,7 @@ public:
     virtual ~axiSocketSlave_tbBase() = default;
 
 
-    axiSocketSlave_tbBase(std::string name, const char * variant) 
+    axiSocketSlave_tbBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -35,7 +35,7 @@ export class axiSocketSlave_tbInverted : public virtual blockPortBase
 public:
 
 
-    axiSocketSlave_tbInverted(std::string name) 
+    axiSocketSlave_tbInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -50,7 +50,7 @@ export class axiSocketSlave_tbChannels
 public:
 
 
-    axiSocketSlave_tbChannels(std::string name, std::string srcName) 
+    axiSocketSlave_tbChannels(std::string name, std::string srcName)
     {};
     void bind( axiSocketSlave_tbBase *a, axiSocketSlave_tbInverted *b)
     {

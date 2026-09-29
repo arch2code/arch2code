@@ -1,0 +1,24 @@
+# projBSplit's own interface declarations, in a separate file from the block that
+# uses them. The interface is named dataIf - the same name projA uses - so the
+# composed database holds two distinct interfaces sharing one bare name.
+#
+# The payload is a literal 8 bits, matching the width projA's parameterized
+# payload resolves to for the bound variant, so every packed-form check the
+# parser runs against the correctly resolved interface passes and the only thing
+# that distinguishes the two interfaces is their identity: this one carries the
+# structure splitDataSt, projA's carries dataSt. A pure declaration include may
+# not declare ipParameters, so this payload is literal by construction.
+
+types:
+    splitDataT: { width: 8, desc: "projBSplit literal payload word" }
+
+structures:
+    splitDataSt:
+        data: { varType: splitDataT, desc: "projBSplit payload" }
+
+interfaces:
+    dataIf:
+        desc: "projBSplit push/ack stream, same interface name as projA's"
+        interfaceType: push_ack
+        structures:
+            - { structure: splitDataSt, structureType: data_t }

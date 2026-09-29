@@ -22,7 +22,7 @@ public:
     virtual ~bridgeStdTopBase() = default;
 
 
-    bridgeStdTopBase(std::string name, const char * variant) 
+    bridgeStdTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -37,7 +37,7 @@ export class bridgeStdTopInverted : public virtual blockPortBase
 public:
 
 
-    bridgeStdTopInverted(std::string name) 
+    bridgeStdTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -52,7 +52,7 @@ export class bridgeStdTopChannels
 public:
 
 
-    bridgeStdTopChannels(std::string name, std::string srcName) 
+    bridgeStdTopChannels(std::string name, std::string srcName)
     {};
     void bind( bridgeStdTopBase *a, bridgeStdTopInverted *b)
     {

@@ -1,0 +1,125 @@
+# The layout gate on an inheritContainerParam child: the rejecting arm.
+#
+# xpInhBadWrap is instantiated at two variants, alt (16) and use (24). The
+# inner leaf takes its Config from whichever site contains it, so the inner
+# junction (uSrc, a literal 16, against uLeafA) is adjudicated once per
+# container site: alt agrees, use disagrees. Site sorts alt before use, so a
+# diagnostic naming the first enumerated site instead of the failing one
+# would say alt; the rejection must name use.
+
+ipParameters:
+    constants:
+        # The default is deliberately NOT the value any site binds, so a
+        # fallback to it is visible as a wrong number rather than passing by
+        # coincidence.
+        IL_WIDTH: { value: 8, maxValue: 32, desc: "Pixel width; default deliberately unequal to every bound value" }
+    types:
+        ilPixelT: { width: IL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    ilTagT:  { width: 8, desc: "Sample tag; lowest packed position" }
+    ilMarkT: { width: 8, desc: "Trailing marker, so a width change also moves an offset" }
+
+structures:
+    ilSt:
+        tag:  { varType: ilTagT,   desc: "Sample tag" }
+        data: { varType: ilPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: ilMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    ilIf:
+        desc: "Parameterized pixel push/ack stream carrying the width under test"
+        interfaceType: push_ack
+        structures:
+            - { structure: ilSt, structureType: data_t }
+
+blocks:
+    xpInhLayoutBadTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInhLayoutBadTop_tb:
+        desc: "Testbench container for xpInhLayoutBadTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInhBadWrap:
+        desc: "The container whose whole Config its inheriting leaves take"
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            contIn: { interface: ilIf, direction: dst }
+    xpInhBadSrc:
+        desc: "Literal-bound driver, reused at several sites"
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: ilIf, direction: src }
+    xpInhBadLeaf:
+        desc: "The leaf under test: its Config IS its container's, not stated here"
+        # Every param is a by-name subset of xpInhBadWrap's, which
+        # inheritContainerParam requires.
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: ilIf, direction: dst }
+
+instances:
+    xpInhLayoutBadTop_tb: { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop_tb, instGroup: top }
+    u_xpInhLayoutBadTop:  { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop,    instGroup: top }
+    uWrapUse:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: use }
+    uWrapAlt:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: alt }
+    uTopSrcUse: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: top }
+    uTopSrcAlt: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: inner }
+    uSrc:    { container: xpInhBadWrap,      instanceType: xpInhBadSrc,  instGroup: top, variant: inner }
+    # THE CELL. uLeafA is reached through a plain connection (the connection
+    # arm); uLeafB is reached through the container's own connectionMap
+    # boundary port (the connectionMap arm). Both inherit xpInhBadWrap's
+    # Config, at whichever of its two sites contains them.
+    uLeafA: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
+    uLeafB: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
+
+connections:
+    # Top-level: each container site is driven at its own width, so neither
+    # of these junctions fails.
+    - { interface: ilIf, src: uTopSrcUse, srcport: out, dst: uWrapUse, dstport: contIn, name: topLinkUse }
+    - { interface: ilIf, src: uTopSrcAlt, srcport: out, dst: uWrapAlt, dstport: contIn, name: topLinkAlt }
+    # Inside the container: the connection arm under test. uSrc stays at the
+    # literal 16 at both sites, so it agrees with the alt site (16) and
+    # disagrees with the use site (24).
+    - { interface: ilIf, src: uSrc, srcport: out, dst: uLeafA, dstport: in, name: innerLink }
+
+connectionMaps:
+    # The connectionMap arm under test: the container's boundary port forwards
+    # to the second inheriting leaf, at both container sites. Both sides
+    # resolve from the same site's configuration, so this junction never
+    # fails; the rejection is entirely the inner connection arm's, at the
+    # use site.
+    - { interface: ilIf, block: xpInhBadWrap, port: contIn, direction: dst, instance: uLeafB, instancePort: in }
+
+parameters:
+    xpInhBadWrap:
+        use:
+            IL_WIDTH: 24
+        alt:
+            IL_WIDTH: 16
+    xpInhBadSrc:
+        # The literal the top-level use-site connection must be found equal to.
+        top:
+            IL_WIDTH: 24
+        # The literal that agrees with the alt site and disagrees with the
+        # use site.
+        inner:
+            IL_WIDTH: 16

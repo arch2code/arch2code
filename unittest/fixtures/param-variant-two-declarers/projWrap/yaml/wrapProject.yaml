@@ -1,0 +1,14 @@
+# projWrap PROJECT file. References projIp so the leaf stays owned by its author,
+# and owns wrapTop.yaml: the leaf's config context and this project's binding of
+# variant v0.
+projectName: projWrap
+
+projectFiles:
+    - ../../projIp/yaml/ipProject.yaml
+    - wrapTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

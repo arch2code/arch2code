@@ -1,0 +1,52 @@
+# Assembler context for the sanctioned pattern. The assembler declares its own
+# fixed-width boundary payload and a DIFFERENTLY NAMED interface boundaryIf, so
+# every connection end is a cross-interface bind: the packed form of each
+# endpoint's own parameterized dataIf is reconciled against the assembler's
+# literal boundary form for that endpoint's bound variant, and the generated
+# model adapts each leg through a thunker.
+#
+# No ipParameters and no parameter identity crosses the boundary, which is why
+# this composition is legal where the straight-through chain is not.
+include:
+    - ../../projA/yaml/aTop.yaml
+    - ../../projB/yaml/bTop.yaml
+    - ../../projC/yaml/cTop.yaml
+
+types:
+    boundaryT: { width: 8, desc: "assembler-owned literal boundary word" }
+
+structures:
+    boundarySt:
+        data: { varType: boundaryT, desc: "assembler-owned literal boundary payload" }
+
+interfaces:
+    boundaryIf:
+        desc: "assembler-owned literal-width push/ack boundary stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: boundarySt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "assembler top"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uA:   { container: top, instanceType: aIp, variant: v0 }
+    uB:   { container: top, instanceType: bIp, variant: v0 }
+    uC:   { container: top, instanceType: cIp, variant: v0 }
+
+connections:
+    - { interface: boundaryIf, src: uA, srcport: out, dst: uB, dstport: in }
+    - { interface: boundaryIf, src: uB, srcport: out, dst: uC, dstport: in }
+
+parameters:
+    aIp:
+        v0:
+            WIDTH: 8
+    bIp:
+        v0:
+            WIDTH: 8
+    cIp:
+        v0:
+            WIDTH: 8

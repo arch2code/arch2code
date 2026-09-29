@@ -1,0 +1,31 @@
+# Sink stage project for the shared-declaration composition. It references the
+# upstream stage project so the shared declarations stay owned by their author.
+
+yamlFormat: 2
+projectName: xpSinkShared
+
+projectFiles:
+    - ../../../gain/prj/yaml/xpGainProject.yaml
+    - ../../yaml/xpSinkShared.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

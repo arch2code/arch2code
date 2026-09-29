@@ -1,0 +1,34 @@
+# Single-project cell for `inheritContainerParam` under a multi-variant
+# container. Both the container and the child it types must be owned by one
+# project - inheritContainerParam requires it - so unlike the depth family this
+# cell is not composed.
+
+yamlFormat: 2
+projectName: vlInh
+
+topInstance: vliTop_tb
+
+projectFiles:
+    - ../../yaml/vliCont.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

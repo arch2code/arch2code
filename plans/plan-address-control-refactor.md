@@ -102,6 +102,46 @@ register-bus child interface from the resolved leaf-to-handler
 parse-time block-row `registerPorts:` field, removing the last
 projectOpen read of that authored construct.
 
+### Amendment 2026-08-07 — the `AddressGroups` registry key is `(projectName, group)`
+
+Delivered by [`plan-addressgroup-qualification.md`](./plan-addressgroup-qualification.md),
+which owns the design and the rationale. Recorded here because this plan owns the
+`addressBlock:` schema and `_post_registerAddressBlock`.
+
+- **The registry key is the tuple `(owningProjectName, group)`, not the bare
+  group string.** All four dicts `_post_registerAddressBlock` populates
+  (`counterGroup['AddressGroups']`, `counterGroupControl['AddressGroups']`,
+  `counterData['AddressGroups']`, `self.addressControl['AddressGroups']`) are
+  keyed on that tuple. The owning project is
+  `contextOwningProject[<declaring yamlFile>]`; ownership is assigned before
+  `processYamls`, so the lookup is parse-time safe. Diagnostics spell the key
+  `project::group` via `addressGroupLabel()`. **Do not reintroduce the flat key** —
+  it is what made two independently authored projects that each name a group
+  `top` uncomposable.
+- **The duplicate-declaration check is within-project, not build-wide.** It fires
+  only when one project declares the same group name on two router blocks, and
+  names both declaring blocks, both declaring files, and the project. Two
+  projects each declaring `top` is legal.
+- **Reference resolution is project-scoped.** `_auto_addressGroup` resolves an
+  `addressGroup:` reference against `(contextOwningProject[referring file],
+  name)` only; there is no outward fall to ancestor projects. An unresolved
+  reference is an error.
+- **Consumers form the tuple themselves** from the row's `_context` (the
+  `calcAddresses` space check, the nested-decoder containment check,
+  `generateAddressEnums`) or from `yamlFile` (`_auto_addressGroup`,
+  `_auto_addressID`, `_post_registerAddressBlock`). `getBDAddressDecode` forms it
+  from the router block row's `_context` and publishes `routedInstances`.
+- **`varType` / `enumPrefix` are NOT qualified, and are gated instead.** The
+  authored values reach generated text unchanged, so the new build-wide
+  `validateAddressGroupEnumIdentity()` (called from `projectCreate` immediately
+  before `generateAddressEnums`) rejects two groups sharing either field. The
+  firmware surface is one flat `fw_ns` namespace, so a shared `varType` would
+  otherwise redefine the enum or silently bind one enumerator to two address IDs.
+  This also closes the pre-existing hole where two *differently named* groups
+  shared one `varType`, which was never checked.
+- **No schema change, no YAML migration.** Authored YAML still spells
+  `addressGroup: top`.
+
 ## Related Documents
 
 | Document | Relevance |
@@ -294,7 +334,9 @@ processed before instance rows, so `_auto_addressGroup` and
 `_auto_addressID` can continue to validate and allocate instance
 placement against the registered groups. Duplicate `addressGroup`
 declarations error in `_post_registerAddressBlock` and name both router
-blocks.
+blocks. **Amended 2026-08-07:** the registry is keyed on
+`(owningProjectName, group)` and the duplicate check is *within-project*;
+see the amendment above.
 
 ### 1.3 — `interface_defs.addressBus` attribute
 
@@ -478,7 +520,9 @@ The new script performs the following steps:
    that carry `addressBlock:`, indexed by
    `addressBlock.addressGroup`. Normalize defaulted
    `upstreamPort` / `registerDecoderPort` to `apbReg` if absent.
-   Error if two router blocks declare the same `addressGroup`.
+   Error if two router blocks declare the same `addressGroup`
+   (**amended 2026-08-07:** within the same project — the group registry
+   is keyed on `(projectName, group)`).
 
 2. **Resolve the router instance per group by container-locality.**
    Walk `prj.data['instances']` for instances whose `instanceType`
@@ -641,7 +685,12 @@ The new diagnostics that must be present and tested:
   leaf's load-time scope.
 - Leaf declares more than one `registerPorts:` row (parse-time block
   diagnostic).
-- Two router blocks declare the same `addressGroup`.
+- Two router blocks declare the same `addressGroup` (amended 2026-08-07:
+  within one project).
+- An `addressGroup:` reference names a group the referring file's own
+  project does not declare (added 2026-08-07).
+- Two address groups resolve the same `varType` or the same `enumPrefix`
+  (added 2026-08-07, `validateAddressGroupEnumIdentity()`).
 - Two router instances exist for the same group.
 - Zero or multiple primary-router candidates.
 - Leaf and router resolve to different `interfaceType` values.

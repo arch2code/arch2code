@@ -23,7 +23,7 @@ module twoClkSlowTick_hdl_sv_wrapper
     assign #0 out_data = out.data;
     assign #0 out.ack = out_ack;
 
-    twoClk_twoClkSlowTick dut (
+    twoClkSlowTick dut (
         .out(out), // push_ack_if.src
         .clkTick(clkTick),
         .rstTick_n(rstTick_n)

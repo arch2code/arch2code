@@ -1,0 +1,24 @@
+# Definitions-only file (no blocks:) declaring one parameter several files name
+# without redeclaring it. It has no consumer of its own by design.
+ipParameters:
+    constants:
+        CSH_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width, shared by two unrelated blocks" }
+    types:
+        cshPixelT: { width: CSH_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    cshTagT:  { width: 8, desc: "Sample sequence tag" }
+    cshMarkT: { width: 8, desc: "Trailing marker" }
+
+structures:
+    cshSt:
+        tag:  { varType: cshTagT,  desc: "Sample sequence tag" }
+        data: { varType: cshPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: cshMarkT, desc: "Trailing marker" }
+
+interfaces:
+    cshIf:
+        desc: "Shared parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: cshSt, structureType: data_t }

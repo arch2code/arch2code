@@ -5,21 +5,17 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
-#include "mixedVariantConfig.h"
 // GENERATED_CODE_END
-#include "mixedVariantConfig.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed.block;
 import mixed.base;
+import mixed.blockG.config;
 import mixed;
 import mixed_mixedBlockC;
 import mixed_blockA.base;
@@ -58,7 +54,7 @@ public:
     std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<blockCBase> uBlockC;
     std::shared_ptr<blockBBase> uBlockB;
-    std::shared_ptr<blockGBase<blockGGvariant0Config>> uBlockG;
+    std::shared_ptr<blockGBase<mixed_blockGGvariant0Config>> uBlockG;
 
     mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~mixed() override = default;
@@ -96,7 +92,7 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "mixed")))
         ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "", "mixed")))
         ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "", "mixed")))
-        ,uBlockG(std::dynamic_pointer_cast<blockGBase<blockGGvariant0Config>>(instanceFactory::createInstance(name(), "uBlockG", "blockG", "gvariant0", "mixed")))
+        ,uBlockG(std::dynamic_pointer_cast<blockGBase<mixed_blockGGvariant0Config>>(instanceFactory::createInstance(name(), "uBlockG", "blockG", "gvariant0", "mixed.mixed.mixed_blockG")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

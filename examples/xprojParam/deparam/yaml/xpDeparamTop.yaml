@@ -1,0 +1,52 @@
+# Assembler for the de-parameterized boundary: it owns a literal-width boundary
+# payload and a differently named interface, so each stage keeps its own
+# parameterized videoIf and every leg is a cross-interface bind adapted by a
+# generated thunker. No parameter identity crosses a project boundary.
+#
+# The boundary fields mirror videoSt field for field (tag then data) at the
+# widths the bound v0 variants resolve to, so the packed forms reconcile.
+include:
+    - ../../gain/yaml/xpGain.yaml
+    - ../../filter/yaml/xpFilter.yaml
+    - ../../sink/yaml/xpSink.yaml
+
+types:
+    boundaryTagT:   { width: 4, desc: "Literal boundary tag; matches videoSt::tag" }
+    boundaryPixelT: { width: 8, desc: "Literal boundary pixel; matches videoSt::data at PIXEL_WIDTH=8" }
+
+structures:
+    boundarySt:
+        tag:  { varType: boundaryTagT,   desc: "Sample sequence tag" }
+        data: { varType: boundaryPixelT, desc: "Pixel payload" }
+
+interfaces:
+    boundaryIf:
+        desc: "Assembler-owned literal-width push/ack boundary stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: boundarySt, structureType: data_t }
+
+blocks:
+    xpDeparamTop:
+        desc: "Assembler top holding the three independently parameterized stages"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpDeparamTop_tb:
+        desc: "Testbench container for xpDeparamTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    xpDeparamTop_tb: { container: xpDeparamTop_tb, instanceType: xpDeparamTop_tb, instGroup: top }
+    u_xpDeparamTop:  { container: xpDeparamTop_tb, instanceType: xpDeparamTop,    instGroup: top }
+    uGain:           { container: xpDeparamTop,    instanceType: xpGain,          instGroup: top, variant: v0 }
+    uFilter:         { container: xpDeparamTop,    instanceType: xpFilter,        instGroup: top, variant: v0 }
+    uSink:           { container: xpDeparamTop,    instanceType: xpSink,          instGroup: top, variant: v0 }
+
+connections:
+    - { interface: boundaryIf, src: uGain,   srcport: videoOut, dst: uFilter, dstport: videoIn }
+    - { interface: boundaryIf, src: uFilter, srcport: videoOut, dst: uSink,   dstport: videoIn }

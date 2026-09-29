@@ -17,6 +17,12 @@ struct _twoClkDecode_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkDecode_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "twoClk");
+        instanceFactory::registerBlock(
+            "twoClkDecode_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkDecode_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "twoClk");
     }
 };
 static _twoClkDecode_vl_registrar _twoClkDecode_vl_registrar_instance;

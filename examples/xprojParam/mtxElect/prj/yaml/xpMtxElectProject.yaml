@@ -1,0 +1,32 @@
+# Assembler project for matrix row C=1 (parameterized channel, Config elected from an unadapted end).
+
+yamlFormat: 2
+projectName: xpMtxElect
+
+projectFiles:
+    - ../../../mtxIp/prj/yaml/xpMtxIpProject.yaml
+    - ../../yaml/xpMtxElectTop.yaml
+
+topInstance: xpMtxElectTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

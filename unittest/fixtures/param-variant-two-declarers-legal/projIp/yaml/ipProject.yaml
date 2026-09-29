@@ -1,0 +1,12 @@
+# projIp PROJECT file. Owns ipTop.yaml and everything declared there, including
+# the leafIp block and this project's own binding of variant v0.
+projectName: projIp
+
+projectFiles:
+    - ipTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -1,0 +1,11 @@
+include:
+    - ../../childUTop/yaml/childUTopArch.yaml
+    - ../../childNamed/yaml/childNamedArch.yaml
+
+blocks:
+    asmTop: { desc: "Assembler top" }
+
+instances:
+    uAsm:    { container: asmTop, instanceType: asmTop }
+    uChildU: { container: asmTop, instanceType: cuTop }
+    uChildN: { container: asmTop, instanceType: cnTop }

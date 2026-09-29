@@ -44,10 +44,10 @@ public:
         ipDataIf->setLogging(verbosity);
         regs->setLogging(verbosity);
     };
-    static constexpr auto IP_DATA_WIDTH_X2 = Config::IP_DATA_WIDTH_X2;
-    static constexpr auto IP_DATA_WIDTH_X4 = Config::IP_DATA_WIDTH_X4;
-    static constexpr auto IP_MEM_DEPTH_X2 = Config::IP_MEM_DEPTH_X2;
-    static constexpr auto IP_MEM_DEPTH_X4 = Config::IP_MEM_DEPTH_X4;
+    static constexpr auto IP_DATA_WIDTH_X2 = Config::IP_DATA_WIDTH * 2;
+    static constexpr auto IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
+    static constexpr auto IP_MEM_DEPTH_X2 = Config::IP_MEM_DEPTH * 2;
+    static constexpr auto IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
     using ipDataT = ipDataT<Config>;
     using ipMemAddrT = ipMemAddrT<Config>;
     using ipDerivedWidthT = ipDerivedWidthT<Config>;

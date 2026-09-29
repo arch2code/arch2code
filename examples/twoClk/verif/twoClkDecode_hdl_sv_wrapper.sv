@@ -55,7 +55,7 @@ module twoClkDecode_hdl_sv_wrapper
     assign #0 twoClkReg_prdata = twoClkReg.prdata;
     assign #0 twoClkReg_pslverr = twoClkReg.pslverr;
 
-    twoClk_twoClkDecode dut (
+    twoClkDecode dut (
         .twoClkReg_uTable(twoClkReg_uTable), // apb_if.src
         .twoClkReg(twoClkReg), // apb_if.dst
         .clk(clk),

@@ -1,11 +1,10 @@
 #ifndef BLOCKF_HDL_SC_WRAPPER_H_
 #define BLOCKF_HDL_SC_WRAPPER_H_
 
-#include "systemc.h"
-#include "instanceFactory.h"
-
 // GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import mixed_blockF.base;
 // GENERATED_CODE_END
 
@@ -18,7 +17,7 @@ import mixed_mixedBlockC;
 using namespace mixed_mixedBlockC_ns;
 import mixed;
 using namespace mixed_ns;
-#include "mixedVariantConfig.h"
+import mixed.blockF.config;
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 

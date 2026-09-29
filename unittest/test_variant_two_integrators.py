@@ -1,0 +1,549 @@
+#!/usr/bin/env python3
+"""Variant identity is (block, variant, declaring project). Two integrators of
+one reusable IP each restate their own binding of a shared label, and a path
+reading the project-blind nested view can silently take the wrong integrator's
+value. Fixture `fixtures/variant-two-integrators`: xviMid and xviTop each bind
+v0 differently and declare an extra label of their own; the final test builds
+and runs both designs and checks the payload at the sinks."""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from _addrctl_helpers import base_dir, test_dir
+import pysrc.arch2codeGlobals as g
+from pysrc.processYaml import projectOpen
+
+FIXTURE = os.path.join(test_dir, 'fixtures', 'variant-two-integrators')
+LEAF_KEY = 'xviLeaf/../../../ipLeaf/yaml/xviLeaf.yaml'
+# What each integrator binds XVI_GAIN to on the shared label v0, and on the
+# label only it declares, in its own design file.
+TOP_GAIN, MID_GAIN = 3, 7
+TOP_OWN_GAIN, MID_OWN_GAIN = 9, 5
+# The leaf IP's own dflt binding, which no integrator instantiates. It exists so
+# the leaf's standalone Verilated wrapper top has its parameters bound.
+LEAF_GAIN = 1
+# Config each integrator emits for its leaf at each label. Neither container
+# has RTL, so the model's instance declaration is where a site names the
+# Config it is built against.
+TOP_V0_CONFIG, TOP_VTOP_CONFIG = 'xviTop_xviLeafV0Config', 'xviTop_xviLeafVTopConfig'
+MID_V0_CONFIG, MID_VMID_CONFIG = 'xviMid_xviLeafV0Config', 'xviMid_xviLeafVMidConfig'
+BUILD_JOBS = '8'
+# Tags the stimulus blocks drive, and the mask the leaf wraps its product with.
+SAMPLE_TAGS = (1, 2, 3, 4)
+PIXEL_MASK = 0xFF
+# Each sink and the gain of the leaf feeding it, per integrator.
+TOP_SINKS = {'tb.xviTop.uTopSnk': TOP_GAIN,
+             'tb.xviTop.uTopOwnSnk': TOP_OWN_GAIN}
+MID_SINKS = {'tb.xviMidTop.uMid.uMidSnk': MID_GAIN,
+             'tb.xviMidTop.uMid.uMidOwnSnk': MID_OWN_GAIN}
+# xviMid's testbench top and its two leaf instances. One Verilated run selects
+# one instance, so the pair covers both of xviMid's bindings as RTL.
+MID_TB_TOP = 'xviMidTop'
+MID_LEAVES = ('tb.xviMidTop.uMid.uMidLeaf', 'tb.xviMidTop.uMid.uMidOwnLeaf')
+OBSERVED = re.compile(r'^\w+:(\S+) observed tag (\d+) data (\d+)$', re.M)
+# Build output only. The fixture commits its implementation files with their
+# user regions filled, so every source directory travels into the copy and
+# `make gen` refills the generated regions in place.
+GENERATED = shutil.ignore_patterns(
+    '*.db', '*.db-*', '.gen', 'build', 'compile_commands.json')
+
+
+def copy_fixture(prefix):
+    work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
+    shutil.copytree(FIXTURE, work, dirs_exist_ok=True, ignore=GENERATED)
+    return work
+
+
+def make(work, target, subdir='top', extra=()):
+    """Run one make target against a directory of the temp copy.
+
+    FIXTURE_ROOT names the copy and A2C_ROOT the builder under test. Both are
+    command-line overrides, so they win over the git-toplevel defaults the
+    fixture makefiles carry for an in-place run and both reach the sub-project
+    makes the top recurses into.
+    """
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    return subprocess.run(
+        ['make', '-C', os.path.join(work, subdir), f'-j{BUILD_JOBS}',
+         f'FIXTURE_ROOT={work}', f'A2C_ROOT={base_dir}', *extra, target],
+        capture_output=True, text=True, timeout=1800, env=env)
+
+
+def build(work):
+    """Build and generate the copy. Returns None on success, else a message."""
+    for target in ('db', 'newmodule', 'gen'):
+        result = make(work, target)
+        if result.returncode != 0:
+            return (f"make {target} failed (rc={result.returncode})\n"
+                    f"{result.stdout}\n{result.stderr}")
+    return None
+
+
+def close_db():
+    """Release the open database so the temp tree can be removed."""
+    if g.db is not None:
+        g.db.close()
+        g.db = None
+
+
+def read(work, *parts):
+    with open(os.path.join(work, *parts)) as f:
+        return f.read()
+
+
+def mismatches(work, checks):
+    """One message per artifact whose emitted XVI_GAIN is not the number the
+    declaring project bound. Each check pairs a file with a pattern capturing
+    the gain at one emission site, so a failure names the number found and a
+    wrong binding is recognisable as the other integrator's."""
+    problems = list()
+    for parts, pattern, expected in checks:
+        found = re.findall(pattern, read(work, *parts))
+        if found == [str(expected)]:
+            continue
+        problems.append(f"{os.path.join(*parts)}: expected XVI_GAIN "
+                        f"{expected}, found {', '.join(found) or 'no match'}")
+    return problems
+
+
+def observations(output, sinks):
+    """One message per sink whose samples do not carry the gain its own project
+    bound. A sink that reported nothing is a mismatch too, so a design that
+    never ran cannot pass this quietly."""
+    seen = dict()
+    for instance, tag, data in OBSERVED.findall(output):
+        seen.setdefault(instance, dict())[int(tag)] = int(data)
+    problems = list()
+    for instance, gain in sinks.items():
+        expected = {tag: (tag * gain) & PIXEL_MASK for tag in SAMPLE_TAGS}
+        got = seen.get(instance, dict())
+        if got != expected:
+            problems.append(f"{instance}: expected {expected} at XVI_GAIN "
+                            f"{gain}, observed {got or 'no samples'}")
+    return problems
+
+
+def header(name):
+    print(f"\n{'='*70}\nTest: {name}\n{'='*70}")
+
+
+def test_collapse_drops_the_building_project():
+    """The premise. Both bindings survive in the flat table at differing values,
+    and the project-blind nested view holds the OTHER integrator's."""
+    header("the project-blind nested view drops the building project's binding")
+    work = copy_fixture('xvi_premise_')
+    try:
+        failure = make(work, 'db')
+        if failure.returncode != 0:
+            print(f"  FAIL: make db failed\n{failure.stdout}\n{failure.stderr}")
+            return False
+        prj = projectOpen(os.path.join(work, 'top', 'xviTop.db'))
+        declared = {row['projectName']: row['value']
+                    for row in prj.data['parametersvariantsparams'].values()
+                    if row['blockKey'] == LEAF_KEY and row['variant'] == 'v0'
+                    and row['param'] == 'XVI_GAIN'}
+        if declared != {'xviTop': TOP_GAIN, 'xviMid': MID_GAIN}:
+            print(f"  FAIL: fixture no longer states the premise; declared v0 "
+                  f"XVI_GAIN bindings are {declared} rather than one from each "
+                  f"integrator at differing values")
+            return False
+        collapsed = prj.data['parameters'][LEAF_KEY]['variants']['v0']['params']
+        row = collapsed['XVI_GAIN']
+        if (row['projectName'], row['value']) != ('xviMid', MID_GAIN):
+            print(f"  FAIL: fixture no longer states the premise; the nested "
+                  f"view holds {row['projectName']}'s {row['value']}, so an "
+                  f"emission path reading it would emit the building project's "
+                  f"own value by accident and every later cell would pass "
+                  f"vacuously")
+            return False
+        print(f"  PASS: both bindings declared ({declared}); the nested view "
+              f"holds xviMid's {MID_GAIN}")
+        return True
+    finally:
+        close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_a_label_only_the_other_integrator_declared_reaches_this_build():
+    """The premise for distinctly-named labels. xviTop's closure holds four
+    labels of one block, and one of them is xviMid's own vMid at a value xviTop
+    never bound, so a path enumerating the project-blind view would hand xviTop
+    an artifact for a label it never declared."""
+    header("a label only the other integrator declared reaches this build")
+    work = copy_fixture('xvi_labels_')
+    try:
+        failure = make(work, 'db')
+        if failure.returncode != 0:
+            print(f"  FAIL: make db failed\n{failure.stdout}\n{failure.stderr}")
+            return False
+        prj = projectOpen(os.path.join(work, 'top', 'xviTop.db'))
+        declared = {(row['variant'], row['projectName']): row['value']
+                    for row in prj.data['parametersvariantsparams'].values()
+                    if row['blockKey'] == LEAF_KEY
+                    and row['param'] == 'XVI_GAIN'}
+        expected = {('v0', 'xviTop'): TOP_GAIN, ('v0', 'xviMid'): MID_GAIN,
+                    ('vTop', 'xviTop'): TOP_OWN_GAIN,
+                    ('vMid', 'xviMid'): MID_OWN_GAIN,
+                    ('dflt', 'xviLeaf'): LEAF_GAIN}
+        if declared != expected:
+            print(f"  FAIL: fixture no longer states the premise; declared "
+                  f"XVI_GAIN bindings are {declared} rather than {expected}, "
+                  f"so the build no longer sees one label per integrator "
+                  f"alongside the shared one")
+            return False
+        foreign = prj.getForeignVariants(LEAF_KEY)
+        expectedForeign = {'v0': {'XVI_WIDTH': 8, 'XVI_GAIN': TOP_GAIN},
+                           'vTop': {'XVI_WIDTH': 8, 'XVI_GAIN': TOP_OWN_GAIN}}
+        if foreign != expectedForeign:
+            print(f"  FAIL: getForeignVariants(LEAF_KEY) is {foreign} rather "
+                  f"than {expectedForeign}, xviTop's own declared labels for "
+                  f"a block it does not own")
+            return False
+        print(f"  PASS: getForeignVariants(LEAF_KEY) holds only xviTop's own "
+              f"labels {sorted(expectedForeign)}")
+        nested = prj.data['parameters'][LEAF_KEY]['variants']
+        offered = {label: (entry['params']['XVI_GAIN']['projectName'],
+                           entry['params']['XVI_GAIN']['value'])
+                   for label, entry in nested.items()}
+        if offered.get('vMid') != ('xviMid', MID_OWN_GAIN):
+            print(f"  FAIL: fixture no longer states the premise; the nested "
+                  f"view offers {offered} rather than a vMid slot holding "
+                  f"xviMid's {MID_OWN_GAIN}, so nothing foreign is on offer "
+                  f"and the emission cell would pass vacuously")
+            return False
+        print(f"  PASS: xviTop's closure offers {sorted(offered)}; vMid is "
+              f"xviMid's {MID_OWN_GAIN} and xviTop declares no binding of it")
+        return True
+    finally:
+        close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_third_project_referencing_both_builds():
+    """A third project composing both integrators, declaring no v0 itself,
+    builds and runs; each leaf instance keeps its own integrator's
+    declaration."""
+    header("a build referencing two foreign declarers of one label builds")
+    work = copy_fixture('xvi_both_')
+    try:
+        text = read(work, 'both', 'yaml', 'xviBothOwn.yaml')
+        if 'parameters' in text:
+            print("  FAIL: premise not met - xviBothOwn.yaml must declare no "
+                  "variant of its own")
+            return False
+        print("  PASS: premise holds, xviBothOwn.yaml declares nothing of "
+              "xviLeaf's variants; xviTop and xviMid remain the only "
+              "declarers of v0")
+
+        for target in ('db', 'newmodule'):
+            result = make(work, target, subdir='both')
+            if result.returncode != 0:
+                print(f"  FAIL: make {target} for both failed "
+                      f"(rc={result.returncode})\n{result.stdout}\n{result.stderr}")
+                return False
+
+        db = os.path.join(work, 'both', 'xviBoth.db')
+        prj = projectOpen(db)
+        # The v0 leaf instance under each integrator's block.
+        leafByOwner = dict()
+        for instanceKey, instanceData in prj.data['instances'].items():
+            if instanceData['instanceTypeKey'] != LEAF_KEY or instanceData['variant'] != 'v0':
+                continue
+            containerBlock = prj.data['blocks'][instanceData['containerKey']]['block']
+            if containerBlock in ('xviTop', 'xviMid'):
+                leafByOwner[containerBlock] = instanceKey
+
+        if set(leafByOwner) != {'xviTop', 'xviMid'}:
+            print(f"  FAIL: expected a v0 leaf instance under each of xviTop "
+                  f"and xviMid, found under {sorted(leafByOwner)}")
+            return False
+
+        declarers = {owner: prj.instanceVariantDeclarers[instanceKey]
+                    for owner, instanceKey in leafByOwner.items()}
+        if declarers != {'xviTop': 'xviTop', 'xviMid': 'xviMid'}:
+            print(f"  FAIL: expected each leaf instance declared by its own "
+                  f"project, got {declarers}")
+            return False
+
+        standalone = prj.getStandaloneVariants(LEAF_KEY)
+        if set(standalone) != {'dflt'}:
+            print(f"  FAIL: expected the leaf's bare standalone-variant map "
+                  f"to hold only its own 'dflt' label, got {sorted(standalone)}")
+            return False
+
+        headers = prj.config.getConfig('FOREIGNCONFIGHEADERS')
+        problems = list()
+        for declarer in ('xviTop', 'xviMid'):
+            if (declarer, LEAF_KEY) not in headers:
+                problems.append(f"no FOREIGNCONFIGHEADERS entry for "
+                                f"({declarer!r}, LEAF_KEY)")
+                continue
+            entry = headers[(declarer, LEAF_KEY)]
+            if 'v0' not in entry['vlVariants']:
+                problems.append(f"({declarer!r}, LEAF_KEY) vlVariants "
+                                f"{entry['vlVariants']} does not carry 'v0'")
+
+        # `both` itself owns no registrar artifact; every one it lists in its
+        # own gen set belongs to xviTop or xviMid, so this run proves the
+        # registrar owner gate rather than a cascade through a sibling project.
+        result = make(work, 'gen', subdir='both')
+        if result.returncode != 0:
+            problems.append(f"make gen for both failed (rc={result.returncode})\n"
+                            f"{result.stdout}\n{result.stderr}")
+        else:
+            result = make(work, 'run', os.path.join('both', 'rundir'))
+            output = result.stdout + result.stderr
+            if result.returncode != 0:
+                problems.append(f"both model run failed "
+                                f"(rc={result.returncode})\n{output}")
+            else:
+                problems.extend(f"both model: {problem}"
+                                for problem in observations(output, TOP_SINKS))
+
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if problems:
+            return False
+
+        print("  PASS: each integrator's leaf instance resolves to its own "
+              "declaration, the leaf's own standalone-variant map holds only "
+              "'dflt', each integrator gets its own foreign-Config header "
+              "carrying v0, and the third project's own build sinks samples "
+              "at xviTop's gain")
+        return True
+    finally:
+        close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_emitted_artifacts_carry_the_declaring_project_value():
+    """Every artifact xviTop emits for its own leaf instance carries xviTop's
+    own binding, so the model and the RTL of one build agree."""
+    header("emitted SV and Config carry the building project's own binding")
+    work = copy_fixture('xvi_emitted_')
+    try:
+        failure = build(work)
+        if failure:
+            print(f"  FAIL: {failure}")
+            return False
+        problems = mismatches(work, [
+            # The model's own instance declaration: which Config uTopLeaf is
+            # built against.
+            (('top', 'model', 'xviTop.cppm'),
+             r'xviLeafBase<(\w+)>> uTopLeaf;',
+             TOP_V0_CONFIG),
+            # The per-variant Verilator top's localparam bindings.
+            (('top', 'verif', 'xviTop_xviLeaf_v0_hdl_sv_wrapper.sv'),
+             r'localparam XVI_GAIN = (\d+)', TOP_GAIN),
+            # The SystemC Config the model is built against. This path already
+            # selected a descriptor; it is here so the cell fails if the two
+            # halves of one build ever disagree again.
+            (('top', 'registrar', 'xviTop_xviLeafVariantConfig.cppm'),
+             r'struct xviTop_xviLeafV0Config \{[^}]*XVI_GAIN = (\d+);',
+             TOP_GAIN),
+        ])
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if not problems:
+            print("  PASS: model instance, Verilator top and Config all "
+                  f"carry xviTop's XVI_GAIN {TOP_GAIN}")
+        return not problems
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_other_integrator_keeps_its_own_binding():
+    """xviMid's own build is unmoved across the same artifact set: the same
+    label at its own value in the model instance, the Verilator top and the
+    Config."""
+    header("the other integrator's build keeps its own binding")
+    work = copy_fixture('xvi_other_')
+    try:
+        failure = build(work)
+        if failure:
+            print(f"  FAIL: {failure}")
+            return False
+        problems = mismatches(work, [
+            (('mid', 'model', 'xviMid.cppm'),
+             r'xviLeafBase<(\w+)>> uMidLeaf;',
+             MID_V0_CONFIG),
+            (('mid', 'verif', 'xviMid_xviLeaf_v0_hdl_sv_wrapper.sv'),
+             r'localparam XVI_GAIN = (\d+)', MID_GAIN),
+            (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
+             r'struct xviMid_xviLeafV0Config \{[^}]*XVI_GAIN = (\d+);',
+             MID_GAIN),
+        ])
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if not problems:
+            print("  PASS: xviMid's model instance, Verilator top and "
+                  f"Config all carry its own XVI_GAIN {MID_GAIN}")
+        return not problems
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_each_build_emits_only_the_label_it_declared():
+    """Distinctly-named labels stay apart. Each integrator emits its own label
+    at its own value across the model instance, Verilator top and Config, and
+    emits nothing for the label only the other integrator declared."""
+    header("each build emits only the label its own project declared")
+    work = copy_fixture('xvi_own_label_')
+    try:
+        failure = build(work)
+        if failure:
+            print(f"  FAIL: {failure}")
+            return False
+        problems = mismatches(work, [
+            (('top', 'model', 'xviTop.cppm'),
+             r'xviLeafBase<(\w+)>> uTopOwnLeaf;',
+             TOP_VTOP_CONFIG),
+            (('top', 'verif', 'xviTop_xviLeaf_vTop_hdl_sv_wrapper.sv'),
+             r'localparam XVI_GAIN = (\d+)', TOP_OWN_GAIN),
+            (('top', 'registrar', 'xviTop_xviLeafVariantConfig.cppm'),
+             r'struct xviTop_xviLeafVTopConfig \{[^}]*XVI_GAIN = (\d+);',
+             TOP_OWN_GAIN),
+            (('mid', 'model', 'xviMid.cppm'),
+             r'xviLeafBase<(\w+)>> uMidOwnLeaf;',
+             MID_VMID_CONFIG),
+            (('mid', 'verif', 'xviMid_xviLeaf_vMid_hdl_sv_wrapper.sv'),
+             r'localparam XVI_GAIN = (\d+)', MID_OWN_GAIN),
+            (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
+             r'struct xviMid_xviLeafVMidConfig \{[^}]*XVI_GAIN = (\d+);',
+             MID_OWN_GAIN),
+        ])
+        # A Verilator top for the other integrator's label means the build
+        # enumerated a label its own project never declared.
+        for parts in (('top', 'verif', 'xviTop_xviLeaf_vMid_hdl_sv_wrapper.sv'),
+                      ('mid', 'verif', 'xviMid_xviLeaf_vTop_hdl_sv_wrapper.sv')):
+            if os.path.exists(os.path.join(work, *parts)):
+                problems.append(f"{os.path.join(*parts)}: emitted for a label "
+                                f"the building project never declared")
+        # The other integrator's value must not appear in the SystemC Config
+        # under any struct name.
+        for parts, stray, owner in (
+                (('top', 'registrar', 'xviTop_xviLeafVariantConfig.cppm'),
+                 f'XVI_GAIN = {MID_OWN_GAIN};', 'xviMid'),
+                (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
+                 f'XVI_GAIN = {TOP_OWN_GAIN};', 'xviTop')):
+            if stray in read(work, *parts):
+                problems.append(f"{os.path.join(*parts)}: carries {stray!r}, "
+                                f"a value only {owner} bound")
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if not problems:
+            print(f"  PASS: xviTop emits vTop at {TOP_OWN_GAIN} and xviMid "
+                  f"emits vMid at {MID_OWN_GAIN}; neither build emits the "
+                  f"other's label")
+        return not problems
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_each_build_runs_at_the_gain_it_declared():
+    """The emitted numbers are consumed, not merely emitted. Both integrators'
+    designs are built and run, and every sample reaching a sink carries the gain
+    that build's own project bound. xviMid's leaves are then re-run as Verilated
+    RTL, so the model and the RTL of one build are held to the same numbers.
+    xviTop's Verilated build cannot run: its manifest resolves xviMid's wrapper
+    tops to the leaf IP's directory, where xviMid never scaffolds them."""
+    header("each build runs at the gain its own project declared")
+    work = copy_fixture('xvi_runtime_')
+    try:
+        failure = build(work)
+        if failure:
+            print(f"  FAIL: {failure}")
+            return False
+        problems = list()
+        for project, sinks in (('top', TOP_SINKS), ('mid', MID_SINKS)):
+            result = make(work, 'run', os.path.join(project, 'rundir'))
+            output = result.stdout + result.stderr
+            if result.returncode != 0:
+                problems.append(f"{project} model run failed "
+                                f"(rc={result.returncode})\n{output}")
+                continue
+            problems.extend(f"{project} model: {problem}"
+                            for problem in observations(output, sinks))
+
+        verilated = make(work, 'all', os.path.join('mid', 'rundir'),
+                         extra=('VL_DUT=1',))
+        if verilated.returncode != 0:
+            problems.append(f"mid Verilated build failed "
+                            f"(rc={verilated.returncode})\n"
+                            f"{verilated.stdout}\n{verilated.stderr}")
+        else:
+            binary = os.path.join(work, 'mid', 'rundir', 'build', 'run')
+            env = os.environ.copy()
+            env['NO_COLOR'] = '1'
+            for leaf in MID_LEAVES:
+                result = subprocess.run(
+                    [binary, MID_TB_TOP, '--vlInst', leaf],
+                    capture_output=True, text=True, timeout=600, env=env)
+                output = result.stdout + result.stderr
+                if result.returncode != 0:
+                    problems.append(f"mid run with {leaf} as RTL failed "
+                                    f"(rc={result.returncode})\n{output}")
+                    continue
+                # The selected instance logs its own construction only when the
+                # SystemC model is what got built, so its absence is the proof
+                # the RTL carried the samples.
+                if f"Instance {leaf} initialized." in output:
+                    problems.append(f"{leaf} ran its SystemC model, so the RTL "
+                                    f"never carried a sample")
+                problems.extend(f"mid with {leaf} as RTL: {problem}"
+                                for problem in observations(output, MID_SINKS))
+
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if not problems:
+            print(f"  PASS: xviTop's sinks ran at XVI_GAIN {TOP_GAIN} and "
+                  f"{TOP_OWN_GAIN}, xviMid's at {MID_GAIN} and {MID_OWN_GAIN} "
+                  f"in the model and again with each leaf as Verilated RTL")
+        return not problems
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def run_all_tests():
+    print("\n" + "="*70)
+    print("TWO INTEGRATORS DECLARING VARIANTS OF ONE REUSABLE IP")
+    print("="*70)
+
+    tests = [
+        test_collapse_drops_the_building_project,
+        test_a_label_only_the_other_integrator_declared_reaches_this_build,
+        test_third_project_referencing_both_builds,
+        test_emitted_artifacts_carry_the_declaring_project_value,
+        test_other_integrator_keeps_its_own_binding,
+        test_each_build_emits_only_the_label_it_declared,
+        test_each_build_runs_at_the_gain_it_declared,
+    ]
+    results = []
+    for test_func in tests:
+        try:
+            results.append((test_func.__name__, test_func()))
+        except Exception as e:
+            print(f"\n  EXCEPTION in {test_func.__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            results.append((test_func.__name__, False))
+
+    print("\n" + "="*70 + "\nTEST SUMMARY\n" + "="*70)
+    passed = sum(1 for _, ok in results if ok)
+    for name, ok in results:
+        print(f"  {'PASS' if ok else 'FAIL'}: {name}")
+    print(f"\n  Passed: {passed}/{len(results)}")
+    if passed == len(results):
+        print("\n  ALL TESTS PASSED!")
+        return 0
+    print("\n  SOME TESTS FAILED")
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(run_all_tests())

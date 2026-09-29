@@ -17,7 +17,7 @@ public:
     virtual ~clkDividerBase() = default;
 
 
-    clkDividerBase(std::string name, const char * variant) 
+    clkDividerBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class clkDividerInverted : public virtual blockPortBase
 public:
 
 
-    clkDividerInverted(std::string name) 
+    clkDividerInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class clkDividerChannels
 public:
 
 
-    clkDividerChannels(std::string name, std::string srcName) 
+    clkDividerChannels(std::string name, std::string srcName)
     {};
     void bind( clkDividerBase *a, clkDividerInverted *b)
     {

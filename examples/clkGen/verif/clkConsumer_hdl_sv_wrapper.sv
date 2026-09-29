@@ -10,7 +10,7 @@ module clkConsumer_hdl_sv_wrapper
     input clk,
     input rst_n
 );
-    clkGen_clkConsumer dut (
+    clkConsumer dut (
         .clk(clk),
         .rst_n(rst_n)
     );

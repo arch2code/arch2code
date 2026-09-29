@@ -23,7 +23,7 @@ module twoClkSlowSink_hdl_sv_wrapper
     assign #0 in.data = in_data;
     assign #0 in_ack = in.ack;
 
-    twoClk_twoClkSlowSink dut (
+    twoClkSlowSink dut (
         .in(in), // push_ack_if.dst
         .clkSlow(clkSlow),
         .rstSlow_n(rstSlow_n)

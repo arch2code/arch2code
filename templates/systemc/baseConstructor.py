@@ -13,11 +13,8 @@ def render(args, prj, data):
 
 def constructorInit(args, prj, data):
     out = list()
-    if len(data['ports']) > 0:
-        colon = ':'
-    else:
-        colon = ''
-    out.append(f'{ data["blockName"] }Base::{ data["blockName"] }Base(void) {colon}')
+    colon = ' :' if len(data['ports']) > 0 else ''
+    out.append(f'{ data["blockName"] }Base::{ data["blockName"] }Base(void){colon}')
     comma = ''
     # loop twice for c++ constructor init ordering reasons
     for key, value in data['ports'].items():

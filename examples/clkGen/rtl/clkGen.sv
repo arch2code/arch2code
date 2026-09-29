@@ -20,7 +20,7 @@ module clkGen
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-clkGen_clkDivider uDivider (
+clkDivider uDivider (
     .clkRef (clkRef),
     .clkDiv (clkDiv),
     .clkDivBy2 (),
@@ -28,13 +28,13 @@ clkGen_clkDivider uDivider (
     .rstDivRaw_n (rstDivRaw_n)
 );
 
-clkGen_rstSync uRstSync (
+rstSync uRstSync (
     .clk (clkDiv),
     .rstIn_n (rstDivRaw_n),
     .rstOut_n (rstDivInt_n)
 );
 
-clkGen_clkConsumer uConsumer (
+clkConsumer uConsumer (
     .clk (clkDiv),
     .rst_n (rstDivInt_n)
 );

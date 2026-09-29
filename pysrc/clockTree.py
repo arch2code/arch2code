@@ -603,7 +603,8 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     become the root container's nets.
     `contextOwningProject` and `rootProjectName` limit standalone-attribute
     resolution to each block's declaring project. `diag` provides
-    `logError(msg)` and `diagnosticLocation(yamlFile, lc)`. No argument is kept
+    `logError(msg)`, `diagnosticLocation(yamlFile, lc)` and
+    `isComposedChildRootRow(instRow)`. No argument is kept
     on the result.
     """
     memoriesByBlock = dict()
@@ -753,6 +754,10 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             # The top block's own outputs are observed by the testbench,
             # not bound to a container net.
             continue
+        if diag.isComposedChildRootRow(instRow):
+            # A composed child's own root declaration is no containment edge
+            # (projectCreate._validateContainmentAcyclic).
+            continue
         childKey = instRow['instanceTypeKey']
         containerKey = instRow['containerKey']
         containerBlock = blocks[containerKey]['block']
@@ -871,6 +876,10 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             # nets separately, by _bindTopInstance() below, once every
             # instance's own containerKey is known here.
             root.instances[instanceKey] = childKey
+            continue
+        if diag.isComposedChildRootRow(instRow):
+            # A composed child's own root declaration is no containment edge
+            # (projectCreate._validateContainmentAcyclic).
             continue
         containerBlock = blocks[containerKey]['block']
         childBlock = blocks[childKey]['block']

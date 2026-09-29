@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=clkDivider
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: clkGen_clkDivider
-module clkGen_clkDivider
+//module as defined by block: clkDivider
+module clkDivider
 
 (
     input clkRef, output clkDiv, clkDivBy2, input rstRef_n, output rstDivRaw_n
@@ -46,4 +46,4 @@ assign clkDivBy2 = clkDivReg;
 // synchronisation.
 assign rstDivRaw_n = rst_n;
 
-endmodule: clkGen_clkDivider
+endmodule: clkDivider

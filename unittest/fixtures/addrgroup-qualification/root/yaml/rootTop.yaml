@@ -1,0 +1,45 @@
+# Root-owned top context: the composition point and the dispatch-tree root.
+#
+# The root declares its OWN address group, also named 'top'. Each child's router
+# is nested under the root router, so the routed slots uChildA / uChildB name the
+# group 'top' and that reference resolves in rootProj - not in either child -
+# because a group reference resolves within the project owning the referring file.
+#
+# The child block types are declared in the child projects' own contexts;
+# ownership comes from the projectFiles: child-project detection, while these
+# include: edges are what puts those block types in this context's lookup scope.
+include:
+    - ../../common/yaml/sharedTypes.yaml
+    - ../../childA/yaml/childATop.yaml
+    - ../../childB/yaml/childBTop.yaml
+
+blocks:
+    root_tb:
+        desc: "root testbench container"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    rootTop:
+        desc: "root design top holding the root router and both child IPs"
+        hasMdl: true
+        hasRtl: false
+    rootDecode:
+        desc: "root register-bus router, the dispatch-tree root"
+        hasMdl: true
+        hasRtl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x00010000
+            maxAddressSpaces: 4
+            varType: addr_id_root
+            enumPrefix: ADDR_ID_ROOT_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+
+instances:
+    root_tb:      { container: root_tb, instanceType: root_tb,    instGroup: top }
+    uRootTop:     { container: root_tb, instanceType: rootTop,    instGroup: top }
+    uRootDecode:  { container: rootTop, instanceType: rootDecode, instGroup: top }
+    uChildA:      { container: rootTop, instanceType: childATop,  instGroup: top, addressGroup: top }
+    uChildB:      { container: rootTop, instanceType: childBTop,  instGroup: top, addressGroup: top }

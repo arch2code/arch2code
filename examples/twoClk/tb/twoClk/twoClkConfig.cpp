@@ -1,28 +1,20 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=twoClk
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
-
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-// Required by the final() body below, which asserts on end-of-test state.
 import a2c.endOfTest;
-
-// GENERATED_CODE_PARAM --block=twoClk
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+#include "systemc.h"
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class twoClkConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("twoClk", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<twoClkConfig>());}, is_default_testbench_v<twoClkConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~twoClkConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -35,9 +27,7 @@ public:
 
     bool createTestBench(void) override
     {
-        // The testbench top self-registers via an A2C_REGISTRATION_RETAIN
-        // static in twoClkTestbench.cpp (see instanceFactory.h),
-        // reachable through direct-.o linking with no force-link reference.
+        // The testbench top self-registers; just call createTbTop().
         std::shared_ptr<blockBase> tb = createTbTop();
         return true;
     }
@@ -50,4 +40,18 @@ public:
     }
 
 };
-twoClkConfig::registerTestBenchConfig twoClkConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (twoClkConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_twoClkConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("twoClk", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<twoClkConfig>());}, is_default_testbench_v<twoClkConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _twoClkConfig_registered = (register_twoClkConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

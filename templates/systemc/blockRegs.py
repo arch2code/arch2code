@@ -24,7 +24,7 @@ def render_sc(args, prj, data):
 
     return s
 
-def get_include_deps(args, prj, data):
+def get_include_deps(prj, data):
     # Classic-mode header include set for the reg-handler. Reuse the shared
     # class-dependency computation so the reg-handler header inherits exactly the
     # same channel headers, framework headers (addressMap/hwRegister/hwMemory),
@@ -33,15 +33,18 @@ def get_include_deps(args, prj, data):
     # each (kind, line) pair. In module mode the block-module global module
     # fragment (moduleScaffold.blockModuleHeader) owns these instead, so
     # render_section_header suppresses this set entirely.
-    return [line for (kind, line) in intf_gen_utils.sc_class_dependency_includes(args, prj, data)]
+    return [line for (kind, line) in intf_gen_utils.sc_class_dependency_includes(prj, data)]
 
 def get_reghandler_properties(prj, data):
     reghandler = dict()
     rhd = data['addressDecode']
+    hasOwnParams = data['hasOwnParams']
+    # Out-of-line member body: the bare name is the class-local alias (see
+    # bareParameterizedType).
     reghandler = {
         "port_name": rhd['registerBusPort'],
-        "addr_type" : rhd['registerBusStructs']['addr_t'],
-        "data_type" : rhd['registerBusStructs']['data_t'],
+        "addr_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['addr_t'], 'structure', 'structureKey', prj), hasOwnParams),
+        "data_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['data_t'], 'structure', 'structureKey', prj), hasOwnParams),
         "addressmask" : f"(1<<({rhd['addressBits']}))-1"
     }
     return reghandler
@@ -126,7 +129,11 @@ def render_section_header(args, prj, data):
     # inline ahead of the (non-exported) class.
     moduleMode = (args.mode == 'module')
     exportKw = 'export ' if moduleMode else ''
-    include_deps = [] if moduleMode else get_include_deps(args, prj, data)
+    include_deps = [] if moduleMode else get_include_deps(prj, data)
+    # A using-directive closes the module preamble, so moduleExport emits imports
+    # only and the context using-directives ride at this class-region head, exactly
+    # as classDecl does for a non-reg-handler block.
+    module_usings = intf_gen_utils.sc_class_module_usings(prj, data) if moduleMode else []
     # Re-import inherited parameterized types from the templated base so the
     # reg-handler body uses the bare type name (no <Config>). Two-phase lookup
     # does not search a dependent base, so these using-declarations are what make
@@ -156,7 +163,8 @@ def render_section_header(args, prj, data):
         param_reimports_block = ''
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
                  hasOwnParams=hasOwnParams, moduleMode=moduleMode, exportKw=exportKw,
-                 include_deps=include_deps, hwregs=get_hwregs(prj, data),
+                 include_deps=include_deps, module_usings=module_usings,
+                 hwregs=get_hwregs(prj, data),
                  param_reimports_block=param_reimports_block)
     return s
 
@@ -185,9 +193,10 @@ def render_section_init(args, prj, data):
     # name unchanged.
     thisq = 'this->' if hasOwnParams else ''
     # render the template with the variables
+    classHeader = None if moduleMode else prj.getModuleFilename("block", blockName, "hdr")
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
                  hasOwnParams=hasOwnParams, moduleMode=moduleMode,
-                 registration=registration, thisq=thisq,
+                 class_header=classHeader, registration=registration, thisq=thisq,
                  reghandler=reghandler, hwregs=get_hwregs(prj, data))
     return s.rstrip()
 
@@ -204,6 +213,9 @@ block_regs_header_template = '''\
 {{entry}}
 {% endfor %}
 {% endif -%}
+{% for entry in module_usings -%}
+{{entry}}
+{% endfor -%}
 {{exportKw}}{{templatePrefix}}SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base{{cfg}}
 {
 private:
@@ -228,7 +240,7 @@ public:
 
 block_regs_init_section_template = '''\
 {% if not moduleMode -%}
-#include "{{blockname}}.h"
+#include "{{class_header}}"
 {% endif -%}
 {% if not hasOwnParams %}
 SC_HAS_PROCESS({{blockname}});

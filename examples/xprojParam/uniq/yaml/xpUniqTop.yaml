@@ -1,0 +1,49 @@
+# Assembler over the same three projects and the same de-parameterized boundary
+# as the collision composition, but reaching each project's prefixed stage block,
+# so no two sub-project namespaces export the same payload identifier. This is
+# the composition that builds and runs.
+include:
+    - ../../gain/yaml/xpGainUniq.yaml
+    - ../../filter/yaml/xpFilterUniq.yaml
+    - ../../sink/yaml/xpSinkUniq.yaml
+
+types:
+    boundaryTagT:   { width: 4, desc: "Literal boundary tag; matches each stage's tag field" }
+    boundaryPixelT: { width: 8, desc: "Literal boundary pixel; matches each stage's data field at width 8" }
+
+structures:
+    boundarySt:
+        tag:  { varType: boundaryTagT,   desc: "Sample sequence tag" }
+        data: { varType: boundaryPixelT, desc: "Pixel payload" }
+
+interfaces:
+    boundaryIf:
+        desc: "Assembler-owned literal-width push/ack boundary stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: boundarySt, structureType: data_t }
+
+blocks:
+    xpUniqTop:
+        desc: "Assembler top holding the three prefixed stages"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpUniqTop_tb:
+        desc: "Testbench container for xpUniqTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    xpUniqTop_tb: { container: xpUniqTop_tb, instanceType: xpUniqTop_tb,  instGroup: top }
+    u_xpUniqTop:  { container: xpUniqTop_tb, instanceType: xpUniqTop,     instGroup: top }
+    uGain:        { container: xpUniqTop,    instanceType: xpGainUniq,    instGroup: top, variant: v0 }
+    uFilter:      { container: xpUniqTop,    instanceType: xpFilterUniq,  instGroup: top, variant: v0 }
+    uSink:        { container: xpUniqTop,    instanceType: xpSinkUniq,    instGroup: top, variant: v0 }
+
+connections:
+    - { interface: boundaryIf, src: uGain,   srcport: videoOut, dst: uFilter, dstport: videoIn }
+    - { interface: boundaryIf, src: uFilter, srcport: videoOut, dst: uSink,   dstport: videoIn }

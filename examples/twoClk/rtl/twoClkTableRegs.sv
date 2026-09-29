@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=twoClkTableRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module twoClk_twoClkTableRegs
+module twoClkTableRegs
     // Generated Import package statement(s)
     import twoClk_package::*;
     #(
@@ -153,5 +153,5 @@ module twoClk_twoClkTableRegs
     assign twoClkReg.pready  = rd_ready | wr_ready;
     assign twoClkReg.pslverr = slverr;
 
-endmodule : twoClk_twoClkTableRegs
+endmodule : twoClkTableRegs
 // GENERATED_CODE_END

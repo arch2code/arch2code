@@ -65,11 +65,17 @@ blocks:
     hasTb: true
     hasSkt: true
 
+# Two shells, each with its own consumer. Python drives a different pattern
+# through each shell, so a crossed or shared socket connection fails the test.
 instances:
   axiSocketMaster_tb: {container: axiSocketMaster_tb, instanceType: axiSocketMaster_tb, instGroup: top}
-  u_axiSocket:        {container: axiSocketMaster_tb, instanceType: axiSocket, instGroup: top}
-  u_consumer:         {container: axiSocketMaster_tb, instanceType: consumer, instGroup: top}
+  u_axiSocket0:       {container: axiSocketMaster_tb, instanceType: axiSocket, instGroup: top}
+  u_consumer0:        {container: axiSocketMaster_tb, instanceType: consumer, instGroup: top}
+  u_axiSocket1:       {container: axiSocketMaster_tb, instanceType: axiSocket, instGroup: top}
+  u_consumer1:        {container: axiSocketMaster_tb, instanceType: consumer, instGroup: top}
 
 connections:
-  - {interface: axiRdIf, src: u_axiSocket, dst: u_consumer, name: axiRd0}
-  - {interface: axiWrIf, src: u_axiSocket, dst: u_consumer, name: axiWr0}
+  - {interface: axiRdIf, src: u_axiSocket0, srcport: axiRd0, dst: u_consumer0, dstport: axiRd0, name: axiRd0_0}
+  - {interface: axiWrIf, src: u_axiSocket0, srcport: axiWr0, dst: u_consumer0, dstport: axiWr0, name: axiWr0_0}
+  - {interface: axiRdIf, src: u_axiSocket1, srcport: axiRd0, dst: u_consumer1, dstport: axiRd0, name: axiRd0_1}
+  - {interface: axiWrIf, src: u_axiSocket1, srcport: axiWr0, dst: u_consumer1, dstport: axiWr0, name: axiWr0_1}

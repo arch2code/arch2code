@@ -5,10 +5,6 @@
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;
 #include "systemc.h"
-#include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 
 export module axiSocketSlave_axiStd;
 // GENERATED_CODE_END

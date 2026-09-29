@@ -1,0 +1,41 @@
+# projIp: declares its own leafIp v0 and wraps a leaf instance at that variant.
+include:
+    - leafIp.yaml
+
+ipParameters:
+    constants:
+        IPW_W: { value: 12, maxValue: 32, desc: "ipWrap boundary width" }
+    types:
+        ipwT: { width: IPW_W, maxBitwidth: 32, desc: "ipWrap parameterizable payload word" }
+
+structures:
+    ipwSt:
+        data: { varType: ipwT, desc: "ipWrap payload" }
+
+interfaces:
+    ipwIf:
+        desc: "ipWrap parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: ipwSt, structureType: data_t }
+
+blocks:
+    ipWrap:
+        desc: "projIp's own wrapper routing its boundary port to the leaf IP"
+        params: [IPW_W]
+        ports:
+            in: { interface: ipwIf, direction: dst }
+
+instances:
+    uLeafA: { container: ipWrap, instanceType: leafIp, variant: v0 }
+
+connectionMaps:
+    - { interface: ipwIf, block: ipWrap, port: in, direction: dst, instance: uLeafA, instancePort: in }
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 12
+    ipWrap:
+        v0:
+            IPW_W: 12

@@ -1,0 +1,9 @@
+# projWrap: includes only leafIp.yaml (not ipTop.yaml), so this scope sees
+# exactly one v0 declaration of leafIp: its own, at LEAF_W 8.
+include:
+    - ../../projIp/yaml/leafIp.yaml
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 8
