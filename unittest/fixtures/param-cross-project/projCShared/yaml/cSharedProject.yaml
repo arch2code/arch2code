@@ -1,0 +1,12 @@
+# projCShared PROJECT file. Sink IP sharing projA's declaration set, declaring
+# no ipParameters of its own.
+projectName: projCShared
+
+projectFiles:
+    - cSharedTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

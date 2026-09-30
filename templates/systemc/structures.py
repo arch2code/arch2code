@@ -1,6 +1,6 @@
-from pysrc.intf_gen_utils import wrap_module_namespace, wrap_module_test_namespace, cpp_namespace_name
-from pysrc.emissionUtils import constReference_cpp
-from templates.systemc.includes import typeWidthExpression_cpp
+from pysrc.intf_gen_utils import FW_NAMESPACE, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, cpp_fw_namespace_name, configType
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from templates.systemc.includes import constReferenceValueKeyed_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
     {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -17,26 +17,44 @@ def render(args, prj, data):
     valid_sections = ('', 'header', 'cpp', 'headerIncludes', 'cppIncludes', 'testStructsHeader', 'testStructsCPP')
     if args.section not in valid_sections:
         raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are header, cpp, headerIncludes, cppIncludes, testStructsHeader, testStructsCPP")
-    if len(data['structures']) == 0:
+    # The include and declaration sections are independent: an fw context with only
+    # constants/types/enums still needs the baseline includes those declarations use,
+    # so only the struct-bearing sections short-circuit on an empty structure set.
+    hasStructures = len(data['structures']) > 0
+    if not hasStructures and args.section not in ('headerIncludes', 'cppIncludes'):
         return ""
     global codeMapping
     # using list to simplify all the last loop special cases to allow simple delete of last entry
     # to effectively backup
     out = list()
     if (args.section == '' or args.section == 'cpp' or args.section == 'header'):
-        if args.mode == '':
-            args.mode = 'model'
-        if args.mode not in codeMapping:
-            print(f"Warning: mode {args.mode} not found in codeMapping, defaulting to model")
+        args.mode = resolveMode(args.mode)
         if args.section == '':
             args.section = 'header'
+        if args.section == 'cpp' and args.mode == 'fw':
+            # Out-of-line definitions name the context's own fw namespace; the
+            # scaffold's `--namespace=fw_ns` names only the outer one.
+            args.namespace = cpp_fw_namespace_name(data['contextModuleIdentity'])
         out.append("// structures")
         for struct, value in data['structures'].items():
             out.extend(oneStruct(args, prj, data, struct, value))
         out = wrap_module_namespace(args, data, out)
+        if args.section == 'header':
+            # The cpp section qualifies its out-of-line definitions from
+            # args.namespace, so only the declarations are wrapped.
+            out = wrap_fw_namespace(args, data, out)
     # handle system includes
     if (args.section == 'headerIncludes' or args.section == 'cppIncludes'):
-        out.extend(systemIncludes(args))
+        fwCpp = args.section == 'cppIncludes' and args.mode == 'fw'
+        if fwCpp:
+            # The fw source scaffold delegates its whole preamble to this region.
+            out.append(f'#include "{data["includeFiles"]["includeFW_src"][data["context"]]["siblingHeaderName"]}"')
+        out.extend(systemIncludes(args.mode, args.section, hasStructures))
+        if fwCpp:
+            # Covers a future split definition's leading return type, which is looked up
+            # at namespace scope. No fw feature is 'split' today, and the declarator
+            # itself stays qualified from args.namespace either way.
+            out.append(f'using namespace {FW_NAMESPACE};')
     if (args.section == 'testStructsHeader' or args.section == 'testStructsCPP'):
         out.extend(structTest(args, prj, data))
         out = wrap_module_test_namespace(args, data, out)
@@ -49,19 +67,35 @@ includeMapping = {
     'fw_pack': ['<algorithm>', '"bitTwiddling.h"'],
     'fw_unpack': ['<algorithm>'],
 }
-def systemIncludes(args):
-    global codeMapping, includeMapping
-    mode = args.mode
-    if mode == '':
-        mode = 'model'
+# Headers the context's own declarations need whatever the optional codeMapping
+# features are, keyed by emission mode. Only fw carries entries: an fw header
+# includes no framework header, while model/module get both through systemc.h.
+# Emitted even for a structure-less context, whose constants and types are uint*_t
+# too. Coverage is exhaustive so a new mode fails loud.
+baselineIncludes = {
+    'model': [],
+    'fw': ['<cstdint>', '<cstring>'],
+    'module': [],
+}
+def systemIncludes(mode, section, hasStructures):
+    # The headers a context's struct declarations need, by emission mode and by
+    # which artifact (header or cpp) carries the feature. Called with an explicit
+    # mode/section rather than off `args` because the module unit's caller is the
+    # global-module-fragment emitter, whose own section name is not one of these.
+    global codeMapping, includeMapping, baselineIncludes
+    mode = resolveMode(mode)
 
     out = list()
     includeDict = dict()
-    for key, value in codeMapping[mode].items():
-        if key in includeMapping:
-            if (value == 'split' and args.section == 'cppIncludes') or (value == 'inline' and args.section == 'headerIncludes'):
-                # extend dict by iterating over includeMapping list
-                includeDict.update({include: True for include in includeMapping[key]})
+    if section == 'headerIncludes':
+        includeDict.update({include: True for include in baselineIncludes[mode]})
+    if hasStructures:
+        # Every codeMapping feature is a struct member.
+        for key, value in codeMapping[mode].items():
+            if key in includeMapping:
+                if (value == 'split' and section == 'cppIncludes') or (value == 'inline' and section == 'headerIncludes'):
+                    # extend dict by iterating over includeMapping list
+                    includeDict.update({include: True for include in includeMapping[key]})
 
     for lib in includeDict:
         out.append(f"#include {lib}")
@@ -89,6 +123,14 @@ def convertToType(bitwidth, name="_packedSt", isSigned=False):
             break
     return retType, rowType, baseSize
 
+def valueKeyedTypeRef(declKind, declKey, name, prj):
+    """Spell a value-keyed reference to a parameterizable structure or type:
+    its own template value parameters, applied in the same order its
+    declaration takes them."""
+    args = prj.paramTemplateArgs(declKind, declKey)
+    return f"{name}_v<{', '.join(row['constant'] for row in args)}>"
+
+
 def structBitWidthExpression_cpp(value, prj, useConfig=False):
     """Build a C++ constexpr expression for a structure's _bitWidth.
 
@@ -102,19 +144,15 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
     """
     terms = []
     for var, vardata in reversed(value['vars'].items()):
-        arraySizeValue = vardata.get('arraySizeValue', 1)
-        isArray = vardata.get('isArray', False)
+        arraySizeValue = vardata['arraySizeValue']
+        isArray = vardata['isArray']
 
         if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType':
-            typeInfo = prj.data['types'].get(vardata['varTypeKey'])
-            if typeInfo:
-                expr = typeWidthExpression_cpp(typeInfo, prj, useConfig)
-            else:
-                expr = str(vardata['bitwidth'])
+            expr = typeWidthExpression_cpp(prj.data['types'][vardata['varTypeKey']], prj, useConfig)
         elif vardata['entryType'] == 'NamedStruct':
-            subStructInfo = prj.data['structures'].get(vardata['subStructKey'], {})
-            if useConfig and subStructInfo.get('isParameterizable', False):
-                expr = f"{vardata['subStruct']}<Config>::_bitWidth"
+            subStructInfo = prj.data['structures'][vardata['subStructKey']]
+            if useConfig and subStructInfo['isParameterizable']:
+                expr = f"{valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)}::_bitWidth"
             else:
                 expr = f"{vardata['subStruct']}::_bitWidth"
         elif vardata['entryType'] == 'Reserved':
@@ -136,35 +174,36 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
 
 
 def cppArraySize(vardata, prj, useConfig=False):
-    arraySizeKey = vardata.get('arraySizeKey', '')
-    if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey].get('isParameterizable', False):
-        return constReference_cpp(arraySizeKey, prj, 'Config')
-    return vardata.get('arraySize', vardata.get('arraySizeValue', 1))
+    # arraySizeKey is empty when arraySize is a literal rather than a constant reference
+    arraySizeKey = vardata['arraySizeKey']
+    if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey]['isParameterizable']:
+        return constReferenceValueKeyed_cpp(arraySizeKey, prj)
+    return vardata['arraySize']
 
 
 def cppVarBitwidth(vardata, prj, useConfig=False):
     if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType':
-        typeInfo = prj.data['types'].get(vardata['varTypeKey'])
-        if typeInfo:
-            return typeWidthExpression_cpp(typeInfo, prj, useConfig)
+        return typeWidthExpression_cpp(prj.data['types'][vardata['varTypeKey']], prj, useConfig)
     if vardata['entryType'] == 'NamedStruct':
-        subStructInfo = prj.data['structures'].get(vardata['subStructKey'], {})
-        if useConfig and subStructInfo.get('isParameterizable', False):
-            return f"{vardata['subStruct']}<Config>::_bitWidth"
+        subStructInfo = prj.data['structures'][vardata['subStructKey']]
+        if useConfig and subStructInfo['isParameterizable']:
+            return f"{valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)}::_bitWidth"
         return f"{vardata['subStruct']}::_bitWidth"
     return str(vardata['bitwidth'])
 
 
 def cppTypeName(vardata, prj, useConfig=False):
     if vardata['entryType'] == 'NamedStruct':
-        subStructInfo = prj.data['structures'].get(vardata['subStructKey'], {})
-        if useConfig and subStructInfo.get('isParameterizable', False):
-            return f"{vardata['subStruct']}<Config>"
+        subStructInfo = prj.data['structures'][vardata['subStructKey']]
+        if useConfig and subStructInfo['isParameterizable']:
+            return valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)
         return vardata['subStruct']
     varType = vardata['varType']
-    typeKey = vardata.get('varTypeKey', '')
-    if useConfig and typeKey and prj.data['types'].get(typeKey, {}).get('isParameterizable', False):
-        return f"{varType}<Config>"
+    # varTypeKey is empty for fields that name no type - Reserved, and a subStruct
+    # field rewritten to NamedType by the datapath backdoor - so it keys no types row
+    typeKey = vardata['varTypeKey']
+    if useConfig and typeKey and prj.data['types'][typeKey]['isParameterizable']:
+        return valueKeyedTypeRef('type', typeKey, varType, prj)
     return varType
 
 
@@ -239,7 +278,7 @@ def printOneArray(prefix, space, varName, varData, prj, isModel, prtoss=True, us
     out = list()
     postfix = ''
     decorators = ''
-    arraySize = varData.get('arraySizeValue', 0)
+    arraySize = varData['arraySizeValue']
     arraySizeExpr = cppArraySize(varData, prj, useConfig)
     varType = cppTypeName(varData, prj, useConfig)
     varLoopCount = varData["varLoopCount"]
@@ -322,6 +361,22 @@ codeMapping = {
     }
 }
 
+# The emission flavor a render is keyed by. Absent means the model flavor; anything
+# else must key BOTH mode-keyed tables. Rejected here rather than at the three lookups
+# downstream, each of which would raise KeyError far from the cause.
+def resolveMode(mode):
+    if mode == '':
+        return 'model'
+    if mode not in codeMapping or mode not in baselineIncludes:
+        printError(f"emission mode '{mode}' is not registered in the codeMapping and "
+                   f"baselineIncludes tables in templates/systemc/structures.py. "
+                   f"Either correct the --mode token on the file's "
+                   f"GENERATED_CODE_PARAM line, or register the mode by adding it to "
+                   f"both tables there (a context artifact's token is fixed by "
+                   f"pysrc/genFileParam.py::_CONTEXT_FILE_MODE).")
+        exit(warningAndErrorReport())
+    return mode
+
 def oneStruct(args, prj, data, struct, value):
     global codeMapping
     isCpp = (args.section == 'cpp')
@@ -331,18 +386,23 @@ def oneStruct(args, prj, data, struct, value):
 
     out = list()
     structName = value['structure']
+    # Parameterizable structures are declared as `<name>_v` over their
+    # root-parameter values; `<name>` is the `<Config>` alias.
+    declStructName = f"{structName}_v" if isParam else structName
     indent = '' if isCpp else ' '*4
     if not isCpp:
         # first few things are not optinal and always in the header
         if isParam:
-            out.append("template<typename Config>")
-        out.append(f"struct {structName} {{")
+            templateArgs = prj.paramTemplateArgs('structure', struct)
+            argList = ', '.join(f"{configType(row)} {row['constant']}" for row in templateArgs)
+            out.append(f"template<{argList}>")
+        out.append(f"struct {declStructName} {{")
         # declare vars
         out.extend(declareVars(value, indent, prj, isParam))
         if args.mode == 'fw':
-            out.append(f"\n{indent}{structName}() {{ memset(this, 0, sizeof({ value['structure'] })); }}\n")
+            out.append(f"\n{indent}{declStructName}() {{ memset(this, 0, sizeof({ declStructName })); }}\n")
         else:
-            out.append(f"\n{indent}{structName}() {{}}\n")
+            out.append(f"\n{indent}{declStructName}() {{}}\n")
         # consts
         bitWidthExpr = structBitWidthExpression_cpp(value, prj, isParam)
         prefix = f"{indent}static constexpr uint16_t _bitWidth = "
@@ -389,7 +449,7 @@ def oneStruct(args, prj, data, struct, value):
                 args._prj = prj
                 out.extend(scTrace(handle, args, structName, value, indent))
             case 'operatorStream': # operator <<
-                out.extend(operatorStream(structName, indent)) if not isCpp else None
+                out.extend(operatorStream(structName, indent, isParam)) if not isCpp else None
             case 'prt':
                 out.extend(prt(handle, args, value, indent, prj))
             case 'prtFmt':
@@ -406,26 +466,38 @@ def oneStruct(args, prj, data, struct, value):
                 out.extend(fw_unpack(handle, args, value, indent, prj, isParam))
             case 'registerFeatures': # register features
                 if not isCpp and value['register']:
-                    out.extend(registerFeatures(value, indent))
+                    out.extend(registerFeatures(value, indent, prj, isParam))
             case 'sc_pack':
                 out.extend(sc_pack(handle, args, value, indent, prj))
             case 'sc_unpack':
                 if value['width'] == 1:
                     out.extend(sc_unpack(handle, args, "bool", value, indent, prj, isParam))
-                structTypeName = f"{structName}<Config>" if isParam else structName
+                structTypeName = (valueKeyedTypeRef('structure', value['structureKey'], structName, prj)
+                                 if isParam else structName)
                 out.extend(sc_unpack(handle, args, f"sc_bv<{structTypeName}::_bitWidth>", value, indent, prj, isParam))
             case 'constuctor_bv':
-                out.extend(constuctor_bv(structName, value, indent)) if not isCpp else None
+                out.extend(constuctor_bv(structName, value, indent, prj)) if not isCpp else None
             case 'constructor':
                 out.extend(constructor(structName, value, indent, prj, isParam)) if not isCpp else None
             case 'constructor_packed':
                 out.extend(constructor_packed(structName, value, indent)) if not isCpp else None
+            # Internal-consistency guard: a codeMapping feature with no arm above has
+            # no renderer, so it cannot be emitted. Must abort NON-ZERO - exiting here
+            # unwinds before the artifact is written, so a zero status would report
+            # success on a file that was never updated.
             case _:
-                print("bad codeMapping entry")
-                exit()
+                printError(f"codeMapping feature '{feature}' (mode '{args.mode}', "
+                           f"handling '{handle}') has no case arm in "
+                           f"templates/systemc/structures.py::oneStruct, so it cannot "
+                           f"be rendered for struct '{structName}'. Add the arm there "
+                           f"alongside the codeMapping entry.")
+                exit(warningAndErrorReport())
 
     if not isCpp:
         out.append(f'\n}};')
+        if isParam:
+            configArgs = ', '.join(f"Config::{row['constant']}" for row in templateArgs)
+            out.append(f"template<typename Config> using {structName} = {declStructName}<{configArgs}>;")
     return out
 
 def declareVars(vars, indent, prj, useConfig=False):
@@ -446,7 +518,8 @@ def declareVars(vars, indent, prj, useConfig=False):
 def equalTest(handle, args, structName, vars, indent):
     out = list()
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, args._prj)
+                           if isParam else structName)
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline bool operator == (const { qualifiedStructName } & rhs) const {{")
     elif args.section == 'header' and handle == 'split':
@@ -487,7 +560,8 @@ def equalTest(handle, args, structName, vars, indent):
 def scTrace(handle, args, structName, vars, indent):
     out = list()
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, args._prj)
+                           if isParam else structName)
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline friend void sc_trace(sc_trace_file *tf, const {qualifiedStructName} & v, const std::string & NAME ) {{")
     elif args.section == 'header' and handle == 'split':
@@ -523,9 +597,10 @@ def scTrace(handle, args, structName, vars, indent):
     out.append(f"    }}")
     return out
 
-def operatorStream(structName, indent):
+def operatorStream(structName, indent, isParam):
     out = list()
-    out.append(f"{indent}inline friend ostream& operator << ( ostream& os,  {structName} const & v ) {{")
+    declStructName = f"{structName}_v" if isParam else structName
+    out.append(f"{indent}inline friend ostream& operator << ( ostream& os,  {declStructName} const & v ) {{")
     out.append(f'{indent}    os << v.prt();')
     out.append(f"{indent}    return os;")
     out.append(f"{indent}}}")
@@ -655,7 +730,7 @@ def getSet(vars, indent, prj=None, useConfig=False):
     for var, vardata in vars['vars'].items():
         generator = vardata['generator']
         # Route through cppTypeName so parameterizable field types keep their
-        # <Config> template argument; non-parameterizable types emit bare name.
+        # value-keyed template arguments; non-parameterizable types emit bare name.
         varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['varType']
         # next features
         if generator == 'next':
@@ -681,7 +756,7 @@ def getSet(vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}inline {varType} _getData(void) {{ return( { var }); }}")
             out.append(f"{indent}inline void _setData({varType} value) {{ { var } = value; }}")
     return out
-def registerFeatures(vars, indent):
+def registerFeatures(vars, indent, prj, useConfig):
     out = list()
     out.append(f"{indent}// register functions")
     out.append(f"{indent}inline int _size(void) {{return( (_bitWidth + 7) >> 4 ); }}")
@@ -691,18 +766,12 @@ def registerFeatures(vars, indent):
     out.append(f"{indent}uint64_t ret =")
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
-    if vardata['isArray']:
-        myArray= f"[{vardata['arraySize']}]"
-        myArrayLoopIndex= '[i]'
-    else:
-        myArray= ''
-        myArrayLoopIndex= ''
-
+        widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
             out.append(f"{indent}( {varName}._getValue() ) << { vardata['bitshift'] }")
         else:
             if vardata['bitwidth'] < 64:
-                out.append(f"{indent}( {varName} & ((1ULL<<{ vardata['bitwidth'] } )-1) << { vardata['bitshift'] })")
+                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { vardata['bitshift'] })")
             else:
                 out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
         out.append(f" +")
@@ -711,27 +780,23 @@ def registerFeatures(vars, indent):
     out.append(f"{indent}return( ret );")
     indent = ' '*4
     out.append(f"{indent}}}")
-    out.append(f"{indent}void _setValue(uint64_t value)")
+    out.append(f"{indent}void _setValue(uint64_t packedValue)")
     out.append(f"{indent}{{")
     indent = ' '*8
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
-        if vardata['isArray']:
-            myArray= f"[{vardata['arraySize']}]"
-            myArrayLoopIndex= '[i]'
-        else:
-            myArray= ''
-            myArrayLoopIndex= ''
+        widthExpr = cppVarBitwidth(vardata, prj, useConfig)
+        typeName = cppTypeName(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
             if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName }._setValue( (( value >> { vardata['bitshift'] } ) )) ;")
+                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) )) ;")
             else:
-                out.append(f"{indent}{ varName }._setValue( (( value >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { vardata['bitwidth'] } ) - 1)) ) ;")
+                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ) ;")
         else:
             if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName } = ( { vardata['varType'] } ) (( value >> { vardata['bitshift'] } ) ) ;")
+                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) ) ;")
             else:
-                out.append(f"{indent}{ varName } = ( { vardata['varType'] } ) (( value >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { vardata['bitwidth'] } ) - 1)) ;")
+                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ;")
     out.append(f"{indent}}}")
     return out
 
@@ -740,7 +805,8 @@ def sc_pack(handle, args, vars, indent, prj=None):
     out = list()
     structName = vars['structure']
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, prj)
+                           if isParam else structName)
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
@@ -950,20 +1016,24 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
     return out
 
     # constructor
-def constuctor_bv(structName, vars, indent):
+def constuctor_bv(structName, vars, indent, prj):
     out = list()
-    qualifiedStructName = f"{structName}<Config>" if vars['isParameterizable'] else structName
+    isParam = vars['isParameterizable']
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, prj)
+                           if isParam else structName)
+    declStructName = f"{structName}_v" if isParam else structName
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
         structType = 'bool'
-    out.append(f"{indent}explicit {structName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
+    out.append(f"{indent}explicit {declStructName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
     return out
 
 def constructor(structName, vars, indent, prj=None, useConfig=False):
     out = list()
     indent = ' '*4
-    out.append(f"{indent}explicit {structName}(")
+    declStructName = f"{structName}_v" if useConfig else structName
+    out.append(f"{indent}explicit {declStructName}(")
     indent = ' '*8
     params = list()
     initializers = list()
@@ -977,23 +1047,21 @@ def constructor(structName, vars, indent, prj=None, useConfig=False):
             myArrayLoopIndex= ''
         if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType' or vardata['entryType'] == 'Reserved':
             varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['varType']
-            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray},")
+            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray}")
         elif vardata['entryType'] == 'NamedStruct':
             varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['subStruct']
-            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray},")
+            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray}")
         if myArray == '':
-            initializers.append(f"{indent}{vardata['variable']}({vardata['variable'] + '_'}),")
+            initializers.append(f"{indent}{vardata['variable']}({vardata['variable'] + '_'})")
         else:
             memcpys.append(f"{indent}memcpy(&{vardata['variable']}, &{vardata['variable'] + '_'}, sizeof({vardata['variable']}));")
 
+    # A field type can carry commas (value-keyed template arguments), so the
+    # terminator is appended to the joined text.
+    paramsTerminator = ') :' if len(initializers) > 0 else ')'
+    out.append(',\n'.join(params) + paramsTerminator)
     if len(initializers) > 0:
-        params[-1] = params[-1].replace(',', ') :')
-    else:
-        params[-1] = params[-1].replace(',', ')')
-    out.extend(params)
-    if len(initializers) > 0:
-        initializers[-1] = initializers[-1].replace(',', '')
-        out.extend(initializers)
+        out.append(',\n'.join(initializers))
     indent = ' '*4
     if len(memcpys) > 0:
         out.append(f"{indent}{{")
@@ -1006,7 +1074,8 @@ def constructor(structName, vars, indent, prj=None, useConfig=False):
 
 def constructor_packed(structName, vars, indent):
     out = list()
-    out.append(f"{indent}explicit {structName}(const _packedSt &packed_data) {{ unpack(const_cast<_packedSt&>(packed_data)); }}")
+    declStructName = f"{structName}_v" if vars['isParameterizable'] else structName
+    out.append(f"{indent}explicit {declStructName}(const _packedSt &packed_data) {{ unpack(const_cast<_packedSt&>(packed_data)); }}")
     return out
 
 def get_unpack_mask_str(needBits, baseSize):
@@ -1224,12 +1293,13 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
 
     return out
 
-def fw_pack_setup(args, vars, indent):
+def fw_pack_setup(args, vars, indent, prj):
     out = list()
     fw_pack_vars = dict()
     useConfig = vars['isParameterizable']
     bitwidth = vars['maxBitwidth'] if useConfig else vars['width']
-    structName = f"{vars['structure']}<Config>" if useConfig else vars['structure']
+    structName = (valueKeyedTypeRef('structure', vars['structureKey'], vars['structure'], prj)
+                 if useConfig else vars['structure'])
     out.append(f"{indent}memset(&_ret, 0, {structName}::_byteWidth);")
     retType, rowType, baseSize = convertToType(bitwidth)
     if useConfig:
@@ -1245,8 +1315,8 @@ def fw_pack_setup(args, vars, indent):
 
 def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
     out = list()
-    prj = fw_pack_vars.get('prj')
-    useConfig = fw_pack_vars.get('useConfig', False)
+    prj = fw_pack_vars['prj']
+    useConfig = fw_pack_vars['useConfig']
     bitwidthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
     isArray = data['isArray']
     if fw_pack_vars['bitwidth'] > 64:
@@ -1301,8 +1371,8 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
 
 def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
     out = list()
-    prj = fw_pack_vars.get('prj')
-    useConfig = fw_pack_vars.get('useConfig', False)
+    prj = fw_pack_vars['prj']
+    useConfig = fw_pack_vars['useConfig']
     bitwidthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
     # nested structure, declare a tmp variable to hold the value and copy it to the destination
     tmpType, tmpRowType, tmpBaseSize = convertToType(data['bitwidth'])
@@ -1407,7 +1477,7 @@ def processPackUnpack(fname, handle, args, vars, indent, prj=None, useConfig=Fal
 
     # perform any setup
     setupFn = p['functions'].get('setup', None)
-    setupOut, setupVars = setupFn(args, vars, indent) if setupFn else ([], {})
+    setupOut, setupVars = setupFn(args, vars, indent, prj) if setupFn else ([], {})
     setupVars['prj'] = prj
     setupVars['useConfig'] = useConfig
     out.extend(setupOut)
@@ -1463,14 +1533,12 @@ def structContainsSignedTypes(structValue, prj, data):
     for varKey, varData in structValue['vars'].items():
         if varData['entryType'] == 'NamedVar' or varData['entryType'] == 'NamedType':
             # Check if the type is signed
-            typeInfo = prj.data['types'].get(varData['varTypeKey'])
-            if typeInfo and typeInfo['isSigned']:
+            if prj.data['types'][varData['varTypeKey']]['isSigned']:
                 return True
         elif varData['entryType'] == 'NamedStruct':
             # Recursively check nested structures
-            nestedStructKey = varData['subStructKey']
-            nestedStruct = prj.data['structures'].get(nestedStructKey)
-            if nestedStruct and structContainsSignedTypes(nestedStruct, prj, data):
+            nestedStruct = prj.data['structures'][varData['subStructKey']]
+            if structContainsSignedTypes(nestedStruct, prj, data):
                 return True
     return False
 
@@ -1531,18 +1599,10 @@ def _roundTripHelperLines(indent):
 
 
 def _sampleConfigs(prj, data):
-    """Deterministic Default/Mid/Max sample points for a context's base
-    parameterizable constants. Sample points are variant-independent: every
-    point is derived ONLY from the ipParameter declaration (its `value` and
-    `maxValue`), never from variant-bound Config values. Default = declared
-    value, Max = declared maxValue, Mid = maxValue // 2 (integer floor). Each
-    sample is a (Role, configName, baseValues) triple; identical value-dicts are
-    de-duplicated keeping first occurrence so a degenerate param does not emit
-    redundant Configs. baseValues carries only base (non-eval) parameterizable
-    constants; eval-derived members recompute symbolically inside the Config
-    struct."""
-    baseParams = [v for v in data['constants'].values()
-                  if v['isParameterizable'] and not v['evalCanonical']]
+    """Deterministic Default/Mid/Max sample points for the root parameters a
+    round-trip test needs (projectOpen._sampleConfigConstants), taken from each
+    constant's own declaration."""
+    baseParams = list(data['sampleConfigConstants'].values())
     if not baseParams:
         return []
     defaultVals = {v['constant']: v['value'] for v in baseParams}
@@ -1592,7 +1652,7 @@ def structTest(args, prj, data):
     # in module mode (no Config in a non-module TU).
     samples = _sampleConfigs(prj, data) if useConfig else []
     for _, configName, baseValues in samples:
-        out.extend(config.configStructLines(prj, data, configName, baseValues))
+        out.extend(config.configStructLines(data, configName, baseValues))
 
     out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
     out.append(f'void test_{fn}::test(void) {{')

@@ -1,9 +1,13 @@
 # Report: 116 Plan Hierarchy and Status
 
-Status as of: 2026-08-04
+Status as of: 2026-08-31
 Branch context: `feature/116-parameterized-types` in `builder/base`
 (HEAD `2b3f6d1`), with the matching `builder` pro overlay (HEAD `6b29e75`) and
 the `debayer` product (HEAD `e9fc5ec`) as the integration vehicle.
+The committed baseline remains those HEADs. The issue #116 follow-up is complete
+in the working trees on `feature/125-a2c-20-followup-issues`, but commit
+preparation is not: the final change set is not yet fully staged, committed, or
+pushed.
 
 This is the status index for the `plan-*.md` files under `builder/base`.
 It states current status definitively; detailed execution records live in
@@ -263,6 +267,7 @@ correctly instead of following obsolete manual patterns.
 | Variant/config unification (Stages 1-11) | Complete | `plan-variant-config-unification.md` |
 | Exact-width Verilated wrappers | Complete | `plan-canonical-verilated-wrappers.md` |
 | Generated testbench variant selection | Complete | `plan-step-11-variant-aware-testbenches.md` |
+| Parameter-sharing steps 7-11 and registrar follow-up | **Complete and verified in the working tree; commit preparation remains.** A testbench requires a DUT-owned variant; db-time validators reject container-only testbench Configs and duplicate labels across Config sources. Stable per-project-child physical registrar artifacts aggregate pair-qualified logical registrations. The local `containerParam` model/emission path and cross-project Verilated path pass. Testbench fileMap membership is declarative, and fresh projects no longer copy the stale starter fileMap | `plan-parameter-sharing.md` |
 | C1 / C2 parameterized declarations + SV emission | Complete | `plan-param-constant-collision.md` |
 | C3 parameterized register decode | Complete | `plan-param-constant-collision.md`, `plan-parameterized-register-decode.md` |
 | C4 symbolic eval | E4 complete; E5 complete (SystemC + firmware C); E6 **closed (descoped)** | `plan-eval-symbolic-emission.md` |
@@ -301,6 +306,13 @@ Branch-state caveat: the workstream code is committed in branch history
 state. The `builder/base` working tree was clean at HEAD `2b3f6d1` before this
 refresh. The formal open/closed classification of each row remains with the
 owning plans named in the same row.
+
+The 2026-08-20 through 2026-08-31 follow-up is separate from that committed
+baseline. Its implementation and verification are complete in the working
+trees. The final index is not yet fully assembled, no commit contains the work,
+and nothing has been pushed. Steps 2, 3, 4, 5, and the RTL-bearing half of step
+6 in `plan-parameter-sharing.md` remain open. This update does not close any
+unrelated loose end or review finding carried by that plan.
 
 ## Branch Metrics
 
@@ -436,6 +448,26 @@ examples:
 | `include/` | 6 | 401 | 153 |
 
 ## Recorded Acceptance Runs
+
+### Executed for the working-tree reconciliation (2026-08-31)
+
+These runs cover the complete local issue #116 follow-up, including the
+registrar-pair and step 11 changes.
+
+- **Base unit suites: 114 of 114 pass.**
+- **Base pipeline: 31 simulations pass**, producing 62 `No error` reports.
+- **Pro clean pipeline passes.** It includes
+  `unittest/test_constructor_tandem.py` and 7 simulations producing 14
+  `No error` reports. Nested template Config registrations use deterministic
+  TU-local ordinal helper identifiers. The focused test checks emitted text,
+  then compiles and links two rendered translation units and runs the result.
+- **Product integration passes** with `make clean -j`, `make gen -j`, and
+  `make -C rundir -j all VL_DUT=1`. The only diagnostic is the existing unused
+  `bayer_pattern_lookup` warning.
+- **Current working-tree-versus-HEAD diff checks are clean after EOF
+  normalization.** Cached checks can retain the old whitespace until the
+  normalized files are staged. This is a staging-state distinction, not an
+  implementation or verification failure.
 
 ### Executed for this refresh (2026-08-04)
 
@@ -1145,3 +1177,47 @@ historical/superseded. In particular:
   completion in parallel but **cannot be closed from this tree** — every artefact
   it changes lives in `/work/ws/isp`, which is out of tree. The register now
   carries the settled reachability analysis it previously lacked.
+- **2026-08-23, step 11 follow-up recorded.** The working-tree work from
+  2026-08-20 through 2026-08-23 makes a testbench require a variant declared by
+  its DUT block. After `calcVariantSourceBlocks`, `projectCreate` rejects both a
+  testbench on a block whose Config comes only from containers and one variant
+  label supplied by multiple Config-source blocks. The negative fixtures include
+  accepting arms in `test_error_inherit_container_tb.py` and
+  `test_error_variant_label_collision.py`, serial suites 19m2e and 19m2f.
+  `dutVariant: true` now marks the three testbench fileMap entries;
+  `processYaml` and `newModule` consume that field, the hardcoded testbench-key
+  tuple is removed, and `newModule` seeds from the DUT block's
+  `getQualBlockVariants` result. `newProject.py` no longer writes the stale
+  13-entry starter fileMap. It leaves only a commented `includeFW` override
+  example, with tandem removed. The same arc sorts Config-context iteration in
+  `vlRegistrar.py`, adds `<memory>` to the tandem header, and makes
+  `instanceFactory.h` include `blockBase.h` and `<memory>` directly.
+  The mixed-site follow-up keeps both child-owned and inherited container
+  Config sources for one parameterized child type. Inherited sites forward
+  their own container labels; ordinary sites retain their child labels.
+  Recorded verification covers the focused parameter and composition suites,
+  `test_inherit_vl_child.py` end to end at child-owned `solo` and inherited
+  `default` and `alt`, plus mixed tandem plain-model, model/model, and RTL/model
+  runs. The collision and testbench validators pass their rejecting and
+  accepting arms. At this checkpoint no full-suite or full clean pipeline rerun
+  was recorded. The work was uncommitted and nothing was pushed. Steps 2
+  through 5 and the RTL-bearing half of step 6 remained open; loose ends and
+  review findings kept their prior status.
+- **2026-08-31, issue #116 working-tree reconciliation.** The registrar and step
+  11 follow-up is implementation-complete and verified. `REGISTRARPAIRS` keeps
+  one persisted contract per qualified parent-child pair. Physical registrar
+  files retain one stable child basename per owning project and aggregate that
+  project's pairs, while factory domains and pair-specific Verilated tops keep
+  pair-qualified logical identities. Local mixed inherited/ordinary
+  `containerParam` sites and cross-project Verilated `containerParam` sites pass.
+  Nested template Config tandem registrations use sorted, deterministic
+  TU-local ordinal helpers; `test_constructor_tandem.py` checks their text and
+  compiles, links, and runs two rendered translation units.
+  Base acceptance is 114/114 unit suites and 31 successful simulations with 62
+  `No error` reports. The clean Pro pipeline includes the focused helper test
+  and 7 successful simulations with 14 `No error` reports. The product passes
+  clean, generation, and `VL_DUT=1` build with only the existing unused
+  `bayer_pattern_lookup` warning. Working-tree-versus-HEAD diff checks are clean
+  after EOF normalization; cached checks may retain old whitespace until
+  staging. The implementation is not yet fully staged, committed, or pushed.
+  Steps 2, 3, 4, 5, and the RTL-bearing half of step 6 remain open.

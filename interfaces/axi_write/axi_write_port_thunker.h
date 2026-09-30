@@ -4,99 +4,72 @@
 
 #include "axi_write_channel.h"
 #include "../../common/systemc/bitTwiddling.h"
-#include "sysc/kernel/sc_dynamic_processes.h"
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 // axi_write_port_thunker
 //
-// Header-only forwarding adapter held as a member of a generated container
-// class. Bridges an upstream axi_write consumer-side endpoint carrying
-// (axiWriteAddressSt<UpA>, axiWriteDataSt<UpD, UpS>) and the upstream
-// response axiWriteRespSt to a downstream axi_write consumer port carrying
-// (axiWriteAddressSt<DownA>, axiWriteDataSt<DownD, DownS>) and the
-// downstream response axiWriteRespSt, when the corresponding payload
-// structures are per-field _bitWidth equivalent but differ in nested
-// _packedSt width. The per-field equivalence is validated elsewhere; this
-// class performs the runtime packed-value bridge for the per-parameter
-// envelope fields via copy_packed_bits() and preserves the AXI write
-// address / data / response handshake at both ends.
+// Joins a child axi_write port to the parent's endpoint when the payload types
+// are per-field _bitWidth equivalent but distinct C++ types. Up is the parent
+// side and Down the child, whatever the data direction.
 //
-// Up always denotes the parent side and Down the owned child channel; this
-// is a topological position, not a data-flow direction (the producer shape
-// below flows Down -> Up).
+// It owns no channel and no thread. The adapter converts every child call,
+// portBase calls such as setCycleTransaction included, and makes it on the
+// parent's channel, so timing and API mode are those of a direct bind.
 //
-// Single-beat semantics only: the forwarding loop pulls one address, one
-// data beat and one response per iteration. Multi-beat burst transfers
-// and partial writes are out of scope for the thunker; the packed-form
-// check is the canonical guard against width disagreement for the wrapped
-// envelope.
+// Where a verdict is false, copyPayload's packed arm masks each field to its
+// declared width. A value with bits outside its range is then cleaned up here
+// instead of failing fast as it would on a direct bind. This is an accepted
+// limitation.
 //
-// The fourth and fifth payload structs of the axi_write view are the
-// strobe types (UpS / DownS). axi_write_if.yaml lists three struct
-// parameters per side (addr_t, data_t, strb_t), so the template parameter
-// list carries six types — three per side — matching the buildThunkerView
-// enumeration order.
+// getSendDataPtr()/getReceiveDataPtr() hand the child raw memory in the parent's
+// burst buffer, which the thunker never sees. Unless kDirectData holds, the two
+// sides lay out a beat differently, so the adapter gives the child a Down-typed
+// copy of 256 beats (the AXI maximum) and converts it on buffered sendData() and
+// getReceiveDataPtr(), using the received buffer's beat count independently of AW.
 //
-// Four construction shapes are supported, spanning a 2x2 family: the child
-// (down) end is either a consumer (axi_write_in<DownA, DownD, DownS>&) or a
-// producer (axi_write_out<DownA, DownD, DownS>&), and the parent (up) end is
-// either a fully-bound channel interface base (captured eagerly) or an
-// unbound parent port (resolved lazily on the spawned thread's first
-// iteration, since the port's interface is not available until SystemC
-// elaboration completes):
-//   * connectionMap shape (consumer child, up port) — up is a parent port
-//     axi_write_in<UpA, UpD, UpS>&, resolved lazily in thunkIn().
-//   * connections shape (consumer child, up channel) — up is the parent-side
-//     channel bound directly by its axi_write_in_if<UpA, UpD, UpS> interface
-//     base, captured immediately.
-//   * producer (out) shape (producer child, up channel) — the child producer
-//     port axi_write_out<DownA, DownD, DownS>& drives the owned channel; the
-//     thunker consumes from it and drives the bridged payload onto the
-//     parent-side channel's axi_write_out_if<UpA, UpD, UpS>, captured
-//     immediately. Data flows child -> parent, the reverse of the consumer
-//     shapes.
-//   * producer (out) port shape (producer child, up port) — as the producer
-//     shape, but the up side is an unbound parent port
-//     axi_write_out<UpA, UpD, UpS>& (e.g. a testbench External's inherited
-//     <DUT>Inverted boundary port), resolved lazily in thunkOut(). Used when
-//     a parameterized producer instance feeds a non-parameterized boundary at
-//     an excluded-instance (tb/DUT) boundary.
-//
-// In every shape the child-side port bind to the owned channel must occur
-// during SystemC elaboration; that bind is performed in the constructor
-// body (which is only reached when the thunker is held as a container
-// member).
-// The thunker moves each transaction as packed bits, and the ID occupies
-// exactly IDW of them, so both ends must agree on UpIDW == DownIDW for the
-// ID to round-trip unchanged. The C++ spelling of the ID type may differ
-// (project validation pairs type payloads by width, and a parameterizable
-// type spells as a 64-bit alias). Template argument order matches the generator
-// (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
-// up-optional (in interface_defs order: AWU, WU, BU, ID/IDW), down-optional
-// (AWU, WU, BU, ID/IDW).
+// A parent port is unbound until elaboration completes, so it is resolved in
+// end_of_elaboration(). Template argument order must match _thunker_member_type
+// in pysrc/intf_gen_utils.py. block_ is unused.
 template <class UpA, class UpD, class UpS,
           class DownA, class DownD, class DownS,
+          bool DirectAddr = false, bool DirectData = false, bool DirectStrb = false,
           class UpAWU = std::monostate, class UpWU = std::monostate, class UpBU = std::monostate, class UpID = _axiIdT, unsigned UpIDW = 4,
           class DownAWU = std::monostate, class DownWU = std::monostate, class DownBU = std::monostate, class DownID = _axiIdT, unsigned DownIDW = 4>
 class axi_write_port_thunker
 {
     static_assert(UpIDW == DownIDW, "a cross-interface bind must carry the same id_t width on both ends");
+    static_assert(!DirectAddr || sizeof(UpA) == sizeof(DownA), "direct copy requires equal payload size");
+    static_assert(!DirectData || sizeof(UpD) == sizeof(DownD), "direct copy requires equal payload size");
+    static_assert(!DirectStrb || sizeof(UpS) == sizeof(DownS), "direct copy requires equal payload size");
+
+    using UpAddr = axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>;
+    using DownAddr = axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>;
+    using UpData = axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>;
+    using DownData = axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>;
+    using UpResp = axiWriteRespSt<UpBU, UpID, UpIDW>;
+    using DownResp = axiWriteRespSt<DownBU, DownID, DownIDW>;
+    using UpIn = axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>;
+    using UpOut = axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>;
+    using DownIn = axi_write_in_if<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>;
+    using DownOut = axi_write_out_if<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>;
+
+    static constexpr bool kDirectData = DirectData && DirectStrb && std::is_same_v<UpWU, DownWU> && std::is_same_v<UpID, DownID>;
+    static_assert(!kDirectData || sizeof(UpData) == sizeof(DownData), "a shared burst buffer requires equal envelope size");
+    static constexpr unsigned kMaxBurst = 1u << UpAddr::lenWidth;
+
 public:
     // connectionMap shape: parent port reference.
     axi_write_port_thunker( const char* name_,
                             axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
                             axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
-      : m_up_port( &upPort ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkIn(); } );
+        m_in = std::make_unique<inAdapter>( name_, upPort );
+        downPort( *m_in );
     }
 
     // connections shape: parent-side channel bound by its interface base.
@@ -104,157 +77,242 @@ public:
                             axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&    upInIface,
                             axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( &upInIface ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkIn(); } );
+        m_in = std::make_unique<inAdapter>( name_, upInIface );
+        downPort( *m_in );
     }
 
-    // producer (out) shape: the downstream child end is a producer port
-    // that drives the owned channel; the bridged payload is driven onto
-    // the parent-side channel's axi_write_out_if<UpA, UpD, UpS>.
+    // producer (out) shape: the child producer port drives the parent-side
+    // channel's axi_write_out_if<UpA, UpD, UpS>.
     axi_write_port_thunker( const char* name_,
                             axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&   upOutIface,
                             axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( &upOutIface ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+        m_out = std::make_unique<outAdapter>( name_, upOutIface );
+        downPort( *m_out );
     }
 
-    // producer (out) port shape: the up side is an unbound parent port
-    // axi_write_out<UpA, UpD, UpS>& (e.g. a testbench External's inherited
-    // <DUT>Inverted boundary port), resolved lazily in thunkOut(). Used when
-    // a parameterized producer instance feeds a non-parameterized boundary at
-    // an excluded-instance (tb/DUT) boundary.
+    // producer (out) port shape: the parent side is a parent OUT port.
     axi_write_port_thunker( const char* name_,
                             axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
                             axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( &upPort ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+        m_out = std::make_unique<outAdapter>( name_, upPort );
+        downPort( *m_out );
     }
 
 private:
-    void thunkIn()
+    template <class To, class From>
+    static void copyAddr( To& out, const From& in )
     {
-        // Resolve the up-side interface once. For the port shape, sc_port
-        // binding is complete by the time the spawned thread first runs.
-        axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upIn =
-            m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
-        while (true) {
-            // Address phase: upstream receives, downstream sends.
-            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrIn;
-            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrOut;
-            typename axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_packedSt addrPacked;
-            typename axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_packedSt addrOutPacked;
-            upIn->receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
-            // The channel's overridden sendAddr() drops the default
-            // optional argument, so the std::nullopt is supplied
-            // explicitly to satisfy the two-argument signature.
-            m_down_channel.sendAddr( addrOut, std::nullopt );
-
-            // Data phase: upstream receives, downstream sends.
-            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataIn;
-            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataOut;
-            typename axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_packedSt dataPacked;
-            typename axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_packedSt dataOutPacked;
-            upIn->receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
-            m_down_channel.sendData( dataOut );
-
-            // Response phase: downstream returns, upstream answered.
-            axiWriteRespSt<DownBU, DownID, DownIDW> respIn;
-            axiWriteRespSt<UpBU, UpID, UpIDW>   respOut;
-            typename axiWriteRespSt<DownBU, DownID, DownIDW>::_packedSt respPacked;
-            typename axiWriteRespSt<UpBU, UpID, UpIDW>::_packedSt   respOutPacked;
-            m_down_channel.receiveResp( respIn );
-            respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<UpBU, UpID, UpIDW>::_bitWidth );
-            respOut.unpack( respOutPacked );
-            upIn->sendResp( respOut );
+        out.awid = static_cast<decltype(out.awid)>( in.awid );
+        copyPayload<DirectAddr>( out.awaddr, in.awaddr );
+        out.awlen = in.awlen;
+        out.awsize = in.awsize;
+        out.awburst = in.awburst;
+        if constexpr (hasOptionalPayload<decltype(out.user)> && hasOptionalPayload<decltype(in.user)>) {
+            copyPayload<false>( out.user, in.user );
         }
     }
 
-    void thunkOut()
+    template <class To, class From>
+    static void copyData( To& out, const From& in )
     {
-        // Producer (out) shape: the child producer drives DownA/DownD into
-        // the owned m_down_channel; bridge each payload and drive UpA/UpD
-        // onto the parent-side channel. Mirrors thunkIn() with the consumer
-        // object (upIn) replaced by m_down_channel, the producer object
-        // (m_down_channel) replaced by m_up_out_iface, and every Up<->Down
-        // type swapped. Resolve the up-side interface once, from the eager
-        // channel iface or (port shape) the lazily-bound parent out port.
-        axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upOut =
-            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
-        while (true) {
-            // Address phase: downstream receives, upstream sends.
-            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrIn;
-            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrOut;
-            typename axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_packedSt addrPacked;
-            typename axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_packedSt addrOutPacked;
-            m_down_channel.receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
-            // The out interface's sendAddr() carries a default optional
-            // argument; the std::nullopt is supplied explicitly to mirror
-            // thunkIn() and the channel's two-argument signature.
-            upOut->sendAddr( addrOut, std::nullopt );
-
-            // Data phase: downstream receives, upstream sends.
-            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataIn;
-            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataOut;
-            typename axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_packedSt dataPacked;
-            typename axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_packedSt dataOutPacked;
-            m_down_channel.receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
-            upOut->sendData( dataOut );
-
-            // Response phase: upstream returns, downstream answered.
-            axiWriteRespSt<UpBU, UpID, UpIDW>   respIn;
-            axiWriteRespSt<DownBU, DownID, DownIDW> respOut;
-            typename axiWriteRespSt<UpBU, UpID, UpIDW>::_packedSt   respPacked;
-            typename axiWriteRespSt<DownBU, DownID, DownIDW>::_packedSt respOutPacked;
-            upOut->receiveResp( respIn );
-            respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<DownBU, DownID, DownIDW>::_bitWidth );
-            respOut.unpack( respOutPacked );
-            m_down_channel.sendResp( respOut );
+        out.wid = static_cast<decltype(out.wid)>( in.wid );
+        copyPayload<DirectData>( out.wdata, in.wdata );
+        copyPayload<DirectStrb>( out.wstrb, in.wstrb );
+        out.wlast = in.wlast;
+        if constexpr (hasOptionalPayload<decltype(out.user)> && hasOptionalPayload<decltype(in.user)>) {
+            copyPayload<false>( out.user, in.user );
         }
     }
 
-    axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>*    m_up_port;
-    axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_in_iface;
-    axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_iface;
-    axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_port;
-    axi_write_channel<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW> m_down_channel;
+    template <class To, class From>
+    static void copyResp( To& out, const From& in )
+    {
+        out.bid = static_cast<decltype(out.bid)>( in.bid );
+        out.bresp = in.bresp;
+        if constexpr (hasOptionalPayload<decltype(out.user)> && hasOptionalPayload<decltype(in.user)>) {
+            copyPayload<false>( out.user, in.user );
+        }
+    }
+
+    // The portBase calls the child makes through its port, forwarded to the
+    // parent's interface as a direct bind would deliver them.
+    template <class UpIf>
+    struct forwardPortBase : virtual public portBase
+    {
+        void setMultiDriver( std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr ) override { m_up->setMultiDriver( name_, prt ); }
+        std::shared_ptr<trackerBase> getTracker( void ) override { return m_up->getTracker(); }
+        void setTeeBusy( bool busy ) override { m_up->setTeeBusy( busy ); }
+        void setTandem( void ) override { m_up->setTandem(); }
+        void setLogging( verbosity_e verbosity ) override { m_up->setLogging( verbosity ); }
+        void setTimed( int nsec, timedDelayMode mode ) override { m_up->setTimed( nsec, mode ); }
+        void setCycleTransaction( portType type_ ) override { m_up->setCycleTransaction( type_ ); }
+        void setTimedDelayPtr( std::shared_ptr<timedDelayBase> pTimedDelay ) override { m_up->setTimedDelayPtr( pTimedDelay ); }
+        portBase* getPort( void ) override { return m_up->getPort(); }
+        sc_core::sc_prim_channel* getChannel( void ) override { return m_up->getChannel(); }
+        void setLogQueue( std::shared_ptr<stringPingPong> logQueue ) override { m_up->setLogQueue( logQueue ); }
+
+        UpIf* m_up = nullptr;
+        sc_core::sc_port<UpIf>* m_up_port = nullptr;
+    };
+
+    // Consumer child: the child receives AW and W and sends B.
+    class inAdapter final : public sc_core::sc_prim_channel, public DownIn, public forwardPortBase<UpIn>
+    {
+    public:
+        inAdapter( const char* name_, sc_core::sc_port<UpIn>& upPort ) : sc_core::sc_prim_channel( name_ ) { this->m_up_port = &upPort; }
+        inAdapter( const char* name_, UpIn& up ) : sc_core::sc_prim_channel( name_ ) { this->m_up = &up; }
+
+        void receiveAddr( DownAddr& addr_ ) override
+        {
+            UpAddr up;
+            this->m_up->receiveAddr( up );
+            copyAddr( addr_, up );
+        }
+        void receiveData( DownData& data_ ) override
+        {
+            UpData up;
+            this->m_up->receiveData( up );
+            copyData( data_, up );
+        }
+        void receiveDataCycle( DownData& data_ ) override
+        {
+            UpData up;
+            this->m_up->receiveDataCycle( up );
+            copyData( data_, up );
+        }
+        void sendResp( const DownResp& resp_ ) override
+        {
+            UpResp up;
+            copyResp( up, resp_ );
+            this->m_up->sendResp( up );
+        }
+        void sendRespCycle( const DownResp& resp_ ) override
+        {
+            UpResp up;
+            copyResp( up, resp_ );
+            this->m_up->sendRespCycle( up );
+        }
+        void push_burst( uint32_t burstCount ) override { this->m_up->push_burst( burstCount ); }
+        uint32_t getReceiveBeatCount(void) override { return this->m_up->getReceiveBeatCount(); }
+        // Only a channel with a burst buffer has a read pointer, so the burst is
+        // converted here rather than on every receiveData().
+        uint8_t* getReceiveDataPtr( void ) override
+        {
+            if constexpr (kDirectData) {
+                return this->m_up->getReceiveDataPtr();
+            } else {
+                const unsigned beats = getReceiveBeatCount();
+                Q_ASSERT( beats > 0 && beats <= kMaxBurst, "received write buffer must contain 1 to 256 beats" );
+                const UpData* up = reinterpret_cast<const UpData*>( this->m_up->getReceiveDataPtr() );
+                for (unsigned i = 0; i < beats; i++) {
+                    copyData( m_shadow[i], up[i] );
+                }
+                return reinterpret_cast<uint8_t*>( m_shadow.data() );
+            }
+        }
+        bool isActive() override { return this->m_up->isActive(); }
+        bool isNotActive() override { return this->m_up->isNotActive(); }
+        void setExternalEvent( sc_event* event ) override { this->m_up->setExternalEvent( event ); }
+        const char* kind() const override { return "axi_write_port_thunker"; }
+
+    private:
+        void end_of_elaboration() override
+        {
+            if (this->m_up_port) {
+                this->m_up = this->m_up_port->operator->();
+            }
+        }
+        std::vector<DownData> m_shadow = std::vector<DownData>( kDirectData ? 0 : kMaxBurst );
+    };
+
+    // Producer child: the child sends AW and W and receives B.
+    class outAdapter final : public sc_core::sc_prim_channel, public DownOut, public forwardPortBase<UpOut>
+    {
+    public:
+        outAdapter( const char* name_, sc_core::sc_port<UpOut>& upPort ) : sc_core::sc_prim_channel( name_ ) { this->m_up_port = &upPort; }
+        outAdapter( const char* name_, UpOut& up ) : sc_core::sc_prim_channel( name_ ) { this->m_up = &up; }
+
+        void sendAddr( const DownAddr& addr_, std::optional<std::string> str ) override
+        {
+            UpAddr up;
+            copyAddr( up, addr_ );
+            this->m_up->sendAddr( up, std::move( str ) );
+        }
+        void sendData( const DownData& data_ ) override
+        {
+            if constexpr (!kDirectData) {
+                const unsigned beats = getSendBufferCapacity();
+                if (beats) {
+                    Q_ASSERT( beats <= kMaxBurst, "write buffer exceeds maximum AXI burst" );
+                    UpData* up = reinterpret_cast<UpData*>( this->m_up->getSendDataPtr() );
+                    for (unsigned i = 0; i < beats; i++) {
+                        copyData( up[i], m_shadow[i] );
+                    }
+                }
+            }
+            UpData up;
+            copyData( up, data_ );
+            this->m_up->sendData( up );
+        }
+        void sendData( const DownData& data_, int burstCount ) override
+        {
+            if constexpr (!kDirectData) {
+                UpData* up = reinterpret_cast<UpData*>( this->m_up->getSendDataPtr() );
+                for (int i = 0; i < burstCount; i++) {
+                    copyData( up[i], m_shadow[i] );
+                }
+            }
+            UpData up;
+            copyData( up, data_ );
+            this->m_up->sendData( up, burstCount );
+        }
+        void sendDataCycle( const DownData& data_ ) override
+        {
+            UpData up;
+            copyData( up, data_ );
+            this->m_up->sendDataCycle( up );
+        }
+        void receiveResp( DownResp& resp_ ) override
+        {
+            UpResp up;
+            this->m_up->receiveResp( up );
+            copyResp( resp_, up );
+        }
+        void receiveRespCycle( DownResp& resp_ ) override
+        {
+            UpResp up;
+            this->m_up->receiveRespCycle( up );
+            copyResp( resp_, up );
+        }
+        uint8_t* getSendDataPtr( void ) override
+        {
+            if constexpr (kDirectData) {
+                return this->m_up->getSendDataPtr();
+            } else {
+                return reinterpret_cast<uint8_t*>( m_shadow.data() );
+            }
+        }
+        uint32_t getSendBufferCapacity(void) override { return this->m_up->getSendBufferCapacity(); }
+        const char* kind() const override { return "axi_write_port_thunker"; }
+
+    private:
+        void end_of_elaboration() override
+        {
+            if (this->m_up_port) {
+                this->m_up = this->m_up_port->operator->();
+            }
+        }
+        std::vector<DownData> m_shadow = std::vector<DownData>( kDirectData ? 0 : kMaxBurst );
+    };
+
+    // One of the two, by construction shape.
+    std::unique_ptr<inAdapter> m_in;
+    std::unique_ptr<outAdapter> m_out;
 };
 
 #endif // AXI_WRITE_PORT_THUNKER_H

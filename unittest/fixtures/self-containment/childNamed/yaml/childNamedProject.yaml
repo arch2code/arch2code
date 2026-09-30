@@ -1,0 +1,14 @@
+# A separately authored IP whose root instance carries its root block's name -
+# the `X: { container: X, instanceType: X }` idiom. Composed as a child below.
+projectName: childNamedProj
+
+topInstance: cnTop
+
+projectFiles:
+    - childNamedArch.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

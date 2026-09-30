@@ -21,10 +21,5 @@ HDL_TOP_MODULE = hierVlDemo
 
 A2C_PRJ_YAML = $(REPO_ROOT)/prj/yaml/hierVlDemoProject.yaml
 
-# User-hosted generated-region file: arch2code injects the address defines (via
-# the includes template) into this user-authored host header. Not fileMap-
-# scaffolded, so it rides the EXTRA_ generation seam.
-EXTRA_SC_GEN_FILES = $(REPO_ROOT)/fw/axi4sRegAddresses.h
-
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk

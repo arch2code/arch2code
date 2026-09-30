@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockBRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module mixed_blockBRegs
+module blockBRegs
     // Generated Import package statement(s)
-    import mixed_mixedInclude_package::*;
-    import mixed_mixedBlockC_package::*;
+    import mixedInclude_package::*;
+    import mixedBlockC_package::*;
     import mixed_package::*;
     #(
         parameter bit APB_READY_1WS = 0
@@ -259,5 +259,5 @@ module mixed_blockBRegs
     assign apbReg.pready  = rd_ready | wr_ready;
     assign apbReg.pslverr = 1'b0;
 
-endmodule : mixed_blockBRegs
+endmodule : blockBRegs
 // GENERATED_CODE_END

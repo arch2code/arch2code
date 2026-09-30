@@ -6,10 +6,12 @@
 
 // GENERATED_CODE_PARAM --block=ipBridge
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import ipBridge.base;
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "ipBridge_hdl_sv_wrapper.h"
 #else
@@ -28,7 +30,6 @@ import common_shared_types;
 using namespace common_shared_types_ns;
 import ip;
 using namespace ip_ns;
-#include "ipVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

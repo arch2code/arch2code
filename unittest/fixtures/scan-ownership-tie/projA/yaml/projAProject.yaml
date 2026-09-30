@@ -1,0 +1,12 @@
+# projA PROJECT file. Owns its own leaf, which includes the shared
+# definitions file; does not list projB.
+projectName: projA
+
+projectFiles:
+    - projALeaf.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

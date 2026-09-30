@@ -6,9 +6,9 @@
 module;
 #include "systemc.h"
 #include "logging.h"
+#include <algorithm>
 #include "bitTwiddling.h"
 #include "q_assert.h"
-#include <algorithm>
 
 export module axi4sDemo_tb;
 // GENERATED_CODE_END

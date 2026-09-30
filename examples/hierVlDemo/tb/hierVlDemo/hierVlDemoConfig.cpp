@@ -1,27 +1,19 @@
 // 
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=hierVlDemo
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
-
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
 import a2c.endOfTest;
-
-// GENERATED_CODE_PARAM --block=hierVlDemo
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class hierVlDemoConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("hierVlDemo", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<hierVlDemoConfig>());}, is_default_testbench_v<hierVlDemoConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~hierVlDemoConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -47,4 +39,18 @@ public:
     }
 
 };
-hierVlDemoConfig::registerTestBenchConfig hierVlDemoConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (hierVlDemoConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_hierVlDemoConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("hierVlDemo", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<hierVlDemoConfig>());}, is_default_testbench_v<hierVlDemoConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _hierVlDemoConfig_registered = (register_hierVlDemoConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

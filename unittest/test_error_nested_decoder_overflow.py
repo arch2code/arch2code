@@ -56,7 +56,7 @@ registers:
 
 REQUIRED_SUBSTRINGS = [
     "Nested register decoder 'subDecode'",
-    "group 'sub'",
+    "group 'addrctl_test::sub'",   # project-qualified AddressGroups key
     "0x1000000",   # routed footprint (16 MiB)
     "0x100000",    # parent per-child window (1 MiB)
     "apbDecode",   # parent decoder named

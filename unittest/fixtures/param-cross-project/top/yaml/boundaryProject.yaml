@@ -1,0 +1,21 @@
+yamlFormat: 2
+
+# Assembler for the sanctioned de-parameterized boundary across the same three
+# independently parameterized IPs: the assembler owns literal-width boundary
+# types and interface, each endpoint keeps its own parameterized dataIf, and
+# every leg is a cross-interface bind.
+projectName: boundaryTopProj
+
+projectFiles:
+    - ../../projA/yaml/aProject.yaml
+    - ../../projB/yaml/bProject.yaml
+    - ../../projC/yaml/cProject.yaml
+    - boundaryTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

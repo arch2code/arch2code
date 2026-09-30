@@ -1,7 +1,15 @@
 //
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=pySocket
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
+#include "instanceFactory.h"
+#include "testBenchConfigFactory.h"
+import a2c.endOfTest;
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+#include "systemc.h"
 #include <cstring>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,13 +17,13 @@
 #include <sys/wait.h>
 #include <cstdio>
 
-#include "instanceFactory.h"
 #include "socketFactory.h"
 #include "socketTransport.h"
-#include "testBenchConfigFactory.h"
 #include "pySocketSocketCatalog.h"
-import a2c.endOfTest;
 #include "testController.h"
+
+// Instance path of the socket shell; pySocket.py spells the same path.
+constexpr const char *SHELL_INSTANCE = "pySocket_tb.u_pySocket";
 
 // Absolute path to pySocket.py: do not rely on getcwd() — runs may start from FIPS/rundir or .../pySocket/rundir.
 std::string resolvePySocketScriptPath()
@@ -55,22 +63,11 @@ std::string resolvePySocketScriptPath()
     // python code not found, return an empty string
     return {};
 }
-
-// GENERATED_CODE_PARAM --block=pySocket
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class pySocketConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("pySocket", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<pySocketConfig>());}, is_default_testbench_v<pySocketConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~pySocketConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -90,11 +87,16 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE, "socket");
 
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
-        if (!pySocketSocketCatalog::registerAll()) {
+        if (!pySocketSocketCatalog::registerInstance(SHELL_INSTANCE)) {
+            return false;
+        }
+        if (pySocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
@@ -162,8 +164,8 @@ public:
 
         socketFactory::acceptAll();
 
-        for (const char *ifc : pySocketSocketCatalog::listen_names) {
-            if (socketFactory::getFd(ifc) < 0) {
+        for (const char *suffix : pySocketSocketCatalog::listen_suffixes) {
+            if (socketFactory::getFd(std::string(SHELL_INSTANCE) + suffix) < 0) {
                 socketFactory::shutdownAll();
                 return false;
             }
@@ -202,7 +204,7 @@ public:
         // m_outstanding_completions inconsistent with threads that already registered.
 
         // Release Python sidecar to send transactions only after enumeration and startup barrier.
-        (void)pySocketSocketCatalog::handshakeAll();
+        (void)socketFactory::handshakeAll();
     }
 
     void final(void) override
@@ -212,6 +214,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         // Final cleanup if needed
@@ -220,4 +223,18 @@ public:
     }
 
 };
-pySocketConfig::registerTestBenchConfig pySocketConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (pySocketConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_pySocketConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("pySocket", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<pySocketConfig>());}, is_default_testbench_v<pySocketConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _pySocketConfig_registered = (register_pySocketConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

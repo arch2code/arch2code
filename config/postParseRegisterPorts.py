@@ -27,7 +27,7 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.processYaml import camelCase, qualifiedKeyContext
+from pysrc.processYaml import SiteBindingIndex, camelCase, qualifiedKeyContext
 
 
 def regHandlerNaming(prj):
@@ -70,8 +70,7 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
 
     parentParams is the list of the leaf block's parameter names; the
     handler inherits them so it emits module parameters and selects the
-    leaf's module-local parameterizable declarations (its register/memory
-    storage is variant-width, sized by these params).
+    leaf's module-local parameterizable declarations.
 
     Returns (reg_block, block_def, instance_name, instance_def, connection_map).
     """
@@ -92,6 +91,10 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
     instance_def = {
         'instanceType': reg_block,
         'container': block,
+        # The handler holds the leaf's own registers, so its Config is the
+        # leaf's. validate_inherit_container_params rejects an inheriting
+        # child that declares no params, hence the gate.
+        'inheritContainerParam': bool(parentParams),
     }
     connection_map = {
         'interface': reg_interface,
@@ -249,6 +252,30 @@ def _addressBusInterfaceTypes(prj):
     return types
 
 
+def _validateAddressBusFixedWidth(prj, addressBusTypes):
+    """Registers and memories may be parameterizable; the register bus
+    itself may not."""
+    structures = prj.flatData['structures']
+    for ifaceRow in prj.flatData['interfaces'].values():
+        if ifaceRow['interfaceType'] not in addressBusTypes:
+            continue
+        if not ifaceRow['isParameterizable']:
+            continue
+        paramStructNames = sorted({
+            structures[structRow['structureKey']]['structure']
+            for structRow in ifaceRow['structures'].values()
+            if structures[structRow['structureKey']]['isParameterizable']
+        })
+        _exit_with_error(
+            f"Interface '{ifaceRow['interface']}' (file {ifaceRow['_context']}) "
+            f"has interfaceType '{ifaceRow['interfaceType']}', an address-bus "
+            f"interface, but carries parameterizable structure(s) "
+            f"{', '.join(paramStructNames)}. A register bus must stay "
+            f"fixed-width; keep the parameter on the register or memory "
+            f"payload behind it instead of on the bus structure."
+        )
+
+
 def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
                                        cache):
     """Find the addressBus: true interface named by addressBlock.upstreamPort.
@@ -290,12 +317,16 @@ def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
 
 def postProcess(prj):
     blockInfo = prj.flatData['blocks']
+    addressBusTypes = _addressBusInterfaceTypes(prj)
+    _validateAddressBusFixedWidth(prj, addressBusTypes)
     routers = _collectRouterBlocks(blockInfo)
     if not routers:
         # No addressBlock: routers are declared, so no register-bus
         # decode pass runs for this project (the project either has no
         # register bus at all or has not adopted the addressBlock: schema).
         return None
+
+    siteIndex = SiteBindingIndex(prj)
 
     instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)
 
@@ -419,7 +450,6 @@ def postProcess(prj):
 
     listOfInstances = list()
 
-    addressBusTypes = _addressBusInterfaceTypes(prj)
     routerInterfaceCache = dict()
 
     # ---- Step 4: synthesise register handlers per routed leaf ----
@@ -653,18 +683,6 @@ def postProcess(prj):
                     prj, parentBlock, addressBusTypes,
                     routerInterfaceCache,
                 )
-            prj.checkInterfacePair(
-                parentIfaceRow, childIfaceRow, instanceTypeKey,
-                instRow['variant'] or '',
-                f"Register-bus dispatch from parent router "
-                f"'{parentRouter['instance']}' to nested router "
-                f"'{instRow['instance']}' (upstreamPort "
-                f"'{childAddressBlock['upstreamPort']}')",
-                parentIfaceContext, childIfaceContext,
-                parentRouter['instanceTypeKey'],
-                parentRouter['variant'] or '',
-            )
-
             # Find the container-block sibling instance — the
             # instance whose block type is the nested router's
             # container block, and that sits in the parent
@@ -691,6 +709,27 @@ def postProcess(prj):
                     f"Expected an instance of block "
                     f"'{containerBlockKey}' contained by "
                     f"'{parentRouter['containerKey']}'."
+                )
+
+            childSite = siteIndex.siteOf(instRow)
+            parentSite = siteIndex.siteOf(parentRouter)
+            siblingSite = siteIndex.siteOf(containerSiblingInst)
+            for (parentBindingMap, childBindingMap, parentContainerSite,
+                 childContainerSite) in siteIndex.nestedRouterBindings(
+                        parentSite, siblingSite, childSite):
+                prj.checkInterfacePair(
+                    parentIfaceRow, childIfaceRow, childSite,
+                    f"Register-bus dispatch from parent router "
+                    f"'{parentRouter['instance']}' to nested router "
+                    f"'{instRow['instance']}' (upstreamPort "
+                    f"'{childAddressBlock['upstreamPort']}')",
+                    parentIfaceContext, childIfaceContext,
+                    parentSite,
+                    parentBindingMap,
+                    childBindingMap,
+                    siteIndex,
+                    parentContainerSite,
+                    childContainerSite,
                 )
 
             siblingInstance = containerSiblingInst['instance']
@@ -748,6 +787,24 @@ def postProcess(prj):
                 prj, routerBlock, addressBusTypes, routerInterfaceCache,
             )
         childUpstreamPort = routerBlock['addressBlock']['upstreamPort']
+        # The container's own registerPorts: port is what an outer router
+        # dispatches to, and this boundary map wires that same port straight
+        # through to the nested router's upstream port, so the two names
+        # must agree.
+        registerPorts = containerBlockRow.get('registerPorts')
+        if registerPorts:
+            containerPortName = next(iter(registerPorts.keys()))
+            if containerPortName != childUpstreamPort:
+                _exit_with_error(
+                    f"Container block '{containerBlockRow['block']}' (file "
+                    f"{containerBlockRow['_context']}) declares "
+                    f"registerPorts: key '{containerPortName}', but the "
+                    f"nested router '{routerBlock['block']}' (file "
+                    f"{routerBlock['_context']}) it hosts names "
+                    f"upstreamPort '{childUpstreamPort}'. The "
+                    f"registerPorts: key must match the served router's "
+                    f"upstreamPort."
+                )
         connection_map = {
             'interface': childInterface,
             'block': containerBlockRow['block'],

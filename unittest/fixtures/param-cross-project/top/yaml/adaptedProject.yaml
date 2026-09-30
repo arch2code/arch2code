@@ -1,0 +1,19 @@
+yamlFormat: 2
+
+# Assembler for the adapted-endpoint exemption: projA -> projC on projA's
+# parameterized dataIf, where projC's endpoint port carries projC's own
+# same-named dataIf and is therefore adapted rather than bound.
+projectName: adaptedTopProj
+
+projectFiles:
+    - ../../projA/yaml/aProject.yaml
+    - ../../projC/yaml/cProject.yaml
+    - adaptedTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

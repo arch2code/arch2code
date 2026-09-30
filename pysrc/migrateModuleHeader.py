@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from pysrc.migrateCommon import _read, _write, _loc, SKIP_DIRS
+from pysrc.migrateCommon import _read, _write, _loc, _importTarget, SKIP_DIRS
 
 
 # Marker fragments the phase keys on.
@@ -54,13 +54,17 @@ MODULE_EXPORT_MARKER = "--template=moduleExport"
 GEN_BEGIN = "// GENERATED_CODE_BEGIN"
 GEN_END = "// GENERATED_CODE_END"
 
-# The three lines inserted before the class region's GENERATED_CODE_BEGIN. Byte
-# for byte the fresh-scaffold shape (templates/fileGen/fileGen.py): the empty
-# moduleExport region plus the seeded preamble user slot.
+# The lines inserted before the class region's GENERATED_CODE_BEGIN: the empty
+# moduleExport region plus the seeded preamble user slot. Byte for byte the
+# fresh-scaffold shape (templates/fileGen/fileGen.py USER_IMPORTS_SLOT), so a
+# restructured file is indistinguishable from a newly scaffolded one; the two
+# must change together.
 _INSERT = (
     f"{GEN_BEGIN} {MODULE_EXPORT_MARKER}\n"
     f"{GEN_END}\n"
-    "// user imports here\n"
+    "// user imports here (module preamble - imports FIRST, then purview #includes)\n"
+    "// A #include here closes the preamble and attaches to THIS module; use it only for\n"
+    "// headers that name module or Config types.\n"
 )
 
 # Applied-edit kind.
@@ -192,7 +196,7 @@ def _restructureSites(text):
         return None, []
 
     gapImports = [i for i in range(headerEnd0 + 1, anchor0)
-                  if _isImportLine(lines[i])]
+                  if _importTarget(lines[i].strip()) is not None]
     return anchor0, gapImports
 
 
@@ -202,13 +206,6 @@ def _insertExportRegion(text, anchor0):
     lines = text.splitlines(keepends=True)
     lines.insert(anchor0, _INSERT)
     return "".join(lines)
-
-
-def _isImportLine(line):
-    """True for a C++20 module import declaration (`import <name>;`). A
-    using-namespace or a commented line is not an import."""
-    s = line.strip()
-    return s.startswith("import ") and s.endswith(";")
 
 
 def _firstIndex(lines, pred, start=0):

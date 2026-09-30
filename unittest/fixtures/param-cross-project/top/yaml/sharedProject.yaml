@@ -1,0 +1,21 @@
+yamlFormat: 2
+
+# Assembler for the single-shared-declaration composition: three separate
+# projects (projA, projBShared, projCShared), one parameter identity, because
+# both downstream projects reach projA's WIDTH and dataIf through include:
+# rather than declaring their own.
+projectName: sharedTopProj
+
+projectFiles:
+    - ../../projA/yaml/aProject.yaml
+    - ../../projBShared/yaml/bSharedProject.yaml
+    - ../../projCShared/yaml/cSharedProject.yaml
+    - sharedTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

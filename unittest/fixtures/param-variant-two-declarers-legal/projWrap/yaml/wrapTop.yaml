@@ -1,0 +1,42 @@
+# projWrap: includes only leafIp.yaml (not ipTop.yaml), so this scope sees
+# exactly one v0 declaration of leafIp: its own.
+include:
+    - ../../projIp/yaml/leafIp.yaml
+
+ipParameters:
+    constants:
+        WRAP_W: { value: 8, maxValue: 32, desc: "wrapper payload width" }
+    types:
+        wrapT: { width: WRAP_W, maxBitwidth: 32, desc: "wrapper parameterizable payload word" }
+
+structures:
+    wrapSt:
+        data: { varType: wrapT, desc: "wrapper payload" }
+
+interfaces:
+    wrapIf:
+        desc: "wrapper parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapSt, structureType: data_t }
+
+blocks:
+    wrapBlk:
+        desc: "integration wrapper routing its boundary port to the leaf IP"
+        params: [WRAP_W]
+        ports:
+            in: { interface: wrapIf, direction: dst }
+
+instances:
+    uLeafB: { container: wrapBlk, instanceType: leafIp, variant: v0 }
+
+connectionMaps:
+    - { interface: wrapIf, block: wrapBlk, port: in, direction: dst, instance: uLeafB, instancePort: in }
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 8
+    wrapBlk:
+        v0:
+            WRAP_W: 8

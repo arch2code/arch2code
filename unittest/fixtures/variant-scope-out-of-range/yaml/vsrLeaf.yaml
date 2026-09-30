@@ -1,0 +1,10 @@
+# Leaf IP. Declares its own parameter and names it, but declares no variant of
+# its own: every binding below comes from a consumer.
+ipParameters:
+    constants:
+        VSR_W: { value: 4, maxValue: 16, desc: "leaf payload width" }
+
+blocks:
+    vsrLeaf:
+        desc: "Leaf whose instance names a variant declared out of its scope"
+        params: [VSR_W]

@@ -111,6 +111,17 @@ void socketFactory::acceptAll()
     }
 }
 
+bool socketFactory::handshakeAll()
+{
+    for (const auto &kv : getMap()) {
+        const int fd = kv.second.conn_fd;
+        if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 uint16_t socketFactory::getPort(const std::string &name)
 {
     auto it = getMap().find(name);

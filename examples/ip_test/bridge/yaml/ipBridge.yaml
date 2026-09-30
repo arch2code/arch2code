@@ -1,27 +1,18 @@
-# ipBridge - cross-interface bridge fixture.
+# ipBridge, the cross-interface bridge fixture.
 #
-# Two non-parameterized data interfaces (data8If, data70If) appear on the
-# ipBridge parent boundary and each binds via connectionMap to a
-# differently-Configed `ip` child (uBridgeIp0/variant0,
-# uBridgeIp1/variant1). The generator emits one push_ack_port_thunker
-# member per connectionMap inside ipBridge's container, bridging the
-# non-parameterized parent payload (data8St / data70St) to the per-
-# variant child payload (ipDataSt<ipVariant0Config> / ipDataSt<ipVariant1Config>).
+# Two non-parameterized data interfaces (data8If, data70If) sit on the ipBridge
+# boundary and each binds via connectionMap to a differently-Configed `ip`
+# child (uBridgeIp0/variant0, uBridgeIp1/variant1). The generator emits one
+# push_ack_port_thunker per connectionMap inside ipBridge, bridging data8St /
+# data70St to ipDataSt<ip_ipVariant0Config> / ipDataSt<ipBridge_ipVariant1Config>.
 #
-# Runtime stimulus is owned by whatever top instantiates this reusable IP,
-# not by this file: the bridge standalone harness (bridgeStdTop.yaml) defines
-# its own bridgeDriver stimulus producer, and the composed ip_top drives the
-# two boundary ports from its shared src producer. ipBridge itself is a pure
-# reusable IP boundary. The model build leverages the existing
-# examples/ip_test testbench infrastructure: ip_top carries hasTb: true so the
-# generated ip_topExternal / ip_topTestbench handle launch, and ipBridge sits
-# as a normal contained sub-block whose constructor sets up its own thunkers.
+# Stimulus belongs to whatever top instantiates this IP: bridgeStdTop.yaml has
+# its own bridgeDriver, and the composed ip_top drives both boundary ports from
+# its shared src. ipBridge itself is a pure reusable IP boundary.
 #
-# The payload field order and bit widths in data8St / data70St exactly
-# match ipDataSt under variant0 / variant1 so the packed-form
-# compatibility check passes (marker: 1 bit, data: 8 bits matches
-# variant0; data: 70 bits matches variant1 — variant1 also exercises the
-# array-backed _packedSt path).
+# data8St / data70St match ipDataSt under variant0 / variant1 field for field
+# (marker 1 bit; data 8 or 70 bits), so the packed-form compatibility check
+# passes; variant1 also exercises the array-backed _packedSt path.
 
 include:
     # shared_types (apbReg) is owned by the contained 'common' sub-project. Like
@@ -130,4 +121,13 @@ connectionMaps:
     # map inside ipBridge.
     - { interface: data8If,  block: ipBridge, port: data8In,  direction: dst, instance: uBridgeIp0, instancePort: ipDataIf }
     - { interface: data70If, block: ipBridge, port: data70In, direction: dst, instance: uBridgeIp1, instancePort: ipDataIf }
+
+# uBridgeIp1 is instantiated here, so this file declares the variant it
+# selects; ip_top.yaml reaches it through its include of this file.
+parameters:
+    ip:
+        variant1:
+            IP_DATA_WIDTH: 70
+            IP_MEM_DEPTH: 8
+            IP_NONCONST_DEPTH: 12
 

@@ -30,6 +30,8 @@ hand-create a top-level decoder.
 2.  **Address groups (per-block schema):**
     *   An address group is named by a router block's `addressBlock.addressGroup`; routed leaves select it via their instance `addressGroup:`. The router block defines the group and its RTL is generated (`apbDecodeModule`); the primary router is inferred by hierarchy walk. There is no `decoderInstance:`/`primaryDecode:` to author.
     *   Multi-level decode uses **nested routers** (a second `addressBlock:` block inside a container that is itself a routed leaf of the parent). See `design-register-decode.md`.
+    *   **A group name is owned by the project that declares it.** An `addressGroup:` reference resolves only within the project owning the referring YAML file; it never falls outward to a parent or sibling project. Two independently authored projects may therefore each declare a group named `top` and compose cleanly, but a reusable IP must declare every group it references — an IP naming a group its own project does not declare has hard-coded a name its parent owns. Within one project, at most one router block may declare a given group name. Both violations are hard `make db` errors; see the diagnostic table in `design-register-decode.md`.
+    *   **`varType:` and `enumPrefix:` must be unique across the whole build** — two address groups may share neither, even in different projects. Group *names* are project-qualified; the generated firmware enum is not, because every context's firmware is emitted into one flat namespace (`fw_ns`) and firmware headers include each other across project boundaries. Two groups sharing a `varType:` therefore either collide as a C++ redefinition or, in separate translation units, silently bind the same enumerator to a different address ID — a wrong address rather than a build failure. `make db` rejects it (`addressBlock: enum type name varType: '…' is used by two address groups: …`). In a reusable IP, qualify both by the declaring project, e.g. `varType: addr_id_isp_lut_top` / `enumPrefix: ADDR_ID_ISP_LUT_TOP_`; a bare `addr_id_top` is only safe in a project nothing else composes.
 
 3.  **Making memory firmware-accessible:**
     *   `regAccess: true` (with `local:` absent) is the single switch. No custom interface is needed. The serving router is a generated `addressBlock:` block. See `design-register-decode.md`.
@@ -63,6 +65,7 @@ hand-create a top-level decoder.
           cond: {smartInclude: true}
           mode: context
           basePath: fwInc  # defined in dirs section
+          langDomain: fw   # takes fwFilePrefix
           desc: "Firmware include file"
     ```
 
@@ -99,18 +102,6 @@ hand-create a top-level decoder.
         params: [IP_MEM_DEPTH, IP_NONCONST_DEPTH]
 
     memories:
-      - memory: ip_mem
-        block: ip
-        structure: ip_data_st
-        addressStruct: ip_mem_addr_st
-        wordLines: IP_MEM_DEPTH   # Address sizing uses maxValue=32
-        regAccess: true
-        desc: "Parameterized memory"
-      - memory: ip_variant_mem
-        block: ip
-        structure: ip_data_st
-        addressStruct: ip_mem_addr_st
-        wordLines: IP_NONCONST_DEPTH  # Uses max variant binding
-        regAccess: true
-        desc: "Pure block-param memory depth"
+      - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "Parameterized memory"}  # Address sizing uses maxValue=32
+      - {memory: ip_variant_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Pure block-param memory depth"}  # Uses max variant binding
     ```

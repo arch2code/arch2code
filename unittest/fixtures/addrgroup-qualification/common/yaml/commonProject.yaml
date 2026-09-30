@@ -1,0 +1,18 @@
+# Definitions-only sub-project holding the shared register-bus definitions.
+# Reached through the root's projectFiles: slot and carrying the project
+# sentinel set (projectName + dirs + fileGeneration), so it owns sharedTypes.yaml
+# and both children can include that file without including a project file.
+projectName: commonProj
+
+projectFiles:
+    - sharedTypes.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+    # This project's own fileMap names its firmware headers, in the composed
+    # build as on its own.
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file" }

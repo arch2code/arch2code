@@ -2,7 +2,15 @@
 from jinja2 import Template as J2Template
 from string import Template
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.intf_gen_utils import FW_NAMESPACE
 from pysrc.genFileParam import contextParamTail, contextParamMode
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
+
+# The copyright comment line of a TemplateCustom scaffold; an empty statement
+# yields a bare `//` rather than one with a trailing space.
+def _copyright_comment(data):
+    statement = data["fileGeneration"]["fileCopyrightStatement"]
+    return f'// {statement}' if statement else '//'
 
 # Redefine the pattern to follow the format defined by dvt templates (i.e __name__, or __{name}__)
 class TemplateCustom(Template):
@@ -47,10 +55,12 @@ def render(args, prj, data):
             return(blockRegistrar_cppm(args, prj, data))
         case 'blockVlRegistrar_src':
             return(blockVlRegistrar_src(args, prj, data))
-        case 'foreignConfig_cppm':
-            return(foreignConfig_cppm(args, prj, data))
+        case 'configModule_cppm':
+            return(configModule_cppm(args, prj, data))
         case 'vlSvWrapForeign_sv':
             return(vlSvWrapForeign_sv(args, prj, data))
+        case 'vlSvWrapPair_sv':
+            return(vlSvWrapPair_sv(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -70,32 +80,20 @@ def render(args, prj, data):
             return(tandem_hdr(args, prj, data))
         case 'tandem_src':
             return(tandem_src(args, prj, data))
-        case 'socket_hdr':
-            return(socket_hdr(args, prj, data))
-        case 'socket_src':
-            return(socket_src(args, prj, data))
+        case 'socket_cppm':
+            return(socket_cppm(args, prj, data))
         case 'socketCatalog_hdr':
             return(socketCatalog_hdr(args, prj, data))
         case 'socketCatalog_py':
             return(socketCatalog_py(args, prj, data))
         case 'tbConfig_src':
             return(tbConfig(args, prj, data))
-        case 'testBench_hdr':
-            return(testBench_hdr(args, prj, data))
-        case 'testBench_src':
-            return(testBench_src(args, prj, data))
-        case 'tbExternal_hdr':
-            return(tbExternal_hdr(args, prj, data))
-        case 'tbExternal_src':
-            return(tbExternal_src(args, prj, data))
-        case 'include_src':
-            return(include_src(args, prj, data))
-        case 'include_hdr':
-            return(include_hdr(args, prj, data))
+        case 'testBench_cppm':
+            return(testBench_cppm(args, prj, data))
+        case 'tbExternal_cppm':
+            return(tbExternal_cppm(args, prj, data))
         case 'include_cppm':
             return(include_cppm(args, prj, data))
-        case 'config_hdr':
-            return(config_hdr(args, prj, data))
         case 'includeFW_src':
             return(includeFW_src(args, prj, data))
         case 'includeFW_hdr':
@@ -104,9 +102,37 @@ def render(args, prj, data):
             return(package_sv(args, prj, data))
         case 'rtlDotF_f':
             return(rtlDotF_f(args, prj, data))
+        case 'regAddresses_hdr':
+            return(regAddresses_hdr(args, prj, data))
+        # Exhaustive over the `<fileType>_<ext>` keys a fileMap can name. An
+        # unregistered key must abort NON-ZERO: newModule scaffolds the remaining
+        # artifacts after this call, so a zero status would truncate the scaffold
+        # while `make newmodule` still reported success.
         case _:
-            print(f"Unknown section: {data['target']}")
-            exit()
+            printError(f"fileMap file key '{data['target']}' has no scaffold in "
+                       f"templates/fileGen/fileGen.py::render. Either correct the "
+                       f"fileType/ext pair in the project's fileGeneration.fileMap, "
+                       f"or register the new file type by adding a case arm there "
+                       f"(a context fileType also needs its --mode entry in "
+                       f"pysrc/genFileParam.py::_CONTEXT_FILE_MODE).")
+            exit(warningAndErrorReport())
+
+# The two user slots every module interface unit scaffold seeds — the only two
+# zones a hand-added dependency may legally occupy. Content in the wrong zone
+# attaches to the wrong module and fails at link or cast time, not at the edit, so
+# each label carries the rule it enforces. One wording serves every module unit
+# (block, reg-handler, testbench top, testbench External).
+# migrateModuleHeader._INSERT reproduces USER_IMPORTS_SLOT byte for byte so a
+# restructured legacy file matches a fresh scaffold; change both together.
+USER_INCLUDES_SLOT = (
+    '// user #includes here (global module fragment - attaches to the global module)\n'
+    '// Plain non-modular headers, including any whose definitions live in a .cpp.\n'
+)
+USER_IMPORTS_SLOT = (
+    '// user imports here (module preamble - imports FIRST, then purview #includes)\n'
+    '// A #include here closes the preamble and attaches to THIS module; use it only for\n'
+    '// headers that name module or Config types.\n'
+)
 
 # C++20 module interface unit for a block's base class family (Base/Inverted/
 # Channels). The `baseModuleHeader` scaffold owns the global module fragment and
@@ -180,10 +206,10 @@ def blockModule_cppm(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --mode=module\n')
     out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append('// user #includes here\n')
+    out.append(USER_INCLUDES_SLOT)
     out.append('// GENERATED_CODE_BEGIN --template=moduleExport\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append('// user imports here\n')
+    out.append(USER_IMPORTS_SLOT)
     out.append('// GENERATED_CODE_BEGIN --template=classDecl\n')
     out.append('\n')
     out.append('    // GENERATED_CODE_END\n')
@@ -193,7 +219,7 @@ def blockModule_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
-    out.append('};\n\n')
+    out.append('};\n')
     return("".join(out))
 
 # C++20 module interface unit for a parameterizable (hasOwnParams) synthesized
@@ -210,10 +236,10 @@ def blockRegsModule_cppm(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --mode=module\n')
     out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append('// user #includes here\n')
+    out.append(USER_INCLUDES_SLOT)
     out.append('// GENERATED_CODE_BEGIN --template=moduleExport\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append('// user imports here\n')
+    out.append(USER_IMPORTS_SLOT)
     out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=header\n')
     out.append('\n')
     out.append('    // GENERATED_CODE_END\n')
@@ -223,7 +249,7 @@ def blockRegsModule_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
-    out.append('};\n\n')
+    out.append('};\n')
     return("".join(out))
 
 # Per-block trampoline registrar module interface unit. The whole module
@@ -256,14 +282,10 @@ def blockVlRegistrar_src(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
-# Owner-qualified foreign per-variant Config module interface unit for a reused
-# child. The whole module body (global module fragment #includes, `export module
-# <project>.<child>.config;`, and the exported per-variant Config structs) is
-# emitted by templates/systemc/config.py (foreign mode, keyed off --parent) into
-# the single generated region, mirroring how blockRegistrar_cppm delegates its
-# module body. The file basename is owner-qualified
-# (<project>_<child>VariantConfig.cppm).
-def foreignConfig_cppm(args, prj, data):
+# Owner-qualified per-variant Config module interface unit,
+# <project>_<child>VariantConfig.cppm. templates/systemc/config.py emits the whole
+# module body into the single generated region, as blockRegistrar_cppm does.
+def configModule_cppm(args, prj, data):
     out = list()
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
@@ -271,18 +293,27 @@ def foreignConfig_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
-# Parent-owned owner-qualified foreign per-variant SV verilated wrapper top for a
-# reused child. The whole trampoline (the `include of the child's canonical .svh
-# body and the owner-qualified top module binding the variant's resolved literals)
-# is emitted by templates/systemVerilog/module_hdl_wrapper.py (foreign branch,
-# keyed off --parent) into the single generated region. The file basename and the
-# top module name are owner-qualified (<project>_<child>_<variant>_hdl_sv_wrapper).
+# Owner-qualified per-variant SV top for a reused child; module_hdl_wrapper.py's
+# --parent branch emits the whole trampoline into the generated region.
 def vlSvWrapForeign_sv(args, prj, data):
     guard = f'{data["headerName"].replace(".", "_").upper()}_GUARD_'
     out = list()
     out.append(f'`ifndef {guard}\n')
     out.append(f'`define {guard}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]} --variant={data["variant"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'`endif // {guard}\n')
+    return("".join(out))
+
+
+def vlSvWrapPair_sv(args, prj, data):
+    guard = f'{data["headerName"].replace(".", "_").upper()}_GUARD_'
+    out = list()
+    out.append(f'`ifndef {guard}\n')
+    out.append(f'`define {guard}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} '
+               f'--parent={data["parent"]} --variant={data["variant"]} --mode=pair\n')
     out.append('// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper\n')
     out.append('// GENERATED_CODE_END\n\n')
     out.append(f'`endif // {guard}\n')
@@ -322,9 +353,9 @@ def rtlModule(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances\n')
     out.append('// GENERATED_CODE_END\n')
-    # The module begin-label is generator-owned and project-qualified; this
-    # user-owned end-label must match it, so scaffold the qualified name.
-    out.append(f'\nendmodule: {data["blockModuleName"]}\n')
+    # The module begin-label is generator-owned; this user-owned end-label must
+    # match it.
+    out.append(f'\nendmodule: {data["blockSvModuleName"]}\n')
     return("".join(out))
 
 def rtlModuleRegs(args, prj, data):
@@ -395,20 +426,16 @@ def vlSvWrapBody_svh(args, prj, data):
     t = TemplateCustom(vlSvWrapBody_svhTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(), 'modulename':data["block"]}))
 
-# The Verilated SC wrapper is a fully generated file: newmodule lays down only
-# the minimal skeleton (guard, the create-only `GENERATED_CODE_PARAM` line, and
-# the generated-region markers). Everything the generator owns - including the
-# `import <block>.base;` reference and the DUT SV-wrapper include - is emitted
-# into the `preamble` generated region so `make gen` re-emits it every run and
-# existing wrappers self-heal (e.g. after the Base header->C++20-module
-# migration). Nothing between the PARAM line and the first GENERATED_CODE_BEGIN
-# carries generator-owned content.
+# The Verilated SC wrapper scaffold seeds the include guard, the create-only
+# `GENERATED_CODE_PARAM` line, the generated-region markers, the user's
+# `end_ctor_init` hook and the class's closing `};`. Everything the generator
+# owns - the SystemC baseline, the `import <block>.base;` reference and the DUT
+# SV-wrapper include - is emitted into the `preamble` generated region so
+# `make gen` re-emits it every run and existing wrappers self-heal (e.g. after
+# the Base header->C++20-module migration).
 vlScWrap_hdrTemplate = \
 """#ifndef {{MODULENAME}}_HDL_SC_WRAPPER_H_
 #define {{MODULENAME}}_HDL_SC_WRAPPER_H_
-
-#include "systemc.h"
-#include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block={{modulename}}
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
@@ -434,12 +461,13 @@ def vlScWrap_hdr(args, prj, data):
 tandem_hdrTemplate = \
 """#ifndef __MODULENAME___TANDEM_H
 #define __MODULENAME___TANDEM_H
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tandem --section=tandem
 // GENERATED_CODE_END
 private:
+    // tandem implementation members
 };
 
 #endif //__MODULENAME___TANDEM_H
@@ -449,10 +477,11 @@ def tandem_hdr(args, prj, data):
     t = TemplateCustom(tandem_hdrTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(),
                          'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+                         'copyright':_copyright_comment(data)}))
 
 tandem_srcTemplate = \
-"""// GENERATED_CODE_PARAM --block=__modulename__
+"""__copyright__
+// GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tandemConstructor --section=initTandem
 
 // GENERATED_CODE_END
@@ -463,45 +492,38 @@ tandem_srcTemplate = \
 
 def tandem_src(args, prj, data):
     t = TemplateCustom(tandem_srcTemplate)
-    return(t.substitute({'modulename':data["block"]}))
+    return(t.substitute({'modulename':data["block"],
+                         'copyright':_copyright_comment(data)}))
 
-socket_hdrTemplate = \
-"""#ifndef __MODULENAME___SOCKET_H
-#define __MODULENAME___SOCKET_H
-// __copyright__
-
-// GENERATED_CODE_PARAM --block=__modulename__
-// GENERATED_CODE_BEGIN --template=socket --section=socket
-// GENERATED_CODE_END
-};
-
-#endif //__MODULENAME___SOCKET_H
-"""
-
-def socket_hdr(args, prj, data):
-    t = TemplateCustom(socket_hdrTemplate)
-    return(t.substitute({'MODULENAME':data["block"].upper(),
-                         'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
-
-socket_srcTemplate = \
-"""// GENERATED_CODE_PARAM --block=__modulename__
-// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket
-
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket
-// GENERATED_CODE_END
-}
-"""
-
-def socket_src(args, prj, data):
-    t = TemplateCustom(socket_srcTemplate)
-    return(t.substitute({'modulename':data["block"]}))
+# C++20 module interface unit for a block's Python-socket shell, laid out like
+# blockModule_cppm: global module fragment, preamble, exported class, then the
+# member definitions, all in one unit.
+def socket_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=moduleHeader\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_INCLUDES_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=moduleExport\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_IMPORTS_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=socket --section=socket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('    // socket shell members\n\n')
+    out.append('};\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('}\n')
+    out.append('// user method definitions here\n')
+    return("".join(out))
 
 socketCatalog_hdrTemplate = \
 """#ifndef __MODULENAME___SOCKETCATALOG_H
 #define __MODULENAME___SOCKETCATALOG_H
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=socketCatalog --section=header
@@ -514,7 +536,7 @@ def socketCatalog_hdr(args, prj, data):
     t = TemplateCustom(socketCatalog_hdrTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(),
                          'modulename':data["block"],
-                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+                         'copyright':_copyright_comment(data)}))
 
 socketCatalog_pyTemplate = \
 """# GENERATED_CODE_PARAM --block=__modulename__
@@ -526,26 +548,28 @@ def socketCatalog_py(args, prj, data):
     t = TemplateCustom(socketCatalog_pyTemplate)
     return(t.substitute({'modulename':data["block"]}))
 
+# Plain translation unit for the testbench Config class. Unlike the rest of the
+# testbench family this is NOT a module unit, so it has no zone rules: the single
+# user slot accepts `#include` and `import` interleaved in any order. Everything
+# the class needs to compile - the framework prerequisite includes, the class
+# declaration and the factory registration definition - lives in a generated
+# region, so `make gen` can still revise the mechanism in an existing project.
+# The scaffold owns only the overridable bodies between the class and registration
+# regions.
 tbConfigTemplate = \
-"""// __copyright__
-
-#include "systemc.h"
-#include <string>
-
-#include "instanceFactory.h"
-#include "testBenchConfigFactory.h"
-// Required by the final() body below, which asserts on end-of-test state.
-import a2c.endOfTest;
+"""__copyright__
 
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 // GENERATED_CODE_END
 
     bool createTestBench(void) override
     {
-        // The testbench top self-registers via an A2C_REGISTRATION_RETAIN
-        // static in __tbclassname__Testbench.cpp (see instanceFactory.h),
-        // reachable through direct-.o linking with no force-link reference.
+        // The testbench top self-registers; just call createTbTop().
         std::shared_ptr<blockBase> tb = createTbTop();
         return true;
     }
@@ -558,25 +582,26 @@ import a2c.endOfTest;
     }
 
 };
-__tbclassname__Config::registerTestBenchConfig __tbclassname__Config::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// GENERATED_CODE_END
 """
 
-def _tb_subst(data):
-    # Build the substitution map for testbench-family skeletons.
-    # There is exactly one testbench artifact and class family per block. The
-    # `__tbclassname__` token is therefore always the plain block name
-    # regardless of whether a `--variant` was supplied. The variant, when
-    # present, is consumed downstream only by the templates that select the DUT
-    # Config and factory variant string.
+# The `--variant` generated-code parameter, empty when the block declares none.
+# Consumed downstream only by the templates that select the DUT Config and the
+# factory variant string.
+def _tb_variant_param(data):
     variant = data["variant"]
-    tbclassname = data["block"]
+    return f" --variant={variant}" if variant else ""
+
+def _tb_subst(data):
+    # Substitution map for the tbConfig skeleton. There is exactly one testbench
+    # artifact and class family per block, so `__tbclassname__` is always the plain
+    # block name regardless of whether a `--variant` was supplied.
     subst = {
-        'MODULENAME':   data["block"].upper(),
         'modulename':   data["block"],
-        'TBCLASSNAME':  tbclassname.upper(),
-        'tbclassname':  tbclassname,
-        'variantparam': f" --variant={variant}" if variant else "",
-        'copyright':    data["fileGeneration"]["fileCopyrightStatement"],
+        'tbclassname':  data["block"],
+        'variantparam': _tb_variant_param(data),
+        'copyright':    _copyright_comment(data),
     }
     return subst
 
@@ -585,137 +610,95 @@ def tbConfig(args, prj, data):
     t = TemplateCustom(tbConfigTemplate)
     return(t.substitute(subst))
 
-testBench_hdrTemplate = \
-"""#ifndef __TBCLASSNAME___TESTBENCH_H
-#define __TBCLASSNAME___TESTBENCH_H
-// __copyright__
+# The GENERATED_CODE_PARAM line of a testbench-family module unit. `--mode=module`
+# routes the testbench templates to their module-mode branches. `--block` seeds the
+# DUT; a user may retarget the External's at the `_tb` container and add
+# `--excludeInst=<dut>`, so a template must resolve module identity from the
+# parameters it is handed at gen time rather than from this seeded line.
+def _tb_param_line(data):
+    return f'// GENERATED_CODE_PARAM --block={data["block"]}{_tb_variant_param(data)} --mode=module\n'
 
-// GENERATED_CODE_PARAM --block=__modulename____variantparam__
-// GENERATED_CODE_BEGIN --template=testbench --section=header
-// GENERATED_CODE_END
+# C++20 module interface unit for a block's testbench top. Wholly generated apart
+# from the copyright and the two user slots: the testbench section=header region
+# owns the whole class including its closing `};`, so the scaffold owns no class
+# seam. The slots are still seeded so a scoreboard header or an import has a legal
+# zone to go in.
+def testBench_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(_tb_param_line(data))
+    out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=testBenchModuleHeader\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_INCLUDES_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=moduleExport --fileMapKey=testBench\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_IMPORTS_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=testbench --section=header\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=testbench --section=init\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
 
-#endif /* __TBCLASSNAME___TESTBENCH_H */
-"""
+# Guidance seeded into a fresh External's member slot: how to write a test that
+# terminates cleanly. The pair of registration lines lives in the constructor body
+# slot below it.
+_TB_EXTERNAL_STIMULUS_GUIDE = [
+    '// Your stimulus goes here. The generated eotThread above stops the',
+    '// simulation when end-of-test latches, and the testbench Config asserts',
+    '// that it did, so a test that never votes ends by aborting in final().',
+    '// Uncomment the lines below and the matching pair in the constructor body',
+    '// to get a test that terminates cleanly, then drive the DUT inside the',
+    '// thread.',
+    '//',
+    '// void stimulusThread(void)',
+    '// {',
+    '//     wait(SC_ZERO_TIME);',
+    '//',
+    '//     // ... drive the DUT here ...',
+    '//',
+    '//     eot_.setEndOfTest(true);',
+    '// }',
+    '//',
+    '// private:',
+    '//     endOfTest eot_{true};   // registers this thread as a voter',
+    '',
+]
 
-def testBench_hdr(args, prj, data):
-    subst = _tb_subst(data)
-    t = TemplateCustom(testBench_hdrTemplate)
-    return(t.substitute(subst))
-
-testBench_srcTemplate = \
-"""// GENERATED_CODE_PARAM --block=__modulename____variantparam__
-// GENERATED_CODE_BEGIN --template=testbench --section=init
-// GENERATED_CODE_END
-"""
-
-def testBench_src(args, prj, data):
-    subst = _tb_subst(data)
-    t = TemplateCustom(testBench_srcTemplate)
-    return(t.substitute(subst))
-
-
-tbExternal_hdrTemplate = \
-"""#ifndef __TBCLASSNAME___EXTERNAL_H
-#define __TBCLASSNAME___EXTERNAL_H
-// __copyright__
-
-#include "systemc.h"
-#include "logging.h"
-
-// GENERATED_CODE_PARAM --block=__modulename____variantparam__
-// GENERATED_CODE_BEGIN --template=tbExternal --section=header
-// GENERATED_CODE_END
-
-    // Your stimulus goes here. The generated eotThread above stops the
-    // simulation when end-of-test latches, and the testbench Config asserts
-    // that it did, so a test that never votes ends by aborting in final().
-    // Uncomment the two lines below and the matching pair in the .cpp to get a
-    // test that terminates cleanly, then drive the DUT inside the thread.
-    //
-    // void stimulusThread(void);
-    //
-    // private:
-    //     endOfTest eot_{true};   // registers this thread as a voter
-
-};
-
-#endif /* __TBCLASSNAME___EXTERNAL_H */
-"""
-
-def tbExternal_hdr(args, prj, data):
-    subst = _tb_subst(data)
-    t = TemplateCustom(tbExternal_hdrTemplate)
-    return(t.substitute(subst))
-
-tbExternal_srcTemplate = \
-"""#include "workerThread.h"
-
-// GENERATED_CODE_PARAM --block=__modulename____variantparam__
-
-// GENERATED_CODE_BEGIN --template=tbExternal --section=init
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=tbExternal --section=body
-// GENERATED_CODE_END
-
-    // Register your stimulus thread here (see the header for the pair).
-    // SC_THREAD(stimulusThread);
-}
-
-// Minimal test that terminates cleanly. Uncomment together with the header
-// declarations, then replace the body with real stimulus. Voting end-of-test is
-// what wakes the generated eotThread and stops the simulation; without a vote
-// the run aborts on the end-of-test assertion in the testbench Config.
-//
-// void __tbclassname__External::stimulusThread(void)
-// {
-//     wait(SC_ZERO_TIME);
-//
-//     // ... drive the DUT here ...
-//
-//     eot_.setEndOfTest(true);
-// }
-"""
-
-def tbExternal_src(args, prj, data):
-    subst = _tb_subst(data)
-    t = TemplateCustom(tbExternal_srcTemplate)
-    return(t.substitute(subst))
-
-include_hdrTemplate = \
-"""
-#ifndef __HEADERGUARD___
-#define __HEADERGUARD___
-// __copyright__
-
-#include "systemc.h"
-
-// GENERATED_CODE_PARAM __paramtail__
-// GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=constants
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=types
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=enums
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures
-// GENERATED_CODE_END
-#endif //__HEADERGUARD___
-"""
-def include_hdr(args, prj, data):
-    t = TemplateCustom(include_hdrTemplate)
-    return(t.substitute({
-        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
-        'paramtail':contextParamTail(data["project"], data["context"],
-                                    contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+# C++20 module interface unit for a block's testbench External (the inverted
+# stimulus/checker peer of the DUT). Follows the blockModule_cppm seam pattern: the
+# scaffold owns the closing `};` of both the class and the constructor body, so the
+# user keeps an in-class member slot and an in-constructor-body slot.
+def tbExternal_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(_tb_param_line(data))
+    out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=tbExternalModuleHeader\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_INCLUDES_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=moduleExport --fileMapKey=tbExternal\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(USER_IMPORTS_SLOT)
+    out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=header\n')
+    out.append('\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('    // external implementation members\n\n')
+    for line in _TB_EXTERNAL_STIMULUS_GUIDE:
+        out.append(f'    {line}\n' if line else '\n')
+    out.append('};\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=init\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=body\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('\n')
+    out.append('    // Register your stimulus thread here (see the member slot above for the pair).\n')
+    out.append('    // SC_THREAD(stimulusThread);\n')
+    out.append('};\n')
+    return("".join(out))
 
 include_cppmTemplate = \
 """
 // GENERATED_CODE_PARAM __paramtail__
-// __copyright__
+__copyright__
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 // GENERATED_CODE_END
@@ -735,69 +718,24 @@ include_cppmTemplate = \
 // GENERATED_CODE_END
 """
 
-config_hdrTemplate = \
-"""
-#ifndef __HEADERGUARD___CONFIG_H
-#define __HEADERGUARD___CONFIG_H
-// __copyright__
-
-#include <cstdint>
-
-// GENERATED_CODE_PARAM __paramtail__
-// GENERATED_CODE_BEGIN --template=config
-// GENERATED_CODE_END
-
-#endif //__HEADERGUARD___CONFIG_H
-"""
-
 def include_cppm(args, prj, data):
     t = TemplateCustom(include_cppmTemplate)
     return(t.substitute({
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
-
-def config_hdr(args, prj, data):
-    t = TemplateCustom(config_hdrTemplate)
-    return(t.substitute({
-        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
-        'paramtail':contextParamTail(data["project"], data["context"],
-                                    contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
-
-include_srcTemplate = \
-"""
-// __copyright__
-#include "__headerName__"
-// GENERATED_CODE_PARAM __paramtail__
-// GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
-// GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures --section=cpp
-// GENERATED_CODE_END
-"""
-def include_src(args, prj, data):
-    t = TemplateCustom(include_srcTemplate)
-    return(t.substitute({
-        'headerName':data["siblingHeaderName"],
-        'paramtail':contextParamTail(data["project"], data["context"],
-                                    contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 includeFW_hdrTemplate = \
 """
 #ifndef __HEADERGUARD___
 #define __HEADERGUARD___
-// __copyright__
-
-#include <cstdint>
-#include <cstring>
+__copyright__
 
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
@@ -806,7 +744,6 @@ namespace fw_ns {
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //__HEADERGUARD___
 """
 def includeFW_hdr(args, prj, data):
@@ -815,30 +752,33 @@ def includeFW_hdr(args, prj, data):
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
+# Structurally empty today - codeMapping['fw'] declares no 'split' feature, so both
+# regions render nothing but their markers. The file is kept as reserved headroom:
+# adding a split fw feature makes it carry out-of-line definitions with no scaffold
+# change, because the cppIncludes region already owns the whole preamble (the paired
+# header include and the fw `using`).
 includeFW_srcTemplate = \
 """
-// __copyright__
-#include "__headerName__"
-using namespace fw_ns;
+__copyright__
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures --section=cpp --namespace=fw_ns
+// GENERATED_CODE_BEGIN --template=structures --section=cpp --namespace=__fwnamespace__
 // GENERATED_CODE_END
 """
 def includeFW_src(args, prj, data):
     t = TemplateCustom(includeFW_srcTemplate)
     return(t.substitute({
-        'headerName':data["siblingHeaderName"],
+        'fwnamespace':FW_NAMESPACE,
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
 package_svTemplate = \
 """
-// __copyright__
+__copyright__
 // GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 // GENERATED_CODE_END
@@ -848,14 +788,10 @@ def package_sv(args, prj, data):
     return(t.substitute({
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+        'copyright':_copyright_comment(data)}))
 
-# Per-project verilator file list (rtl.f). The +libext line and the
-# owning-project GENERATED_CODE_PARAM are the create-only skeleton; the rtlDotF
-# template fills the generated region with the +incdir lines and the ordered
-# package list for every context on the top context's include chain. The
-# --project stamp names the owning project directly, so owner resolution needs no
-# context/basename round-trip.
+# Per-project verilator file list. The +libext line and --project stamp are
+# the create-only skeleton; rtlDotF fills the region from COMPILECONTEXTS.
 def rtlDotF_f(args, prj, data):
     out = list()
     out.append('+libext+.sv\n')
@@ -863,3 +799,27 @@ def rtlDotF_f(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=rtlDotF\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
+
+# Per-product address defines: instance base addresses and register/memory
+# offsets for the whole build, one file per project. Both regions emit bare
+# #defines, so the header carries no namespace of its own.
+regAddresses_hdrTemplate = \
+"""
+#ifndef __HEADERGUARD___
+#define __HEADERGUARD___
+__copyright__
+
+// GENERATED_CODE_PARAM --project=__project__
+// GENERATED_CODE_BEGIN --template=includes --section=addresses
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=regAddresses
+// GENERATED_CODE_END
+
+#endif //__HEADERGUARD___
+"""
+def regAddresses_hdr(args, prj, data):
+    t = TemplateCustom(regAddresses_hdrTemplate)
+    return(t.substitute({
+        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
+        'project':data["project"],
+        'copyright':_copyright_comment(data)}))

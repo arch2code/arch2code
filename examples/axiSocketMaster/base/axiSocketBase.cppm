@@ -19,9 +19,9 @@ export class axiSocketBase : public virtual blockPortBase
 public:
     virtual ~axiSocketBase() = default;
     // src ports
-    // axiRdIf->u_consumer: AXI Read channels; Address and Data
+    // axiRdIf->u_consumer0: AXI Read channels; Address and Data
     axi_read_out< axiAddrSt, axiDataSt > axiRd0;
-    // axiWrIf->u_consumer: AXI Write channels; Address, Data, and Response
+    // axiWrIf->u_consumer0: AXI Write channels; Address, Data, and Response
     axi_write_out< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
 
 
@@ -45,9 +45,9 @@ export class axiSocketInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // axiRdIf->u_consumer: AXI Read channels; Address and Data
+    // axiRdIf->u_consumer0: AXI Read channels; Address and Data
     axi_read_in< axiAddrSt, axiDataSt > axiRd0;
-    // axiWrIf->u_consumer: AXI Write channels; Address, Data, and Response
+    // axiWrIf->u_consumer0: AXI Write channels; Address, Data, and Response
     axi_write_in< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
 
 

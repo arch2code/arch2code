@@ -1,0 +1,125 @@
+# Assembler-owned parameterized wrapper around the consumer IP. It declares its
+# own parameter and its own parameterizable payload declarations, one per shape,
+# and routes each of its boundary ports to the IP child through a connectionMap.
+# Each map's parent interface differs from the child's declared port interface,
+# so the generator emits one push/ack thunker per map inside this container -
+# with a parameterizable declaration on BOTH sides of every pair, one owned here
+# and one owned by the IP project.
+#
+# Every pair below is bit-layout compatible: the fields carry the same widths at
+# the same packed positions. The pairs differ only in emitted C++ member
+# storage, which is what separates a direct-copy-eligible pair from the rest.
+include:
+    # The consumer IP's declaring file must be on this context's include chain
+    # for block-type resolution of xpCppLeaf. Ownership is set by child-project
+    # detection, not by this include.
+    - ../../cppLeaf/yaml/xpCppLeaf.yaml
+
+ipParameters:
+    constants:
+        WRAP_PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        wrapPixelT: { width: WRAP_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    wrapTagT:  { width: 8,  desc: "Sample sequence tag" }
+    wrapWordT: { width: 32, desc: "32-bit header word" }
+    wrapFlagT: { width: 8,  desc: "8-bit header flag" }
+
+structures:
+    # Member-for-member counterpart of the IP's leafEqSt. Both emit a 64-bit
+    # parameterizable container plus an 8-bit literal, so the two declarations
+    # carry identical member storage.
+    wrapEqSt:
+        tag:  { varType: wrapTagT,   desc: "Sample sequence tag" }
+        data: { varType: wrapPixelT, desc: "Pixel payload" }
+    # The IP's leafOrderSt with the parameterizable member in the other position.
+    # Both members are 8 bits wide, so each field keeps its namesake's packed
+    # position while the member storage sequence is reversed: a 64-bit container
+    # against a literal byte on one side, the other way round on the other.
+    wrapOrderSt:
+        first:  { varType: wrapPixelT, desc: "Parameterizable member at the low packed position" }
+        second: { varType: wrapFlagT,  desc: "Literal member at the high packed position" }
+    # Unsigned counterpart of the IP's signed leafSignSt at the same width.
+    wrapSignSt:
+        data: { varType: wrapPixelT, desc: "Pixel payload" }
+    # Nested counterpart of the IP's flat leafNestSt. The sub-structure boundary
+    # is invisible to the packed form and decisive for the C++ definition: the
+    # sub-structure's trailing padding survives as a member here and is elided
+    # where the same fields are inlined.
+    wrapNestHdrSt:
+        word: { varType: wrapWordT, desc: "Header word" }
+        flag: { varType: wrapFlagT, desc: "Header flag" }
+    wrapNestSt:
+        hdr:  { subStruct: wrapNestHdrSt, desc: "Nested header" }
+        tail: { varType: wrapFlagT,       desc: "Trailing flag" }
+        data: { varType: wrapPixelT,      desc: "Pixel payload" }
+
+interfaces:
+    wrapEqIf:
+        desc: "Wrapper stream whose members correspond to the IP's"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapEqSt, structureType: data_t }
+    wrapOrderIf:
+        desc: "Wrapper stream whose member storage order is the IP's reversed"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapOrderSt, structureType: data_t }
+    wrapSignIf:
+        desc: "Unsigned wrapper stream against the IP's signed one"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapSignSt, structureType: data_t }
+    wrapNestIf:
+        desc: "Nested wrapper stream against the IP's flat one"
+        interfaceType: push_ack
+        structures:
+            - { structure: wrapNestSt, structureType: data_t }
+
+blocks:
+    xpCppWrap:
+        desc: "Parameterized wrapper: routes four boundary shapes to the consumer IP"
+        params: [WRAP_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            eqIn:    { interface: wrapEqIf,    direction: dst }
+            orderIn: { interface: wrapOrderIf, direction: dst }
+            signIn:  { interface: wrapSignIf,  direction: dst }
+            nestIn:  { interface: wrapNestIf,  direction: dst }
+
+instances:
+    uLeafEq:    { container: xpCppWrap, instanceType: xpCppLeafEq,    instGroup: top, variant: v0 }
+    uLeafOrder: { container: xpCppWrap, instanceType: xpCppLeafOrder, instGroup: top, variant: v0 }
+    uLeafSign:  { container: xpCppWrap, instanceType: xpCppLeafSign,  instGroup: top, variant: v0 }
+    uLeafNest:  { container: xpCppWrap, instanceType: xpCppLeafNest,  instGroup: top, variant: v0 }
+
+connectionMaps:
+    - { interface: wrapEqIf,    block: xpCppWrap, port: eqIn,    direction: dst, instance: uLeafEq,    instancePort: eqIn }
+    - { interface: wrapOrderIf, block: xpCppWrap, port: orderIn, direction: dst, instance: uLeafOrder, instancePort: orderIn }
+    - { interface: wrapSignIf,  block: xpCppWrap, port: signIn,  direction: dst, instance: uLeafSign,  instancePort: signIn }
+    - { interface: wrapNestIf,  block: xpCppWrap, port: nestIn,  direction: dst, instance: uLeafNest,  instancePort: nestIn }
+
+# The wrapper's own variant, plus the consumer IP blocks' variants. A consumer
+# block's parameterizable surface is reached through this container, so its
+# config context is this file and its binding must be declared here for the
+# generated Config to be selected.
+parameters:
+    xpCppWrap:
+        v0:
+            WRAP_PIXEL_WIDTH: 8
+    xpCppLeafEq:
+        v0:
+            LEAF_PIXEL_WIDTH: 8
+    xpCppLeafOrder:
+        v0:
+            LEAF_PIXEL_WIDTH: 8
+    xpCppLeafSign:
+        v0:
+            LEAF_PIXEL_WIDTH: 8
+    xpCppLeafNest:
+        v0:
+            LEAF_PIXEL_WIDTH: 8

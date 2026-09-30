@@ -1,0 +1,29 @@
+# Block declarations for the rejecting arm, kept in their own file so the two
+# colliding variant declarations can each sit in a file of their own.
+
+ipParameters:
+    constants:
+        VU_WIDTH: { value: 8, maxValue: 32, desc: "Pixel width under test" }
+    types:
+        vuPixelT: { width: VU_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+blocks:
+    xpVarUniqBadTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpVarUniqBadTop_tb:
+        desc: "Testbench container for xpVarUniqBadTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpVuBadLeaf:
+        desc: "The leaf whose `use` variant is declared twice"
+        params: [VU_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false

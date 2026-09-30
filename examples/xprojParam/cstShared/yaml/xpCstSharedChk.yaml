@@ -1,0 +1,14 @@
+# The other of two files consuming the shared definitions-only declaration.
+include:
+    - ./xpCstSharedDefs.yaml
+
+blocks:
+    xpCstSharedChk:
+        desc: "Checker naming the shared CSH_WIDTH by include scope"
+        params: [CSH_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: cshIf, direction: dst }

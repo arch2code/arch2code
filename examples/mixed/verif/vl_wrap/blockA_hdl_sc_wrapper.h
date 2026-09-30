@@ -1,15 +1,14 @@
 #ifndef BLOCKA_HDL_SC_WRAPPER_H_
 #define BLOCKA_HDL_SC_WRAPPER_H_
 
-#include "systemc.h"
-#include "instanceFactory.h"
-
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import mixed_blockA.base;
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "blockA_hdl_sv_wrapper.h"
 #else

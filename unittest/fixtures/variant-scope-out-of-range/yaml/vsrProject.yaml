@@ -1,0 +1,15 @@
+# An instance's named variant must resolve through its own file's include chain;
+# a declaration only in a file that includes the instance's file is out of scope.
+yamlFormat: 2
+projectName: vsrScope
+
+projectFiles:
+    - vsrTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

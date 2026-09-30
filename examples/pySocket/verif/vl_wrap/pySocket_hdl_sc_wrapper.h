@@ -6,10 +6,12 @@
 
 // GENERATED_CODE_PARAM --block=pySocket
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import pySocket.base;
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "pySocket_hdl_sv_wrapper.h"
 #else

@@ -1,0 +1,44 @@
+//
+
+// GENERATED_CODE_PARAM --block=xpInhCont --parent=xpInhWrap
+// GENERATED_CODE_BEGIN --template=blockRegistrar
+module;
+#include "instanceFactory.h"
+#include "blockBase.h"
+
+export module xpInhVar.xpInhVar_xpInhCont.registrar;
+import xpInhVar_xpInhCont.block;
+import xpInhVar.xpInhCont.config;
+
+namespace {
+struct _xpInhCont_registrar {
+    _xpInhCont_registrar() {
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContAltConfig>>(blockName, variant, bbMode));
+            },
+            "alt", "xpInhVar");
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContAltConfig>>(blockName, variant, bbMode));
+            },
+            "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContDefaultConfig>>(blockName, variant, bbMode));
+            },
+            "default", "xpInhVar");
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContDefaultConfig>>(blockName, variant, bbMode));
+            },
+            "default", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
+    }
+};
+static _xpInhCont_registrar _xpInhCont_registrar_instance;
+} // namespace
+// GENERATED_CODE_END

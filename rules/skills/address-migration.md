@@ -428,16 +428,20 @@ outstanding task. Read it once per leaf and move on.
 
 ### Register-bus compatibility (validation)
 
-- A register-bus `cross-interface bind` where the leaf and router
-  resolve different `interfaceType` values (the diagnostic notes they
-  must share the `same interface meta-protocol` and points at a
-  `protocol changer`). Cross-`interfaceType` adaptation needs an
-  explicit protocol-changer block (out of scope); make both sides the
-  same `interfaceType`.
-- A register-bus `cross-interface bind` where the leaf and router share
-  an `interfaceType` but disagree on `per-field _bitWidth` (the
-  diagnostic names the offending `field` and both `_bitWidth` values).
-  Align the field widths of the leaf and router register interfaces.
+- A `Register-bus dispatch` where the leaf and router resolve different
+  `interfaceType` values (the diagnostic notes they must share the
+  `same interface meta-protocol` and points at a `protocol changer`).
+  Cross-`interfaceType` adaptation needs an explicit protocol-changer
+  block (out of scope); make both sides the same `interfaceType`.
+- A `Register-bus dispatch` where the leaf and router share an
+  `interfaceType` but disagree on `per-field _bitWidth` (the diagnostic
+  names the offending `field index` and both `_bitWidth` values, and
+  prints a `parent side` / `child side` block naming each interface, its
+  declaring file, owning project, block and resolved variant). Align the
+  field widths of the leaf and router register interfaces.
+
+  These checks fire whether or not the leaf and router interfaces share
+  a name; matching names do not exempt a dispatch from validation.
 
 ## Validation
 

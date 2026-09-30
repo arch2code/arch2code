@@ -1,0 +1,91 @@
+# Assembler for the C++-definition axis composition. The top itself is not
+# parameterized: it declares literal-width boundary interfaces, drives them from
+# its own stimulus block, and binds each one to the parameterized wrapper's
+# matching boundary port. Each of those legs is a cross-interface bind, so the
+# top emits a literal-against-parameterizable thunker per connection, while the
+# parameterizable-against-parameterizable pairs live one level down inside the
+# wrapper.
+include:
+    - xpCppWrap.yaml
+
+types:
+    bndTagT:   { width: 8,  desc: "Literal boundary tag" }
+    bndPixelT: { width: 8,  desc: "Literal boundary pixel; matches the bound wrapper width" }
+    bndWordT:  { width: 32, desc: "Literal boundary header word" }
+    bndFlagT:  { width: 8,  desc: "Literal boundary header flag" }
+
+structures:
+    # Each boundary structure matches its wrapper counterpart's packed sequence
+    # field for field, including the nested one, which is matched flat.
+    bndEqSt:
+        tag:  { varType: bndTagT,   desc: "Sample sequence tag" }
+        data: { varType: bndPixelT, desc: "Pixel payload" }
+    bndOrderSt:
+        first:  { varType: bndPixelT, desc: "Low packed position" }
+        second: { varType: bndFlagT,  desc: "High packed position" }
+    bndSignSt:
+        data: { varType: bndPixelT, desc: "Pixel payload" }
+    bndNestSt:
+        word: { varType: bndWordT,  desc: "Header word" }
+        flag: { varType: bndFlagT,  desc: "Header flag" }
+        tail: { varType: bndFlagT,  desc: "Trailing flag" }
+        data: { varType: bndPixelT, desc: "Pixel payload" }
+
+interfaces:
+    bndEqIf:
+        desc: "Literal-width boundary stream into the wrapper's corresponding port"
+        interfaceType: push_ack
+        structures:
+            - { structure: bndEqSt, structureType: data_t }
+    bndOrderIf:
+        desc: "Literal-width boundary stream into the wrapper's reversed-storage port"
+        interfaceType: push_ack
+        structures:
+            - { structure: bndOrderSt, structureType: data_t }
+    bndSignIf:
+        desc: "Literal-width boundary stream into the wrapper's unsigned port"
+        interfaceType: push_ack
+        structures:
+            - { structure: bndSignSt, structureType: data_t }
+    bndNestIf:
+        desc: "Literal-width boundary stream into the wrapper's nested port"
+        interfaceType: push_ack
+        structures:
+            - { structure: bndNestSt, structureType: data_t }
+
+blocks:
+    xpCppAxisTop:
+        desc: "Assembler top holding the stimulus block and the parameterized wrapper"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpCppAxisTop_tb:
+        desc: "Testbench container for xpCppAxisTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    cppDriver:
+        desc: "Stimulus block: pushes one sample per shape per iteration"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            eqOut:    { interface: bndEqIf,    direction: src }
+            orderOut: { interface: bndOrderIf, direction: src }
+            signOut:  { interface: bndSignIf,  direction: src }
+            nestOut:  { interface: bndNestIf,  direction: src }
+
+instances:
+    xpCppAxisTop_tb: { container: xpCppAxisTop_tb, instanceType: xpCppAxisTop_tb, instGroup: top }
+    u_xpCppAxisTop:  { container: xpCppAxisTop_tb, instanceType: xpCppAxisTop,    instGroup: top }
+    uDrive:          { container: xpCppAxisTop,    instanceType: cppDriver,       instGroup: top }
+    uWrap:           { container: xpCppAxisTop,    instanceType: xpCppWrap,       instGroup: top, variant: v0 }
+
+connections:
+    - { interface: bndEqIf,    src: uDrive, srcport: eqOut,    dst: uWrap, dstport: eqIn }
+    - { interface: bndOrderIf, src: uDrive, srcport: orderOut, dst: uWrap, dstport: orderIn }
+    - { interface: bndSignIf,  src: uDrive, srcport: signOut,  dst: uWrap, dstport: signIn }
+    - { interface: bndNestIf,  src: uDrive, srcport: nestOut,  dst: uWrap, dstport: nestIn }

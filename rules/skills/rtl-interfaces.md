@@ -29,6 +29,7 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
     | `push_ack_if` | Transactional request/response | `.push`, `.ack`, `.data` |
     | `req_ack_if` | Simple handshake (no data) | `.req`, `.ack` |
     | `status_if` | Config/status registers | `.data` |
+    | `raw_if` | **Last resort** — legacy/boundary handshake-less data bus | `.data` only |
     | `apb_if` | Register bus | `.psel`, `.penable`, `.pwrite`, `.paddr`, `.pwdata`, `.prdata`, `.pready`, `.pslverr` |
     | `memory_if` | Memory access | `.addr`, `.write_data`, `.read_data`, `.enable`, `.wr_en` |
     | `external_reg_if` | External register (write-pulse) | `.write`, `.wdata`, `.rdata` |
@@ -86,7 +87,29 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
     end
     ```
 
-6.  **`external_reg_if` (Write-Pulse Commands):**
+6.  **`raw_if` (Last Resort — Handshake-Less Boundary):**
+
+    **`raw_if` is supported but is an interface of last resort.** Prefer `rdy_vld_if`
+    (or another handshaked protocol) for new interconnect. Use `raw_if` only at
+    design boundaries when matching legacy/external IP with a free-running data
+    bus and no ready/valid/ack wires.
+
+    *   Sample `raw_if.data` on clock; do not invent backpressure on this interface.
+    *   Convert to `rdy_vld_if` (or similar) at the first internal hop.
+    *   Same wire shape as `status_if`, but different intent: free-running
+        boundary data vs config/status levels. See `ARCH2CODE_AI_RULES.md` (§ raw).
+
+    ```systemverilog
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            /* reset */ ;
+        end else begin
+            sampled_data <= csi_video_in.data;
+        end
+    end
+    ```
+
+7.  **`external_reg_if` (Write-Pulse Commands):**
 
     Provides a single-cycle write pulse (`|write`) rather than a level. Use for command registers (e.g., clear, trigger):
 
@@ -103,7 +126,7 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
     end
     ```
 
-7.  **`memory_if` (Memory Access):**
+8.  **`memory_if` (Memory Access):**
 
     **Signals:**
 
@@ -155,7 +178,7 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
 
     **FSM-sequenced reads:** When multiple addresses must be read sequentially, use an FSM. See `rtl-patterns.md` for the paired-FSM pattern.
 
-8.  **Instantiating Internal Interfaces:**
+9.  **Instantiating Internal Interfaces:**
 
     ```systemverilog
     status_if #(.data_t(config_t)) internal_config();
@@ -163,7 +186,7 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
     memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_rd [NUM_PORTS-1:0]();
     ```
 
-9.  **AXI Usage:**
+10. **AXI Usage:**
     *   Drive individual AXI signals (e.g., `axi_m.arvalid`, `axi_m.araddr`).
     *   Use `axi_pkg` structs for clean data handling (`axi_m.rdata.data`, `axi_m.bresp`).
 

@@ -1,46 +1,13 @@
 #!/usr/bin/env python3
-"""Block-parameter / ipParameters-constant linkage validation and the
-per-block parameterized declaration set.
-
-Negative cases (each must fail projectCreate with a clear, traceback-free
-message):
-- An ipParameters constant consumed by no block param (orphan).
-- A block param with no same-name ipParameters constant backing it.
-- A block param backed by a non-parameterizable constant (a plain
-  ``constants:`` entry colliding with the param name). This is the single
-  validation behind both "backing const not marked isParameterizable" and
-  "plain constant name collision with a block param" - the param resolves to a
-  same-name constant that is not parameterizable.
-- A variant binding that exceeds its backing constant's maxValue (worst-case
-  sizing would under-allocate).
-- A connection endpoint block reached through a parameterized interface that
-  cannot size the interface payload's backing param. Three cells:
-  * dst endpoint that declares no params: at all - a parameterizable structure
-    on its own surface with no template params, rejected by the own-surface
-    check (which fires before the per-interface endpoint diagnostic);
-  * dst endpoint that does declare params: but the wrong one (not the payload's
-    backing param) - it clears the own-surface check and reaches the endpoint
-    diagnostic, which reports the missing required parameter;
-  * src endpoint that declares no params: - the own-surface check applies to the
-    src end too, not only the consumer.
-
-Positive cases (must succeed):
-- A parameterized interface whose two connected endpoints both carry the
-  backing param (the payload is sized in each module's own scope).
-- A non-parameterized interface between non-parameterized endpoints (the
-  validator must not fire on a plain interface).
-- Two parameterized blocks bound to different variants bridged by a
-  non-parameterized boundary channel (the C3.5 cross-variant path: a
-  non-parameterizable channel is skipped, the per-leg adaptation being a
-  runtime concern).
-
-Positive case (must succeed, asserted in-process against the database):
-- One exposed param consumed by two blocks, and a parameterizable type and
-  structure (used only by hand-written code, not by any port/memory/register)
-  selected module-local for both consuming blocks, types before structures.
-"""
+"""Block-param / ipParameters-constant linkage: a param resolves to exactly one
+parameterizable backing constant, respects its maxValue, and is satisfiable at
+both ends of a parameterized connection. A declared parameter needs no
+consumer, and a non-parameterized interface or cross-variant boundary channel
+must not trip the validator. Also pins module-local vs context-shared
+declaration selection when two blocks share one exposed param."""
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -143,23 +110,20 @@ def _expect_success(arch_content, test_name):
         _cleanup([project_path, arch_path, db_path])
 
 
-def test_orphan_ipparameters_constant():
+def test_unconsumed_ipparameters_constant_allowed():
     arch = """ipParameters:
   constants:
     UNUSED_W: { value: 8, maxValue: 16, desc: "consumed by no block param" }
 
 blocks:
   ip: { desc: "ip" }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
   uIp: { container: top, instanceType: ip }
 """
-    return _expect_error(
-        arch,
-        ["UNUSED_W", "not consumed by any", "ipParameters constant"],
-        "orphan ipParameters constant")
+    return _expect_success(arch, "unconsumed ipParameters constant is allowed")
 
 
 def test_unbacked_block_param():
@@ -167,15 +131,18 @@ def test_unbacked_block_param():
   ip:
     desc: "ip"
     params: [NO_BACKING]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
   uIp: { container: top, instanceType: ip }
 """
+    # Finding the backing constant is the paramSource foreign key's job, so an
+    # unbacked param is rejected by the generic FK miss diagnostic rather than by
+    # _post_validateBlockParamBacking, which now only judges the resolved row.
     return _expect_error(
         arch,
-        ["NO_BACKING", "no backing constant"],
+        ["NO_BACKING", "section params", "no constants row named"],
         "block param without ipParameters backing")
 
 
@@ -191,7 +158,7 @@ blocks:
   ip:
     desc: "ip"
     params: [WIDTH]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -212,7 +179,7 @@ blocks:
   ip:
     desc: "ip"
     params: [W]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -276,7 +243,7 @@ def test_param_interface_endpoint_missing_param():
     desc: "endpoint on a parameterized interface without the backing param"
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -305,7 +272,7 @@ def test_param_interface_both_endpoints_parameterized():
     params: [WIDTH]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -362,7 +329,7 @@ blocks:
     params: [OTHER_W]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -418,7 +385,7 @@ blocks:
     params: [WIDTH]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -467,7 +434,7 @@ blocks:
     desc: "plain consumer"
     ports:
       in: { interface: ctrlIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -517,7 +484,7 @@ blocks:
     params: [WIDTH]
     ports:
       in: { interface: boundaryIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -600,7 +567,7 @@ parameters:
             "SELECT b.block AS block, c.isParameterizable AS isParam "
             "FROM blocksparams bp "
             "JOIN blocks b ON b.blockKey = bp.blockKey "
-            "JOIN constants c ON c.constantKey = bp.paramKey "
+            "JOIN constants c ON c.constantKey = bp.paramSourceKey "
             "WHERE bp.param = 'SHARED_WIDTH'")
         consumers = {r['block']: r['isParam'] for r in g.cur.fetchall()}
         if set(consumers) != {'blockA', 'blockB'}:
@@ -642,12 +609,90 @@ parameters:
         _cleanup([project_path, arch_path, db_path])
 
 
+SAME_NAMED_ENDPOINT_FIXTURE = os.path.join(test_dir, 'fixtures', 'param-same-named-endpoint')
+
+
+def _copy_same_named_endpoint_fixture():
+    work = tempfile.mkdtemp(prefix='param_same_named_', dir=test_dir)
+    shutil.copytree(SAME_NAMED_ENDPOINT_FIXTURE, work, dirs_exist_ok=True)
+    return work
+
+
+def _build_same_named_endpoint_db(work):
+    db = os.path.join(work, 'param-same-named-endpoint.db')
+    project = os.path.join(work, 'yaml', 'psnProject.yaml')
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(
+        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+         '--yaml', project, '--db', db],
+        capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
+    return result.stdout + result.stderr, result.returncode
+
+
+def test_param_interface_endpoint_same_named_foreign_param():
+    # consumer reaches only B, so its params: [X] is B's X, while the dataIf
+    # payload is sized by A's X. The shortfall is rejected and, because the two
+    # share a bare name, the note names both declaring files.
+    print(f"\n{'='*70}\nTest: parameterized interface endpoint backed by a "
+          f"same-named foreign param\n{'='*70}")
+    work = _copy_same_named_endpoint_fixture()
+    try:
+        out, rc = _build_same_named_endpoint_db(work)
+        if rc == 0:
+            print("  FAIL: expected the endpoint validator to reject the "
+                  "shortfall, build succeeded")
+            return False
+        if 'Traceback (most recent call last)' in out:
+            print("  FAIL: got a Python stack trace instead of a clean error")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        expected_patterns = [
+            'does not declare the required parameter',
+            'missing x (declared in psndecla.yaml)',
+            'the block declares same-named parameter(s) from other file(s): '
+            'x (declared in psndeclb.yaml)',
+            'those are different parameters',
+        ]
+        missing = [p for p in expected_patterns if p not in out.lower()]
+        if missing:
+            print(f"  FAIL: expected patterns not found: {missing}")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        print("  PASS: rejected with the missing-param note naming both "
+              "A and B")
+
+        # Fault injection: point the block file at A instead of B, so
+        # consumer's X resolves to the SAME declaration the interface needs;
+        # the shortfall disappears and the build must succeed.
+        block_path = os.path.join(work, 'yaml', 'psnBlock.yaml')
+        with open(block_path) as f:
+            text = f.read()
+        anchor = "include:\n    - psnDeclB.yaml\n"
+        if anchor not in text:
+            raise AssertionError(
+                f"fault-injection anchor not found in psnBlock.yaml: {anchor!r}")
+        with open(block_path, 'w') as f:
+            f.write(text.replace(anchor, "include:\n    - psnDeclA.yaml\n", 1))
+        out2, rc2 = _build_same_named_endpoint_db(work)
+        if rc2 != 0:
+            print("  FAIL: after pointing the block at A instead of B, "
+                  "declared should equal needed and the build should succeed")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        print("  PASS: fault injection - block including A instead of B "
+              "builds clean")
+        return True
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING: block-param / ipParameters-constant linkage + decl set")
     print("="*70)
     tests = [
-        test_orphan_ipparameters_constant,
+        test_unconsumed_ipparameters_constant_allowed,
         test_unbacked_block_param,
         test_non_parameterizable_backing,
         test_variant_binding_exceeds_maxvalue,
@@ -658,6 +703,7 @@ def run_all_tests():
         test_nonparam_interface_endpoints_ok,
         test_crossvariant_nonparam_boundary_channel,
         test_shared_param_two_blocks_and_decl_set,
+        test_param_interface_endpoint_same_named_foreign_param,
     ]
     results = []
     for test_func in tests:

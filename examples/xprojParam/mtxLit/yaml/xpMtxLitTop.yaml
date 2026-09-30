@@ -1,0 +1,77 @@
+# Matrix row C=0: the channel is a LITERAL assembler-owned declaration.
+#
+# xpMtxLitWrap holds the four (srcPort x dstPort) cells. Every cell is one
+# peer-to-peer connection on the same literal channel declaration; the two ends
+# each declare their own port interface from the endpoint IP, so all three
+# parties are different declarations and both ends are adapted. The cells differ
+# only in whether each end's own declaration is parameterized.
+#
+# The wrapper exists so that the three rows of the matrix (this file, mtxTpl,
+# mtxBare) differ only in the container's own parameter declaration: the top is
+# an untemplated assembler in all three.
+include:
+    - ../../mtxIp/yaml/xpMtxIp.yaml
+
+types:
+    mlChTagT:   { width: 8,  desc: "Channel tag; low packed position" }
+    mlChPixelT: { width: 12, desc: "Channel pixel at the resolved endpoint width" }
+    mlChMarkT:  { width: 8,  desc: "Channel trailing marker" }
+
+structures:
+    # Same packed sequence as every endpoint payload: tag@0 w8, data@8 w12,
+    # mark@20 w8.
+    mlChSt:
+        tag:  { varType: mlChTagT,   desc: "Sample sequence tag" }
+        data: { varType: mlChPixelT, desc: "Pixel payload" }
+        mark: { varType: mlChMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    mlChIf:
+        desc: "Literal assembler-owned channel between the two endpoint ports"
+        interfaceType: push_ack
+        structures:
+            - { structure: mlChSt, structureType: data_t }
+
+blocks:
+    xpMtxLitTop:
+        desc: "Assembler top holding the literal-channel matrix row"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpMtxLitTop_tb:
+        desc: "Testbench container for xpMtxLitTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpMtxLitWrap:
+        desc: "Untemplated container of the four literal-channel cells"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpMtxLitTop_tb: { container: xpMtxLitTop_tb, instanceType: xpMtxLitTop_tb, instGroup: top }
+    u_xpMtxLitTop:  { container: xpMtxLitTop_tb, instanceType: xpMtxLitTop,    instGroup: top }
+    uWrap:          { container: xpMtxLitTop,    instanceType: xpMtxLitWrap,   instGroup: top }
+
+    # cell C0S0D0: literal channel, literal src port, literal dst port
+    uSrcLL: { container: xpMtxLitWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLL: { container: xpMtxLitWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C0S0D1: literal channel, literal src port, parameterized dst port
+    uSrcLP: { container: xpMtxLitWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLP: { container: xpMtxLitWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+    # cell C0S1D0: literal channel, parameterized src port, literal dst port
+    uSrcPL: { container: xpMtxLitWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPL: { container: xpMtxLitWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C0S1D1: literal channel, parameterized src port, parameterized dst port
+    uSrcPP: { container: xpMtxLitWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPP: { container: xpMtxLitWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+
+connections:
+    - { interface: mlChIf, src: uSrcLL, srcport: out, dst: uDstLL, dstport: in }
+    - { interface: mlChIf, src: uSrcLP, srcport: out, dst: uDstLP, dstport: in }
+    - { interface: mlChIf, src: uSrcPL, srcport: out, dst: uDstPL, dstport: in }
+    - { interface: mlChIf, src: uSrcPP, srcport: out, dst: uDstPP, dstport: in }

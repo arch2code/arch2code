@@ -1,0 +1,209 @@
+# One parameterized leaf type used at an ordinary variant-bound site and through
+# `inheritContainerParam` under a container instantiated at TWO variants.
+#
+# The ordinary site owns its `solo` Config. The inherited sites use the active
+# container Config. The wrapper tops and `_verif` registrations therefore need
+# the union of all three concrete Configs.
+#
+# `default` and `alt` differ in BOTH a behavioural knob (VLI_ALGO) and a payload
+# width (VLI_WIDTH). The width is the case that matters: one SystemC wrapper
+# header serves every variant of a block, so only a Config-templated wrapper can
+# carry two Verilated tops whose pins are different sizes. Each chain therefore
+# gets its own driver and checker at its own width, because the layout gate
+# adjudicates every connection.
+#
+# The leaf's own `solo` variant binds a THIRD algorithm no container uses. Its
+# chain proves that the ordinary site keeps that child-owned Config while both
+# inherited chains keep their container-owned Configs.
+#
+# The file is named for the container block on purpose. `<contextStem>Config`
+# and the `default` variant's `<block><Variant>Config` are the same identifier
+# when the block name matches the file stem and the variant is literally named
+# `default`, which is the shape the product tree's `debayer` is in.
+
+ipParameters:
+    constants:
+        VLI_ALGO:  { value: 1, maxValue: 7,  desc: "Algorithm select; behavioural only, appears in no width" }
+        VLI_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        vliPixelT: { width: VLI_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    vliTagT:  { width: 8, desc: "Sample sequence tag; lowest packed position" }
+    vliAlgoT: { width: 8, desc: "Algorithm the leaf instance resolved, stamped into the payload" }
+    vliWidT:  { width: 8, desc: "VLI_WIDTH the leaf instance elaborated at, stamped into the payload" }
+    vliMarkT: { width: 8, desc: "Trailing marker" }
+
+structures:
+    vliSt:
+        tag:  { varType: vliTagT,   desc: "Sample sequence tag" }
+        algo: { varType: vliAlgoT,  desc: "VLI_ALGO the leaf instance resolved" }
+        wid:  { varType: vliWidT,   desc: "VLI_WIDTH the leaf instance resolved" }
+        data: { varType: vliPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: vliMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    vliIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: vliSt, structureType: data_t }
+
+blocks:
+    vliTop:
+        desc: "DUT top holding both chains"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    vliTop_tb:
+        desc: "Testbench container for vliTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    vliWrap:
+        desc: "Untemplated container of the two chains"
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    vliCont:
+        desc: "Multi-variant container whose leaves inherit its whole Config"
+        # The leaves' parameterizable vliIf appears on this block's own boundary,
+        # so this block is a class template and declares the params its surface
+        # names. Both params are also what the leaves inherit.
+        params: [VLI_ALGO, VLI_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            # Not named in/out: a connectionMap's channel name is the container
+            # PORT name and a plain connection's is the source PORT name, and the
+            # two share one namespace.
+            contIn:  { interface: vliIf, direction: dst }
+            contOut: { interface: vliIf, direction: src }
+    vliLeaf:
+        desc: "Leaf whose Config IS its container's: stamps the resolved VLI_ALGO and forwards"
+        # Every param is a by-name subset of vliCont's, which
+        # inheritContainerParam requires.
+        params: [VLI_ALGO, VLI_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: true
+        hasRtl: true
+        ports:
+            in:  { interface: vliIf, direction: dst }
+            out: { interface: vliIf, direction: src }
+    vliDrv:
+        desc: "Stimulus for one chain; instantiated once per chain at that chain's width"
+        params: [VLI_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            out:  { interface: vliIf, direction: src }
+    vliChk:
+        desc: "Checker: asserts the algorithm the leaf stamped is the one its own Config declares"
+        params: [VLI_ALGO, VLI_WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+        ports:
+            in: { interface: vliIf, direction: dst }
+
+instances:
+    vliTop_tb: { container: vliTop_tb, instanceType: vliTop_tb, instGroup: top }
+    u_vliTop:  { container: vliTop_tb, instanceType: vliTop,    instGroup: top }
+    uWrap:       { container: vliTop,    instanceType: vliWrap,   instGroup: top }
+    uDrvDef:     { container: vliWrap,   instanceType: vliDrv,    instGroup: top, variant: drvDef }
+    uDrvAlt:     { container: vliWrap,   instanceType: vliDrv,    instGroup: top, variant: drvAlt }
+    uDrvSolo:    { container: vliWrap,   instanceType: vliDrv,    instGroup: top, variant: drvSolo }
+    # THE CELL. One container block, two variants. `default` is the variant whose
+    # Config struct is the context default; `alt` is every other variant, and its
+    # leaves are a different C++ type from the ones under `default`.
+    uContDef:    { container: vliWrap,   instanceType: vliCont,   instGroup: top, variant: default }
+    uContAlt:    { container: vliWrap,   instanceType: vliCont,   instGroup: top, variant: alt }
+    uChkDef:     { container: vliWrap,   instanceType: vliChk,    instGroup: top, variant: chkDef }
+    uChkAlt:     { container: vliWrap,   instanceType: vliChk,    instGroup: top, variant: chkAlt }
+    uChkSolo:    { container: vliWrap,   instanceType: vliChk,    instGroup: top, variant: chkSolo }
+    # Two leaves in a chain rather than one: a connectionMap thunker member is
+    # named after the mapped INSTANCE alone, so mapping the container's two ports
+    # onto one child emits two members of the same name.
+    uLeafA:      { container: vliCont,   instanceType: vliLeaf,   instGroup: top, variant: sourced }
+    # The swapped leaf uses per-parameter container sourcing. This must produce
+    # the same two concrete Configs as uLeafA, including the differently-sized
+    # Verilated top selected by each vliCont variant.
+    uLeafB:      { container: vliCont,   instanceType: vliLeaf,   instGroup: top, variant: sourced }
+    # An ordinary child-owned site under the SAME parent keeps the model
+    # registrar alive. It is intentionally unconnected; construction is enough
+    # to prove mixed inherited/ordinary pair classification.
+    uLeafOrd:    { container: vliCont,   instanceType: vliLeaf,   instGroup: top, variant: solo }
+    # The same child type at an ordinary site. This pair must stay on the
+    # child-owned `solo` Config while the instances above inherit per site.
+    uLeafSoloA:  { container: vliWrap,   instanceType: vliLeaf,   instGroup: top, variant: solo }
+    uLeafSoloB:  { container: vliWrap,   instanceType: vliLeaf,   instGroup: top, variant: solo }
+
+connections:
+    - { interface: vliIf, src: uLeafA,   srcport: out,     dst: uLeafB,   dstport: in,     name: contLink }
+    - { interface: vliIf, src: uLeafOrd, srcport: out,     dst: uLeafOrd, dstport: in,     name: ordLoop }
+    - { interface: vliIf, src: uDrvDef,  srcport: out,     dst: uContDef, dstport: contIn }
+    - { interface: vliIf, src: uContDef, srcport: contOut, dst: uChkDef,  dstport: in }
+    - { interface: vliIf, src: uDrvAlt,  srcport: out,     dst: uContAlt, dstport: contIn }
+    - { interface: vliIf, src: uContAlt, srcport: contOut, dst: uChkAlt,  dstport: in }
+    - { interface: vliIf, src: uDrvSolo,   srcport: out, dst: uLeafSoloA, dstport: in }
+    - { interface: vliIf, src: uLeafSoloA, srcport: out, dst: uLeafSoloB, dstport: in }
+    - { interface: vliIf, src: uLeafSoloB, srcport: out, dst: uChkSolo,   dstport: in }
+
+connectionMaps:
+    - { interface: vliIf, block: vliCont, port: contIn,  direction: dst, instance: uLeafA, instancePort: in }
+    - { interface: vliIf, block: vliCont, port: contOut, direction: src, instance: uLeafB, instancePort: out }
+
+parameters:
+    vliCont:
+        # Bound to the constants' own declared values, so this variant's struct
+        # IS the context default struct - the product tree's shape.
+        default:
+            VLI_ALGO: VLI_ALGO
+            VLI_WIDTH: VLI_WIDTH
+        # A second variant of the same container, differing in both the
+        # behavioural knob and the payload width.
+        alt:
+            VLI_ALGO: 6
+            VLI_WIDTH: 10
+    vliLeaf:
+        # The decoy. No instance selects it, and the leaf's wrapper tops are
+        # named for the CONTAINER's variants, so nothing should resolve it. Its
+        # algorithm matches neither container variant, so anything that fell back
+        # to the leaf's own declared variants would be visible in the run as well
+        # as in the emitted top names.
+        solo:
+            VLI_ALGO: 3
+            VLI_WIDTH: VLI_WIDTH
+        sourced:
+            VLI_ALGO:  { containerParam: VLI_ALGO }
+            VLI_WIDTH: { containerParam: VLI_WIDTH }
+    vliDrv:
+        # One driver per chain, each at its own chain's width.
+        drvDef:
+            VLI_WIDTH: VLI_WIDTH
+        drvAlt:
+            VLI_WIDTH: 10
+        drvSolo:
+            VLI_WIDTH: VLI_WIDTH
+    vliChk:
+        # Each checker reads the algorithm and width it should expect from its
+        # OWN Config, so the two chains expect different values through an
+        # independent path from the one that reaches the leaves.
+        chkDef:
+            VLI_ALGO: VLI_ALGO
+            VLI_WIDTH: VLI_WIDTH
+        chkAlt:
+            VLI_ALGO: 6
+            VLI_WIDTH: 10
+        chkSolo:
+            VLI_ALGO: 3
+            VLI_WIDTH: VLI_WIDTH

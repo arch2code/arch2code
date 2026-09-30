@@ -1,12 +1,17 @@
 #ifndef BITTWIDDLING_H
 #define BITTWIDDLING_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+#include <bit>
+#include <cassert>
 #include <cstdint>
 #include <type_traits>
 #include "clog2.h"
 // https://www.techiedelight.com/round-next-highest-power-2/
-// Compute power of two greater than or equal to `n`
+// Least power of two >= `n`. Domain is n <= 2^63; 2^64 is not representable, so
+// a larger input asserts rather than wrapping to 0. In a constant expression
+// that assert is a compile error.
 constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
+    assert(n <= (1ULL << 63));
     if (n == 0) return 1;
     n--;
     n |= n >> 1;
@@ -17,22 +22,24 @@ constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
     n |= n >> 32;
     return n + 1;
 }
+// Runtime form of findNextPowerOf2Constexpr above; same contract and domain.
 extern uint64_t findNextPowerOf2(uint64_t n);
+// Index of the single set bit; asserts unless `n` is a power of two.
 extern uint16_t log2ofPowerOf2(uint64_t n);
-// pack_bits — append `bits` bits from src@srcPos to dest@destPos via
-// bitwise OR. Caller must pre-clear the destination. Source words are NOT
-// masked: any bits set above `consume` in a source word OR into the
-// destination at the matching position. For the unpack direction, where
-// source bits above `consume` must be discarded, use unpack_bits.
+// pack_bits — OR `bits` bits from src@srcPos into dest@destPos. Caller must
+// pre-clear the destination. Source words are NOT masked, so any bits set above
+// the width being consumed OR into the destination alongside it.
+// This is a deliberate fast-fail mechanism. A model that sets bits outside a
+// field's declared range, or outside the interface, corrupts the neighbouring
+// field and fails quickly instead of being silently truncated. Do not add
+// masking to pack_bits or to any pack path built on it.
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
 
-// unpack_bits — extract `bits` bits from src@srcPos to dest@destPos via
-// bitwise OR. Caller must pre-clear the destination. Each iteration's
-// source word is masked to exactly `consume` bits before OR-ing, so bits
-// above `consume` (adjacent fields in a packed form) are dropped. For the
-// pack direction, where bits above `consume` must propagate, use pack_bits.
+// unpack_bits — the reverse; caller must pre-clear the destination. Each source
+// word IS masked to the width being consumed, so adjacent fields in a packed
+// form are dropped rather than propagated into the destination.
 extern void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits);
 
 template <typename OutPacked, typename InPacked>
@@ -59,6 +66,81 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)
         uint64_t* src = const_cast<uint64_t*>(reinterpret_cast<const uint64_t*>(&in));
         pack_bits(&tmp, 0, src, 0, bits);
         out = static_cast<Out>(tmp);
+    }
+}
+
+// pack_payload_bits / unpack_payload_bits — a nested payload in and out of an
+// enclosing packed form. A scalar _packedSt (uint8_t, uint32_t) is staged through
+// a uint64_t because pack_bits/unpack_bits access whole uint64_t words and would
+// run past the end of it. Pack stays unmasked (fast fail, see pack_bits).
+template <typename T>
+inline void pack_payload_bits(uint64_t* dest, uint16_t destPos, const T& payload, uint16_t bits)
+{
+    typename T::_packedSt packed{0};
+    payload.pack(packed);
+    if constexpr (std::is_array_v<typename T::_packedSt>) {
+        pack_bits(dest, destPos, reinterpret_cast<uint64_t*>(&packed), bits);
+    } else {
+        pack_bits(dest, destPos, static_cast<uint64_t>(packed), bits);
+    }
+}
+
+template <typename T>
+inline void unpack_payload_bits(T& payload, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    using Packed = typename T::_packedSt;
+    if constexpr (std::is_array_v<Packed>) {
+        Packed packed{0};
+        unpack_bits(reinterpret_cast<uint64_t*>(&packed), 0, src, srcPos, bits);
+        payload.unpack(packed);
+    } else {
+        uint64_t wide = 0;
+        unpack_bits(&wide, 0, src, srcPos, bits);
+        Packed packed = static_cast<Packed>(wide);
+        payload.unpack(packed);
+    }
+}
+
+template <typename T>
+inline void unpack_scalar_bits(T& field, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    uint64_t wide = 0;
+    unpack_bits(&wide, 0, src, srcPos, bits);
+    field = static_cast<T>(wide);
+}
+
+// copyPayload — transfer a payload onto the differently-declared payload on the
+// other side of a cross-interface adapter. `Direct` is the generator's verdict
+// that the two declarations emit identical member storage; C++ cannot decide
+// that itself, as the two sides are unrelated class types, so the adapter's
+// class template carries one flag per payload pair. The verdict covers the
+// payload alone, not the protocol envelope around it: sideband members sized
+// from the payload's declared width (axi4_stream's tstrb/tkeep) are not
+// compared.
+//
+// std::bit_cast does not check the verdict — equal-sized types with different
+// member layout satisfy it, so a wrong verdict compiles and silently
+// reinterprets one layout as the other. The sizeof static_assert at each call
+// site only catches a wrong verdict that also changes size.
+//
+// The arms diverge on a field holding a value wider than it declares: the packed
+// arm masks each field to its declared _bitWidth on unpack, while the assign and
+// bit_cast arms transfer the storage as it stands. The packed arm's masking
+// hides an out-of-range value that pack_bits would expose. That is an accepted
+// thunker limitation, so do not add a check here to restore the fast fail.
+template <bool Direct, typename To, typename From>
+inline void copyPayload(To& out, const From& in)
+{
+    if constexpr (std::is_same_v<To, From>) {
+        out = in;
+    } else if constexpr (Direct) {
+        out = std::bit_cast<To>(in);
+    } else {
+        typename From::_packedSt inPacked;
+        typename To::_packedSt outPacked;
+        in.pack( inPacked );
+        copy_packed_bits( outPacked, inPacked, To::_bitWidth );
+        out.unpack( outPacked );
     }
 }
 #endif //BITTWIDDLING_H

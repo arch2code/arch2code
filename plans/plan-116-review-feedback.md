@@ -17,6 +17,16 @@
   upgrade. They are recorded under "Release-blocking defects found 2026-08-04" in
   [`plan-116-status-report.md`](./plan-116-status-report.md), which is the single
   place they are tracked.
+- **Review pass 2026-09-04: item 9 added, seven sub-items. all seven sub-items are LANDED or CLOSED
+  (9B, 9F and 9G on 2026-09-13, 9E on 2026-09-14); 9C CLOSED and 9D LANDED 2026-09-14; item 9 is complete.** Items 1 through 8 stay CLOSED and none of the new
+  findings reopens one. 9A was the one that made the generator emit RTL
+  contradicting the SystemC Config in the same build; the shape that triggers it
+  is deliberate design intent rather than bad authoring, so it was fixed by
+  routing every value consumer through the per-project descriptor rather than by
+  validating the shape away. An eighth finding from the same pass is recorded as
+  W5 of
+  [`plan-file-ownership-classification.md`](./plan-file-ownership-classification.md),
+  which owns the classification it contradicts.
 - **Classification:** feedback capture. This document records action items
   raised during the `feature/116-parameterized-types` review and assigns each a
   disposition. It is not itself an execution plan; each item either links to an
@@ -586,6 +596,471 @@ owning plan named per item.
   items #1b (rgb_video_sink import purview) and #3 (`b2p_deb_conv`
   `bayer_pattern_t`), which are user-owned and out of scope for this feature.
 
+### 9. Project-blind parameter selection and harness gaps (review pass 2026-09-04)
+
+A review of the shipped branch produced seven further findings. They are recorded
+here because they are review-derived and because 9A is a recurrence of T5-A,
+which this document closed on 2026-07-30. None of them reopens items 1 through 8.
+9A emitted wrong RTL and was taken first; it is LANDED. An eighth finding from the
+same pass, the `vlScWrap` classification contradiction, has an existing owner and
+is recorded as W5 of
+[`plan-file-ownership-classification.md`](./plan-file-ownership-classification.md).
+
+#### 9A. Project-blind variant values emit wrong SystemVerilog and wrong RTL
+
+- **Disposition: LANDED 2026-09-04.** All three call sites now select through
+  `selectVariantDescriptor`. `getStandaloneVariants` selects on both arms, over
+  the SOURCE block's descriptors, and projects the result onto the block's own
+  declared params; `_resolveSvInstanceParams` takes a consumer project and
+  spells each param from the descriptor; `getBDInstances` keeps the variant
+  labels and no longer builds the value payload nothing read. The dead dedup
+  loop and its false comment in `templates/systemVerilog/module_hdl_wrapper.py`
+  are gone, and `config/SCHEMA_SPECIFICATION.md` now carries the projectName
+  caveat beside the nested access path. Committed fixture
+  `unittest/fixtures/variant-two-integrators` and suite
+  `unittest/test_variant_two_integrators.py`; measured before and after, see the
+  Change Log entry.
+- **Severity while open: the generator emitted silently wrong RTL.** A single
+  clean build produced a SystemC Config and a Verilated SV top that disagreed
+  about the same parameter, so model and RTL diverged with no diagnostic. This
+  was the most serious item on this list.
+- **Two projects declaring one `(block, variant)` at different values is design
+  intent, not an authoring error.** This is what forecloses the obvious fix, so
+  the authority is worth stating.
+  - `config/schema.yaml:362-373`, on the leaf combo key, says the declaring
+    project field "Distinguishes two assembler projects that declare the same
+    local (block, variant) so both survive as distinct Config identities in one
+    composed database".
+  - `pysrc/processYaml.py:6195` states "A variant is identified by (block,
+    variant, project)".
+  - D8 at [`plan-parameter-sharing.md`](./plan-parameter-sharing.md):164 gives the
+    identity as `(block, variant, declaring project)` and explicitly excludes the
+    declaring file.
+  - Decisive: the committed
+    `unittest/test_param_variant_declarer_precedence.py:112-118` FAILS if the two
+    projects ever stop disagreeing. A parse-time rejection would break that test
+    and delete two of `selectVariantDescriptor`'s three arms.
+- **Three call sites read the project-blind
+  `data['parameters'][qualBlock]['variants']` collapse.** All three consume the
+  values, not just the keys.
+  - `projectOpen.getStandaloneVariants()` (`:1629-1635`) computes the
+    project-qualified descriptor through `selectVariantDescriptor`, spends it on
+    one thing, the container-sourced exclusion at `:1633`, then discards it and
+    reads the values from `variantEntry['params']` at `:1635`. Those rows come
+    from `declaredVariantRows` (`:1681-1685`). This feeds the SystemVerilog
+    variant trampoline's `localparam` through `:1998` and
+    `templates/systemVerilog/module_hdl_wrapper.py:258-266`.
+  - `getBDInstances` (`:1989`) indexes
+    `self.data['parameters'][qualBlock]['variants'][variant]` directly and never
+    consults a descriptor at all.
+  - `_resolveSvInstanceParams` (`:1914-1932`) reads the same
+    `declaredVariantRows` collapse and produces the sub-block instance's `#(...)`
+    override list. This is the source of the wrong RTL instantiation parameters.
+
+  **A fix scoped to `getStandaloneVariants` alone leaves the other two emitting
+  wrong RTL.**
+- **Corrections to the three-call-site claim above, 2026-09-04. VERIFIED BY
+  EXECUTION.** The defect stands; the blast radius and one citation do not.
+  - **`getBDInstances`' lossy read emits nothing today.** The dict it builds,
+    `ret['variants']`, is consumed at `templates/systemc/constructor.py:465-467`
+    as `for variant in sorted(data['variants'])`, which reads KEYS. A grep of
+    `templates/`, `pysrc/` and `config/` for `resolvedValue` returns two hits,
+    both in `templates/systemVerilog/module_hdl_wrapper.py:250,266`, and both on
+    the `standaloneVariants` payload. Nothing subscripts `ret['variants'][v]`.
+    So **two** call sites emit wrong artefacts, not three, and the third builds a
+    value payload no consumer reads. Whether to make it project-aware or delete
+    the payload is a question for whoever takes this. Established by grep, not by
+    removing the payload and rebuilding.
+  - **`ret['variants']` cannot be made per-instance-correct in place**, which is
+    the more interesting half. It is keyed by variant LABEL and written once per
+    instance of the block across the whole loop (`:1981-1995`), so two instances
+    in different projects binding one label collapse regardless of how the value
+    is chosen.
+  - **The mechanism is confirmed at the level the write-up asserts it.** Probed
+    on the composed `examples/ip_test/ip_test.db`: the nested `['params']` dict
+    is keyed by BARE PARAM NAME, `variant1` holds three rows, and all three carry
+    `projectName ip_test`. `ipBridge` declares the same three and they are absent
+    from the nested view while both survive in the flat table. One slot, last
+    writer wins.
+  - **A dead guard sits on top of the collapse.**
+    `templates/systemVerilog/module_hdl_wrapper.py:244-247` says "A reused child
+    bound to the same variant name by more than one declaring context (the
+    foreign case) surfaces duplicate per-param rows in the view", and `:257-262`
+    dedups on `var_data['param']`, first occurrence winning. The view is keyed by
+    param name, so it cannot contain two rows with one `param`. The loop never
+    fires and the comment documents a shape the view cannot produce. It should go
+    with the fix, not survive it.
+  - **The fix at `_resolveSvInstanceParams` is smaller than this entry implies.**
+    `calcVariantConfigDescriptors` (`:4076-4087`) already emits `containerSourced`
+    beside `values`, and `values` is already resolved through `valueKey`
+    (`:4040-4042`). That covers all three of the call site's arms, so it needs a
+    consumer-project argument and nothing else. Its one caller (`:2037-2038`) has
+    `instInfo['_context']` in hand.
+  - **Citation correction.** The uncaveated nested path in
+    `config/SCHEMA_SPECIFICATION.md` is at **`:790-791`**, not `:795-798`; `:796`
+    begins "Loading Process". The conflict is real and `:794` sharpens it, naming
+    `blockParamKey` as the identity concern and saying nothing about
+    `projectName`. But the `:700-706` `getQualBlockVariants` example reads variant
+    NAMES only and is not itself lossy. It propagates the shape without warning,
+    which is a weaker charge than "endorses the lossy path".
+- **The fixture this entry was measured on is NOT in the tree. REBUILT and
+  committed as `unittest/fixtures/variant-two-integrators`**, three rendering
+  projects: `xviLeaf` declares the leaf and no variant, `xviMid` and `xviTop`
+  each include the leaf root, instantiate it at `v0` in their own design file and
+  bind `XVI_GAIN` there at 7 and 3. `XVI_WIDTH` is 8 in both, so the divergence
+  reaches no width check. One correction to the reachability claim below: the
+  order of `projectFiles:` entries decides WHICH project the collapse wrongs, so
+  a composition listing its own design file last leaves its own binding on top
+  and its emitted artifacts right by accident. The fixture lists its own file
+  first, which is why the suite asserts that premise before anything else. The
+  defect is unchanged either way, because the loser's artifacts are wrong in
+  whichever order is authored.
+- **The fixture this entry was originally measured on was NOT in the tree.**
+  `LEAF_GAIN`,
+  `leafIp` and `projIp`/`projA`/`projB` appear in no YAML, no fixture and no test;
+  `grep -rn LEAF_GAIN` over the repository returns only this document's own lines.
+  `git status --untracked-files=all` shows no fixture either. Whoever ran the
+  measurement built it outside the tree and did not keep it, so **the headline
+  evidence for this item cannot currently be re-run.** Rebuilding it as a
+  committed fixture is part of the fix, not a nicety. Note also that
+  `unittest/fixtures/param-variant-two-declarers` is NOT that shape: its two
+  declarers are the IP author and one integrator, and all three of its projects
+  set `fileGeneration: template: none`, so it never renders.
+- **`examples/ip_test` carries a comment that talks a reviewer out of the
+  finding.** `bridge/yaml/bridgeStdTop.yaml:76-79` states "In composition ip_top
+  owns this declaration and bridgeStdTop is not included, so there is no
+  duplicate". Both halves are false: `prj/yaml/ip_testProject.yaml:23` includes
+  `ipBridgeProject.yaml`, which includes `bridgeStdTop.yaml` at its own `:24`, and
+  the composed database holds both declarations. [`plan-parameter-sharing.md`](./plan-parameter-sharing.md)
+  §5, B6 already records the belief as corrected; the YAML comment itself has not
+  been.
+- **Reachability: CONFIRMED on a fixture built strictly to the rules.** Nothing
+  unusual is authored and no rule is bent. Three projects: an IP declaring the
+  leaf and no variant, plus two integrators that each `include:` the IP root and
+  each declare their own binding of `leafIp/v0` in the same file that instantiates
+  it, at `LEAF_GAIN` 3 and 7. Every `parameters:` block sits in the
+  block-instantiating design file, nothing is moved to a sibling, and
+  `projectFiles:` order is conventional. From a clean build, exit 0, no
+  diagnostic:
+  - `projA/rtl/aTop.sv:24` emitted
+    `projIp_leafIp #(.LEAF_W(8), .LEAF_GAIN(7)) uALeaf (`. WRONG.
+  - `projA/verif/vl_wrap/projA_leafIp_v0_hdl_sv_wrapper.sv:14` emitted
+    `localparam LEAF_GAIN = 7`. WRONG.
+  - `projA/registrar/projA_leafIpVariantConfig.cppm:13` emitted
+    `static constexpr uint32_t LEAF_GAIN = 3;`. RIGHT, because that path goes
+    through the descriptor.
+- **The failure is structural, not a parse-order accident.** Swapping the include
+  order produced byte-identical output. `selectVariantDescriptor` returns 3 for
+  projA's consumer and 7 for projB's, both correct and both different, while the
+  nested collapse has one slot holding one value. Two consumers have two correct
+  answers and a single project-blind slot can serve at most one. Reordering only
+  changes which project is wronged. No ordering exists that satisfies both, so
+  this cannot be fixed by making parsing deterministic.
+- **Parse order decides only which project loses.** `loadTable`
+  (`pysrc/processYaml.py:739`, selecting `ORDER BY rowid` at `:640`) makes the
+  slot last-writer-wins. `getFileList` (`:4857-4890`) returns `systemFiles` +
+  `projectFiles` + `include` in authored order, but only `include:` entries create
+  a dependency edge; `projectFiles:` entries create none. `readRaw` (`:5085`)
+  enqueues with `newFiles.insert(0, ...)`, reversing a file's authored reference
+  list into the read queue, and `processYamls` (`:7050-7101`) walks that order
+  greedily. That walk is insert order, which is rowid order, which picks the
+  survivor. Useful for reasoning about which artifact goes wrong in a given build,
+  and irrelevant to whether the defect exists.
+- **Two documents disagree by omission, and the one authors read first endorses
+  the lossy path.** [`GENERATOR_ARCHITECTURE.md`](../GENERATOR_ARCHITECTURE.md):276-282
+  states that the `data['parameters'][block]['variants'][variant]['params'][param]`
+  nesting is projectName-blind and that identity-sensitive code must use the flat
+  `parametersvariantsparams` table. But `config/SCHEMA_SPECIFICATION.md:795-798`
+  presents that exact access path as the in-memory contract with no warning that
+  it drops the project axis, and repeats the shape at `:700-706` in its
+  `getQualBlockVariants` example. All three defective call sites use precisely the
+  path the schema specification endorses. **Adding the caveat to
+  `SCHEMA_SPECIFICATION.md` is part of the fix, not a follow-up.**
+- **The same collapse was fixed once already.** T5-A, LANDED 2026-07-30 (Change
+  Log, :850-856), rebuilt the descriptor builder off the flat table for this
+  reason. None of these three call sites was converted with it.
+- **No validation catches it.** `validateVariantDeclarationUniqueness` (`:6176`)
+  keys on `(blockKey, variant, projectName)` and so guards within one project
+  only. Its own docstring names the failure mode, "which of the two declarations
+  survives follows parse order", and then does not guard it across projects.
+  `_post_validateVariantBindingSizing` (`:8760`) and
+  `_post_validateVariantParameterCompleteness` (`:8813`) are per-row and pass.
+- **Width-coupled divergence is caught, but the diagnostic misdirects.** Make the
+  two projects disagree on `LEAF_W` instead and db creation fails with `per-field
+  _bitWidth must agree`, because that check reads the collapsed value. It surfaces
+  as an interface complaint rather than a duplicate-declaration one. See 9B, where
+  that same accident is load-bearing. A behavioural parameter that sizes nothing,
+  the `RCV_CFG_GAIN` shape in `unittest/fixtures/regs-container-variant`, is
+  outside every guard.
+- **`ip_test` is one edited number away from shipping wrong RTL.** Its two
+  integrators declare the same `(block, variant)` at identical values, and the
+  duplication is REQUIRED rather than incidental. Measured: delete one
+  integrator's binding and `selectVariantDescriptor` returns `None` for that
+  consumer, which falls back to the block default Config. A consumer cannot borrow
+  another project's declaration, and
+  `_post_validateVariantParameterCompleteness` (`:8813-8846`) makes each declaring
+  project restate the entire parameter set. So a shipped, rendering example is
+  safe only because the two numbers happen to agree. It is also the natural
+  regression vehicle for the fix, because unlike `param-variant-two-declarers` it
+  actually renders.
+- **The correct selection key** is the descriptor's own `values` dict, which
+  `calcVariantConfigDescriptors` (`:4057-4086`) already computes per declaring
+  project. **One correction found while landing this:** `values` is resolved
+  through `valueKey`, so a sub-block `#(...)` override taken from it emits a
+  literal where the authored binding named a constant. That is a regression, not
+  a cosmetic difference: `examples/ip_test/src/yaml/src.yaml:90` binds the leaf's
+  `LEAF_DATA_WIDTH` to the parent's `OUT0_DATA_WIDTH` SYMBOL precisely so the
+  value flows down from `src`'s own instantiation, and the naive change hardcoded
+  8. The descriptor therefore also carries `valueSymbols`, the authored constant
+  name per symbol-bound param, which the instantiation arm spells and the
+  standalone trampoline ignores.
+- **Recommended fix.** Make all three paths project-aware through the descriptor.
+  Do NOT add a parse-time rejection, for the reasons in the design-intent bullet
+  above. A WARNING when two projects declare one `(block, variant)` at differing
+  values is worth considering on its own. It catches the accidental edit without
+  outlawing the intended shape.
+- **Complication whoever fixes this must settle first. SETTLED in the fix.** In
+  `getStandaloneVariants` the descriptor was fetched only on the
+  `sourceBlock == qualBlock` arm. The inherited arm narrowed a container's rows
+  to this block's own parameters, and `variantConfigDescriptors[qualBlock]` may
+  hold nothing there. Both arms now select over the SOURCE block's descriptors
+  with `blockProject` taken from the source block's context owner, which is what
+  `_declaredVariantConfigEntries` already did over the same
+  `variantSourceBlocks` list, and project onto
+  `data['blocks'][qualBlock]['params']` rather than intersecting with the
+  descriptor's keys, because `values` is a superset carrying the config
+  context's eval-derived constants too.
+- **Not measured.** Divergence inside a block's own declaring project. The
+  ownership gate at `pysrc/newModule.py:171` means the leaf's own wrapper is
+  scaffolded only from its declaring project's build, which has no second declarer
+  in its closure. The parent-owned foreign wrapper is what carries the bug.
+- **Related deferred work.**
+  [`plan-cross-level-variant-wrappers.md`](./plan-cross-level-variant-wrappers.md):270-280,
+  the first requirement of its generator data contract, asks for a validation over
+  this same structure and is deferred.
+- **Plan prose corrected in the same pass.**
+  [`plan-parameter-sharing.md`](./plan-parameter-sharing.md) lines 166, 824 and 869
+  each asserted something this finding contradicts, and each now carries a
+  correction pointing here.
+
+#### 9B. `SiteBindingIndex` has the same project-blind shape
+
+- **Disposition:** LANDED 2026-09-13. Ruled the same day (user): fix now. `paramRows` is keyed
+  by (block, declaring project, variant); `Site` gained a `declaringProject` field, which
+  `SiteBindingIndex.siteOf` fills from `INSTANCEVARIANTDECLARERS`; `paramValues` and
+  `foreignDeclaredBindings` read the site's own project's rows, and the dead value-match guard
+  in the latter went. Proof: new fixture `param-variant-two-declarers-legal` (projIp and projWrap
+  each declare `leafIp v0`, at LEAF_W 12 and 8, each visible only in its own scope) with two
+  cells in `test_variant_scope_resolution.py`. The composition builds and each instance's
+  persisted declarer is its own project; changing projWrap's binding to 9 is rejected naming
+  uLeafB and not uLeafA. The accept cell failed on the pre-fix tree. Reviewed categorically and
+  the review applied (dead guard, docstrings, premise checks, `flatData` in place of SQL). Gates,
+  VERIFIED BY EXECUTION 2026-09-13, shared with 9F: unit suite 129 of 129; base pipeline after
+  `make clean` exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro pipeline 14 "No error",
+  0 warnings; product regenerates with only the `builder`, `isp_shared` and deleted
+  `model/debayerVariantConfig.h` rows, model run and `VL_DUT=1` run two "No error" each. The
+  fixture top still carries an inert `leafIp: v0` binding that only satisfies
+  `validateVariantLabelBuildOwnership`; the owner-axis step removes both. Previously: OPEN, not started. Tracked by no plan before this entry.
+  **Re-measured 2026-09-04: this is a defect, not a safety net.** It rejects a
+  legal composition and passes a real cross-project width divergence. The
+  "load-bearing, do not fix it naively" framing below is withdrawn.
+- `SiteBindingIndex` collects every project's `parametersvariantsparams` rows into
+  one list keyed `(blockKey, variant)` (`pysrc/processYaml.py:3552-3556`), and
+  `paramValues` (`:3598-3603`) assigns in list order, so the last row wins.
+- ~~**The behaviour is load-bearing, so do not fix it naively.** It is what turns a
+  width-coupled cross-project divergence into a loud `per-field _bitWidth must
+  agree` failure instead of silently wrong RTL. Adding the project axis without
+  replacing that diagnostic converts a hard failure into a silent one.~~
+  **The second sentence of that claim is FALSE and is withdrawn, 2026-09-04.
+  VERIFIED BY EXECUTION.** The named dependent, the `xproj-container-layout` gate
+  (`Makefile:264-293`, in `pipeline-test` at `:468`), does not rest on the
+  collapse. Its rejecting arm `examples/xprojParam/cpLayoutBad` is a SINGLE
+  project: `prj/yaml/xpCpLayoutBadProject.yaml` lists one `projectFiles:` entry
+  and the fixture contains no `include:` directive at all. With one declaring
+  project there is exactly one row per `(block, variant, param)`, so keying
+  `paramRows` by project cannot change that fixture's outcome. The mismatch it
+  adjudicates is intra-project, between `xpCpBadWrap` and its sibling
+  `xpCpBadSrc`. The same false dependency was asserted at
+  [`plan-parameter-sharing.md`](./plan-parameter-sharing.md) §8 and is corrected
+  there too.
+- **The two items share no data path**, which is the other half of the withdrawn
+  claim. `SiteBindingIndex` is constructed at exactly two db-time sites,
+  `projectCreate.validatePorts` (`pysrc/processYaml.py:6862`) and
+  `config/postParseRegisterPorts.py:302`, and `grep` finds no reference to it
+  anywhere under `templates/`. It feeds `checkInterfacePair` and nothing else.
+  9A's three call sites are `projectOpen` views on the emission path and never
+  read it. Neither item blocks the other on a data dependency.
+- **CONFIRMED 2026-09-04, and it settles the question: there is no safety net to
+  replace. 9B is a defect in its own right. VERIFIED BY EXECUTION**, on
+  scratchpad copies of `unittest/fixtures/param-variant-two-declarers` built with
+  the unit test's own invocation, `python3 arch2code.py --yaml
+  <copy>/top/yaml/twoDeclarersProject.yaml --db <copy>.db`. Four results, each
+  reproduced:
+  - **The collapse REJECTS a composition in which both projects are internally
+    correct.** Give `projIp` its own parent holding the leaf at width 12, leave
+    `projWrap` holding it at 8, and db creation exits 1 on `per-field _bitWidth
+    must agree`. Each project builds clean on its own. The rejection is
+    **unsatisfiable at any value**: exactly one value of `leafIp/v0/LEAF_W` exists
+    project-wide, so at most one of the two parents' maps can ever be satisfied,
+    and moving the value only moves the error to the other map.
+  - **The control isolates the collapsed key as the cause.** Relabel `projIp`'s
+    instance and its declaration from `v0` to `v1`, a two-line diff that changes
+    no width, and the identical design exits 0.
+  - **A cross-project WIDTH divergence is NOT caught**, which is the specific
+    thing the withdrawn claim credited it with. The fixture as committed binds
+    `LEAF_W` at 12 in `projIp/yaml/ipTop.yaml:38` and 8 in
+    `projWrap/yaml/wrapTop.yaml:49`, `LEAF_W` sizes `leafT` at `ipTop.yaml:15`,
+    and it builds **exit 0**. The check fires only when the WINNING project's own
+    map stops being satisfiable, which is an intra-project inconsistency that a
+    project-aware index would report identically.
+  - **A behavioural divergence is dropped in silence.** Two projects disagreeing
+    on a parameter that sizes nothing gives exit 0 with no error and no warning;
+    the losing value is discarded without a word.
+- ~~**The diagnostic misattributes, which is worse than being silent.** In the
+  rejection above, both sides are labelled `(project projIp)` and every file named
+  is `ipTop.yaml`, while one of the two widths is `projWrap`'s binding reached
+  through the collapsed key. It accuses a file of contradicting itself using a
+  number from a project that file never mentions. Anyone debugging it starts in
+  the wrong place.~~ **FIXED 2026-09-04, diagnostic only.** Each junction side now
+  names any parameter whose winning binding row belongs to a project other than
+  the block's own, with that project and its file, through
+  `SiteBindingIndex.foreignDeclaredBindings`. The rejection above gains
+  `parameter LEAF_W = 8 comes from project projWrap (file
+  ../../projWrap/yaml/wrapTop.yaml)`, so the reader is sent to the file holding
+  the number. The single-project case prints nothing extra. Selection is
+  untouched, so **the rest of this item stays OPEN**: the collapse still rejects
+  this legal composition, still passes a cross-project width divergence, and
+  still drops a behavioural one in silence.
+- **9A was taken first and landed independently**, as expected: its own
+  divergence is on a behavioural parameter, which the measurements above show
+  reaches no layout check at all. Nothing 9A changed touches `SiteBindingIndex`,
+  so this item is exactly where it was. The earlier framing, that 9B must wait
+  for a replacement diagnostic, is void. There is nothing to replace.
+
+#### 9C. Foreign Config `childKey` host fallback can name a file no project creates
+
+- **Disposition:** CLOSED 2026-09-14, by construction and by measurement. Both halves of the
+  defect were removed by later work. The manifest/newModule mismatch: since 2026-09-14 every
+  manifest gen target and every newModule scaffold decision read the same artifact-row view and the
+  same predicate (`row['owner'] == rootProject` / `PROJECTNAME`), so the manifest cannot name a
+  registrar file the owning project does not create; measured after the 2026-09-14 pipeline, every
+  `A2C_SC_GEN_FILES`/`A2C_SV_GEN_FILES` path in every pipeline-generated example manifest exists on
+  disk (the only absent paths belong to examples the pipeline does not generate: `hierInclude`,
+  `inAndOut`, and the deliberate `*Bad` and `infPort` db-only fixtures). The silent default-Config
+  fallback for an unselectable third-party declaration: `selectVariantDescriptor` is gone (steps
+  12a/12b, 2026-09-08); a label with zero visible declarations in the instance's scope is a db error
+  naming the out-of-scope declarers (`test_variant_scope_resolution.py`). The `parentKeys` host
+  fallback to the child itself stays, and is now harmless: the row it produces is owned by the
+  declaring project and is scaffolded and generated only there. Previously: OPEN, not started. Inert today. PROPOSED 2026-09-13: take the second
+  surviving option, derive `FOREIGNCONFIGHEADERS` from the descriptors a registrar pair
+  selects rather than from every declared binding row; the unselectable third-party
+  declaration then produces no header and no silent default-Config fallback.
+- **What happens.** `pysrc/processYaml.py:5804` reads
+  `parentKey = parentKeys.get(key, childKey)`. When the declaring project
+  assembles the child nowhere in the build, the host block becomes the child
+  itself, which may belong to a third project. In that state
+  `pysrc/newModule.py:276-283` refuses to scaffold, both of its gates rejecting,
+  while `config/createBuildManifest.py:206-221` still records the path, so the
+  manifest names a file no project creates.
+- **Why nothing breaks today.** `selectVariantDescriptor` returns a foreign
+  descriptor only when its declaring project is the consumer or the block's own
+  project, so the only mismatching case is a third-party declaration nothing can
+  select, and `include/make/a2c-systemc.mk:98` wraps the module list in
+  `$(wildcard ...)` and drops the missing path silently.
+- **Measured.** A scan of all 44 example databases plus the fixture found 24
+  foreign-Config records, 4 taking the fallback, and zero mismatches.
+- **Both reviewer prescriptions are rejected.** "Persist a declaring-project-owned
+  host" creates a real dead module for a variant that can never be selected.
+  "Reject at parse", written as "the declarer must own the config context", would
+  reject all 24 records, including `xpFilterShared`, `xpCstBind`, `xpDpMid`,
+  `xpTwoCtx`, `ipBridge`, `ip_test` and the `param-variant-two-declarers` unit
+  test, which are the entire purpose of `FOREIGNCONFIGHEADERS`.
+- **Two options survive.** Narrow the parse-time rejection to a declaring project
+  that is neither the config-context owner nor the block's declaring project. Or
+  drive the header set from descriptors some registrar pair actually selects
+  rather than from every declared binding row, which is what the intent comment at
+  `processYaml.py:5753-5755` already describes.
+- **One unmeasured risk.** On a `hasVl` child the same record feeds
+  `A2C_VL_TOPS`, consumed at `include/make/a2c-vl-wrap.mk:60` and `:89` with no
+  wildcard filter, so a missing `.sv` there would be a hard build failure rather
+  than a silent drop. Not confirmed.
+- **One adjacent measured finding.** Instantiating a variant whose only binding is
+  an unselectable third-party declaration falls back to the default Config with no
+  warning and a successful build. An observed trampoline emitted
+  `xpSinkShared<xpGainDefaultConfig>` where
+  `xpSinkShared_xpSinkSharedV0Config` was intended.
+
+#### 9D. Two regression-harness defects
+
+- **Disposition:** date-format half WITHDRAWN 2026-09-14 (user ruling: other software relies on
+  the launcher's output, so `regrLauncher/__main__.py` is not to be changed; the session directory
+  keeps `%Y-%d-%m-%H%M%S` and the file is back to HEAD). Identify sessions by directory mtime, not by
+  name. Concurrency half LANDED 2026-09-14: the scaffolded `regr` recipe reads
+  `REGR_JOBS ?= 8` and passes `-j$(REGR_JOBS)`, so `make regr REGR_JOBS=N` controls the runner,
+  and the 18 scaffolded copies under `examples/` carry the same recipe (`make -jN` itself still
+  reaches only the build, since a recipe cannot read make's job count portably). Previously: OPEN. PROPOSED 2026-09-13:
+  change the `strftime` to `%Y-%m-%d-%H%M%S`, and have the scaffolded `regr` recipe pass
+  `$(MAKEFLAGS)`-derived `-jN` through to `regrLauncher.py` instead of hardcoding `-j8`.
+- **Session directory names carry a transposed date.**
+  `regrLauncher/__main__.py:49` formats the session directory with
+  `strftime("%Y-%d-%m-%H%M%S")`, swapping day and month. Every session directory
+  is misdated, and one read later reads as evidence from a different date.
+- **`make regr -j<N>` does not control run concurrency.** The scaffolded `regr`
+  recipe hardcodes `regrLauncher.py --build -j8`, so make's own `-j` reaches the
+  build and not the runner. Only `REGR_USER_OPTS=-jN` changes it.
+- **The E549 `Resource temporarily unavailable` failures under that hardcoded
+  concurrency are a host resource cliff, not a design defect.** They reproduce
+  identically on an un-migrated `main` tree with main's own pinned toolchain, the
+  failing set is arbitrary run to run with an empty intersection across five runs,
+  and `REGR_USER_OPTS=-j1` gives a clean 44 of 44.
+
+#### 9E. The unit suite has no written test-invocation contract
+
+- **Disposition:** LANDED 2026-09-14. `unittest/README.md` gained an "Invocation contract"
+  section (standalone scripts; `run_all_tests()` maps booleans to the exit code; pytest is not a
+  supported runner; new files are glob-discovered and the parallel runner's suite-count constant
+  is bumped), and the `Makefile` `unittest` target comment points at it. Measured on the day: 105
+  of 130 files return booleans from test functions. Previously: OPEN. PROPOSED 2026-09-13: write the
+  contract into `unittest/README.md` (each file is a script whose `run_all_tests()` maps
+  booleans to the exit code; pytest is not a supported runner) and reference it from the
+  Makefile `unittest` target comment.
+- `unittest/run_all_tests.sh`, invoked from `Makefile:464-465`, runs each unit file
+  as a script, and each file's `run_all_tests()` turns boolean returns into the
+  exit code. 25 of the 42 files that name `test_*` functions return booleans rather
+  than asserting, and the convention is endorsed in passing at
+  [`plan-eval-python-to-sv-migration.md`](./plan-eval-python-to-sv-migration.md):182-184.
+- Run under pytest, which discards return values, those 25 files would pass
+  vacuously. The gap is the absence of a written invocation contract, not a defect
+  in any individual test.
+
+#### 9F. Dead ambiguity branch in the block-name map
+
+- **Disposition:** LANDED 2026-09-13. The block loop now mirrors the instance loop's if/else,
+  with one extra guard: the instance loop seeds `blocks[container]` first, so the same key
+  arriving again from the block loop is not an ambiguity. Any instantiated duplicate block name
+  is already rejected by the `scope: global` lookup, so valid designs are unchanged. Gated
+  together with 9B (the runs recorded there).
+- `pysrc/processYaml.py:453` assigned `blocks[block] = blockKey` unconditionally and
+  overwrites the ambiguity dict built at `:449-452`, so `getQualBlock()`'s
+  `isinstance(..., dict)` branch at `:810-814` cannot be reached for blocks. The
+  instance-side equivalent at `:419-427` is written correctly, with an if/else.
+- The `scope: global` duplicate-name gate masks this completely today. It is dead
+  code, and a hazard only if that gate is relaxed.
+
+#### 9G. Authoring documentation still shows the retired flat `parameters:` form
+
+- **Disposition:** LANDED 2026-09-13. Both examples rewritten to the nested mapping and each
+  gains one sentence saying a `parameters:` section may sit in any file whose scope reaches
+  the block.
+- `ARCH2CODE_AI_RULES.md:594-601` and `rules/architecture-yaml.md:83-84` both show
+  `parameters:` as a flat list of `{variant, param, value}` rows. The current
+  schema declares the nested mapping (`config/schema.yaml:311-320`) and rejects
+  the flat form, so an author who copies either example gets a parse failure.
+- `rules/skills/design-parameterizable-blocks.md` never states where a
+  `parameters:` section may live, while being explicit that `ipParameters:` must
+  sit in the block's own file. An author can reasonably infer the same constraint
+  covers both. It does not.
+
 ## Release-Triage Table
 
 The following table is the item-7 deliverable.
@@ -1058,3 +1533,150 @@ surface.
   startup-gate regression (B1), the unregistered failing identity-uniqueness suite (B2), stale composed-child artifacts
   in the committed tree (B3), and the stale build directory on upgrade (B4). B1 and B3 are consequences of item 5's
   module work; B2 is a consequence of item 1's qualification; none is a defect in the delivered item behaviour.
+- 2026-09-04: **Review pass over the shipped branch; item 9 added with seven OPEN sub-items.** 9A
+  project-blind variant values reach three emitters, the SV trampoline `localparam`
+  (`getStandaloneVariants`), the RTL sub-block `#(...)` overrides (`_resolveSvInstanceParams`) and
+  `getBDInstances`, a recurrence of the T5-A collapse at call sites T5-A did not convert. MEASURED on a
+  three-project fixture authored strictly to the rules, which emitted a Config of 3 beside a Verilated
+  top and an RTL instantiation of 7, exit 0 and no diagnostic. The failure is STRUCTURAL, not parse
+  order. Swapping the include order gives byte-identical output, because two consumers have two
+  correct answers and the collapsed slot holds one. The shape is deliberate design intent, asserted by
+  `schema.yaml:362-373`, `processYaml.py:6195`, D8, and a committed test that FAILS if the two
+  projects stop disagreeing, so a parse-time rejection is the wrong fix. `SCHEMA_SPECIFICATION.md`
+  endorses the lossy access path with no caveat and must gain one as part of the fix. `ip_test` ships
+  the shape today, safe only because its two numbers coincide. 9B `SiteBindingIndex` has the same
+  shape, and its
+  last-row-wins behaviour is load-bearing as a loud width-mismatch diagnostic; 9C the foreign-Config
+  `childKey` host fallback can record a manifest path no project scaffolds, inert today and with both
+  reviewer prescriptions rejected; 9D the regression session directory carries a transposed date and
+  `make regr -j<N>` does not reach the runner; 9E the unit suite has no written invocation contract, so
+  25 of 42 files would pass vacuously under pytest; 9F a dead ambiguity branch in the block-name map;
+  9G two rules documents still show the retired flat `parameters:` form the current schema rejects.
+  The `vlScWrap` classification contradiction from the same pass went to its owner as W5 of
+  `plan-file-ownership-classification.md`. Three false statements in `plan-parameter-sharing.md` were
+  corrected in the same pass: the `selectVariantDescriptor` arm count (:869), the scope of the
+  "None repeats ... selection" claim (:824), and the unqualified cross-project reuse claim in D8 (:166).
+- 2026-09-04: **9A LANDED.** All three call sites select through
+  `selectVariantDescriptor`. `getStandaloneVariants` selects on both arms over the SOURCE block's
+  descriptors and returns `{variant: {param: value}}` projected onto the block's own declared params;
+  `_resolveSvInstanceParams` takes a consumer project (`contextOwningProject[instInfo['_context']]`);
+  `getBDInstances` keeps the variant LABELS as a set and no longer builds the value payload nothing
+  read, which retired `_resolveBindingValueOpen`. The dead per-param dedup loop and its false comment
+  in `templates/systemVerilog/module_hdl_wrapper.py` are gone, and `SCHEMA_SPECIFICATION.md` carries
+  the projectName caveat beside the nested access path. Two things the entry above did not anticipate
+  turned up while landing it. The descriptor's `values` is resolved through `valueKey`, so taking a
+  sub-block `#(...)` override from it hardcodes a literal where the authored binding named a constant;
+  `examples/ip_test/src/rtl/src.sv` went from `.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH)` to
+  `.LEAF_DATA_WIDTH(8)`, breaking the documented flow-down from `src`'s own parameter, so the
+  descriptor now also carries `valueSymbols`. And `selectVariantDescriptor` returns None for an
+  instance naming a label only an intermediate project declares, which `examples/xprojParam/dpTop`'s
+  `uLeafX` does on purpose; both call sites now fall back to the block's declared parameter defaults
+  through a new `BLOCKPARAMDEFAULTS`, which is the same answer the Config path already gave that
+  instance. Measured on the new committed fixture `unittest/fixtures/variant-two-integrators`: before,
+  `top/rtl/xviTop.sv` emitted `.XVI_GAIN(7)` and `top/verif/xviTop_xviLeaf_v0_hdl_sv_wrapper.sv`
+  emitted `localparam XVI_GAIN = 7` while `top/registrar/xviTop_xviLeafVariantConfig.cppm` emitted
+  `XVI_GAIN = 3`; after, all three read 3. Verified by a cold `clean`/`db`/`gen` over all 44 project
+  trees under `examples/`, which produced ZERO emitted-output delta, and by
+  `unittest/run_all_tests.sh`.
+- 2026-09-04: **9B's misattribution bullet FIXED; the item itself stays OPEN.** The
+  `per-field _bitWidth must agree` trailer labelled each side with the project owning the block being
+  resolved, while the value came through the collapsed `(blockKey, variant)` key and could be another
+  project's binding. `SiteBindingIndex.foreignDeclaredBindings` now reports, per side, each parameter
+  whose winning binding row carries a `projectName` other than the block's own, and
+  `_junctionSideIdentity` prints it with the row's value, project and `_context` file.
+  `checkInterfacePair` takes the index for this; its three call sites already held one. Measured on a
+  scratchpad copy of `unittest/fixtures/param-variant-two-declarers` in which `projIp` also holds the
+  leaf at 12 in its own parent while `projWrap` holds it at 8: before, both sides read
+  `(project projIp)` and every file named was `ipTop.yaml`; after, the child side adds
+  `parameter LEAF_W = 8 comes from project projWrap (file ../../projWrap/yaml/wrapTop.yaml)`. Nothing
+  in the selection changed, and the control that relabels `projIp`'s instance to `v1` still exits 0.
+  The single-project `examples/xprojParam/cpLayoutBad` gate prints no extra line and still rejects at
+  `_bitWidth 24`. Verified by `unittest/run_all_tests.sh` (87 suites, all pass),
+  `make pipeline-test -j` exit 0, and a cold `make clean` plus regeneration with zero emitted-output
+  delta.
+- 2026-09-04: **9A's fixture closed its three coverage gaps and now fails on the defect it
+  guards.** `unittest/test_variant_two_integrators.py` went from three cells to six. The second
+  integrator is checked across the same artifact set as the first rather than its RTL alone. Two
+  projects declaring differently-named labels of one block is covered: `xviMid` declares `vMid` at
+  gain 5 and `xviTop` declares `vTop` at 9, and each build emits only its own label, at its own
+  value, in RTL, Verilator top and Config. The leaf now applies `XVI_GAIN` to the payload in both
+  the model and the RTL, so a cell runs each build and reads the gain back out of the sink's
+  samples. The fixture commits its implementation files with their user-region content and the
+  copy step ignores derived output only, because the previous ignore list dropped the very
+  directories behaviour has to live in.
+  The gap that mattered was that every assertion had been static. Emitted text can be right while
+  nothing consumes it. Injecting the defect at its single point, replacing `selectVariantDescriptor`
+  with a project-blind return of the first matching descriptor, now fails the suite 4/6:
+  `top/rtl/xviTop.sv` and `top/verif/xviTop_xviLeaf_v0_hdl_sv_wrapper.sv` go to 7 while
+  `top/registrar/xviTop_xviLeafVariantConfig.cppm` stays at 3, and `tb.xviTop.uTopSnk` observes
+  `{1: 7, 2: 14, 3: 21, 4: 28}` where `xviTop` declared gain 3. That is the wrong-hardware symptom
+  reproduced in a running design, not just in a file. One earlier injection shape proves nothing and
+  should not be reused: returning the LAST matching descriptor passes all six, because `xviTop`'s own
+  `v0` descriptor happens to sort last. The nested-view collapse the fixture is named for drops the
+  other way, so the two orderings are not interchangeable.
+  Cost is 61.5s added to this suite, 13.9s to 75.4s, about 25 percent of the serial suite total. The
+  two SystemC builds are 29s of it and the Verilated half only 17s. The parallel runner already
+  places the suite in its ISOLATED lane by glob, so the cost overlaps there.
+  Verified by `unittest/run_all_tests.sh` run alone (exit 0, 87 suites, zero `FAIL:` lines) and by
+  reproducing the injection independently rather than on report.
+- 2026-09-04: **NEW, OPEN. A composed build resolves a sub-project's per-variant HDL wrapper to the
+  wrong directory.** Found while closing the fixture gaps above, not yet filed as its own item and
+  not fixed. In `xviTop`'s build, `top/.gen/build.mk` lists
+  `ipLeaf/verif/xviMid_xviLeaf_v0_hdl_sv_wrapper.sv` and the `vMid` wrapper beside it in
+  `A2C_SV_GEN_FILES` and `A2C_SV_DEP_FILES`, while `xviMid`'s own `make newmodule` scaffolds both
+  into `mid/verif/`. The same disagreement appears for `xviMid_xviLeafVariantConfig.cppm`. The
+  consequence is that `xviTop`'s Verilated build cannot run; `xviMid`'s manifest is self-consistent
+  and its Verilated build does run, which is why the runtime cell gets its RTL evidence from `xviMid`
+  and its model evidence from both. Two related observations, unconfirmed as defects: `xviTop`'s
+  manifest enumerates `xviMid_xviLeaf_vMid_hdl_sv_wrapper` as a Verilated top for a label only
+  `xviMid` declared, and `getStandaloneVariants` offers `xviTop` a `vMid` entry carrying the block's
+  default gain 1, a number no project declared. Neither reaches an emitted artifact today: `top/verif`
+  holds only `v0` and `vTop`, and `xviTop_xviLeafVariantConfig.cppm` holds only `V0Config` at 3 and
+  `VTopConfig` at 9. The default-fill is the documented `BLOCKPARAMDEFAULTS` fallback behaving as
+  specified, so it is latent rather than wrong, but it is the same shape as the defect this item
+  exists for and deserves a decision.
+  **MEASURED 2026-09-14: reproduces on today's builder.** On a scratchpad copy of
+  `unittest/fixtures/variant-two-integrators`, after `db`/`newmodule`/`gen` in `ipLeaf`, `mid` and
+  `top` in that order (every rc 0, no wrapper or Config file created, moved or removed), `top/.gen/build.mk`
+  names `ipLeaf/verif/xviMid_xviLeaf_v0_hdl_sv_wrapper.sv`, `ipLeaf/verif/xviMid_xviLeaf_vMid_hdl_sv_wrapper.sv`
+  and `ipLeaf/registrar/xviMid_xviLeafVariantConfig.cppm`, none of which exist; `mid`'s scaffolds sit
+  under `mid/verif` and `mid/registrar`, and `mid/.gen/build.mk` names them there. `top`'s
+  `A2C_VL_TOPS` lists `xviMid_xviLeaf_vMid_hdl_sv_wrapper`, which is the manifest's documented
+  ownership-inclusive top set (foreign tops are verilated, not regenerated), so that half is by
+  design. `make -C top/rundir all VL_DUT=1` exits 2 with Verilator `Cannot find file containing
+  module` on exactly the two misresolved wrapper paths, on a first run and again after a clean
+  rebuild. Mechanism, by code reading: `calcConfigModules` anchors a `(declaring project, child)`
+  Config-module entry at the smallest reachable container owned by the declaring project and falls
+  back to the child's own directory when it finds none (`parentKeys.get(..., childKey)`); the
+  registrar rows for the pair wrappers and the foreign headers anchor at that same `parentKey`. In
+  `top`'s build the `(xviMid, xviLeaf)` lookup missed and the fallback fired. Why it misses is under
+  database diagnosis (scratchpad `brief-xvitop-parentkey-diagnosis.md`). 9C's 2026-09-14 closure
+  said the fallback "stays, and is now harmless"; this measurement shows the composed manifest
+  still consumes the fallback path, so 9C's second sentence is withdrawn and this item stays OPEN.
+  Measurement artefacts: scratchpad `xvi-measure/` (`before.txt`, `after.txt`, `top_vl_build.log`,
+  `top_vl_build_retry.log`, the two `build.mk`). Side observation from the run, not a defect: a
+  copy placed outside `builder/base` is merged with `pro/config` by `mergeProjectConfig`'s path
+  rule, so the `mid` control build failed on a pro-only Tandem header; measure inside
+  `builder/base/unittest` as the unit test does.
+  **DIAGNOSED 2026-09-14, database evidence on the measured copy.** In `xviTop`'s db
+  `CONTEXTOWNINGPROJECT` is correct (`xviMid.yaml` -> xviMid, `xviLeaf.yaml` -> xviLeaf) and every
+  key spelling matches across the two dbs; both of those candidate causes are ruled out. The cause:
+  `calcConfigModules` walks `REACHABLEINSTANCES` only, and `xviTop`'s reachable hierarchy (eight
+  instances, all containered by `xviTop` blocks) never descends into `xviMid`'s design, because
+  `xviTopProject.yaml` lists `xviMidProject.yaml` in `projectFiles:` for its declarations without
+  instantiating `xviMid`. So `parentKeys` gets one entry, `(xviTop, xviLeaf) -> xviTop`, and the
+  `(xviMid, xviLeaf)` entry (created from `xviMid`'s `parametersvariantsparams` rows, which the
+  composed db carries) takes the `childKey` fallback; `FOREIGNCONFIGHEADERS` inherits the same
+  `parentKey`, and `REGISTRARPAIRS` has no `(xviMid, xviLeaf)` pair at all. In `xviMid`'s own db the
+  same key anchors at `xviMid`. The defect is therefore that a declaring project's registrar home is
+  computed from the consuming build's reachability rather than from the declaring project's own
+  YAML, so two builds disagree about one file's path. PROPOSED for the architect: anchor over every
+  instance in the db whose container context the declaring project owns (drop the reachable filter
+  in this one walk; the composed db parses the declaring project's instances even when nothing
+  reaches them), which makes the anchor a property of the declaring project and identical in every
+  build that parses it, and then delete the `childKey` fallback so a declaring project that
+  assembles the child nowhere fails loud instead of anchoring at the child. Open with it: whether a
+  composed manifest should compile and verilate a declaring project's Config module and tops at all
+  when nothing reachable resolves to that project's labels (today it does, ownership-inclusive); a
+  reachability filter on the manifest's foreign rows would be the efficiency half, separate from the
+  path fix. Diagnostic script: scratchpad `diag.py`.

@@ -13,16 +13,16 @@ and thunker behavior, use `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
 ## Core Rules
 
-1.  Declare a block's root parameters — the constants named in `params:` and bound per variant — in `ipParameters` in the block's own YAML file. Types and derived constants that only *reference* those parameters are parameterizable wherever they are declared and may stay in the regular `types:`/`constants:` sections; they do not have to be moved into `ipParameters`.
+1.  Declare a block's root parameters, the constants named in `params:` and bound per variant, as an `ipParameters` constant, declared once in any file the block's file can see through `include:`, including a definitions-only shared file with no `blocks:` of its own. A name visible more than once, or not at all, is rejected. Types and derived constants that only *reference* those parameters are parameterizable wherever they are declared and may stay in the regular `types:`/`constants:` sections; they do not have to be moved into `ipParameters`.
 2.  List the block parameters in the block's `params:` field.
 3.  Bind concrete values in the top-level `parameters:` dictionary by block and variant.
 4.  Use `maxValue` / `maxBitwidth` to describe the largest supported generated shape.
-5.  Use explicit `ports:` on parameterizable blocks so the block owns its port shape.
+5.  Declare explicit `ports:` on a reusable-IP boundary block so the block owns its port shape. A self-contained block infers its ports top-down from its container and declares none.
 6.  Do not write generated metadata such as `isParameterizable`, structure `maxBitwidth`, or register `maxBytes`.
 
 ## `ipParameters`
 
-Use `ipParameters` for the block's **root parameter constants** — the variant knobs listed in `params:` and bound per variant in the top-level `parameters:` dictionary. These must live in `ipParameters` in the block's own (IP-root) YAML file, because that is how the generator identifies them as the variant-bound parameters.
+Use `ipParameters` for the block's **root parameter constants**: the variant knobs listed in `params:` and bound per variant in the top-level `parameters:` dictionary. These must live in `ipParameters`, declared once in any file reachable through the block's `include:` chain, because that is how the generator identifies them as the variant-bound parameters. The declaring file may be the block's own IP-root file or a definitions-only shared file with no `blocks:`, so several IPs can name one declaration.
 
 ```yaml
 ipParameters:
@@ -101,17 +101,65 @@ instances:
 
 Every variant must bind **all** of the block's declared `params:` — there is no default-fill for an omitted parameter. Avoid label-only variants unless the generator flow explicitly requires them.
 
-Instead of selecting a variant, a contained instance may inherit its container's active config with `inheritContainerParam:` — see [Container Config Inheritance](#container-config-inheritance-inheritcontainerparam).
+A named variant resolves through the file holding the instance row, the files it includes, and the files those include: one of those files must declare the label. Zero visible declarations or more than one is a `make db` error naming every declaring file it can see (or the file(s) that declare it out of scope), or naming the block itself when it declares no `params:` at all. Two projects may each declare one label for a block they both reach; each is its own declaration, and a consumer resolves to whichever one its own scope reaches.
+
+Instead of selecting a variant, a contained instance may source its parameters from its container, either per parameter with `containerParam:` or, for every parameter at once, with `inheritContainerParam: true`. See [Container-sourced parameters](#container-sourced-parameters-containerparam-inheritcontainerparam).
+
+**Every instance of a params-declaring block must select a Config, and `make db` rejects one that does not.** The legal shapes are the whole list: a `variant:` binding values or constants, a `variant:` whose rows use `containerParam:` to source from the container, or `inheritContainerParam: true`. An instance naming none of them leaves the block parameterized and the instance untyped, and the two languages then disagree about which values it carries.
+
+**A top instance's block may not declare `params:`, and `make db` rejects it.** A top has no container, so neither container-sourcing form is available, and a project declares one top, so a variant could only ever bind one set of literals. Put an unparameterized block at the root and the parameterized block one level down.
+
+```yaml
+blocks:
+  myRoot: {desc: "Unparameterized root"}
+  myHarness:
+    desc: "Parameterized, so it cannot be the top"
+    params: [IP_DATA_WIDTH]
+
+instances:
+  myRoot:    {container: myRoot, instanceType: myRoot}
+  uHarness:  {container: myRoot, instanceType: myHarness, variant: variant0}
+```
 
 ## Emitted Config
 
-A block with `ipParameters` always emits configuration types: a `<block>DefaultConfig` plus one `<block><Variant>Config` per variant, with no folding of common values. The block class is templated on that Config (`template<typename Config> ... <block>Base<Config>`), and each instance's variant selects which `<block><Variant>Config` binds the class.
+A block with `ipParameters` always emits configuration types: a `<project>_<block>DefaultConfig`, plus one `<project>_<block><Variant>Config` per variant. Nothing folds common values across them.
 
-## Container Config Inheritance (`inheritContainerParam`)
+`<project>` is the declaring project. For the default, and for any variant a block declares itself, that project is the block's own owner. For a variant another project declares of a reused block, `<project>` is that other project instead.
 
-A contained instance may set `inheritContainerParam: true` **in place of** `variant:`. That instance is then typed with the **container** block's active `Config` template symbol rather than with one of the child's own `<block><Variant>Config` structs. Because a contained child renders inside the container's templated class scope, C++ template instantiation resolves the concrete struct — including the container's own variant, transitively — at the container's instantiation site; no config value is plumbed. The child block still keeps its own `params:` and still emits its own `<block>DefaultConfig` for standalone use.
+Every Config a project declares for one block, native or reused, lives in that project's own registrar-domain Config module (`<project>_<block>VariantConfig.cppm`). No other project's artefact carries it, and no bare, unqualified spelling exists.
 
-Use this when **two sibling contained blocks share one config context** and must bind a `Config`-parameterized channel payload between them (e.g. `bayer_preprocess_stream_t<Config>`). Without inheritance each sibling is typed with its own distinct block-named config struct (`preprocessDefaultConfig` vs `interpolateDefaultConfig`) — byte-identical but distinct C++ types — so no single `Config` satisfies both the producer and consumer ports and the channel cannot bind. Typing both siblings on the container's `Config` unifies them.
+The block class is templated on that Config (`template<typename Config> ... <block>Base<Config>`). Each instance's variant selects which `<project>_<block><Variant>Config` binds the class.
+
+## Container-sourced parameters (`containerParam`, `inheritContainerParam`)
+
+A parameter inside a variant can be sourced from a parameter of the block that contains the instance, instead of bound to a value. Write `containerParam:` on the child's parameter, naming the container's parameter.
+
+```yaml
+blocks:
+  xpCpWrap:
+    params: [CP_BUS_W]
+  xpCpLeaf:
+    params: [CP_WIDTH]
+
+instances:
+  uWrap: { container: xpCpLayoutTop, instanceType: xpCpWrap, instGroup: top, variant: use }
+  uLeaf: { container: xpCpWrap,      instanceType: xpCpLeaf, instGroup: top, variant: use }
+
+parameters:
+  xpCpWrap:
+    use:
+      CP_BUS_W: 16
+  xpCpLeaf:
+    use:
+      CP_WIDTH: { containerParam: CP_BUS_W }
+```
+
+The child's parameter and the container's do not need to share a name. Here the leaf's `CP_WIDTH` is sourced from the container's `CP_BUS_W`. They do not need to belong to the same project either; the container's parameter and the child's can be backed by different constants in different projects.
+
+The generator checks only `maxValue`: the container's parameter may not accept a value larger than the child's, and the diagnostic names both constants and both bounds.
+
+`inheritContainerParam: true` is the same mechanism applied to every parameter at once: same names, same project, no variant named.
 
 ```yaml
 instances:
@@ -119,14 +167,22 @@ instances:
   u_interpolate: {container: debayer, instanceType: interpolate, inheritContainerParam: true}
 ```
 
-Preconditions (all `make db`-time errors):
+Two sibling instances that bind a `Config`-templated channel between them must agree on the value of every parameter the payload uses. A parameterizable payload type is declared on those values, `videoSt_v<8>` with `template<typename Config> using videoSt = videoSt_v<Config::PIXEL_WIDTH>;`, so two variants that bind equal values name one C++ type and the channel binds both ends directly, whatever their `Config` names. Values that differ on one interface are rejected at `make db`. `inheritContainerParam: true` is the simplest way to guarantee agreement: both siblings take the container's values.
 
-*   The child's `params:` must be a by-**name** subset of the container's params.
+A register-bus router block (one with `addressBlock:`) may declare `params:` and inherit like any other block; the generator checks its junction with the parent router at the configuration the container binds. The register bus itself stays fixed-width: `make db` rejects an `addressBus` interface that carries a parameterizable structure, so size a register's payload by a parameter, never the bus structure. `make db` also rejects a `hasRtl: true` container that declares no `params:` yet wires two children over a parameterizable interface, because its SystemVerilog module would name a struct type no package declares; give the container `params:` and inherit or bind the children, make the structure fixed-width, or drop `hasRtl`.
+
+A block that declares `params:` but no `ports:` binds each inferred port to the channel directly, so its instance must resolve at the Config the channel is typed at. `make db` rejects an inferred port on a parameterizable payload whose instance selects another Config, naming both. Inherit the container's configuration, or declare the port in `ports:` if the block is reusable IP so an adapter is generated.
+
+Use the shorthand only where its conditions hold, all checked at `make db`:
+
+*   The child's `params:` must be a by-name subset of the container's.
+*   Container and child must belong to the same project.
 *   `inheritContainerParam:` is mutually exclusive with `variant:` on one instance.
-*   The container block must be parameterized (declare `params:`).
-*   The child block must declare `params:`.
-*   Container and child must be the **same owning project** (no cross-project inheritance for now).
-*   The instance must be contained in a block (not the root top instance).
+*   The container block must declare `params:`, and so must the child.
+*   The instance must be contained in a block, not the root top instance.
+*   Each child parameter must be the container's own `ipParameters` constant. A same-named parameter backed by a different declaration is rejected; use `containerParam:` for that case.
+
+Outside those conditions, use `containerParam:` per parameter instead. The compatibility check between a container's parameter and a child's covers only `maxValue`; the generator never compares `valueType`, so a signed container parameter sourced into an unsigned child parameter is accepted.
 
 ## Per-Port Parameters
 
@@ -182,13 +238,17 @@ Use this pattern only when the output ports genuinely have different parameter v
 
 ## Cross-Parameter Connections
 
-When a parameterized producer interface connects to a consumer interface with a different interface name, both sides must be structurally compatible:
+Wherever a connection interface meets a block's own declared port interface, both sides must be structurally compatible. This applies whether or not the two interfaces share a name: one interface declaration reached from two endpoints that bind different variants has two different payloads, and that case is checked too.
 
 *   Same interface meta-protocol.
 *   Same structure list and structureType ordering.
-*   Same field names and field ordering.
+*   Same field count, compared positionally.
 *   Exact active field-width agreement under the bound variants.
 *   Matching active packed bit positions.
+
+Field **names are not compared**. Payloads are matched by position, because the generated thunker copies them by bit position, so a name difference cannot change generated behaviour. Names are printed in diagnostics for reference only. A consequence worth knowing: two payloads with the same width profile but different meanings (`{r,g,b}` against `{y,u,v}`) are accepted and adapted, so keeping the channel order right is the author's responsibility.
+
+A differing field *split* at the same total width is **not** compatible: one side declaring a 32-bit field where the other declares two 16-bit fields has a different field count and is rejected.
 
 Keep cross-parameter binds on the consumer's destination side. Producer-side cross-interface binding is not a supported authoring shape.
 
@@ -202,12 +262,7 @@ Registers and memories may reference parameterizable structures or word counts. 
 
 ```yaml
 memories:
-  - memory: data_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_addr_st
-    wordLines: IP_MEM_DEPTH
-    desc: "Parameterized memory"
+  - {memory: data_mem, block: ip, structure: ip_data_st, addressStruct: ip_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized memory"}
 ```
 
 ## Validation

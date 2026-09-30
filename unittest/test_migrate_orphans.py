@@ -1,52 +1,67 @@
 #!/usr/bin/env python3
 """Unit tests for the post-database orphan sweep (pysrc/migrateOrphans.py).
 
-The sweep DISPATCHES ON the embedded legacy fileMap's per-entry `migrate:`
+The sweep dispatches on the embedded legacy fileMap's per-entry `migrate:`
 disposition (there is no L\\C set-difference):
   - `delete`  purely-generated legacy artifacts, expanded over the current DB and
               swept (plus the explicit LEGACY_LITERAL_DELETE aggregates);
-  - `port`    user code the migration ports later (agent-driven); only IDENTIFIED
-              and REPORTED here when the current map now produces a different form;
-  - `leave`   user testbench code; never expanded, never touched.
+  - `port`    user code a later porter phase converts; only identified and
+              reported here when the current map now produces a different form;
+  - `edit`    user code a later phase rewrites in place (no file move, so no legacy
+              path to sweep); never expanded, never touched by the sweep.
+There is no disposition meaning "untouched by the migration": an unaffected file is
+omitted from the map entirely.
 
-To exercise it without standing up a full projectCreate database, each test
-stages a small synthetic project on disk and drives sweepOrphans against a
-lightweight fake `prj` exposing exactly the attributes the enumerator reads
-(projectLayout, contextOwningProject, includeName, filemap, data['blocks'/
-'blocksparams'], and config.getConfig('INCLUDEFILES'/'PROJECTNAME')). The files on
-disk are real; only the DB access surface is faked.
+Each test stages a synthetic project on disk and drives sweepOrphans against
+_FakePrj, which exposes the projectOpen attributes artifactRows and the sweep
+read. Files on disk are real; only the DB access surface is faked.
 
 Coverage (the required assertions):
   (a) every `delete`-disposition entry + the explicit vl_wrap.{cpp,h,sv} aggregate
-      is deleted (Includes.{h,cpp}, Base.h, _package.sv, the HDL wrappers,
-      Tandem.{h,cpp}, vl_wrap.*);
-  (b) `port`/`leave`-entry files (a block .cpp/.h/.sv and a tb file, WITH generated
-      markers) are NEVER deleted — and are unreachable for deletion by construction;
-  (c) a delete-target-named file WITHOUT the generated marker is REPORTED, not
+      is deleted (Includes.{h,cpp}, Base.h, the SV HDL wrapper, Tandem.{h,cpp},
+      vl_wrap.*), except a legacy path that is still that artifact's current
+      file (_package.sv here);
+  (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the SC HDL wrapper header,
+      the tb top and External pairs and the tb Config, with generated markers)
+      are never deleted, and are unreachable for deletion by construction;
+  (c) a delete-target-named file without the generated marker is reported, not
       deleted;
-  (d) a `port` block whose current form differs (parameterized -> .cppm) is
-      reported TODO_PORT while a same-form (non-parameterized) block is a no-op;
-  (e) user `#include` sites of a deleted header are reported.
+  (d) a `port` file whose current form differs (a parameterized block, the tb top
+      and External pairs -> .cppm) is reported TODO_PORT while a same-form
+      (non-parameterized block, or the SC HDL wrapper header, which never
+      diverges) is a no-op;
+  (e) user `#include` sites of a deleted header are reported;
+  (f) the `vl_wrap` segment is no longer wholesale-cleared: a stale legacy SV
+      wrapper is still swept by its per-file path, and the SC wrapper header's
+      user content past its GENERATED_CODE_END region survives the sweep.
 """
 
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from collections import OrderedDict
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+test_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.dirname(test_dir)
+sys.path.insert(0, base_dir)
 
+import pysrc.arch2codeGlobals as g
+from pysrc.processYaml import projectOpen
 from pysrc.migrateOrphans import (
     sweepOrphans,
     expandFileMap,
     _dispositionMap,
     _literalDeletePaths,
     _reconstructContexts,
+    _retiredSiblingPaths,
     LEGACY_FILEMAP,
     LEGACY_LITERAL_DELETE,
+    RETIRED_CONTEXT_SIBLINGS,
     MIGRATE_DELETE,
     MIGRATE_PORT,
-    MIGRATE_LEAVE,
+    MIGRATE_EDIT,
     OrphansReport,
     ORPHAN_DELETE,
     TODO_UNGENERATED_FILE,
@@ -54,6 +69,9 @@ from pysrc.migrateOrphans import (
     TODO_UNMANIFESTED_SRC_DIR,
     TODO_USER_INCLUDE,
 )
+
+HIER_FIXTURE = os.path.join(test_dir, 'fixtures', 'hier-layout')
+ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
 GEN_MARKER = "// GENERATED_CODE_BEGIN\n"
 
@@ -88,8 +106,11 @@ class _FakePrj:
 
     Two blocks: `myblk` (non-parameterized) and `paramblk` (parameterized). The
     current merged map keeps `block` as .h/.cpp for non-param blocks and emits a
-    `.cppm` (`blockModule`) for param blocks; `rtlModule` stays .sv. Two contexts:
-    `top` (genuine generated context) and `usr` (hand-authored look-alike).
+    `.cppm` (`blockModule`) for param blocks; `rtlModule` stays .sv; `vlScWrap`
+    (the SC HDL wrapper header) names the same path in both the legacy and
+    current map, matching production, where the two never diverge. Two
+    contexts: `top` (genuine generated context) and `usr` (hand-authored
+    look-alike).
     """
 
     def __init__(self, root):
@@ -111,7 +132,8 @@ class _FakePrj:
         }
         # `root` is a first-class layout field (present in both layout modes),
         # matching _buildLayoutFor; the sweep reads the walk root from here.
-        layout = {"mode": "functional", "segments": segments, "root": root}
+        layout = {"mode": "functional", "segments": segments, "root": root,
+                  "filePrefix": {"sv": "", "sc": "", "fw": ""}}
         self.projectLayout = {"t": layout}
         self.contextOwningProject = {"top.yaml": "t", "usr.yaml": "t"}
         self.includeName = {"top.yaml": "top", "usr.yaml": "usr"}
@@ -121,46 +143,70 @@ class _FakePrj:
         self.filemap = {
             "include":     {"name": "Includes", "ext": {"cppm": "cppm"},
                             "cond": {"smartInclude": True}, "mode": "context",
-                            "basePath": "model"},
+                            "basePath": "model", "langDomain": "sc"},
             "package":     {"name": "_package", "ext": {"sv": "sv"},
                             "cond": {"smartInclude": True}, "mode": "context",
-                            "basePath": "rtl"},
+                            "basePath": "rtl", "langDomain": "sv"},
             "block":       {"name": "", "ext": {"hdr": "h", "src": "cpp"},
                             "cond": {"hasMdl": True}, "condAnd": {"hasOwnParams": False},
-                            "mode": "block", "basePath": "model"},
+                            "mode": "block", "basePath": "model", "langDomain": "sc"},
             "blockModule": {"name": "", "ext": {"cppm": "cppm"},
                             "cond": {"hasMdl": True}, "condAnd": {"hasOwnParams": True},
-                            "mode": "block", "basePath": "model"},
+                            "mode": "block", "basePath": "model", "langDomain": "sc"},
             "rtlModule":   {"name": "", "ext": {"sv": "sv"},
                             "cond": {"hasRtl": True}, "mode": "block",
-                            "basePath": "rtl"},
+                            "basePath": "rtl", "langDomain": "sv"},
+            "vlScWrap":    {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},
+                            "cond": {"hasVl": True}, "mode": "block",
+                            "basePath": "vl_wrap", "langDomain": "sc"},
+            "testBench":   {"name": "Testbench", "ext": {"cppm": "cppm"},
+                            "cond": {"hasTb": True}, "blockDir": True,
+                            "mode": "block", "basePath": "tb", "langDomain": "sc"},
         }
+        layout["fileMap"] = self.filemap
         includeFiles = {
             "include_cppm": {
                 "top.yaml": {"baseName": "topIncludes.cppm",
-                             "fileName": os.path.join(model, "topIncludes.cppm")},
+                             "fileName": os.path.join(model, "topIncludes.cppm"),
+                             "stem": os.path.join(model, "topIncludes")},
                 "usr.yaml": {"baseName": "usrIncludes.cppm",
-                             "fileName": os.path.join(model, "usrIncludes.cppm")},
+                             "fileName": os.path.join(model, "usrIncludes.cppm"),
+                             "stem": os.path.join(model, "usrIncludes")},
             },
             "package_sv": {
                 "top.yaml": {"baseName": "top_package.sv",
-                             "fileName": os.path.join(rtl, "top_package.sv")},
+                             "fileName": os.path.join(rtl, "top_package.sv"),
+                             "stem": os.path.join(rtl, "top_package")},
             },
         }
         # The build manifest as `make db` would emit it: the segment roots
-        # arch2code itself places artifacts in, and nothing else. Every staged
-        # C++ directory is covered, so the unmanifested-source detector is silent
-        # here and only the test that stages an undeclared directory sees it.
+        # arch2code itself places artifacts in, and nothing else. The testbench
+        # entries are blockDir, so the manifest names `tb/<block>` rather than the
+        # `tb` segment root. Every staged C++ directory is covered, so the
+        # unmanifested-source detector is silent here and only the test that stages
+        # an undeclared directory sees it.
         manifest = {
             "scSrcDirs": [os.path.join(root, "base"),
                           os.path.join(root, "registrar"),
                           model,
-                          os.path.join(root, "tb"),
+                          os.path.join(root, "tb", "myblk"),
                           os.path.join(root, "fw", "include")],
             "vlWrapDirs": [os.path.join(root, "verif", "vl_wrap")],
         }
         self.config = _FakeConfig({"INCLUDEFILES": includeFiles, "PROJECTNAME": "t",
-                                   "BUILDMANIFEST": manifest})
+                                   "BUILDMANIFEST": manifest, "TOPCONTEXT": "top.yaml",
+                                   "REGISTRARPAIRS": {}, "CONFIGMODULES": {},
+                                   "FOREIGNCONFIGHEADERS": {},
+                                   # Real shapes for two blocks that declare no
+                                   # variant, and one (`wrapblk`) that declares a
+                                   # standalone variant `v0`, so its per-variant
+                                   # `vlSvWrap` stem is `wrapblk_v0`.
+                                   "VARIANTCONFIGDESCRIPTORS": {
+                                       "myblk": [], "paramblk": [],
+                                       "wrapblk": [{"variant": "v0", "isForeign": False,
+                                                    "containerSourced": False}]},
+                                   "VARIANTSOURCEBLOCKS": {"myblk": ["myblk"], "paramblk": ["paramblk"],
+                                                           "wrapblk": ["wrapblk"]}})
 
         def block(key, hasMdl, hasTb, hasRtl, hasVl):
             return {"blockKey": key, "_context": "top.yaml", "dir": "", "block": key,
@@ -169,11 +215,21 @@ class _FakePrj:
         blocks = OrderedDict()
         blocks["myblk"] = block("myblk", 1, 1, 1, 1)      # non-param, full surface
         blocks["paramblk"] = block("paramblk", 1, 0, 0, 0)  # parameterized (cppm)
+        blocks["wrapblk"] = block("wrapblk", 0, 0, 0, 1)  # vl-only, declares variant v0
         # projectOpen groups blocksparams as {yamlFile: [paramRow, ...]} (a
         # list-mode subtable); each row carries its owning blockKey.
         blocksparams = OrderedDict()
         blocksparams["top.yaml"] = [{"blockKey": "paramblk"}]
-        self.data = {"blocks": blocks, "blocksparams": blocksparams}
+        self.data = {"blocks": blocks, "blocksparams": blocksparams, "instances": {}}
+
+    def getBlockCondRow(self, qualBlock):
+        # Mirrors projectOpen.getBlockCondRow: the block row plus its own
+        # params: relationship as the cond scalar `hasOwnParams`.
+        paramBlocks = {row["blockKey"] for rows in self.data["blocksparams"].values()
+                       for row in rows}
+        row = dict(self.data["blocks"][qualBlock])
+        row["hasOwnParams"] = int(qualBlock in paramBlocks)
+        return row
 
 
 def _write(path, marker):
@@ -202,7 +258,7 @@ def _stage(root):
         # delete target WITHOUT marker (reported, never deleted)
         "usrH":      _write(j("model", "usrIncludes.h"), False),
         "usrCpp":    _write(j("model", "usrIncludes.cpp"), False),
-        # current-format siblings (leave)
+        # current-format siblings (not in the legacy map, never swept)
         "topCppm":   _write(j("model", "topIncludes.cppm"), True),
         "usrCppm":   _write(j("model", "usrIncludes.cppm"), True),
         # port old-form user files WITH marker (never deleted)
@@ -211,16 +267,24 @@ def _stage(root):
         "mySv":      _write(j("rtl", "myblk.sv"), True),       # rtl stays .sv
         "paramH":    _write(j("model", "paramblk.h"), True),   # param: -> .cppm (TODO_PORT)
         "paramCpp":  _write(j("model", "paramblk.cpp"), True), # param: -> .cppm (TODO_PORT)
-        # leave: user testbench code (never deleted)
-        "tb":        _write(j("tb", "myblk", "myblkTestbench.h"), True),
+        # port: the tb top holds no user CODE, but its PARAM `--variant=` DUT
+        # selection is a user edit, so the --port-tb porter carries that across and
+        # then deletes the pair; the sweep only reports it (never deletes it)
+        "tbTopH":    _write(j("tb", "myblk", "myblkTestbench.h"), True),
+        "tbTopCpp":  _write(j("tb", "myblk", "myblkTestbench.cpp"), True),
+        # port: the tb External DOES carry user code; reported, never deleted
+        "tbExtH":    _write(j("tb", "myblk", "myblkExternal.h"), True),
+        "tbExtCpp":  _write(j("tb", "myblk", "myblkExternal.cpp"), True),
+        # edit: the tb Config keeps its filename; rewritten in place, never swept
+        "tbConfig":  _write(j("tb", "myblk", "myblkConfig.cpp"), True),
     }
     return paths
 
 
 DELETE_BASENAMES = {
-    "myblkBase.h", "myblk_hdl_sv_wrapper.sv", "myblk_hdl_sc_wrapper.h",
+    "myblkBase.h", "myblk_hdl_sv_wrapper.sv",
     "myblkTandem.h", "myblkTandem.cpp", "topIncludes.h", "topIncludes.cpp",
-    "top_package.sv", "vl_wrap.cpp", "vl_wrap.h", "vl_wrap.sv",
+    "vl_wrap.cpp", "vl_wrap.h", "vl_wrap.sv",
 }
 
 
@@ -234,43 +298,60 @@ def test_delete_dispatch_sweeps_delete_entries_and_literals():
         deleted = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
         # (a) exactly the marker-bearing delete-disposition entries + vl_wrap.* are
         # deleted (usrIncludes.{h,cpp} lack the marker so are not in this set).
+        # myblk_hdl_sc_wrapper.h is `port`, not `delete` (b) and survives.
         check(deleted == DELETE_BASENAMES,
               "delete-disposition entries + vl_wrap.* aggregate are swept")
-        gone = ["base", "svWrap", "scWrap", "tandemH", "tandemCpp", "incH",
-                "incCpp", "pkg", "vlwCpp", "vlwH", "vlwSv"]
+        gone = ["base", "svWrap", "tandemH", "tandemCpp", "incH",
+                "incCpp", "vlwCpp", "vlwH", "vlwSv"]
         check(all(not os.path.exists(paths[k]) for k in gone),
               "every swept delete target is removed from disk")
+        # The legacy package path is the current package's path, so the file
+        # stays and no TODO is raised for it.
+        check(os.path.exists(paths["pkg"]) and "top_package.sv" not in
+              {i.location for i in report.manual},
+              "a legacy path that is the same artifact's current file is kept silently")
+        # (f) the vl_wrap segment is a MIXED segment now: the SV wrapper is still
+        # swept by its per-file path (not a directory-wide clear), while the SC
+        # wrapper header (`port`) is left in place beside it.
+        check(os.path.exists(paths["scWrap"]),
+              "the SC HDL wrapper header is not deleted; vl_wrap sweeps per file")
         # the current-format .cppm siblings are never delete targets
         check(os.path.exists(paths["topCppm"]) and os.path.exists(paths["usrCppm"]),
               "current-format .cppm siblings left on disk")
 
 
-def test_port_and_leave_never_deleted():
-    print("test_port_and_leave_never_deleted")
+def test_port_and_edit_never_deleted():
+    print("test_port_and_edit_never_deleted")
     with tempfile.TemporaryDirectory() as root:
         paths = _stage(root)
         prj = _FakePrj(root)
         report = sweepOrphans(prj, write=True)
 
-        # (b) port (block .cpp/.h, rtl .sv) and leave (tb) files survive the sweep.
-        survivors = ["myH", "myCpp", "mySv", "paramH", "paramCpp", "tb"]
+        # (b) port (block .cpp/.h, rtl .sv, the SC HDL wrapper header, tb External
+        # pair) and edit (tb Config) files survive the sweep.
+        survivors = ["myH", "myCpp", "mySv", "scWrap", "paramH", "paramCpp",
+                     "tbTopH", "tbTopCpp", "tbExtH", "tbExtCpp", "tbConfig"]
         check(all(os.path.exists(paths[k]) for k in survivors),
-              "port/leave user files are left on disk")
+              "port/edit user files are left on disk")
         deleted = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
         check(deleted.isdisjoint({"myblk.h", "myblk.cpp", "myblk.sv",
-                                  "paramblk.h", "paramblk.cpp", "myblkTestbench.h"}),
-              "no port/leave file appears in the delete set")
+                                  "myblk_hdl_sc_wrapper.h",
+                                  "paramblk.h", "paramblk.cpp",
+                                  "myblkTestbench.h", "myblkTestbench.cpp",
+                                  "myblkExternal.h", "myblkExternal.cpp",
+                                  "myblkConfig.cpp"}),
+              "no port/edit file appears in the delete set")
 
         # unreachability by construction: the delete-target set (delete entries +
-        # literals) is disjoint from the port/leave expansion.
+        # literals) is disjoint from the port/edit expansion.
         r = OrphansReport(projectName="t")
         contexts = _reconstructContexts(prj, r)
-        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts)
+        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts).keys()
         deleteTargets |= _literalDeletePaths(prj, r)
-        portLeave = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts)
-                     | expandFileMap(prj, _dispositionMap(MIGRATE_LEAVE), r, contexts))
-        check(portLeave and portLeave.isdisjoint(deleteTargets),
-              "port/leave paths are unreachable for deletion by construction")
+        portEdit = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts).keys()
+                    | expandFileMap(prj, _dispositionMap(MIGRATE_EDIT), r, contexts).keys())
+        check(portEdit and portEdit.isdisjoint(deleteTargets),
+              "port/edit paths are unreachable for deletion by construction")
 
 
 def test_ungenerated_delete_target_reported_not_deleted():
@@ -297,13 +378,58 @@ def test_port_todo_only_for_changed_form():
         report = sweepOrphans(prj, write=True)
 
         ports = sorted(i.location for i in report.manual if i.kind == TODO_PORT)
-        # (d) the parameterized block's .cpp/.h await the .cppm port; the
-        # non-parameterized block (current map still emits .h/.cpp) is a no-op.
-        check(ports == ["paramblk.cpp", "paramblk.h"],
-              "only the parameterized (changed-form) block is reported TODO_PORT")
+        # (d) the parameterized block's .cpp/.h, the tb External pair and the tb top
+        # pair await the porter; the non-parameterized block (current map still emits
+        # .h/.cpp) is a no-op.
+        check(ports == ["myblkExternal.cpp", "myblkExternal.h",
+                        "myblkTestbench.cpp", "myblkTestbench.h",
+                        "paramblk.cpp", "paramblk.h"],
+              "only the changed-form user files are reported TODO_PORT")
         check("myblk.h" not in ports and "myblk.cpp" not in ports
               and "myblk.sv" not in ports,
               "same-form (non-parameterized) block yields no TODO_PORT")
+
+
+def test_vl_wrap_segment_not_wholesale_cleared():
+    """The vl_wrap segment defect: `vlScWrap` (the SC HDL wrapper header) hosts
+    user code past its generated regions, so it must survive the sweep instead
+    of being swept by a directory-wide `vl_wrap` clear, and the segment's
+    remaining `delete`-disposition entry (`vlSvWrap`) must still be found and
+    swept by its PER-FILE path now that the directory is no longer wiped
+    wholesale.
+
+    `wrapblk` declares a standalone variant `v0` (see _FakePrj), so its
+    `vlSvWrap` stem is `wrapblk_v0` in both the legacy and current map — this
+    exercises the per-file (not per-directory) delete path.
+
+    `myblk`'s `vlScWrap` legacy and current forms are identical (see
+    _FakePrj.filemap), the same as production (config/project.yaml never
+    changed the wrapper's name/ext/basePath), so this exercises the
+    same-form/no-TODO_PORT case, not the changed-form one.
+    """
+    print("test_vl_wrap_segment_not_wholesale_cleared")
+    with tempfile.TemporaryDirectory() as root:
+        vlWrap = os.path.join(root, "verif", "vl_wrap")
+        scWrapPath = os.path.join(vlWrap, "myblk_hdl_sc_wrapper.h")
+        os.makedirs(vlWrap, exist_ok=True)
+        with open(scWrapPath, "w") as fh:
+            fh.write("// GENERATED_CODE_BEGIN\n// GENERATED_CODE_END\n"
+                     "void end_ctor_init() override { setTimedLocal(true); }\n")
+        svWrapPath = _write(os.path.join(vlWrap, "wrapblk_v0_hdl_sv_wrapper.sv"), True)
+
+        prj = _FakePrj(root)
+        report = sweepOrphans(prj, write=True)
+
+        check(os.path.exists(scWrapPath),
+              "the SC HDL wrapper header is not deleted by a wholesale vl_wrap clear")
+        with open(scWrapPath) as fh:
+            check("setTimedLocal" in fh.read(),
+                  "the user override past GENERATED_CODE_END survives the sweep")
+        check(not os.path.exists(svWrapPath),
+              "the legacy SV wrapper is still swept, by its per-file path")
+        ports = {i.location for i in report.manual if i.kind == TODO_PORT}
+        check("myblk_hdl_sc_wrapper.h" not in ports,
+              "same-form wrapper (legacy path equals current) is a no-op, not TODO_PORT")
 
 
 def test_user_include_site_handoff():
@@ -396,14 +522,121 @@ def test_unmanifested_src_dir_reported_and_clears():
               "a directory wired onto EXTRA_PRJ_SRC_DIRS stops being reported")
 
 
+def test_retired_sibling_path_resolves_beside_current_artifact():
+    print("test_retired_sibling_path_resolves_beside_current_artifact")
+    with tempfile.TemporaryDirectory() as root:
+        prj = _FakePrj(root)
+        paths = _retiredSiblingPaths(prj)
+        model = os.path.join(root, "model")
+        expected = {os.path.join(model, f"{stem}{name}.{ext}")
+                    for stem in ("top", "usr")
+                    for siblings in RETIRED_CONTEXT_SIBLINGS.values()
+                    for name, ext in siblings}
+        check(paths == expected,
+              "retired sibling paths resolve beside each owned Includes.cppm")
+
+
+def test_retired_context_sibling_functional():
+    """The retired `config` fileMap entry (VariantConfig.h) can still be
+    sitting beside its current `include` sibling in a tree that has not run
+    the sweep since the retirement. Dry run reports it as a delete target and
+    any hand `#include` of it; write=True removes it and keeps reporting the
+    include site."""
+    print("test_retired_context_sibling_functional")
+    with tempfile.TemporaryDirectory() as root:
+        model = os.path.join(root, "model")
+        header = _write(os.path.join(model, "topVariantConfig.h"), True)
+        _write(os.path.join(model, "topIncludes.cppm"), True)
+        consumer = os.path.join(model, "consumer.cpp")
+        with open(consumer, "w") as fh:
+            fh.write('#include "topVariantConfig.h"\nint main(){return 0;}\n')
+        prj = _FakePrj(root)
+
+        report = sweepOrphans(prj, write=False)
+        check(os.path.exists(header), "dry run leaves the retired sibling on disk")
+        deletedNames = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
+        check("topVariantConfig.h" in deletedNames,
+              "dry run reports the retired sibling as a delete target")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "dry run reports the hand #include of the retired header")
+
+        report = sweepOrphans(prj, write=True)
+        check(not os.path.exists(header), "write=True deletes the retired sibling")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "the include site is still reported once the header is gone")
+
+
+def test_retired_context_sibling_hierarchical():
+    """Same retirement, on the real hierarchical fixture: the retired
+    sibling's placement is inherited from the current artifact's directory, so
+    it is found and swept under a node-relative segment too."""
+    print("test_retired_context_sibling_hierarchical")
+    tmp = tempfile.mkdtemp(prefix="migrate_orphans_hier_", dir=test_dir)
+    try:
+        for node in ("prj", "core", "leaf"):
+            shutil.copytree(os.path.join(HIER_FIXTURE, node), os.path.join(tmp, node))
+        proj = os.path.join(tmp, "prj", "yaml", "hierProject.yaml")
+        db = os.path.join(tmp, "hier.db")
+        env = os.environ.copy()
+        env["NO_COLOR"] = "1"
+        built = subprocess.run(
+            [sys.executable, ARCH2CODE, "--yaml", proj, "--db", db],
+            capture_output=True, text=True, timeout=120, cwd=tmp, env=env)
+        assert built.returncode == 0, f"db build failed:\n{built.stdout}\n{built.stderr}"
+
+        header = _write(os.path.join(tmp, "core", "model", "coreVariantConfig.h"), True)
+        consumer = os.path.join(tmp, "core", "model", "consumer.cpp")
+        with open(consumer, "w") as fh:
+            fh.write('#include "coreVariantConfig.h"\nint main(){return 0;}\n')
+
+        prj = projectOpen(db)
+        try:
+            report = sweepOrphans(prj, write=True)
+        finally:
+            if g.db is not None:
+                g.db.close()
+                g.db = None
+        check(not os.path.exists(header),
+              "hierarchical: write=True deletes the retired sibling")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "hierarchical: the include site is reported")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_retired_context_sibling_without_marker_reported():
+    """A retired sibling lacking the generated marker is a hand-authored
+    look-alike; report it, never delete it."""
+    print("test_retired_context_sibling_without_marker_reported")
+    with tempfile.TemporaryDirectory() as root:
+        model = os.path.join(root, "model")
+        header = _write(os.path.join(model, "topVariantConfig.h"), False)
+        _write(os.path.join(model, "topIncludes.cppm"), True)
+        prj = _FakePrj(root)
+
+        report = sweepOrphans(prj, write=True)
+        check(os.path.exists(header), "unmarked retired sibling is left in place")
+        skipped = {i.location for i in report.manual if i.kind == TODO_UNGENERATED_FILE}
+        check("topVariantConfig.h" in skipped,
+              "unmarked retired sibling is reported TODO_UNGENERATED_FILE")
+
+
 if __name__ == "__main__":
     test_delete_dispatch_sweeps_delete_entries_and_literals()
-    test_port_and_leave_never_deleted()
+    test_port_and_edit_never_deleted()
     test_ungenerated_delete_target_reported_not_deleted()
     test_port_todo_only_for_changed_form()
+    test_vl_wrap_segment_not_wholesale_cleared()
     test_user_include_site_handoff()
     test_dry_run_changes_nothing()
     test_literal_delete_resolves_against_layout()
     test_unmanifested_src_dir_reported_and_clears()
+    test_retired_sibling_path_resolves_beside_current_artifact()
+    test_retired_context_sibling_functional()
+    test_retired_context_sibling_hierarchical()
+    test_retired_context_sibling_without_marker_reported()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} ({PASS} checks, {FAIL} failures)")
     sys.exit(1 if FAIL else 0)

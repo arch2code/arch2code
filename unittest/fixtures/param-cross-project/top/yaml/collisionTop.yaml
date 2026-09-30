@@ -1,0 +1,46 @@
+# Assembler context for the cross-project width-mismatch case. The assembler
+# declares its own interface, also named dataIf, carrying a 32-bit literal
+# payload; projA's and projC's ports carry their own dataIf whose payload is 8
+# bits wide for the bound variant. A reference resolves in its own file first, so
+# the connection's parent interface is the assembler's 32-bit dataIf while both
+# endpoint ports are the sub-projects' 8-bit dataIf.
+#
+# The field name is deliberately the same ('data') so the ONLY difference between
+# the bound forms is the payload bit width.
+include:
+    - ../../projA/yaml/aTop.yaml
+    - ../../projC/yaml/cTop.yaml
+
+types:
+    wideT: { width: 32, desc: "assembler-owned 32-bit boundary word" }
+
+structures:
+    wideSt:
+        data: { varType: wideT, desc: "assembler-owned 32-bit payload" }
+
+interfaces:
+    dataIf:
+        desc: "assembler-owned interface reusing the sub-projects' interface name"
+        interfaceType: push_ack
+        structures:
+            - { structure: wideSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "assembler top"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uA:   { container: top, instanceType: aIp, variant: v0 }
+    uC:   { container: top, instanceType: cIp, variant: v0 }
+
+connections:
+    - { interface: dataIf, src: uA, srcport: out, dst: uC, dstport: in }
+
+parameters:
+    aIp:
+        v0:
+            WIDTH: 8
+    cIp:
+        v0:
+            WIDTH: 8

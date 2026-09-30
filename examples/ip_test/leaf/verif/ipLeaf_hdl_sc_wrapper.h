@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=ipLeaf
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import ip_test_ipLeaf.base;
 // GENERATED_CODE_END
 
@@ -16,7 +18,7 @@ import ip_test_ipLeaf.base;
 #endif
 import ip_test_ipLeaf;
 using namespace ip_test_ipLeaf_ns;
-#include "ipLeafVariantConfig.h"
+import ip_test.ipLeaf.config;
 
 #include "socketSync.h"
 template <typename DUT_T, typename Config>

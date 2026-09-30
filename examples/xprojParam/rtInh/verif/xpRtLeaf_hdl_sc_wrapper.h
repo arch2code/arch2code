@@ -1,0 +1,134 @@
+#ifndef XPRTLEAF_HDL_SC_WRAPPER_H_
+#define XPRTLEAF_HDL_SC_WRAPPER_H_
+
+// GENERATED_CODE_PARAM --block=xpRtLeaf
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
+import xpRtInh_xpRtLeaf.base;
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
+
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
+import xpRtInh;
+using namespace xpRtInh_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
+import xpRtInh.xpRtLeaf.config;
+#include "apb_bfm.h"
+
+#include "socketSync.h"
+template <typename DUT_T, typename Config>
+class xpRtLeaf_hdl_sc_wrapper: public sc_module, public blockBase, public xpRtLeafBase<Config> {
+
+public:
+
+    DUT_T *dut_hdl;
+
+    sc_signal<bool> clk;
+
+    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
+
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using xpRtLeaf_hdl_sc_wrapper_self_t = xpRtLeaf_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (xpRtLeaf_hdl_sc_wrapper_self_t);
+
+    xpRtLeaf_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+        sc_module(modulename),
+        blockBase("xpRtLeaf_hdl_sc_wrapper", name(), bbMode),
+        xpRtLeafBase<Config>(name(), variant),
+        clk("clk"),
+        apbReg_bfm("apbReg_bfm"),
+        rst_n("rst_n", true),
+        clk_half_(0.5, SC_NS)
+    {
+        dut_hdl = new DUT_T("dut_hdl");
+
+        dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
+        dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
+        dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
+        dut_hdl->apbReg_pwrite(apbReg_hdl_if.pwrite);
+        dut_hdl->apbReg_pwdata(apbReg_hdl_if.pwdata);
+        dut_hdl->apbReg_pready(apbReg_hdl_if.pready);
+        dut_hdl->apbReg_prdata(apbReg_hdl_if.prdata);
+        dut_hdl->apbReg_pslverr(apbReg_hdl_if.pslverr);
+        dut_hdl->clk(clk);
+        dut_hdl->rst_n(rst_n);
+
+        apbReg_bfm.if_p(this->apbReg);
+        apbReg_bfm.hdl_if_p(apbReg_hdl_if);
+        apbReg_bfm.clk(clk);
+        apbReg_bfm.rst_n(rst_n);
+
+        clk.write(true);
+        SC_THREAD(clock_gen);
+        SC_THREAD(reset_driver);
+
+        end_ctor_init();
+
+    }
+
+public:
+
+#ifdef VERILATOR
+    void vl_trace(VerilatedVcdC* tfp, int levels, int options = 0) override {
+        dut_hdl->trace(tfp, levels, options);
+    }
+#endif
+
+private:
+
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
+
+    sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
+
+    void reset_driver() {
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
+        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
+        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
+        // Free-run / non-socket: assert, hold, then release.
+        if (socketSyncLockstepActive()) {
+            rst_n.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst_n.write(socketSyncRstN());
+            }
+        } else {
+            rst_n.write(false);
+            wait(5, SC_NS);
+            rst_n.write(true);
+        }
+    }
+
+// GENERATED_CODE_END
+
+    // Callback executed at the end of module constructor
+    void end_ctor_init() {
+        // Register synchLock,...
+    }
+
+};
+
+#endif // XPRTLEAF_HDL_SC_WRAPPER_H_

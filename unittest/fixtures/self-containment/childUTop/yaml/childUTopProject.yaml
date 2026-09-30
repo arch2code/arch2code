@@ -1,0 +1,15 @@
+# A separately authored IP whose root instance is named independently of its
+# root block - the `uTop:` idiom. Composed as a child below, so its own root row
+# is never rewritten to the _topInstance sentinel.
+projectName: childUTopProj
+
+topInstance: uCuTop
+
+projectFiles:
+    - childUTopArch.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

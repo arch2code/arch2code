@@ -1,0 +1,24 @@
+# Middle stage that SHARES the upstream project's parameter and interface through
+# an include: of its IP-root file instead of declaring its own. Every endpoint in
+# the shared composition therefore resolves to one PIXEL_WIDTH identity and one
+# videoIf identity, which is what makes a straight-through parameterized
+# connection across project boundaries legal.
+include:
+    - ../../gain/yaml/xpGain.yaml
+
+blocks:
+    xpFilterShared:
+        desc: "Middle stage carrying the upstream project's shared PIXEL_WIDTH"
+        params: [PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoIn:  { interface: videoIf, direction: dst }
+            videoOut: { interface: videoIf, direction: src }
+
+parameters:
+    xpFilterShared:
+        v0:
+            PIXEL_WIDTH: 8

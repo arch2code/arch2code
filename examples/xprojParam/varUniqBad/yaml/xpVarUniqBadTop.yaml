@@ -1,0 +1,23 @@
+# The variant-name uniqueness gate: the rejecting arm.
+#
+# One block's `use` variant is declared twice in one project, in two files, at
+# two different widths. Both declarations key on the same (block, variant,
+# project), so only one survives and the leaf is silently configured at whichever
+# the parser reached last. db must reject and name both files.
+#
+# The accepting arms are ip_test, which composes one block's variant1 under two
+# projects, and cpLayout, which reuses the variant name `use` across three
+# blocks of one project. Both are what make this fixture mean anything.
+
+include:
+    - xpVarUniqBadExtra.yaml
+
+instances:
+    xpVarUniqBadTop_tb: { container: xpVarUniqBadTop_tb, instanceType: xpVarUniqBadTop_tb, instGroup: top }
+    u_xpVarUniqBadTop:  { container: xpVarUniqBadTop_tb, instanceType: xpVarUniqBadTop,    instGroup: top }
+    uLeaf:              { container: xpVarUniqBadTop,    instanceType: xpVuBadLeaf,        instGroup: top, variant: use }
+
+parameters:
+    xpVuBadLeaf:
+        use:
+            VU_WIDTH: 16

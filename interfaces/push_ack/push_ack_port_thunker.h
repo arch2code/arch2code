@@ -15,8 +15,14 @@
 // to a downstream push_ack consumer port carrying DownT, when the two
 // types are per-field _bitWidth equivalent but differ in nested _packedSt
 // width. Per-field equivalence is validated elsewhere; this class performs
-// the runtime packed-value bridge via copy_packed_bits() and preserves the
+// the runtime payload bridge via copyPayload() and preserves the
 // push_ack request / acknowledge handshake at both ends.
+//
+// DirectData is the generator's verdict for the one payload pair this protocol
+// carries (data_t): true when the two declarations emit identical member
+// storage, which lets copyPayload() transfer the value whole instead of packing
+// and unpacking it field by field. It defaults to false, which is always
+// correct and merely slower, so a hand-written instantiation need not supply it.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -51,7 +57,7 @@
 // member). The overloaded constructors are disambiguated by the child
 // end's port type (push_ack_in vs push_ack_out), so the container
 // generator emits identical wiring for both directions.
-template <class UpT, class DownT>
+template <class UpT, class DownT, bool DirectData = false>
 class push_ack_port_thunker
 {
 public:
@@ -130,14 +136,9 @@ private:
         while (true) {
             UpT   inVal;
             DownT outVal;
-            typename UpT::_packedSt inPacked;
-            typename DownT::_packedSt outPacked;
             upIn->pushReceive( inVal );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            inVal.pack( inPacked );
-            copy_packed_bits( outPacked, inPacked, DownT::_bitWidth );
-            outVal.unpack( outPacked );
+            static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "push_ack data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( outVal, inVal );
             // push() drives the downstream handshake; the concrete
             // push_ack_channel<T>::push override has no default argument,
             // so the magic value is passed explicitly here.
@@ -159,12 +160,9 @@ private:
         while (true) {
             DownT inVal;
             UpT   outVal;
-            typename DownT::_packedSt inPacked;
-            typename UpT::_packedSt   outPacked;
             m_down_channel.pushReceive( inVal );
-            inVal.pack( inPacked );
-            copy_packed_bits( outPacked, inPacked, UpT::_bitWidth );
-            outVal.unpack( outPacked );
+            static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "push_ack data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( outVal, inVal );
             upOut->push( outVal, (uint64_t)-1 );
             m_down_channel.ack();
         }

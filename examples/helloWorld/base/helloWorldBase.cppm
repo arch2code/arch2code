@@ -22,7 +22,7 @@ public:
     virtual ~helloWorldBase() = default;
 
 
-    helloWorldBase(std::string name, const char * variant) 
+    helloWorldBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -37,7 +37,7 @@ export class helloWorldInverted : public virtual blockPortBase
 public:
 
 
-    helloWorldInverted(std::string name) 
+    helloWorldInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -52,7 +52,7 @@ export class helloWorldChannels
 public:
 
 
-    helloWorldChannels(std::string name, std::string srcName) 
+    helloWorldChannels(std::string name, std::string srcName)
     {};
     void bind( helloWorldBase *a, helloWorldInverted *b)
     {

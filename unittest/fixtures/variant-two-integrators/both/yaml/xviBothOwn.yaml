@@ -1,0 +1,3 @@
+# Declares no variant of its own.
+include:
+    - ../../ipLeaf/yaml/xviLeaf.yaml

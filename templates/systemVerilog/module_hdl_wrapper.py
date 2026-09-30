@@ -10,6 +10,31 @@ def render(args, prj, data):
 
     return textwrap.indent(render_sv(args, prj, data), ' '*args.sectionindent)
 
+
+def pair_registrations(prj, data, parent, variant):
+    if parent:
+        view = prj.getRegistrarConfigView(data['qualBlock'], parent)
+    else:
+        owner = prj.config.getConfig('PROJECTNAME')
+        pairs = [
+            pair for (_pairParent, child), pair in prj.registrarPairs.items()
+            if child == data['qualBlock'] and pair['ownerProject'] == owner]
+        if not pairs:
+            return []
+        view = prj.getRegistrarConfigView(
+            data['qualBlock'], pairs[0]['parent'])
+    registrations = []
+    seen = set()
+    for registration in view['verifRegistrations']:
+        if not registration['pairSpecific'] \
+                or registration['variant'] != variant \
+                or registration['topModule'] in seen:
+            continue
+        seen.add(registration['topModule'])
+        registrations.append(registration)
+    return registrations
+
+
 def render_sv(args, prj, data):
 
     # ports blaster
@@ -31,19 +56,31 @@ def render_sv(args, prj, data):
         return render_body(args, prj, data, mp_sig, blk_name)
     if args.section != '':
         raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are body or empty")
-    # A parent-owned foreign wrapper carries --parent on its param line: the top
-    # is owner-qualified and instantiates the child's canonical .svh body. A bare
-    # same-project variant trampoline has no --parent.
-    # Dispatch on the block's DECLARED variants: one standalone .sv top is
-    # scaffolded per declared variant, whether or not an instance selects it. A
-    # parameterized hasVl leaf reached only via inheritContainerParam has an empty
-    # instantiated-variant view, so keying on declared variants keeps its
-    # per-variant tops on the parameterized trampoline path instead of the
-    # non-parameterizable fallback.
-    if args.parent and args.variant and args.variant in data['declaredVariants']:
+    # --parent marks the owner-qualified top for a label this build declares of
+    # another project's block; a bare file renders one of the owner's own
+    # labels.
+    if args.mode == 'pair':
+        return ''.join(
+            render_trampoline(args, prj, data, mp_sig,
+                              registration=registration)
+            for registration in pair_registrations(
+                prj, data, args.parent, args.variant))
+    if args.parent:
         return render_trampoline(args, prj, data, mp_sig, foreign=True)
-    if args.variant and args.variant in data['declaredVariants']:
-        return render_trampoline(args, prj, data, mp_sig)
+    pairRegs = pair_registrations(prj, data, args.parent, args.variant)
+    if args.variant and args.variant in data['standaloneVariants']:
+        ordinary = render_trampoline(args, prj, data, mp_sig)
+        concrete = ''.join(
+            render_trampoline(args, prj, data, mp_sig,
+                              registration=registration)
+            for registration in pairRegs)
+        return ordinary + concrete
+    # A container-sourced variant has no standalone top, so its wrapper is the pair-specific concrete tops alone.
+    if pairRegs:
+        return ''.join(
+            render_trampoline(args, prj, data, mp_sig,
+                              registration=registration)
+            for registration in pairRegs)
     return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
 
 def param_names(data):
@@ -101,11 +138,7 @@ def intf_reconstruction(prj, data, mp_sig):
     return s
 
 def dut_instantiation(prj, data, blk_name, blk_param):
-    # The DUT is the (project-qualified) design-block module, so instantiate it
-    # by its qualified module name. The wrapper's own body/top module names stay
-    # plain (filename-coupled verilated tops); only the instantiated DUT tracks
-    # the block rename.
-    s = f"{data['blockModuleName']}{blk_param} dut (\n"
+    s = f"{data['blockSvModuleName']}{blk_param} dut (\n"
     s_1 = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
@@ -171,23 +204,19 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += f'\nendmodule : {module_name}\n'
     return out
 
-def render_trampoline(args, prj, data, mp_sig, foreign=False):
+def render_trampoline(args, prj, data, mp_sig, foreign=False, registration=None):
     # Variant top trampoline (.sv). The canonical body is made visible by the
     # `include in the scaffold. The trampoline declares the variant's concrete
     # parameter values as localparams, reuses the Stage-1 symbolic port widths,
     # and wires every flattened port through to the canonical body by name.
     #
-    # `foreign`: a PARENT-OWNED owner-qualified top for a variant the assembler
-    # declares foreign to a reused child (the file carries --parent). The top
-    # name is owner-qualified by the emitting (declaring) project so it stays a
-    # distinct Verilator design unit across projects; a same-project variant
-    # keeps the bare child-emitted top name. The body module (the `include`d
-    # .svh) is the child's canonical wrapper either way.
+    # `foreign`: the top is qualified by the declaring project so it stays a
+    # distinct Verilator design unit; the body is the child's canonical .svh
+    # either way.
     variant_name = args.variant
-    # Declared-variant bindings (with resolved literal values); a standalone top
-    # exists for every declared variant, not only instance-bound ones.
-    variant_data = data['declaredVariants'][variant_name]
-    if foreign:
+    if registration is not None:
+        module_name = registration['topModule']
+    elif foreign:
         module_name = data['svWrapper']['foreignVariantTops'][variant_name]
     else:
         module_name = data['svWrapper']['variantTops'][variant_name]
@@ -209,17 +238,15 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False):
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
     constDecls, _unusedTypeDecls = parameterized_decls(prj, data)
-    # One binding row per parameter, first occurrence wins. A reused child bound
-    # to the same variant name by more than one declaring context (the foreign
-    # case) surfaces duplicate per-param rows in the view; a single-context
-    # variant is already unique, so this preserves its order and output exactly.
-    variant_params = []
-    seen_params = set()
-    for _, var_data in variant_data.items():
-        if var_data['param'] in seen_params:
-            continue
-        seen_params.add(var_data['param'])
-        variant_params.append(var_data)
+    # Resolved values for this top, keyed by the block's declared parameter names.
+    if registration is not None:
+        values = registration['values']
+    elif foreign:
+        values = data['foreignVariants'][variant_name]
+    else:
+        values = data['standaloneVariants'][variant_name]
+    variant_params = [{'param': param, 'resolvedValue': values[param]}
+                      for param in param_names(data)]
     # The per-variant wrapper is a standalone Verilator top with no parent
     # scope, so bind the resolved concrete value: a symbol binding such as
     # value: OUT0_DATA_WIDTH would otherwise leak an out-of-scope parent symbol.

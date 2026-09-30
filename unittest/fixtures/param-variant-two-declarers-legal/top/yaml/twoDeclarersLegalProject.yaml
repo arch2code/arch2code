@@ -1,0 +1,18 @@
+yamlFormat: 2
+
+# Two projects each declare their own v0 of a shared leaf at different
+# widths; each wrapper's boundary must check against its own declaration.
+projectName: twoDeclarersLegalProj
+
+projectFiles:
+    - ../../projWrap/yaml/wrapProject.yaml
+    - ../../projIp/yaml/ipProject.yaml
+    - twoDeclarersLegalTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

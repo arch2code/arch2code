@@ -1,0 +1,17 @@
+yamlFormat: 2
+
+# Three projects, one variant label of one block declared by two of them.
+# uLeaf in wrapTop.yaml sees both declarations, so the build is rejected.
+projectName: twoDeclarersProj
+
+projectFiles:
+    - ../../projWrap/yaml/wrapProject.yaml
+    - twoDeclarersTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

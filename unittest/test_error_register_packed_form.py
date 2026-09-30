@@ -56,12 +56,16 @@ instances:
 )
 
 
+# Fields are identified by position, so the diagnostic leads with the field
+# index and names both sides' identity rather than a single shared field name.
 REQUIRED_SUBSTRINGS = [
-    "cross-interface bind",
+    "field index 0",
     "per-field _bitWidth",
     "field 'data'",
     "_bitWidth 32",
     "_bitWidth 16",
+    "parent side",
+    "child side",
     "uAPBDecode",
     "uLeaf",
 ]

@@ -1,0 +1,15 @@
+# projBSplit PROJECT file. Same sink role as projC, but this IP splits its
+# declarations across two files: the block lives in bSplitTop.yaml while its
+# interface lives in the included bSplitIfaces.yaml. That split is what makes the
+# block's port row resolve its interface from a DIFFERENT file than the one the
+# port is declared in.
+projectName: projBSplit
+
+projectFiles:
+    - bSplitTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

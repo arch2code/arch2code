@@ -1,0 +1,35 @@
+# Assembler project for the shared-constant propagation family. It references
+# the IP project and owns both its own top file and the supporting-block file
+# that reaches the IP's parameter through include:.
+
+yamlFormat: 2
+projectName: xpCstBind
+
+projectFiles:
+    - ../../../cstIp/prj/yaml/xpCstIpProject.yaml
+    - ../../yaml/xpCstSup.yaml
+    - ../../yaml/xpCstBindTop.yaml
+
+topInstance: xpCstBindTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

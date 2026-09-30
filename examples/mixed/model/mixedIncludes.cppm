@@ -6,9 +6,9 @@
 module;
 #include "systemc.h"
 #include "logging.h"
+#include <algorithm>
 #include "bitTwiddling.h"
 #include "q_assert.h"
-#include <algorithm>
 
 export module mixed;
 // GENERATED_CODE_END
@@ -368,12 +368,12 @@ struct aRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( a & ((1ULL<<7 )-1) << 0);
+        (( a & ((1ULL<<7)-1) ) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        a = ( sevenBitT ) (( value >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
+        a = ( sevenBitT ) (( packedValue >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
         }
     inline sc_bv<aRegSt::_bitWidth> sc_pack(void) const
     {
@@ -435,12 +435,12 @@ struct dRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( d & ((1ULL<<7 )-1) << 0);
+        (( d & ((1ULL<<7)-1) ) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        d = ( sevenBitT ) (( value >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
+        d = ( sevenBitT ) (( packedValue >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
         }
     inline sc_bv<dRegSt::_bitWidth> sc_pack(void) const
     {
@@ -733,12 +733,12 @@ struct bSizeRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( index & ((1ULL<<4 )-1) << 0);
+        (( index & ((1ULL<<BSIZE_LOG2)-1) ) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        index = ( bSizeT ) (( value >> 0 ) & (( (uint64_t)1 << 4 ) - 1)) ;
+        index = ( bSizeT ) (( packedValue >> 0 ) & (( (uint64_t)1 << BSIZE_LOG2 ) - 1)) ;
         }
     inline sc_bv<bSizeRegSt::_bitWidth> sc_pack(void) const
     {
@@ -2492,12 +2492,12 @@ struct test37BitRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( value37 & ((1ULL<<37 )-1) << 0);
+        (( value37 & ((1ULL<<37)-1) ) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        value37 = ( test37BitT ) (( value >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
+        value37 = ( test37BitT ) (( packedValue >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
         }
     inline sc_bv<test37BitRegSt::_bitWidth> sc_pack(void) const
     {

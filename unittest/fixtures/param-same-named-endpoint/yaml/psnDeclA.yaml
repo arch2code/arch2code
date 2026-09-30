@@ -1,0 +1,25 @@
+# File A: declares X, the parameter the parameterized interface's payload is
+# sized by, plus the producer block that backs it directly.
+ipParameters:
+    constants:
+        X: { value: 8, maxValue: 16, desc: "backing width for the parameterized interface" }
+    types:
+        dataT: { width: X, desc: "parameterizable payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "parameterizable payload" }
+
+interfaces:
+    dataIf:
+        desc: "parameterized push/ack stream sized by A's X"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    producer:
+        desc: "producer backing A's X directly"
+        params: [X]
+        ports:
+            out: { interface: dataIf, direction: src }

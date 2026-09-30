@@ -1,0 +1,114 @@
+# The DUT's supporting blocks (stimulus and checker), declared in a different
+# file from the IP root, which it include:s. A testbench file has to include the
+# DUT's definition to instantiate it, so reaching its parameterization through
+# the same include: adds no new coupling.
+#
+# Two shapes of that reuse; the assembler exercises both. Which to author is a
+# question of who owns the knob, not of what the generator supports.
+#
+#   Inc: the block names the IP's CS_PIXEL_WIDTH in its own params: and carries
+#        a payload of its own (csIncSt/csIncIf), sized from that same included
+#        constant. Naming is not declaring, so the IP root's own block param
+#        still satisfies the orphan rule.
+#   Own: the block declares its own knob, CS_OWN_WIDTH, and binds it per variant
+#        from whichever constant states the value. The knob is duplicated, the
+#        value is not.
+#
+# Each shape has its own Config and payload, so a push/ack thunker is generated
+# at every boundary to the DUT. Expected, not a defect.
+include:
+    - ../../cstIp/yaml/xpCstIp.yaml
+
+ipParameters:
+    constants:
+        # Placeholder every variant overrides. Not `eval:`, since an eval-derived
+        # constant emits symbolically and every variant would carry the same expression.
+        CS_OWN_WIDTH: { value: 12, maxValue: 32, desc: "Supporting-block pixel width; every variant binds it explicitly" }
+    types:
+        csOwnPixelT: { width: CS_OWN_WIDTH, maxBitwidth: 32, desc: "Own-knob parameterizable pixel word" }
+
+# Sized by the included CS_PIXEL_WIDTH rather than a local knob.
+types:
+    csIncPixelT: { width: CS_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word, width from the included constant" }
+
+structures:
+    # The IP payload's packed sequence, restated over the local knob:
+    # tag@0 w8, cfg@8 w8, data@16 w<CS_OWN_WIDTH>, mark@(16+CS_OWN_WIDTH) w8.
+    csOwnSt:
+        tag:  { varType: csTagT,      desc: "Sample sequence tag" }
+        cfg:  { varType: csCfgT,      desc: "Width the producing block resolved its pixel width to" }
+        data: { varType: csOwnPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: csMarkT,     desc: "Trailing marker" }
+    # The Inc pair's own payload, field for field the IP's csDutSt over the included constant.
+    csIncSt:
+        tag:  { varType: csTagT,      desc: "Sample sequence tag" }
+        cfg:  { varType: csCfgT,      desc: "Width the producing block resolved its pixel width to" }
+        data: { varType: csIncPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: csMarkT,     desc: "Trailing marker" }
+
+interfaces:
+    csOwnIf:
+        desc: "Own-knob supporting blocks' own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: csOwnSt, structureType: data_t }
+    csIncIf:
+        desc: "Include-scope supporting blocks' own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: csIncSt, structureType: data_t }
+
+blocks:
+    xpCstSrcInc:
+        desc: "Stimulus naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: csIncIf, direction: src }
+    xpCstChkInc:
+        desc: "Checker naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: csIncIf, direction: dst }
+    xpCstSrcOwn:
+        desc: "Stimulus carrying its own knob, bound from a shared constant"
+        params: [CS_OWN_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: csOwnIf, direction: src }
+    xpCstChkOwn:
+        desc: "Checker carrying its own knob, bound from a shared constant"
+        params: [CS_OWN_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: csOwnIf, direction: dst }
+
+parameters:
+    # CASE A, the default case: every binding names the IP's constant itself, so
+    # no value appears here at all. The Inc blocks bind it as their own param;
+    # the Own blocks bind it as the value of theirs.
+    xpCstSrcInc:
+        dflt:
+            CS_PIXEL_WIDTH: CS_PIXEL_WIDTH
+    xpCstChkInc:
+        dflt:
+            CS_PIXEL_WIDTH: CS_PIXEL_WIDTH
+    xpCstSrcOwn:
+        dflt:
+            CS_OWN_WIDTH: CS_PIXEL_WIDTH
+    xpCstChkOwn:
+        dflt:
+            CS_OWN_WIDTH: CS_PIXEL_WIDTH

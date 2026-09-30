@@ -1,0 +1,84 @@
+# The prescribed shared-constant shape carrying a NON-default value, in the
+# smallest design that expresses it: one stimulus, the IP, one checker, all
+# three bound from the same assembler-owned constant.
+#
+# This is what cstBind's cell B looks like when the supporting blocks NAME the
+# IP's CS_PIXEL_WIDTH in their own params: instead of declaring a knob of their
+# own. Reaching a parameter through include scope is a legal authoring choice,
+# and it works at any value, not only at the IP's declared default: all three
+# blocks here resolve the bound 20 rather than the IP's 12, and each asserts it
+# at run time against a number restated in its own model.
+#
+# What makes that work is blocksparams.paramSourceKey, the resolved link from a
+# block param to its backing constant. The block-scoped paramKey qualifies the
+# param name with the file declaring the BLOCK, so for a block declared here
+# against a constant declared in the IP root the two differ; every consumer that
+# needs the constant - the layout gate's binding resolver, the maxValue sizing
+# check, the parameterized declaration sets - reads the source link instead.
+include:
+    - ../../cstIp/yaml/xpCstIp.yaml
+
+constants:
+    CU_USE_WIDTH: { value: 20, desc: "Use-case pixel width; stated once and named by all three bindings" }
+
+blocks:
+    xpCstUseTop:
+        desc: "Probe top holding the one chain"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpCstUseTop_tb:
+        desc: "Testbench container for xpCstUseTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpCstUseWrap:
+        desc: "Untemplated container of the chain"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpCstUseSrc:
+        desc: "Stimulus naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: csDutIf, direction: src }
+    xpCstUseChk:
+        desc: "Checker naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: csDutIf, direction: dst }
+
+instances:
+    xpCstUseTop_tb: { container: xpCstUseTop_tb, instanceType: xpCstUseTop_tb, instGroup: top }
+    u_xpCstUseTop:  { container: xpCstUseTop_tb, instanceType: xpCstUseTop,    instGroup: top }
+    uWrap:          { container: xpCstUseTop,    instanceType: xpCstUseWrap,   instGroup: top }
+    uSrc:           { container: xpCstUseWrap,   instanceType: xpCstUseSrc,    instGroup: top, variant: use }
+    uDut:           { container: xpCstUseWrap,   instanceType: xpCstDut,       instGroup: top, variant: use }
+    uChk:           { container: xpCstUseWrap,   instanceType: xpCstUseChk,    instGroup: top, variant: use }
+
+connections:
+    - { interface: csDutIf, src: uSrc, srcport: out, dst: uDut, dstport: in }
+    - { interface: csDutIf, src: uDut, srcport: out, dst: uChk, dstport: in }
+
+parameters:
+    # One constant, three bindings, one value - honoured by all three.
+    xpCstUseSrc:
+        use:
+            CS_PIXEL_WIDTH: CU_USE_WIDTH
+    xpCstDut:
+        use:
+            CS_PIXEL_WIDTH: CU_USE_WIDTH
+    xpCstUseChk:
+        use:
+            CS_PIXEL_WIDTH: CU_USE_WIDTH

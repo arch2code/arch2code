@@ -18,12 +18,13 @@
 // write(T)
 // |        ---T---> reg_read(T) where transaction is change of value event
 //
-//                   reg_write(T) / reg_write_cmd(T)
+//                   reg_write_cmd(T)
 // read(T) <---T---|
 //
 // APB readNonBlocking() returns m_mirror (architectural image).
 // CPU writes use reg_write_cmd (command mailbox only).
-// Engine/BFM publish architectural values with update_mirror (or reg_write).
+// Only the register owner (the in_if side: engine/BFM) publishes architectural
+// values, with update_mirror or reg_write; the driver has no mirror write.
 template <class T>
 class external_reg_in_if
 : virtual public sc_interface, virtual public portBase
@@ -69,7 +70,6 @@ public:
     virtual T readNonBlocking() = 0;
     // blocking write
     virtual void write( const T& val_ ) = 0;
-    virtual void reg_write( const T& val_ ) = 0; // publish: update mirror + notify readers
     virtual void reg_write_cmd( const T& val_ ) = 0;
     virtual void wait_mirror(void) = 0;
 

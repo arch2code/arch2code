@@ -46,14 +46,25 @@ EXAMPLE_READERS=(
     test_boundary_signals.py          # reads examples/ip_test
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
+    test_validate_ports.py            # reads examples/nested (db to a temp path)
+    test_file_prefix.py               # reads examples/simple_ip (copytree)
+    test_per_project_filemap.py       # reads examples/simple_ip (copytree)
+    test_vl_sc_wrap_name.py           # reads examples/ip_test (copytree)
+    test_filemap_name_overrides.py    # reads examples/simple_ip (copytree)
+    test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
+    test_sv_names_match_file_stem.py  # reads every examples/ tree
+    test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
 EXAMPLE_WRITER="test_build_manifest.py"
 
-# ISOLATED = all test_*.py minus readers minus writer.
+# Suites held out of both runners; empty unless a check is being revived.
+DISABLED=()
+
+# ISOLATED = all test_*.py minus readers minus writer minus disabled.
 declare -A SKIP=()
-for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER"; do SKIP["$s"]=1; done
+for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER" "${DISABLED[@]}"; do SKIP["$s"]=1; done
 ISOLATED=()
 for f in test_*.py; do
     [[ -n "${SKIP[$f]:-}" ]] && continue
@@ -63,11 +74,11 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping or double-counting suites: ALL must contain
-# every test_*.py exactly once. Derived from the glob rather than a literal
-# count, so adding or removing a suite never requires editing this number.
+# Guard against silently dropping or double-counting suites: ALL plus DISABLED
+# must contain every test_*.py exactly once. Derived from the glob rather than a
+# literal count, so adding or removing a suite never requires editing this number.
 TOTAL_TEST_FILES=(test_*.py)
-if [[ ${#ALL[@]} -ne ${#TOTAL_TEST_FILES[@]} ]]; then
+if [[ $(( ${#ALL[@]} + ${#DISABLED[@]} )) -ne ${#TOTAL_TEST_FILES[@]} ]]; then
     echo "WARNING: expected ${#TOTAL_TEST_FILES[@]} suites (all test_*.py), found ${#ALL[@]} in the bucketed set." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi

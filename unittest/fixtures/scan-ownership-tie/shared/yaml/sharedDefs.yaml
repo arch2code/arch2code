@@ -1,0 +1,4 @@
+# Shared definitions-only file both projA and projB include. No project
+# claims it and neither includer lists the other: an ownership tie.
+types:
+    sharedDefT: { width: 8, desc: "type shared by projA and projB" }

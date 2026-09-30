@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=ip
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import ip.base;
 // GENERATED_CODE_END
 
@@ -16,7 +18,7 @@ import ip.base;
 #endif
 import ip;
 using namespace ip_ns;
-#include "ipVariantConfig.h"
+import ip.config;
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

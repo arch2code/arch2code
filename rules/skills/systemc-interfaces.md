@@ -37,6 +37,9 @@ All logic and member usage described below must be implemented in the user regio
     | **status** | `write(data)` | `read(data)` | Unidirectional signal (no handshake) |
     | **notify_ack** | `notify()` | `waitNotify()`<br>`ack()` | Event notification with ack |
     | **external_reg**| `write(val)`<br>`reg_read(val)` | `read(val)`<br>`reg_write(val)` | External register access |
+    | **raw** | `write(data)` | `read(data)` | **Last resort** — handshake-less boundary / legacy pinout only |
+
+    > **`raw` is an interface of last resort.** Prefer `rdy_vld`, `push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at design boundaries when adapting to legacy/external IP with a free-running data bus and no ready/valid/ack wires. Do not use `raw` between new arch2code blocks; convert to a handshaked protocol at the first internal hop. Do not confuse `raw` with `status` (same wires; different SystemC semantics — `status` is publish/sample, `raw` is a blocking rendezvous). If proposing `raw`, confirm with the user that a handshaked protocol is impossible for that boundary. See `ARCH2CODE_AI_RULES.md` (§ raw) and `SYSTEMC_API_USER_REFERENCE.md` (§ 4.9) for why it is problematic while still supported.
 
     > **Note:** This table covers the standard system interfaces. Additional specialized interfaces may be available in `a2cPro` or provided by the user.
 

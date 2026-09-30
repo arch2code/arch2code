@@ -55,7 +55,7 @@ class systemVerilogGenerator:
             importPackages = self.code.params.importPackages
         if self.code.params.block and self.code.params.context:
             # get a block based view of the database. This is used for block definitions
-            qualBlock = prj.getQualBlock( self.code.block )
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName )
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
@@ -63,7 +63,7 @@ class systemVerilogGenerator:
             context = self.code.params.context
             data.update(prj.getContextData(context, self.dataTypeMappings))
         elif self.code.params.block:
-            qualBlock = prj.getQualBlock( self.code.block )
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName )
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
@@ -79,11 +79,11 @@ class systemVerilogGenerator:
             # (no basename-stamp round-trip). getContextData takes a context list
             # and yields the same view the retired --context stamp produced.
             #
-            # Invariant: there is exactly one mode: project artifact (rtl.f),
+            # Invariant: rtl.f is the only SV project-mode artifact, and it is
             # rooted at the build's top context. That single-instance,
             # top-context-rooted contract is what lets this branch derive its
-            # context from TOPCONTEXT alone; a second project-mode artifact, or one
-            # not rooted at the top context, would break that derivation.
+            # context from TOPCONTEXT alone; a second SV project-mode artifact, or
+            # one not rooted at the top context, would break that derivation.
             context = [prj.config.getConfig('TOPCONTEXT')]
             data = prj.getContextData(context, self.dataTypeMappings)
         else:
@@ -114,10 +114,10 @@ class systemVerilogGenerator:
             return
         if not any(self._sectionTemplate(s) in _MODULE_BODY_TEMPLATES for s in self.code.sections):
             return
-        blockName = prj.data['blocks'][prj.getQualBlock(self.code.block)]['block']
+        moduleName = prj.blockSvModuleName[prj.getQualBlock(self.code.block, project=self.code.params.project, filePath=fileName)]
         stem = Path(fileName).resolve().stem
-        if stem != blockName:
-            printWarning(f'The file name {stem} does not match the block name {blockName}')
+        if stem != moduleName:
+            printWarning(f'The file name {stem} does not match the module name {moduleName}')
 
     def _handler_generic(self, args, prj, data):
         vars = {'prj': prj, 'block': data, 'args': args}

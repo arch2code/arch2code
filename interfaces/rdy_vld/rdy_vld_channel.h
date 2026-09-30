@@ -150,6 +150,12 @@ public:
         return m_multicycle->getReadCycle();
     }
     virtual uint8_t * getReadPtr( void ) override;
+    uint32_t getReadBufferSize(void)
+    {
+        Q_ASSERT(m_multicycle != nullptr, "getReadBufferSize requires a burst buffer");
+        Q_ASSERT(tracker_==nullptr, "getReadBufferSize not supported with tracker");
+        return m_multicycle->getReadBufferSize(0);
+    }
     virtual void push_context(uint32_t size) override { m_multicycle->push_context(size); }
     virtual void set_rdy(bool rdy_state) override
     {

@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from pysrc.processYaml import camelCase
-from templates.systemVerilog.package import parameterizedDeclLines
+from templates.systemVerilog.package import instanceParameterSpelling, moduleParameterDecl, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
@@ -12,7 +12,7 @@ def render(args, prj, data):
 
     # Module declaration is emitted from the project-qualified module name;
     # filename/block consistency is validated by the generator before rendering.
-    out.append(moduleDeclaration(data['blockModuleName']))
+    out.append(moduleDeclaration(data['blockSvModuleName']))
 
     # Packages
     startingContext = data['blockInfo']['_context']
@@ -21,7 +21,7 @@ def render(args, prj, data):
     # Parameters
     if ( data['blockInfo']['params'] ):
         out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in data['blockInfo']['params']]))
+        out.append(",\n".join([f"{indent}{moduleParameterDecl(prj, param)}" for param in data['blockInfo']['params']]))
         out.append(')')
 
     out.append("(")
@@ -93,10 +93,10 @@ def render(args, prj, data):
         inst_params = ' '
         if value['svInstanceParams']:
             inst_params += '#('
-            inst_params += ", ".join([f".{param['param']}({param['spelling']})" for param in value['svInstanceParams']])
+            inst_params += ", ".join([f".{param['param']}({instanceParameterSpelling(prj, param)})" for param in value['svInstanceParams']])
             inst_params += ') '
 
-        out.append(f"{value['instanceTypeModuleName']}{inst_params}{value['instance']} (")
+        out.append(f"{value['instanceTypeSvModuleName']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):

@@ -501,6 +501,21 @@ def symbolKeys(node):
     return symbolKeys(node.operand)  # Clog2
 
 
+def usesClog2(node):
+    """Whether the IR tree applies $clog2 anywhere."""
+    if isinstance(node, (Sym, Num)):
+        return False
+    if isinstance(node, Unary):
+        return usesClog2(node.operand)
+    if isinstance(node, Bin):
+        return usesClog2(node.lhs) or usesClog2(node.rhs)
+    if isinstance(node, Cond):
+        return usesClog2(node.cond) or usesClog2(node.then) or usesClog2(node.otherwise)
+    if isinstance(node, Clog2):
+        return True
+    raise TypeError(f"unhandled eval IR node {type(node).__name__}")
+
+
 class EvalEvalError(Exception):
     """Raised for runtime evaluation failures surfaced as create-time user
     diagnostics."""

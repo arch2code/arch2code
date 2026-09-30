@@ -1,6 +1,6 @@
 ---
 description: SystemC testbench conventions for files in tb/ directory
-globs: "tb/**/*.cpp, tb/**/*.h"
+globs: "tb/**/*.cpp, tb/**/*.cppm, tb/**/*.h"
 alwaysApply: false
 ---
 # SystemC Testbench Rules
@@ -14,18 +14,21 @@ These rules apply specifically to files in `tb/` directory.
 ```
 tb/
   <testbench>/
-    <testbench>Testbench.h    # Main testbench class
-    <testbench>Testbench.cpp  # Testbench implementation
-    <testbench>Config.cpp     # Test configuration
-    <testbench>TestConfigs.h  # Test case definitions
-    <testbench>External.h     # External interfaces (optional)
-    <testbench>External.cpp
+    <testbench>Testbench.cppm  # Main testbench class (C++20 module interface unit)
+    <testbench>Config.cpp      # Test configuration (a plain translation unit)
+    <testbench>External.cppm   # External/DUT-boundary interfaces (C++20 module)
 ```
 Note that these files will be created when you specify a block hasTb: True in the yaml
+
+The two `.cppm` files are module interface units, so where you may add an
+`#include` or an `import` inside them is constrained by module zones. `Config.cpp`
+is a plain translation unit and has no such constraint. See the
+`verify-testbench` skill, "Where to add your own `#include` / `import`".
+
 ## Testbench Structure
 
 ```cpp
-// <testbench>Testbench.h
+// <testbench>Testbench.cppm
 class myTestbench : public myTestbenchBase {
 public:
     SC_HAS_PROCESS(myTestbench);

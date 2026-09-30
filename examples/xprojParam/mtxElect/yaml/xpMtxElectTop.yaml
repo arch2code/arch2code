@@ -1,0 +1,53 @@
+# Matrix row C=1, channel Config source = ELECTED from an unadapted end (D5).
+#
+# The third Config source a parameterized channel can have, and the only one
+# available to a container that is not a class template. The channel is NOT an
+# assembler declaration here: it is the producer IP's own miSrcParIf, so the
+# producer end's declared port has the SAME interfaceKey as the connection,
+# binds directly, and is therefore left in channelParentConfig's election set.
+# It elects its own instance's variant Config and the channel is typed with it.
+#
+# The price is that the channel is no longer an independent third party: it IS
+# the producer's port declaration. Only the consumer end is a genuinely separate
+# party, so this row is two-party, not three.
+#
+# The container declares no params: and is not a class template.
+include:
+    - ../../mtxIp/yaml/xpMtxIp.yaml
+
+blocks:
+    xpMtxElectTop:
+        desc: "Assembler top holding the elected-Config matrix row"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpMtxElectTop_tb:
+        desc: "Testbench container for xpMtxElectTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpMtxElectWrap:
+        desc: "Untemplated container of the elected-Config cells"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpMtxElectTop_tb: { container: xpMtxElectTop_tb, instanceType: xpMtxElectTop_tb, instGroup: top }
+    u_xpMtxElectTop:  { container: xpMtxElectTop_tb, instanceType: xpMtxElectTop,    instGroup: top }
+    uWrap:            { container: xpMtxElectTop,    instanceType: xpMtxElectWrap,   instGroup: top }
+
+    # cell E-PP: channel is the producer's own parameterized declaration,
+    # consumer port is the consumer's own parameterized declaration
+    uSrcPP: { container: xpMtxElectWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPP: { container: xpMtxElectWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+    # cell E-PL: same channel, literal consumer port
+    uSrcPL: { container: xpMtxElectWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPL: { container: xpMtxElectWrap, instanceType: xpMtxDstLit, instGroup: top }
+
+connections:
+    - { interface: miSrcParIf, src: uSrcPP, srcport: out, dst: uDstPP, dstport: in }
+    - { interface: miSrcParIf, src: uSrcPL, srcport: out, dst: uDstPL, dstport: in }

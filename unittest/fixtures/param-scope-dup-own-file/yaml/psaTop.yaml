@@ -1,0 +1,23 @@
+# Declares SHARED_W and includes a file declaring it too; the own-file declaration shadows nothing.
+include:
+    - psaIncluded.yaml
+
+ipParameters:
+    constants:
+        SHARED_W: { value: 4, maxValue: 16, desc: "declared in the referring file" }
+
+blocks:
+    top:
+        desc: "Root"
+    psaLeaf:
+        desc: "Names SHARED_W, reachable through two visible declarations"
+        params: [SHARED_W]
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uLeaf: { container: top, instanceType: psaLeaf, variant: v0 }
+
+parameters:
+    psaLeaf:
+        v0:
+            SHARED_W: 4

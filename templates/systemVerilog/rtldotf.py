@@ -9,22 +9,20 @@ def render(args, prj, data):
     # rather than its yaml source tree. The template only formats these dirs.
     contextRtlDir = data['contextRtlDir']
     incdirs = dict()
-    for context in data['includeContext']:
+    for context in data['compileContexts']:
         relDir = contextRtlDir[context]
         incName = '.' if relDir == '.' else './' + relDir
         incdirs[incName] = incName
     for incdir, incdirName in incdirs.items():
-        # +incdir+ resolves `include of package/svh bodies; managed module
-        # SELECTION is explicit via A2C_SV_FILES (D-SD2/D-SD7), not -y search.
+        # +incdir+ resolves `include of package and svh bodies; A2C_SV_FILES
+        # selects the modules.
         out.append(f'+incdir+{incdirName}')
 
     for context in data['includeFiles'].get('package_sv', list()):
-        # Emit only packages in this build's include-chain scope. A referenced
-        # child project's standalone harness context is parsed into the same
-        # database but is not on the build context's include chain, so it is not
-        # part of the compiled design. Iterating the (DB-wide) package map in its
-        # own order keeps the emitted order stable.
-        if context not in data['includeContext']:
+        # Emit only packages in the compile closure; a referenced child
+        # project's standalone harness context sits outside it unless a
+        # reachable context includes it. The DB-wide package map keeps order stable.
+        if context not in data['compileContexts']:
             continue
         relDir = contextRtlDir[context]
         prefix = '' if relDir == '.' else relDir + '/'

@@ -7,9 +7,13 @@ make run
 ```
 
 The testbench forks `axiSocketSlave.py`, which serves AXI read and write bursts on
-`axiSocket.axiRd0` and `axiSocket.axiWr0`. Catalog observe sockets (`*_obs`) and
-`pysocket_sync` are also registered/connected so bring-up matches `registerAll` /
-`handshakeAll`; this demo does not score observe traffic.
+`axiSocketSlave_tb.u_axiSocket.axiRd0` and `axiSocketSlave_tb.u_axiSocket.axiWr0`.
+Each socket name is the shell's instance path plus the port. The testbench
+registers the shell's names with `axiSocketSocketCatalog::registerInstance`, adds
+`pysocket_sync` once when the catalog's `uses_lockstep` is set, and completes
+bring-up with `socketFactory::handshakeAll`. The observe sockets (`<name>_obs`) are
+connected, but this demo does not score their traffic. The instance path appears as
+`SHELL_INSTANCE` in both `tb/axiSocket/axiSocketConfig.cpp` and `axiSocketSlave.py`.
 
 The `producer` block issues short bursts and checks read data against the same
 pattern as `axiDemo` (`i * 0x01010101`).

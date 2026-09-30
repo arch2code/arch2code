@@ -1,5 +1,6 @@
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
+from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
@@ -29,15 +30,31 @@ def render(args, prj, data):
 
     # Module declaration is emitted from the project-qualified module name;
     # filename/block consistency is validated by the generator before rendering.
-    out.append(moduleDeclaration(data['blockModuleName']))
+    out.append(moduleDeclaration(data['blockSvModuleName']))
 
     # Packages
     startingContext = data['blockInfo']['_context']
     out.append(importPackages(args, prj, startingContext, data))
+
+    # Parameters
+    if ( data['blockInfo']['params'] ):
+        out.append('#(')
+        out.append(",\n".join([f"{indent}{moduleParameterDecl(prj, param)}" for param in data['blockInfo']['params']]))
+        out.append(')')
+
     out.append("(")
 
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+
+    # Module-local parameterizable type/struct declarations. SV cannot
+    # parameterize a package, so a parameterized router declares the
+    # types/structs sized from its own module parameters here.
+    if data['parameterizedDecls']:
+        out.append(f"{indent}// Module-local parameterizable type/struct declarations")
+        for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, data['blockInfo']['params']):
+            out.append(f"{indent}{entry['line']}")
+        out.append("")
 
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']
@@ -45,8 +62,8 @@ def render(args, prj, data):
     address_group = addr_decode_data['addressGroup']
     addr_decode_size = address_group_data['addressIncrement'] * address_group_data['maxAddressSpaces']
     addr_decode_mask = addr_decode_size - 1
-    reg_intf_addr_st = addr_decode_data['registerBusStructs']['addr_t']
-    reg_intf_data_st = addr_decode_data['registerBusStructs']['data_t']
+    reg_intf_addr_st = addr_decode_data['registerBusStructs']['addr_t']['structure']
+    reg_intf_data_st = addr_decode_data['registerBusStructs']['data_t']['structure']
     inst_decode_info = dict()
     for conn, conn_data in data['ports']['connections'].items():
         if conn_data['srcKey'] == qualInstance:
@@ -96,26 +113,24 @@ def render(args, prj, data):
     out.append(f"{indent}set_trans_active = 1'b0;")
     out.append(f"{indent}if ({parent_interface_port}.psel & ~trans_active) begin")
     out.append(f"{indent*2}set_trans_active = 1'b1;")
-    first = True
-    for item in sorted_keys:
-        offset = int(inst_decode_info[item]['offset'])
-        if first:
-            if (len(sorted_keys) == 1 and offset == 0):
-                # Sole address space in the whole group, at offset 0: there is
-                # nothing else it could be, so no range check is needed and
-                # '>= 0' on an unsigned address would only lint as a constant
-                # comparison.
-                out.append(f"{indent*2}begin")
+    if len(sorted_keys) == 1:
+        # A single child needs no address compare: whatever address the
+        # parent selected on, that child is the only place it can go.
+        item = sorted_keys[0]
+        out.append(f"{indent*2}{inst_decode_info[item]['name']}_next_psel = '1;")
+    else:
+        first = True
+        for item in sorted_keys:
+            if first:
+                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+                first = False
             else:
-                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{offset:_x})) begin")
-            first = False
-        else:
-            if (offset == 0):
-                out.append(f"{indent*2}end else begin")
-            else:
-                out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{offset:_x})) begin")
-        out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
-    out.append(f"{indent*2}end")
+                if (int(inst_decode_info[item]['offset']) == 0 ):
+                    out.append(f"{indent*2}end else begin")
+                else:
+                    out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+            out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
+        out.append(f"{indent*2}end")
     out.append(f"{indent}end")
     out.append("end\n")
 
@@ -153,7 +168,7 @@ def render(args, prj, data):
 
     out.append("")
 
-    out.append(f"endmodule: {data['blockModuleName']}")
+    out.append(f"endmodule: {data['blockSvModuleName']}")
     return ("\n".join(out))
 
 #------------------------------------------------------------------------------

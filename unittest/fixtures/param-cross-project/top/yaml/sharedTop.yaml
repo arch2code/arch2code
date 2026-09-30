@@ -1,0 +1,36 @@
+# Assembler context wiring the parameterized interface straight through three
+# projects. Every endpoint's port here IS projA's dataIf, so every endpoint is in
+# scope for the endpoint validator, and every endpoint's WIDTH param resolves to
+# the SAME declaring-file constant key (projA's), so the parameter
+# identity the endpoint validator compares is shared rather than merely
+# same-named.
+include:
+    - ../../projA/yaml/aTop.yaml
+    - ../../projBShared/yaml/bSharedTop.yaml
+    - ../../projCShared/yaml/cSharedTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+        hasRtl: false
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uA:   { container: top, instanceType: aIp, variant: v0 }
+    uB:   { container: top, instanceType: bSharedIp, variant: v0 }
+    uC:   { container: top, instanceType: cSharedIp, variant: v0 }
+
+connections:
+    - { interface: dataIf, src: uA, srcport: out, dst: uB, dstport: in }
+    - { interface: dataIf, src: uB, srcport: out, dst: uC, dstport: in }
+
+parameters:
+    aIp:
+        v0:
+            WIDTH: 8
+    bSharedIp:
+        v0:
+            WIDTH: 8
+    cSharedIp:
+        v0:
+            WIDTH: 8

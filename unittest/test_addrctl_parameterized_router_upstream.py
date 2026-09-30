@@ -1,47 +1,22 @@
 #!/usr/bin/env python3
-"""Nested router whose upstreamPort carries parameterizable structures.
+"""A register-bus interface may not carry a parameterizable structure, even
+when it is only a nested router's private upstreamPort feed from its parent
+router.
 
-The nested router declares `params:` and `ipParameters:` with a
-parameter that drives the data structure on its own
-`addressBlock.upstreamPort` interface. Asserts that the post-parse
-pass tolerates parameterizable structures on the router-to-router
-register-bus interface, emits the parent-to-child router bind with the
-child-side interface name, and that the nested router's block is
-flagged `isParameterizable`.
-
-The resolved parameter value matches the primary router's upstream
-data width so that the parent → nested router-to-router bind remains
-packed-form compatible. Width-mismatch behavior is covered by the
-packed-form mismatch fixture, not here.
-
-Topology::
-
-    uTop (top)
-    +-- uAPBDecode ............ primary router (upstream=apbReg)
-    +-- uMid (mid)
-        +-- uParamRouter (paramMidRouter, variant=paramMidV0)
-        |     params:           [PARAM_UPSTREAM_WIDTH]
-        |     upstreamPort:     paramApb       (parameterizable data;
-        |                                       paramUpstreamDataSt)
-        |     registerDecoder:  apbReg
-        +-- uMidLeaf (midLeaf, addressGroup=mid)
-
-    Parent-to-child bind uAPBDecode -> uMid is emitted under the
-    child-side interface name (paramApb), and the container-boundary
-    connectionMap on uParamRouter declares port 'paramApb'.
+`paramApb` is the nested router's `addressBlock.upstreamPort` interface,
+declared parameterizable through `paramUpstreamDataSt` (backed by
+`PARAM_UPSTREAM_WIDTH`). Registers and memories may be parameterizable; the
+bus itself may not, so `make db` must reject this shape naming the
+interface, its interfaceType, the parameterizable structure, and the file.
+This holds regardless of whether the router carries the parameter in its
+own params:.
 """
 
 import sys
 
 from _addrctl_helpers import (
-    assert_no_global_register_binds,
     build_database,
     cleanup,
-    find_block,
-    find_connection_maps,
-    find_connections,
-    find_instance,
-    projectOpen,
     render_leaf,
 )
 
@@ -164,57 +139,31 @@ registers:
 )
 
 
+REQUIRED_SUBSTRINGS = [
+    "paramApb",
+    "apb",
+    "address-bus",
+    "paramUpstreamDataSt",
+    "fixed-width",
+]
+
+
 def _run():
-    print("nested router with parameterizable upstream interface")
-    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    print("nested router's parameterizable upstream interface is rejected")
+    db_path, project_path, arch_paths, result = build_database(
+        ARCH_YAML, expect_success=False)
     paths = [project_path, db_path] + arch_paths
     try:
-        prj = projectOpen(db_path)
-
-        _router_key, router_row = find_block(prj, 'paramMidRouter')
-        assert bool(router_row.get('isParameterizable')), (
-            "paramMidRouter must be flagged isParameterizable; "
-            f"got {router_row.get('isParameterizable')!r}"
-        )
-
-        # Parent-to-child router bind: parent dispatches to the nested
-        # router's container sibling (uMid). The connection's interface
-        # is the child router's upstream interface (paramApb).
-        parent_to_child = find_connections(prj, src='uAPBDecode', dst='uMid')
-        assert len(parent_to_child) == 1, (
-            f"expected 1 uAPBDecode->uMid bind, got {len(parent_to_child)}"
-        )
-        assert parent_to_child[0]['interface'] == 'paramApb', (
-            f"parent-to-child bind must name the child router's upstream "
-            f"interface; got '{parent_to_child[0]['interface']}'"
-        )
-
-        # Boundary connectionMap on the container routes the inherited
-        # paramApb port through to the nested router instance.
-        boundary = find_connection_maps(prj, instance='uParamRouter')
-        assert any(cm.get('port') == 'paramApb' for cm in boundary), (
-            f"nested-router upstream connectionMap must declare port "
-            f"'paramApb'; got {boundary}"
-        )
-
-        # Router-to-leaf bind from the nested router.
-        leaf_bind = find_connections(prj, src='uParamRouter', dst='uMidLeaf')
-        assert len(leaf_bind) == 1, (
-            f"expected 1 uParamRouter->uMidLeaf bind, got {len(leaf_bind)}"
-        )
-
-        # Handler block for the leaf and INSTANCES_WITH_REGAPB membership.
-        find_block(prj, 'midLeaf_regs')
-        find_instance(prj, 'u_midLeaf_regs')
-        instances_with_regapb = prj.config.getConfig(
-            'INSTANCES_WITH_REGAPB', failOk=True)
-        for simple in ('uMid', 'uMidLeaf'):
-            key, _ = find_instance(prj, simple)
-            assert key in instances_with_regapb, (
-                f"INSTANCES_WITH_REGAPB missing '{key}'"
-            )
-
-        assert_no_global_register_binds(prj)
+        combined = result.stdout + result.stderr
+        if 'Traceback (most recent call last)' in combined:
+            print("FAIL: got a Python stack trace instead of a clean error")
+            print(combined)
+            return False
+        missing = [p for p in REQUIRED_SUBSTRINGS if p.lower() not in combined.lower()]
+        if missing:
+            print(f"FAIL: diagnostic missing substrings: {missing}")
+            print(combined)
+            return False
         print("PASS")
         return True
     finally:

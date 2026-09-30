@@ -1,0 +1,36 @@
+# Composing project for the cross-project reuse of a params-less TRANSIT
+# container. It references the mtxElect assembler project and instantiates that
+# project's xpMtxElectWrap under its own top, which is the only shape in which a
+# child that is isParameterizable but declares no params: is reached across a
+# project boundary.
+
+yamlFormat: 2
+projectName: xpMtxComp
+
+projectFiles:
+    - ../../../mtxElect/prj/yaml/xpMtxElectProject.yaml
+    - ../../yaml/xpMtxCompTop.yaml
+
+topInstance: xpMtxCompTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

@@ -193,7 +193,7 @@ module dut_hdl_sv_wrapper
     assign #0 dut2Python_axi4_stream_tdest = dut2Python_axi4_stream.tdest;
     assign #0 dut2Python_axi4_stream_tuser = dut2Python_axi4_stream.tuser;
 
-    pySocket_dut dut (
+    dut dut (
         .test_req_ack(test_req_ack), // req_ack_if.dst
         .test2Python_req_ack(test2Python_req_ack), // req_ack_if.dst
         .dut2Python_req_ack(dut2Python_req_ack), // req_ack_if.src

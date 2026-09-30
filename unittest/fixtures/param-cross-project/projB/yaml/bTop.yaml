@@ -1,0 +1,27 @@
+# projB: the middle IP of the A -> B -> C chain, independently authored. Same
+# declaration names as projA (WIDTH, dataT, dataSt, dataIf), all owned by projB.
+
+ipParameters:
+    constants:
+        WIDTH: { value: 8, maxValue: 32, desc: "projB payload width" }
+    types:
+        dataT: { width: WIDTH, maxBitwidth: 32, desc: "projB parameterizable payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "projB payload" }
+
+interfaces:
+    dataIf:
+        desc: "projB parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    bIp:
+        desc: "projB parameterized pass-through IP"
+        params: [WIDTH]
+        ports:
+            in: { interface: dataIf, direction: dst }
+            out: { interface: dataIf, direction: src }

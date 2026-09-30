@@ -1,6 +1,6 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
-#ifndef PUSH_ACK_CHANNEL_H
-#define PUSH_ACK_CHANNEL_H
+#ifndef RAW_CHANNEL_H
+#define RAW_CHANNEL_H
 
 #include "sysc/communication/sc_communication_ids.h"
 #include "sysc/communication/sc_prim_channel.h"
@@ -14,6 +14,21 @@
 #include "synchLock.h"
 
 
+// raw_channel — LAST RESORT handshake-less boundary protocol
+//
+// Prefer rdy_vld / push_ack / pop_ack / axi4_stream for new interconnect.
+// Use raw only at design boundaries for legacy/external IP with a free-running
+// data bus (no ready/valid/ack wires). Do not use between new arch2code blocks.
+// Do not confuse with status_channel (same wire shape; status is publish/sample,
+// raw is a one-shot blocking rendezvous).
+//
+// Why problematic while still supported: no HW backpressure; SystemC
+// rendezvous ≠ RTL free-running sample (timed/tandem can diverge); one
+// sc_event serves both handshake directions (write() re-checks that the value
+// was taken, so wake-ups are spurious but no value is lost);
+// co-sim BFMs invent clocked timing the protocol does not express.
+// See ARCH2CODE_AI_RULES.md (§ raw) and SYSTEMC_API_USER_REFERENCE.md (§ 4.9).
+//
 // write(T)
 // |        ---T---> read(T)
 
@@ -231,7 +246,12 @@ inline void raw_channel<T>::write( const T& val_, uint64_t userMagic )
     {
         m_channel_sync_event_ptr->notify(SC_ZERO_TIME);
     }
-    sc_core::wait(m_channel_sync_event);
+    // One event serves both directions, so the notify that wakes the reader
+    // wakes this writer too. Return only once the reader has taken the value,
+    // or a writer scheduled ahead of the reader overwrites it on its next write.
+    while (m_value_written) {
+        sc_core::wait(m_channel_sync_event);
+    }
     m_multi_writer = false;
     if (isLocking()) { synchLock_->unlock(); }
 }
@@ -294,4 +314,4 @@ using raw_out = sc_port<raw_out_if< T > >;
 template <class T>
 using raw_in = sc_port<raw_in_if< T > >;
 
-#endif // PUSH_ACK_CHANNEL_H
+#endif // RAW_CHANNEL_H
