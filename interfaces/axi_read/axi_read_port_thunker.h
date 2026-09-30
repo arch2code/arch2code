@@ -19,11 +19,11 @@
 //
 // DirectAddr and DirectData are the generator's verdicts for the addr_t and
 // data_t pairs: true when the pair's two declarations emit identical member
-// storage. Sharing the burst buffer (kDirectData) also needs the optional
-// user-signal and id members to be the same C++ type on both sides. A false
-// verdict is always correct and merely slower. The verdicts precede the
-// optional parameters, so a hand-written instantiation that supplies any
-// user-signal or id parameter must spell both first.
+// storage. Sharing the burst buffer (kDirectData) also needs RU and ID to be
+// the same C++ type on both sides. A false verdict is always correct and
+// merely slower. The verdicts precede the optional parameters, so a
+// hand-written instantiation that supplies any user-signal or id parameter
+// must spell both first.
 //
 // It owns no channel and no thread. The adapter converts every child call,
 // portBase calls such as setCycleTransaction included, and makes it on the

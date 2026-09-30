@@ -9,7 +9,9 @@ perfectly.
 This suite therefore builds and RUNS `fixtures/thunker-runtime/thunker_runtime.cpp`
 under the SystemC kernel. That program instantiates each covered template
 explicitly and drives real transactions through each, in both forwarding
-directions and at both settings of the adapter's direct-copy verdict.
+directions and at both settings of the adapter's direct-copy verdict, except
+`axi_read` and `axi_write`, which run only in the consumer shape at a direct
+verdict.
 
 WHAT MAKES THE RUN EVIDENCE RATHER THAN A SMOKE TEST, in the fixture's own words
 and pinned here so a future edit that weakens it is visible:
@@ -20,9 +22,11 @@ and pinned here so a future edit that weakens it is visible:
   therefore says WHICH ARM RAN.
 - The two multi-payload protocols are instantiated at complementary verdict
   subsets, so a flag wired to the wrong payload slot fails.
-- Each protocol runs in the consumer-child shape (`thunkIn`) and the
-  producer-child shape (`thunkOut`), and `raw` additionally in the two port
-  shapes, which are the ones that resolve their up-side interface lazily.
+- Each protocol except `axi_read` and `axi_write` runs in the consumer-child
+  shape (`thunkIn`) and the producer-child shape (`thunkOut`), and `raw`
+  additionally in the two port shapes, which are the ones that resolve their
+  up-side interface lazily. `axi_read` and `axi_write` run in the consumer
+  shape only.
 - Every sink loop runs forever and counts; the totals are asserted after the
   kernel drains, so a duplicated transaction fails even though every value
   matched.

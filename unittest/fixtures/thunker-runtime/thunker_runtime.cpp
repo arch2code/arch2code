@@ -25,10 +25,11 @@
 //     instantiated at complementary verdict subsets - axi4_stream at
 //     (tdata, tdest) and then (tid, tuser), memory at (addr) and then (data) -
 //     so a flag wired to the wrong payload slot fails.
-//  3. BOTH FORWARDING DIRECTIONS. Each protocol is run in the consumer-child
-//     shape, which runs thunkIn(), and in the producer-child shape, which runs
-//     thunkOut() - separate code in every header, with the channel and
-//     interface roles exchanged.
+//  3. BOTH FORWARDING DIRECTIONS. Each protocol except axi_read and axi_write
+//     is run in the consumer-child shape, which runs thunkIn(), and in the
+//     producer-child shape, which runs thunkOut() - separate code in every
+//     header, with the channel and interface roles exchanged. axi_read and
+//     axi_write run only in the consumer shape at a direct verdict.
 //  4. THE LAZY UP-PORT RESOLUTION. The two port shapes resolve their up-side
 //     interface through m_up_port->operator->() on the spawned thread's first
 //     iteration rather than capturing it at construction. raw is run in both
@@ -62,10 +63,10 @@
 
 static constexpr std::uint32_t PAYLOAD_MASK = 0xFFFFu;
 
-#define A2C_TEST_PAYLOAD( NAME, PACKED )                                        \
+#define A2C_TEST_PAYLOAD( NAME )                                                \
     struct NAME                                                                 \
     {                                                                           \
-        using _packedSt = PACKED;                                               \
+        using _packedSt = std::uint32_t;                                        \
         static constexpr unsigned _bitWidth = 16;                               \
         static constexpr unsigned _byteWidth = sizeof( _packedSt );             \
         /* Masking pack/unpack, as generated structures emit. */                \
@@ -80,8 +81,8 @@ static constexpr std::uint32_t PAYLOAD_MASK = 0xFFFFu;
         std::uint32_t value = 0;                                                \
     }
 
-A2C_TEST_PAYLOAD( maskASt, std::uint32_t );
-A2C_TEST_PAYLOAD( maskBSt, std::uint32_t );
+A2C_TEST_PAYLOAD( maskASt );
+A2C_TEST_PAYLOAD( maskBSt );
 
 static_assert( sizeof( maskASt ) == sizeof( maskBSt ) );
 static_assert( std::is_trivially_copyable_v<maskASt> && std::is_trivially_copyable_v<maskBSt> );
@@ -1607,8 +1608,8 @@ struct axi4StreamProducerHarness : sc_core::sc_module
 // width
 // ===========================================================================
 // axi_thunker_runtime.cpp covers the rest of these protocols. Here a user type
-// shared by both sides takes copyPayload's identity arm and lets the data
-// envelopes share a burst buffer, and IDW = 6 shows UpIDW/DownIDW are in use.
+// shared by both sides takes copyPayload's identity arm, and IDW = 6 shows
+// UpIDW/DownIDW are in use.
 // The required payloads cross at a direct verdict, so they arrive whole.
 static constexpr unsigned AXI_IDW = 6;
 static std::uint32_t axiIdVal( int i ) { return (std::uint32_t)( 0x21 + i ); }
