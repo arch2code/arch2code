@@ -132,6 +132,12 @@ echo "Test Suite 13d: Bit Twiddling Runtime Contract"
 echo "------------------------------------------------------------------------"
 python3 test_bit_twiddling_runtime.py || FAILED=1
 
+# Test 13e: the AXI envelopes pack narrow payloads without overrunning them
+echo ""
+echo "Test Suite 13e: AXI Envelope Pack"
+echo "------------------------------------------------------------------------"
+python3 test_axi_envelope_pack.py || FAILED=1
+
 # Test 14: Declared port resolved interface context
 echo ""
 echo "Test Suite 14: Declared Port Resolved Interface Context"

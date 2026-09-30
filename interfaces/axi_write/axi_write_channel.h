@@ -115,24 +115,14 @@ struct axiWriteDataSt
         memset(&_ret, 0, axiWriteDataSt::_byteWidth);
         pack_bits((uint64_t *)&_ret, _pos, wid, idWidth);
         _pos += idWidth;
-        {
-            typename D::_packedSt _tmp{0};
-            wdata.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, dataWidth);
-        }
+        pack_payload_bits((uint64_t *)&_ret, _pos, wdata, dataWidth);
         _pos += dataWidth;
-        {
-            typename S::_packedSt _tmp{0};
-            wstrb.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, strbWidth);
-        }
+        pack_payload_bits((uint64_t *)&_ret, _pos, wstrb, strbWidth);
         _pos += strbWidth;
         pack_bits((uint64_t *)&_ret, _pos, wlast, lastWidth);
         _pos += lastWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            user.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            pack_payload_bits((uint64_t *)&_ret, _pos, user, userWidth);
             _pos += userWidth;
         }
     }
@@ -140,26 +130,16 @@ struct axiWriteDataSt
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        wid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        unpack_scalar_bits(wid, _src, _pos, idWidth);
         _pos += idWidth;
-        {
-            typename D::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, dataWidth);
-            wdata.unpack(_tmp);
-        }
+        unpack_payload_bits(wdata, _src, _pos, dataWidth);
         _pos += dataWidth;
-        {
-            typename S::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, strbWidth);
-            wstrb.unpack(_tmp);
-        }
+        unpack_payload_bits(wstrb, _src, _pos, strbWidth);
         _pos += strbWidth;
-        wlast = (bool)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lastWidth) - 1));
+        unpack_scalar_bits(wlast, _src, _pos, lastWidth);
         _pos += lastWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
-            user.unpack(_tmp);
+            unpack_payload_bits(user, _src, _pos, userWidth);
             _pos += userWidth;
         }
     }
@@ -247,11 +227,7 @@ struct axiWriteAddressSt
         memset(&_ret, 0, axiWriteAddressSt::_byteWidth);
         pack_bits((uint64_t *)&_ret, _pos, awid, idWidth);
         _pos += idWidth;
-        {
-            typename A::_packedSt _tmp{0};
-            awaddr.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, addrWidth);
-        }
+        pack_payload_bits((uint64_t *)&_ret, _pos, awaddr, addrWidth);
         _pos += addrWidth;
         pack_bits((uint64_t *)&_ret, _pos, awlen, lenWidth);
         _pos += lenWidth;
@@ -260,33 +236,25 @@ struct axiWriteAddressSt
         pack_bits((uint64_t *)&_ret, _pos, awburst, burstWidth);
         _pos += burstWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            user.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            pack_payload_bits((uint64_t *)&_ret, _pos, user, userWidth);
             _pos += userWidth;
         }
     }
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        awid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        unpack_scalar_bits(awid, _src, _pos, idWidth);
         _pos += idWidth;
-        {
-            typename A::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, addrWidth);
-            awaddr.unpack(_tmp);
-        }
+        unpack_payload_bits(awaddr, _src, _pos, addrWidth);
         _pos += addrWidth;
-        awlen = (uint8_t)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lenWidth) - 1));
+        unpack_scalar_bits(awlen, _src, _pos, lenWidth);
         _pos += lenWidth;
-        awsize = (_axiSizeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << sizeWidth) - 1));
+        unpack_scalar_bits(awsize, _src, _pos, sizeWidth);
         _pos += sizeWidth;
-        awburst = (_axiBurstT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << burstWidth) - 1));
+        unpack_scalar_bits(awburst, _src, _pos, burstWidth);
         _pos += burstWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
-            user.unpack(_tmp);
+            unpack_payload_bits(user, _src, _pos, userWidth);
             _pos += userWidth;
         }
     }
@@ -359,23 +327,19 @@ struct axiWriteRespSt
         pack_bits((uint64_t *)&_ret, _pos, bresp, respWidth);
         _pos += respWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            user.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, userWidth);
+            pack_payload_bits((uint64_t *)&_ret, _pos, user, userWidth);
             _pos += userWidth;
         }
     }
     inline void unpack(_packedSt &_src)
     {
         uint16_t _pos{0};
-        bid = (ID)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        unpack_scalar_bits(bid, _src, _pos, idWidth);
         _pos += idWidth;
-        bresp = (_axiResponseT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << respWidth) - 1));
+        unpack_scalar_bits(bresp, _src, _pos, respWidth);
         _pos += respWidth;
         if constexpr (hasOptionalPayload<U>) {
-            typename U::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, userWidth);
-            user.unpack(_tmp);
+            unpack_payload_bits(user, _src, _pos, userWidth);
             _pos += userWidth;
         }
     }
@@ -403,6 +367,8 @@ public:
     virtual void sendRespCycle( const axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual void push_burst(uint32_t burstCount) = 0; // push number of burst
     virtual uint8_t * getReceiveDataPtr(void) = 0;
+    // Complete beats in the current received buffer; same lifetime as its pointer.
+    virtual uint32_t getReceiveBeatCount(void) = 0;
     // arbitration: reflects the address sub-channel, since the arbitration
     // decision on the dst side is made at the address phase
     virtual bool isActive() = 0;
@@ -434,6 +400,9 @@ public:
     virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual uint8_t * getSendDataPtr(void) = 0;
+    // Capacity in beats, used by buffered sendData(data) without an explicit count.
+    // Zero for channels without a burst buffer.
+    virtual uint32_t getSendBufferCapacity(void) = 0;
 
 protected:
     // constructor
@@ -540,6 +509,10 @@ public:
     virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual uint8_t * getSendDataPtr( void ) override    { return m_data_out->getWritePtr();}
+    virtual uint32_t getSendBufferCapacity(void) override
+    {
+        return m_data_channel.get_max_size() / sizeof(axiWriteDataSt<D, S, WU, ID, IDW>);
+    }
 
     // in interfaces
     virtual void receiveAddr( axiWriteAddressSt<A, AWU, ID, IDW>& ) override;
@@ -552,6 +525,11 @@ public:
         m_data_in->push_context(burstCount * sizeof(axiWriteDataSt<D, S, WU, ID, IDW>));
     }
     virtual uint8_t * getReceiveDataPtr(void) override { return m_data_in->getReadPtr(); }
+    virtual uint32_t getReceiveBeatCount(void) override
+    {
+        // Fixed-size buffers include less than one beat of allocation padding.
+        return m_data_channel.getReadBufferSize() / sizeof(axiWriteDataSt<D, S, WU, ID, IDW>);
+    }
     virtual bool isActive() override { return m_addr_in->isActive(); }
     virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
     virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }
