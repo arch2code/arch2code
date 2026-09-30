@@ -367,6 +367,8 @@ public:
     virtual void sendRespCycle( const axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual void push_burst(uint32_t burstCount) = 0; // push number of burst
     virtual uint8_t * getReceiveDataPtr(void) = 0;
+    // Complete beats in the current received buffer; same lifetime as its pointer.
+    virtual uint32_t getReceiveBeatCount(void) = 0;
     // arbitration: reflects the address sub-channel, since the arbitration
     // decision on the dst side is made at the address phase
     virtual bool isActive() = 0;
@@ -398,6 +400,9 @@ public:
     virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) = 0;
     virtual uint8_t * getSendDataPtr(void) = 0;
+    // Capacity in beats, used by buffered sendData(data) without an explicit count.
+    // Zero for channels without a burst buffer.
+    virtual uint32_t getSendBufferCapacity(void) = 0;
 
 protected:
     // constructor
@@ -504,6 +509,10 @@ public:
     virtual void receiveResp( axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual void receiveRespCycle( axiWriteRespSt<BU, ID, IDW>& ) override;
     virtual uint8_t * getSendDataPtr( void ) override    { return m_data_out->getWritePtr();}
+    virtual uint32_t getSendBufferCapacity(void) override
+    {
+        return m_data_channel.get_max_size() / sizeof(axiWriteDataSt<D, S, WU, ID, IDW>);
+    }
 
     // in interfaces
     virtual void receiveAddr( axiWriteAddressSt<A, AWU, ID, IDW>& ) override;
@@ -516,6 +525,11 @@ public:
         m_data_in->push_context(burstCount * sizeof(axiWriteDataSt<D, S, WU, ID, IDW>));
     }
     virtual uint8_t * getReceiveDataPtr(void) override { return m_data_in->getReadPtr(); }
+    virtual uint32_t getReceiveBeatCount(void) override
+    {
+        // Fixed-size buffers include less than one beat of allocation padding.
+        return m_data_channel.getReadBufferSize() / sizeof(axiWriteDataSt<D, S, WU, ID, IDW>);
+    }
     virtual bool isActive() override { return m_addr_in->isActive(); }
     virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
     virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }

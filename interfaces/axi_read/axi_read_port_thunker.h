@@ -29,8 +29,8 @@
 // getWritePtr()/getReadPtr() hand the child raw memory in the parent's burst
 // buffer, which the thunker never sees. Unless kDirectData holds, the two sides
 // lay out a beat differently, so the adapter gives the child a Down-typed copy
-// of 256 beats (the AXI maximum) and converts it on sendData(x, N) and
-// getReadPtr(), taking the burst length from the arlen forwarded for that rid.
+// of 256 beats (the AXI maximum) and converts it on buffered sendData() and
+// getReadPtr(). Receive lengths come from the arlen forwarded for that rid.
 //
 // A parent port is unbound until elaboration completes, so it is resolved in
 // end_of_elaboration(). Template argument order must match _thunker_member_type
@@ -162,6 +162,16 @@ private:
         }
         void sendData( const DownResp& data_ ) override
         {
+            if constexpr (!kDirectData) {
+                const unsigned beats = getSendBufferCapacity();
+                if (beats) {
+                    Q_ASSERT( beats <= kMaxBurst, "read response buffer exceeds maximum AXI burst" );
+                    UpResp* up = reinterpret_cast<UpResp*>( this->m_up->getWritePtr() );
+                    for (unsigned i = 0; i < beats; i++) {
+                        copyResp( up[i], m_shadow[i] );
+                    }
+                }
+            }
             UpResp up;
             copyResp( up, data_ );
             this->m_up->sendData( up );
@@ -193,6 +203,7 @@ private:
             }
         }
         bool isActive() override { return this->m_up->isActive(); }
+        uint32_t getSendBufferCapacity(void) override { return this->m_up->getSendBufferCapacity(); }
         bool isNotActive() override { return this->m_up->isNotActive(); }
         void setExternalEvent( sc_event* event ) override { this->m_up->setExternalEvent( event ); }
         const char* kind() const override { return "axi_read_port_thunker"; }

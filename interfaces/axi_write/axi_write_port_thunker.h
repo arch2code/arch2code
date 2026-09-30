@@ -6,7 +6,6 @@
 #include "../../common/systemc/bitTwiddling.h"
 #include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -29,10 +28,8 @@
 // getSendDataPtr()/getReceiveDataPtr() hand the child raw memory in the parent's
 // burst buffer, which the thunker never sees. Unless kDirectData holds, the two
 // sides lay out a beat differently, so the adapter gives the child a Down-typed
-// copy of 256 beats (the AXI maximum) and converts it on sendData(x, N) and
-// getReceiveDataPtr(). W bursts take their lengths from the forwarded AWs in AW
-// order, so a buffer read of a W burst whose AW has not yet arrived is not
-// supported.
+// copy of 256 beats (the AXI maximum) and converts it on buffered sendData() and
+// getReceiveDataPtr(), using the received buffer's beat count independently of AW.
 //
 // A parent port is unbound until elaboration completes, so it is resolved in
 // end_of_elaboration(). Template argument order must match _thunker_member_type
@@ -175,33 +172,12 @@ private:
             UpAddr up;
             this->m_up->receiveAddr( up );
             copyAddr( addr_, up );
-            // Burst lengths in AW order, for the buffer conversion in
-            // getReceiveDataPtr(). A cycle-mode child reads no buffer.
-            if constexpr (!kDirectData) {
-                if (!m_cycle) {
-                    if (m_unclaimedData) {
-                        m_unclaimedData--;
-                    } else {
-                        m_beats.push( up.awlen + 1u );
-                    }
-                }
-            }
         }
         void receiveData( DownData& data_ ) override
         {
             UpData up;
             this->m_up->receiveData( up );
             copyData( data_, up );
-            // A transactional receive delivers one whole burst.
-            if constexpr (!kDirectData) {
-                if (m_beats.empty()) {
-                    m_unclaimedData++;
-                    m_received = 0;
-                } else {
-                    m_received = m_beats.front();
-                    m_beats.pop();
-                }
-            }
         }
         void receiveDataCycle( DownData& data_ ) override
         {
@@ -222,6 +198,7 @@ private:
             this->m_up->sendRespCycle( up );
         }
         void push_burst( uint32_t burstCount ) override { this->m_up->push_burst( burstCount ); }
+        uint32_t getReceiveBeatCount(void) override { return this->m_up->getReceiveBeatCount(); }
         // Only a channel with a burst buffer has a read pointer, so the burst is
         // converted here rather than on every receiveData().
         uint8_t* getReceiveDataPtr( void ) override
@@ -229,9 +206,10 @@ private:
             if constexpr (kDirectData) {
                 return this->m_up->getReceiveDataPtr();
             } else {
-                Q_ASSERT( m_received != 0, "a thunked write burst read through getReceiveDataPtr() needs its AW received first" );
+                const unsigned beats = getReceiveBeatCount();
+                Q_ASSERT( beats > 0 && beats <= kMaxBurst, "received write buffer must contain 1 to 256 beats" );
                 const UpData* up = reinterpret_cast<const UpData*>( this->m_up->getReceiveDataPtr() );
-                for (unsigned i = 0; i < m_received; i++) {
+                for (unsigned i = 0; i < beats; i++) {
                     copyData( m_shadow[i], up[i] );
                 }
                 return reinterpret_cast<uint8_t*>( m_shadow.data() );
@@ -240,11 +218,6 @@ private:
         bool isActive() override { return this->m_up->isActive(); }
         bool isNotActive() override { return this->m_up->isNotActive(); }
         void setExternalEvent( sc_event* event ) override { this->m_up->setExternalEvent( event ); }
-        void setCycleTransaction( portType type_ ) override
-        {
-            m_cycle = true;
-            this->m_up->setCycleTransaction( type_ );
-        }
         const char* kind() const override { return "axi_write_port_thunker"; }
 
     private:
@@ -255,10 +228,6 @@ private:
             }
         }
         std::vector<DownData> m_shadow = std::vector<DownData>( kDirectData ? 0 : kMaxBurst );
-        std::queue<unsigned> m_beats;
-        unsigned m_unclaimedData = 0;
-        unsigned m_received = 0;
-        bool m_cycle = false;
     };
 
     // Producer child: the child sends AW and W and receives B.
@@ -276,6 +245,16 @@ private:
         }
         void sendData( const DownData& data_ ) override
         {
+            if constexpr (!kDirectData) {
+                const unsigned beats = getSendBufferCapacity();
+                if (beats) {
+                    Q_ASSERT( beats <= kMaxBurst, "write buffer exceeds maximum AXI burst" );
+                    UpData* up = reinterpret_cast<UpData*>( this->m_up->getSendDataPtr() );
+                    for (unsigned i = 0; i < beats; i++) {
+                        copyData( up[i], m_shadow[i] );
+                    }
+                }
+            }
             UpData up;
             copyData( up, data_ );
             this->m_up->sendData( up );
@@ -318,6 +297,7 @@ private:
                 return reinterpret_cast<uint8_t*>( m_shadow.data() );
             }
         }
+        uint32_t getSendBufferCapacity(void) override { return this->m_up->getSendBufferCapacity(); }
         const char* kind() const override { return "axi_write_port_thunker"; }
 
     private:

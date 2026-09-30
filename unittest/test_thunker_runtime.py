@@ -85,10 +85,10 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
 # a harness that stopped being constructed fails here rather than reducing the
 # evidence silently.
 EXPECTED_CHECKS = 757
-# Sixteen axi_read and twenty-eight axi_write cases, each with its direct-connection
+# Twenty-eight axi_read and fifty axi_write cases, each with its direct-connection
 # control run.
-AXI_EXPECTED_CASES = 44
-AXI_EXPECTED_CHECKS = 68425
+AXI_EXPECTED_CASES = 78
+AXI_EXPECTED_CHECKS = 108643
 
 
 def toolchain_env():

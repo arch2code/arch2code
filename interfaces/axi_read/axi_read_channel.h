@@ -267,6 +267,9 @@ public:
     virtual void sendData( const axiReadRespSt<D, RU, ID, IDW>&, int burst_count ) = 0;
     virtual void sendDataCycle( const axiReadRespSt<D, RU, ID, IDW>& ) = 0;
     virtual uint8_t * getWritePtr(void) = 0;
+    // Capacity in beats, used by buffered sendData(data) without an explicit count.
+    // Zero for channels without a burst buffer.
+    virtual uint32_t getSendBufferCapacity(void) = 0;
     // arbitration: reflects the address sub-channel, since the arbitration
     // decision on the dst side is made at the address phase
     virtual bool isActive() = 0;
@@ -402,6 +405,10 @@ public:
     virtual void sendData( const axiReadRespSt<D, RU, ID, IDW>&, int burst_count ) override;
     virtual void sendDataCycle( const axiReadRespSt<D, RU, ID, IDW>& ) override;
     virtual uint8_t * getWritePtr(void) override;
+    virtual uint32_t getSendBufferCapacity(void) override
+    {
+        return m_data_channel.get_max_size() / sizeof(axiReadRespSt<D, RU, ID, IDW>);
+    }
     virtual bool isActive() override { return m_addr_in->isActive(); }
     virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
     virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }

@@ -177,12 +177,14 @@ struct rdScenario
     bool serial;
     std::vector<axiBurst> bursts;
     std::vector<int> returnOrder;
+    bool fixedSize = false;
+    unsigned bufferBeats = 256;
 };
 
 template <class T>
-static std::unique_ptr<typename T::chan> makeChan( bool multicycle )
+static std::unique_ptr<typename T::chan> makeChan( bool multicycle, bool fixedSize = false, unsigned bufferBeats = 256 )
 {
-    if (multicycle) return std::make_unique<typename T::chan>( "chan", "tb", "api_list_size", 256, "" );
+    if (multicycle) return std::make_unique<typename T::chan>( "chan", "tb", fixedSize ? "fixed_size" : "api_list_size", bufferBeats, "" );
     return std::make_unique<typename T::chan>( "chan", "tb" );
 }
 
@@ -210,7 +212,7 @@ static void rdSendAddr( typename T::out& p, const rdScenario& sc, int b )
     a.arsize = 2;
     a.arburst = AXIBURST_INCR;
     putUser( a.user, val( TAG_AUSER, b, 0 ) );
-    if (sc.mode == rdMode::burst) p->push_burst( bu.len + 1 );
+    if (sc.mode == rdMode::burst && !sc.fixedSize) p->push_burst( bu.len + 1 );
     p->sendAddr( a );
 }
 
@@ -283,7 +285,7 @@ static void rdSendBurst( typename T::in& p, const rdScenario& sc, int b )
     if (sc.mode == rdMode::burst) {
         typename T::resp* buf = reinterpret_cast<typename T::resp*>( p->getWritePtr() );
         for (int i = 0; i <= len; ++i) rdFillBeat<T>( buf[i], sc, b, i );
-        p->sendData( *buf, len + 1 );
+        if (sc.fixedSize) p->sendData( *buf ); else p->sendData( *buf, len + 1 );
     } else {
         for (int i = 0; i <= len; ++i) {
             typename T::resp r;
@@ -326,7 +328,7 @@ struct rdThunkHarness : sc_core::sc_module
     std::unique_ptr<thunker_t> thunker;
 
     rdThunkHarness( sc_core::sc_module_name n, shape s, const rdScenario& sc, axiRun& run )
-      : sc_core::sc_module( n ), upChan( makeChan<Up>( sc.multicycle ) )
+      : sc_core::sc_module( n ), upChan( makeChan<Up>( sc.multicycle, sc.fixedSize, sc.bufferBeats ) )
     {
         if (childConsumes( s )) {
             peerOut = std::make_unique<typename Up::out>( "peerOut" );
@@ -367,7 +369,7 @@ struct rdDirectHarness : sc_core::sc_module
     typename T::in rsp;
 
     rdDirectHarness( sc_core::sc_module_name n, const rdScenario& sc, axiRun& run )
-      : sc_core::sc_module( n ), chan( makeChan<T>( sc.multicycle ) ), req( "req" ), rsp( "rsp" )
+      : sc_core::sc_module( n ), chan( makeChan<T>( sc.multicycle, sc.fixedSize, sc.bufferBeats ) ), req( "req" ), rsp( "rsp" )
     {
         req( *chan );
         rsp( *chan );
@@ -410,12 +412,14 @@ struct wrScenario
     wrMode recv;
     bool multicycle;
     // serial: AW, W and B of one burst complete before the next burst starts.
-    // Otherwise every AW goes first, then every W, then B in respOrder.
+    // Otherwise all AWs and all Ws run in groups, then B in respOrder.
     bool serial;
-    // W of each burst is sent (and received) before its AW. Serial only.
+    // W is sent and received before AW, individually or as a group.
     bool dataFirst;
     std::vector<axiBurst> bursts;
     std::vector<int> respOrder;
+    bool fixedSize = false;
+    unsigned bufferBeats = 256;
 };
 
 template <class T>
@@ -463,7 +467,7 @@ static void wrSendBurst( typename T::out& p, const wrScenario& sc, int b )
     if (sc.send == wrMode::burst) {
         typename T::data* buf = reinterpret_cast<typename T::data*>( p->getSendDataPtr() );
         for (int i = 0; i <= len; ++i) wrFillBeat<T>( buf[i], sc, b, i );
-        p->sendData( *buf, len + 1 );
+        if (sc.fixedSize) p->sendData( *buf ); else p->sendData( *buf, len + 1 );
     } else {
         for (int i = 0; i <= len; ++i) {
             typename T::data d;
@@ -501,8 +505,13 @@ static void wrSender( typename T::out& p, const wrScenario& sc, axiRun& run )
             wrReceiveResp<T>( p, sc, run, b );
         }
     } else {
-        for (int b = 0; b < n; ++b) wrSendAddr<T>( p, sc, b );
-        for (int b = 0; b < n; ++b) wrSendBurst<T>( p, sc, b );
+        if (sc.dataFirst) {
+            for (int b = 0; b < n; ++b) wrSendBurst<T>( p, sc, b );
+            for (int b = 0; b < n; ++b) wrSendAddr<T>( p, sc, b );
+        } else {
+            for (int b = 0; b < n; ++b) wrSendAddr<T>( p, sc, b );
+            for (int b = 0; b < n; ++b) wrSendBurst<T>( p, sc, b );
+        }
         for (int b : sc.respOrder) wrReceiveResp<T>( p, sc, run, b );
     }
     run.done = sc_core::sc_time_stamp();
@@ -530,6 +539,7 @@ static void wrReceiveBurst( typename T::in& p, const wrScenario& sc, axiRun& run
     if (sc.recv == wrMode::burst) {
         typename T::data d;
         p->receiveData( d );
+        expectEqual( run, "received beat count", p->getReceiveBeatCount(), len + 1 );
         const typename T::data* buf = reinterpret_cast<const typename T::data*>( p->getReceiveDataPtr() );
         for (int i = 0; i <= len; ++i) wrCheckBeat<T>( run, buf[i], sc, b, i );
     } else {
@@ -570,8 +580,13 @@ static void wrReceiver( typename T::in& p, const wrScenario& sc, axiRun& run )
             wrSendResp<T>( p, sc, b );
         }
     } else {
-        for (int b = 0; b < n; ++b) wrReceiveAddr<T>( p, sc, run, b );
-        for (int b = 0; b < n; ++b) wrReceiveBurst<T>( p, sc, run, b );
+        if (sc.dataFirst) {
+            for (int b = 0; b < n; ++b) wrReceiveBurst<T>( p, sc, run, b );
+            for (int b = 0; b < n; ++b) wrReceiveAddr<T>( p, sc, run, b );
+        } else {
+            for (int b = 0; b < n; ++b) wrReceiveAddr<T>( p, sc, run, b );
+            for (int b = 0; b < n; ++b) wrReceiveBurst<T>( p, sc, run, b );
+        }
         for (int b : sc.respOrder) wrSendResp<T>( p, sc, b );
     }
     run.receiverDone = true;
@@ -594,7 +609,7 @@ struct wrThunkHarness : sc_core::sc_module
     std::unique_ptr<thunker_t> thunker;
 
     wrThunkHarness( sc_core::sc_module_name n, shape s, const wrScenario& sc, axiRun& run )
-      : sc_core::sc_module( n ), upChan( makeChan<Up>( sc.multicycle ) )
+      : sc_core::sc_module( n ), upChan( makeChan<Up>( sc.multicycle, sc.fixedSize, sc.bufferBeats ) )
     {
         if (childConsumes( s )) {
             peerOut = std::make_unique<typename Up::out>( "peerOut" );
@@ -634,7 +649,7 @@ struct wrDirectHarness : sc_core::sc_module
     typename T::in rcv;
 
     wrDirectHarness( sc_core::sc_module_name n, const wrScenario& sc, axiRun& run )
-      : sc_core::sc_module( n ), chan( makeChan<T>( sc.multicycle ) ), snd( "snd" ), rcv( "rcv" )
+      : sc_core::sc_module( n ), chan( makeChan<T>( sc.multicycle, sc.fixedSize, sc.bufferBeats ) ), snd( "snd" ), rcv( "rcv" )
     {
         snd( *chan );
         rcv( *chan );
@@ -699,6 +714,19 @@ static const wrScenario WR_OUTSTANDING = { wrMode::burst, wrMode::burst, true, f
                                            { { 1, 3 }, { 2, 0 }, { 1, 1 } }, { 1, 0, 2 } };
 static const wrScenario WR_DATA_FIRST_CYCLE = { wrMode::cycle, wrMode::cycle, false, true, true, { { 1, 7 }, { 2, 3 } }, {} };
 static const wrScenario WR_DATA_FIRST_BEAT = { wrMode::beat, wrMode::beat, false, true, true, WR_SINGLE, {} };
+static const wrScenario WR_DATA_FIRST_BURST = { wrMode::burst, wrMode::burst, true, true, true,
+                                               { { 1, 0 }, { 2, 255 }, { 1, 7 }, { 3, 0 } }, {} };
+static const wrScenario WR_DATA_FIRST_OUTSTANDING = { wrMode::burst, wrMode::burst, true, false, true,
+                                                     { { 1, 7 }, { 2, 0 }, { 1, 3 } }, { 1, 0, 2 } };
+// No explicit send count: the fixed-size buffer includes allocation padding.
+static const wrScenario WR_DATA_FIRST_FIXED = { wrMode::burst, wrMode::burst, true, true, true,
+                                               { { 1, 3 }, { 2, 3 }, { 1, 3 } }, {}, true, 4 };
+static const wrScenario WR_FIXED = { wrMode::burst, wrMode::burst, true, true, false,
+                                    { { 1, 3 }, { 2, 3 }, { 1, 3 } }, {}, true, 4 };
+static const rdScenario RD_FIXED = { rdMode::burst, true, true,
+                                    { { 1, 3 }, { 2, 3 }, { 1, 3 } }, {}, true, 4 };
+static const rdScenario RD_FIXED_MAX = { rdMode::burst, true, true,
+                                        { { 1, 255 }, { 2, 255 } }, {}, true, 256 };
 static const wrScenario WR_DIRECT = { wrMode::burst, wrMode::burst, true, true, false, { { 1, 15 }, { 2, 3 } }, {} };
 
 struct caseEntry
@@ -789,6 +817,9 @@ static std::vector<caseEntry> allCases()
     for (shape s : ALL) {
         cases.push_back( rdCase<rdUp, rdDown, false, false>( "cycle256", s, RD_CYCLE, false, false, true ) );
         cases.push_back( rdCase<rdUp, rdDown, false, false>( "burst", s, RD_BURST, false, false, true ) );
+        cases.push_back( rdCase<rdUp, rdDown, false, false>( "fixed", s, RD_FIXED, false, false, true ) );
+        cases.push_back( rdCase<rdUp, rdDown, false, false>( "fixedMax", s, RD_FIXED_MAX, false, false, true ) );
+        cases.push_back( rdCase<rdMaskA, rdMaskB, true, true>( "fixedDirect", s, RD_FIXED, true, true, true ) );
     }
     for (shape s : CHANNEL) {
         cases.push_back( rdCase<rdUp, rdDown, false, false>( "outstandingBurst", s, RD_OUTSTANDING_BURST, false, false, true ) );
@@ -801,6 +832,11 @@ static std::vector<caseEntry> allCases()
     for (shape s : ALL) {
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "burstBurst", s, WR_BURST_BURST, false, false, true ) );
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "cycleCycle", s, WR_CYCLE_CYCLE, false, false, true ) );
+        cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "dataFirstBurst", s, WR_DATA_FIRST_BURST, false, false, true ) );
+        cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "dataFirstOutstanding", s, WR_DATA_FIRST_OUTSTANDING, false, false, true ) );
+        cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "dataFirstFixed", s, WR_DATA_FIRST_FIXED, false, false, true ) );
+        cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "fixed", s, WR_FIXED, false, false, true ) );
+        cases.push_back( wrCase<wrMaskA, wrMaskB, true, true, true>( "fixedDirect", s, WR_FIXED, true, true, true ) );
     }
     for (shape s : CHANNEL) {
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "burstCycle", s, WR_BURST_CYCLE, false, false, true ) );
@@ -811,6 +847,7 @@ static std::vector<caseEntry> allCases()
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "outstanding", s, WR_OUTSTANDING, false, false, true ) );
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "dataFirstCycle", s, WR_DATA_FIRST_CYCLE, false, false, true ) );
         cases.push_back( wrCase<wrUp, wrDown, false, false, false>( "dataFirstBeat", s, WR_DATA_FIRST_BEAT, false, false, true ) );
+        cases.push_back( wrCase<wrMaskA, wrMaskB, true, true, true>( "dataFirstDirect", s, WR_DATA_FIRST_BURST, true, true, true ) );
         cases.push_back( wrCase<wrMaskA, wrMaskB, true, true, true>( "directBurst", s, WR_DIRECT, true, true, true ) );
     }
     cases.push_back( wrCase<wrUpRxB, wrDownRxAW, false, false, false>( "userOneSide", shape::connections, WR_BEAT_BEAT_NMC, false, false, false ) );
