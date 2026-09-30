@@ -4,81 +4,37 @@
 
 #include "axi_read_channel.h"
 #include "../../common/systemc/bitTwiddling.h"
-#include "sysc/kernel/sc_dynamic_processes.h"
+#include <memory>
 #include <optional>
+#include <queue>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 // axi_read_port_thunker
 //
-// Header-only forwarding adapter held as a member of a generated container
-// class. Bridges an upstream axi_read consumer-side endpoint carrying
-// (axiReadAddressSt<UpA>, axiReadRespSt<UpD>) to a downstream axi_read
-// consumer port carrying (axiReadAddressSt<DownA>, axiReadRespSt<DownD>),
-// when the two pairs are per-field _bitWidth equivalent but differ in
-// nested _packedSt width. Per-field equivalence is validated elsewhere;
-// this class performs the runtime payload bridge via copyPayload()
-// in both directions and preserves the AXI read handshake at both ends.
+// Joins a child axi_read port to the parent's endpoint when the payload types
+// are per-field _bitWidth equivalent but distinct C++ types. Up is the parent
+// side and Down the child, whatever the data direction.
 //
-// DirectAddr and DirectData are the generator's verdicts for the two required
-// payload pairs this protocol carries (addr_t and data_t, in that order): true
-// when the pair's two declarations emit identical member storage. The copies
-// here are on the envelopes rather than the payloads themselves: the
-// parameter-dependent members of axiReadAddressSt are its araddr payload and
-// its optional user-signal and id members, likewise rdata for axiReadRespSt, so
-// the envelope corresponds when the payload verdict holds and the optional
-// members are the same C++ type on both sides (kDirectAddr / kDirectData
-// below). Both default to false, which is always correct and merely slower,
-// so a hand-written instantiation need not supply them.
+// It owns no channel and no thread. The adapter converts every child call,
+// portBase calls such as setCycleTransaction included, and makes it on the
+// parent's channel, so timing and API mode are those of a direct bind.
 //
-// Up always denotes the parent side and Down the owned child channel; this
-// is a topological position, not a data-flow direction (the producer shape
-// below flows Down -> Up).
+// Where a verdict is false, copyPayload's packed arm masks each field to its
+// declared width. A value with bits outside its range is then cleaned up here
+// instead of failing fast as it would on a direct bind. This is an accepted
+// limitation.
 //
-// Single-beat semantics only: the forwarding loop pulls one address and
-// returns one response per iteration. Multi-beat burst transfers are out
-// of scope for the thunker; the packed-form check is the canonical guard
-// against width disagreement for the wrapped envelope.
+// getWritePtr()/getReadPtr() hand the child raw memory in the parent's burst
+// buffer, which the thunker never sees. Unless kDirectData holds, the two sides
+// lay out a beat differently, so the adapter gives the child a Down-typed copy
+// of 256 beats (the AXI maximum) and converts it on sendData(x, N) and
+// getReadPtr(), taking the burst length from the arlen forwarded for that rid.
 //
-// Four construction shapes are supported, spanning a 2x2 family: the child
-// (down) end is either a consumer (axi_read_in<DownA, DownD>&) or a producer
-// (axi_read_out<DownA, DownD>&), and the parent (up) end is either a
-// fully-bound channel interface base (captured eagerly) or an unbound parent
-// port (resolved lazily on the spawned thread's first iteration, since the
-// port's interface is not available until SystemC elaboration completes):
-//   * connectionMap shape (consumer child, up port) — up is a parent port
-//     axi_read_in<UpA, UpD>&, resolved lazily in thunkIn().
-//   * connections shape (consumer child, up channel) — up is the parent-side
-//     channel bound directly by its axi_read_in_if<UpA, UpD> interface base,
-//     captured immediately.
-//   * producer (out) shape (producer child, up channel) — the child producer
-//     port axi_read_out<DownA, DownD>& drives the owned channel; the thunker
-//     consumes from it and drives the bridged payload onto the parent-side
-//     channel's axi_read_out_if<UpA, UpD>, captured immediately. Data flows
-//     child -> parent, the reverse of the consumer shapes.
-//   * producer (out) port shape (producer child, up port) — as the producer
-//     shape, but the up side is an unbound parent port axi_read_out<UpA, UpD>&
-//     (e.g. a testbench External's inherited <DUT>Inverted boundary port),
-//     resolved lazily in thunkOut(). Used when a parameterized producer
-//     instance feeds a non-parameterized boundary at an excluded-instance
-//     (tb/DUT) boundary.
-//
-// In every shape the child-side port bind to the owned channel must occur
-// during SystemC elaboration; that bind is performed in the constructor
-// body (which is only reached when the thunker is held as a container
-// member).
-// The thunker moves each transaction as packed bits, and the ID occupies
-// exactly IDW of them, so both ends must agree on UpIDW == DownIDW for the
-// ID to round-trip unchanged. The C++ spelling of the ID type may differ
-// (project validation pairs type payloads by width, and a parameterizable
-// type spells as a 64-bit alias). Template argument order matches the generator
-// (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
-// the direct-copy verdicts (DirectAddr, DirectData), up-optional (in
-// interface_defs order: ARU, RU, ID/IDW), down-optional (ARU, RU, ID/IDW).
-//
-// The verdicts cover the required payloads only. The optional user-signal and
-// id payloads have no generator verdict; their storage corresponds exactly when
-// both sides spell the same C++ type, which the class decides itself below.
+// A parent port is unbound until elaboration completes, so it is resolved in
+// end_of_elaboration(). Template argument order must match _thunker_member_type
+// in pysrc/intf_gen_utils.py. block_ is unused.
 template <class UpA, class UpD, class DownA, class DownD,
           bool DirectAddr = false, bool DirectData = false,
           class UpARU = std::monostate, class UpRU = std::monostate, class UpID = _axiIdT, unsigned UpIDW = 4,
@@ -86,26 +42,31 @@ template <class UpA, class UpD, class DownA, class DownD,
 class axi_read_port_thunker
 {
     static_assert(UpIDW == DownIDW, "a cross-interface bind must carry the same id_t width on both ends");
-    // Envelope-level direct-copy verdicts. The generator's verdict covers the
-    // required payload; the envelope also corresponds only when the optional
-    // user-signal and id members are the same C++ type on both sides (the id
-    // width is already equal). A false verdict is always correct, only slower.
-    static constexpr bool kDirectAddr = DirectAddr && std::is_same_v<UpARU, DownARU> && std::is_same_v<UpID, DownID>;
+    static_assert(!DirectAddr || sizeof(UpA) == sizeof(DownA), "direct copy requires equal payload size");
+    static_assert(!DirectData || sizeof(UpD) == sizeof(DownD), "direct copy requires equal payload size");
+
+    using UpAddr = axiReadAddressSt<UpA, UpARU, UpID, UpIDW>;
+    using DownAddr = axiReadAddressSt<DownA, DownARU, DownID, DownIDW>;
+    using UpResp = axiReadRespSt<UpD, UpRU, UpID, UpIDW>;
+    using DownResp = axiReadRespSt<DownD, DownRU, DownID, DownIDW>;
+    using UpIn = axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>;
+    using UpOut = axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>;
+    using DownIn = axi_read_in_if<DownA, DownD, DownARU, DownRU, DownID, DownIDW>;
+    using DownOut = axi_read_out_if<DownA, DownD, DownARU, DownRU, DownID, DownIDW>;
+
     static constexpr bool kDirectData = DirectData && std::is_same_v<UpRU, DownRU> && std::is_same_v<UpID, DownID>;
+    static_assert(!kDirectData || sizeof(UpResp) == sizeof(DownResp), "a shared burst buffer requires equal envelope size");
+    static constexpr unsigned kMaxBurst = 1u << UpAddr::lenWidth;
+
 public:
     // connectionMap shape: parent port reference.
     axi_read_port_thunker( const char* name_,
                            axi_read_in<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&     upPort,
                            axi_read_in<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
-      : m_up_port( &upPort ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkIn(); } );
+        m_in = std::make_unique<inAdapter>( name_, upPort );
+        downPort( *m_in );
     }
 
     // connections shape: parent-side channel bound by its interface base.
@@ -113,117 +74,215 @@ public:
                            axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&  upInIface,
                            axi_read_in<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( &upInIface ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkIn(); } );
+        m_in = std::make_unique<inAdapter>( name_, upInIface );
+        downPort( *m_in );
     }
 
-    // producer (out) shape: the downstream child end is a producer port
-    // that drives the owned channel; the bridged payload is driven onto
-    // the parent-side channel's axi_read_out_if<UpA, UpD>.
+    // producer (out) shape: the child producer port drives the parent-side
+    // channel's axi_read_out_if<UpA, UpD>.
     axi_read_port_thunker( const char* name_,
                            axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&  upOutIface,
                            axi_read_out<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( &upOutIface ),
-        m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+        m_out = std::make_unique<outAdapter>( name_, upOutIface );
+        downPort( *m_out );
     }
 
-    // producer (out) port shape: the up side is an unbound parent OUT port
-    // (axi_read_out<UpA, UpD>&), resolved lazily in thunkOut() once its
-    // interface binds during elaboration. Mirrors the connectionMap shape's
-    // lazy port handling for the producer direction.
+    // producer (out) port shape: the parent side is a parent OUT port.
     axi_read_port_thunker( const char* name_,
                            axi_read_out<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&     upPort,
                            axi_read_out<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
-      : m_up_port( nullptr ),
-        m_up_in_iface( nullptr ),
-        m_up_out_iface( nullptr ),
-        m_up_out_port( &upPort ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
-        downPort( m_down_channel );
-        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+        m_out = std::make_unique<outAdapter>( name_, upPort );
+        downPort( *m_out );
     }
 
 private:
-    void thunkIn()
+    template <class To, class From>
+    static void copyAddr( To& out, const From& in )
     {
-        // Resolve the up-side interface once. For the port shape, sc_port
-        // binding is complete by the time the spawned thread first runs.
-        axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* upIn =
-            m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
-        while (true) {
-            // Address phase: upstream receives, downstream sends.
-            axiReadAddressSt<UpA, UpARU, UpID, UpIDW>   addrIn;
-            axiReadAddressSt<DownA, DownARU, DownID, DownIDW> addrOut;
-            upIn->receiveAddr( addrIn );
-            static_assert( !kDirectAddr || sizeof(decltype(addrOut)) == sizeof(decltype(addrIn)), "direct copy requires equal envelope size" );
-            copyPayload<kDirectAddr>( addrOut, addrIn );
-            // The channel's overridden sendAddr() drops the default
-            // optional argument, so the std::nullopt is supplied
-            // explicitly to satisfy the two-argument signature.
-            m_down_channel.sendAddr( addrOut, std::nullopt );
-
-            // Data phase: downstream returns, upstream answered.
-            axiReadRespSt<DownD, DownRU, DownID, DownIDW> dataIn;
-            axiReadRespSt<UpD, UpRU, UpID, UpIDW>   dataOut;
-            m_down_channel.receiveData( dataIn );
-            static_assert( !kDirectData || sizeof(decltype(dataOut)) == sizeof(decltype(dataIn)), "direct copy requires equal envelope size" );
-            copyPayload<kDirectData>( dataOut, dataIn );
-            upIn->sendData( dataOut );
+        out.arid = static_cast<decltype(out.arid)>( in.arid );
+        copyPayload<DirectAddr>( out.araddr, in.araddr );
+        out.arlen = in.arlen;
+        out.arsize = in.arsize;
+        out.arburst = in.arburst;
+        if constexpr (hasOptionalPayload<decltype(out.user)> && hasOptionalPayload<decltype(in.user)>) {
+            copyPayload<false>( out.user, in.user );
         }
     }
 
-    void thunkOut()
+    template <class To, class From>
+    static void copyResp( To& out, const From& in )
     {
-        // Producer (out) shape: the child producer drives DownA/DownD into
-        // the owned m_down_channel; bridge each payload and drive UpA/UpD
-        // onto the parent-side channel. Data flows child -> parent,
-        // mirroring thunkIn() with every Up/Down role swapped. Resolve the
-        // up-side interface once, from the eager channel iface or (port
-        // shape) the lazily-bound parent out port.
-        axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* upOut =
-            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
-        while (true) {
-            // Address phase: downstream receives, upstream sends.
-            axiReadAddressSt<DownA, DownARU, DownID, DownIDW> addrIn;
-            axiReadAddressSt<UpA, UpARU, UpID, UpIDW>   addrOut;
-            m_down_channel.receiveAddr( addrIn );
-            static_assert( !kDirectAddr || sizeof(decltype(addrOut)) == sizeof(decltype(addrIn)), "direct copy requires equal envelope size" );
-            copyPayload<kDirectAddr>( addrOut, addrIn );
-            // The out interface's sendAddr() carries a defaulted optional
-            // argument; the std::nullopt is supplied explicitly to mirror
-            // the channel-side call in thunkIn().
-            upOut->sendAddr( addrOut, std::nullopt );
-
-            // Data phase: upstream returns, downstream answered.
-            axiReadRespSt<UpD, UpRU, UpID, UpIDW>   dataIn;
-            axiReadRespSt<DownD, DownRU, DownID, DownIDW> dataOut;
-            upOut->receiveData( dataIn );
-            static_assert( !kDirectData || sizeof(decltype(dataOut)) == sizeof(decltype(dataIn)), "direct copy requires equal envelope size" );
-            copyPayload<kDirectData>( dataOut, dataIn );
-            m_down_channel.sendData( dataOut );
+        out.rid = static_cast<decltype(out.rid)>( in.rid );
+        copyPayload<DirectData>( out.rdata, in.rdata );
+        out.rresp = in.rresp;
+        out.rlast = in.rlast;
+        if constexpr (hasOptionalPayload<decltype(out.user)> && hasOptionalPayload<decltype(in.user)>) {
+            copyPayload<false>( out.user, in.user );
         }
     }
 
-    axi_read_in<UpA, UpD, UpARU, UpRU, UpID, UpIDW>*    m_up_port;
-    axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_in_iface;
-    axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_out_iface;
-    axi_read_out<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_out_port;
-    axi_read_channel<DownA, DownD, DownARU, DownRU, DownID, DownIDW> m_down_channel;
+    // The portBase calls the child makes through its port, forwarded to the
+    // parent's interface as a direct bind would deliver them.
+    template <class UpIf>
+    struct forwardPortBase : virtual public portBase
+    {
+        void setMultiDriver( std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr ) override { m_up->setMultiDriver( name_, prt ); }
+        std::shared_ptr<trackerBase> getTracker( void ) override { return m_up->getTracker(); }
+        void setTeeBusy( bool busy ) override { m_up->setTeeBusy( busy ); }
+        void setTandem( void ) override { m_up->setTandem(); }
+        void setLogging( verbosity_e verbosity ) override { m_up->setLogging( verbosity ); }
+        void setTimed( int nsec, timedDelayMode mode ) override { m_up->setTimed( nsec, mode ); }
+        void setCycleTransaction( portType type_ ) override { m_up->setCycleTransaction( type_ ); }
+        void setTimedDelayPtr( std::shared_ptr<timedDelayBase> pTimedDelay ) override { m_up->setTimedDelayPtr( pTimedDelay ); }
+        portBase* getPort( void ) override { return m_up->getPort(); }
+        sc_core::sc_prim_channel* getChannel( void ) override { return m_up->getChannel(); }
+        void setLogQueue( std::shared_ptr<stringPingPong> logQueue ) override { m_up->setLogQueue( logQueue ); }
+
+        UpIf* m_up = nullptr;
+        sc_core::sc_port<UpIf>* m_up_port = nullptr;
+    };
+
+    // Consumer child: the child receives AR and sends R.
+    class inAdapter final : public sc_core::sc_prim_channel, public DownIn, public forwardPortBase<UpIn>
+    {
+    public:
+        inAdapter( const char* name_, sc_core::sc_port<UpIn>& upPort ) : sc_core::sc_prim_channel( name_ ) { this->m_up_port = &upPort; }
+        inAdapter( const char* name_, UpIn& up ) : sc_core::sc_prim_channel( name_ ) { this->m_up = &up; }
+
+        void receiveAddr( DownAddr& addr_ ) override
+        {
+            UpAddr up;
+            this->m_up->receiveAddr( up );
+            copyAddr( addr_, up );
+        }
+        void sendData( const DownResp& data_ ) override
+        {
+            UpResp up;
+            copyResp( up, data_ );
+            this->m_up->sendData( up );
+        }
+        void sendData( const DownResp& data_, int burst_count ) override
+        {
+            if constexpr (!kDirectData) {
+                UpResp* up = reinterpret_cast<UpResp*>( this->m_up->getWritePtr() );
+                for (int i = 0; i < burst_count; i++) {
+                    copyResp( up[i], m_shadow[i] );
+                }
+            }
+            UpResp up;
+            copyResp( up, data_ );
+            this->m_up->sendData( up, burst_count );
+        }
+        void sendDataCycle( const DownResp& data_ ) override
+        {
+            UpResp up;
+            copyResp( up, data_ );
+            this->m_up->sendDataCycle( up );
+        }
+        uint8_t* getWritePtr( void ) override
+        {
+            if constexpr (kDirectData) {
+                return this->m_up->getWritePtr();
+            } else {
+                return reinterpret_cast<uint8_t*>( m_shadow.data() );
+            }
+        }
+        bool isActive() override { return this->m_up->isActive(); }
+        bool isNotActive() override { return this->m_up->isNotActive(); }
+        void setExternalEvent( sc_event* event ) override { this->m_up->setExternalEvent( event ); }
+        const char* kind() const override { return "axi_read_port_thunker"; }
+
+    private:
+        void end_of_elaboration() override
+        {
+            if (this->m_up_port) {
+                this->m_up = this->m_up_port->operator->();
+            }
+        }
+        std::vector<DownResp> m_shadow = std::vector<DownResp>( kDirectData ? 0 : kMaxBurst );
+    };
+
+    // Producer child: the child sends AR and receives R.
+    class outAdapter final : public sc_core::sc_prim_channel, public DownOut, public forwardPortBase<UpOut>
+    {
+    public:
+        outAdapter( const char* name_, sc_core::sc_port<UpOut>& upPort ) : sc_core::sc_prim_channel( name_ ) { this->m_up_port = &upPort; }
+        outAdapter( const char* name_, UpOut& up ) : sc_core::sc_prim_channel( name_ ) { this->m_up = &up; }
+
+        void sendAddr( const DownAddr& addr_, std::optional<std::string> str ) override
+        {
+            // Burst lengths per id, for the buffer conversion in getReadPtr().
+            // A cycle-mode child reads no buffer, so records nothing.
+            if constexpr (!kDirectData) {
+                if (!m_cycle) {
+                    m_beats[addr_.arid].push( addr_.arlen + 1u );
+                }
+            }
+            UpAddr up;
+            copyAddr( up, addr_ );
+            this->m_up->sendAddr( up, std::move( str ) );
+        }
+        void receiveData( DownResp& data_ ) override
+        {
+            UpResp up;
+            this->m_up->receiveData( up );
+            copyResp( data_, up );
+            // A transactional receive delivers one whole burst.
+            if constexpr (!kDirectData) {
+                std::queue<unsigned>& beats = m_beats[up.rid];
+                m_received = beats.front();
+                beats.pop();
+            }
+        }
+        void receiveDataCycle( DownResp& data_ ) override
+        {
+            UpResp up;
+            this->m_up->receiveDataCycle( up );
+            copyResp( data_, up );
+        }
+        // Only a channel with a burst buffer has a read pointer, so the burst is
+        // converted here rather than on every receiveData().
+        uint8_t* getReadPtr( void ) override
+        {
+            if constexpr (kDirectData) {
+                return this->m_up->getReadPtr();
+            } else {
+                const UpResp* up = reinterpret_cast<const UpResp*>( this->m_up->getReadPtr() );
+                for (unsigned i = 0; i < m_received; i++) {
+                    copyResp( m_shadow[i], up[i] );
+                }
+                return reinterpret_cast<uint8_t*>( m_shadow.data() );
+            }
+        }
+        void push_burst( uint32_t burstCount ) override { this->m_up->push_burst( burstCount ); }
+        void setCycleTransaction( portType type_ ) override
+        {
+            m_cycle = true;
+            this->m_up->setCycleTransaction( type_ );
+        }
+        const char* kind() const override { return "axi_read_port_thunker"; }
+
+    private:
+        void end_of_elaboration() override
+        {
+            if (this->m_up_port) {
+                this->m_up = this->m_up_port->operator->();
+            }
+        }
+        std::vector<DownResp> m_shadow = std::vector<DownResp>( kDirectData ? 0 : kMaxBurst );
+        std::vector<std::queue<unsigned>> m_beats = std::vector<std::queue<unsigned>>( kDirectData ? 0 : 1u << DownIDW );
+        unsigned m_received = 0;
+        bool m_cycle = false;
+    };
+
+    // One of the two, by construction shape.
+    std::unique_ptr<inAdapter> m_in;
+    std::unique_ptr<outAdapter> m_out;
 };
 
 #endif // AXI_READ_PORT_THUNKER_H

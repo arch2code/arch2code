@@ -29,6 +29,10 @@ extern uint16_t log2ofPowerOf2(uint64_t n);
 // pack_bits — OR `bits` bits from src@srcPos into dest@destPos. Caller must
 // pre-clear the destination. Source words are NOT masked, so any bits set above
 // the width being consumed OR into the destination alongside it.
+// This is a deliberate fast-fail mechanism. A model that sets bits outside a
+// field's declared range, or outside the interface, corrupts the neighbouring
+// field and fails quickly instead of being silently truncated. Do not add
+// masking to pack_bits or to any pack path built on it.
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
@@ -65,6 +69,46 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)
     }
 }
 
+// pack_payload_bits / unpack_payload_bits — a nested payload in and out of an
+// enclosing packed form. A scalar _packedSt (uint8_t, uint32_t) is staged through
+// a uint64_t because pack_bits/unpack_bits access whole uint64_t words and would
+// run past the end of it. Pack stays unmasked (fast fail, see pack_bits).
+template <typename T>
+inline void pack_payload_bits(uint64_t* dest, uint16_t destPos, const T& payload, uint16_t bits)
+{
+    typename T::_packedSt packed{0};
+    payload.pack(packed);
+    if constexpr (std::is_array_v<typename T::_packedSt>) {
+        pack_bits(dest, destPos, reinterpret_cast<uint64_t*>(&packed), bits);
+    } else {
+        pack_bits(dest, destPos, static_cast<uint64_t>(packed), bits);
+    }
+}
+
+template <typename T>
+inline void unpack_payload_bits(T& payload, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    using Packed = typename T::_packedSt;
+    if constexpr (std::is_array_v<Packed>) {
+        Packed packed{0};
+        unpack_bits(reinterpret_cast<uint64_t*>(&packed), 0, src, srcPos, bits);
+        payload.unpack(packed);
+    } else {
+        uint64_t wide = 0;
+        unpack_bits(&wide, 0, src, srcPos, bits);
+        Packed packed = static_cast<Packed>(wide);
+        payload.unpack(packed);
+    }
+}
+
+template <typename T>
+inline void unpack_scalar_bits(T& field, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    uint64_t wide = 0;
+    unpack_bits(&wide, 0, src, srcPos, bits);
+    field = static_cast<T>(wide);
+}
+
 // copyPayload — transfer a payload onto the differently-declared payload on the
 // other side of a cross-interface adapter. `Direct` is the generator's verdict
 // that the two declarations emit identical member storage; C++ cannot decide
@@ -81,7 +125,9 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)
 //
 // The arms diverge on a field holding a value wider than it declares: the packed
 // arm masks each field to its declared _bitWidth on unpack, while the assign and
-// bit_cast arms transfer the storage as it stands.
+// bit_cast arms transfer the storage as it stands. The packed arm's masking
+// hides an out-of-range value that pack_bits would expose. That is an accepted
+// thunker limitation, so do not add a check here to restore the fast fail.
 template <bool Direct, typename To, typename From>
 inline void copyPayload(To& out, const From& in)
 {

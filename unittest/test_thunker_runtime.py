@@ -34,6 +34,14 @@ and pinned here so a future edit that weakens it is visible:
   shapes and never come back to the owner, and
   `memory`/`apb` read data that is never converted before it is filled.
 
+`fixtures/thunker-runtime/axi_thunker_runtime.cpp` does the same for `axi_read` and
+`axi_write`. Each case runs one traffic pattern through a thunker and again over a
+direct connection, and the thunked run must match the direct one beat for beat and
+finish at the same simulation time. The patterns cover cycle-mode and burst-buffer
+APIs, 256-beat bursts, several outstanding addresses from one thread, responses out
+of order by id, write data before its address, and a user sideband bound on one
+side only, in all four construction shapes.
+
 The build is done here rather than by a project makefile because the harness is
 not a generated artifact of any project: it needs no database, and no example
 design exercises these six protocols across a cross-interface bind. The
@@ -53,6 +61,7 @@ test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'thunker-runtime', 'thunker_runtime.cpp')
+AXI_FIXTURE = os.path.join(test_dir, 'fixtures', 'thunker-runtime', 'axi_thunker_runtime.cpp')
 COMMON_SC = os.path.join(base_dir, 'common', 'systemc')
 # Base interfaces only. The fixture includes no pro header, and a base suite
 # must not depend on builder/pro being present in the checkout.
@@ -76,6 +85,10 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
 # a harness that stopped being constructed fails here rather than reducing the
 # evidence silently.
 EXPECTED_CHECKS = 757
+# Sixteen axi_read and twenty-eight axi_write cases, each with its direct-connection
+# control run.
+AXI_EXPECTED_CASES = 44
+AXI_EXPECTED_CHECKS = 68425
 
 
 def toolchain_env():
@@ -105,7 +118,7 @@ def run(cmd, what):
     return result
 
 
-def build_and_run(build_dir, env):
+def build_and_run(build_dir, env, fixture):
     """Compile the endOfTest module, the runtime and the harness; link and run."""
     common = [STD] + WARNINGS + DEFINES + include_flags(env)
 
@@ -120,7 +133,7 @@ def build_and_run(build_dir, env):
 
     module_flag = f'-fmodule-file=a2c.endOfTest={pcm}'
     sources = sorted(os.path.join(COMMON_SC, f) for f in os.listdir(COMMON_SC) if f.endswith('.cpp'))
-    sources.append(FIXTURE)
+    sources.append(fixture)
 
     def compile_one(src):
         obj = os.path.join(build_dir, os.path.basename(src)[:-4] + '.o')
@@ -131,7 +144,7 @@ def build_and_run(build_dir, env):
     with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
         objects = [module_obj] + list(pool.map(compile_one, sources))
 
-    binary = os.path.join(build_dir, 'thunker_runtime')
+    binary = os.path.join(build_dir, os.path.basename(fixture)[:-4])
     run([CXX, STD, '-o', binary] + objects +
         ['-L' + env['LD_BOOST'], '-L' + env['SYSTEMC_LIBDIR']] + LIBS, 'link')
 
@@ -144,7 +157,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert shutil.which(CXX), f"{CXX} not found on PATH"
     build_dir = tempfile.mkdtemp(prefix='a2c_thunker_rt_')
     try:
-        result = build_and_run(build_dir, env)
+        result = build_and_run(build_dir, env, FIXTURE)
     finally:
         shutil.rmtree(build_dir)
 
@@ -161,9 +174,33 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     print(f"  {count} payload and beat-count checks across 48 harnesses, 0 failures")
 
 
+def test_axi_thunkers_match_a_direct_connection():
+    """Build and run the AXI harness; every case must match its direct-connection run."""
+    env = toolchain_env()
+    assert shutil.which(CXX), f"{CXX} not found on PATH"
+    build_dir = tempfile.mkdtemp(prefix='a2c_axi_thunker_rt_')
+    try:
+        result = build_and_run(build_dir, env, AXI_FIXTURE)
+    finally:
+        shutil.rmtree(build_dir)
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, f"harness exited {result.returncode}:\n{output}"
+    cases = [line for line in output.splitlines() if line.startswith('cases:')]
+    assert cases == [f'cases:{AXI_EXPECTED_CASES}'], f"expected {AXI_EXPECTED_CASES} cases, got {cases!r}:\n{output}"
+    summary = [line for line in output.splitlines() if line.startswith('checks:')]
+    assert len(summary) == 1, f"expected one summary line, got {summary!r}:\n{output}"
+    checks, failures = summary[0].split()
+    assert failures == 'failures:0', f"{output}"
+    count = int(checks.split(':')[1])
+    assert count == AXI_EXPECTED_CHECKS, f"expected {AXI_EXPECTED_CHECKS} checks, got {count}:\n{output}"
+    print(f"  {count} beat, sideband and timing checks across {AXI_EXPECTED_CASES} AXI cases, 0 failures")
+
+
 def run_all_tests():
     tests = [
         test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts,
+        test_axi_thunkers_match_a_direct_connection,
     ]
     print("=" * 70)
     print("THUNKER RUNTIME TESTS")
