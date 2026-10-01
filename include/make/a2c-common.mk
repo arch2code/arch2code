@@ -72,6 +72,11 @@ PROJECT_RUNDIR = $(REPO_ROOT)/rundir
 # files left behind name sources that a later release may have deleted, and the
 # next build then fails with "No rule to make target".
 BIN_DIR = $(PROJECT_RUNDIR)/build
+# Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
+# and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
+# tree (not a manifest fact). Defined here so shared.mk can name objects under it
+# (EXTRA_VL_LIB_OBJS) in the verilation sub-make, which reads no rundir Makefile.
+A2C_VL_BUILD_DIR = $(BIN_DIR)/vl
 
 GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 
@@ -145,19 +150,19 @@ endif
 # stale (or gate-aborted shell) db.
 $(A2C_SQLDB_FILE): $(A2C_PRJ_YAML)
 $(A2C_SQLDB_FILE): $(YAML_FILES)
-	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE) $(EXTRA_GEN_OPTS)
 	touch $(A2C_SQLDB_DOTFILE)
 
 $(SC_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $<
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 $(PY_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemVerilog --file $<
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemVerilog --file $< $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 #------------------------------------------------------------------------
@@ -206,7 +211,7 @@ gen: $(GEN_DEPS)
 # Creates missing fileMap files, never rewrites an existing one, and deletes
 # registrar files the current contract no longer names.
 newmodule: $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule $(EXTRA_GEN_OPTS)
 	touch $(A2C_SQLDB_FILE)
 	@# The compdb parse scans .cppm scaffolds gen has not filled yet and fails;
 	@# keep it non-fatal so newmodule and migrate proceed.
@@ -226,6 +231,31 @@ help::
 	@echo "  migrate  	- Migrate to the current authoring format (yaml convert + stamp, db, orphan sweep, gen)"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"
+	@echo "  help-hooks	- List the EXTRA_* user hooks, the command each feeds, and its value"
+
+# Each hook is read where its command is built; the user appends with += in
+# include/make/shared.mk. $(info) prints values verbatim, quotes included.
+.PHONY: help-hooks
+help-hooks:
+	$(info User hooks: append with += in include/make/shared.mk)
+	$(info EXTRA_GEN_OPTS       arch2code.py db build, gen, newmodule: $(EXTRA_GEN_OPTS))
+	$(info EXTRA_SC_GEN_FILES   arch2code.py --systemc --file (gen): $(EXTRA_SC_GEN_FILES))
+	$(info EXTRA_SV_GEN_FILES   arch2code.py --systemVerilog --file (gen): $(EXTRA_SV_GEN_FILES))
+	$(info EXTRA_VERILATOR_OPTS verilator lint and model wrapping: $(EXTRA_VERILATOR_OPTS))
+	$(info VERILATOR_USER_OPTS  alias of EXTRA_VERILATOR_OPTS: $(VERILATOR_USER_OPTS))
+	$(info EXTRA_LINT_OPTS      verilator lint: $(EXTRA_LINT_OPTS))
+	$(info EXTRA_VL_OPTS        verilator model wrapping: $(EXTRA_VL_OPTS))
+	$(info EXTRA_VL_CFLAGS      verilator model wrapping -CFLAGS: $(EXTRA_VL_CFLAGS))
+	$(info EXTRA_VL_LIB_OBJS    ar ADDMOD into lib$(PROJECTNAME)vl_s_wrap.a: $(EXTRA_VL_LIB_OBJS))
+	$(info EXTRA_CXX_FLAGS      C++ compile: $(EXTRA_CXX_FLAGS))
+	$(info EXTRA_CPP_INCLUDES   C++ compile include paths: $(EXTRA_CPP_INCLUDES))
+	$(info EXTRA_CPP_SRC        C++ compile sources: $(EXTRA_CPP_SRC))
+	$(info EXTRA_O3_CPP_SRC     C++ compile sources at -O3: $(EXTRA_O3_CPP_SRC))
+	$(info EXTRA_CPP_MODULE_SRC C++ module interface units: $(EXTRA_CPP_MODULE_SRC))
+	$(info EXTRA_PRJ_SRC_DIRS   C++ project source dirs: $(EXTRA_PRJ_SRC_DIRS))
+	$(info EXTRA_A2C_SRC_DIRS   C++ builder source dirs: $(EXTRA_A2C_SRC_DIRS))
+	$(info EXTRA_LD_FLAGS       C++ link: $(EXTRA_LD_FLAGS))
+	@:
 
 #------------------------------------------------------------------------
 # Include AI agent setup targets

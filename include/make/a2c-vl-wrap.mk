@@ -14,13 +14,14 @@ endif
 #------------------------------------------------------------------------
 
 VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4 -DVL_DUT -MMD
-VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES'
+VERILATOR_CFLAG_OPTS = -std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 
 ifdef VL_COV
 VERILATOR_OPTS += --coverage
 endif
 
-VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
+# Builder options, then the user hooks. -CFLAGS is one quoted argument.
+VL_VERILATE = verilator $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
 
 # Design SV inputs of a verilate run: the manifest's DB-derived set plus the
 # user-hosted generated-region SV the manifest never lists, the same seam
@@ -76,7 +77,7 @@ endif
 # generated-source stamp prerequisite would keep this rule permanently out of date.
 obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 	mkdir -p obj_dir/vl_dummy
-	verilator $(VERILATOR_OPTS) --Mdir obj_dir/vl_dummy -CFLAGS $(VERILATOR_CFLAG_OPTS) $(VL_DUMMY_SRC) --top vl_dummy -exe
+	$(VL_VERILATE) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
 
 # One verilate per recorded top into its own --Mdir: the explicit design unit
 # (--top), the recorded physical .sv, and the recorded include search path (so a
@@ -85,16 +86,24 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 define vl_top_rule
 obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
-	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
+	$(VL_VERILATE) --Mdir obj_dir/$(1) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
+
+# EXTRA_VL_LIB_OBJS names objects a verilate run already builds (e.g. a timing
+# top's obj_dir/<top>/verilated_timing.o), relative to this directory or under
+# $(A2C_VL_BUILD_DIR). The builder does not compile them; the empty recipe only
+# orders them after every verilate so a parallel build finds them in place.
+ifneq ($(EXTRA_VL_LIB_OBJS),)
+$(EXTRA_VL_LIB_OBJS): obj_dir/vl_dummy/Vvl_dummy $(VL_OBJ_FILES) ;
+endif
 
 # One archive for the link: the runtime objects plus every member of every
 # per-top archive. ar cannot nest archives, so an MRI script adds the members
 # (ADDLIB); member names carry the top's prefix, so tops never collide.
-lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/vl_dummy/Vvl_dummy $(VL_OBJ_FILES)
+lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/vl_dummy/Vvl_dummy $(VL_OBJ_FILES) $(EXTRA_VL_LIB_OBJS)
 	{ echo "CREATE $@"; \
-	  $(foreach o,$(VL_LIB_OBJ_FILES),echo "ADDMOD $(o)";) \
+	  $(foreach o,$(VL_LIB_OBJ_FILES) $(EXTRA_VL_LIB_OBJS),echo "ADDMOD $(o)";) \
 	  $(foreach a,$(VL_OBJ_FILES),echo "ADDLIB $(a)";) \
 	  echo "SAVE"; echo "END"; } | ar -M
 	ar -s $@

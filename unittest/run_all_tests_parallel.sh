@@ -52,6 +52,7 @@ EXAMPLE_READERS=(
     test_vl_sc_wrap_name.py           # reads examples/ip_test (copytree)
     test_filemap_name_overrides.py    # reads examples/simple_ip (copytree)
     test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
+    test_make_user_hooks.py           # reads examples/simple_ip (copytree)
     test_sv_names_match_file_stem.py  # reads every examples/ tree
     test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
 )

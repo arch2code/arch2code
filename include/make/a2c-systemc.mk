@@ -168,10 +168,6 @@ CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 # so that `clean` owns it from either directory.
 BIN = run
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
-# Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
-# and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
-# tree (not a manifest fact), so `clean` removing BIN_DIR removes it too.
-A2C_VL_BUILD_DIR = $(BIN_DIR)/vl
 
 # Add to compiler dependencies
 CXX_FLAGS += $(CPP_INCLUDES)

@@ -18,8 +18,6 @@ endif
 
 VERILATOR_OPTS = --no-timing --lint-only
 
-VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
-
 # The lint top is the DUT-top wrapper the manifest resolved for HDL_TOP_MODULE:
 # an exact per-block lookup (A2C_VL_TOP_<block>) into the manifest, carrying that
 # top block's instance variant. Unlike a prefix match against A2C_VL_TOPS it is
@@ -50,7 +48,7 @@ RTL_SRC_FILES += $(TOP_HDL_SV_WRAPPER_FILE)
 all : lint
 
 lint: gen $(RTL_DOT_F_FILE)
-	verilator  $(VERILATOR_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(RTL_DOT_F_FILE) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(RTL_SRC_FILES)
+	verilator  $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_LINT_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(RTL_DOT_F_FILE) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(RTL_SRC_FILES)
 
 help::
 	@echo "  all     	- Run all lint checks"
