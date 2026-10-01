@@ -56,6 +56,7 @@ EXAMPLE_READERS=(
     test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
     test_db_failure_no_stale_artifact.py      # reads examples/simple + xprojParam/cpLayoutBad (copytree)
     test_tb_variant_plain_block.py            # reads examples/helloWorld (copytree)
+    test_vl_registrar_factory_domain.py       # reads examples/twoClk + examples/mixed (db to a temp path)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

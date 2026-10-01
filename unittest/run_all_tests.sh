@@ -805,6 +805,12 @@ python3 test_clockgen_link_loss.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: Verilated registrar registers each factory domain once"
+echo "------------------------------------------------------------------------"
+python3 test_vl_registrar_factory_domain.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

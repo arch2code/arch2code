@@ -17,12 +17,6 @@ struct _twoClkSink_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkSink_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "twoClk");
-        instanceFactory::registerBlock(
-            "twoClkSink_verif",
-            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkSink_hdl_sc_wrapper>(blockName, variant, bbMode));
-            },
-            "", "twoClk");
     }
 };
 static _twoClkSink_vl_registrar _twoClkSink_vl_registrar_instance;

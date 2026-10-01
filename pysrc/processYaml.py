@@ -1852,8 +1852,9 @@ class projectOpen:
 
     def getRegistrarConfigView(self, childQualBlock, parentBlock):
         # A physical registrar keeps the established child-only basename. It
-        # aggregates every pair for that child in the owning project while each
-        # registration retains its pair-qualified factory domain. Literal child
+        # aggregates every pair for that child in the owning project. Model rows
+        # keep each pair's factory domain; `_verif` rows do only when the child
+        # has its own params, else they use the child owner. Literal child
         # Configs also keep the child owner's established domain: standalone
         # testbenches and other non-pair construction sites still ask for that
         # key. Container-sourced Configs cannot use that alias because two
@@ -1878,6 +1879,7 @@ class projectOpen:
                                                         entry['childModuleIdentity']))
         childOwner = self.contextOwningProject[
             self.data['blocks'][childQualBlock]['_context']]
+        childHasOwnParams = self.getBlockConfigView(childQualBlock)['hasOwnParams']
         model = list()
         verif = list()
         variantDescriptors = dict()
@@ -1899,9 +1901,12 @@ class projectOpen:
                                   'factoryProject': childOwner}
                 if ownerAggregate not in model:
                     model.append(ownerAggregate)
+            # The `_verif` key the container's createInstance lookup targets
+            # (mirrors createInstanceProjectName).
+            verifFactoryProject = entry['factoryProject'] if childHasOwnParams else childOwner
             for registration in entry['verifRegistrations']:
                 aggregate = {**registration,
-                             'factoryProject': entry['factoryProject']}
+                             'factoryProject': verifFactoryProject}
                 if aggregate not in verif:
                     verif.append(aggregate)
                 if not registration['pairSpecific']:

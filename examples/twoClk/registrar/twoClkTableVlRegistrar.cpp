@@ -17,12 +17,6 @@ struct _twoClkTable_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkTable_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "twoClk");
-        instanceFactory::registerBlock(
-            "twoClkTable_verif",
-            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<twoClkTable_hdl_sc_wrapper>(blockName, variant, bbMode));
-            },
-            "", "twoClk");
     }
 };
 static _twoClkTable_vl_registrar _twoClkTable_vl_registrar_instance;
