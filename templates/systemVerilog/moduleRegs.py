@@ -80,12 +80,9 @@ def render(args, prj, data):
 
     # TODO extend support beyond 8-bytes wide for external registers
     for reg_key, reg_data in data['registers'].items():
-        unsup_ = False
         if reg_data['regType'] == 'ext' and len(reg_data['segments']) * REG_BUS_WIDTH_BYTES > 8 :
             printError(f"External register {reg_data['register']} > 8 bytes is not supported by current generator")
-            unsupp_ = True
-        if unsup_:
-            warningAndErrorReport()
+            exit(warningAndErrorReport())
 
     t = Template(regs_module_sv_j2_template)
 
