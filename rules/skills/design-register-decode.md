@@ -38,8 +38,8 @@ A **router** (decoder) is a block with a populated `addressBlock:`. Its RTL is
 `make newmodule` — you never hand-write decode logic, demux, or a manual
 top-level decoder.
 
-A **routed leaf** is a block that owns `registers` or `regAccess: true`
-memories, **or** authors a `registerPorts:` row. The framework synthesises its
+A **routed leaf** is a block that owns `registers` or `regAccess` memories,
+**or** authors a `registerPorts:` row. The framework synthesises its
 `<block>_regs` handler and a router→leaf dispatch connection.
 
 The single most important fact:
@@ -87,8 +87,9 @@ parent (the block is then itself a routed leaf of that parent). Apply:
     routed leaf, or move those registers onto a child leaf the inner decoder
     already serves. **Do not** "fix" it with a hand-authored `connectionMap`.
 
-`regAccess: true` (with `local:` absent) is the single switch that makes a
-memory firmware-accessible. No custom streaming/"load" interface is ever needed.
+`regAccess` (`rw`, `ro` or `wo`, with `local:` absent) is the single switch
+that makes a memory firmware-accessible. No custom streaming/"load" interface
+is ever needed.
 
 ---
 
@@ -97,7 +98,8 @@ memory firmware-accessible. No custom streaming/"load" interface is ever needed.
 To make a block's registers/memories firmware-accessible:
 
 1.  **Mark the state.** `regType: rw|ro|ext` registers and/or memories with
-    `regAccess: true` (and no `local:`). Never substitute a custom interface.
+    `regAccess: rw|ro|wo` (`true` means `rw`; no `local:`). Never substitute
+    a custom interface.
 2.  **Place a router in the leaf's container.** Declare a decoder block with a
     populated `addressBlock:` and instance it as a sibling of the routed leaf
     (same container). Pick an `addressGroup` name for that router.
@@ -170,8 +172,9 @@ does.
     declared and co-located, the entire register-bus fan-out below the primary
     router is synthesized. A need to hand-plumb the bus below the primary feed is
     a symptom of a broken invariant, not a fix.
-4.  **Single `regAccess` switch.** `regAccess: true` (with `local:` absent) is
-    the only switch to make a memory firmware-accessible.
+4.  **Single `regAccess` switch.** `regAccess` (with `local:` absent) is the
+    only switch to make a memory firmware-accessible. Its value is the
+    firmware access mode, below.
 
 > There is **no** "leaf-ownership invariant." Container blocks may own
 > registers/memories (see `examples/mixed`'s `blockB`). The real constraint is
@@ -179,20 +182,61 @@ does.
 > in §1: a block must be served by a sibling/parent decoder, and is never
 > decoded by a decoder it contains.
 
-A `regAccess` memory may sit on any clock its owning block declares (`clock:`
-on the memory row). When that clock is not the register bus clock, the
-generated handler bridges the access with a four-phase handshake in
-`common/systemVerilog/memory_reg_bridge.sv`, so the memory's clock must have a
-reset (its selected reset, or the memory's own `reset:`), else the build is
-rejected. Each bridged access stalls the bus for two synchroniser
-crossings each way plus the memory cycle, on the order of five bus cycles
-plus four memory cycles, and a read of an N-word row is N such accesses. A
-memory-side reset during an access completes it with `pslverr`, and firmware
-re-issues it. Firmware must also not issue a bridged access before the
-memory's clock domain has left reset, since such an access likewise
-completes with `pslverr` and is not retried by hardware. `examples/twoClk` is
-the worked case: block `twoClkTable`'s memory `tbl` sits on `clkSlow` behind
-the `twoClkReg` bus on `clk`, driven by the `twoClkCpu` model.
+### Firmware access modes
+
+`regAccess` sets what firmware may do to a memory: `rw` (also spelled
+`true`), `ro` (firmware only reads) or `wo` (firmware only writes). Any other
+value is rejected. The mode is a contract with firmware. Breaking it never
+raises `pslverr`.
+
+| Access | RTL | Model |
+| :--- | :--- | :--- |
+| Firmware write to an `ro` memory | The transfer completes and the memory is unchanged. | The write is dropped and logged at `LOG_ALWAYS`, naming the memory and the offset. |
+| Firmware read of a `wo` memory | The transfer completes with zero. The handler never reads the memory. | Returns zero, logged the same way. |
+
+RTL simulation prints nothing for these accesses. The generated handler has
+no write path for an `ro` memory and no read pipeline for a `wo` one.
+
+### Which port the register handler takes
+
+`memoryType` fixes what each port can do. The register handler takes one
+port and the block keeps the other. The generator keeps the ports that
+support the mode (`ro` needs a port that can read, `wo` one that can write,
+`rw` one that can do both), then prefers the port whose capability matches
+the mode exactly, then takes port B. A memory with no supporting port is
+rejected.
+
+| `memoryType` | `rw` / `true` | `ro` | `wo` |
+| :--- | :--- | :--- | :--- |
+| `dualPort` | B | B | B |
+| `portRportRW` | B | A | B |
+| `portRWportW` | A | A | B |
+| `portRportW` | error | A | B |
+| `singlePort` | the port | the port | the port |
+
+A table that firmware loads and the datapath reads is `portRportW` with
+`regAccess: wo`. A capture buffer that the datapath fills and firmware reads
+is `portRportW` with `regAccess: ro`. Because the handler takes a port, a
+dual-port `regAccess` memory lists at most one block-side port in `ports:`,
+and a `singlePort` one lists none.
+
+### A memory on another clock
+
+The register handler's port runs on the owning block's register clock. The
+block-side port runs on the memory's `clock:`, which defaults to the block's
+default clock. A dual-port `regAccess` memory may sit on any clock its block
+declares, and the two ports cross inside the RAM with no extra bus latency.
+A `singlePort` memory has one clock, so with `regAccess` its `clock:` must be
+the register clock, or the build is rejected. A memory has no `reset:`.
+
+The RAM does not order the two ports. Firmware should load a table while the
+datapath is not reading it, or accept that a read colliding with a write
+returns undefined data, as the block RAM does in silicon.
+
+`examples/twoClk` is the worked case. `twoClkTable`'s memory `tbl` is
+`portRportRW`. The generated handler takes the read/write port B on the
+`twoClkReg` bus clock `clk`, and the block keeps the read-only port A on
+`clkSlow`.
 
 ---
 
@@ -447,8 +491,11 @@ output.
 | Decoder RTL is an empty skeleton (ports only). | `make newmodule` ran before `addressBlock:` was present, so the generic template was seeded. | Add `addressBlock:`, re-run `make newmodule`; it selects `apbDecodeModule`. Never hand-write the demux. |
 | `<block>_regs` instantiated but its source file is missing. | Stale generated files or an out-of-date `.gen` cache. (`_regs` is synthesized for any block with registers **or** `regAccess` memories — register-only blocks DO get one.) | Remove orphaned generated files and `rm -rf .gen`, then `make db && make gen`. |
 | `Nested register decoder '…' (group '…') routes a 0x…-byte footprint …, which exceeds the 0x…-byte window that parent decoder '…' allocates to slot '…'.` | db-time nested-decoder address-containment check. A routed slot whose block contains a nested decoder must fit that decoder's whole footprint (`addressIncrement × maxAddressSpaces`) inside the per-child window the parent allocates. A bare register-block slot is covered instead by the decoded-span check (a router owns no registers, so it needs this separate check); a project with no `addressBlock:` at all has no groups to check (the `ip_test` no-decoder fixture). | Reduce the nested decoder's `addressIncrement` or `maxAddressSpaces`, or widen the parent decoder's `addressIncrement`. |
-| `Memory '…' of block '…' is regAccess on clock '…', which has no selected reset, but the block's register bus is on '…'. The register handler's bridge to that memory is generated logic in the memory's domain and needs a reset there; …` | The memory's clock has no reset for the bridge's memory side. | Declare a reset on that clock (or mark one `default: true`), or name one with the memory's `reset:`. |
-| `Memory '…' of block '…' names reset: '…', which belongs to clock '…', not the memory's own clock '…'. A memory's reset: must belong to the memory's own clock. …` | The memory's `reset:` names a reset that belongs to a different clock than the memory's own. | Name a reset that belongs to the memory's own clock, or drop `reset:` and let the clock's selected reset apply. |
+| `… field regAccess, … is not in the allowed values …` | `regAccess` is not one of `true`, `false`, `rw`, `ro`, `wo`. | Use one of those values. |
+| `… memory '…' of block '…' has regAccess: rw, which needs a port that can both read and write, and no port of a portRportW memory does. Change memoryType or regAccess.` | No port of the memory supports the firmware access mode. Only `rw` on `portRportW` hits this. | Use `ro` or `wo`, or a `memoryType` with a read/write port. |
+| `… memory '…' of block '…' lists N ports ('…') but has M free. A … memory has K ports and the register handler takes one. …` | `ports:` names more block-side ports than the memory has free: its port count, less one when the register handler takes a port. | List fewer ports, or use a dual-port `memoryType`. If the memory has `regAccess`, removing it frees the handler's port. The message lists the fixes that apply. |
+| `Memory '…' of block '…' has regAccess and is on clock '…', but the block's register bus is on '…'. A singlePort memory has one clock, so firmware can reach it only on the register bus clock. …` | A `singlePort` `regAccess` memory's `clock:` is not the register clock. | Set the memory's `clock:` to the register clock, or use a dual-port `memoryType`. |
+| `In file …, memory '…' sets a reset field. A memory has no reset state, so remove the field.` | A memory row sets `reset:`. | Remove `reset:`. |
 | `Container block '…' declares registerPorts: key '…', but the nested router '…' it hosts names upstreamPort '…'. The registerPorts: key must match the served router's upstreamPort.` | The synthesised boundary map wires the container's `registerPorts:` port straight through to the nested router's upstream port by name, so the two names are one port. | Rename the `registerPorts:` key to the nested router's `upstreamPort` (as `ipBridge.yaml` does with `apbReg`). |
 | `Interface '…' has interfaceType '…', an address-bus interface, but carries parameterizable structure(s) ….` | A register bus is fixed-width on every side of every router; registers and memories behind it may be parameterized (address allocation scopes them at their maximum), the bus structure may not. | Move the parameter onto the register or memory payload and give the bus a fixed-width structure. |
 

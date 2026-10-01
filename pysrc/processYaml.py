@@ -21,6 +21,7 @@ from pysrc.valueResolver import ValueResolver
 import pysrc.evalExpr as evalExpr
 import pysrc.yamlReadCache as yamlReadCache
 import pysrc.clockTree as clockTree
+from pysrc.memoryPortAccess import memoryRegisterPort
 
 # Current user-YAML authoring format. A migrated project carries a single
 # top-level `yamlFormat:` field in its project.yaml equal to this value; its
@@ -1595,13 +1596,6 @@ class projectOpen:
         # clock, None for a block with no register-bus role.
         ret['busClock'] = ret['registerClock']
 
-        # A handler's own memoriesParent entries (getBDRegistersMemories) are
-        # bridged exactly when their memory-side domainClock differs
-        # from the bus domain busClock just resolved above.
-        if ret['blockInfo']['isRegHandler']:
-            for entry in ret['memoriesParent'].values():
-                entry['bridged'] = entry['domainClock'] != ret['busClock']
-
     def getBDInstanceClockResetBinds(self, instanceKey):
         # The clock and reset binds a container emits for one child instance,
         # from the instanceClockResetBinds table. 'port' is the child module's
@@ -1617,13 +1611,10 @@ class projectOpen:
                 for row in self.data['instanceClockResetBinds'].get(instanceKey, [])]
 
     def getBDMemoryClock(self, memoryBlockKey):
-        # The clock the memory primitive is instantiated on, and the selected
-        # reset of that clock for the register bridge's memory side (None when
-        # the clock has no selected reset; only a memory served across a
-        # crossing needs one), from the memoryClocks table. The clock is always
-        # one the owning block declares, so the emitted bind names a port of the
-        # module the memory sits in.
-        return self.data['memoryClocks'][memoryBlockKey][0]
+        # The clock of the memory's block-side port, from the memoryClocks
+        # table. It is always one the owning block declares, so the emitted
+        # bind names a port of the module the memory sits in.
+        return self.data['memoryClocks'][memoryBlockKey][0]['clock']
 
     def getBDLocalNets(self, blockKey):
         # A container's own local nets: one internal wire per net a child
@@ -2340,9 +2331,16 @@ class projectOpen:
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
-                        memoryClock = self.getBDMemoryClock(obj)
-                        data[obj]['domainClock'] = memoryClock['clock']
-                        data[obj]['domainReset'] = memoryClock['reset']
+                        data[obj]['domainClock'] = self.getBDMemoryClock(obj)
+                        data[obj]['regPort'], data[obj]['portAccess'] = memoryRegisterPort(
+                            objInfo['memoryType'], objInfo['regAccess'])
+                        # The register handler's port runs on the owning
+                        # block's register clock, every other port on the
+                        # memory's own clock.
+                        registerClock = self.data['blockClocksResets'][block][0]['registerClock']
+                        data[obj]['portClock'] = {
+                            port: registerClock if port == data[obj]['regPort'] else data[obj]['domainClock']
+                            for port in data[obj]['portAccess']}
                         if objInfo['regAccess']:
                             ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
                         else:
@@ -5815,7 +5813,7 @@ class projectCreate:
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
             if addressType == 'memories':
-                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess = 1 order by blockKey, a.ROWID"
+                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess in ('rw', 'ro', 'wo') order by blockKey, a.ROWID"
             else:
                 sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey order by blockKey, a.ROWID"
             g.cur.execute(sql)
@@ -6911,9 +6909,9 @@ class projectCreate:
                           "VALUES (?, ?, ?, ?)", instanceClockResetBindsRows)
 
         g.cur.execute("DROP TABLE IF EXISTS memoryClocks")
-        g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT, reset TEXT)")
-        g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock, reset) "
-                          "VALUES (?, ?, ?)", memoryClocksRows)
+        g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT)")
+        g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock) "
+                          "VALUES (?, ?)", memoryClocksRows)
 
         g.cur.execute("DROP TABLE IF EXISTS portDomains")
         g.cur.execute("CREATE TABLE portDomains (blockKey TEXT, portName TEXT, "
@@ -8429,6 +8427,11 @@ class projectCreate:
                         f"a row may not author clock:, because each end's domain "
                         f"comes from the port, memory or register bus it joins. "
                         f"Remove the clock: field.")
+                elif field == 'reset' and section == 'memories':
+                    self.logError(
+                        f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, "
+                        f"memory '{item.get('memory')}' sets a reset field. A memory "
+                        f"has no reset state, so remove the field.")
                 elif not isinstance(field, dict) and not isinstance(item[field], dict):
                     if field not in schema and field not in ['eval', 'lc', '_yamlFileOverride']:
                         printWarning(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} has unknown field {field}")
@@ -9815,6 +9818,41 @@ class projectCreate:
                        f"width={sEntry['width']}). Cannot derive maxBytes.")
             exit(warningAndErrorReport())
         return (width + 7) >> 3
+
+    def _post_validateMemoryPorts(self, itemkey, item, yamlFile):
+        """Normalise a non-string regAccess (true, false, 1, 0) to 'rw' or
+        False, then reject a memory whose ports cannot carry the register
+        handler and every port the block lists."""
+        if not isinstance(item['regAccess'], str):
+            item['regAccess'] = 'rw' if item['regAccess'] else False
+        where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory "
+                 f"'{item['memory']}' of block '{item['block']}'")
+        regPort, portAccess = memoryRegisterPort(item['memoryType'], item['regAccess'])
+        if item['regAccess'] and regPort is None:
+            # Only rw gets here: every memoryType has a port that reads and
+            # a port that writes.
+            self.logError(
+                f"{where} has regAccess: rw, which needs a port that can both read "
+                f"and write, and no port of a {item['memoryType']} memory does. "
+                f"Change memoryType or regAccess.")
+            return item
+        listed = list(item.get('ports') or {})
+        available = len(portAccess) - (regPort is not None)
+        if len(listed) > available:
+            def ports(count):
+                return f"{count} port{'' if count == 1 else 's'}"
+            names = "', '".join(listed)
+            handler = " and the register handler takes one" if regPort is not None else ""
+            fixes = [f"List at most {ports(available)}" if available else "Remove the ports list"]
+            if len(portAccess) == 1 and len(listed) <= 2 - (regPort is not None):
+                fixes.append("use a dual-port memoryType")
+            if regPort is not None:
+                fixes.append("remove regAccess")
+            self.logError(
+                f"{where} lists {ports(len(listed))} ('{names}') but has {available} free. "
+                f"A {item['memoryType']} memory has {ports(len(portAccess))}{handler}. "
+                f"{', or '.join(fixes)}.")
+        return item
 
     def _post_registers(self, itemkey, item, yamlFile):
         """Validate memory register constraints after processing"""

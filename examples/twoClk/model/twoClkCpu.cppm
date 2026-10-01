@@ -33,11 +33,12 @@ public:
 
 private:
     // This cpu has no steady traffic to tickle a watchdog with, so it is a
-    // voter only: it casts its vote once its own tbl write/read/compare pass
-    // has run.
+    // voter only: it casts its vote once its tbl and lut/stats passes have run.
     endOfTest eot_{true};
 
     void regAccessTest(void);
+    void lutStatsTest(void);
+    uint32_t regRead(uint64_t offset);
     void writeTblRow(const int rowId, twoClkTblSt &entry);
     void readTblRow(const int rowId, twoClkTblSt &entry);
 };
@@ -115,16 +116,8 @@ void twoClkCpu::readTblRow(const int rowId, twoClkTblSt &entry)
     entry.sc_unpack(packed);
 }
 
-// tbl's memory domain (clkSlow/rstSlow_n) leaves reset later than the
-// register bus domain (clk/rst_n) that this cpu issues on. An access that
-// reaches the bridge before rstSlow_n releases completes with pslverr, and
-// the request() API has no error return, so that access is silently lost.
-// Waiting past both resets before the first access avoids it.
-
 void twoClkCpu::regAccessTest(void)
 {
-    wait(TWO_CLK_RESET_SETTLE_NS, SC_NS);
-
     for (unsigned int rowId = 0; rowId < TWO_CLK_TBL_WORDS; rowId++)
         writeTblRow(rowId, tblData_[rowId]);
 
@@ -137,6 +130,59 @@ void twoClkCpu::regAccessTest(void)
     else
         Q_ASSERT(false, "twoClkCpu tbl write/read sequential fail");
 
+    lutStatsTest();
     eot_.setEndOfTest(true);
+}
+
+uint32_t twoClkCpu::regRead(uint64_t offset)
+{
+    twoClkRegAddrSt addr;
+    twoClkRegDataSt data;
+    addr.address = BASE_ADDR_UTABLE + offset;
+    twoClkReg->request(false, addr, data);
+    return data.data;
+}
+
+// 0xffff checks that the + 1 wraps to 0 at the field width.
+const std::array<uint32_t, TWO_CLK_LUT_WORDS> lutData_ = {{ 0x1234, 0xbeef, 0xffff, 0x00a5 }};
+
+void twoClkCpu::lutStatsTest(void)
+{
+    twoClkRegAddrSt addr;
+    twoClkRegDataSt data;
+    bool pass = true;
+
+    for (unsigned int i = 0; i < TWO_CLK_LUT_WORDS; i++) {
+        addr.address = BASE_ADDR_UTABLE + REG_TWOCLKTABLE_LUT + i * 0x4;
+        data.data = lutData_[i];
+        twoClkReg->request(true, addr, data);
+    }
+
+    // Poll once per sweep: the sweep runs only once rstSlow_n has released.
+    bool swept = false;
+    for (unsigned int sweeps = 0; sweeps < 100 && !swept; sweeps++) {
+        wait(TWO_CLK_LUT_WORDS * TWO_CLK_SLOW_PERIOD_NS, SC_NS);
+        swept = true;
+        for (unsigned int i = 0; i < TWO_CLK_LUT_WORDS; i++)
+            swept &= regRead(REG_TWOCLKTABLE_STATS + i * 0x4) == ((lutData_[i] + 1) & 0xffff);
+    }
+    if (!swept)
+        Q_ASSERT(false, "twoClkCpu stats never matched lut + 1 within 100 sweeps");
+
+    // stats is read-only to firmware: the write completes and the contents
+    // still hold the sweep's value. The sweep rewrites the row, so this does
+    // not show that the write was dropped.
+    addr.address = BASE_ADDR_UTABLE + REG_TWOCLKTABLE_STATS;
+    data.data = 0x5a5a;
+    twoClkReg->request(true, addr, data);
+    pass &= regRead(REG_TWOCLKTABLE_STATS) == ((lutData_[0] + 1) & 0xffff);
+
+    // lut is write-only to firmware: the read returns 0.
+    pass &= regRead(REG_TWOCLKTABLE_LUT) == 0;
+
+    if (pass)
+        log_.logPrint(std::format("{} lut/stats sweep and access-mode success", this->name()), LOG_IMPORTANT);
+    else
+        Q_ASSERT(false, "twoClkCpu lut/stats sweep or access-mode fail");
 }
 

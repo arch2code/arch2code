@@ -26,9 +26,9 @@ endif
 # SC/RTL boundary - uIpSrc verilated proves RTL -> model, uSink verilated proves
 # model -> RTL - because the surviving block model has to see the whole burst
 # before it casts its end-of-test vote. uSlowTick/uSlowSink repeat the same
-# proof for the clkSlow pair. run-vl-table verilates only the handler, bridge
-# and memory inside uTable, proving model cpu to verilated handler/bridge/
-# memory; run-vl-top additionally carries the cpu's bus traffic through the
+# proof for the clkSlow pair. run-vl-table verilates only the handler and
+# memory inside uTable, proving model cpu to verilated handler and memory;
+# run-vl-top additionally carries the cpu's bus traffic through the
 # verilated router.
 run-vl:
 	$(MAKE) clean

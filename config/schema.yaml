@@ -652,7 +652,7 @@ connectionMaps:
       portName: required
 
 memories:
-  _attribs: [flat]
+  _attribs: [flat, post(validateMemoryPorts)]
   memory: required
   structure:
     _type: required
@@ -674,14 +674,16 @@ memories:
   count: optionalConst(1)
   offset: optional(0)
   decodeSize: optional(0)   # filled out by calcAddresses; bytes of memory-decoded address range (worst case)
-  regAccess: optional(false)
+  # Firmware access mode: false, rw, ro or wo. true means rw.
+  regAccess:
+    _type: optional(false)
+    _validate:
+      values: [true, false, rw, ro, wo]
   local: optional(false) # for memories that need to be in flops with fast array access
   isParameterizable: auto(memIsParameterizable)
-  # The owning block's clock this memory is on, and the reset for the
-  # register bridge's memory side; both block-local, each one of the owning block's
-  # own clocks:/resets: rows when stated, else the block default clock and
-  # its selected reset, resolved by clockTree.BlockDomains.build() once the
-  # owning block's own defaultClock/selectedReset are known.
+  # The owning block's clock this memory's block-side ports run on: one of
+  # the owning block's own clocks: rows when stated, else the block default
+  # clock, resolved by clockTree.BlockDomains.build().
   clock: optional
   blockClock:
     _combo:
@@ -690,14 +692,6 @@ memories:
     _validate:
       section: blocksclocks
       field: blockclock
-  reset: optional
-  blockReset:
-    _combo:
-      block: required
-      reset: required
-    _validate:
-      section: blocksresets
-      field: blockreset
   memoryBlock:
     _key:
       memory: required
@@ -708,6 +702,9 @@ memories:
       values:
         - singlePort
         - dualPort
+        - portRportRW
+        - portRWportW
+        - portRportW
         - register
   ports:
     _attribs: [optional, singleEntryList, multiple]  # singleEntryList means that the user provides a single entry and all other fields are derived from this

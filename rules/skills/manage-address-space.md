@@ -34,7 +34,7 @@ hand-create a top-level decoder.
     *   **`varType:` and `enumPrefix:` must be unique across the whole build** — two address groups may share neither, even in different projects. Group *names* are project-qualified; the generated firmware enum is not, because every context's firmware is emitted into one flat namespace (`fw_ns`) and firmware headers include each other across project boundaries. Two groups sharing a `varType:` therefore either collide as a C++ redefinition or, in separate translation units, silently bind the same enumerator to a different address ID — a wrong address rather than a build failure. `make db` rejects it (`addressBlock: enum type name varType: '…' is used by two address groups: …`). In a reusable IP, qualify both by the declaring project, e.g. `varType: addr_id_isp_lut_top` / `enumPrefix: ADDR_ID_ISP_LUT_TOP_`; a bare `addr_id_top` is only safe in a project nothing else composes.
 
 3.  **Making memory firmware-accessible:**
-    *   `regAccess: true` (with `local:` absent) is the single switch. No custom interface is needed. The serving router is a generated `addressBlock:` block. See `design-register-decode.md`.
+    *   `regAccess` (with `local:` absent) is the single switch. Its value is the firmware access mode: `rw` (or `true`), `ro` or `wo`. No custom interface is needed. The serving router is a generated `addressBlock:` block. See `design-register-decode.md`.
 
 4.  **Instance Groups (`instanceGroups:`):**
     *   Used for ID enumeration without address space implications (e.g., for error reporting IDs).

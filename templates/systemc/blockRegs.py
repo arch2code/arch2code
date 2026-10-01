@@ -1,7 +1,7 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import roundup_multiple
-from templates.systemc.constructor import blockRegistrarInitLines, bareParameterizedType
+from templates.systemc.constructor import blockRegistrarInitLines, bareParameterizedType, FW_ACCESS_ENUM
 
 from jinja2 import Template
 
@@ -83,6 +83,8 @@ def get_hwregs(prj, data):
                 "offset_value": hex(inst['offset']),
                 "const_name": const_name,
                 "port_name": inst[name_field],
+                # A regType: memory register has no regAccess and is always rw.
+                "fw_access": FW_ACCESS_ENUM.get(inst['regAccess']) if name_field == 'memory' else None,
                 "descr": inst['desc']
             })
         else:
@@ -257,7 +259,9 @@ SC_HAS_PROCESS({{blockname}});
         ,{{blockname}}Base{{cfg}}(name(), variant)
         ,_a2cRegs(log_)
         {% for entry in hwregs -%}
-        {% if entry.is_memory -%}
+        {% if entry.is_memory and entry.fw_access -%}
+        ,{{entry.name}}({{thisq}}{{entry.port_name}}, {{entry.fw_access}}, std::string(this->name()) + ".{{entry.port_name}}")
+        {% elif entry.is_memory -%}
         ,{{entry.name}}({{thisq}}{{entry.port_name}})
         {% elif entry.default -%}
         ,{{entry.name}}(&{{thisq}}{{entry.port_name}}, {{entry.packedst_typename}}{{entry.datatype_inclass}}::_packedSt({{entry.default}}))

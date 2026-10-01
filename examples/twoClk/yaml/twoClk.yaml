@@ -14,9 +14,12 @@
 # A third trio, twoClkCpu -> twoClkDecode -> twoClkTable, adds a firmware-facing
 # register bus to the fixture: twoClkCpu drives twoClkReg on clk, twoClkDecode
 # decodes it on clk, and twoClkTable's tbl memory sits on clkSlow, a different
-# clock and reset domain from the twoClkReg bus on clk, so the generated
-# twoClkTableRegs handler reaches tbl through memory_reg_bridge rather than
-# sampling it directly.
+# clock from the twoClkReg bus on clk. tbl is portRportRW: the generated
+# twoClkTableRegs handler takes its read/write port B on clk, and twoClkTable
+# keeps the read-only port A on clkSlow, tied off. lut and stats are
+# portRportW on clkSlow. Firmware loads lut (wo) through port B on clk, and
+# reads stats (ro) through port A on clk. twoClkTable sweeps both on clkSlow,
+# reading lut on port A and writing stats = lut + 1 on port B.
 
 include:
     # The include edge puts the child's definitions on this context's resolution
@@ -29,9 +32,10 @@ constants:
     TWO_CLK_SLOW_PERIOD_NS: { value: 3, desc: "clkSlow period in ns; must equal clocks.clkSlow.period in prj/yaml/project.yaml" }
     TWO_CLK_TBL_WORDS: { value: 8, desc: "Row count of twoClkTable's tbl memory" }
     TWO_CLK_TBL_WORDS_LOG2: { eval: "$clog2($TWO_CLK_TBL_WORDS)", desc: "tbl row address width in bits" }
+    TWO_CLK_LUT_WORDS: { value: 4, desc: "Row count of twoClkTable's lut and stats memories" }
+    TWO_CLK_LUT_WORDS_LOG2: { eval: "$clog2($TWO_CLK_LUT_WORDS)", desc: "lut and stats row address width in bits" }
     TWO_CLK_REG_ADDR_WIDTH: { value: 32, desc: "twoClkReg address bus width" }
     TWO_CLK_REG_DATA_WIDTH: { value: 32, desc: "twoClkReg data bus width" }
-    TWO_CLK_RESET_SETTLE_NS: { value: 100, desc: "cpu start delay so both rst_n and rstSlow_n have released before the first bridged access" }
 
 types:
     twoClkRegAddrT: { width: TWO_CLK_REG_ADDR_WIDTH, desc: "for addressing a register via twoClkReg" }
@@ -39,6 +43,8 @@ types:
     twoClkTblAddrBitsT: { width: TWO_CLK_TBL_WORDS_LOG2, desc: "size of tbl's row address in bits" }
     twoClkTblLoT: { width: 32, desc: "tbl row bits [31:0]" }
     twoClkTblHiT: { width: 16, desc: "tbl row bits [47:32]" }
+    twoClkLutAddrBitsT: { width: TWO_CLK_LUT_WORDS_LOG2, desc: "size of lut and stats row address in bits" }
+    twoClkLutValT: { width: 16, desc: "lut and stats row value" }
 
 structures:
     twoClkRegAddrSt:
@@ -50,6 +56,12 @@ structures:
     twoClkTblSt:
         hi: { varType: twoClkTblHiT, generator: memory, desc: "row bits [47:32]" }
         lo: { varType: twoClkTblLoT, generator: memory, desc: "row bits [31:0]" }
+    twoClkLutAddrSt:
+        address: { varType: twoClkLutAddrBitsT, generator: address }
+    twoClkLutSt:
+        val: { varType: twoClkLutValT, generator: memory, desc: "value firmware loads" }
+    twoClkStatsSt:
+        val: { varType: twoClkLutValT, generator: memory, desc: "lut value plus one, written by the sweep" }
 
 interfaces:
     twoClkReg:
@@ -117,7 +129,7 @@ blocks:
         ports:
             in: { interface: twoClkDataIf, direction: dst }
     twoClkCpu:
-        desc: "Register-bus master: writes and reads back every row of twoClkTable's tbl memory over twoClkReg"
+        desc: "Register-bus master: writes and reads back every row of twoClkTable's tbl memory, loads lut and checks stats, over twoClkReg"
         hasVl: false
         hasMdl: true
         hasTb: false
@@ -145,7 +157,7 @@ blocks:
             upstreamPort: twoClkReg
             registerDecoderPort: twoClkReg
     twoClkTable:
-        desc: "Routed leaf: its tbl memory sits on clkSlow, one clock away from the twoClkReg bus on clk"
+        desc: "Routed leaf: its tbl, lut and stats memories sit on clkSlow, one clock away from the twoClkReg bus on clk"
         hasVl: true
         hasMdl: true
         hasTb: false
@@ -195,5 +207,11 @@ connectionMaps:
 
 memories:
     - { memory: tbl, block: twoClkTable, structure: twoClkTblSt, addressStruct: twoClkTblAddrSt,
-        wordLines: TWO_CLK_TBL_WORDS, memoryType: singlePort, regAccess: true, clock: clkSlow,
-        desc: "Firmware-accessible table, reached from twoClkCpu through the twoClkTableRegs bridge" }
+        wordLines: TWO_CLK_TBL_WORDS, memoryType: portRportRW, regAccess: true, clock: clkSlow,
+        desc: "Firmware-accessible table, written and read by twoClkCpu through port B on clk" }
+    - { memory: lut, block: twoClkTable, structure: twoClkLutSt, addressStruct: twoClkLutAddrSt,
+        wordLines: TWO_CLK_LUT_WORDS, memoryType: portRportW, regAccess: wo, clock: clkSlow,
+        desc: "Loaded by twoClkCpu through port B on clk, read by the sweep through port A on clkSlow" }
+    - { memory: stats, block: twoClkTable, structure: twoClkStatsSt, addressStruct: twoClkLutAddrSt,
+        wordLines: TWO_CLK_LUT_WORDS, memoryType: portRportW, regAccess: ro, clock: clkSlow,
+        desc: "Written by the sweep through port B on clkSlow, read by twoClkCpu through port A on clk" }

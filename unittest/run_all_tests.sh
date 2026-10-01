@@ -589,9 +589,33 @@ python3 test_clock_reset_emission.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: memory_reg_bridge simulation"
+echo "Test Suite ${idx}: memory_dp port access simulation"
 echo "------------------------------------------------------------------------"
-python3 test_memory_reg_bridge_sim.py || FAILED=1
+python3 test_memory_dp_ports_sim.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory_dp lint"
+echo "------------------------------------------------------------------------"
+python3 test_memory_dp_lint.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory port assignment"
+echo "------------------------------------------------------------------------"
+python3 test_memory_access_ports.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory firmware access modes"
+echo "------------------------------------------------------------------------"
+python3 test_memory_firmware_access.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: lsc write-only LUT memories on the register clock"
+echo "------------------------------------------------------------------------"
+python3 test_memory_lsc_luts.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

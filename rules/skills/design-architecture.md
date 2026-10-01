@@ -137,7 +137,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   **A top-down port's domain is authored on the connection.** A block with no `ports:` gets each port's domain from the connection reaching it: `clock:` on `connections:` names a container clock and states the domain of both ends, so such a connection is never a crossing. Left unstated, a port sits on its block's default clock, mapped through the instance.
     *   **`ports:`/`registerPorts:` `clock:`** is how a reusable IP or parameterized block declares a port's domain instead, naming one of the block's own clocks (`clock: baudClk`). Where a port is both declared this way and reached by a connection carrying `clock:`, the two must agree. `connectionMaps:`, `memoryConnections:`, and `registerConnections:` carry no `clock:` field of their own; their domains derive from the ports they reach.
     *   **Register decode** follows the bus: a router's domain is its `addressBlock:` `clock:`, else its feed connection's, else the block default; the handler it serves runs on the same clock. A top-down leaf's register port takes whichever of its own declared clocks the instance map binds to that bus clock — see `design-register-decode.md`.
-    *   **Crossings are the designer's responsibility.** The generator neither rejects, reports, nor synchronises a connection between two container clocks. A memory reached by more than one clock, and a register bus reached from two clocks, are rejected for `memoryConnections:` accessors. Firmware access through the generated handler is the exception: it may come from another domain, and the handler bridges it (see "The four invariants" in `design-register-decode.md`).
+    *   **Crossings are the designer's responsibility.** The generator neither rejects, reports, nor synchronises a connection between two container clocks. A memory reached by more than one clock, and a register bus reached from two clocks, are rejected for `memoryConnections:` accessors. A `regAccess` memory is the exception: the register handler's port runs on the register clock and the block-side port on the memory's `clock:`, so a dual-port memory crosses inside the RAM. A `singlePort` memory with `regAccess` must be on the register clock (see "The four invariants" in `design-register-decode.md`).
     *   **The project file is the testbench**, not a namespace design YAML references. Its `clocks:`/`resets:` bind the top block's inputs by name; a `period` defaults to 1 ns. See `setup-project.md`.
 
 6.  **Connection Maps (`connectionMaps` list):**
@@ -178,9 +178,12 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `addressStruct`: **(Required)** Address structure.
         *   `wordLines`: **(Required)** Depth as a number or constant. For parameterized depth, use `design-parameterizable-blocks.md`.
         *   `desc`: **(Required)** Description.
-        *   `regAccess`: (Optional) FW accessible? **Default: `false`**
+        *   `regAccess`: (Optional) Firmware access through the register handler: `false`, `rw`, `ro` (firmware only reads), `wo` (firmware only writes). `true` means `rw`. Any other value is an error. **Default: `false`**
         *   `local`: (Optional) Local flops (not SRAM)? **Default: `false`**
-        *   `memoryType`: (Optional) `singlePort`, `dualPort`. **Default: `dualPort`**
+        *   `memoryType`: (Optional) What each port can do. `singlePort` has one read/write port. `dualPort` has two read/write ports, A and B. `portRportRW` has a read-only A and a read/write B. `portRWportW` has a read/write A and a write-only B. `portRportW` has a read-only A and a write-only B. **Default: `dualPort`**
+        *   `ports`: (Optional) Block-side port names, filling ports A then B. With `regAccess` the register handler takes one port, so a dual-port memory lists at most one and a `singlePort` memory lists none.
+        *   `clock`: (Optional) One of the owning block's clocks, which the block-side port runs on. The register handler's port always runs on the register clock. With no `regAccess`, both ports run on this clock. **Default: the block's default clock**
+        *   A memory has no `reset:`; setting it is an error.
 
     ```yaml
     memories:
@@ -193,5 +196,6 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   Missing `desc` (Required everywhere).
     *   Missing `addressStruct` in memories (Required).
     *   Assuming `regAccess` is true (Default is `false`).
+    *   `regAccess: rw` on `portRportW`, which has no read/write port. Use `ro`, `wo`, or another `memoryType`.
     *   Nesting `instances` inside `blocks`.
     *   Placing a `hasRtl: false` block inside a `hasRtl: true` parent. Either generate RTL for the child or make the parent model-only.

@@ -25,9 +25,10 @@ inline constexpr uint32_t TWO_CLK_TICK_WORDS = 4;  // Tick words the slow sink c
 inline constexpr uint32_t TWO_CLK_SLOW_PERIOD_NS = 3;  // clkSlow period in ns; must equal clocks.clkSlow.period in prj/yaml/project.yaml
 inline constexpr uint32_t TWO_CLK_TBL_WORDS = 8;  // Row count of twoClkTable's tbl memory
 inline constexpr uint32_t TWO_CLK_TBL_WORDS_LOG2 = 3;  // tbl row address width in bits
+inline constexpr uint32_t TWO_CLK_LUT_WORDS = 4;  // Row count of twoClkTable's lut and stats memories
+inline constexpr uint32_t TWO_CLK_LUT_WORDS_LOG2 = 2;  // lut and stats row address width in bits
 inline constexpr uint32_t TWO_CLK_REG_ADDR_WIDTH = 32;  // twoClkReg address bus width
 inline constexpr uint32_t TWO_CLK_REG_DATA_WIDTH = 32;  // twoClkReg data bus width
-inline constexpr uint32_t TWO_CLK_RESET_SETTLE_NS = 100;  // cpu start delay so both rst_n and rstSlow_n have released before the first bridged access
 
 } // namespace twoClk_ns
 // GENERATED_CODE_END
@@ -39,6 +40,8 @@ typedef uint32_t twoClkRegDataT; // [32] for data sent or received via twoClkReg
 typedef uint8_t twoClkTblAddrBitsT; // [3] size of tbl's row address in bits
 typedef uint32_t twoClkTblLoT; // [32] tbl row bits [31:0]
 typedef uint16_t twoClkTblHiT; // [16] tbl row bits [47:32]
+typedef uint8_t twoClkLutAddrBitsT; // [2] size of lut and stats row address in bits
+typedef uint16_t twoClkLutValT; // [16] lut and stats row value
 
 } // namespace twoClk_ns
 // GENERATED_CODE_END
@@ -297,6 +300,172 @@ struct twoClkTblSt {
     explicit twoClkTblSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct twoClkLutAddrSt {
+    twoClkLutAddrBitsT address; //
+
+    twoClkLutAddrSt() {}
+
+    static constexpr uint16_t _bitWidth = TWO_CLK_LUT_WORDS_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    inline bool operator == (const twoClkLutAddrSt & rhs) const {
+        bool ret = true;
+        ret = ret && (address == rhs.address);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const twoClkLutAddrSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.address, NAME + ".address");
+    }
+    inline friend ostream& operator << ( ostream& os,  twoClkLutAddrSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("address:0x{:01x}",
+           (uint64_t) address
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline twoClkLutAddrBitsT _getAddress(void) { return( address); }
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, twoClkLutAddrSt::_byteWidth);
+        _ret = address;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        address = (twoClkLutAddrBitsT)((_src) & ((1ULL << 2) - 1));
+    }
+    inline sc_bv<twoClkLutAddrSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<twoClkLutAddrSt::_bitWidth> packed_data;
+        packed_data.range(1, 0) = address;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<twoClkLutAddrSt::_bitWidth> packed_data)
+    {
+        address = (twoClkLutAddrBitsT) packed_data.range(1, 0).to_uint64();
+    }
+    explicit twoClkLutAddrSt(sc_bv<twoClkLutAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkLutAddrSt(
+        twoClkLutAddrBitsT address_) :
+        address(address_)
+    {}
+    explicit twoClkLutAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct twoClkLutSt {
+    twoClkLutValT val; //value firmware loads
+
+    twoClkLutSt() {}
+
+    static constexpr uint16_t _bitWidth = 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    inline bool operator == (const twoClkLutSt & rhs) const {
+        bool ret = true;
+        ret = ret && (val == rhs.val);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const twoClkLutSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.val, NAME + ".val");
+    }
+    inline friend ostream& operator << ( ostream& os,  twoClkLutSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("val:0x{:04x}",
+           (uint64_t) val
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, twoClkLutSt::_byteWidth);
+        _ret = val;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        val = (twoClkLutValT)((_src));
+    }
+    inline sc_bv<twoClkLutSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<twoClkLutSt::_bitWidth> packed_data;
+        packed_data.range(15, 0) = val;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<twoClkLutSt::_bitWidth> packed_data)
+    {
+        val = (twoClkLutValT) packed_data.range(15, 0).to_uint64();
+    }
+    explicit twoClkLutSt(sc_bv<twoClkLutSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkLutSt(
+        twoClkLutValT val_) :
+        val(val_)
+    {}
+    explicit twoClkLutSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct twoClkStatsSt {
+    twoClkLutValT val; //lut value plus one, written by the sweep
+
+    twoClkStatsSt() {}
+
+    static constexpr uint16_t _bitWidth = 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    inline bool operator == (const twoClkStatsSt & rhs) const {
+        bool ret = true;
+        ret = ret && (val == rhs.val);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const twoClkStatsSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.val, NAME + ".val");
+    }
+    inline friend ostream& operator << ( ostream& os,  twoClkStatsSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("val:0x{:04x}",
+           (uint64_t) val
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, twoClkStatsSt::_byteWidth);
+        _ret = val;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        val = (twoClkLutValT)((_src));
+    }
+    inline sc_bv<twoClkStatsSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<twoClkStatsSt::_bitWidth> packed_data;
+        packed_data.range(15, 0) = val;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<twoClkStatsSt::_bitWidth> packed_data)
+    {
+        val = (twoClkLutValT) packed_data.range(15, 0).to_uint64();
+    }
+    explicit twoClkStatsSt(sc_bv<twoClkStatsSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkStatsSt(
+        twoClkLutValT val_) :
+        val(val_)
+    {}
+    explicit twoClkStatsSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 } // namespace twoClk_ns
 
 // GENERATED_CODE_END
@@ -367,6 +536,9 @@ void test_twoClk_structs::test(void) {
     roundTrip<twoClkRegDataSt>("twoClkRegDataSt", patterns);
     roundTrip<twoClkTblAddrSt>("twoClkTblAddrSt", patterns);
     roundTrip<twoClkTblSt>("twoClkTblSt", patterns);
+    roundTrip<twoClkLutAddrSt>("twoClkLutAddrSt", patterns);
+    roundTrip<twoClkLutSt>("twoClkLutSt", patterns);
+    roundTrip<twoClkStatsSt>("twoClkStatsSt", patterns);
 }
 } // namespace twoClk_test_ns
 

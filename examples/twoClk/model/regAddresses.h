@@ -21,6 +21,8 @@
 //register addresses
 //memories base addresses
 #define REG_TWOCLKTABLE_TBL                 0x0
+#define REG_TWOCLKTABLE_LUT                 0x40
+#define REG_TWOCLKTABLE_STATS               0x50
 // GENERATED_CODE_END
 
 #endif //REGADDRESSES_H
