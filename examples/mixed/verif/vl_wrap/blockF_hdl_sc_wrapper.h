@@ -31,11 +31,11 @@ public:
 
     sc_signal<bool> clk;
 
-    rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm;
-    rdy_vld_dst_bfm<dSt, sc_bv<7>> dStuffIf_bfm;
-    rdy_vld_dst_bfm<dSt, sc_bv<7>> dSin_bfm;
-    rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm;
-    status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm;
+    rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm_inst;
+    rdy_vld_dst_bfm<dSt, sc_bv<7>> dStuffIf_bfm_inst;
+    rdy_vld_dst_bfm<dSt, sc_bv<7>> dSin_bfm_inst;
+    rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm_inst;
+    status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -47,56 +47,56 @@ public:
         blockBase("blockF_hdl_sc_wrapper", name(), bbMode),
         blockFBase<Config>(name(), variant),
         clk("clk"),
-        cStuffIf_bfm("cStuffIf_bfm"),
-        dStuffIf_bfm("dStuffIf_bfm"),
-        dSin_bfm("dSin_bfm"),
-        dSout_bfm("dSout_bfm"),
-        rwD_bfm("rwD_bfm"),
+        cStuffIf_bfm_inst("cStuffIf_bfm_inst"),
+        dStuffIf_bfm_inst("dStuffIf_bfm_inst"),
+        dSin_bfm_inst("dSin_bfm_inst"),
+        dSout_bfm_inst("dSout_bfm_inst"),
+        rwD_bfm_inst("rwD_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
-        dut_hdl->cStuffIf_vld(cStuffIf_hdl_if.vld);
-        dut_hdl->cStuffIf_data(cStuffIf_hdl_if.data);
-        dut_hdl->cStuffIf_rdy(cStuffIf_hdl_if.rdy);
-        dut_hdl->dStuffIf_vld(dStuffIf_hdl_if.vld);
-        dut_hdl->dStuffIf_data(dStuffIf_hdl_if.data);
-        dut_hdl->dStuffIf_rdy(dStuffIf_hdl_if.rdy);
-        dut_hdl->dSin_vld(dSin_hdl_if.vld);
-        dut_hdl->dSin_data(dSin_hdl_if.data);
-        dut_hdl->dSin_rdy(dSin_hdl_if.rdy);
-        dut_hdl->dSout_vld(dSout_hdl_if.vld);
-        dut_hdl->dSout_data(dSout_hdl_if.data);
-        dut_hdl->dSout_rdy(dSout_hdl_if.rdy);
-        dut_hdl->rwD_data(rwD_hdl_if.data);
+        dut_hdl->cStuffIf_vld(cStuffIf_hdl_inst.vld);
+        dut_hdl->cStuffIf_data(cStuffIf_hdl_inst.data);
+        dut_hdl->cStuffIf_rdy(cStuffIf_hdl_inst.rdy);
+        dut_hdl->dStuffIf_vld(dStuffIf_hdl_inst.vld);
+        dut_hdl->dStuffIf_data(dStuffIf_hdl_inst.data);
+        dut_hdl->dStuffIf_rdy(dStuffIf_hdl_inst.rdy);
+        dut_hdl->dSin_vld(dSin_hdl_inst.vld);
+        dut_hdl->dSin_data(dSin_hdl_inst.data);
+        dut_hdl->dSin_rdy(dSin_hdl_inst.rdy);
+        dut_hdl->dSout_vld(dSout_hdl_inst.vld);
+        dut_hdl->dSout_data(dSout_hdl_inst.data);
+        dut_hdl->dSout_rdy(dSout_hdl_inst.rdy);
+        dut_hdl->rwD_data(rwD_hdl_inst.data);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        cStuffIf_bfm.if_p(this->cStuffIf);
-        cStuffIf_bfm.hdl_if_p(cStuffIf_hdl_if);
-        cStuffIf_bfm.clk(clk);
-        cStuffIf_bfm.rst_n(rst_n);
+        cStuffIf_bfm_inst.if_p(this->cStuffIf);
+        cStuffIf_bfm_inst.hdl_if_p(cStuffIf_hdl_inst);
+        cStuffIf_bfm_inst.clk(clk);
+        cStuffIf_bfm_inst.rst_n(rst_n);
 
-        dStuffIf_bfm.if_p(this->dStuffIf);
-        dStuffIf_bfm.hdl_if_p(dStuffIf_hdl_if);
-        dStuffIf_bfm.clk(clk);
-        dStuffIf_bfm.rst_n(rst_n);
+        dStuffIf_bfm_inst.if_p(this->dStuffIf);
+        dStuffIf_bfm_inst.hdl_if_p(dStuffIf_hdl_inst);
+        dStuffIf_bfm_inst.clk(clk);
+        dStuffIf_bfm_inst.rst_n(rst_n);
 
-        dSin_bfm.if_p(this->dSin);
-        dSin_bfm.hdl_if_p(dSin_hdl_if);
-        dSin_bfm.clk(clk);
-        dSin_bfm.rst_n(rst_n);
+        dSin_bfm_inst.if_p(this->dSin);
+        dSin_bfm_inst.hdl_if_p(dSin_hdl_inst);
+        dSin_bfm_inst.clk(clk);
+        dSin_bfm_inst.rst_n(rst_n);
 
-        dSout_bfm.if_p(this->dSout);
-        dSout_bfm.hdl_if_p(dSout_hdl_if);
-        dSout_bfm.clk(clk);
-        dSout_bfm.rst_n(rst_n);
+        dSout_bfm_inst.if_p(this->dSout);
+        dSout_bfm_inst.hdl_if_p(dSout_hdl_inst);
+        dSout_bfm_inst.clk(clk);
+        dSout_bfm_inst.rst_n(rst_n);
 
-        rwD_bfm.if_p(this->rwD);
-        rwD_bfm.hdl_if_p(rwD_hdl_if);
-        rwD_bfm.clk(clk);
-        rwD_bfm.rst_n(rst_n);
+        rwD_bfm_inst.if_p(this->rwD);
+        rwD_bfm_inst.hdl_if_p(rwD_hdl_inst);
+        rwD_bfm_inst.clk(clk);
+        rwD_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen);
@@ -116,11 +116,11 @@ public:
 
 private:
 
-    rdy_vld_hdl_if<sc_bv<5>> cStuffIf_hdl_if;
-    rdy_vld_hdl_if<sc_bv<7>> dStuffIf_hdl_if;
-    rdy_vld_hdl_if<sc_bv<7>> dSin_hdl_if;
-    rdy_vld_hdl_if<sc_bv<7>> dSout_hdl_if;
-    status_hdl_if<sc_bv<7>> rwD_hdl_if;
+    rdy_vld_hdl_if<sc_bv<5>> cStuffIf_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<7>> dStuffIf_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<7>> dSin_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<7>> dSout_hdl_inst;
+    status_hdl_if<sc_bv<7>> rwD_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

@@ -45,11 +45,11 @@ public:
 
     sc_signal<bool> clk;
 
-    req_ack_src_bfm<aSt, aASt, sc_bv<4>, bool> aStuffIf_bfm;
-    rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm;
-    notify_ack_src_bfm<> startDone_bfm;
-    rdy_vld_src_bfm<seeSt, sc_bv<5>> dupIf_bfm;
-    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
+    req_ack_src_bfm<aSt, aASt, sc_bv<4>, bool> aStuffIf_bfm_inst;
+    rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm_inst;
+    notify_ack_src_bfm<> startDone_bfm_inst;
+    rdy_vld_src_bfm<seeSt, sc_bv<5>> dupIf_bfm_inst;
+    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm_inst;
 
     SC_HAS_PROCESS (blockA_hdl_sc_wrapper);
 
@@ -58,11 +58,11 @@ public:
         blockBase("blockA_hdl_sc_wrapper", name(), bbMode),
         blockABase(name(), variant),
         clk("clk"),
-        aStuffIf_bfm("aStuffIf_bfm"),
-        cStuffIf_bfm("cStuffIf_bfm"),
-        startDone_bfm("startDone_bfm"),
-        dupIf_bfm("dupIf_bfm"),
-        apbReg_bfm("apbReg_bfm"),
+        aStuffIf_bfm_inst("aStuffIf_bfm_inst"),
+        cStuffIf_bfm_inst("cStuffIf_bfm_inst"),
+        startDone_bfm_inst("startDone_bfm_inst"),
+        dupIf_bfm_inst("dupIf_bfm_inst"),
+        apbReg_bfm_inst("apbReg_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
@@ -72,53 +72,53 @@ public:
         dut_hdl = new VblockA_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->aStuffIf_req(aStuffIf_hdl_if.req);
-        dut_hdl->aStuffIf_data(aStuffIf_hdl_if.data);
-        dut_hdl->aStuffIf_ack(aStuffIf_hdl_if.ack);
-        dut_hdl->aStuffIf_rdata(aStuffIf_hdl_if.rdata);
-        dut_hdl->cStuffIf_vld(cStuffIf_hdl_if.vld);
-        dut_hdl->cStuffIf_data(cStuffIf_hdl_if.data);
-        dut_hdl->cStuffIf_rdy(cStuffIf_hdl_if.rdy);
-        dut_hdl->startDone_notify(startDone_hdl_if.notify);
-        dut_hdl->startDone_ack(startDone_hdl_if.ack);
-        dut_hdl->dupIf_vld(dupIf_hdl_if.vld);
-        dut_hdl->dupIf_data(dupIf_hdl_if.data);
-        dut_hdl->dupIf_rdy(dupIf_hdl_if.rdy);
-        dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
-        dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
-        dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
-        dut_hdl->apbReg_pwrite(apbReg_hdl_if.pwrite);
-        dut_hdl->apbReg_pwdata(apbReg_hdl_if.pwdata);
-        dut_hdl->apbReg_pready(apbReg_hdl_if.pready);
-        dut_hdl->apbReg_prdata(apbReg_hdl_if.prdata);
-        dut_hdl->apbReg_pslverr(apbReg_hdl_if.pslverr);
+        dut_hdl->aStuffIf_req(aStuffIf_hdl_inst.req);
+        dut_hdl->aStuffIf_data(aStuffIf_hdl_inst.data);
+        dut_hdl->aStuffIf_ack(aStuffIf_hdl_inst.ack);
+        dut_hdl->aStuffIf_rdata(aStuffIf_hdl_inst.rdata);
+        dut_hdl->cStuffIf_vld(cStuffIf_hdl_inst.vld);
+        dut_hdl->cStuffIf_data(cStuffIf_hdl_inst.data);
+        dut_hdl->cStuffIf_rdy(cStuffIf_hdl_inst.rdy);
+        dut_hdl->startDone_notify(startDone_hdl_inst.notify);
+        dut_hdl->startDone_ack(startDone_hdl_inst.ack);
+        dut_hdl->dupIf_vld(dupIf_hdl_inst.vld);
+        dut_hdl->dupIf_data(dupIf_hdl_inst.data);
+        dut_hdl->dupIf_rdy(dupIf_hdl_inst.rdy);
+        dut_hdl->apbReg_paddr(apbReg_hdl_inst.paddr);
+        dut_hdl->apbReg_psel(apbReg_hdl_inst.psel);
+        dut_hdl->apbReg_penable(apbReg_hdl_inst.penable);
+        dut_hdl->apbReg_pwrite(apbReg_hdl_inst.pwrite);
+        dut_hdl->apbReg_pwdata(apbReg_hdl_inst.pwdata);
+        dut_hdl->apbReg_pready(apbReg_hdl_inst.pready);
+        dut_hdl->apbReg_prdata(apbReg_hdl_inst.prdata);
+        dut_hdl->apbReg_pslverr(apbReg_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        aStuffIf_bfm.if_p(this->aStuffIf);
-        aStuffIf_bfm.hdl_if_p(aStuffIf_hdl_if);
-        aStuffIf_bfm.clk(clk);
-        aStuffIf_bfm.rst_n(rst_n);
+        aStuffIf_bfm_inst.if_p(this->aStuffIf);
+        aStuffIf_bfm_inst.hdl_if_p(aStuffIf_hdl_inst);
+        aStuffIf_bfm_inst.clk(clk);
+        aStuffIf_bfm_inst.rst_n(rst_n);
 
-        cStuffIf_bfm.if_p(this->cStuffIf);
-        cStuffIf_bfm.hdl_if_p(cStuffIf_hdl_if);
-        cStuffIf_bfm.clk(clk);
-        cStuffIf_bfm.rst_n(rst_n);
+        cStuffIf_bfm_inst.if_p(this->cStuffIf);
+        cStuffIf_bfm_inst.hdl_if_p(cStuffIf_hdl_inst);
+        cStuffIf_bfm_inst.clk(clk);
+        cStuffIf_bfm_inst.rst_n(rst_n);
 
-        startDone_bfm.if_p(this->startDone);
-        startDone_bfm.hdl_if_p(startDone_hdl_if);
-        startDone_bfm.clk(clk);
-        startDone_bfm.rst_n(rst_n);
+        startDone_bfm_inst.if_p(this->startDone);
+        startDone_bfm_inst.hdl_if_p(startDone_hdl_inst);
+        startDone_bfm_inst.clk(clk);
+        startDone_bfm_inst.rst_n(rst_n);
 
-        dupIf_bfm.if_p(this->dupIf);
-        dupIf_bfm.hdl_if_p(dupIf_hdl_if);
-        dupIf_bfm.clk(clk);
-        dupIf_bfm.rst_n(rst_n);
+        dupIf_bfm_inst.if_p(this->dupIf);
+        dupIf_bfm_inst.hdl_if_p(dupIf_hdl_inst);
+        dupIf_bfm_inst.clk(clk);
+        dupIf_bfm_inst.rst_n(rst_n);
 
-        apbReg_bfm.if_p(this->apbReg);
-        apbReg_bfm.hdl_if_p(apbReg_hdl_if);
-        apbReg_bfm.clk(clk);
-        apbReg_bfm.rst_n(rst_n);
+        apbReg_bfm_inst.if_p(this->apbReg);
+        apbReg_bfm_inst.hdl_if_p(apbReg_hdl_inst);
+        apbReg_bfm_inst.clk(clk);
+        apbReg_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen);
@@ -138,11 +138,11 @@ public:
 
 private:
 
-    req_ack_hdl_if<sc_bv<4>, bool> aStuffIf_hdl_if;
-    rdy_vld_hdl_if<sc_bv<5>> cStuffIf_hdl_if;
-    notify_ack_hdl_if<> startDone_hdl_if;
-    rdy_vld_hdl_if<sc_bv<5>> dupIf_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
+    req_ack_hdl_if<sc_bv<4>, bool> aStuffIf_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<5>> cStuffIf_hdl_inst;
+    notify_ack_hdl_if<> startDone_hdl_inst;
+    rdy_vld_hdl_if<sc_bv<5>> dupIf_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

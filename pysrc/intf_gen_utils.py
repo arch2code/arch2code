@@ -825,6 +825,16 @@ def wrap_module_test_namespace(args, data, lines):
     namespaceName = cpp_test_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
+def sc_hdl_member_names(intf_name):
+    """The HDL wrapper's Verilated bridge and BFM member names for one port.
+
+    A member named like a class hides that class for the rest of the wrapper.
+    Every companion class name ends in `_channel`, `_in`, `_out`, `_hdl_if`,
+    `_src_bfm` or `_dst_bfm`, and `_inst` is none of those, so no port name
+    produces a member that collides.
+    """
+    return intf_name + '_hdl_inst', intf_name + '_bfm_inst'
+
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out = {}
@@ -884,7 +894,9 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out['port_decl'] = f"{port_type}<{chnl_params}> {intf_name};"
 
     hdl_intf_type = intf_def['sc_channel']['type'] + '_hdl_if'
-    hdl_intf_name = intf_name + '_hdl_if'
+    hdl_intf_name, bfm_name = sc_hdl_member_names(intf_name)
+    out['hdl_inst_name'] = hdl_intf_name
+    out['bfm_inst_name'] = bfm_name
 
     # Verilated bridge types, positional: one per required struct parameter,
     # then one per hdlparam, then the optional tail. A dropped entry here
@@ -939,8 +951,6 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     chnl_dir = intf_modp
     chnl_type = intf_def['sc_channel']['type'] + '_' + chnl_dir + '_bfm'
-
-    bfm_name = intf_name + '_bfm'
 
     out['bfm_decl'] = f"{chnl_type}<{chnl_params}> {bfm_name};"
     out['bfm_ctor_init'] = f"{bfm_name}(\"" + bfm_name + "\")"

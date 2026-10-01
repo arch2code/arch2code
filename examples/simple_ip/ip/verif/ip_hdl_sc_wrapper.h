@@ -32,8 +32,8 @@ public:
 
     sc_signal<bool> clk;
 
-    push_ack_dst_bfm<ipDataSt<Config>, sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_bfm;
-    apb_dst_bfm<ipRegAddrSt, ipRegDataSt, sc_bv<32>, sc_bv<32>> regs_bfm;
+    push_ack_dst_bfm<ipDataSt<Config>, sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_bfm_inst;
+    apb_dst_bfm<ipRegAddrSt, ipRegDataSt, sc_bv<32>, sc_bv<32>> regs_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -45,36 +45,36 @@ public:
         blockBase("ip_hdl_sc_wrapper", name(), bbMode),
         ipBase<Config>(name(), variant),
         clk("clk"),
-        ipDataIf_bfm("ipDataIf_bfm"),
-        regs_bfm("regs_bfm"),
+        ipDataIf_bfm_inst("ipDataIf_bfm_inst"),
+        regs_bfm_inst("regs_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
-        dut_hdl->ipDataIf_push(ipDataIf_hdl_if.push);
-        dut_hdl->ipDataIf_data(ipDataIf_hdl_if.data);
-        dut_hdl->ipDataIf_ack(ipDataIf_hdl_if.ack);
-        dut_hdl->regs_paddr(regs_hdl_if.paddr);
-        dut_hdl->regs_psel(regs_hdl_if.psel);
-        dut_hdl->regs_penable(regs_hdl_if.penable);
-        dut_hdl->regs_pwrite(regs_hdl_if.pwrite);
-        dut_hdl->regs_pwdata(regs_hdl_if.pwdata);
-        dut_hdl->regs_pready(regs_hdl_if.pready);
-        dut_hdl->regs_prdata(regs_hdl_if.prdata);
-        dut_hdl->regs_pslverr(regs_hdl_if.pslverr);
+        dut_hdl->ipDataIf_push(ipDataIf_hdl_inst.push);
+        dut_hdl->ipDataIf_data(ipDataIf_hdl_inst.data);
+        dut_hdl->ipDataIf_ack(ipDataIf_hdl_inst.ack);
+        dut_hdl->regs_paddr(regs_hdl_inst.paddr);
+        dut_hdl->regs_psel(regs_hdl_inst.psel);
+        dut_hdl->regs_penable(regs_hdl_inst.penable);
+        dut_hdl->regs_pwrite(regs_hdl_inst.pwrite);
+        dut_hdl->regs_pwdata(regs_hdl_inst.pwdata);
+        dut_hdl->regs_pready(regs_hdl_inst.pready);
+        dut_hdl->regs_prdata(regs_hdl_inst.prdata);
+        dut_hdl->regs_pslverr(regs_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        ipDataIf_bfm.if_p(this->ipDataIf);
-        ipDataIf_bfm.hdl_if_p(ipDataIf_hdl_if);
-        ipDataIf_bfm.clk(clk);
-        ipDataIf_bfm.rst_n(rst_n);
+        ipDataIf_bfm_inst.if_p(this->ipDataIf);
+        ipDataIf_bfm_inst.hdl_if_p(ipDataIf_hdl_inst);
+        ipDataIf_bfm_inst.clk(clk);
+        ipDataIf_bfm_inst.rst_n(rst_n);
 
-        regs_bfm.if_p(this->regs);
-        regs_bfm.hdl_if_p(regs_hdl_if);
-        regs_bfm.clk(clk);
-        regs_bfm.rst_n(rst_n);
+        regs_bfm_inst.if_p(this->regs);
+        regs_bfm_inst.hdl_if_p(regs_hdl_inst);
+        regs_bfm_inst.clk(clk);
+        regs_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen);
@@ -94,8 +94,8 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> regs_hdl_if;
+    push_ack_hdl_if<sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> regs_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;
