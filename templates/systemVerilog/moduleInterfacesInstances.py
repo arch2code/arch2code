@@ -27,7 +27,7 @@ def render(args, prj, data):
     out.append("(")
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
     # Module-local parameterizable type/struct declarations. SV cannot
     # parameterize a package, so a parameterized block declares the
@@ -38,6 +38,20 @@ def render(args, prj, data):
         out.append(f"{indent}// Module-local parameterizable type/struct declarations")
         for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, data['blockInfo']['params']):
             out.append(f"{indent}{entry['line']}")
+        out.append("")
+
+    # One internal wire per net a child instance's output drives under a name
+    # this block does not declare. Emitted before the aliases, which may read
+    # a local net.
+    if data['localNets']:
+        out.append(f"{indent}// Local clock/reset nets, driven by a child instance's output")
+        out.extend(f"{indent}wire {net['name']};" for net in data['localNets'])
+        out.append("")
+
+    alias_lines = intf_gen_utils.sv_default_domain_aliases(data)
+    if alias_lines:
+        out.append(f"{indent}// Default-domain aliases: the bare flop macros expand to clk / rst_n")
+        out.extend(f"{indent}{line}" for line in alias_lines)
         out.append("")
 
     #// Interface Instances, needed for between instanced modules inside this module
@@ -61,23 +75,12 @@ def render(args, prj, data):
     if data['memories']:
         out.append(f"{indent}// Memory Interfaces")
         for mem_key, mem_info in data['memories'].items():
-            # dualPort with no connection is one with name
-            #   and one with Unused
-            # dualPort with one connection and no portSuffix is one with name
-            #   and one with Unused
-            # dualPort with one connection with portSuffix is one with name
-            #   and one with portSuffix
-            # singlePort with no connection is one with name
-            connectionsPerMemory = 0
-            memoryConnectionKey = '' # clear key between memories
-            ports = {0: mem_info['memory'], 1: mem_info['memory']+'_unused' } if mem_info['memoryType'] == 'dualPort' else {0: mem_info['memory']}
-            portCount = len(ports)
-            if mem_info['ports']:
-                for port, port_data in mem_info['ports'].items():
-                    ports[connectionsPerMemory] = mem_info['memory']+'_'+port_data['port']
-                    connectionsPerMemory = connectionsPerMemory + 1
-            if mem_info['regAccess']:
-                ports[portCount-1] = mem_info['memory']+'_reg'
+            # Block-side ports take the ports: list in order; a block-side
+            # port with no listed port is named after the memory, then _unused.
+            listed = [mem_info['memory']+'_'+port_data['port'] for port_data in mem_info['ports'].values()] if mem_info['ports'] else []
+            blockNames = iter(listed + [mem_info['memory'], mem_info['memory']+'_unused'][len(listed):])
+            ports = {port: mem_info['memory']+'_reg' if port == mem_info['regPort'] else next(blockNames)
+                     for port in mem_info['portAccess']}
             for portName in ports.values():
                 out.append(f"{indent}memory_if #(.data_t({mem_info['structure']}), .addr_t({mem_info['addressStruct']})) {portName}();")
             memory_ports[mem_key] = ports
@@ -111,7 +114,11 @@ def render(args, prj, data):
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
                         out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
-        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
+        # clockResetBinds (from the projectOpen view) pairs each of the child's own
+        # clock/reset port names with the parent signal driving it, already in the
+        # child's port-list order.
+        out.append(",\n".join(f"{indent}.{bind['port']} ({bind['signal']})"
+                              for bind in value['clockResetBinds']) + "\n);\n")
 
     #// Memory Instances if they exist
     if data['memories']:
@@ -119,17 +126,25 @@ def render(args, prj, data):
     for mem_key, mem_data in data['memories'].items():
         # memories are currenlty all parameterized behavioral memories
         isLocal = mem_data['local']
-        memory_type = 'memory_dp' if mem_data['memoryType'] == 'dualPort' else 'memory_sp'
+        portAccess = mem_data['portAccess']
+        isDualPort = len(portAccess) == 2
+        memory_type = 'memory_dp' if isDualPort else 'memory_sp'
         if isLocal:
             memory_type += '_ext'
             localMemInst =f"{mem_data['memory']}Mem"
             out.append(f"{mem_data['structure']} {localMemInst} [{mem_data['wordLines']}-1:0];")
         memInstName = camelCase('u', mem_data['memory'])
-        out.append(f"{memory_type} #(.DEPTH({mem_data['wordLines']}), .data_t({mem_data['structure']})) {memInstName} (")
-        for port_key, port_data in memory_ports[mem_key].items():
-            port = chr(int(port_key) + ord('A')) if mem_data['memoryType'] == 'dualPort' else ''
+        mem_params = f".DEPTH({mem_data['wordLines']}), .data_t({mem_data['structure']})"
+        if isDualPort:
+            mem_params += (f", .PORTA_READ_ONLY(1'b{int(portAccess['A'] == 'ro')})"
+                           f", .PORTB_WRITE_ONLY(1'b{int(portAccess['B'] == 'wo')})")
+        out.append(f"{memory_type} #({mem_params}) {memInstName} (")
+        for port, port_data in memory_ports[mem_key].items():
             out.append(f"{indent}.mem_port{port} ({port_data}),")
         if isLocal:
             out.append(f"{indent}.mem ({localMemInst}),")
-        out.append(f"{indent}.clk (clk)\n);\n")
+        # Each port's clock is spelled clk plus its port suffix: clkA/clkB, or
+        # clk on a single-port memory.
+        out.append(",\n".join(f"{indent}.clk{port} ({clock})"
+                              for port, clock in mem_data['portClock'].items()) + "\n);\n")
     return "\n".join(out)

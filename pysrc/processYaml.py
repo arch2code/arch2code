@@ -20,8 +20,8 @@ from pysrc.merge_utils import merge_with_spec
 from pysrc.valueResolver import ValueResolver
 import pysrc.evalExpr as evalExpr
 import pysrc.yamlReadCache as yamlReadCache
-
-continueOnError = False
+import pysrc.clockTree as clockTree
+from pysrc.memoryPortAccess import memoryRegisterPort
 
 # Current user-YAML authoring format. A migrated project carries a single
 # top-level `yamlFormat:` field in its project.yaml equal to this value; its
@@ -86,18 +86,9 @@ def expandDirMacros(myFile):
     return _expand_with_macros(myFile, dirMacros)
 
 def sanitizeIdentifierToken(name):
-    # Core-owned identifier sanitization for a project/include/block token: map
-    # the two characters illegal in a C++ module-name / identifier segment to
-    # underscore. Owned here in core (not in the template layer) because
-    # projectCreate builds the owner-qualified foreign-Config file stub from it;
-    # the template layer's cpp_module_name imports this same primitive so the
-    # two cannot drift.
-    #
-    # NOT module-specific despite where it is most visible: three domains depend
-    # on it — C++20 module names, `_ns` namespace names, and the `<project>_`
-    # prefix on foreign Config STRUCT names. Any tightening for module-name
-    # legality alone would silently change struct and namespace spellings too, so
-    # keep the rule to what is illegal in a plain identifier segment.
+    # Maps the characters illegal in a C++ identifier segment to underscore.
+    # Module names, `_ns` namespaces and foreign Config struct names all share
+    # this rule, so tightening it for one changes the spelling of all three.
     return name.replace('-', '_').replace('.', '_')
 
 def configStructName(stem, variant):
@@ -182,7 +173,7 @@ def rejectIllegalSvName(names, kind, describe, remedy):
             exit(warningAndErrorReport())
 
 def leadsWithProject(name, projectName):
-    # The '_' boundary keeps 'debayering' from counting as led by 'debayer'.
+    # The '_' boundary keeps 'fooBar' from counting as led by 'foo'.
     name = sanitizeIdentifierToken(name)
     projectName = sanitizeIdentifierToken(projectName)
     return name == projectName or name.startswith(projectName + '_')
@@ -581,6 +572,35 @@ class projectOpen:
                 self._loadSubTablesRecursive(table, self.schema.data['schema'][table], keyName)
 
             self.loadTable(table, self.schema.data['schema'][table], keyName)
+
+        self._loadDerivedTables()
+
+    def _loadDerivedTables(self):
+        """Load the six persisted-but-not-schema tables into self.data, grouped
+        by the column each getBD* helper keys on: blockClocksResets,
+        blockParameterizedDecls, portDomains and containerLocalNets by
+        blockKey, instanceClockResetBinds by instanceKey, memoryClocks by
+        memoryBlockKey. blockParameterizedDecls is derived by
+        projectCreate.deriveParameterizedDeclSets(); the others are derived by
+        clockTree.build() and persisted by projectCreate._persistClockTree().
+        """
+        derivedTables = {
+            'blockClocksResets': ('blockKey', 'kind, orderIndex'),
+            'instanceClockResetBinds': ('instanceKey', 'orderIndex'),
+            'memoryClocks': ('memoryBlockKey', None),
+            'blockParameterizedDecls': ('blockKey', 'orderIndex'),
+            'portDomains': ('blockKey', 'orderIndex'),
+            'containerLocalNets': ('blockKey', 'orderIndex'),
+        }
+        for table, (groupKey, orderBy) in derivedTables.items():
+            sql = f"SELECT * FROM {table}"
+            if orderBy:
+                sql += f" ORDER BY {orderBy}"
+            g.cur.execute(sql)
+            grouped = OrderedDict()
+            for row in g.cur.fetchall():
+                grouped.setdefault(row[groupKey], []).append(dict(row))
+            self.data[table] = grouped
 
     def _loadSubTablesRecursive(self, parentTable, parentSchema, parentKeyName, parent_key_chain=None):
         """Recursively load all subtables depth-first
@@ -1159,12 +1179,12 @@ class projectOpen:
     # 'arrayElementSize' : optional - if array is used, how many bits per array
     def resolveContextKey(self, name):
         # A context name on a GENERATED_CODE_PARAM line is the canonical
-        # yamlContext key. yamlContext, includeName and contextOwningProject all
-        # share these keys, so the returned key indexes any of them. Context
-        # files carry both --project (owner, resolved directly by
-        # resolveFileOwner) and --context stamped to the canonical key by
-        # newModule/migration, so render always exact-matches here; no
-        # basename/build-root reconciliation is needed. Exits on an unknown name.
+        # yamlContext key, and also indexes includeName and contextOwningProject
+        # (a superset: it also holds project-scoped bucket keys, which never come
+        # out of here). newModule/migration stamp --context with the canonical
+        # key, so an exact match always succeeds and no basename/build-root
+        # reconciliation is needed; owner comes from --project via
+        # resolveFileOwner, not from here.
         if name in self.yamlContext:
             return name
         printError("The context specified in GENERATED_CODE_PARAM: {} is not a known context.\n"
@@ -1421,6 +1441,11 @@ class projectOpen:
         # before port dedup / includes / interface-def collection run.
         if not ret['instances'] and self.data['blocks'][qualBlock].get('ports'):
             self.getBDDefinitionPorts(ret, qualBlock)
+        # the block's clock and reset domains. Resolved before getBDPorts so each
+        # boundary port can be annotated with the block clock it lies in.
+        self.getBDClocksResets(ret)
+        self.getBDBusClockReset(ret)
+        ret['localNets'] = self.getBDLocalNets(qualBlock)
         # deduplicate the ports
         self.getBDPorts(ret)
         # module-local parameterized declaration set, derived and persisted by
@@ -1509,19 +1534,17 @@ class projectOpen:
         }
 
     def getBDParameterizedDecls(self, ret):
-        # Per-block module-local parameterized declaration set, derived and
-        # persisted by projectCreate.deriveParameterizedDeclSets() into the
-        # non-schema blockParameterizedDecls table. Queried directly per block
-        # (the table is not loaded into prj.data) and joined to the types /
-        # structures rows for the declaration bodies. Emission order is the
-        # persisted orderIndex (types/sub-structures before the structures that
-        # use them) for emitters that declare these module-local.
+        # Per-block module-local parameterized declaration set, from the
+        # blockParameterizedDecls table, joined here to the types / structures
+        # rows for the declaration bodies. A block with no parameterized decls is a
+        # legitimate optional relationship, so an absent key reads as none.
+        # Emission order is the persisted orderIndex (types/sub-structures
+        # before the structures that use them) for emitters that declare
+        # these module-local.
         qualBlock = ret['qualBlock']
-        g.cur.execute("SELECT declKind, declKey, orderIndex, usesClog2 FROM blockParameterizedDecls "
-                      "WHERE blockKey = ? ORDER BY orderIndex", (qualBlock,))
         decls = list()
         blockUsesClog2 = False
-        for row in g.cur.fetchall():
+        for row in self.data['blockParameterizedDecls'].get(qualBlock, []):
             declKey = row['declKey']
             if row['declKind'] == 'type':
                 body = self.data['types'][declKey]
@@ -1533,6 +1556,74 @@ class projectOpen:
             decls.append({'declKind': row['declKind'], 'declKey': declKey, 'body': body})
         ret['parameterizedDecls'] = decls
         ret['blockUsesClog2'] = blockUsesClog2
+
+    def getBDClocksResets(self, ret):
+        # The block's declared clocks then resets, in declaration order, from
+        # the blockClocksResets table. Every block has at least one clock row.
+        ret['clocks'] = list()
+        ret['resets'] = list()
+        ret['defaultClock'] = None
+        ret['defaultReset'] = None
+        for row in self.data['blockClocksResets'][ret['qualBlock']]:
+            # The register-bus fields are block-level, repeated on every row.
+            ret['registerClock'] = row['registerClock']
+            ret['registerReset'] = row['registerReset']
+            ret['registerBusPort'] = row['registerBusPort']
+            ret['busClockPort'] = row['busClockPort']
+            ret['busResetPort'] = row['busResetPort']
+            if row['kind'] == 'clock':
+                # period/timeUnit are the resolved standalone values.
+                entry = {'clock': row['itemKey'], 'desc': row['desc'],
+                         'direction': row['direction'], 'default': bool(row['isDefault']),
+                         'period': row['period'], 'timeUnit': row['timeUnit'],
+                         'selectedReset': row['selectedReset']}
+                ret['clocks'].append(entry)
+                if entry['default']:
+                    ret['defaultClock'] = entry['clock']
+                    ret['defaultReset'] = entry['selectedReset']
+            else:
+                # An asynchronous reset belongs to no clock, so it counts
+                # its release cycles on the block default clock.
+                ret['resets'].append({'reset': row['itemKey'], 'desc': row['desc'],
+                                      'direction': row['direction'],
+                                      'default': bool(row['isDefault']),
+                                      'clock': row['clock'] or ret['defaultClock'],
+                                      'async': bool(row['async']),
+                                      'releaseCycles': row['releaseCycles']})
+
+    def getBDBusClockReset(self, ret):
+        # Called for every block. busClock is the block's register-bus
+        # clock, None for a block with no register-bus role.
+        ret['busClock'] = ret['registerClock']
+
+    def getBDInstanceClockResetBinds(self, instanceKey):
+        # The clock and reset binds a container emits for one child instance,
+        # from the instanceClockResetBinds table. 'port' is the child module's
+        # own port name and 'signal' is the container's signal for the same
+        # clock or reset; the two differ whenever the child's project and the
+        # container's project name that domain differently, or the container
+        # declares nothing of that name and its own default drives the port
+        # instead. An instance with no binds is a legitimate optional
+        # relationship, so an absent key reads as none. Read in the persisted
+        # order - the CHILD's canonical order, clocks then resets - so the bind
+        # list reads position for position against the child's port list.
+        return [{'port': row['childPort'], 'signal': row['parentSignal']}
+                for row in self.data['instanceClockResetBinds'].get(instanceKey, [])]
+
+    def getBDMemoryClock(self, memoryBlockKey):
+        # The clock of the memory's block-side port, from the memoryClocks
+        # table. It is always one the owning block declares, so the emitted
+        # bind names a port of the module the memory sits in.
+        return self.data['memoryClocks'][memoryBlockKey][0]['clock']
+
+    def getBDLocalNets(self, blockKey):
+        # A container's own local nets: one internal wire per net a child
+        # instance's output drives under a name the container itself does
+        # not declare, in declaration order, from the containerLocalNets
+        # table. A block with no local nets is a legitimate optional
+        # relationship, so an absent key reads as none.
+        return [{'name': row['netName']}
+                for row in self.data['containerLocalNets'].get(blockKey, [])]
 
     def getBDSvWrapperNames(self, ret):
         # Verilated wrapper design-unit names (projectCreate.deriveSvWrapperNames),
@@ -1752,8 +1843,9 @@ class projectOpen:
 
     def getRegistrarConfigView(self, childQualBlock, parentBlock):
         # A physical registrar keeps the established child-only basename. It
-        # aggregates every pair for that child in the owning project while each
-        # registration retains its pair-qualified factory domain. Literal child
+        # aggregates every pair for that child in the owning project. Model rows
+        # keep each pair's factory domain; `_verif` rows do only when the child
+        # has its own params, else they use the child owner. Literal child
         # Configs also keep the child owner's established domain: standalone
         # testbenches and other non-pair construction sites still ask for that
         # key. Container-sourced Configs cannot use that alias because two
@@ -1778,6 +1870,7 @@ class projectOpen:
                                                         entry['childModuleIdentity']))
         childOwner = self.contextOwningProject[
             self.data['blocks'][childQualBlock]['_context']]
+        childHasOwnParams = self.getBlockConfigView(childQualBlock)['hasOwnParams']
         model = list()
         verif = list()
         variantDescriptors = dict()
@@ -1799,9 +1892,12 @@ class projectOpen:
                                   'factoryProject': childOwner}
                 if ownerAggregate not in model:
                     model.append(ownerAggregate)
+            # The `_verif` key the container's createInstance lookup targets
+            # (mirrors createInstanceProjectName).
+            verifFactoryProject = entry['factoryProject'] if childHasOwnParams else childOwner
             for registration in entry['verifRegistrations']:
                 aggregate = {**registration,
-                             'factoryProject': entry['factoryProject']}
+                             'factoryProject': verifFactoryProject}
                 if aggregate not in verif:
                     verif.append(aggregate)
                 if not registration['pairSpecific']:
@@ -2009,10 +2105,14 @@ class projectOpen:
         # include scope. Two projects may declare a same-named interface, so only
         # the persisted key names the one this block reaches.
         instData = self.data['instances'][instanceKey]
-        declaredPorts = self.data['blocks'][instData['instanceTypeKey']]['ports']
-        if not declaredPorts or portName not in declaredPorts:
-            return ''
-        return declaredPorts[portName]['interfaceKey']
+        blockData = self.data['blocks'][instData['instanceTypeKey']]
+        declaredPorts = blockData['ports']
+        if declaredPorts and portName in declaredPorts:
+            return declaredPorts[portName]['interfaceKey']
+        registerPort = (blockData.get('registerPorts') or {}).get(portName)
+        if registerPort:
+            return registerPort['interfaceKey']
+        return ''
 
     def _resolveSvInstanceParams(self, instanceData, parentParamNames, consts):
         # Param-override list for a sub-block instance's SV #(...). A constant
@@ -2123,6 +2223,7 @@ class projectOpen:
             instInfo['instanceTypeSvModuleName'] = self.blockSvModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
                 instInfo, parentParamNames, ret['temp']['consts'])
+            instInfo['clockResetBinds'] = self.getBDInstanceClockResetBinds(inst)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
@@ -2230,6 +2331,16 @@ class projectOpen:
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
+                        data[obj]['domainClock'] = self.getBDMemoryClock(obj)
+                        data[obj]['regPort'], data[obj]['portAccess'] = memoryRegisterPort(
+                            objInfo['memoryType'], objInfo['regAccess'])
+                        # The register handler's port runs on the owning
+                        # block's register clock, every other port on the
+                        # memory's own clock.
+                        registerClock = self.data['blockClocksResets'][block][0]['registerClock']
+                        data[obj]['portClock'] = {
+                            port: registerClock if port == data[obj]['regPort'] else data[obj]['domainClock']
+                            for port in data[obj]['portAccess']}
                         if objInfo['regAccess']:
                             ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
                         else:
@@ -2295,7 +2406,9 @@ class projectOpen:
                       and (self.contextOwningProject[instanceData['_context']],
                            instanceData['addressGroup']) == groupKey]
             routed.sort(key=lambda instanceData: instanceData['addressID'])
-            if not routed:
+            # A referenced child project's standalone harness router is outside
+            # this build's tree; its view still renders, with no channels.
+            if not routed and qualDecoder in self.reachableInstances:
                 printError(f"Router block '{blockRow['block']}' declares address group "
                            f"'{addressGroupLabel(groupKey)}' but no instance in this "
                            f"build's design tree is routed to it, so the decoder has no "
@@ -2593,6 +2706,10 @@ class projectOpen:
                 'interfaceType': intfInfo['interfaceType'],
                 'direction': direction,
                 'ends': {portName: end},
+                # No connections: row backs this synthesised entry, so there
+                # is no authored clock: to carry; empty matches an ordinary
+                # connection row's own unauthored value.
+                'clock': '',
             }
             self.getBDGetIntfStructs(ret, intfKey=interfaceKey)
 
@@ -3038,6 +3155,9 @@ class projectOpen:
                     temp['connection']['interfaceKey'] = connVal['interfaceKey']
                     self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
                 ports[portName] = temp
+        for portRow in ports.values():
+            domainClock = self.getBDPortDomain(ret, portRow['name'])
+            self._stampPortDomain(ret, portRow, domainClock)
         ret['ports']['connections'] = dict(ports)
         portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
                      'registerPorts': {'dest': 'registers', 'portName': 'register'},
@@ -3046,7 +3166,80 @@ class projectOpen:
             newPorts = dict()
             for conn, connVal in ret[connType].items():
                 self.getBDAddPort(ports, newPorts, connVal[portType['portName']], connVal)
+            for portRow in newPorts.values():
+                # A connectionMapPorts row's name is this block's own port
+                # name (instancePortName), which is what portDomains is keyed by.
+                domainClock = self.getBDPortDomain(ret, portRow['name'])
+                self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
+
+    def _stampPortDomain(self, ret, portRow, domainClock):
+        """Stamp a boundary port's domainClock/domainReset. The block's own
+        register-bus port (ret['registerBusPort']) takes
+        registerClock/registerReset instead: a registerPorts: reset: picks
+        one of several unmarked resets on the bus clock, which the
+        clock's shared selectedReset cannot express. A generated router is
+        single-clock and runs entirely on its bus clock and reset, so every
+        one of its ports takes busClockPort/busResetPort, which honour an
+        addressBlock: reset: that differs from the clock's selected reset.
+        """
+        if ret['addressDecode']['isApbRouter']:
+            portRow['domainClock'] = ret['busClockPort']
+            portRow['domainReset'] = ret['busResetPort']
+        elif portRow['name'] == ret['registerBusPort']:
+            portRow['domainClock'] = ret['registerClock']
+            portRow['domainReset'] = ret['registerReset']
+        else:
+            portRow['domainClock'] = domainClock
+            portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
+
+    def getBDPortDomain(self, ret, portName):
+        """The block's OWN clock that its port `portName` lies in,
+        in rule order:
+
+        1. `ret['qualBlock']`'s own `ports:`/`registerPorts:`/
+           `addressBlock:` row for `portName`, when it authors clock:
+           explicitly - block-local. A reaching connection's clock: must
+           agree with it, and so must a `ports:` boundary port's derived
+           clock (rule 2); clockTree.build() rejects either disagreement.
+        2. The persisted fact clockTree.build() computed (the non-schema
+           portDomains table), keyed by the block's own port name: a
+           connectionMaps: boundary port's inside-out derived clock, or a
+           top-down port's block clock collected from every connection
+           reaching it.
+        3. Otherwise the block default clock: a declared port naming no
+           clock:, a port reached only through a connectionMaps: row with
+           no connection and no declaration, or a register/memory accessor
+           port.
+        """
+        blockRow = self.data['blocks'][ret['qualBlock']]
+        declaredRow = clockTree.declaredPortRow(blockRow, portName)
+        if declaredRow is not None and declaredRow['clock']:
+            return declaredRow['clock']
+        # clockTree.build() reports every boundary port it cannot derive, so
+        # a boundary port reaching this view always has a row.
+        persistedClocks = {row['portName']: row['domainClock']
+                           for row in self.data['portDomains'].get(ret['qualBlock'], [])}
+        if portName in persistedClocks:
+            return persistedClocks[portName]
+        return ret['defaultClock']
+
+    def getBDPortDomainReset(self, ret, clockName):
+        """The selected reset of a boundary port's domain clock.
+
+        A reset belongs to a block, not to a connection, but it is released on
+        one clock, so the reset a port's BFM uses is the SELECTED reset of the
+        port's own clock - the block's declared default on that clock, or
+        its sole candidate - computed once by
+        clockTree.build() and carried on the clock row
+        itself (getBDClocksResets). clockName is a member of the block's own
+        clock set, because getBDPortDomain returns one; that clock may have no
+        selected reset (a domain with no reset at all), in which
+        case there is none to bind here either. `_stampPortDomain` overrides
+        this result for the block's own register-bus port and every router port.
+        """
+        return next(row['selectedReset'] for row in ret['clocks']
+                    if row['clock'] == clockName)
 
     def getBDAddPort(self, ports, newPorts, portName, connVal):
         instanceKey = connVal.get('instanceKey', 'parent')
@@ -3123,10 +3316,10 @@ class projectOpen:
             # post-parse pass emitted: `block:` names the owning leaf,
             # `instance:` names this handler instance, `interface:`
             # carries the leaf-scoped register-bus interface, and
-            # `instancePortName` carries the handler's canonical port
-            # name (registerDecoderPort, e.g. `apbReg`). The
-            # connectionMap's `port:` field is the leaf-side authored
-            # port name and is *not* the handler's port.
+            # `instancePortName` carries the handler's port name, the
+            # leaf's own register-bus port name. The
+            # connectionMap's `port:` field is the leaf-side port of the
+            # same name, read for the leaf's view, not the handler's.
             for cm in self.data.get('connectionMaps', {}).values():
                 instKey = cm.get('instanceKey')
                 if not instKey:
@@ -3872,12 +4065,13 @@ class projectCreate:
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
     specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
-    errorState = False
     includeName = dict()
-    # Per-context owning projectName, keyed identically to includeName. Files in
-    # the root project's own closure map to the root PROJECTNAME; a context
-    # reached through a referenced child project file maps to that child's
-    # projectName (see readRaw ownership BFS).
+    # Per-context owning projectName (see readRaw ownership BFS): root-closure
+    # files map to the root PROJECTNAME, a context reached through a referenced
+    # child project file maps to that child's projectName. Keyed like includeName
+    # plus an identity entry per project-scoped bucket key, so an owner lookup
+    # that meets a bucket resolves instead of raising; iterate includeName or
+    # yamlContext to get design contexts only.
     contextOwningProject = dict()
     includeValid = dict()
     includeSections = {"types", "structures", "constants"}
@@ -3902,6 +4096,25 @@ class projectCreate:
         # Templates are merged shallow - pro/user can override base templates.
         ("templates",): "dict_shallow",
         ("postProcess",): "list_override",
+    }
+
+    # Sections whose rows may not author clock:, because each end's domain is
+    # derived from the port, memory or register bus it joins.
+    CLOCKLESS_ROW_SECTIONS = {'connectionMaps', 'memoryConnections', 'registerConnections'}
+
+    # Built-in project-scoped declarations, parsed for a project that authors none
+    # of that section. Per section and all-or-nothing: a project declaring the
+    # section owns it completely, which keeps the exactly-one-default rule trivial
+    # and avoids the vestigial rows a base/pro/user merge would leave behind. The
+    # names are the ones every hand-written module and flop macro already use, so
+    # a project declaring none needs no edits. The reset states no
+    # clock: on purpose - an unstated clock: is the project's own default clock,
+    # which need not be named clk when the project declares its own clocks.
+    IMPLICIT_PROJECT_DECLARATIONS = {
+        'clocks': {'clk': {'desc': 'implicit default clock',
+                           'default': True, 'period': 1, 'timeUnit': 'ns'}},
+        'resets': {'rst_n': {'desc': 'implicit default reset',
+                             'default': True}},
     }
 
     def __init__(self, projFile, dbFile):
@@ -3939,6 +4152,13 @@ class projectCreate:
         # eval constant is parsed in processSimple and consumed by _constants.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
+        # Blocks whose resets: was authored as an explicitly empty {} or [],
+        # keyed by (yamlFile, block name) the same way _evalNodes is.
+        # Populated by _normalizeClockResetShortForm and consumed by
+        # clockTree.build(), which is the only reader of "no resets at
+        # all" versus "resets: omitted"; transient to this
+        # projectCreate.
+        self._blocksDeclaringNoResets = set()
         # Per referenced child project file, its raw content and the absolute
         # directory of the child project file (so its dirs: resolve relative to
         # the child file, mirroring the root's relative-to-project-file rule).
@@ -3950,6 +4170,17 @@ class projectCreate:
         # projectName is a duplicate-provider error unless an ancestor
         # projectOverrides entry redirects one of them. Populated by readRaw.
         self.projectProviders = {}
+        # Context keys of the child project files the ordinary parser walks; the
+        # exemption set for the "projectScope sections only in a project file"
+        # check. Populated by readRaw.
+        self.projectFileContexts = set()
+        # Project file path per projectName, root plus every referenced child.
+        # Names the file an author must edit when a scope: project reference does
+        # not resolve.
+        self.projectFileByName = {}
+        # Declaring project file per project-scoped bucket key; membership is the
+        # test for "this parse context is a bucket, not a YAML file".
+        self.projectScopeBuckets = {}
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -3984,6 +4215,14 @@ class projectCreate:
         # initialize schema base on the schema file
         self.schema = Schema(self.schemaYaml, schemaFile)
         self.counterReverseField = self.schema.counter_reverse_field
+        # Top-level sections declared _attribs: [projectScope]: authored in the
+        # project file and stored in a bucket keyed by the declaring projectName
+        # rather than a file context. Schema validation rejects the attribute on a
+        # nested node and mapto aliases carry no policy, so every entry that is
+        # True here is already a top-level section name.
+        self.projectScopeSections = {section for section, isProjectScope
+                                     in self.schema.data['projectScope'].items()
+                                     if isProjectScope}
 
         # Normalize project-level address policy before instance auto fields
         # allocate IDs from those groups.
@@ -4048,17 +4287,26 @@ class projectCreate:
         self._deriveOwnershipFromScan()
         # derive the per-owning-project directory layouts (root + any children)
         self.buildProjectLayout()
+        # must precede processYamls: design files resolve against these buckets
+        self.processProjectScopeSections()
         # process all files
         self.processYamls()
         # reject a block variant declared by more than one file of a project
         self.validateVariantDeclarationUniqueness()
         self.validateBlockParamScopeUniqueness()
         self.resolveInstanceVariantDeclarers()
+        self._validateTopInstanceDeclared()
+        self._validateTopInstanceBlockNotRouter()
+        self._validateTopInstanceBlockNotContained()
         # reject a block that contains itself before anything descends the
         # hierarchy: post-parse scripts and port validation both do, and
         # neither terminates on a loop
+        self._validateContainmentAcyclic()
+        # hierKey backs reachableInstanceKeys(), which calcAddresses reads
+        # before the post-parse rebuild below
         self.generateHierarchy()
-        self.validateBlockNotSelfContaining()
+        self._validateConnectionContainers()
+        self._validateConnectionMapContainers()
         # run any user provided post processing
         self.postYamlExternalScript()
         # create database indexes
@@ -4071,6 +4319,24 @@ class projectCreate:
         # derive the per-block module-local parameterized declaration set and
         # persist it into the non-schema blockParameterizedDecls table
         self.deriveParameterizedDeclSets()
+        # build the in-memory clock/reset container model (clockTree.py) from the
+        # connectivity post-parse synthesis has finished building, then persist the
+        # block declarations and the per-instance and per-memory binds its
+        # containers emit
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        registerBusPassthroughs = self.config.getConfig('REGAPB_PASSTHROUGH')
+        tree = clockTree.build(
+            self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
+            self.flatData['memories'], self.flatData['registers'],
+            self.flatData['memoryConnections'],
+            self.flatData['registerConnections'], self.flatData['connectionMaps'],
+            registerBusPassthroughs,
+            self._blocksDeclaringNoResets,
+            self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
+            self.contextOwningProject, rootProjectName, self)
+        # a memory of a block with no default clock must name its own clock
+        tree.check()
+        self._persistClockTree(tree)
         # derive which blocks' declared variants supply each block's Config.
         # Rebuild the hierarchy so post-parse register-handler instances appear
         # in the containment walk.
@@ -4122,7 +4388,7 @@ class projectCreate:
         self.schema.save()
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
-        self.config.setConfig('CONTEXTOWNINGPROJECT', self.contextOwningProject, bin=True) # per-context owning projectName, keyed identically to includeName
+        self.config.setConfig('CONTEXTOWNINGPROJECT', self.contextOwningProject, bin=True)
         # Per-context node directory (the seam saveIncludeFiles uses to place each
         # context's generated artifacts), keyed identically to includeName. Covers
         # types-only contexts that have no block, so a projectOpen view can resolve
@@ -5004,9 +5270,98 @@ class projectCreate:
                 self._filePrefixes(childProj, childName), childName)
         self.config.setConfig('PROJECTLAYOUT', self.projectLayout, bin=True)
 
+    def processProjectScopeSections(self):
+        """Parse the project-scoped sections of every project file in the build.
+
+        Must run before processYamls(): the ROOT project file is never handed to
+        processSingleFile (the file-read BFS is seeded from its getFileList
+        results, not from the file), and projectFiles: entries create no include:
+        edge, so no design file is ordered after its project file even though
+        foreign keys are validated at parse time.
+
+        Rows land in the ordinary schema tables under a bucket keyed by the
+        declaring projectName - the identity a referring row already holds
+        through contextOwningProject. The bucket is deliberately NOT a parse
+        context: nothing is registered in yamlContext, includeValid, includeName
+        or CONTEXTNODEDIR, so no context-iterating consumer sees it and no
+        context header is generated for it. Hence processSection is driven
+        directly; processSingleFile owns those registry side effects.
+        """
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        # (projectName, raw project content, project file path). The RAW root
+        # content, not the base/pro/user merged self.proj: a declaration shipped
+        # in the a2c base project file must not appear in every project, and the
+        # dict_shallow merge default has no removal sentinel. Paths are absolute
+        # so one family of diagnostics does not mix a command-line-relative root
+        # path with yaml-base-relative child paths.
+        projectFiles = [(rootProjectName, self._userProjRaw, self._rootProjFileAbs)]
+        projectFiles += [(projName, info['raw'],
+                          os.path.normpath(os.path.join(g.yamlBasePath,
+                                                        self.projectProviders[projName])))
+                         for projName, info in self.childProjectRaw.items()]
+        for projectName, raw, projFile in projectFiles:
+            # Checked for EVERY project file, not only those that author a
+            # project-scoped section: a project needs no declaration of its own
+            # to have its references pointed at another project's bucket.
+            if projectName in self.projectFileByName:
+                printError(f"projectName '{projectName}' is declared by two project "
+                           f"files: '{self.projectFileByName[projectName]}' and "
+                           f"'{projFile}'. Project-scoped rows are stored in a bucket "
+                           f"keyed by projectName, so both projects would share one "
+                           f"declaration set. Give each project a unique projectName.")
+                exit(warningAndErrorReport())
+            # Recorded for every project, bucket or not: a project needs no
+            # declaration of its own to be named by a scope: project diagnostic.
+            self.projectFileByName[projectName] = projFile
+            # Canonical section name -> the bodies declaring it. A project file
+            # may spell the section through its _mapto alias, exactly as
+            # processSingleFile accepts one, so raw keys resolve through mapto
+            # before selection.
+            bodiesBySection = OrderedDict()
+            for key in raw:
+                canonical = self.schema.data['mapto'].get(key, key)
+                if canonical in self.projectScopeSections:
+                    bodiesBySection.setdefault(canonical, []).append(raw[key])
+            # A project authoring none of a built-in section inherits it, which is
+            # a reason to own a bucket in its own right.
+            for section, body in self.IMPLICIT_PROJECT_DECLARATIONS.items():
+                if section not in bodiesBySection:
+                    bodiesBySection[section] = [body]
+            # Schema declaration order, not the author's key order: foreign keys
+            # are validated at parse time, so a referencing section must be
+            # parsed after the one it references.
+            sections = [s for s in self.schema.data['schema'] if s in bodiesBySection]
+            # A bucket and a context file key share the self.data[section]
+            # keyspace, so a collision silently merges two declaration sets.
+            if projectName in self.yamlAllFiles:
+                printError(f"projectName '{projectName}' collides with the YAML "
+                           f"context key of the same name. A project's "
+                           f"project-scoped declarations are stored under its "
+                           f"projectName, so a project must not be named after one "
+                           f"of the project's YAML files.")
+                exit(warningAndErrorReport())
+            self.projectScopeBuckets[projectName] = projFile
+            self.contextOwningProject[projectName] = projectName
+            self._parserResolver = ValueResolver(self, context=projectName)
+            # Each section is checked as soon as it is complete, before the next is
+            # parsed: a later section resolves an unstated reference against the
+            # earlier section's default entry, so that default must be known to
+            # exist by then.
+            for section in sections:
+                self._impliedProjectScopeDefault(projectName, section, bodiesBySection[section])
+                for body in bodiesBySection[section]:
+                    self.processSection(section, body, projectName)
+                self._validateProjectScopeDefaults(projectName, section)
+            self._validateClockResetNames(projectName)
+            self._validateDefaultResetClock(projectName)
+        g.db.commit()
+        # see processYamls for why the parse-time resolver is nulled between phases
+        self._parserResolver = None
+
     def createProjectConfig(self):
         # save anything in project file to config except named items
-        notConfig = {"projectFiles", "dirs", "systemFiles", "templates"}
+        # project-scoped sections are parsed into their bucket, not saved to config
+        notConfig = {"projectFiles", "dirs", "systemFiles", "templates"} | self.projectScopeSections
         toSave = {'TOPINSTANCE': '_top', "PROJECTNAME": "Nameless"} #initialize to some defaults as appropriate
         for item in self.proj:
             # to allow later processing of nested project files we need to ensure the lower level parser ignores them by adding them to the set
@@ -5017,6 +5372,10 @@ class projectCreate:
             self.config.setConfig(item, toSave[item])
         for item in self.a2cProj:
             self.ignoreSections.add(item)
+        # A CHILD project file is walked by the ordinary parser, so without this
+        # its project-scoped sections are parsed a second time into that file's
+        # context; the loop above only covers what the ROOT project declares.
+        self.ignoreSections.update(self.projectScopeSections)
 
     def configTemplates(self):
         # Reject deprecated config file references before template selection.
@@ -5053,13 +5412,10 @@ class projectCreate:
         self.config.setConfig('TEMPLATES', templateConfig)
 
     def logError(self, msg):
-        self.errorState = True
         printError(msg)
-        if not continueOnError:
-            exit(warningAndErrorReport())
+        exit(warningAndErrorReport())
 
     def logWarning(self, msg):
-        self.errorState = False
         printWarning(msg)
 
     def postYamlExternalScript(self):
@@ -5139,60 +5495,6 @@ class projectCreate:
         self.instances = qualInstances
         self.instanceContainer = instanceContainer
         self.blocks = blocks
-
-    def validateBlockNotSelfContaining(self):
-        """Reject any block that contains itself, at any depth.
-
-        A block inside itself - directly, or around a longer loop such as A
-        holding B holding C holding A - gives the design no bottom, and every
-        pass that descends the hierarchy runs forever. The whole instance
-        table is walked, not just what this build's topInstance reaches.
-        """
-        # The root instance name each composed child project declares. Only the
-        # root project's own top row is rewritten to the _topInstance sentinel,
-        # so a child keeps a literal self-edge, and this name is what marks that
-        # row as its root.
-        rootProjectName = self.config.getConfig('PROJECTNAME')
-        declaredTopInstance = {name: info['raw'].get('topInstance')
-                               for name, info in self.childProjectRaw.items()}
-
-        # Blocks on the current descent: an edge back into one closes a loop.
-        # A block already finished is known clean and is not descended twice.
-        descent = list()
-        onDescent = set()
-        finished = set()
-
-        def descend(blockKey):
-            onDescent.add(blockKey)
-            descent.append(blockKey)
-            for instanceRow in self.hierKey[blockKey].values():
-                childBlockKey = instanceRow['instanceTypeKey']
-                if instanceRow['containerKey'] == childBlockKey:
-                    # A composed child's own root declaration is a root, not a
-                    # containment. Root-owned yaml holds no such row, so a
-                    # self-edge there is always a real one.
-                    owner = self.contextOwningProject[instanceRow['_context']]
-                    if (owner != rootProjectName
-                            and instanceRow['instance'] == declaredTopInstance[owner]):
-                        continue
-                if childBlockKey in onDescent:
-                    # From the block that closed the loop back round to itself,
-                    # so a block holding an instance of its own type reads as
-                    # the single step 'A -> A'.
-                    loop = descent[descent.index(childBlockKey):] + [childBlockKey]
-                    printError(f"Block '{childBlockKey}' contains itself: "
-                               f"{' -> '.join(loop)}. A block must never "
-                               f"contain itself, at any depth.")
-                    exit(warningAndErrorReport())
-                if childBlockKey not in finished:
-                    descend(childBlockKey)
-            descent.pop()
-            onDescent.remove(blockKey)
-            finished.add(blockKey)
-
-        for blockKey in self.hierKey:
-            if blockKey not in finished:
-                descend(blockKey)
 
     def reachableInstanceKeys(self):
         """Return the set of instanceKeys that participate in this build's
@@ -5402,6 +5704,7 @@ class projectCreate:
                                    f"project to select one.")
                         exit(warningAndErrorReport())
                     self.projectProviders[projName] = f
+                    self.projectFileContexts.add(f)
                     # Capture the child's raw project content plus its own file
                     # location, so buildProjectLayout can resolve the child's
                     # dirs: relative to the child project file (not the root). f
@@ -5510,7 +5813,7 @@ class projectCreate:
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
             if addressType == 'memories':
-                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess = 1 order by blockKey, a.ROWID"
+                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess in ('rw', 'ro', 'wo') order by blockKey, a.ROWID"
             else:
                 sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey order by blockKey, a.ROWID"
             g.cur.execute(sql)
@@ -5605,15 +5908,47 @@ class projectCreate:
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
+        registerBusPassthroughs = self.config.getConfig('REGAPB_PASSTHROUGH')
+        reachable = self.reachableInstanceKeys()
         for context in self.data['instances']:
             for instance, instData in self.data['instances'][context].items():
                 # not every instance has used any space, so only check the ones that do
-                if instData['instanceTypeKey'] in blockAddressCurrent:
+                if instData['instanceTypeKey'] not in blockAddressCurrent:
+                    continue
+                if instData['addressGroup'] is not None:
                     # available is based on the number of size of each address space in that group * addressMultiples
                     # the instance's group is the one its own project declares
-                    groupKey = (self.contextOwningProject[instData['_context']],
-                                instData['addressGroup'])
-                    availableSpace = self.addressControl['AddressGroups'][groupKey]['addressIncrement'] * instData['addressMultiples']
+                    windows = [((self.contextOwningProject[instData['_context']],
+                                 instData['addressGroup']),
+                                instData['addressMultiples'])]
+                else:
+                    # unreachable instances of a referenced project are not in
+                    # the blob; a reachable one with no addressGroup is either
+                    # a passthrough inner consumer or an authoring error.
+                    if instData['instanceKey'] not in reachable:
+                        continue
+                    passthrough = registerBusPassthroughs.get(instData['containerKey'])
+                    if passthrough is None:
+                        printError(
+                            f"Instance '{instData['instance']}' (block "
+                            f"'{self.flatData['blocks'][instData['instanceTypeKey']]['block']}') "
+                            f"owns firmware-accessible registers/memories but "
+                            f"carries no addressGroup: and is not fed through "
+                            f"a single-consumer container; add addressGroup: "
+                            f"<router group> to the instance."
+                        )
+                        exit(warningAndErrorReport())
+                    # each slot's group is the one the slot instance's own
+                    # project declares
+                    windows = []
+                    for slotInstanceKey in passthrough['slotInstanceKeys']:
+                        slotRow = self.flatData['instances'][slotInstanceKey]
+                        windows.append(
+                            ((self.contextOwningProject[slotRow['_context']],
+                              slotRow['addressGroup']),
+                             slotRow['addressMultiples']))
+                for groupKey, addressMultiples in windows:
+                    availableSpace = self.addressControl['AddressGroups'][groupKey]['addressIncrement'] * addressMultiples
                     if blockAddressCurrent[instData['instanceTypeKey']] > availableSpace:
                         printError(f"Block {instData['instanceKey']} overflowed its address space. Used: {blockAddressCurrent[instData['instanceTypeKey']]}. Available: {availableSpace}")
                         exit(warningAndErrorReport())
@@ -5739,6 +6074,19 @@ class projectCreate:
         register_connections = flat_rows('registerConnections')
         connection_maps = flat_rows('connectionMaps')
         block_rows = flat_rows('blocks')
+
+        # The child side of a connectionMap is typed by the child's declared
+        # surface, its ports: row, else its registerPorts: row, else the
+        # map's interface, as in projectOpen.getBDDeclaredPortInterfaceKey.
+        def child_port_interface(block_row, cm):
+            portName = cm['instancePortName']
+            declaredPort = (block_row.get('ports') or {}).get(portName)
+            if declaredPort:
+                return declaredPort['interfaceKey']
+            registerPort = (block_row.get('registerPorts') or {}).get(portName)
+            if registerPort:
+                return registerPort['interfaceKey']
+            return cm['interfaceKey']
 
         # A block's config context is where its BACKING ipParameters constants are
         # declared, not the file its `params:` list sits in. The first param's
@@ -6095,9 +6443,10 @@ class projectCreate:
             #    map binds the block's own parent-facing port, so a
             #    parameterizable interface is on its own surface.
             for cm in connection_maps:
-                if (cm['isParameterizable'] and
-                        (cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set)):
+                if cm['blockKey'] == qualBlock and cm['isParameterizable']:
                     add_interface(cm['interfaceKey'], own_surface=True)
+                if cm['instanceKey'] in qual_block_inst_set:
+                    add_interface(child_port_interface(block_row, cm), own_surface=True)
 
             # 4. Registers owned by this block (or parent block when this is
             #    a regHandler).
@@ -6499,15 +6848,88 @@ class projectCreate:
                 usesClog2 = info['usesClog2'] if info['declKind'] == 'constant' else False
                 rows.append((blockKey, info['declKind'], info['declKey'], orderIndex, usesClog2))
 
-        # Non-schema table; getBlockData() queries it directly and it never loads
-        # into prj.data.
+        # Explicit non-schema table: create, then bulk insert. Building the row
+        # list in memory and inserting via a single executemany keeps creation
+        # cheap. projectOpen._loadDerivedTables() reads the whole table in one
+        # scan; no index.
         g.cur.execute("DROP TABLE IF EXISTS blockParameterizedDecls")
         g.cur.execute("CREATE TABLE blockParameterizedDecls "
                       "(blockKey TEXT, declKind TEXT, declKey TEXT, orderIndex INTEGER, usesClog2 INTEGER)")
         g.cur.executemany("INSERT INTO blockParameterizedDecls "
                           "(blockKey, declKind, declKey, orderIndex, usesClog2) VALUES (?, ?, ?, ?, ?)", rows)
-        g.cur.execute("CREATE INDEX idx_blockParameterizedDecls_blockKey "
-                      "ON blockParameterizedDecls (blockKey)")
+
+    def resolveProjectScopedName(self, section, projectName, name):
+        """The row a project-scoped name denotes inside one project.
+
+        The project's own row of that name when it declares one, otherwise the row
+        it flags default. This is the name-else-default boundary rule in one place:
+        a clock or reset reaching a project from outside is respelled in that
+        project's own declarations, so nothing downstream can name a domain the
+        project does not declare. Total for every project: the pre-pass injects the
+        sections a project does not declare and rejects a contributed section
+        without a default.
+        """
+        rows = self.data[section][projectName]
+        if name in rows:
+            return rows[name]
+        return next(row for row in rows.values() if row['default'])
+
+    def _persistClockTree(self, tree):
+        """Persist the clockTree's five tables: blockClocksResets,
+        instanceClockResetBinds, memoryClocks, portDomains, containerLocalNets.
+        The derivation and the checks live in clockTree.py; this is the SQL
+        boundary that module never crosses (it does not touch g.cur).
+        """
+        (blockClocksResetsRows, instanceClockResetBindsRows,
+        memoryClocksRows, portDomainsRows, containerLocalNetsRows) = tree.rows()
+
+        # Explicit non-schema tables, in the manner of blockParameterizedDecls:
+        # create, then bulk insert. projectOpen._loadDerivedTables() reads
+        # the whole table in one scan; no index.
+        g.cur.execute("DROP TABLE IF EXISTS blockClocksResets")
+        g.cur.execute("CREATE TABLE blockClocksResets "
+                      "(blockKey TEXT, kind TEXT, itemKey TEXT, orderIndex INTEGER, "
+                      "desc TEXT, direction TEXT, isDefault INTEGER, period INTEGER, "
+                      "timeUnit TEXT, clock TEXT, async INTEGER, selectedReset TEXT, "
+                      "registerClock TEXT, registerReset TEXT, "
+                      "busClockPort TEXT, busResetPort TEXT, releaseCycles INTEGER, "
+                      "registerBusPort TEXT)")
+        g.cur.executemany("INSERT INTO blockClocksResets (blockKey, kind, itemKey, "
+                          "orderIndex, desc, direction, isDefault, period, timeUnit, "
+                          "clock, async, selectedReset, registerClock, registerReset, "
+                          "busClockPort, busResetPort, releaseCycles, registerBusPort) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
+
+        g.cur.execute("DROP TABLE IF EXISTS instanceClockResetBinds")
+        g.cur.execute("CREATE TABLE instanceClockResetBinds "
+                      "(instanceKey TEXT, childPort TEXT, parentSignal TEXT, "
+                      "orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO instanceClockResetBinds "
+                          "(instanceKey, childPort, parentSignal, orderIndex) "
+                          "VALUES (?, ?, ?, ?)", instanceClockResetBindsRows)
+
+        g.cur.execute("DROP TABLE IF EXISTS memoryClocks")
+        g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT)")
+        g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock) "
+                          "VALUES (?, ?)", memoryClocksRows)
+
+        g.cur.execute("DROP TABLE IF EXISTS portDomains")
+        g.cur.execute("CREATE TABLE portDomains (blockKey TEXT, portName TEXT, "
+                      "domainClock TEXT, orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO portDomains (blockKey, portName, domainClock, orderIndex) "
+                          "VALUES (?, ?, ?, ?)", portDomainsRows)
+
+        # containerLocalNets: one row per local net inside a container - a
+        # clock or reset a child
+        # instance's output binding drives under a name the container does
+        # not itself declare. getBDLocalNets reads this back for
+        # the container's own wire declarations.
+        g.cur.execute("DROP TABLE IF EXISTS containerLocalNets")
+        g.cur.execute("CREATE TABLE containerLocalNets "
+                      "(blockKey TEXT, netName TEXT, orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO containerLocalNets "
+                          "(blockKey, netName, orderIndex) "
+                          "VALUES (?, ?, ?)", containerLocalNetsRows)
 
     def _validateParameterizedConnectionEndpoints(self, declInfo, blockParams, blockIsParameterizable):
         # A parameterized interface implies both connected endpoints are
@@ -6912,11 +7334,8 @@ class projectCreate:
                 continue
             for setting in settings:
                 if setting not in allowedFields:
-                    line = (settings.lc.line + 1
-                            if hasattr(settings, 'lc') and settings.lc is not None
-                            else '?')
                     self.logError(
-                        f"In {self.projFile}:{line}, {sectionLabel} "
+                        f"In {self.diagnosticLocation(self.projFile, settings.lc)}, {sectionLabel} "
                         f"{rowKindLabel} '{name}' has unknown parameter "
                         f"'{setting}'. Allowed: {sorted(allowedFields)}"
                     )
@@ -7153,9 +7572,8 @@ class projectCreate:
             parentName = parentBlock.get('block') or parentBlockKey
             childName = childBlock.get('block') or childBlockKey
             instContext = instRow['_context']
-            line = instRow.get('lc').line + 1 if instRow.get('lc') else '?'
             printError(
-                f"In {instContext}:{line}, RTL block '{parentName}' contains "
+                f"In {self.diagnosticLocation(instContext, instRow.get('lc'))}, RTL block '{parentName}' contains "
                 f"instance '{instanceName}' of block '{childName}', but "
                 f"'{childName}' has hasRtl: false. RTL hierarchy requires every "
                 f"subblock of an RTL block to have an RTL implementation. Set "
@@ -7189,10 +7607,9 @@ class projectCreate:
             bound.setdefault(innerBlockKey, dict())[
                 (cm['direction'], cm['instancePortName'])] = cm['interface']
         for cm in connection_maps_flat.values():
-            line = cm['lc'].line + 1 if cm.get('lc') else '?'
             if topInstance and cm['blockKey'] == topInstance['instanceTypeKey']:
                 printError(
-                    f"In {cm['_context']}:{line}, connectionMap for interface "
+                    f"In {self.diagnosticLocation(cm['_context'], cm.get('lc'))}, connectionMap for interface "
                     f"'{cm['interface']}' on block '{cm['block']}' surfaces port "
                     f"'{cm['portName']}' of instance '{cm['instance']}' at the "
                     f"boundary of the project's top instance "
@@ -7207,7 +7624,7 @@ class projectCreate:
             hazard = ("a floating input with no driver" if cm['direction'] == 'dst'
                       else "an output nothing above reads")
             message = (
-                f"In {cm['_context']}:{line}, connectionMap for interface "
+                f"In {self.diagnosticLocation(cm['_context'], cm.get('lc'))}, connectionMap for interface "
                 f"'{cm['interface']}' on block '{cm['block']}' surfaces port "
                 f"'{cm['portName']}' of instance '{cm['instance']}' at the block's "
                 f"boundary, but no block containing '{cm['block']}' binds that "
@@ -7780,8 +8197,6 @@ class projectCreate:
                 printWarning(processed)
                 printError("Circular include dependancy detected")
                 exit(warningAndErrorReport())
-            if self.errorState:
-                exit(warningAndErrorReport())
         g.db.commit()
         # Phase complete; null the parse-time resolver so any post-parse
         # caller that reaches through self._parserResolver AttributeError's
@@ -7834,8 +8249,19 @@ class projectCreate:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
         # we are going to go through every section of the input yaml file and process it
         for section, sectData in sections.items():
+            sectionLc = self._sectionKeyLc(sections, section)
             if section in self.schema.data['mapto']:
                 section = self.schema.data['mapto'][section]
+            # ignoreSections is consulted below BEFORE the unknown-section check,
+            # so without this a projectScope section authored in a design YAML is
+            # dropped with no diagnostic at all.
+            if section in self.projectScopeSections and yamlFile not in self.projectFileContexts:
+                printError(f"Section '{section}:' found in "
+                           f"{self.diagnosticLocation(yamlFile, sectionLc)}. "
+                           f"'{section}:' is a project-scoped section: it may only be "
+                           f"authored in the project file of the project that declares "
+                           f"it, not in design YAML.")
+                exit(warningAndErrorReport())
             # some sections need to be ignored (eg in case this is a nested project file)
             if section not in self.ignoreSections:
                 # custom sections are checked first - they may not have a schema entry of their own
@@ -7847,14 +8273,47 @@ class projectCreate:
                 elif (section in self.schema.data['schema']):
                     self.processSection(section, sectData, contextFile)
                 else:
-                    printError(f"Unknown section: {section} found in {yamlFile}:{sectData.lc.line}")
+                    printError(f"Unknown section: {section} found in "
+                               f"{self.diagnosticLocation(yamlFile, sectionLc)}")
                     exit(warningAndErrorReport())
                 if section in self.includeSections:
                     self.includeValid[yamlFile]["valid"] = True
 
+    # A row of a project-scoped section is parsed with the declaring projectName
+    # as its yamlFile, which is a bucket key and not a path, so the declaring
+    # project file is named instead. ruamel counts lines from 0; diagnostics
+    # report them as an editor shows them. Call this inside the diagnostic rather
+    # than into a per-row local: hoisting it builds a location string for every
+    # parsed line and discards all but the failing one.
+    def diagnosticLocation(self, yamlFile, lc=None):
+        path = self.projectScopeBuckets.get(yamlFile, yamlFile)
+        return path if lc is None else f"{path}:{lc.line + 1}"
+
+    def _requireSectionBody(self, section, data, yamlFile):
+        # A null body (every entry commented out), a scalar, or a list of scalars
+        # would crash the item walk in processSection. An empty mapping or list
+        # walks cleanly and passes here, though a section's own rules may still
+        # reject it: an empty project-scoped section declares no default entry.
+        if not isinstance(data, (dict, list)):
+            got = 'an empty body' if data is None else f"{type(data).__name__} '{data}'"
+            printError(f"In file {self.diagnosticLocation(yamlFile)}, section {section}: expected a mapping of "
+                       f"named entries or a list of entries, got {got}")
+            exit(warningAndErrorReport())
+        if isinstance(data, list):
+            for entry in data:
+                if not isinstance(entry, dict):
+                    printError(f"In file {self.diagnosticLocation(yamlFile)}, section {section}: list entry "
+                               f"'{entry}' must be a mapping of fields; a list body "
+                               f"declares one mapping per entry")
+                    exit(warningAndErrorReport())
+
     # loop through section handling all items for simple and inbetween sections
     def processSection(self, section, data, yamlFile):
         # print(f'Processing section {section} in {yamlFile}:{data.lc.line}')
+        # Three callers funnel here: design YAML, the project-scope pre-pass, and
+        # ipParameters sub-sections. The customSections bodies dispatch to
+        # _process_<section> instead, so they do not reach this check.
+        self._requireSectionBody(section, data, yamlFile)
         # create the context specific data holder for this section
         # during data parsing all data is held in context form to allow dependency checking
         if yamlFile not in self.data[section]:
@@ -7910,19 +8369,38 @@ class projectCreate:
             self.addFlatRecord(section, entry)
             self.addRecord(section, yamlFileOverride, itemkey, entry, self.schema.data['schema'][section])
 
+    def _normalizeClockResetShortForm(self, item, yamlFile, anchor):
+        """Rewrite a block's clocks:/resets: short form into the mapping form.
+
+        `clocks: [clkSlow]` means the mapping form with every field defaulted,
+        so the schema sees only one shape. A multi-entry clock list normalises
+        into several clocks with none marked default, which clockTree rejects.
+
+        An explicitly empty `resets:` means "no reset", distinct from omitting
+        it (implicit rst_n). Generic field processing treats both as falsy, so
+        the distinction is recorded in parse-time state keyed by
+        (yamlFile, block name).
+        """
+        if 'resets' in item and not item['resets']:
+            self._blocksDeclaringNoResets.add((yamlFile, anchor))
+        for field in ('clocks', 'resets'):
+            value = item.get(field)
+            if isinstance(value, list):
+                mapped = OrderedDict()
+                for index, name in enumerate(value):
+                    lc = self._scalarSeqItemLc(value, index)
+                    mapped[name] = {'lc': lc} if lc is not None else {}
+                item[field] = mapped
+
     # process a single entry and handle all the trivial cases
     # schema can be provided for sub table use cases
     # note that auto fields are ignored
     def processSimple(self, section, anchor, item, yamlFile, schema = None, context='', outer = None):
         ret = {'_context': yamlFile}
         if isinstance(item, dict) and 'lc' in item:
-            myLineNumber = item['lc'].line + 1
             ret['lc'] = item['lc']
         elif hasattr(item, 'lc'):
-            myLineNumber = item.lc.line + 1
             ret['lc'] = item.lc
-        else:
-            myLineNumber = None
         comboKey = self.schema.data['comboKey'].get(context+section, None)
         comboSchema = self.schema.data['comboField'].get(context+section, {})
         if not schema:
@@ -7936,17 +8414,32 @@ class projectCreate:
             # walk is malformed YAML; report it cleanly instead of crashing on
             # the field iteration below.
             if not isinstance(item, dict):
-                printError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must be a mapping of fields but got {type(item).__name__}")
+                printError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} must be a mapping of fields but got {type(item).__name__}")
                 exit(warningAndErrorReport())
+            if section == 'blocks':
+                self._normalizeClockResetShortForm(item, yamlFile, anchor)
             # loop through the fields in the item to make sure they are all in the schema
             for field in item:
-                if not isinstance(field, dict) and not isinstance(item[field], dict):
+                if field == 'clock' and section in self.CLOCKLESS_ROW_SECTIONS:
+                    self.logError(
+                        f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, "
+                        f"section {section}{f', key:{anchor}' if anchor else ''}: "
+                        f"a row may not author clock:, because each end's domain "
+                        f"comes from the port, memory or register bus it joins. "
+                        f"Remove the clock: field.")
+                elif field == 'reset' and section == 'memories':
+                    self.logError(
+                        f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, "
+                        f"memory '{item.get('memory')}' sets a reset field. A memory "
+                        f"has no reset state, so remove the field.")
+                elif not isinstance(field, dict) and not isinstance(item[field], dict):
                     if field not in schema and field not in ['eval', 'lc', '_yamlFileOverride']:
-                        printWarning(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} has unknown field {field}")
+                        printWarning(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} has unknown field {field}")
 
         # loop through the schema processing the input one field at a time
         for field, ftype in schema.items():
             comboField = comboSchema.get(field, None)
+            comboUnstated = False
             if isinstance(ftype, dict):
                 #if ftype is a dict, snap off the whole relevant piece as a dict depending on whether required or not
                 attrib = self.schema.data['attrib'][context+section+field]
@@ -7956,10 +8449,10 @@ class projectCreate:
                 else:
                     nested = item.get(field)
                 if not nested and 'required' in attrib:
-                    self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} required sub table {field} is missing")
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} required sub table {field} is missing")
                 if nested:
                     if not isinstance(nested, (dict, list)):
-                        printError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} required sub table {field} is missing definition")
+                        printError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} required sub table {field} is missing definition")
                         exit(warningAndErrorReport())
                     # recursively process the sub entry
                     ret[field] = self.processSubTable(field, nested, yamlFile, ftype, anchor, context+section, ret)
@@ -7976,11 +8469,20 @@ class projectCreate:
                     raise RuntimeError(f"Schema validation incomplete: combo field '{field}' in section '{context+section}' missing qualified sources")
                 qualified_sources = field_obj.combo_sources_qualified
                 comboStr = ""
-                for source_field in qualified_sources:
-                    if source_field not in ret or ret[source_field] is None:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, field:{field} is missing required combo source {source_field}")
+                for unqualified_source, source_field in zip(field_obj.combo_sources, qualified_sources):
+                    value = ret.get(source_field)
+                    # An unstated optional source ("" if omitted, None for `~`) leaves a
+                    # reference combo unstated; the validator skips it below. A key combo
+                    # keeps an empty component as part of its identity (connections name).
+                    if (ftype == 'combo' and value in ("", None)
+                            and node.get_field(unqualified_source).field_type == 'optional'):
+                        comboStr = ""
+                        comboUnstated = True
+                        break
+                    if value is None:
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, field:{field} is missing required combo source {source_field}")
                         exit(warningAndErrorReport())
-                    comboStr = comboStr + ret[source_field]
+                    comboStr = comboStr + value
                 ret[field] = comboStr
                 # Immediately populate the qualified field if it exists in schema
                 qualified_field = field + 'Key'
@@ -7998,7 +8500,7 @@ class projectCreate:
                     keyStr = ""
                     for source_field in qualified_sources:
                         if source_field not in ret or ret[source_field] == None:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {source_field}")
+                            self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, key:{anchor} is missing required field {source_field}")
                             exit(warningAndErrorReport())
                         keyStr = keyStr + ret[source_field]
                     ret[field] = keyStr
@@ -8007,7 +8509,7 @@ class projectCreate:
                     ret[field] = anchor
                 elif field not in item:
                     # anchor was not supplied and field not in item - this is an error
-                    self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} is missing required field {field}")
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} is missing required field {field}")
                 else:
                     # anchor was not supplied but field is in item - use the item value
                     ret[field] = item.get(field)
@@ -8036,7 +8538,7 @@ class projectCreate:
                             base_field, base_ftype = source_info
                         else:
                             base_field, base_ftype = '<unknown>', 'unknown'
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {context}{section}, contextKey field '{field}' was not pre-populated by its base field '{base_field}' (type={base_ftype}). This is a bug in processYaml.")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {context}{section}, contextKey field '{field}' was not pre-populated by its base field '{base_field}' (type={base_ftype}). This is a bug in processYaml.")
                         exit(warningAndErrorReport())
                     # else: correctly pre-populated, no action needed
                 if ftype == 'anchor':
@@ -8055,7 +8557,7 @@ class projectCreate:
                         ret[qualified_field] = ret[field] + '/' + yamlFile
                 if ftype in {'required', 'subkey'}:
                     if field not in item:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} is missing required field {field}")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} is missing required field {field}")
                     ret[field] = item.get(field)
                 if ftype in {'optional', 'optionalConst'}:
                     # note that its only optional in the input - hence get usage
@@ -8077,7 +8579,7 @@ class projectCreate:
                         # enum symbol, OR a numeric literal. The design element
                         # must belong to a block for the block-param path.
                         if field not in item:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
+                            self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, key:{anchor} is missing required field {field}")
                         else:
                             ret[field] = item[field]
                             if 'block' in ret and self.checkIsParam(ret['block'], item[field], yamlFile):
@@ -8087,7 +8589,7 @@ class projectCreate:
                                     item[field], yamlFile, fatal=False)
                                 if resolved is None:
                                     self.logError(
-                                        f"In file {yamlFile}:{myLineNumber}, section {section} {context}, "
+                                        f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, "
                                         f"key:{anchor} field {field}: '{item[field]}' is not a parameter "
                                         f"of block '{ret.get('block', '?')}' and is not declared as a "
                                         f"constant or enum in '{yamlFile}' or any file it includes.")
@@ -8095,7 +8597,7 @@ class projectCreate:
                                     qualKey = resolved
                     elif ftype == 'const':
                         if field not in item:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
+                            self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, key:{anchor} is missing required field {field}")
                         else:
                             ret[field] = item[field]
                             qualKey = self._parserResolver.qualifyKey(item[field], yamlFile)
@@ -8107,11 +8609,10 @@ class projectCreate:
                     # Names a types or structures row; the parenthesised form fixes or selects the accepted kinds.
                     # Scoped like a plain foreign key. A list row has no anchor, so its key field identifies it.
                     rowId = anchor if anchor is not None else ret[self.schema.data['key'][context+section]]
-                    where = f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{rowId} field {field}"
+                    where = f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section} {context}, key:{rowId} field {field}"
                     ret[field] = item.get(field)
                     kinds = self.typeStructKinds(self.schema.data['typeStructKinds'][context+section+field], ret, where)
-                    resolved = self.resolveTypeStruct(ret[field], yamlFile, kinds, where) if kinds else None
-                    (ret[field+'Key'], ret[field+'Kind']) = resolved if resolved else ('InvalidValueInYaml', 'InvalidValueInYaml')
+                    (ret[field+'Key'], ret[field+'Kind']) = self.resolveTypeStruct(ret[field], yamlFile, kinds, where)
                 if ftype=='eval':
                     # value is either provided from eval statement or a named field if present
                     if field in item:
@@ -8127,19 +8628,17 @@ class projectCreate:
                                 item['eval'],
                                 qualify=lambda n: self._parserResolver.qualifyKey(n, yamlFile, fatal=False))
                         except evalExpr.EvalParseError as e:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                            self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} "
                                           f"eval expression '{item['eval']}' is invalid: {e}")
-                            ret[field] = 0  # default to avoid cascading errors
                         else:
                             try:
                                 ret[field] = evalExpr.evaluate(
                                     node,
                                     resolve=lambda k: self._parserResolver.value(
-                                        k, label=f"eval token in {yamlFile}:{myLineNumber} key:{anchor}"))
+                                        k, label=f"eval token in {self.diagnosticLocation(yamlFile, ret.get('lc'))} key:{anchor}"))
                             except evalExpr.EvalEvalError as e:
-                                self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} "
                                               f"eval expression '{item['eval']}' failed: {e}")
-                                ret[field] = 0  # default to avoid cascading errors
                             # Persist the canonical IR serialization and stash the
                             # node for _constants (parameterizable detection,
                             # worst-case maxValue). evalCanonical precedes 'value'
@@ -8150,7 +8649,7 @@ class projectCreate:
                                 self._evalNodes[(yamlFile, anchor)] = node
                     else:
                         # Neither field nor eval provided - this is an error
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must provide either '{field}' field or 'eval' expression")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} must provide either '{field}' field or 'eval' expression")
                 if ftype[:4]=='auto':
                     # auto fields are used to handle all the special cases and prevent processSimple becoming bloated
                     # hopefully this eases maintainance and makes adding new special cases simplier
@@ -8164,8 +8663,9 @@ class projectCreate:
                         # just a single field
                         ret[field] = myAutoRet
             validator = self.schema.data['validator'].get(context+section+field, None)
-            if ftype=='optional' and ret[field]=="":
-                #if it was an optional field and there is no value, skip validation
+            if (ftype == 'optional' and ret[field]=="") or comboUnstated:
+                # an unstated optional field, or a reference combo built from
+                # one, has no value to validate
                 validator = None
                 # still need to add key field
                 if field+'Key' in schema:
@@ -8175,38 +8675,88 @@ class projectCreate:
                 if 'values' in validator:
                     # the validator can be a simple list of valid options
                     if ret[field] not in validator['values']:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, {item[field]} is not in the allowed values, check schema for valid valued")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} field {field}, {item[field]} is not in the allowed values, check schema for valid valued")
                 else:
                     # more complex validation necessary
                     # however we do have to avoid some special cases (for example _topInstance) which will by definition fail validation
                     if ret[field] not in self.dontValidate:
+                        # Read on its own rather than defaulted to yamlFile, so a
+                        # design file whose context key spells a scope name is not
+                        # mistaken for that scope.
+                        declaredScope = validator.get('scope')
                         # search for appropriate value within the yaml context allowed for this file
-                        scope = validator.get('scope', yamlFile) # if the schema specified a scope override - use that
-                        (varInfo, varContext) = self.validateForeignKey(ret, context+section, field, scope)
-                        # if its valid then use it
-                        if varInfo:
-                            # as its valid we also need to capture the context key - ie what file did the referenced value come from
-                            ret[field+'Key'] = varInfo[validator['field']] + '/' + varContext
-                        else:
-                            # Surface likely include-scope mistakes by naming
-                            # already-loaded contexts that define the symbol.
-                            targetSection = validator['section']
-                            foundElsewhere = []
-                            for qualification, group in self.data.get(targetSection, {}).items():
-                                if isinstance(group, dict) and ret[field] in group:
-                                    foundElsewhere.append(qualification)
-                            if foundElsewhere:
-                                whereDefined = ', '.join(sorted(foundElsewhere))
-                                hint = (f" but is defined in {whereDefined}; "
-                                        f"add the defining file to the include: "
-                                        f"chain of {scope}")
+                        scope = declaredScope if declaredScope is not None else yamlFile
+                        targetSection = validator['section']
+                        if declaredScope == 'project':
+                            # A direct hit in the owning project's bucket, not an
+                            # include-chain walk: the bucket is not a context, so
+                            # there is no chain and no _a2csystem fallback. A
+                            # reference resolves in its own project or not at all,
+                            # which lets two composed projects declare one name.
+                            if yamlFile in self.specialContexts:
+                                # Keyed in neither contextOwningProject nor any
+                                # bucket, so the direct hit below would KeyError.
+                                self.logError(
+                                    f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, "
+                                    f"key:{anchor} field {field}, value {ret[field]} is referenced "
+                                    f"from special context '{yamlFile}', which belongs to no "
+                                    f"project. A scope: project reference resolves in the referring "
+                                    f"row's owning project, so it cannot be declared on a section "
+                                    f"parsed into a special context")
                             else:
-                                hint = (f"; no {targetSection} row named "
-                                        f"'{ret[field]}' was found in any "
-                                        f"context processed before this one")
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, value {ret[field]} was not valid in context {scope}{hint}")
-                            # add anyway to prevent key error later
-                            ret[field+'Key'] = 'InvalidValueInYaml'
+                                owningProject = self.contextOwningProject[yamlFile]
+                                varInfo = self.data[targetSection][owningProject].get(ret[field])
+                                if varInfo:
+                                    ret[field+'Key'] = varInfo[validator['field']] + '/' + owningProject
+                                else:
+                                    self.logError(
+                                        f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, "
+                                        f"key:{anchor} field {field}, value {ret[field]} is not "
+                                        f"declared in the {targetSection}: section of project "
+                                        f"'{owningProject}' "
+                                        f"({self.projectFileByName[owningProject]}); a "
+                                        f"scope: project reference resolves only in its own "
+                                        f"project's project file")
+                        else:
+                            (varInfo, varContext) = self.validateForeignKey(ret, context+section, field, scope)
+                            if varInfo:
+                                # as its valid we also need to capture the context key - ie what file did the referenced value come from
+                                ret[field+'Key'] = varInfo[validator['field']] + '/' + varContext
+                            else:
+                                comboSources = self.schema.get_node(context+section).get_field(field).combo_sources
+                                if comboSources:
+                                    shown = ', '.join(f"{source}: {ret[source]}" for source in comboSources)
+                                    # A combo FK matches component by component (validateForeignKey), so
+                                    # name the components and list the target rows sharing all but the
+                                    # last one: the names the author could have written.
+                                    others = ', '.join(f"{c}: {ret[c]}" for c in comboSources[:-1])
+                                    last = comboSources[-1]
+                                    candidates = []
+                                    for row, _ in self._rowsInScope(targetSection, scope):
+                                        if all(row[c] == ret[c] for c in comboSources[:-1]):
+                                            candidates.append(row[last])
+                                    if candidates:
+                                        hint = f"; {targetSection} rows with {others} declare {last}: {', '.join(candidates)}"
+                                    else:
+                                        hint = f"; no {targetSection} row has {others} at all"
+                                else:
+                                    shown = ret[field]
+                                    # Surface likely include-scope mistakes by naming
+                                    # already-loaded contexts that define the symbol.
+                                    foundElsewhere = []
+                                    for qualification, group in self.data.get(targetSection, {}).items():
+                                        if isinstance(group, dict) and ret[field] in group:
+                                            foundElsewhere.append(qualification)
+                                    if foundElsewhere:
+                                        whereDefined = ', '.join(sorted(foundElsewhere))
+                                        hint = (f" but is defined in {whereDefined}; "
+                                                f"add the defining file to the include: "
+                                                f"chain of {scope}")
+                                    else:
+                                        hint = (f"; no {targetSection} row named '{ret[field]}' "
+                                                f"was found in any context processed "
+                                                f"before this one")
+                                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, section {section}, key:{anchor} field {field}, value {shown} was not valid in context {scope}{hint}")
                     else:
                         # if this is a special value that should not be validated
                         ret[field+'Key'] = ret[field] + '/' + yamlFile
@@ -8225,27 +8775,27 @@ class projectCreate:
         ret = self.processSimple('constants', itemkey, item, yamlFile)
         # constants require special section handling as we want to save the const's in dict to allow later
         if 'value' not in ret:
-            self.logError(f"Processing constants in {yamlFile}:{ret['lc'].line + 1} and constant:{itemkey} does not have a 'value' or 'eval' field")
+            self.logError(f"Processing constants in {self.diagnosticLocation(yamlFile, ret.get('lc'))} and constant:{itemkey} does not have a 'value' or 'eval' field")
         else:
             # Validate that the value matches the declared valueType
             declaredType = ret['valueType']
             val = ret['value']
             if declaredType == 'uint':
                 if isinstance(val, float):
-                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' (default) but eval produced a float ({val}). "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': valueType is 'uint' (default) but eval produced a float ({val}). "
                                   f"Use // for integer division, or set valueType: real")
                 elif isinstance(val, int) and val < 0:
-                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' but value is negative ({val}). "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': valueType is 'uint' but value is negative ({val}). "
                                   f"Use valueType: int for signed constants")
             elif declaredType == 'int':
                 if isinstance(val, float):
-                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
                                   f"Use // for integer division in eval expressions")
             elif declaredType == 'real':
                 # The integer symbolic-eval pipeline does not support real eval
                 # expressions; a real constant must carry a literal 'value'.
                 if 'eval' in item and 'value' not in item:
-                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType 'real' with an "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': valueType 'real' with an "
                                   f"'eval' expression is not supported; real constants must use a literal 'value'.")
         # Parameterizable constant propagation.
         # Determine if this constant is parameterizable, by:
@@ -8256,7 +8806,6 @@ class projectCreate:
         #   (b) direct: declared inside an ipParameters block, or user wrote a
         #       non-default maxValue on a literal-valued (non-eval) constant.
         # Referenced constants must already be finalized in self.data['constants'].
-        lineNo = (ret['lc'].line + 1) if 'lc' in ret else '?'
         ipActive = getattr(self, '_ipParametersActive', False)
         rawMaxValue = item.get('maxValue', 0)
         # Normalize maxValue to an integer and report malformed values before
@@ -8274,7 +8823,7 @@ class projectCreate:
                     except (TypeError, ValueError):
                         coerced = None
                 if coerced is None:
-                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                                   f"maxValue must be an integer, got "
                                   f"{type(rawMaxValue).__name__}={rawMaxValue!r}")
                     rawMaxValue = 0
@@ -8291,7 +8840,7 @@ class projectCreate:
         derivedParam = False
         derivedMaxValue = 0
         if node is not None:
-            label = f"constant '{itemkey}' in {yamlFile}:{lineNo}"
+            label = f"constant '{itemkey}' in {self.diagnosticLocation(yamlFile, ret.get('lc'))}"
             # Symbol resolution only: if any referenced constant is
             # parameterizable, this constant is derived-parameterizable. No
             # value is computed in this walk.
@@ -8307,7 +8856,7 @@ class projectCreate:
                         node,
                         resolve=lambda k: self._parserResolver.maxValue(k, label))
                 except evalExpr.EvalEvalError as e:
-                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}' "
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}' "
                                   f"maxValue evaluation failed: {e}")
                     derivedMaxValue = 0
 
@@ -8322,15 +8871,15 @@ class projectCreate:
             if userMaxProvided:
                 # Reject: user-supplied maxValue on a derived constant is
                 # redundant at best and a likely consistency hazard at worst.
-                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                               f"maxValue is auto-derived from eval expression "
                               f"(=> {derivedMaxValue}); do not hand-write maxValue "
                               f"on derived parameterizable constants")
             if derivedMaxValue <= 0:
-                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                               f"derived maxValue must be > 0, got {derivedMaxValue}")
             if 'value' in ret and isinstance(ret['value'], (int, float)) and ret['value'] > derivedMaxValue:
-                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                               f"value ({ret['value']}) exceeds derived maxValue ({derivedMaxValue})")
         elif directParam:
             ret['isParameterizable'] = True
@@ -8343,16 +8892,16 @@ class projectCreate:
                 # downstream worst-case sizing is meaningless.
                 origin = ("declared in ipParameters" if ipActive
                           else "marked isParameterizable: true")
-                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                               f"{origin} but maxValue is missing; maxValue is "
                               f"required for parameterizable constants")
             else:
                 # User-provided maxValue is authoritative for direct case.
                 if userMaxValue <= 0:
-                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                                   f"maxValue must be > 0 when parameterizable, got {userMaxValue}")
                 if 'value' in ret and isinstance(ret['value'], (int, float)) and ret['value'] > userMaxValue:
-                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                    self.logError(f"In file {self.diagnosticLocation(yamlFile, ret.get('lc'))}, constant '{itemkey}': "
                                   f"value ({ret['value']}) exceeds maxValue ({userMaxValue})")
         else:
             ret['isParameterizable'] = False
@@ -8425,7 +8974,7 @@ class projectCreate:
     def _post_add_enum(self, itemkey, item, yamlFile):
         if 'enumName' in item:
             if item['enumName'] in self.enums.get(yamlFile, {}):
-                self.logError(f"Processing enums in {yamlFile}:{item['lc'].line + 1} and enum:{itemkey} has duplicate enumName {item['enumName']}")
+                self.logError(f"Processing enums in {self.diagnosticLocation(yamlFile, item.get('lc'))} and enum:{itemkey} has duplicate enumName {item['enumName']}")
                 exit(warningAndErrorReport())
             # Defensive check - value should have been validated in processSimple (eval field type)
             # If value is missing here, validation failed earlier
@@ -8468,8 +9017,7 @@ class projectCreate:
         if 'parameters' not in intf_def:
             # No parameters defined, so no structure types are expected
             if item.get('structures'):
-                line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
-                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}' "
+                self.logError(f"In file {self.diagnosticLocation(yamlFile, item.get('lc'))}, interface '{itemkey}' with interfaceType '{intf_type}' "
                             f"has structures defined, but interface_defs '{intf_type}' does not define any parameters")
             return item
 
@@ -8488,9 +9036,8 @@ class projectCreate:
 
         missing_params = required_params - defined_structure_types
         if missing_params:
-            line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
             missing_params_str = "', '".join(sorted(missing_params))
-            self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
+            self.logError(f"In file {self.diagnosticLocation(yamlFile, item.get('lc'))}, interface '{itemkey}' with interfaceType '{intf_type}': "
                         f"missing required structureType(s): '{missing_params_str}'. "
                         f"Every required parameter from interface_defs must have a corresponding structure.")
 
@@ -8500,19 +9047,15 @@ class projectCreate:
         """Validate block-level address/register declaration invariants
         that the schema engine cannot express."""
         if item.get('registerPorts') and item.get('addressBlock'):
-            lc = item.get('lc')
-            line = lc.line + 1 if lc is not None else '?'
             self.logError(
-                f"In {yamlFile}:{line}, block '{itemkey}' declares both "
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, block '{itemkey}' declares both "
                 f"registerPorts: and addressBlock:; these are mutually exclusive."
             )
         registerPorts = item.get('registerPorts') or {}
         if len(registerPorts) > 1:
-            lc = item.get('lc')
-            line = lc.line + 1 if lc is not None else '?'
             names = "', '".join(sorted(registerPorts.keys()))
             self.logError(
-                f"In {yamlFile}:{line}, block '{itemkey}' declares multiple "
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, block '{itemkey}' declares multiple "
                 f"registerPorts: entries ('{names}'). Blocks support exactly "
                 f"one register-bus ingress."
             )
@@ -8524,10 +9067,8 @@ class projectCreate:
         intfInfo = self.flatData['interfaces'][item['interfaceKey']]
         intfDef = self.flatData['interface_defs'][intfInfo['interfaceTypeKey']]
         if not intfDef['addressBus']:
-            lc = item.get('lc')
-            line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
             self.logError(
-                f"In {yamlFile}:{line}, registerPorts port "
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, registerPorts port "
                 f"'{item['port']}' references interface "
                 f"'{item['interface']}' whose interfaceType "
                 f"'{intfInfo['interfaceType']}' is not marked "
@@ -8548,8 +9089,6 @@ class projectCreate:
         group = item['addressGroup']
         projectName = self.contextOwningProject[yamlFile]
         groupKey = (projectName, group)
-        lc = item.get('lc')
-        line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
 
         if 'AddressGroups' not in self.counterGroup:
             self.counterGroup['AddressGroups'] = OrderedDict()
@@ -8565,7 +9104,7 @@ class projectCreate:
         if groupKey in self.counterGroupControl['AddressGroups']:
             prior = self.counterGroupControl['AddressGroups'][groupKey]
             self.logError(
-                f"In {yamlFile}:{line}, addressGroup '{group}' declared on "
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, addressGroup '{group}' declared on "
                 f"block '{itemkey}' duplicates a prior addressBlock: "
                 f"declaration on block '{prior['_declaringBlock']}' "
                 f"in {prior['_declaringFile']}, both in project "
@@ -8787,7 +9326,7 @@ class projectCreate:
             (varInfo, varContext) = self.lookupInScope('variables', yamlFile, itemkey)
             if not varInfo:
                 #it was neither
-                self.logError(f"reference {itemkey} in structure does not reference a valid variable definition in this context {yamlFile}:{item.lc.line + 1}")
+                self.logError(f"reference {itemkey} in structure does not reference a valid variable definition in this context {self.diagnosticLocation(yamlFile, item.lc)}")
 
             ret = { 'varType': varInfo.get('type'),
                     'varTypeKey': varInfo.get('typeKey'),
@@ -8804,14 +9343,41 @@ class projectCreate:
         # qualified key into paramSourceKey.
         return processed['param']
 
-    # handle special case where the top block does not have a container
     def _auto_container(self, section, itemkey, item, field, yamlFile, processed):
+        # The root project's topInstance: a child project's instance of the same
+        # name is an ordinary instance.
+        isTop = (itemkey == self.topInstance
+                 and yamlFile not in self.specialContexts
+                 and self.contextOwningProject[yamlFile] == self.config.getConfig('PROJECTNAME'))
+        if field not in item:
+            location = self.diagnosticLocation(yamlFile, processed.get('lc'))
+            if isTop:
+                self.logError(
+                    f"In {location}, topInstance '{itemkey}' declares no container: "
+                    f"field. The topInstance is the topmost instance, so its container "
+                    f"is its own block (container: {item['instanceType']}).")
+            else:
+                self.logError(
+                    f"In {location}, instance '{itemkey}' declares no container: field. "
+                    f"Every instance other than the topInstance names the block that "
+                    f"contains it in container:.")
         ret = item[field]
-        # if the instance matches the defined top instance override the container
-        # the override allows for nested projects
-        if itemkey == self.topInstance:
-            ret = "_topInstance"
-        return ret
+        if not isTop:
+            if ret == "_topInstance":
+                self.logError(
+                    f"In {self.diagnosticLocation(yamlFile, processed.get('lc'))}, instance "
+                    f"'{itemkey}' declares container '_topInstance'. '_topInstance' is "
+                    f"reserved for the topInstance; name the block that contains "
+                    f"'{itemkey}' in container:.")
+            return ret
+        if ret != item['instanceType']:
+            self.logError(
+                f"In {self.diagnosticLocation(yamlFile, processed.get('lc'))}, topInstance "
+                f"'{itemkey}' declares container '{ret}'. The topInstance is the topmost "
+                f"instance, so its container is its own block (container: "
+                f"{item['instanceType']}); point topInstance at the root of the hierarchy.")
+        # The topInstance's self-reference container becomes the _topInstance root marker.
+        return "_topInstance"
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
         # A group reference resolves to the group of that name declared in the
@@ -8830,7 +9396,7 @@ class projectCreate:
                 alsoDeclared = (f" Projects declaring a group named '{ret}' parsed "
                                 f"so far in this build: {declaredSoFar}."
                                 if declaredSoFar else "")
-                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.lc)}, '{itemkey}' referenced "
                               f"address group '{ret}', which project "
                               f"'{projectName}' does not declare. An addressGroup: "
                               f"reference resolves only within the project owning the "
@@ -8856,7 +9422,7 @@ class projectCreate:
             }
             self.counterGroup['AddressGroups'][groupKey] = counter + processed[self.counterReverseField[section+'addressMultiples']]
             if self.counterGroup['AddressGroups'][groupKey] > self.addressControl['AddressGroups'][groupKey]['maxAddressSpaces']:
-                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' we ran out of address space, check your maxAddressSpaces: in AddressControl file")
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.lc)}, '{itemkey}' we ran out of address space, check your maxAddressSpaces: in AddressControl file")
         return ret
 
     def _auto_instanceGroup(self, section, itemkey, item, field, yamlFile, processed):
@@ -8866,7 +9432,7 @@ class projectCreate:
             # if not specified, use the default group
             ret = 'default'
         if ret not in self.counterGroup.get('InstanceGroups', {}):
-            self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced a non existant instance group {ret}")
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.lc)}, '{itemkey}' referenced a non existant instance group {ret}")
         return ret
 
     def _auto_instanceID(self, section, itemkey, item, field, yamlFile, processed):
@@ -8908,7 +9474,7 @@ class projectCreate:
         widthCount = sum([hasWidth, hasWidthLog2, hasWidthLog2minus1])
 
         if widthCount > 1:
-            self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' specifies multiple width fields. "
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' specifies multiple width fields. "
                           f"Only one of width, widthLog2, widthLog2minus1 may be specified")
             return item
 
@@ -8917,14 +9483,14 @@ class projectCreate:
         if enum:
             for val, valItem in enum.items():
                 if 'value' not in valItem:
-                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum entry missing 'value' field")
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' enum entry missing 'value' field")
                     return item
                 valActual = self._parserResolver.value(
                     valItem['value'],
                     label=f"enum '{val}' value",
                     source=item)
                 if valActual < 0:
-                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum '{val}' has negative value ({valActual}), but signed enums are not supported")
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' enum '{val}' has negative value ({valActual}), but signed enums are not supported")
                     return item
                 enumMax = max(enumMax, valActual)
 
@@ -8933,7 +9499,7 @@ class projectCreate:
             if enum:
                 item['width'] = int(enumMax).bit_length()
             else:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' is missing width — must specify one of width, widthLog2, or widthLog2minus1 (or provide an enum)")
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' is missing width — must specify one of width, widthLog2, or widthLog2minus1 (or provide an enum)")
                 return item
 
         # Validate the specified width field resolves to a non-zero integer
@@ -8955,14 +9521,14 @@ class projectCreate:
         isSigned = bool(item.get('isSigned', False))
         if hasWidthLog2:
             if n < 0:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2 resolves to negative value ({n}), which is not valid")
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' widthLog2 resolves to negative value ({n}), which is not valid")
                 return item
             computedWidth = n.bit_length()
             if isSigned:
                 computedWidth += 1
         elif hasWidthLog2minus1:
             if n <= 0:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2minus1 resolves to {n}, "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' widthLog2minus1 resolves to {n}, "
                               f"which is not valid (requires a positive value to index 0..N-1)")
                 return item
             computedWidth = (n - 1).bit_length()
@@ -8972,7 +9538,7 @@ class projectCreate:
             computedWidth = n
 
         if computedWidth == 0:
-            self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
 
         # Parameterizable type propagation.
         # Two paths to be parameterizable:
@@ -8980,25 +9546,24 @@ class projectCreate:
         #       isParameterizable: true, or user wrote a non-default maxBitwidth.
         #   (b) derived: width/widthLog2/widthLog2minus1 references a
         #       parameterizable constant.
-        lineNo = (item.get('lc').line + 1) if item.get('lc') else '?'
         ipActive = getattr(self, '_ipParametersActive', False)
         rawMaxBitwidth = item.get('maxBitwidth', 0)
         userMaxBitwidthProvided = rawMaxBitwidth not in (0, None, '', '0')
         if userMaxBitwidthProvided:
             if isinstance(rawMaxBitwidth, bool):
-                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                               f"maxBitwidth must be an integer, got "
                               f"bool={rawMaxBitwidth!r}")
                 return item
             try:
                 userMaxBitwidth = int(rawMaxBitwidth, 0) if isinstance(rawMaxBitwidth, str) else int(rawMaxBitwidth)
             except (TypeError, ValueError):
-                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                               f"maxBitwidth must be an integer, got "
                               f"{type(rawMaxBitwidth).__name__}={rawMaxBitwidth!r}")
                 return item
             if isinstance(rawMaxBitwidth, float) and rawMaxBitwidth != userMaxBitwidth:
-                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                               f"maxBitwidth must be an integer, got "
                               f"float={rawMaxBitwidth!r}")
                 return item
@@ -9048,13 +9613,13 @@ class projectCreate:
                 # worst-case derived width, not just the nominal resolved width;
                 # otherwise it must at least cover the resolved width.
                 if userMaxBitwidth <= 0:
-                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                                   f"maxBitwidth must be > 0 when parameterizable, got {userMaxBitwidth}")
                 requiredFloor = (derivedMaxBitwidth
                                  if (derivedParam and derivedMaxBitwidth > 0)
                                  else computedWidth)
                 if userMaxBitwidth < requiredFloor:
-                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                                   f"maxBitwidth ({userMaxBitwidth}) is less than the "
                                   f"worst-case width ({requiredFloor}) implied by its "
                                   f"parameterizable width")
@@ -9069,7 +9634,7 @@ class projectCreate:
                 else:
                     origin = ("declared in ipParameters" if ipActive
                               else "marked isParameterizable: true")
-                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                                   f"{origin} but maxBitwidth is missing and "
                                   f"the {widthMode or 'width'} expression does not "
                                   f"reference a parameterizable constant; "
@@ -9079,7 +9644,7 @@ class projectCreate:
                 # Pure derived case
                 item['maxBitwidth'] = derivedMaxBitwidth
                 if derivedMaxBitwidth < computedWidth:
-                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                    self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}': "
                                   f"derived maxBitwidth ({derivedMaxBitwidth}) is less than width ({computedWidth})")
         else:
             item['isParameterizable'] = False
@@ -9098,7 +9663,6 @@ class projectCreate:
     def _auto_structIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
         # A structure is parameterizable iff any field references a
         # parameterizable type, sub-structure, or array-size constant.
-        lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
         for var, varinfo in processed['vars'].items():
             # Type field
             varTypeKey = varinfo['varTypeKey']
@@ -9107,7 +9671,7 @@ class projectCreate:
                 if tEntry['isParameterizable']:
                     return True
             elif varTypeKey:
-                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                printError(f"Internal error: structure '{itemkey}' in {self.diagnosticLocation(yamlFile, processed.get('lc'))} "
                            f"has malformed varTypeKey '{varTypeKey}' for field '{var}' "
                            f"(expected 'name/yamlFile').")
                 exit(warningAndErrorReport())
@@ -9118,7 +9682,7 @@ class projectCreate:
                 if sEntry['isParameterizable']:
                     return True
             elif subKey:
-                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                printError(f"Internal error: structure '{itemkey}' in {self.diagnosticLocation(yamlFile, processed.get('lc'))} "
                            f"has malformed subStructKey '{subKey}' for field '{var}' "
                            f"(expected 'name/yamlFile').")
                 exit(warningAndErrorReport())
@@ -9129,7 +9693,7 @@ class projectCreate:
                 if cEntry['isParameterizable']:
                     return True
             elif arrKey:
-                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                printError(f"Internal error: structure '{itemkey}' in {self.diagnosticLocation(yamlFile, processed.get('lc'))} "
                            f"has malformed arraySizeKey '{arrKey}' for field '{var}' "
                            f"(expected 'name/yamlFile').")
                 exit(warningAndErrorReport())
@@ -9166,10 +9730,9 @@ class projectCreate:
         (intfDef, _) = self.lookupInScope('interface_defs', yamlFile, ret['interfaceType'])
         structureType = ret['structureType']
         if 'parameters' not in intfDef or structureType not in intfDef['parameters']:
-            self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, interfaceType '{ret['interfaceType']}': "
+            self.logError(f"In {self.diagnosticLocation(yamlFile, ret.get('lc'))}, interfaceType '{ret['interfaceType']}': "
                           f"structureType '{structureType}' is not a parameter of interface_defs "
                           f"'{ret['interfaceType']}'.")
-            return 'InvalidValueInYaml'
         return intfDef['parameters'][structureType]['datatype']
 
     def _auto_interfaceRefIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
@@ -9190,22 +9753,20 @@ class projectCreate:
         if not processed['isParameterizable']:
             return 0
         total = 0
-        lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
         for var, varinfo in processed['vars'].items():
             fieldWidth = self._parserResolver.varWidth(
                 varinfo,
                 use_max=True,
                 field_name=f"structure '{itemkey}' field '{var}'")
             if not isinstance(fieldWidth, int) or fieldWidth <= 0:
-                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                printError(f"Internal error: structure '{itemkey}' in {self.diagnosticLocation(yamlFile, processed.get('lc'))} "
                            f"field '{var}' resolved to invalid field width {fieldWidth!r}.")
                 exit(warningAndErrorReport())
             total += fieldWidth
         # Validate: maxBitwidth >= width
         existingWidth = processed['width']
         if total < existingWidth:
-            lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
-            self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}': "
+            self.logError(f"In {self.diagnosticLocation(yamlFile, processed.get('lc'))}, structure '{itemkey}': "
                           f"computed maxBitwidth ({total}) is less than width ({existingWidth})")
         return total
 
@@ -9258,6 +9819,41 @@ class projectCreate:
             exit(warningAndErrorReport())
         return (width + 7) >> 3
 
+    def _post_validateMemoryPorts(self, itemkey, item, yamlFile):
+        """Normalise a non-string regAccess (true, false, 1, 0) to 'rw' or
+        False, then reject a memory whose ports cannot carry the register
+        handler and every port the block lists."""
+        if not isinstance(item['regAccess'], str):
+            item['regAccess'] = 'rw' if item['regAccess'] else False
+        where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory "
+                 f"'{item['memory']}' of block '{item['block']}'")
+        regPort, portAccess = memoryRegisterPort(item['memoryType'], item['regAccess'])
+        if item['regAccess'] and regPort is None:
+            # Only rw gets here: every memoryType has a port that reads and
+            # a port that writes.
+            self.logError(
+                f"{where} has regAccess: rw, which needs a port that can both read "
+                f"and write, and no port of a {item['memoryType']} memory does. "
+                f"Change memoryType or regAccess.")
+            return item
+        listed = list(item.get('ports') or {})
+        available = len(portAccess) - (regPort is not None)
+        if len(listed) > available:
+            def ports(count):
+                return f"{count} port{'' if count == 1 else 's'}"
+            names = "', '".join(listed)
+            handler = " and the register handler takes one" if regPort is not None else ""
+            fixes = [f"List at most {ports(available)}" if available else "Remove the ports list"]
+            if len(portAccess) == 1 and len(listed) <= 2 - (regPort is not None):
+                fixes.append("use a dual-port memoryType")
+            if regPort is not None:
+                fixes.append("remove regAccess")
+            self.logError(
+                f"{where} lists {ports(len(listed))} ('{names}') but has {available} free. "
+                f"A {item['memoryType']} memory has {ports(len(portAccess))}{handler}. "
+                f"{', or '.join(fixes)}.")
+        return item
+
     def _post_registers(self, itemkey, item, yamlFile):
         """Validate memory register constraints after processing"""
         regType = item.get('regType', None)
@@ -9266,20 +9862,20 @@ class projectCreate:
         if regType == 'memory':
             # Memory registers must have non-empty wordLines
             if not item.get('wordLines') or item.get('wordLines') == "":
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' must have wordLines field")
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory register '{registerName}' must have wordLines field")
                 return item
 
             # Validate wordLines resolves to non-zero value
             wlConst = self._resolveWordLinesConst(item, self._parserResolver)
             parsed_val = wlConst['maxValue'] if wlConst['isParameterizable'] and wlConst['maxValue'] else wlConst['value']
             if isinstance(parsed_val, bool) or not isinstance(parsed_val, int) or parsed_val <= 0:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' "
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory register '{registerName}' "
                               f"wordLines must resolve to a positive integer, got {parsed_val!r}")
                 return item
 
             # Memory registers must have addressStruct
             if not item.get('addressStruct') or item.get('addressStruct') == "":
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' must have addressStruct field")
+                self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, memory register '{registerName}' must have addressStruct field")
 
         return item
 
@@ -9404,6 +10000,172 @@ class projectCreate:
                           f"(non-eval) ipParameters constant")
         return item
 
+    def _validateTopInstanceDeclared(self):
+        # Only the root project's own declaration of topInstance becomes the
+        # _topInstance root (_auto_container); every design pass descends from
+        # that row, so a build without it would emit an empty design.
+        if self.topInstance is None:
+            return
+        instances = self.flatData['instances'].values()
+        if any(row['container'] == '_topInstance' for row in instances):
+            return
+        projectName = self.config.getConfig('PROJECTNAME')
+        found = next((row for row in instances if row['instance'] == self.topInstance), None)
+        where = ("is declared in none of them" if found is None else
+                 f"is declared only in {self.diagnosticLocation(found['_context'], found.get('lc'))}, "
+                 f"a file of project '{self.contextOwningProject[found['_context']]}'")
+        self.logError(
+            f"Project '{projectName}' names topInstance '{self.topInstance}', which "
+            f"must be declared in the root project's own yaml files, but it {where}. "
+            f"Declare the topInstance row '{self.topInstance}' in the yaml of project "
+            f"'{projectName}' (container: its own block). Its block may be a testbench "
+            f"block from a composed child project.")
+
+    def _validateTopInstanceBlockNotRouter(self):
+        # A project's top block is its testbench: nothing contains it, so a
+        # decode router there has no container to decode for. A composed
+        # child's own root row declares that child's top block. The root
+        # project's row is checked first, so its own choice is what is named.
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        instances = self.flatData['instances'].values()
+        tops = ([row for row in instances if row['container'] == '_topInstance']
+                + [row for row in instances if self.isComposedChildRootRow(row)])
+        for row in tops:
+            if not blockByKey[row['instanceTypeKey']].get('addressBlock'):
+                continue
+            project = self.contextOwningProject[row['_context']]
+            self.logError(
+                f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, topInstance "
+                f"'{row['instance']}' of project '{project}' has instanceType "
+                f"'{row['instanceType']}', which declares addressBlock:. A project's "
+                f"topInstance block is its testbench, which no block contains, so it has no "
+                f"container to decode for and cannot be a decode router. Instantiate the "
+                f"router inside the testbench block instead.")
+
+    def _validateTopInstanceBlockNotContained(self):
+        # A second instance of the top block would sit inside another block,
+        # above the topInstance or, when reachable from it, recursing forever.
+        instances = self.flatData['instances'].values()
+        top = next((row for row in instances if row['container'] == '_topInstance'), None)
+        if top is None:
+            return
+        for row in instances:
+            # A root row may instantiate a composed child's testbench block,
+            # whose own root declaration is then a row of the same block.
+            if row is top or self.isComposedChildRootRow(row):
+                continue
+            if row['instanceTypeKey'] == top['instanceTypeKey']:
+                self.logError(
+                    f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, instance "
+                    f"'{row['instance']}' in container '{row['container']}' has "
+                    f"instanceType '{row['instanceType']}', the block of topInstance "
+                    f"'{top['instance']}'. The topInstance is the topmost instance, "
+                    f"so its block is not instantiated inside another block. Either "
+                    f"give '{row['instance']}' a different instanceType, or point "
+                    f"topInstance at the root of the hierarchy.")
+
+    def isComposedChildRootRow(self, row):
+        # A composed child project keeps its own topInstance's self-referencing
+        # row (only the root project's is rewritten to _topInstance); that row
+        # declares the child's root and is no containment edge.
+        if (row['containerKey'] != row['instanceTypeKey']
+                or row['_context'] in self.specialContexts):
+            return False
+        child = self.childProjectRaw.get(self.contextOwningProject[row['_context']])
+        return child is not None and row['instance'] == child['raw'].get('topInstance')
+
+    def _validateContainmentAcyclic(self):
+        # A block may not contain itself, directly or through the blocks it
+        # contains. The root topInstance forms no edge, and neither does a
+        # composed child's own root declaration.
+        edges = dict()
+        for row in self.flatData['instances'].values():
+            if row['container'] == '_topInstance' or self.isComposedChildRootRow(row):
+                continue
+            edges.setdefault(row['containerKey'], []).append(row)
+        # Depth-first in declaration order; each back edge closes one cycle.
+        state = dict()
+        path = []
+        cycles = []
+
+        def visit(blockKey):
+            state[blockKey] = 'open'
+            for row in edges.get(blockKey, ()):
+                childKey = row['instanceTypeKey']
+                if state.get(childKey) == 'open':
+                    start = next((i for i, r in enumerate(path) if r['containerKey'] == childKey), len(path))
+                    cycles.append(path[start:] + [row])
+                elif childKey not in state:
+                    path.append(row)
+                    visit(childKey)
+                    path.pop()
+            state[blockKey] = 'closed'
+
+        for blockKey in edges:
+            if blockKey not in state:
+                visit(blockKey)
+        for cycle in cycles:
+            closing = cycle[-1]
+            chain = f"block '{cycle[0]['container']}' contains '{cycle[0]['instance']}' ({cycle[0]['instanceType']})"
+            chain += ''.join(f", which contains '{r['instance']}' ({r['instanceType']})" for r in cycle[1:])
+            printError(
+                f"In {self.diagnosticLocation(closing['_context'], closing.get('lc'))}, {chain}. "
+                f"A block cannot contain itself, directly or through the blocks it contains.")
+        if cycles:
+            exit(warningAndErrorReport())
+
+    def _validateConnectionContainers(self):
+        # A connection joins two instances of one container. The topInstance is
+        # in none: its row carries the _topInstance marker, so it is named first.
+        instances = self.flatData['instances']
+
+        def where(conn):
+            if conn['name']:
+                label = f"connection '{conn['name']}'"
+            else:
+                ends = [f"'{conn[end]}'" + (f" port '{conn[end + 'port']}'" if conn[end + 'port'] else "")
+                        for end in ('src', 'dst')]
+                label = f"connection {conn['interface']} from {ends[0]} to {ends[1]}"
+            return f"In {self.diagnosticLocation(conn['_context'], conn.get('lc'))}, {label}"
+
+        for conn in self.flatData['connections'].values():
+            for end in ('src', 'dst'):
+                topRow = instances[conn[end + 'Key']]
+                if topRow['container'] == '_topInstance':
+                    self.logError(
+                        f"{where(conn)} has topInstance '{conn[end]}' as its "
+                        f"{end}. A connection joins two instances in the same container, "
+                        f"and the topInstance, the topmost instance, is in none. The top "
+                        f"block has no external connections; connect the sibling instances "
+                        f"inside it (container: {topRow['instanceType']}) to each other instead.")
+            src, dst = instances[conn['srcKey']], instances[conn['dstKey']]
+            if src['containerKey'] != dst['containerKey']:
+                self.logError(
+                    f"{where(conn)} joins '{conn['src']}' in container "
+                    f"'{src['container']}' and '{conn['dst']}' in container '{dst['container']}'. "
+                    f"A connection joins two instances in the same container; link a "
+                    f"block to its own child with a connectionMaps entry instead.")
+
+    def _validateConnectionMapContainers(self):
+        # A connectionMaps entry joins a block to one of its own child
+        # instances. A composed child's root row names its own block as its
+        # container but is no child of it.
+        instances = self.flatData['instances']
+        for connMap in self.flatData['connectionMaps'].values():
+            instRow = instances[connMap['instanceKey']]
+            if (instRow['containerKey'] == connMap['blockKey']
+                    and not self.isComposedChildRootRow(instRow)):
+                continue
+            where = self.diagnosticLocation(connMap['_context'], connMap.get('lc'))
+            self.logError(
+                f"In {where}, connectionMaps entry for port '{connMap['portName']}' of "
+                f"block '{connMap['block']}' names instance '{connMap['instance']}', "
+                f"which is not a child instance of '{connMap['block']}'. A "
+                f"connectionMaps entry joins a block's own port to a port of one of "
+                f"its child instances; name an instance declared with container: "
+                f"{connMap['block']}, or join sibling instances with a connections: "
+                f"entry instead.")
+
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be
         # >= this binding's value, otherwise worst-case address sizing (sourced
@@ -9425,23 +10187,8 @@ class projectCreate:
                           f"'{item['param']}' states neither a value nor a container source; every "
                           f"parameter of a declared variant must be bound or container-sourced")
             return item
-        blockParamKey = item['blockParamKey']
-        if blockParamKey not in self.flatData['blocksparams']:
-            # blockParam is a combo foreign key onto blocksparams, so a variant
-            # binding row that exists always carries a resolved block param.
-            printError(f"Generator bug in _post_validateVariantBindingSizing: variant "
-                       f"'{item['variant']}' binding of param '{item['param']}' carries unresolved "
-                       f"block param '{blockParamKey}'")
-            exit(warningAndErrorReport())
-        blockParam = self.flatData['blocksparams'][blockParamKey]
+        blockParam = self.flatData['blocksparams'][item['blockParamKey']]
         backingKey = blockParam['paramSourceKey']
-        if backingKey not in self.flatData['constants']:
-            # paramSource is a foreign key onto constants, so a block-param row
-            # that exists always carries a resolved backing constant.
-            printError(f"Generator bug in _post_validateVariantBindingSizing: block param "
-                       f"'{blockParam['block']}.{blockParam['param']}' carries unresolved backing "
-                       f"constant '{backingKey}'")
-            exit(warningAndErrorReport())
         backing = self.flatData['constants'][backingKey]
         if hasContainer:
             # The container's parameters cannot be resolved here: a parse-time
@@ -9451,7 +10198,7 @@ class projectCreate:
             return item
         value = self._resolveVariantBindingValue(item)
         if value is not None and backing['maxValue'] < value:
-            self.logError(f"In {yamlFile}:{item['lc'].line + 1 if item.get('lc') else '?'}: variant "
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}: variant "
                           f"'{item['variant']}' binds param '{item['param']}' to {value}, exceeding the "
                           f"backing ipParameters constant '{backingKey}' maxValue "
                           f"{backing['maxValue']}; raise the constant's maxValue to cover the worst-case binding")
@@ -9527,6 +10274,166 @@ class projectCreate:
                 f"container's own Config.")
         return item
 
+    def _impliedProjectScopeDefault(self, projectName, section, bodies):
+        # A section with exactly one entry makes it the default unless it states
+        # default: itself. Set on the raw entry before parsing, because a
+        # row is persisted as it is parsed and a later section's row hook
+        # resolves an unstated reference against this section's default.
+        entries = []
+        for body in bodies:
+            self._requireSectionBody(section, body, projectName)
+            entries += body if isinstance(body, list) else list(body.values())
+        if len(entries) == 1 and isinstance(entries[0], dict) and 'default' not in entries[0]:
+            entries[0]['default'] = True
+
+    def _validateProjectScopeDefaults(self, projectName, section):
+        # Exactly one default entry per project-scoped section a project
+        # contributes, both failure modes of the one rule. Neither is visible to a
+        # row hook: a row cannot know that no OTHER row claimed the default, and
+        # the count is only final once the section is fully parsed. Driven from the
+        # pre-pass, the only place that knows which sections a given project
+        # contributes, so it runs once per project per section.
+        rows = self.data[section][projectName]
+        defaults = [name for name, row in rows.items() if row['default']]
+        if len(defaults) == 1:
+            return
+        if not defaults:
+            self.logError(
+                f"In file {self.diagnosticLocation(projectName)} (project "
+                f"'{projectName}'), {section}: no entry declares default: true. "
+                f"A project must declare exactly one default entry in its "
+                f"{section}: section, because an unstated reference resolves to "
+                f"the project default.")
+            return
+        # The message states what the parsed rows show, never what the file says:
+        # default: is not boolean-validated, so an author writing 'no' lands here
+        # too. A section is injected whole, so its one row is never the second.
+        second = rows[defaults[1]]
+        self.logError(
+            f"In {self.diagnosticLocation(projectName, second['lc'])} (project "
+            f"'{projectName}'), {section}: entry '{defaults[1]}' is a second entry "
+            f"taken as the default; '{defaults[0]}' is already the default. A "
+            f"project must declare exactly one default entry in its {section}: "
+            f"section.")
+
+    def _validateClockResetNames(self, projectName):
+        # A clock and a reset are emitted as ports of the same module, so one name
+        # cannot serve both. Checked once both sections are parsed; either may be
+        # authored or injected.
+        collisions = (self.data['clocks'][projectName].keys()
+                      & self.data['resets'][projectName].keys())
+        for name in sorted(collisions):
+            self.logError(
+                f"In {self.diagnosticLocation(projectName, self.data['resets'][projectName][name].get('lc'))} "
+                f"(project '{projectName}'), '{name}' is declared in both the "
+                f"clocks: and resets: sections. A clock and a reset become ports of "
+                f"the same module, so one name cannot name both; rename one.")
+
+    def _validateDefaultResetClock(self, projectName):
+        # The default reset must belong to the default clock. Both defaults are
+        # confirmed unique by now, and an unstated resets.clock is already
+        # resolved to the default clock by _post_resolveReset.
+        defaultClock = next(row for row in self.data['clocks'][projectName].values()
+                            if row['default'])
+        defaultReset = next(row for row in self.data['resets'][projectName].values()
+                            if row['default'])
+        if defaultReset['clock'] == defaultClock['clock']:
+            return
+        onDefaultClock = [row['reset'] for row in self.data['resets'][projectName].values()
+                          if row['clock'] == defaultClock['clock']]
+        if onDefaultClock:
+            fix = f"mark one of {', '.join(onDefaultClock)} default: true instead"
+        else:
+            fix = (f"declare a reset on '{defaultClock['clock']}' and mark it "
+                   f"default: true instead")
+        self.logError(
+            f"In {self.diagnosticLocation(projectName, defaultReset.get('lc'))} "
+            f"(project '{projectName}'), default reset '{defaultReset['reset']}' "
+            f"belongs to clock '{defaultReset['clock']}', but the default clock is "
+            f"'{defaultClock['clock']}'. The default reset must belong to the "
+            f"default clock; {fix}, or make '{defaultReset['clock']}' the default "
+            f"clock.")
+
+    def _resolvePositiveCount(self, section, itemkey, item, context, scopeLabel, field):
+        # One rule for the count fields the co-simulation wrapper interpolates
+        # verbatim, so authored and defaulted values are indistinguishable
+        # downstream. Coercion is not cosmetic: an optional(N) schema default is
+        # stored as the string from the schema text while an authored N is an int,
+        # so without it one stored fact has two types. Nor is the range: nothing
+        # else rejects a value below one or a non-integer.
+        value = item[field]
+        try:
+            count = int(str(value))
+        except ValueError:
+            count = 0
+        if count < 1:
+            self.logError(
+                f"In {self.diagnosticLocation(context, item.get('lc'))}{scopeLabel}, "
+                f"{section}: entry '{itemkey}' declares "
+                f"{field}: {value!r}, which is not a positive integer. The "
+                f"generated co-simulation wrapper interpolates it verbatim, so "
+                f"anything else becomes C++ that silently does the wrong thing - a "
+                f"reset never asserted, a clock with no period - or does not "
+                f"compile at all.")
+            return False
+        item[field] = count
+        return True
+
+    def _rejectOddPicosecondPeriod(self, itemkey, item, context):
+        # The co-simulation wrapper toggles a clock every half period at the
+        # 1 ps SystemC time resolution, so a period of an odd number of
+        # picoseconds would silently run at another frequency. A period in
+        # ns or us is a whole multiple of 1000 ps, so only ps can be odd.
+        if item['timeUnit'] != 'ps' or item['period'] % 2 == 0:
+            return
+        self.logError(
+            f"In {self.diagnosticLocation(context, item.get('lc'))}, clocks: "
+            f"entry '{itemkey}' declares period: {item['period']} ps, an odd "
+            f"number of picoseconds. The simulation clock toggles every half "
+            f"period at a 1 ps time resolution, so its period must be an even "
+            f"number of picoseconds. Use an even period, such as "
+            f"{item['period'] + 1} ps.")
+
+    # projectScope: the hook's context argument is the declaring projectName, not a file
+    def _post_resolveClockPeriod(self, itemkey, item, projectName):
+        if self._resolvePositiveCount('clocks', itemkey, item, projectName,
+                                      f" (project '{projectName}')", 'period'):
+            self._rejectOddPicosecondPeriod(itemkey, item, projectName)
+        return item
+
+    # A block clock's period (standalone-simulation only): the same
+    # positive-integer coercion as the project's own clocks when the block
+    # declares one, but unlike the project's this field has no schema default
+    # (standalone resolution distinguishes declared from undeclared), so an
+    # omitted period, stored as "", is left alone; any authored value,
+    # 0 and false included, is checked. This node is also not projectScope,
+    # so the hook's context argument is the block's own file.
+    def _post_resolveBlockClockPeriod(self, itemkey, item, yamlFile):
+        if item['period'] != "" and self._resolvePositiveCount('clocks', itemkey, item, yamlFile, "", 'period'):
+            self._rejectOddPicosecondPeriod(itemkey, item, yamlFile)
+        return item
+
+    # projectScope: the hook's context argument is the declaring projectName, not a file
+    def _post_resolveReset(self, itemkey, item, projectName):
+        # A section carries one post hook, looked up by section name, so every
+        # per-row rule this section has runs from here.
+        self._resolvePositiveCount('resets', itemkey, item, projectName,
+                                   f" (project '{projectName}')", 'releaseCycles')
+        # An unstated clock: means the project's own default clock. Resolved once
+        # here, for authored and injected rows alike, so no consumer re-implements
+        # the rule and none sees an empty resets.clock. Total by construction:
+        # clocks: is parsed and its default confirmed before resets: is parsed, and
+        # a project authoring no clocks: inherits the built-in default.
+        if item['clock']:
+            return item
+        default = next(row for row in self.data['clocks'][projectName].values()
+                       if row['default'])
+        item['clock'] = default['clock']
+        # The clocks row was parsed with the projectName as its context, so its own
+        # qualified key is what the scope: project validator would have built.
+        item['clockKey'] = default['clockKey']
+        return item
+
     def _resolveVariantBindingValue(self, row):
         # A binding value is either a literal int or the name of a constant the
         # user referenced; in the latter case valueKey is the qualified const key.
@@ -9585,6 +10492,20 @@ class projectCreate:
             return sysRows[name], '_a2csystem'
         return None, None
 
+    def _rowsInScope(self, targetSection, scope):
+        """(row, qualification) pairs of `targetSection` in scope order: every
+        qualification for 'global', else the include chain of `scope`, then
+        `_a2csystem`. validateForeignKey and its failure hint share the walk."""
+        if scope == 'global':
+            qualifications = list(self.data[targetSection])
+        else:
+            qualifications = list(self.yamlContext[scope])
+        if '_a2csystem' not in qualifications:
+            qualifications.append('_a2csystem')
+        for qualification in qualifications:
+            for row in self.data[targetSection].get(qualification, {}).values():
+                yield row, qualification
+
     def validateForeignKey(self, sourceRow, sourceSection, sourceField, context):
         """Validate a schema-declared foreign key on `sourceRow` against
         its declared target. The schema's plain/combo classification of
@@ -9612,35 +10533,40 @@ class projectCreate:
         if not sourceCombo:
             return self.lookupInScope(targetSection, context, sourceRow[sourceField])
 
-        if context == 'global':
-            qualifications = list(self.data[targetSection])
-        else:
-            qualifications = list(self.yamlContext[context])
-        if '_a2csystem' not in qualifications:
-            qualifications.append('_a2csystem')
-        for qualification in qualifications:
-            for row in self.data[targetSection].get(qualification, {}).values():
-                if all(row[source] == sourceRow[source] for source in sourceCombo):
-                    return row, qualification
+        for row, qualification in self._rowsInScope(targetSection, context):
+            if all(row[source] == sourceRow[source] for source in sourceCombo):
+                return row, qualification
         return None, None
+
+    def _sectionKeyLc(self, sections, section):
+        # ruamel attaches line/col to a mapping's value, so a section's own lc points
+        # at its body - the next line down in block style, and nowhere at all when
+        # the body is null. Recover the key's position from the parent so a
+        # diagnostic names the line the author wrote the section name on. Keyed by
+        # the authored spelling, so look up before resolving a _mapto alias.
+        if not hasattr(sections, 'lc') or section not in sections.lc.data:
+            return None
+        keyLine, keyCol = sections.lc.data[section][0], sections.lc.data[section][1]
+        lc = type(sections.lc)()
+        lc.line = keyLine
+        lc.col = keyCol
+        return lc
 
     def typeStructKinds(self, recorded, ret, where):
         """The sections a typeStruct field may resolve against: the tuple
         the schema recorded for a constant spelling, or the tuple selected by
-        the sibling field's value for typeStruct(field, <sibling>). Returns
-        None after logging when the sibling's value is absent or not a mode word."""
+        the sibling field's value for typeStruct(field, <sibling>). A sibling
+        value that is absent or not a mode word is an error."""
         if isinstance(recorded, tuple):
             return recorded
-        if recorded not in ret or ret[recorded] is None:
-            # The sibling is declared earlier, but an omitted optional
-            # sub-table, and const/param/eval under continueOnError, store
-            # nothing for an absent value.
-            self.logError(f"{where}'s mode field '{recorded}' has no value, so the field cannot be resolved.")
-            return None
+        # The sibling is declared earlier, so it is already in the row: the
+        # schema rejects a sibling whose type stores no value in the row. A
+        # sibling authored `~` stores None.
         word = ret[recorded]
+        if word is None:
+            self.logError(f"{where}'s mode field '{recorded}' has no value, so the field cannot be resolved.")
         if isinstance(word, (list, dict)):
             self.logError(f"{where}'s mode field '{recorded}' must be a scalar, but got {word!r}.")
-            return None
         kinds = self.schema.typeStructKindsForMode(word)
         if kinds is None:
             self.logError(f"{where}'s mode field '{recorded}' is '{word}', which is not 'type', 'struct', or 'typeStruct'.")
@@ -9662,13 +10588,11 @@ class projectCreate:
 
         Returns (key, kind): the qualified 'name/context' key and the
         resolved section ('types' or 'structures') on exactly one allowed
-        hit, or None after logging one diagnostic through `where`."""
+        hit. Anything else is an error reported through `where`."""
         if name is None:
             self.logError(f"{where} is missing.")
-            return None
         if isinstance(name, (list, dict)):
             self.logError(f"{where}'s value must be a scalar, but got {name!r}.")
-            return None
         noun = {'types': 'type', 'structures': 'structure'}
         hits = []
         for kind in ('types', 'structures'):
@@ -9687,7 +10611,6 @@ class projectCreate:
             self.logError(f"{where} accepts only a {noun[kinds[0]]}; '{name}' is a {noun[wrongKind]} (in {wrongContext}).")
         else:
             self.logError(f"{where}, '{name}' is neither a type nor a structure in {yamlFile} or anything it includes.")
-        return None
 
     def _scalarSeqItemLc(self, nested, index):
         # ruamel (round-trip) attaches line/col to the parent CommentedSeq, not to
@@ -9740,10 +10663,10 @@ class projectCreate:
                     # Get the key from the processed item's key field
                     key_field = node.storage_key_field if node else None
                     if not key_field:
-                        self.logError(f"In file {yamlFile}, section {context}{section}, list table schema has no storage_key_field defined. This is a schema validation bug.")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile)}, section {context}{section}, list table schema has no storage_key_field defined. This is a schema validation bug.")
                         exit(warningAndErrorReport())
                     if key_field not in processed:
-                        self.logError(f"In file {yamlFile}, section {context}{section}, list table key field '{key_field}' not found in processed item. This is a processing bug.")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile)}, section {context}{section}, list table key field '{key_field}' not found in processed item. This is a processing bug.")
                         exit(warningAndErrorReport())
                     itemkey = processed[key_field]
 
@@ -9786,7 +10709,7 @@ class projectCreate:
                         self.data[nestedContext][yamlFile][listret[itemkeyName]] = listret
                         self.addFlatRecord(nestedContext, listret)
                 else:
-                    printError(f"{yamlFile}:{nested.lc.line+1} {nested} unexpected in list format in file {context} this is either a schema or file error")
+                    printError(f"{self.diagnosticLocation(yamlFile, nested.lc)} {nested} unexpected in list format in file {context} this is either a schema or file error")
                     exit(warningAndErrorReport())
 
             else:
@@ -9805,7 +10728,6 @@ class projectCreate:
 
     # add an item to the database
     def addRecord(self, table, yamlFile, itemkey, entry, schema, outerEntry=None):
-        myLineNumber = 0
         if self.schema.data['multiEntry'][table]:
             # for this case we want to iterate over the items
             loop = entry
@@ -9813,8 +10735,6 @@ class projectCreate:
             # there is only one item, so pretend its a single entry multi item to allow looping
             loop = {itemkey: entry}
         for myEntryKey, myEntry in loop.items():
-            if 'lc' in myEntry:
-                myLineNumber = myEntry['lc'].line + 1
             comma = ''
             values = ''
             valueList = list()
@@ -9831,7 +10751,7 @@ class projectCreate:
                 if schema[col] in ['outerkey', 'outerkeyKey', 'outer']:
                     value = myEntry.get(col, outerEntry.get(col, None))
                     if value is None:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {table}, key:{itemkey} is missing required field {col}")
+                        self.logError(f"In file {self.diagnosticLocation(yamlFile, myEntry.get('lc'))}, section {table}, key:{itemkey} is missing required field {col}")
                 if schema[col] == 'context':
                     value = yamlFile
                 if value is None:

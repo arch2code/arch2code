@@ -55,5 +55,10 @@ void q_assert_body(bool dump, const char * file, int line, std::string ctx, std:
     if (inThreadProcess()) {
         wait(SC_ZERO_TIME);
     }
+    // After simulation, return so main() reaches exitSummary() and exits with
+    // the recorded failure code; an elaboration assert still aborts.
+    if (sc_get_status() & (SC_STOPPED | SC_END_OF_SIMULATION)) {
+        return;
+    }
     sc_assert(false); // should not get here
 }

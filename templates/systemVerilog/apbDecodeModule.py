@@ -44,8 +44,14 @@ def render(args, prj, data):
 
     out.append("(")
 
+    # The router's ports keep their declared names, like any other block's;
+    # its parent binds them to the container nets. Every flop below runs on
+    # the declared port carrying the register bus (busClockPort/busResetPort).
+    decode_clk = data['busClockPort']
+    decode_rst = data['busResetPort']
+
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
     # Module-local parameterizable type/struct declarations. SV cannot
     # parameterize a package, so a parameterized router declares the
@@ -92,7 +98,8 @@ def render(args, prj, data):
 
     out.append(t.render(
         parent = {
-            "interfacePort" : parent_interface_port, "addrSt" : reg_intf_addr_st, "dataSt" : reg_intf_data_st
+            "interfacePort" : parent_interface_port, "addrSt" : reg_intf_addr_st, "dataSt" : reg_intf_data_st,
+            "clk" : decode_clk, "rst" : decode_rst
         }
     ))
     out.append('')
@@ -101,7 +108,8 @@ def render(args, prj, data):
         t = Template(child_sig_decl_j2_template)
         out.append(t.render(
             child = {
-                "interfacePort" : inst_decode_info[item]['name']
+                "interfacePort" : inst_decode_info[item]['name'],
+                "clk" : decode_clk, "rst" : decode_rst
             }
         ))
         out.append('')
@@ -159,9 +167,9 @@ def render(args, prj, data):
     out.append("end\n")
 
     # Retun the parent APB signals
-    out.append(f"`DFF(pready, {parent_interface_port}_next_pready)")
-    out.append(f"`DFF(prdata, {parent_interface_port}_next_prdata)")
-    out.append(f"`DFF(pslverr, {parent_interface_port}_next_pslverr)")
+    out.append(f"`DFF_DOM({decode_clk}, {decode_rst}, pready, {parent_interface_port}_next_pready)")
+    out.append(f"`DFF_DOM({decode_clk}, {decode_rst}, prdata, {parent_interface_port}_next_prdata)")
+    out.append(f"`DFF_DOM({decode_clk}, {decode_rst}, pslverr, {parent_interface_port}_next_pslverr)")
     out.append(f"assign {parent_interface_port}.pready  = pready;")
     out.append(f"assign {parent_interface_port}.prdata  = prdata;")
     out.append(f"assign {parent_interface_port}.pslverr = pslverr;")
@@ -178,25 +186,25 @@ def render(args, prj, data):
 parent_sig_decl_j2_template = """\
 //signals for interface {{ parent.interfacePort }}
 {{ parent.addrSt }} paddr_q;
-`DFF (paddr_q, {{ parent.interfacePort }}.paddr)
+`DFF_DOM({{ parent.clk }}, {{ parent.rst }}, paddr_q, {{ parent.interfacePort }}.paddr)
 {{ parent.dataSt }} pwdata_q;
-`DFF (pwdata_q, {{ parent.interfacePort }}.pwdata)
+`DFF_DOM({{ parent.clk }}, {{ parent.rst }}, pwdata_q, {{ parent.interfacePort }}.pwdata)
 logic penable_q;
-`DFF (penable_q, {{ parent.interfacePort }}.penable)
+`DFF_DOM({{ parent.clk }}, {{ parent.rst }}, penable_q, {{ parent.interfacePort }}.penable)
 logic pwrite_q;
-`DFF (pwrite_q, {{ parent.interfacePort }}.pwrite)
+`DFF_DOM({{ parent.clk }}, {{ parent.rst }}, pwrite_q, {{ parent.interfacePort }}.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_DOM({{ parent.clk }}, {{ parent.rst }}, trans_active, set_trans_active, pready)
 """
 
 child_sig_decl_j2_template = """\
 //signals for interface {{ child.interfacePort }}
 logic {{ child.interfacePort }}_psel;
 logic {{ child.interfacePort }}_next_psel;
-`SCFF({{ child.interfacePort }}_psel, {{ child.interfacePort }}_next_psel, {{ child.interfacePort }}.pready)
+`SCFF_DOM({{ child.clk }}, {{ child.rst }}, {{ child.interfacePort }}_psel, {{ child.interfacePort }}_next_psel, {{ child.interfacePort }}.pready)
 
 assign {{ child.interfacePort }}.paddr   = paddr_q;
 assign {{ child.interfacePort }}.penable = penable_q & {{ child.interfacePort }}_psel;

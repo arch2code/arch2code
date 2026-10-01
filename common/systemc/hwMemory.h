@@ -52,24 +52,34 @@ private:
 };
 
 enum hwMemoryType {HWMEMORYTYPE_NORMAL, HWMEMORYTYPE_LOCAL};
+// What firmware may do to a memory through cpu_read/cpu_write. A firmware
+// access the mode forbids is no bus error: a write is dropped and a read
+// returns 0, each logged.
+enum hwMemoryFwAccess {HWMEMORYFWACCESS_RW, HWMEMORYFWACCESS_RO, HWMEMORYFWACCESS_WO};
 // N is power of 2 number of bytes with minimum of 4
 template <class MEM_DATA>
 class hwMemory : public memBase
 {
 public:
-    hwMemory(const char * hierarchicalName_, const char * memName_, memories &memories_, uint64_t rows_, hwMemoryType memType_ = HWMEMORYTYPE_NORMAL)
+    hwMemory(const char * hierarchicalName_, const char * memName_, memories &memories_, uint64_t rows_, hwMemoryType memType_ = HWMEMORYTYPE_NORMAL,
+             hwMemoryFwAccess fwAccess_ = HWMEMORYFWACCESS_RW)
         : m_mem(rows_),
             rows(rows_),
             m_name(std::string(hierarchicalName_) + "_" + std::string(memName_)),
             m_memName(memName_),
             m_delay(m_name),
-            m_memType(memType_)
+            m_memType(memType_),
+            m_fwAccess(fwAccess_)
     {
         memories_.addMemory(this, m_name);
     }
     void cpu_write(uint64_t address, uint32_t val) override {
         uint32_t index = address/_size();
         Q_ASSERT(index < rows, "Address out of range");
+        if (m_fwAccess == HWMEMORYFWACCESS_RO) {
+            logging::GetInstance().logDirect(std::format("{}: firmware write to read-only memory at offset 0x{:x} dropped", m_name, address), LOG_ALWAYS);
+            return;
+        }
         uint32_t n = address%_size();
         m_val_sc = m_mem[index].sc_pack();
         m_val_sc.range(8*n+31, 8*n) = val;
@@ -78,6 +88,10 @@ public:
     uint32_t cpu_read(uint64_t address) override {
         uint32_t index = address/_size();
         Q_ASSERT(index < rows, "Address out of range");
+        if (m_fwAccess == HWMEMORYFWACCESS_WO) {
+            logging::GetInstance().logDirect(std::format("{}: firmware read of write-only memory at offset 0x{:x} returns 0", m_name, address), LOG_ALWAYS);
+            return 0;
+        }
         uint32_t n = address%_size();
         m_val_sc = m_mem[index].sc_pack();
         return (uint32_t) m_val_sc.range(8*n+31, 8*n).to_uint64();
@@ -222,15 +236,22 @@ private:
     bool m_synch = false;
     std::unique_ptr<synchArrayLock> m_rowLock;
     hwMemoryType m_memType;
+    hwMemoryFwAccess m_fwAccess;
 };
 
 template <class ADDR, class DATA>
 class hwMemoryPort : public memBase
 {
 public:
-    hwMemoryPort(memory_out<ADDR, DATA> &port) : m_port(port) {}
+    // name is logged when the mode drops an access, so it is required for ro and wo.
+    hwMemoryPort(memory_out<ADDR, DATA> &port, hwMemoryFwAccess fwAccess_ = HWMEMORYFWACCESS_RW, std::string name_ = "")
+        : m_port(port), m_fwAccess(fwAccess_), m_name(name_) {}
 
     void cpu_write(uint64_t address, uint32_t val) override {
+        if (m_fwAccess == HWMEMORYFWACCESS_RO) {
+            logging::GetInstance().logDirect(std::format("{}: firmware write to read-only memory at offset 0x{:x} dropped", m_name, address), LOG_ALWAYS);
+            return;
+        }
         uint32_t index = address/_size();
         uint32_t n = address%_size();
         ADDR addr_obj;
@@ -247,6 +268,10 @@ public:
         m_port->request(true, addr_obj, data_obj);
     }
     uint32_t cpu_read(uint64_t address) override {
+        if (m_fwAccess == HWMEMORYFWACCESS_WO) {
+            logging::GetInstance().logDirect(std::format("{}: firmware read of write-only memory at offset 0x{:x} returns 0", m_name, address), LOG_ALWAYS);
+            return 0;
+        }
         uint32_t index = address/_size();
         uint32_t n = address%_size();
         ADDR addr_obj;
@@ -270,6 +295,8 @@ public:
 private:
     memory_out<ADDR, DATA> &m_port;
     sc_bv<nextPowerOf2min4(DATA::_byteWidth) * 8> m_val_sc;
+    hwMemoryFwAccess m_fwAccess;
+    std::string m_name;
 };
 
 #endif //(HWMEMORY_H)

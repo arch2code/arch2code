@@ -7,6 +7,16 @@
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>
 
+// Implemented by a thunker's owned channel so a downstream thunker whose up side
+// it is can seed it on demand, whatever order start_of_simulation runs in.
+class status_thunker_seeded
+{
+public:
+    virtual void seedOnce() = 0;
+protected:
+    ~status_thunker_seeded() = default;
+};
+
 // status_port_thunker
 //
 // Header-only forwarding adapter held as a member of a generated container
@@ -67,6 +77,7 @@
 template <class UpT, class DownT, bool DirectData = false>
 class status_port_thunker
 {
+    static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "status data_t direct copy requires equal payload size" );
 public:
     // connectionMap shape: parent port reference.
     status_port_thunker( const char* name_,
@@ -77,7 +88,7 @@ public:
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial, *this )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkIn(); } );
@@ -92,7 +103,7 @@ public:
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial, *this )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkIn(); } );
@@ -109,7 +120,7 @@ public:
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial, *this )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
@@ -127,7 +138,7 @@ public:
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
         m_up_out_port( &upPort ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, m_down_initial, *this )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
@@ -144,7 +155,6 @@ private:
             UpT   inVal;
             DownT outVal;
             upIn->read( inVal );
-            static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
             m_down_channel.reg_write_cmd( outVal );
         }
@@ -163,11 +173,56 @@ private:
             DownT inVal;
             UpT   outVal;
             m_down_channel.read( inVal );
-            static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
             upOut->reg_write_cmd( outVal );
         }
     }
+
+    // Resolves the up side, seeding it first when it is another thunker's owned
+    // channel, so a chain yields the outermost parent's value in any order.
+    UpT upValue()
+    {
+        if (m_up_in_iface || m_up_port) {
+            status_in_if<UpT>* up = m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
+            seedIfOwned( up );
+            return up->readNonBlocking();
+        }
+        status_out_if<UpT>* up = m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
+        seedIfOwned( up );
+        return up->readNonBlocking();
+    }
+
+    static void seedIfOwned( sc_core::sc_interface* up )
+    {
+        if (auto* owned = dynamic_cast<status_thunker_seeded*>( up )) {
+            owned->seedOnce();
+        }
+    }
+
+    // The owned channel starts at the up side's value, taken at
+    // start_of_simulation: every port is bound and every channel built by
+    // generated code holds its constructed default, but no process has run, so a
+    // child's time-zero write is never overwritten. Setting the value directly
+    // raises no notification and consumes no delay.
+    class owned_channel : public status_channel<DownT>, public status_thunker_seeded
+    {
+    public:
+        owned_channel( const char* name_, std::string block_,
+                       const typename DownT::_packedSt& initial_, status_port_thunker& owner_ )
+          : status_channel<DownT>( name_, block_, initial_ ), m_owner( owner_ ) {}
+
+        void seedOnce() override
+        {
+            if (m_seeded) return;
+            m_seeded = true;
+            copyPayload<DirectData>( this->m_value, m_owner.upValue() );
+        }
+
+    private:
+        void start_of_simulation() override { seedOnce(); }
+        status_port_thunker& m_owner;
+        bool m_seeded = false;
+    };
 
     status_in<UpT>*      m_up_port;
     status_in_if<UpT>*   m_up_in_iface;
@@ -175,17 +230,10 @@ private:
     status_out<UpT>*     m_up_out_port;
     // status_channel's initial-value parameter defaults to
     // `typename T::_packedSt(0)`, which is not a valid expression when the
-    // packed form is a word array, so the owned channel is always handed an
+    // packed form is a word array, so the owned channel is constructed with an
     // explicit zero. Declared before m_down_channel so it is initialized first.
-    //
-    // The owned channel therefore starts at zero rather than at the connection's
-    // declared default: the emitted adapter constructor call is fixed at four
-    // arguments and carries no initial value, so a register-backed status
-    // connection's default_value cannot reach it. Only a reader that samples
-    // before the first update can observe the difference, and readNonBlocking()
-    // has no caller anywhere in the tree today.
     typename DownT::_packedSt m_down_initial{};
-    status_channel<DownT> m_down_channel;
+    owned_channel m_down_channel;
 };
 
 #endif // STATUS_PORT_THUNKER_H

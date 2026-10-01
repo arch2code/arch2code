@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Routed leaf instance sits in a container no router serves.
+"""A router-less container hosts two register consumers at once.
 
-Diagnostic emitted by `postProcess` in
-`config/postParseRegisterPorts.py`. Asserts the diagnostic names the
-orphaned leaf instance, its container, and points at a router-style
-recovery path.
+Diagnostic emitted by `postProcess` in `config/postParseRegisterPorts.py`.
+A router-less container may pass the register bus through to exactly one
+consumer; holding two makes the passthrough ambiguous and is rejected
+regardless of whether the container itself is ever reached by a router.
 """
 
 import sys
@@ -18,11 +18,6 @@ from _addrctl_helpers import (
 )
 
 
-# Two instances of `leaf`: `uLeafServed` lives in the router's
-# container; `uLeafLost` lives in `unservedContainer`, which no router
-# serves. Handler synthesis succeeds via the served instance, so the
-# per-instance check (line 330 in postParseRegisterPorts.py) is the
-# diagnostic under test.
 ARCH_YAML = (
     APB_PREAMBLE
     + """
@@ -31,7 +26,7 @@ blocks:
         desc: "Top container (carries the primary router)"
         hasMdl: true
     unservedContainer:
-        desc: "Container with no router under any ancestor"
+        desc: "Router-less container holding two register consumers"
         hasMdl: true
 """
     + render_router('apbDecode', 'top')
@@ -41,8 +36,8 @@ instances:
     uTop:         { container: top, instanceType: top }
     uAPBDecode:   { container: top, instanceType: apbDecode }
     uIsolated:    { container: top, instanceType: unservedContainer }
-    uLeafServed:  { container: top, instanceType: leaf, addressGroup: top }
-    uLeafLost:    { container: unservedContainer, instanceType: leaf, addressGroup: top }
+    uLeafLost1:   { container: unservedContainer, instanceType: leaf }
+    uLeafLost2:   { container: unservedContainer, instanceType: leaf }
 
 registers:
     - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }
@@ -51,14 +46,15 @@ registers:
 
 
 REQUIRED_SUBSTRINGS = [
-    "'uLeafLost'",
-    "unservedContainer",
-    "not served by any router",
+    "'unservedContainer'",
+    "uLeafLost1",
+    "uLeafLost2",
+    "exactly one such",
 ]
 
 
 def _run():
-    print("routed leaf in a container no router serves")
+    print("router-less container hosts two register consumers")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:

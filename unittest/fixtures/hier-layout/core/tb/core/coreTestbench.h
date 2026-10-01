@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "coreBase.h"
+import hier_core.base;
+import hier_core;
+using namespace hier_core_ns;
 #include "coreExternal.h"
 
 class coreTestbench: public sc_module, public blockBase, public coreChannels {

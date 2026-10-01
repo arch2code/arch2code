@@ -3,7 +3,7 @@
 yamlFormat: 2
 projectName: xviBoth
 
-topInstance: xviTop_tb
+topInstance: xviBoth_tb
 
 projectFiles:
     - ../../yaml/xviBothOwn.yaml

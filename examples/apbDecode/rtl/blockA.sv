@@ -37,22 +37,25 @@ blockARegs ublockARegs (
 );
 
 // Memory Instances
-memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt)) uBlockATable0 (
+memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATable0 (
     .mem_portA (blockATable0),
     .mem_portB (blockATable0_reg),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
-memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt)) uBlockATableX (
+memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATableX (
     .mem_portA (blockATableX),
     .mem_portB (blockATableX_unused),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
-memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt)) uBlockATable1 (
+memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATable1 (
     .mem_portA (blockATable1),
     .mem_portB (blockATable1_reg),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
 // GENERATED_CODE_END

@@ -51,7 +51,7 @@ def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layou
             printError(f"node path of {moduleDir} does not exist")
         moduleDirAbs = os.path.abspath(os.path.join(moduleDir, segment))
     else:
-        # functional segment root outer, decomposition inner (unchanged):
+        # functional segment root outer, decomposition inner:
         #   $root/<segment>/<decomp>[/module]/file.
         if not os.path.exists(segment) and not missingDirOk:
             printError(f"path of {segment} does not exist")
@@ -332,33 +332,52 @@ def getStaleSegmentFiles(prj, rows, blockCondData, basePath):
     return files, dirs
 
 
-def getRetiredContextFiles(prj, rows):
-    """Generated `<contextStem>VariantConfig.h` files in this project's owned
-    include directories, one candidate per owned context; no fileMap entry
-    names them. Only a file carrying the retired `--template=config` region is
-    reported, so a user file of that name is never touched. Returns absolute
-    paths, sorted."""
-    projectName = prj.config.getConfig('PROJECTNAME')
-    includeDirs = set()
-    for row in rows:
-        if row['mode'] != 'context' or row['owner'] != projectName:
-            continue
-        if row['fileType'] != 'include':
-            continue
-        includeDirs.update(os.path.dirname(f) for f in row['files'].values())
-    contextStems = {os.path.splitext(os.path.basename(context))[0]
-                    for context, owner in prj.contextOwningProject.items()
-                    if owner == projectName}
-    stale = set()
-    for directory in includeDirs:
-        for stem in contextStems:
-            candidate = os.path.join(directory, f"{stem}VariantConfig.h")
-            if not os.path.isfile(candidate):
+# Retired context-mode fileMap entries, keyed by the still-current entry whose
+# artifact they were scaffolded beside. `config` (VariantConfig.h) carried no
+# content but the include guard and markers, and sat beside the current entry's
+# `<context>Includes.cppm` in both layouts, so that artifact's directory is
+# where a surviving copy is found.
+RETIRED_CONTEXT_SIBLINGS = {"include": [("VariantConfig", "h")]}
+
+
+def retiredSiblingPaths(prj):
+    """Absolute candidate paths of a retired context-mode artifact named in
+    RETIRED_CONTEXT_SIBLINGS, one entry per still-current sibling context file
+    this project owns, placed in the directory of that current file, in either
+    layout."""
+    projectName = prj.config.getConfig("PROJECTNAME")
+    includeFiles = prj.config.getConfig("INCLUDEFILES")
+    fileMap = prj.config.getConfig("FILEMAP")
+    paths = set()
+    for currentFileType, siblings in RETIRED_CONTEXT_SIBLINGS.items():
+        for ext in fileMap[currentFileType]["ext"].values():
+            expandedType = f"{currentFileType}_{ext}"
+            if expandedType not in includeFiles:
                 continue
-            with open(candidate, 'r', errors='replace') as f:
-                text = f.read()
-            if 'GENERATED_CODE_BEGIN --template=config' in text:
-                stale.add(os.path.abspath(candidate))
+            for context, entry in includeFiles[expandedType].items():
+                if prj.contextOwningProject[context] != projectName:
+                    continue
+                placementDir = os.path.dirname(entry["fileName"])
+                includeName = prj.includeName[context]
+                for name, retiredExt in siblings:
+                    paths.add(os.path.join(placementDir,
+                                           f"{includeName}{name}.{retiredExt}"))
+    return paths
+
+
+def getRetiredContextFiles(prj):
+    """Generated retired context siblings (see RETIRED_CONTEXT_SIBLINGS) in
+    this project's owned include directories. Only a file carrying the retired
+    `--template=config` region is reported, so a user file of that name is
+    never touched. Returns absolute paths, sorted."""
+    stale = set()
+    for candidate in retiredSiblingPaths(prj):
+        if not os.path.isfile(candidate):
+            continue
+        with open(candidate, 'r', errors='replace') as f:
+            text = f.read()
+        if 'GENERATED_CODE_BEGIN --template=config' in text:
+            stale.add(os.path.abspath(candidate))
     return sorted(stale)
 
 

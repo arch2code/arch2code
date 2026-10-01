@@ -1390,8 +1390,11 @@ uBlockD(std::dynamic_pointer_cast<blockDBase>(
 
 **Framework APIs:**
 - `hwRegister<REG_DATA, N>(initialValue)` - Construct register
-- `hwMemory<MEM_DATA>(hierarchicalName, memName, memories, rows, type)` - Construct memory
+- `hwMemory<MEM_DATA>(hierarchicalName, memName, memories, rows, type, fwAccess)` - Construct memory. `fwAccess` is `HWMEMORYFWACCESS_RW` (default), `_RO` or `_WO`, from the memory's `regAccess`
+- `hwMemoryPort<ADDR, DATA>(port, fwAccess, name)` - Firmware adapter a register handler uses to reach a memory over its channel; `fwAccess` and `name` default to rw and empty
 - `bindPort()` - Bind memory to channel port
+
+Firmware access goes through `cpu_read`/`cpu_write`. On an `ro` memory `cpu_write` drops the write, and on a `wo` memory `cpu_read` returns 0; each logs at `LOG_ALWAYS`, so it prints at every verbosity, naming the memory and the offset. Block-side `read`/`write` ignore the mode.
 
 **Where Used:** Generated initialization lists and constructor body
 

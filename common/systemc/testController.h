@@ -85,8 +85,11 @@ public:
         wait(all_tests_complete_event);
     }
 
+    // A testbench that seeded no tests has not completed them. Without the
+    // m_total_tests guard the comparison is trivially true before
+    // set_test_names runs, so a run that checked nothing reports completion.
     bool are_all_tests_complete() {
-        return m_test_number >= m_total_tests;
+        return m_total_tests > 0 && m_test_number >= m_total_tests;
     }
 
 private:

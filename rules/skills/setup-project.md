@@ -85,7 +85,23 @@ Guide the user through initializing a new project, setting up the directory stru
       registers:
         alignment: 8
         sortDescending: true
+
+    # Optional: project-scoped clocks and resets (omit both for the built-in
+    # clk / rst_n). Exactly one entry per section carries default: true.
+    clocks:
+      clk:     { desc: "main clock",  default: true, period: 1, timeUnit: ns }
+      clkSlow: { desc: "slow clock",  period: 3, timeUnit: ns }
+    resets:
+      rst_n:     { desc: "main reset", default: true, clock: clk }
+      rstSlow_n: { desc: "slow reset", clock: clkSlow, releaseCycles: 4 }
     ```
+
+    *   **`clocks:` / `resets:`** declare the **testbench**: each entry binds an `input` clock or reset of the top block by name, or by default fallback for `clk`/`rst_n`. A project that omits `clocks:` gets one testbench clock, `clk`, at `period` 1 ns; one that omits `resets:` gets one testbench reset, `rst_n`, on the default clock. A block's own clocks and resets are declared on the block, not here — see **Clocks and Resets** in `design-architecture.md`.
+        *   `clocks.<name>`: `desc` (required), `default` (exactly one `true` per project, implied with one entry), `period` (positive integer, default `1`), `timeUnit` (`ps`, `ns`, `us`; default `ns`).
+        *   `resets.<name>`: `desc` (required), `default` (exactly one `true` per project, implied with one entry), `clock` (the testbench clock the reset belongs to; default: the project default clock), `releaseCycles` (positive integer, default `3`; edges of the reset's own clock before release).
+        *   The default reset must belong to the default clock.
+        *   A clock name and a reset name may not collide. Every reset is active-low; there is no polarity field. When this project is a child of another, its `clocks:`/`resets:` are not used to bind the top block — the assembling project's instance map does that — though a `hasVl` block's own standalone `period`/`releaseCycles` still come from its own project file.
+    *   For how blocks and connections pick up these domains, see **Clocks and Resets** in `design-architecture.md`.
 
 3.  **Address Policy and Register Decode:**
     *   Place reusable address-policy sections in `project.yaml`:

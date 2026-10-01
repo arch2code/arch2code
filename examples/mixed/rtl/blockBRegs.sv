@@ -34,7 +34,7 @@ module blockBRegs
     dRegSt rwD_reg;
     logic rwD_reg_update_0;
     assign rwD.data = rwD_reg;
-    `DFFREN(rwD_reg[6:0], apbReg.pwdata[6:0], rwD_reg_update_0, 7'h00000000)
+    `DFFREN_DOM(clk, rst_n, rwD_reg[6:0], apbReg.pwdata[6:0], rwD_reg_update_0, 7'h00000000)
 
     bSizeRegSt roBsize_reg;
     assign roBsize_reg = roBsize.data;
@@ -48,13 +48,13 @@ module blockBRegs
     logic nxt_blockBTable1_rd_enable, blockBTable1_rd_enable, blockBTable1_rd_capture;
     logic blockBTable1_wr_enable;
 
-    `DFF(blockBTable1_addr, bSizeSt'(apb_addr[31:3]))
-    `DFF(blockBTable1_wr_enable, blockBTable1_update_1)
-    `DFF(blockBTable1_rd_enable, nxt_blockBTable1_rd_enable)
-    `DFF(blockBTable1_rd_capture, blockBTable1_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTable1_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockBTable1_wr_enable, blockBTable1_update_1)
+    `DFF_DOM(clk, rst_n, blockBTable1_rd_enable, nxt_blockBTable1_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTable1_rd_capture, blockBTable1_rd_enable)
 
-    `DFFEN(blockBTable1_data[31:0], nxt_blockBTable1_data[31:0], blockBTable1_update_0)
-    `DFFEN(blockBTable1_data[63:32], nxt_blockBTable1_data[63:32], blockBTable1_update_1)
+    `DFFEN_DOM(clk, rst_n, blockBTable1_data[31:0], nxt_blockBTable1_data[31:0], blockBTable1_update_0)
+    `DFFEN_DOM(clk, rst_n, blockBTable1_data[63:32], nxt_blockBTable1_data[63:32], blockBTable1_update_1)
 
     assign blockBTable1.enable      = blockBTable1_rd_enable | blockBTable1_wr_enable;
     assign blockBTable1.wr_en       = blockBTable1_wr_enable;
@@ -69,12 +69,12 @@ module blockBRegs
     logic nxt_blockBTableExt_rd_enable, blockBTableExt_rd_enable, blockBTableExt_rd_capture;
     logic blockBTableExt_wr_enable;
 
-    `DFF(blockBTableExt_addr, bSizeSt'(apb_addr[31:2]))
-    `DFF(blockBTableExt_wr_enable, blockBTableExt_update_0)
-    `DFF(blockBTableExt_rd_enable, nxt_blockBTableExt_rd_enable)
-    `DFF(blockBTableExt_rd_capture, blockBTableExt_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTableExt_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, blockBTableExt_wr_enable, blockBTableExt_update_0)
+    `DFF_DOM(clk, rst_n, blockBTableExt_rd_enable, nxt_blockBTableExt_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTableExt_rd_capture, blockBTableExt_rd_enable)
 
-    `DFFEN(blockBTableExt_data[4:0], nxt_blockBTableExt_data[4:0], blockBTableExt_update_0)
+    `DFFEN_DOM(clk, rst_n, blockBTableExt_data[4:0], nxt_blockBTableExt_data[4:0], blockBTableExt_update_0)
 
     assign blockBTableExt.enable      = blockBTableExt_rd_enable | blockBTableExt_wr_enable;
     assign blockBTableExt.wr_en       = blockBTableExt_wr_enable;
@@ -90,13 +90,13 @@ module blockBRegs
     logic nxt_blockBTable37Bit_rd_enable, blockBTable37Bit_rd_enable, blockBTable37Bit_rd_capture;
     logic blockBTable37Bit_wr_enable;
 
-    `DFF(blockBTable37Bit_addr, bSizeSt'(apb_addr[31:3]))
-    `DFF(blockBTable37Bit_wr_enable, blockBTable37Bit_update_1)
-    `DFF(blockBTable37Bit_rd_enable, nxt_blockBTable37Bit_rd_enable)
-    `DFF(blockBTable37Bit_rd_capture, blockBTable37Bit_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockBTable37Bit_wr_enable, blockBTable37Bit_update_1)
+    `DFF_DOM(clk, rst_n, blockBTable37Bit_rd_enable, nxt_blockBTable37Bit_rd_enable)
+    `DFF_DOM(clk, rst_n, blockBTable37Bit_rd_capture, blockBTable37Bit_rd_enable)
 
-    `DFFEN(blockBTable37Bit_data[31:0], nxt_blockBTable37Bit_data[31:0], blockBTable37Bit_update_0)
-    `DFFEN(blockBTable37Bit_data[36:32], nxt_blockBTable37Bit_data[36:32], blockBTable37Bit_update_1)
+    `DFFEN_DOM(clk, rst_n, blockBTable37Bit_data[31:0], nxt_blockBTable37Bit_data[31:0], blockBTable37Bit_update_0)
+    `DFFEN_DOM(clk, rst_n, blockBTable37Bit_data[36:32], nxt_blockBTable37Bit_data[36:32], blockBTable37Bit_update_1)
 
     assign blockBTable37Bit.enable      = blockBTable37Bit_rd_enable | blockBTable37Bit_wr_enable;
     assign blockBTable37Bit.wr_en       = blockBTable37Bit_wr_enable;
@@ -198,9 +198,12 @@ module blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTable1.read_data[63:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTable1_rd_enable = ~blockBTable1_rd_capture;
+                    nxt_blockBTable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockBTable1_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
@@ -210,9 +213,12 @@ module blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTableExt.read_data[4:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTableExt_rd_enable = ~blockBTableExt_rd_capture;
+                    nxt_blockBTableExt_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockBTableExt_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
@@ -228,9 +234,12 @@ module blockBRegs
                                 nxt_rd_data = apbDataSt'(blockBTable37Bit.read_data[36:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockBTable37Bit_rd_enable = ~blockBTable37Bit_rd_capture;
+                    nxt_blockBTable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockBTable37Bit_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;
@@ -244,9 +253,9 @@ module blockBRegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

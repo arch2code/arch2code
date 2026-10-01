@@ -99,29 +99,33 @@ blockBRegs uBlockBRegs (
 
 // Memory Instances
 seeSt blockBTable0Mem [BSIZE-1:0];
-memory_dp_ext #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable0 (
+memory_dp_ext #(.DEPTH(BSIZE), .data_t(seeSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockBTable0 (
     .mem_portA (blockBTable0),
     .mem_portB (blockBTable0_unused),
     .mem (blockBTable0Mem),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
-memory_dp #(.DEPTH(BSIZE), .data_t(bigSt)) uBlockBTable1 (
+memory_dp #(.DEPTH(BSIZE), .data_t(bigSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockBTable1 (
     .mem_portA (blockBTable1_port1),
     .mem_portB (blockBTable1_reg),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
-memory_dp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable2 (
+memory_dp #(.DEPTH(BSIZE), .data_t(seeSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockBTable2 (
     .mem_portA (blockBTable2_port1),
     .mem_portB (blockBTable2_port2),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
-memory_dp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable3 (
+memory_dp #(.DEPTH(BSIZE), .data_t(seeSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockBTable3 (
     .mem_portA (blockBTable3_read),
     .mem_portB (blockBTable3_write),
-    .clk (clk)
+    .clkA (clk),
+    .clkB (clk)
 );
 
 memory_sp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTableSP0 (

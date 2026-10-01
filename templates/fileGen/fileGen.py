@@ -564,11 +564,22 @@ tbConfigTemplate = \
 // GENERATED_CODE_END
 // user #includes and imports here
 // A plain translation unit, not a module: either may appear here in any order.
+// Required by the createTestBench() and final() bodies below, which seed and
+// assert on test-completion state.
+#include "testController.h"
 // GENERATED_CODE_BEGIN --template=tbConfig --section=class
 // GENERATED_CODE_END
 
     bool createTestBench(void) override
     {
+        // Seed the testController with this testbench's tests, before sc_start().
+        // final() fails until every name here has been registered and completed
+        // by a model, BFM or External thread; replace the placeholder with them.
+        testController &controller = testController::GetInstance();
+        controller.set_test_names({
+            "test_replace_me"
+        });
+
         // The testbench top self-registers; just call createTbTop().
         std::shared_ptr<blockBase> tb = createTbTop();
         return true;
@@ -578,6 +589,7 @@ tbConfigTemplate = \
     {
         // Final cleanup if needed
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
+        Q_ASSERT_CTX(testController::GetInstance().are_all_tests_complete(), "final", "Not all tests completed");
         errorCode::pass();
     }
 
@@ -644,18 +656,27 @@ def testBench_cppm(args, prj, data):
 # slot below it.
 _TB_EXTERNAL_STIMULUS_GUIDE = [
     '// Your stimulus goes here. The generated eotThread above stops the',
-    '// simulation when end-of-test latches, and the testbench Config asserts',
-    '// that it did, so a test that never votes ends by aborting in final().',
+    '// simulation when end-of-test latches, and a vote is the only thing that',
+    '// latches it. Nothing else bounds the run: scTimeLimit is unset by default',
+    '// and the framework watchdog\'s periodic wake rules out event starvation, so',
+    '// a test that never votes hangs rather than reaching final().',
+    '// The testbench config\'s createTestBench() seeds testController with the',
+    '// placeholder test "test_replace_me", and its final() fails unless every',
+    '// seeded test has completed. Rename the placeholder there, use the same',
+    '// name below, and add #include "testController.h" to the user #includes slot.',
     '// Uncomment the lines below and the matching pair in the constructor body',
     '// to get a test that terminates cleanly, then drive the DUT inside the',
     '// thread.',
     '//',
     '// void stimulusThread(void)',
     '// {',
-    '//     wait(SC_ZERO_TIME);',
+    '//     testController &tests = testController::GetInstance();',
+    '//     tests.register_test_name("test_replace_me");',
+    '//     tests.wait_test("test_replace_me");',
     '//',
     '//     // ... drive the DUT here ...',
     '//',
+    '//     tests.test_complete("test_replace_me");',
     '//     eot_.setEndOfTest(true);',
     '// }',
     '//',
@@ -754,11 +775,10 @@ def includeFW_hdr(args, prj, data):
                                     contextParamMode(data["target"])),
         'copyright':_copyright_comment(data)}))
 
-# Structurally empty today - codeMapping['fw'] declares no 'split' feature, so both
-# regions render nothing but their markers. The file is kept as reserved headroom:
-# adding a split fw feature makes it carry out-of-line definitions with no scaffold
-# change, because the cppIncludes region already owns the whole preamble (the paired
-# header include and the fw `using`).
+# Out-of-line definitions for fw features that codeMapping['fw'] marks 'split'. The
+# cppIncludes region owns the whole preamble (the paired header include and the fw
+# `using`), so a split fw feature fills the file with no scaffold change; with none,
+# both regions render only their markers.
 includeFW_srcTemplate = \
 """
 __copyright__

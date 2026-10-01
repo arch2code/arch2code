@@ -6,8 +6,9 @@ those two declarations happen to emit identical member storage, the adapter can
 transfer the payload whole instead of packing every field to its bit position and
 unpacking it again. `projectOpen.structureStorageSignature()` decides that, and
 `buildThunkerView` records one boolean per payload pair, which the SystemC layer
-spells as a trailing `bool` template argument on the emitted thunker member. The
-thunker's copy sites pass that flag to the shared `copyPayload()` helper.
+spells as a `bool` template argument on the emitted thunker member, after the
+required payloads and before any optional ones. The thunker's copy sites pass
+that flag to the shared `copyPayload()` helper.
 
 Three things are pinned here:
 

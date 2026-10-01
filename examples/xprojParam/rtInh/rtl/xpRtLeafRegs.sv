@@ -40,10 +40,10 @@ module xpRtLeafRegs
         for (gi = 0; gi < 1; gi++) begin : g_cfg
             if (CFG_W > 32*gi) begin : present
                 if (CFG_W >= 32*(gi+1)) begin : full
-                    `DFFREN(cfg_reg[32*gi +: 32], apbReg.pwdata[31:0], cfg_update[gi], cfg_rst[gi])
+                    `DFFREN_DOM(clk, rst_n, cfg_reg[32*gi +: 32], apbReg.pwdata[31:0], cfg_update[gi], cfg_rst[gi])
                     assign cfg_rword[gi] = cfg_reg[32*gi +: 32];
                 end else begin : partial
-                    `DFFREN(cfg_reg[32*gi +: (CFG_W-32*gi)], apbReg.pwdata[CFG_W-32*gi-1:0], cfg_update[gi], cfg_rst[gi][(CFG_W-32*gi-1):0])
+                    `DFFREN_DOM(clk, rst_n, cfg_reg[32*gi +: (CFG_W-32*gi)], apbReg.pwdata[CFG_W-32*gi-1:0], cfg_update[gi], cfg_rst[gi][(CFG_W-32*gi-1):0])
                     assign cfg_rword[gi] = 32'(cfg_reg[32*gi +: (CFG_W-32*gi)]);
                 end
             end else begin : absent
@@ -95,9 +95,9 @@ module xpRtLeafRegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

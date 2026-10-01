@@ -21,10 +21,8 @@
 // pairs this protocol carries (addr_t and data_t, in that order): true when the
 // pair's two declarations emit identical member storage, which lets
 // copyPayload() transfer the value whole instead of packing and unpacking it
-// field by field. DirectData gates four call sites, not two, because the read
-// response leg carries data_t back. Both default to false, which is always
-// correct and merely slower, so a hand-written instantiation need not supply
-// them.
+// field by field. Both default to false, which is always correct and merely
+// slower, so a hand-written instantiation need not supply them.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
