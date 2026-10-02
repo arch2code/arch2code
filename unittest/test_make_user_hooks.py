@@ -6,10 +6,20 @@ appends one distinct value to every tool hook. Checks:
 - EXTRA_GEN_OPTS on the db build, every gen call and newmodule of the project;
 - VERILATOR_USER_OPTS and EXTRA_VERILATOR_OPTS on lint and on every model
   verilate, EXTRA_LINT_OPTS on lint only, EXTRA_VL_OPTS on the verilates only;
+- the verilator hooks sit after the builder options and a builder layer's
+  A2C_LAYER_VERILATOR_OPTS, in the order VERILATOR_USER_OPTS,
+  EXTRA_VERILATOR_OPTS, then EXTRA_LINT_OPTS or EXTRA_VL_OPTS;
+- EXTRA_CXX_FLAGS sits after every builder C++ flag, including the
+  A2C_LAYER_CXX_FLAGS and the VL_DUT=1 additions;
+- a command-line VERILATOR_USER_OPTS or EXTRA_CXX_FLAGS replaces the project's
+  value but keeps the layer's;
 - EXTRA_VL_CFLAGS inside the single quoted -CFLAGS argument of each verilate;
 - EXTRA_VL_LIB_OBJS, named under $(A2C_VL_BUILD_DIR), added to the archive and
   ordered after every verilate, in the verilation sub-make that reads only
   shared.mk;
+- a rundir Makefile scaffolded by newmodule keeps the EXTRA_CPP_SRC,
+  EXTRA_CPP_INCLUDES and EXTRA_LD_FLAGS that shared.mk sets, so they reach
+  the C++ compile and the link;
 - make help-hooks prints every value.
 """
 
@@ -17,7 +27,7 @@ import os
 import shlex
 import sys
 
-from test_file_prefix import copy_simple_ip, make, remove, run
+from test_file_prefix import copy_simple_ip, make, point_repo_root, remove, run
 
 HOOK_VALUES = {
     'EXTRA_GEN_OPTS': '--debug',
@@ -31,6 +41,22 @@ HOOK_VALUES = {
 LINT_ONLY = {'-DHOOK_LINT'}
 VL_ONLY = {'-DHOOK_VL'}
 BOTH = {'-DHOOK_USER', '-DHOOK_VERILATOR'}
+CPP_INCLUDE = '-I/hook/include'
+# What a builder layer (a2cPro) adds; the test plays that layer from shared.mk.
+LAYER_VALUES = {
+    'A2C_LAYER_VERILATOR_OPTS': '-DHOOK_LAYER',
+    'A2C_LAYER_CXX_FLAGS': '-DHOOK_LAYER_CXX',
+}
+CXX_HOOK = '-DHOOK_CXX'
+# Command-line overrides of hooks the project also sets.
+CMDLINE = ['VERILATOR_USER_OPTS=-DHOOK_CMDLINE', 'EXTRA_CXX_FLAGS=-DHOOK_CXX_CMDLINE']
+# The last builder option of each verilator command, then the hooks in order.
+LINT_ORDER = ['--no-timing', '--lint-only', '-DHOOK_LAYER', '-DHOOK_USER', '-DHOOK_VERILATOR',
+              '-DHOOK_LINT']
+VL_ORDER = ['--no-timing', '-MMD', '-DHOOK_LAYER', '-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_VL']
+# Builder C++ flags the VL_DUT=1 build appends late, then the project's hook.
+CXX_ORDER = ['-DHOOK_LAYER_CXX', '-DVERILATOR', '-Wno-sign-compare', CXX_HOOK]
+LD_FLAG = '-lhook_ld'
 
 
 def dryRun(directory, *args):
@@ -65,12 +91,41 @@ def checkVerilator(label, cmds, want, notWant):
     return failures
 
 
+def checkOrder(label, cmds, order):
+    # Every command carries each of `order` once, in that sequence.
+    if not cmds:
+        return [f"{label}: no command"]
+    failures = []
+    for tokens in cmds:
+        found = [tokens.index(t) if tokens.count(t) == 1 else None for t in order]
+        if None in found or found != sorted(found):
+            failures.append(f"{label}: expected {order} once each in this order, got "
+                            f"{[t for t in tokens if t in order]}")
+    return failures
+
+
+def cmdlineOrder(order):
+    return ['-DHOOK_CMDLINE' if t == '-DHOOK_USER' else '-DHOOK_CXX_CMDLINE' if t == CXX_HOOK else t
+            for t in order]
+
+
+def cxxCommands(output, binary):
+    # Every compile, precompile and module-object command, not the link.
+    return [c for c in commands(output, 'clang++') if c[c.index('-o') + 1] != binary]
+
+
 def main():
     work = copy_simple_ip()
     try:
+        hookSrc = os.path.join(work, 'hookSrc', 'hook.cpp')
+        os.makedirs(os.path.dirname(hookSrc))
+        open(hookSrc, 'w').close()
         shared = os.path.join(work, 'include', 'make', 'shared.mk')
         with open(shared, 'a') as f:
             f.write(''.join(f'{name} += {value}\n' for name, value in HOOK_VALUES.items()))
+            f.write(f'EXTRA_CPP_SRC += {hookSrc}\nEXTRA_CPP_INCLUDES += {CPP_INCLUDE}\n'
+                    f'EXTRA_LD_FLAGS += {LD_FLAG}\nEXTRA_CXX_FLAGS += {CXX_HOOK}\n')
+            f.write(''.join(f'{name} += {value}\n' for name, value in LAYER_VALUES.items()))
         rundir = os.path.join(work, 'rundir')
         vlBuildDir = os.path.join(rundir, 'build', 'vl')
         hookObj = os.path.join(vlBuildDir, 'obj_dir', 'hook', 'hook.o')
@@ -82,8 +137,12 @@ def main():
         def genCalls(output):
             return [c for c in commands(output, 'arch2code.py') if c[c.index('--db') + 1] == rootDb]
 
-        for target, output in (('db', make(work, 'db')), ('gen', dryRun(work, 'gen')),
-                               ('newmodule', dryRun(work, 'newmodule'))):
+        dbOutput = make(work, 'db')
+        os.remove(os.path.join(rundir, 'Makefile'))
+        newmoduleOutput = make(work, 'newmodule')
+        point_repo_root(work)
+        for target, output in (('db', dbOutput), ('gen', dryRun(work, 'gen')),
+                               ('newmodule', newmoduleOutput)):
             calls = genCalls(output)
             lacking = [' '.join(c) for c in calls if '--debug' not in c]
             if not calls or lacking:
@@ -92,14 +151,33 @@ def main():
         lint = dryRun(os.path.join(work, 'rtl'), 'lint')
         failures += checkVerilator('lint', commands(lint, 'verilator'),
                                    BOTH | LINT_ONLY, VL_ONLY | {'-DHOOK_CFLAG'})
+        failures += checkOrder('lint', commands(lint, 'verilator'), LINT_ORDER)
+        cmdlineLint = commands(dryRun(os.path.join(work, 'rtl'), 'lint', *CMDLINE), 'verilator')
+        failures += checkOrder('lint, command-line override', cmdlineLint, cmdlineOrder(LINT_ORDER))
 
         vl = dryRun(rundir, 'all', 'VL_DUT=1')
         verilates = commands(vl, 'verilator')
         failures += checkVerilator('model wrapping', verilates, BOTH | VL_ONLY, LINT_ONLY)
+        failures += checkOrder('model wrapping', verilates, VL_ORDER)
+        binary = os.path.join(rundir, 'build', 'run')
+        failures += checkOrder('C++ build', cxxCommands(vl, binary), CXX_ORDER)
+        cmdlineVl = dryRun(rundir, 'all', 'VL_DUT=1', *CMDLINE)
+        failures += checkOrder('model wrapping, command-line override',
+                               commands(cmdlineVl, 'verilator'), cmdlineOrder(VL_ORDER))
+        failures += checkOrder('C++ build, command-line override',
+                               cxxCommands(cmdlineVl, binary), cmdlineOrder(CXX_ORDER))
         for tokens in verilates:
             cflags = tokens[tokens.index('-CFLAGS') + 1]
             if not cflags.startswith('-std=') or not cflags.endswith(' -DHOOK_CFLAG'):
                 failures.append(f"-CFLAGS argument does not end in EXTRA_VL_CFLAGS: {cflags!r}")
+        compiles = [c for c in commands(vl, 'clang++') if '-c' in c and c[c.index('-c') + 1] == hookSrc]
+        if len(compiles) != 1 or CPP_INCLUDE not in compiles[0]:
+            failures.append(f"scaffolded rundir Makefile: EXTRA_CPP_SRC/EXTRA_CPP_INCLUDES "
+                            f"from shared.mk do not reach the compile: {compiles}")
+        links = [c for c in commands(vl, 'clang++') if '-o' in c and c[c.index('-o') + 1] == binary]
+        if len(links) != 1 or LD_FLAG not in links[0]:
+            failures.append(f"scaffolded rundir Makefile: EXTRA_LD_FLAGS from shared.mk "
+                            f"does not reach the link: {links}")
         if f'echo "ADDMOD {hookObj}"' not in vl:
             failures.append(f"archive script does not ADDMOD {hookObj}")
 

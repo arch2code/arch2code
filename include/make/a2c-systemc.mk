@@ -78,14 +78,16 @@ CPP_SRC =
 # sources (see the -O3 rule below).
 O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp $(A2C_CPP_CONTEXT_SRC_FILES)
 
-# Extra compiler / linker dependencies (set by project Makefile)
-A2C_SRC_DIRS += $(EXTRA_A2C_SRC_DIRS)
+# A builder layer (e.g. a2cPro) adds through A2C_LAYER_*, the project through
+# the EXTRA_* hooks after it. EXTRA_CXX_FLAGS and EXTRA_LD_FLAGS are applied
+# below, after every builder flag.
+A2C_SRC_DIRS += $(A2C_LAYER_SRC_DIRS) $(EXTRA_A2C_SRC_DIRS)
 PRJ_SRC_DIRS += $(EXTRA_PRJ_SRC_DIRS)
-CXX_FLAGS    += $(EXTRA_CXX_FLAGS)
+CXX_FLAGS    += $(A2C_LAYER_CXX_FLAGS)
 CPP_SRC      += $(EXTRA_CPP_SRC)
 O3_CPP_SRC   += $(EXTRA_O3_CPP_SRC)
-CPP_INCLUDES += $(EXTRA_CPP_INCLUDES)
-LD_FLAGS     += $(EXTRA_LD_FLAGS)
+CPP_INCLUDES += $(A2C_LAYER_CPP_INCLUDES) $(EXTRA_CPP_INCLUDES)
+LD_FLAGS     += $(A2C_LAYER_LD_FLAGS)
 
 # Find all .cpp files in the A2C_SRC_DIRS and PRJ_SRC_DIRS directories.
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
@@ -186,6 +188,10 @@ VL_WRAP_LIB = $(wildcard $(A2C_VL_BUILD_DIR)/lib$(PROJECTNAME)vl_s_wrap.a)
 CXX_FLAGS += -Wno-sign-compare
 endif
 endif
+
+# The project's flags come last so they can override a builder flag.
+CXX_FLAGS += $(EXTRA_CXX_FLAGS)
+LD_FLAGS  += $(EXTRA_LD_FLAGS)
 
 # These module lists and flags are invariant for one make parse. Materialize
 # them after BUILD_DIR and all conditional CXX_FLAGS are known so every emitted

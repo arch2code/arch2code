@@ -20,8 +20,9 @@ ifdef VL_COV
 VERILATOR_OPTS += --coverage
 endif
 
-# Builder options, then the user hooks. -CFLAGS is one quoted argument.
-VL_VERILATE = verilator $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
+# Builder options, a builder layer's, then the project's hooks. -CFLAGS is one
+# quoted argument.
+VL_VERILATE = verilator $(VERILATOR_OPTS) $(A2C_LAYER_VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
 
 # Design SV inputs of a verilate run: the manifest's DB-derived set plus the
 # user-hosted generated-region SV the manifest never lists, the same seam

@@ -829,9 +829,11 @@ def sc_hdl_member_names(intf_name):
     """The HDL wrapper's Verilated bridge and BFM member names for one port.
 
     A member named like a class hides that class for the rest of the wrapper.
-    Every companion class name ends in `_channel`, `_in`, `_out`, `_hdl_if`,
-    `_src_bfm` or `_dst_bfm`, and `_inst` is none of those, so no port name
-    produces a member that collides.
+    No class or alias the interface library declares ends in `_inst`, so
+    `<port>_hdl_inst` and `<port>_bfm_inst` never name a library type
+    (unittest/test_hdl_wrapper_member_names.py checks the shipped library).
+    This says nothing about ports colliding with each other: a port named
+    `foo_hdl_inst` still clashes with the bridge member of a port `foo`.
     """
     return intf_name + '_hdl_inst', intf_name + '_bfm_inst'
 

@@ -10,13 +10,16 @@ declared a member `status_hdl_if`, and the next port's `status_hdl_if<...>`
 declaration failed with "no template named 'status_hdl_if'". A port
 `status_src` declared a member `status_src_bfm`, which is the BFM class itself.
 
-The name check covers every shipped interface, with ports named after the
-interface's sc_channel type and that type plus `_src` / `_dst`. The rendered
-check builds the status repro and reads the hdl_if and BFM declarations the
-wrapper template emits for it.
+The name check reads every class, struct, alias and typedef the interface
+library headers declare, discovered by walking the interface trees, and
+requires that none ends in `_inst`, the suffix both member names carry. A
+negative case proves the scan reports such a type. The rendered check builds
+the status repro and reads the hdl_if and BFM declarations the wrapper
+template emits for it.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,9 +36,17 @@ import pysrc.intf_gen_utils as intf_gen_utils
 from templates.systemc import module_hdl_wrapper
 
 
-# The class names an interface contributes are its sc_channel type plus one of
-# these generator-spelled suffixes.
-CLASS_SUFFIXES = ('_channel', '_in', '_out', '_hdl_if', '_src_bfm', '_dst_bfm')
+# The shipped interface libraries, as test_interface_def_contracts.py walks
+# them. `pro` is a separate repository and is absent from a base-only checkout.
+INTERFACE_ROOTS = (
+    os.path.join(base_dir, 'interfaces'),
+    os.path.join(os.path.dirname(base_dir), 'pro', 'interfaces'),
+)
+
+# Names a C++ header declares as a type: class/struct, `using X =` and typedef.
+TYPE_NAME_RE = re.compile(r'\b(?:class|struct)\s+(\w+)'
+                          r'|\busing\s+(\w+)\s*='
+                          r'|\btypedef\b[^;{]*?(\w+)\s*(?:\[[^\]]*\])?\s*;')
 
 # `status` followed by a second status-typed port is the reported repro.
 # `status_src` and `status_dst` would have declared members named like the
@@ -136,22 +147,47 @@ def build_database():
     return dbPath, tmpdir
 
 
-def test_no_member_matches_a_class_name(proj):
-    print("\n[names] no member name equals an interface class name")
-    channelTypes = sorted({row['sc_channel']['type']
-                           for row in proj.data['interface_defs'].values()})
-    print(f"  sc_channel types: {', '.join(channelTypes)}")
-    classNames = {channelType + suffix
-                  for channelType in channelTypes for suffix in CLASS_SUFFIXES}
-    collisions = []
-    for channelType in channelTypes:
-        for port in (channelType, channelType + '_src', channelType + '_dst'):
-            for member in intf_gen_utils.sc_hdl_member_names(port):
-                if member in classNames:
-                    collisions.append(f"port '{port}' -> member '{member}'")
-    check(not collisions,
-          "ports named <T>, <T>_src and <T>_dst declare no member named like "
-          f"a class (collisions: {collisions})")
+def library_type_names(roots):
+    """Type name -> the header declaring it, over every .h under `roots`."""
+    names = {}
+    for root in roots:
+        for dirpath, _, files in os.walk(root):
+            for name in files:
+                if not name.endswith('.h'):
+                    continue
+                path = os.path.join(dirpath, name)
+                with open(path) as f:
+                    for match in TYPE_NAME_RE.finditer(f.read()):
+                        names.setdefault(next(g for g in match.groups() if g), path)
+    return names
+
+
+def inst_suffixed(names):
+    return sorted(f"{name} ({path})" for name, path in names.items() if name.endswith('_inst'))
+
+
+def test_no_library_type_ends_in_inst():
+    print("\n[names] no interface library type ends in _inst")
+    roots = [root for root in INTERFACE_ROOTS if os.path.isdir(root)]
+    names = library_type_names(roots)
+    print(f"  {len(names)} type names in {', '.join(roots)}")
+    check('status_hdl_if' in names and 'status_src_bfm' in names,
+          "the scan finds the status bridge and BFM classes")
+    for member in intf_gen_utils.sc_hdl_member_names('status'):
+        check(member.endswith('_inst'), f"member '{member}' carries the _inst suffix")
+    bad = inst_suffixed(names)
+    check(not bad, "no class, struct, alias or typedef in the interface library "
+          "ends in _inst, so <port>_hdl_inst / <port>_bfm_inst never hide a library "
+          f"type (found: {bad})")
+
+    tmpdir = tempfile.mkdtemp(prefix='hdl_member_names_lib_')
+    try:
+        with open(os.path.join(tmpdir, 'status_bad.h'), 'w') as f:
+            f.write('template<typename T> class status_hdl_inst { };\n')
+        check(inst_suffixed(library_type_names([tmpdir])),
+              "a library header declaring class status_hdl_inst is reported")
+    finally:
+        shutil.rmtree(tmpdir)
 
 
 def test_blast_uses_member_names(proj, dut):
@@ -210,7 +246,7 @@ def main():
     try:
         proj = projectOpen(dbPath)
         dut = proj.getBlockData(proj.getQualBlock('dut'))
-        test_no_member_matches_a_class_name(proj)
+        test_no_library_type_ends_in_inst()
         test_blast_uses_member_names(proj, dut)
         test_rendered_repro(proj, dut)
     finally:

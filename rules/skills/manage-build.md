@@ -39,11 +39,13 @@ Guide the user on how to build, simulate, and manage the project using the `make
     ```
 
 4.  **User hooks:**
-    *   Every tool command the builder runs takes the builder's own arguments followed by one or more `EXTRA_*` hook variables. The builder reads hooks and never assigns them. The project appends to them with `+=` in `include/make/shared.mk`.
+    *   The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`. Base and the a2cPro layer read them and never assign them, so a hook set on the make command line replaces only the project's value.
+    *   A hooked command carries the builder's own arguments first, then those of a builder layer (a2cPro adds through `A2C_LAYER_VERILATOR_OPTS`, `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS` and `A2C_LAYER_RULES_DIRS`), then the project's hooks. A project flag can therefore override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` is the exception. It sits after the Boost, SystemC and layer include paths but before the Verilator and source-directory paths, so a project header directory is searched ahead of those.
+    *   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.
     *   `make help-hooks` lists each hook, the command it feeds, and its current value.
     *   Set `EXTRA_SC_GEN_FILES` and `EXTRA_SV_GEN_FILES` above the `include … a2c-common.mk` line, since `gen` expands them as it parses. The other hooks can go anywhere in `shared.mk`.
     *   The Verilator library build (`make VL_DUT=1`) runs a sub-make in `rundir/build/vl` that reads `shared.mk` and never the rundir `Makefile`. The verilate and archive hooks only take effect from `shared.mk` or the command line.
-    *   A rundir `Makefile` that assigns a hook with `=` (older scaffolds do this for `EXTRA_CPP_SRC`, `EXTRA_CPP_INCLUDES`, `EXTRA_LD_FLAGS` and `EXTRA_O3_CPP_SRC`) overwrites what `shared.mk` appended. Change those lines to `+=` before moving the value into `shared.mk`.
+    *   The rundir `Makefile` that `make newmodule` scaffolds seeds `EXTRA_CPP_SRC`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS` with `+=`, so values from `shared.mk` survive. Rundir Makefiles scaffolded before this assign them, and often `EXTRA_O3_CPP_SRC`, with `=`, which overwrites what `shared.mk` appended. Change those lines to `+=` before moving a value into `shared.mk`.
 
     | Hook | Tool command it feeds |
     | :--- | :--- |
@@ -51,19 +53,19 @@ Guide the user on how to build, simulate, and manage the project using the `make
     | `EXTRA_SC_GEN_FILES` | Extra files for `arch2code.py --systemc --file` (`gen`) and the C++ build |
     | `EXTRA_SV_GEN_FILES` | Extra files for `arch2code.py --systemVerilog --file` (`gen`) and verilation |
     | `EXTRA_VERILATOR_OPTS` | `verilator`, every call: `make lint` and the model wrapping of `make VL_DUT=1` |
-    | `VERILATOR_USER_OPTS` | Older name for `EXTRA_VERILATOR_OPTS`, same position and effect. It goes on the command line just before `EXTRA_VERILATOR_OPTS` |
+    | `VERILATOR_USER_OPTS` | Older name for `EXTRA_VERILATOR_OPTS`, with the same effect. It goes after `A2C_LAYER_VERILATOR_OPTS` and just before `EXTRA_VERILATOR_OPTS` |
     | `EXTRA_LINT_OPTS` | `verilator --lint-only` (`make lint`) |
     | `EXTRA_VL_OPTS` | `verilator` model wrapping only: the runtime build (`vl_dummy`) and each verilated top |
     | `EXTRA_VL_CFLAGS` | C++ flags for Verilator-generated code, appended inside the single quoted `-CFLAGS '...'` argument of each model-wrapping verilate. Do not put single quotes in it |
     | `EXTRA_VL_LIB_OBJS` | `ar` script `ADDMOD` lines for `lib<project>vl_s_wrap.a`. Names objects a verilate already builds. The builder does not compile them |
-    | `EXTRA_CXX_FLAGS` | C++ compile flags |
+    | `EXTRA_CXX_FLAGS` | C++ compile flags, after every builder flag |
     | `EXTRA_CPP_INCLUDES` | C++ include paths |
     | `EXTRA_CPP_SRC` | Extra C++ sources to compile |
     | `EXTRA_O3_CPP_SRC` | Extra C++ sources compiled at `-O3` |
     | `EXTRA_CPP_MODULE_SRC` | C++20 module interface units outside the project source dirs |
     | `EXTRA_PRJ_SRC_DIRS` | Extra project source directories (every `.cpp` and `.cppm` in each is compiled) |
-    | `EXTRA_A2C_SRC_DIRS` | Extra builder-side source directories, used by the a2cPro layer |
-    | `EXTRA_LD_FLAGS` | Link flags for the simulation binary |
+    | `EXTRA_A2C_SRC_DIRS` | Extra builder-side source directories, such as the firmware BSP `$(A2C_ROOT)/common/fw/bsp` |
+    | `EXTRA_LD_FLAGS` | Link flags for the simulation binary, after the builder's libraries, the Verilator library included |
 
     *   `EXTRA_VL_LIB_OBJS` paths are relative to `rundir/build/vl`, or absolute under `$(A2C_VL_BUILD_DIR)`. Each verilated top builds in its own `obj_dir/<top>`. The archive waits for every verilate before reading the objects, so `-j` builds are safe. Adding a path to an existing tree does not relink the archive by itself. Delete `rundir/build/vl/lib<project>vl_s_wrap.a` once, or run `make clean`.
 
