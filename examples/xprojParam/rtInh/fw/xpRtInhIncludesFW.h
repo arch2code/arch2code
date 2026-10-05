@@ -78,7 +78,7 @@ struct cfgSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        value = (cfgDataT_v<RT_WIDTH>)((_src) & ((1ULL << (RT_WIDTH)) - 1));
+        value = (cfgDataT_v<RT_WIDTH>)((_src) & (~0ULL >> (64 - (RT_WIDTH))));
     }
     explicit cfgSt_v(
         cfgDataT_v<RT_WIDTH> value_) :

@@ -1846,9 +1846,9 @@ def _identity_module(with_keep_inst):
 
 
 def _verilator_preprocess(flops_dir, module_text, defines, where):
-    """The `module flopsIdentity ... endmodule` text verilator's preprocessor
-    expands the identity module to, with `line directives and blank lines
-    dropped so only the macro expansion itself is compared."""
+    """What verilator's preprocessor expands `module_text` to, with `line
+    directives and blank lines dropped so only the macro expansion itself is
+    compared."""
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, 'identity.sv'), 'w') as f:
             f.write(module_text)
@@ -1901,6 +1901,223 @@ def check_flops_default_matches_fork():
             f"no define on the new flops.sv does not expand identically to "
             f"no define on the fork:\n--- fork ---\n{fork}\n--- new "
             f"(no define) ---\n{new}")
+    return True
+
+
+# ------------------------------------------- flops.sv lint per reset style --
+
+# What each flop-macro argument name is bound to in the lint and simulation
+# modules. `q` and `name` get a fresh signal per call. `d` and `s` carry the
+# same value, which differs from both reset values, so a flop that ignored
+# its reset holds D_VALUE where its reset value was expected.
+_FLOP_ARG_VALUES = {'clkSig': 'clkB', 'rstSig': 'rstB_n', 'd': 'd', 'en': 'en',
+                    's': 's', 'c': 'c', 'rval': 'RVAL', 'type': 'logic [7:0]'}
+_RVAL = "8'hA5"
+_D_VALUE = "8'h5A"
+
+
+def _flop_instances():
+    """One call of every parameterized macro flops.sv defines, discovered from
+    the file, as dicts: `sig`, the call `lines`, `resets` and `resetValue`
+    (RVAL when the macro takes `rval`, else zero). A family resets when any
+    style's body for it reads the reset or sets an initial value, so a style
+    that drops one family's reset cannot also reclassify that family as
+    reset-less. A macro is resolved to the branch body it expands to by
+    following its first call of another defined macro."""
+    sections = _flops_sections()
+    branches = {style: _flops_defines(sections[style])
+                for style in ('SYNC', 'ASYNC', 'NONE')}
+    defined = dict(_flops_defines(sections['outer']), **branches['SYNC'])
+
+    def resets(macro):
+        while macro not in branches['SYNC']:
+            calls = [m for m in re.findall(r'`(\w+)\s*\(', defined[macro][1])
+                     if m in defined]
+            if not calls:
+                raise AssertionError(f"`{macro}` expands to no flop body")
+            macro = calls[0]
+        return ('rstSig' in branches['SYNC'][macro][1]
+                or 'rstSig' in branches['ASYNC'][macro][1]
+                or 'initial' in branches['NONE'][macro][1])
+
+    out = []
+    for index, (macro, (args, _)) in enumerate(sorted(defined.items())):
+        sig = f'f{index}_{macro}'
+        unknown = [a for a in args if a not in _FLOP_ARG_VALUES and a not in ('q', 'name')]
+        if unknown:
+            raise AssertionError(
+                f"`{macro}` takes {unknown}, which the flop test modules have no "
+                f"value for; add it to _FLOP_ARG_VALUES")
+        values = [sig if a in ('q', 'name') else _FLOP_ARG_VALUES[a] for a in args]
+        lines = [] if 'name' in args else [f'    logic [7:0] {sig};']
+        lines.append(f'    `{macro}({", ".join(values)})')
+        if 'name' in args:
+            lines.append(f'    assign n_{sig} = d;')
+        out.append({'sig': sig, 'lines': lines, 'resets': resets(macro),
+                    'resetValue': 'RVAL' if 'rval' in args else "8'h00"})
+    return out
+
+
+def _all_flops_module():
+    """The lint module: every flops.sv macro once, driven from ports."""
+    flops = _flop_instances()
+    return (
+        '`include "flops.sv"\n\n'
+        'module allFlops (\n'
+        '    input logic clk, rst_n, clkB, rstB_n, en,\n'
+        '    input logic [7:0] d, s, c,\n'
+        f'    output logic [{8 * len(flops) - 1}:0] flops\n'
+        ');\n'
+        f"    localparam logic [7:0] RVAL = {_RVAL};\n"
+        # Only a style without reset may leave the resets unread.
+        '`ifdef A2C_RESET_NONE\n'
+        '    logic unused_rst;\n'
+        '    assign unused_rst = rst_n ^ rstB_n;\n'
+        '`endif\n'
+        + '\n'.join(line for f in flops for line in f['lines']) + '\n'
+        f"    assign flops = {{{', '.join(f['sig'] for f in flops)}}};\n"
+        'endmodule : allFlops\n')
+
+
+def _all_flops_sim_module(style):
+    """A self-checking simulation of every flops.sv macro under `style`
+    (SYNC, ASYNC or NONE). Both clocks and both resets move together, and
+    reset edges fall while the clocks are low. Every flop is first clocked to
+    D out of reset, so the reset checks below do not depend on start values.
+    `c` clears every SCFF bit, so an SCFF loads s (= D) whatever it held."""
+    flops = _flop_instances()
+    resetting = [f for f in flops if f['resets']]
+    holding = [f for f in flops if not f['resets']]
+
+    def expect(phase, group, value):
+        return [f"        if ({f['sig']} !== {value(f)}) begin "
+                f"$display(\"FAIL {phase} {f['sig']} = %h\", {f['sig']}); fails++; end"
+                for f in group]
+
+    reset_value = lambda f: f['resetValue']
+    loaded = lambda f: 'D'
+    steps = ['        #1;']
+    if style == 'NONE':
+        steps += expect('initial', resetting, reset_value)
+    steps += ['        clk = 1; clkB = 1;', '        #1;',
+              '        clk = 0; clkB = 0;', '        #1;']
+    steps += expect('loaded', flops, loaded)
+    steps += ['        rst_n = 0; rstB_n = 0;', '        #1;']
+    steps += expect('reset-fell', resetting, reset_value if style == 'ASYNC' else loaded)
+    steps += ['        clk = 1; clkB = 1;', '        #1;']
+    steps += expect('reset-edge', resetting, loaded if style == 'NONE' else reset_value)
+    steps += expect('reset-edge', holding, loaded)
+    return (
+        '`include "flops.sv"\n\n'
+        'module allFlopsSim;\n'
+        f"    localparam logic [7:0] RVAL = {_RVAL};\n"
+        f"    localparam logic [7:0] D = {_D_VALUE};\n"
+        '    logic clk = 0, clkB = 0, rst_n = 1, rstB_n = 1, en = 1;\n'
+        "    logic [7:0] d = D, s = D, c = 8'hFF;\n"
+        '    int fails = 0;\n'
+        + '\n'.join(line for f in flops for line in f['lines']) + '\n'
+        '    initial begin\n'
+        + '\n'.join(steps) + '\n'
+        '        if (fails == 0) $display("ALLFLOPS PASS");\n'
+        '        $finish;\n'
+        '    end\n'
+        'endmodule : allFlopsSim\n')
+
+
+def _simulate_all_flops(defines, style):
+    """(returncode, output) of building and running the simulation module.
+    Uninitialised variables start random, from a fixed seed, so under NONE a
+    flop missing its initial value does not happen to read zero."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, 'allFlopsSim.sv'), 'w') as f:
+            f.write(_all_flops_sim_module(style))
+        env = dict(os.environ, CCACHE_DISABLE='1')
+        build = subprocess.run(
+            ['verilator', '--binary', '--timing', '--x-initial', 'unique',
+             f'-I{os.path.dirname(FLOPS_SV)}', '-Mdir', 'obj'] +
+            [f'+define+{d}' for d in defines] + ['allFlopsSim.sv'],
+            cwd=tmp, capture_output=True, text=True, env=env)
+        if build.returncode != 0:
+            return build.returncode, build.stdout + build.stderr
+        run = subprocess.run(
+            [os.path.join(tmp, 'obj', 'VallFlopsSim'),
+             '+verilator+rand+reset+2', '+verilator+seed+7'],
+            cwd=tmp, capture_output=True, text=True)
+    return run.returncode, run.stdout + run.stderr
+
+
+def check_flops_reset_behaviour_every_style():
+    """Each reset style does what it names. Every flop is first clocked to D
+    out of reset; then reset falls with the clocks low, then one edge comes
+    under reset. SYNC: a resetting flop still holds D when reset falls and
+    holds its reset value after the edge. ASYNC: it holds its reset value as
+    soon as reset falls. NONE: it starts at its reset value, and holds D
+    through both. A flop without reset holds D throughout."""
+    for defines, style in (([], 'SYNC'), (['A2C_RESET_SYNC'], 'SYNC'),
+                           (['A2C_RESET_ASYNC'], 'ASYNC'), (['A2C_RESET_NONE'], 'NONE'),
+                           (['ASIC'], 'SYNC'), (['FPGA_INIT_FLOPS'], 'NONE')):
+        code, out = _simulate_all_flops(defines, style)
+        if code != 0 or 'ALLFLOPS PASS' not in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines or 'none'} does not behave as "
+                f"A2C_RESET_{style}:\n{out}")
+    return True
+
+
+def _lint_all_flops(defines):
+    """(returncode, output) of verilator --lint-only -Wall on the module."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, 'allFlops.sv'), 'w') as f:
+            f.write(_all_flops_module())
+        cmd = ['verilator', '--lint-only', '-Wall', '--no-timing',
+               f'-I{os.path.dirname(FLOPS_SV)}'] + \
+              [f'+define+{d}' for d in defines] + ['allFlops.sv']
+        result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
+    return result.returncode, result.stdout + result.stderr
+
+
+def check_flops_lint_clean_every_reset_style():
+    """Every flops.sv macro lints clean under -Wall in each reset style and
+    through each compatibility alias, and each alias expands to its style."""
+    for defines in ([], ['A2C_RESET_SYNC'], ['A2C_RESET_ASYNC'], ['A2C_RESET_NONE'],
+                    ['ASIC'], ['FPGA_INIT_FLOPS'],
+                    ['ASIC', 'A2C_RESET_SYNC'], ['FPGA_INIT_FLOPS', 'A2C_RESET_NONE']):
+        code, out = _lint_all_flops(defines)
+        if code != 0 or '%Warning' in out or '%Error' in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines or 'none'} does not lint clean "
+                f"under verilator -Wall:\n{out}")
+    module_text = _all_flops_module()
+    flops_dir = os.path.dirname(FLOPS_SV)
+    expanded = {d: _verilator_preprocess(flops_dir, module_text, [d], d)
+                for d in ('A2C_RESET_SYNC', 'A2C_RESET_ASYNC', 'A2C_RESET_NONE',
+                          'ASIC', 'FPGA_INIT_FLOPS')}
+    for alias, style in (('ASIC', 'A2C_RESET_SYNC'),
+                         ('FPGA_INIT_FLOPS', 'A2C_RESET_NONE')):
+        if expanded[alias] != expanded[style]:
+            raise AssertionError(f"`{alias}` does not expand the same as `{style}`")
+    styles = [expanded[s] for s in ('A2C_RESET_SYNC', 'A2C_RESET_ASYNC', 'A2C_RESET_NONE')]
+    if len(set(styles)) != 3:
+        raise AssertionError("two reset styles expand to the same text, so the "
+                             "selector does not select")
+    return True
+
+
+def check_flops_reset_style_conflicts_fail():
+    """Two reset styles at once, or a define of RST, fails to compile and
+    names the cause."""
+    for defines, needle in (
+            (['A2C_RESET_SYNC', 'A2C_RESET_ASYNC'], 'A2C_RESET_STYLE_CONFLICT_SYNC_ASYNC'),
+            (['A2C_RESET_SYNC', 'A2C_RESET_NONE'], 'A2C_RESET_STYLE_CONFLICT_SYNC_NONE'),
+            (['A2C_RESET_ASYNC', 'A2C_RESET_NONE'], 'A2C_RESET_STYLE_CONFLICT_ASYNC_NONE'),
+            (['ASIC', 'FPGA_INIT_FLOPS'], 'A2C_RESET_STYLE_CONFLICT_SYNC_NONE'),
+            (['ASIC', 'A2C_RESET_ASYNC'], 'A2C_RESET_STYLE_CONFLICT_SYNC_ASYNC'),
+            (['RST'], 'A2C_RST_IS_UNSUPPORTED')):
+        code, out = _lint_all_flops(defines)
+        if code == 0 or needle not in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines} should fail naming {needle}; "
+                f"got rc={code}:\n{out}")
     return True
 
 
@@ -2185,7 +2402,7 @@ def check_router_and_handler_share_the_bus_domain(emitted):
 
 def check_regs_handler_pslverr_tied_low(emitted):
     """The handler never asserts pslverr: every access ACKs, and an unmapped
-    read returns 0."""
+    read returns 32'hBADD_C0DE."""
     text = emitted[REGS_HANDLER]
     _expect(text, "pslverr = 1'b0;", 'the handler never asserts pslverr',
             'leafA_regs')
@@ -2598,6 +2815,12 @@ def main():
                     check_flops_none_matches_pre_change_fpga_default),
           _run_case('the default reset style matches the fork, unconditionally',
                     check_flops_default_matches_fork),
+          _run_case('every flop macro lints clean in every reset style and alias',
+                    check_flops_lint_clean_every_reset_style),
+          _run_case('conflicting reset styles and RST fail to compile',
+                    check_flops_reset_style_conflicts_fail),
+          _run_case('every flop macro resets as its reset style names',
+                    check_flops_reset_behaviour_every_style),
           _run_case('a router explicitly declaring two clocks is rejected',
                     check_router_extra_clock_rejected),
           _run_case('a two-clock router is rejected however declaration order '

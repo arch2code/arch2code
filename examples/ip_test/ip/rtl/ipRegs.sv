@@ -66,11 +66,11 @@ module ipRegs
     assign apb_addr = ipRegAddrSt'(regs.paddr) & 32'h3ff;
     // Register/memory address offsets for decode documentation
     localparam int unsigned REG_IP_IPMEM = 32'h00000000; // IP scratch memory (FW-accessible)
-    localparam int unsigned REG_IP_IPMEM_SIZE = 32'h00000200; // Decode range size
+    localparam int unsigned REG_IP_IPMEM_SIZE = IP_MEM_DEPTH * 32'd16; // Decode range size
     localparam int unsigned REG_IP_IPFIXEDMEM = 32'h00000200; // Fixed-struct memory with block-param wordLines (F2.4 regression)
-    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = 32'h00000080; // Decode range size
+    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = IP_MEM_DEPTH * 32'd4; // Decode range size
     localparam int unsigned REG_IP_IPNONCONSTMEM = 32'h00000280; // Block-param wordLines with no backing constant (worst-case sizing regression)
-    localparam int unsigned REG_IP_IPNONCONSTMEM_SIZE = 32'h00000060; // Decode range size
+    localparam int unsigned REG_IP_IPNONCONSTMEM_SIZE = IP_NONCONST_DEPTH * 32'd4; // Decode range size
     localparam int unsigned REG_IP_IPCFG = 32'h00000300; // IP configuration
     localparam int unsigned REG_IP_IPLASTDATA = 32'h00000318; // Last data word received on ipDataIf
 
@@ -337,16 +337,17 @@ module ipRegs
                     endcase
                     nxt_ipNonConstMem_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~ipNonConstMem_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = ipRegDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

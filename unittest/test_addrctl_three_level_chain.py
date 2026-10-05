@@ -57,17 +57,17 @@ blocks:
         hasMdl: true
 """
     + render_router('apbDecode', 'top')
-    + render_router('midDecode', 'mid')
-    + render_router('leafDecode', 'leafLevel')
+    + render_router('midDecode', 'mid', address_increment='0x00100000')
+    + render_router('leafDecode', 'leafLevel', address_increment='0x00010000')
     + render_leaf('leafA')
     + render_leaf('leafB')
     + """
 instances:
     uTop:         { container: top, instanceType: top }
     uAPBDecode:   { container: top, instanceType: apbDecode }
-    uMid:         { container: top, instanceType: mid }
+    uMid:         { container: top, instanceType: mid, addressGroup: top }
     uMidDecode:   { container: mid, instanceType: midDecode }
-    uLeafLevel:   { container: mid, instanceType: leafLevel }
+    uLeafLevel:   { container: mid, instanceType: leafLevel, addressGroup: mid }
     uLeafDecode:  { container: leafLevel, instanceType: leafDecode }
     uLeafA:       { container: leafLevel, instanceType: leafA, addressGroup: leafLevel }
     uLeafB:       { container: leafLevel, instanceType: leafB, addressGroup: leafLevel }

@@ -41,7 +41,7 @@ namespace fw_ns::common_shared_types {
 namespace fw_ns::common_shared_types {
 // structures
 struct apbAddrSt {
-    apbAddrT address; //
+    apbAddrT address; /* [31:0] */ //
 
     apbAddrSt() { memset(this, 0, sizeof(apbAddrSt)); }
 
@@ -64,7 +64,7 @@ struct apbAddrSt {
 
 };
 struct apbDataSt {
-    apbDataT data; //
+    apbDataT data; /* [31:0] */ //
 
     apbDataSt() { memset(this, 0, sizeof(apbDataSt)); }
 

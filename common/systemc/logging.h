@@ -128,6 +128,7 @@ public:
     void logPrintDirect(const std::string &logmsg);
     void logDirect(const std::string &logmsg, const loglevel_e loglevel=LOG_NORMAL);
     verbosity_e verbosityDecode(const std::string &verbosityStr);
+    std::string verbosityNames(void);
     void bufferDump(uint8_t *buff, int size);
     // to register a status function, put this in your constructor and add statusPrint() function in your class
     // logging::GetInstance().registerStatus([this](){ statusPrint();});

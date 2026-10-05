@@ -70,6 +70,13 @@ Guide the user on performing co-simulation of RTL and SystemC models using Veril
     *   **Signal Mismatches:** Ensure RTL port types match SystemC interface types.
     *   **Clocking:** Verilator models require explicit clocking. The wrapper usually handles pin connections, but ensure your testbench drives `clk`.
     *   **Build Errors:** Check `hasVl: true` is set and `make gen` ran successfully.
+    *   **Wide `sc_bv` Output From a Struct Concatenation:** The wrapper build always passes `-sc --pins-bv 2` to Verilator (`include/make/a2c-vl-wrap.mk:16`). Verilator 5.038 then turns an assignment of a struct concatenation to a wide `sc_bv` output into word-by-word writes, and the wrapper C++ fails to compile with "lvalue required". Assign the concatenation to an intermediate struct signal marked `public_flat_rd`, then drive the port from it:
+
+    ```systemverilog
+    wide_out_t wide_val /* verilator public_flat_rd */;
+    assign wide_val     = '{hi: hi_q, lo: lo_q, flag: flag_q};
+    assign wideOut.data = wide_val;
+    ```
 
 7.  **Running Tandem Mode:**
     *   For detailed operational instructions on building and running tandem verification (model/model and RTL/model), see the **run-tandem** skill.

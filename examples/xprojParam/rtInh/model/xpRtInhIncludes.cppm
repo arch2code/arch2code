@@ -98,19 +98,19 @@ struct cfgSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        value = (cfgDataT_v<RT_WIDTH>)((_src) & ((1ULL << (RT_WIDTH)) - 1));
+        value = (cfgDataT_v<RT_WIDTH>)((_src) & (~0ULL >> (64 - (RT_WIDTH))));
     }
     // register functions
     inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( value & ((1ULL<<RT_WIDTH)-1) ) << 0);
+        (( value & (~0ULL >> (64 - (RT_WIDTH))) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        value = ( cfgDataT_v<RT_WIDTH> ) (( packedValue >> 0 ) & (( (uint64_t)1 << RT_WIDTH ) - 1)) ;
+        value = ( cfgDataT_v<RT_WIDTH> ) (( packedValue >> 0 ) & (~0ULL >> (64 - (RT_WIDTH)))) ;
         }
     inline sc_bv<cfgSt_v<RT_WIDTH>::_bitWidth> sc_pack(void) const
     {

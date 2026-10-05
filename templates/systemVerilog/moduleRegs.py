@@ -1,12 +1,11 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
 from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
+from pysrc.processYaml import REG_BUS_WIDTH_BYTES
 
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
-
-REG_BUS_WIDTH_BYTES = 4
 
 def getParentStructures(prj, d):
     for item in d['structures']:
@@ -41,6 +40,7 @@ def render(args, prj, data):
 
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
+        row_is_param = reg_data['isParameterizable']
         reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
         # A register is parameterizable iff its storage structure is. Its
         # storage is then the variant-width module-local struct and its
@@ -53,15 +53,14 @@ def render(args, prj, data):
         if reg_data.get('regType') == 'memory':
             reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
             # decodeSize is the worst-case decoded address range in bytes,
-            # persisted by projectCreate's calcAddresses. The template no
-            # longer derives it from wordLines * 2^rowwidth.
+            # persisted by projectCreate's calcAddresses.
             reg_data['memsize'] = reg_data['decodeSize']
             addr_l = reg_data['offset']
             addr_h = addr_l + reg_data['memsize'] - REG_BUS_WIDTH_BYTES
             reg_data['address_range'] = (addr_l, addr_h)
             reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
             reg_data['size_const_name'] = reg_data['addr_const_name'] + '_SIZE'
-            reg_data['decode_size'] = reg_data['memsize']
+            reg_data['size_value'] = decode_size_value(reg_data, row_is_param)
         else:
             reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
 
@@ -80,18 +79,9 @@ def render(args, prj, data):
             entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
             entry['addr_const_name'] = address_const_name(data, entry, 'memory')
             entry['size_const_name'] = entry['addr_const_name'] + '_SIZE'
-            entry['decode_size'] = entry['memsize']
+            entry['size_value'] = decode_size_value(entry, mem_data['isParameterizable'])
             ctxt_memories[mem_key] = entry
         data['memories'] = ctxt_memories
-
-    # TODO extend support beyond 8-bytes wide for external registers
-    for reg_key, reg_data in data['registers'].items():
-        unsup_ = False
-        if reg_data['regType'] == 'ext' and len(reg_data['segments']) * REG_BUS_WIDTH_BYTES > 8 :
-            printError(f"External register {reg_data['register']} > 8 bytes is not supported by current generator")
-            unsupp_ = True
-        if unsup_:
-            warningAndErrorReport()
 
     t = Template(regs_module_sv_j2_template)
 
@@ -124,6 +114,14 @@ def address_const_name(data, entry, name_field):
 
 def sv_hex(value):
     return f"32'h{value:08x}"
+
+def decode_size_value(mem_data, row_is_param):
+    """Bytes of a memory's decoded address range. decodeSize is sized for the
+    worst-case depth; a parameterizable memory decodes only its variant's
+    rows, and an access past them falls to the default arm."""
+    if row_is_param:
+        return f"{mem_data['wordLines']} * 32'd{1 << mem_data['rowwidth']}"
+    return sv_hex(mem_data['memsize'])
 
 def section_package_imports(args, prj, data):
     startingContext = data['blockInfo']['_context']
@@ -172,10 +170,10 @@ def section_address_constants(data):
     for reg_data in data['registers'].values():
         entries.append((reg_data['offset'], reg_data['addr_const_name'], sv_hex(reg_data['offset']), reg_data.get('desc', '')))
         if reg_data.get('regType') == 'memory':
-            entries.append((reg_data['offset'], reg_data['size_const_name'], sv_hex(reg_data['decode_size']), 'Decode range size'))
+            entries.append((reg_data['offset'], reg_data['size_const_name'], reg_data['size_value'], 'Decode range size'))
     for mem_data in data['memories'].values():
         entries.append((mem_data['offset'], mem_data['addr_const_name'], sv_hex(mem_data['offset']), mem_data.get('desc', '')))
-        entries.append((mem_data['offset'], mem_data['size_const_name'], sv_hex(mem_data['decode_size']), 'Decode range size'))
+        entries.append((mem_data['offset'], mem_data['size_const_name'], mem_data['size_value'], 'Decode range size'))
 
     out = []
     seen = set()
@@ -890,16 +888,17 @@ module {{ modulename }}
         if (rd_select) begin
             case (apb_addr) inside
                 {{ section_03b | indent(16) }}
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = {{regs_data_t}}'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)

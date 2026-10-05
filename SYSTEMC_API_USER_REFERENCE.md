@@ -868,11 +868,12 @@ expressed on the wire, and timed/tandem runs can diverge if delay is enabled.
 (non-blocking write), `raw` is a one-shot transfer that blocks both sides until
 the beat is consumed.
 
-**Note:** `raw_channel` uses one `sc_event` for both directions. `write()`
-re-checks that the consumer has taken the value before it returns, so a parked
-consumer plus an immediate re-`write` cannot lose a beat; the shared event only
-costs each side a spurious wake-up per beat. Prefer a handshaked protocol
-whenever possible.
+**Note:** `raw_channel` signals "value taken" on its own `sc_event`. That event
+signals "value written" too, unless the reader passes its own event to
+`setExternalEvent()`. `write()` re-checks that the consumer has taken the value
+before it returns, so a parked consumer plus an immediate re-`write` cannot lose
+a beat. On the single-event path each side gets a spurious wake-up per beat.
+Prefer a handshaked protocol whenever possible.
 
 #### Source Side
 

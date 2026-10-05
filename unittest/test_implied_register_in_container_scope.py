@@ -67,14 +67,14 @@ blocks:
             regs: { interface: apbReg }
 """
     + render_router('apbDecode', 'top')
-    + render_router('aDecode', 'contA')
-    + render_router('bDecode', 'contB')
+    + render_router('aDecode', 'contA', address_increment='0x00100000')
+    + render_router('bDecode', 'contB', address_increment='0x00100000')
     + """
 instances:
     uTop:       { container: top, instanceType: top }
     uAPBDecode: { container: top, instanceType: apbDecode }
-    uContA:     { container: top, instanceType: contA }
-    uContB:     { container: top, instanceType: contB }
+    uContA:     { container: top, instanceType: contA, addressGroup: top }
+    uContB:     { container: top, instanceType: contB, addressGroup: top }
     uADecode:   { container: contA, instanceType: aDecode }
     uIpA:       { container: contA, instanceType: ip, addressGroup: contA }
     uChildA:    { container: ip,    instanceType: ipChild }

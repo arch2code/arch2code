@@ -45,7 +45,7 @@ namespace fw_ns::axiDemo {
 namespace fw_ns::axiDemo {
 // structures
 struct axiAddrSt {
-    axiAddrT addr; //
+    axiAddrT addr; /* [31:0] */ //
 
     axiAddrSt() { memset(this, 0, sizeof(axiAddrSt)); }
 
@@ -68,7 +68,7 @@ struct axiAddrSt {
 
 };
 struct axiDataSt {
-    axiDataT data; //
+    axiDataT data; /* [31:0] */ //
 
     axiDataSt() { memset(this, 0, sizeof(axiDataSt)); }
 
@@ -91,7 +91,7 @@ struct axiDataSt {
 
 };
 struct axiStrobeSt {
-    axiStrobeT strobe; //
+    axiStrobeT strobe; /* [3:0] */ //
 
     axiStrobeSt() { memset(this, 0, sizeof(axiStrobeSt)); }
 

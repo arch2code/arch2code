@@ -89,14 +89,14 @@ blocks:
         hasMdl: true
 """
     + render_router('apbDecode', 'top')
-    + render_router('innerDecode', 'bridge')
+    + render_router('innerDecode', 'bridge', address_increment='0x00100000')
     + render_leaf('leafA')
     + render_leaf('leafB')
     + """
 instances:
     uTop:         { container: top, instanceType: top }
     uAPBDecode:   { container: top, instanceType: apbDecode }
-    uBridge:      { container: top, instanceType: bridge }
+    uBridge:      { container: top, instanceType: bridge, addressGroup: top }
     uInnerDecode: { container: bridge, instanceType: innerDecode }
     uLeafA:       { container: bridge, instanceType: leafA, addressGroup: bridge }
     uLeafB:       { container: bridge, instanceType: leafB, addressGroup: bridge }

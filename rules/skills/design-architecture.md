@@ -44,7 +44,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `hasVl`: (Optional) Generate Verilator wrapper. **Default: `false`**
         *   `hasTb`: (Optional) Generate Testbench. **Default: `false`**
         *   `ports`: (Optional) Explicit port map keyed by port name. Each entry names an `interface` and `direction`.
-        *   `addressBlock`: (Optional) Marks the block as a **register-bus router (decoder)**. Its RTL is generated from the `apbDecodeModule` template. Fields: `addressGroup` (the group this router serves), `addressIncrement`, `maxAddressSpaces`, `varType`, `enumPrefix`, `upstreamPort` (the addressBus interface feeding it), `registerDecoderPort` (canonical downstream register-bus port). A router must **not** also declare `registerPorts:`.
+        *   `addressBlock`: (Optional) Marks the block as a **register-bus router (decoder)**. Its RTL is generated from the `apbDecodeModule` template. Fields: `addressGroup` (the group this router serves), `addressIncrement`, `maxAddressSpaces` (both powers of two), `varType`, `enumPrefix`, `upstreamPort` (the addressBus interface feeding it), `registerDecoderPort` (canonical downstream register-bus port). A router must **not** also declare `registerPorts:`.
         *   `registerPorts`: (Optional, **reusable-IP leaves only**) Exactly one row declaring the block's own register-bus port, e.g. `registerPorts: { regs: { interface: ipReg } }`. Lets a reusable IP carry a self-contained register-bus surface. Plain top-down leaves omit it (they infer the bus from the serving router).
         *   `clocks`: (Optional) The block's clock ports, keyed by name: `{desc, direction, default, period, timeUnit}`. A block that declares none gets one implicit input clock, `clk`. See **Clocks and Resets** below.
         *   `resets`: (Optional) The block's reset ports, keyed by name: `{desc, direction, default, clock, async}`. A block that declares none, and has a default clock, gets one implicit reset, `rst_n`, on it; an explicit `resets: {}` means the block has no reset at all.
@@ -71,6 +71,8 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `container`: **(Required)** Parent block name (or `top`).
         *   `instanceType`: **(Required)** Block definition to instantiate.
         *   `addressGroup`: **(Required if Regs exist)** Address space group (e.g., `system`).
+        *   `count`: Instance replication is not supported. `make db` rejects any value other than 1, so declare each instance separately.
+    *   **One name per block scope.** A block's generated module and class declare its clocks, resets, ports, registers, memories, child instances and the channels of connections between its children side by side. Two of them sharing a name is rejected at `make db`. A channel takes its name from `interfaceName:`, else `srcport:`, else `name:`, else the interface name. A block's memory channels are `<memory>_<port>` for a memory port wired to a child and `<memory>_reg` for a `regAccess` memory. Registers, `connectionMaps:` ports, memory channels and connection channels must not share a name with each other. That holds for a single connection channel and for one that several connections share. The generator numbers connections of one interface that share one channel name, so a shared name may match a child instance, a memory or a port that is not a `connectionMaps:` port. Connections of different interfaces may not share a channel name. Wire each memory port to one instance.
 
     ```yaml
     instances:
@@ -80,6 +82,8 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
 4.  **Interface Definition (`interfaces` dictionary):**
     *   **Properties:**
         *   `interfaceType`: **(Required)** Protocol (e.g., `apb`, `req_ack`, `rdy_vld`). Prefer handshaked protocols for new interconnect. Use `raw` only as a **last resort** at design boundaries for legacy/external handshake-less pinouts — never for new links between arch2code blocks. See `ARCH2CODE_AI_RULES.md` (§ raw) and the **SystemC Interfaces** skill.
+            *   In the model, a `raw` `write()` returns only after the reader takes the value, and a `raw` source allows one destination. An output nobody reads, such as a pps, fsync, or GPIO pin, stalls the writer thread. Where `raw` is unavoidable, give it one reader that consumes every write.
+            *   `status` is the wire-like type. `write()` does not wait for a reader, `readNonBlocking()` returns the latest value, `read()` waits for the next change, and the interface is `multiDst`, so one source can feed several destinations. Use `status` for level and pulse signals such as pps, fsync, or GPIO pins. Keep `raw` for a free-running boundary data bus.
         *   `desc`: **(Required)** Description.
         *   `structures`: **(Required)** List mapping structures to interface data types.
         *   `maxTransferSize`: (Optional) For multi-cycle interfaces. **Default: `0`**
@@ -157,7 +161,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   **Properties:**
         *   `register`: **(Required)** Name.
         *   `block`: **(Required)** Owner block.
-        *   `regType`: **(Required)** `rw` (Read/Write), `ro` (Read-Only), `ext` (External), or `memory`.
+        *   `regType`: **(Required)** `rw` (Read/Write), `ro` (Read-Only), `ext` (External), or `memory`. An `ext` register's structure is at most 32 bits wide, the register bus width, and `make db` rejects a wider one.
         *   `structure`: **(Required)** Data structure.
         *   `addressStruct`: Required for `regType: memory`.
         *   `wordLines`: Required for `regType: memory`; may be a literal or constant. For parameterized sizing, use `design-parameterizable-blocks.md`.
@@ -181,7 +185,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `regAccess`: (Optional) Firmware access through the register handler: `false`, `rw`, `ro` (firmware only reads), `wo` (firmware only writes). `true` means `rw`. Any other value is an error. **Default: `false`**
         *   `local`: (Optional) Local flops (not SRAM)? **Default: `false`**
         *   `memoryType`: (Optional) What each port can do. `singlePort` has one read/write port. `dualPort` has two read/write ports, A and B. `portRportRW` has a read-only A and a read/write B. `portRWportW` has a read/write A and a write-only B. `portRportW` has a read-only A and a write-only B. **Default: `dualPort`**
-        *   `ports`: (Optional) Block-side port names, filling ports A then B. With `regAccess` the register handler takes one port, so a dual-port memory lists at most one and a `singlePort` memory lists none.
+        *   `ports`: (Optional) Block-side port names, filling ports A then B. With `regAccess` the register handler takes one port, so a dual-port memory lists at most one and a `singlePort` memory lists none. With `regAccess`, no port may be named `reg`.
         *   `clock`: (Optional) One of the owning block's clocks, which the block-side port runs on. The register handler's port always runs on the register clock. With no `regAccess`, both ports run on this clock. **Default: the block's default clock**
         *   A memory has no `reset:`; setting it is an error.
 
@@ -199,3 +203,4 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   `regAccess: rw` on `portRportW`, which has no read/write port. Use `ro`, `wo`, or another `memoryType`.
     *   Nesting `instances` inside `blocks`.
     *   Placing a `hasRtl: false` block inside a `hasRtl: true` parent. Either generate RTL for the child or make the parent model-only.
+    *   Naming a register, memory or port after a child instance or a connection channel of the same block. Rename one of them; for a channel, set `interfaceName:` on the connection.

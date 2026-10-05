@@ -54,16 +54,16 @@ blocks:
         hasMdl: true
 """
     + render_router('apbDecode', 'top')
-    + render_router('subADecode', 'subA')
-    + render_router('subBDecode', 'subB')
+    + render_router('subADecode', 'subA', address_increment='0x00100000')
+    + render_router('subBDecode', 'subB', address_increment='0x00100000')
     + render_leaf('leafA')
     + render_leaf('leafB')
     + """
 instances:
     uTop:         { container: top, instanceType: top }
     uAPBDecode:   { container: top, instanceType: apbDecode }
-    uSubA:        { container: top, instanceType: subA }
-    uSubB:        { container: top, instanceType: subB }
+    uSubA:        { container: top, instanceType: subA, addressGroup: top }
+    uSubB:        { container: top, instanceType: subB, addressGroup: top }
     uSubADecode:  { container: subA, instanceType: subADecode }
     uSubBDecode:  { container: subB, instanceType: subBDecode }
     uLeafA:       { container: subA, instanceType: leafA, addressGroup: subA }

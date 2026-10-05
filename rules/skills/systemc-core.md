@@ -29,7 +29,7 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
     *   **Which slot a header goes in:** A header that *names* module or `Config` types (`model/b2p_deb_conv.h` in the debayer tree) belongs in the preamble gap, below the imports it depends on, where it attaches to this module. It belongs in the global-module-fragment slot instead when it is the boundary of a class also defined in a plain translation unit (a pimpl `_impl.h`), because that class must attach to the global module to match those definitions at link time.
     *   **Members:** Add manual member variables and function declarations **after** the `classDecl` region's `// GENERATED_CODE_END`, inside the class body.
     *   **Initialization List:** Add manual member initializers (starting with a comma `,`) **between** the `constructor --section=init` `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
-    *   **Constructor Body:** Add manual logic (like `SC_THREAD` registration) **after** the `constructor --section=body` `// GENERATED_CODE_END`.
+    *   **Constructor Body:** Add manual logic (like `SC_THREAD` registration, or `ADD_TEST` for a testbench test; see `verify-testbench`) **after** the `constructor --section=body` `// GENERATED_CODE_END`.
     *   **Inherited names:** Use the generated `using <block>Base<Config>::name;` declarations to refer to inherited constants, parameterized types, and ports unqualified (no `Config::` / `this->`).
 
     ```cpp
@@ -87,6 +87,7 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
     *   Use `log_.logPrint` for all logging.
     *   Use `std::format` for formatting strings.
     *   Use lazy evaluation (lambda) for complex formatting to avoid overhead when logging is disabled.
+    *   The run-wide level comes from `--verbosity` (`low`, `medium`, `high`, `full`, or `0`-`3`). An unrecognized value stops the run with exit status 2 and lists the accepted spellings.
 
     ```cpp
     log_.logPrint(std::format("SystemC Thread:{} started", __func__));
@@ -98,6 +99,11 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
     *   **Auto-Generation:** The `hwRegister` and `hwMemory` member declarations and their registration (`regs.addRegister`, `regs.addMemory`) are **auto-generated** inside the `GENERATED_CODE` blocks.
     *   **Access:** Access these resources in your manual code using the generated member names (e.g., `myReg.m_val.field`).
     *   **Trackers:** For detailed instructions on using `tracker<T>` for lifecycle monitoring and debugging, refer to the **Debug** skill.
+    *   **Wide registers:** Firmware writes a register wider than 32 bits one word at a time (`+0` holds bits `[31:0]`, `+4` bits `[63:32]`). In a block model each register is a `hwRegister`, which updates `m_val` on each word write, notifies the event passed to `registerEvent()` and issues no `reg_write_cmd`, so a thread woken by a low-word write still sees the old high word. In a `<block>_regs` handler model, an rw `hwRegisterIf` issues one `reg_write_cmd` per word write, so the child sees the new low word next to the old high word.
 
 5.  **Status Reporting:**
     *   **See 'Debug' Skill:** For detailed instructions on implementing `statusPrint(void)` to debug simulation hangs, refer to the **Debug** skill.
+
+6.  **Assertions and Unique Names:**
+    *   `Q_ASSERT(cond, msg)` passes `name()` as its context (`common/systemc/q_assert.h:40`), so it compiles only in a member of a class that has `name()`, such as an `sc_module`. Code without `name()`, such as a testbench `Config` class, uses `Q_ASSERT_CTX(cond, ctx, msg)` (`q_assert.h:43`) and passes the context string itself.
+    *   Call `sc_gen_unique_name` with both arguments, for example `sc_gen_unique_name("x", false)`. The default `preserve_first = false` is declared only in `sysc/kernel/sc_simcontext.h`. `sysc/kernel/sc_process.h` declares the function with no default, and a build that sees only that declaration rejects the one-argument call. The `VL_DUT` build is one such build.

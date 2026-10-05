@@ -489,12 +489,12 @@ def test_literal_delete_resolves_against_layout():
 def test_unmanifested_src_dir_reported_and_clears():
     """C++ the manifest does not compile is surfaced as a decision, and clears.
 
-    The retired glob walked the whole tree, so a directory the manifest does not
-    list stops being compiled AND stops being an include path — and because the
-    include path is shared, the first failure usually lands in an unrelated
-    translation unit. Two shapes must both be caught: a directory outside every
-    segment root, and a SUBDIRECTORY of one (the manifest globs a root one level
-    deep, so nesting is not covered either).
+    The retired scan walked base, model, fw and tb, so a directory there that the
+    manifest does not list stops being compiled AND stops being an include path.
+    The include path is shared, so the first failure usually lands in an
+    unrelated translation unit. Two shapes must both be caught: a directory under
+    those roots that is not a segment root, and a SUBDIRECTORY of a segment root
+    (the manifest globs a root one level deep, so nesting is not covered either).
 
     It must also converge. `EXTRA_PRJ_SRC_DIRS` is the operator's answer, so a
     wired directory falls silent while the un-wired one still reports; an item
@@ -514,7 +514,8 @@ def test_unmanifested_src_dir_reported_and_clears():
               "undeclared directory and un-globbed subdirectory both reported")
         message = next((i.message for i in report.manual
                         if i.kind == TODO_UNMANIFESTED_SRC_DIR), "")
-        check("EXTRA_PRJ_SRC_DIRS" in message and "Decide" in message,
+        check("EXTRA_PRJ_SRC_DIRS" in message
+              and "If the project must compile it" in message,
               "TODO states the decision and names the seam that answers it")
 
         os.makedirs(os.path.join(root, "rundir"))
@@ -525,6 +526,157 @@ def test_unmanifested_src_dir_reported_and_clears():
                        if i.kind == TODO_UNMANIFESTED_SRC_DIR)
         check(found == [os.path.join("model", "helpers")],
               "a directory wired onto EXTRA_PRJ_SRC_DIRS stops being reported")
+
+
+def test_unmanifested_src_dir_ignores_trees_outside_retired_scan():
+    """Only base, model, fw and tb are scanned, because only those were compiled.
+
+    The retired scan never walked a vendored tree such as `thirdparty/`, so the
+    manifest switch dropped nothing there and reporting it would be noise.
+    Hand-written helpers inside the four roots are still reported.
+    """
+    print("test_unmanifested_src_dir_ignores_trees_outside_retired_scan")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "thirdparty", "hsb", "src", "vendor.cpp"), False)
+        _write(os.path.join(root, "thirdparty", "hsb", "src", "vendor.h"), False)
+        _write(os.path.join(root, "fw", "src", "fwMain.cpp"), False)
+        _write(os.path.join(root, "model", "helpers", "helper.cpp"), False)
+
+        report = sweepOrphans(_FakePrj(root), write=False)
+        found = sorted(i.location for i in report.manual
+                       if i.kind == TODO_UNMANIFESTED_SRC_DIR)
+        check(found == [os.path.join("fw", "src"), os.path.join("model", "helpers")],
+              f"thirdparty/ is not reported, fw/src and model/helpers are ({found})")
+
+
+def test_unmanifested_src_dir_ignores_cc_only_dirs():
+    """A directory holding only `.cc` files is not reported.
+
+    The retired scan matched `*.cpp`, `*.h` and `*.cppm`, and the build globs only
+    `*.cpp` and `*.cppm`, so such a directory was never compiled and wiring it
+    would compile nothing.
+    """
+    print("test_unmanifested_src_dir_ignores_cc_only_dirs")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "fw", "cc", "main.cc"), False)
+        found = _unmanifestedFound(_FakePrj(root))
+        check(found == [], f"a .cc-only directory is not reported ({found})")
+
+
+def test_unmanifested_src_dir_follows_symlinked_dirs():
+    """A symlinked directory is walked, as the retired `find -L` scan walked it.
+
+    Symlinked vendoring (`model/shared -> ../shared/model`) was compiled before the
+    manifest, so it dropped out of the build at the switch. The item names the
+    link as it sits under the project root, because that is the path
+    `EXTRA_PRJ_SRC_DIRS` takes. A link back up the tree is a cycle: the walk must
+    finish, and the link back to `model/` adds no second report of
+    `model/helpers`. A dangling `.cpp` link is not a compile unit, because
+    `find -L -type f` never listed one.
+    """
+    print("test_unmanifested_src_dir_follows_symlinked_dirs")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "shared", "model", "sharedImpl.cpp"), False)
+        os.symlink(os.path.join("..", "shared", "model"),
+                   os.path.join(root, "model", "shared"))
+        _write(os.path.join(root, "model", "helpers", "helper.cpp"), False)
+        os.symlink("..", os.path.join(root, "model", "helpers", "back"))
+        os.makedirs(os.path.join(root, "fw", "d"))
+        os.symlink("/nonexistent/z.cpp", os.path.join(root, "fw", "d", "z.cpp"))
+
+        report = sweepOrphans(_FakePrj(root), write=False)
+        found = sorted(i.location for i in report.manual
+                       if i.kind == TODO_UNMANIFESTED_SRC_DIR)
+        check(found == [os.path.join("model", "helpers"), os.path.join("model", "shared")],
+              f"the symlinked directory is reported by its link path, the cycle "
+              f"back to model/ is not walked again, and a dangling .cpp link is "
+              f"not a compile unit ({found})")
+
+
+def _unmanifestedFound(prj):
+    return sorted(i.location for i in sweepOrphans(prj, write=False).manual
+                  if i.kind == TODO_UNMANIFESTED_SRC_DIR)
+
+
+def test_unmanifested_src_dir_link_to_manifest_dir_is_covered():
+    """A link into a directory the manifest compiles is already built.
+
+    Reporting it would steer the operator to `EXTRA_PRJ_SRC_DIRS`, which compiles
+    every unit in it a second time.
+    """
+    print("test_unmanifested_src_dir_link_to_manifest_dir_is_covered")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "ip", "model", "ipImpl.cpp"), False)
+        os.symlink(os.path.join("..", "ip", "model"), os.path.join(root, "model", "ip"))
+        prj = _FakePrj(root)
+        prj.config.getConfig("BUILDMANIFEST")["scSrcDirs"].append(
+            os.path.join(root, "ip", "model"))
+        found = _unmanifestedFound(prj)
+        check(found == [], f"a link to a manifest directory is not reported ({found})")
+
+
+def test_unmanifested_src_dir_alias_clears_from_either_path():
+    """Two paths to one directory make one item, and wiring either path clears it.
+
+    Wiring both paths would compile every unit in the directory twice, so the
+    item names the first path in sorted order and lists the other, so the
+    operator wires only one.
+    The walk still reaches both paths, because it only prunes a link back to a
+    directory it is already inside.
+    """
+    print("test_unmanifested_src_dir_alias_clears_from_either_path")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "fw", "src", "fwMain.cpp"), False)
+        os.symlink(os.path.join("..", "fw", "src"), os.path.join(root, "model", "shared"))
+        _write(os.path.join(root, "fw", "b", "b.cpp"), False)
+        os.makedirs(os.path.join(root, "fw", "a"))
+        os.symlink(os.path.join("..", "b"), os.path.join(root, "fw", "a", "link"))
+        prj = _FakePrj(root)
+        items = [i for i in sweepOrphans(prj, write=False).manual
+                 if i.kind == TODO_UNMANIFESTED_SRC_DIR]
+        found = sorted(i.location for i in items)
+        check(found == [os.path.join("fw", "a", "link"), os.path.join("fw", "src")],
+              f"one item per real directory, named by the first of its paths in "
+              f"sorted order ({found})")
+        message = next((i.message for i in items
+                        if i.location == os.path.join("fw", "src")), "")
+        check(os.path.join("model", "shared") in message and "only one" in message,
+              "the item lists the alias and says to wire only one path")
+        message = next((i.message for i in items
+                        if i.location == os.path.join("fw", "a", "link")), "")
+        check(f"'{os.path.join('fw', 'b')}'" in message,
+              "the within-root item lists its alias fw/b")
+
+        os.makedirs(os.path.join(root, "rundir"))
+        for wired in ("fw/src", "model/shared"):
+            with open(os.path.join(root, "rundir", "Makefile"), "w") as fh:
+                fh.write(f"EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/{wired}\n")
+            found = _unmanifestedFound(prj)
+            check(found == [os.path.join("fw", "a", "link")],
+                  f"wiring {wired} clears the fw/src item ({found})")
+
+
+def test_unmanifested_src_dir_missing_ref_does_not_cover():
+    """An EXTRA_PRJ_SRC_DIRS ref to a directory that does not exist covers nothing.
+
+    `fw/gone/../src` collapses to `fw/src` as a string, but make's wildcard finds
+    no `fw/gone` and compiles nothing, so the item must stay.
+    """
+    print("test_unmanifested_src_dir_missing_ref_does_not_cover")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "fw", "src", "fwMain.cpp"), False)
+        os.makedirs(os.path.join(root, "rundir"))
+        with open(os.path.join(root, "rundir", "Makefile"), "w") as fh:
+            fh.write("EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/gone/../src\n")
+        found = _unmanifestedFound(_FakePrj(root))
+        check(found == [os.path.join("fw", "src")],
+              f"a ref through a missing directory does not cover fw/src ({found})")
 
 
 def test_retired_sibling_path_resolves_beside_current_artifact():
@@ -657,6 +809,12 @@ if __name__ == "__main__":
     test_dry_run_changes_nothing()
     test_literal_delete_resolves_against_layout()
     test_unmanifested_src_dir_reported_and_clears()
+    test_unmanifested_src_dir_ignores_trees_outside_retired_scan()
+    test_unmanifested_src_dir_ignores_cc_only_dirs()
+    test_unmanifested_src_dir_follows_symlinked_dirs()
+    test_unmanifested_src_dir_link_to_manifest_dir_is_covered()
+    test_unmanifested_src_dir_alias_clears_from_either_path()
+    test_unmanifested_src_dir_missing_ref_does_not_cover()
     test_retired_sibling_path_resolves_beside_current_artifact()
     test_retired_context_file_named_from_include_name()
     test_retired_context_sibling_functional()

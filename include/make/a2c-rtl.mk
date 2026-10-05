@@ -36,6 +36,7 @@ TOP_HDL_SV_WRAPPER_NAME ?= $(A2C_VL_TOP_$(HDL_TOP_MODULE))
 TOP_HDL_SV_WRAPPER_FILE = $(A2C_VL_SV_$(TOP_HDL_SV_WRAPPER_NAME))
 
 RTL_DOT_F_FILE = $(A2C_RTL_DOT_F)
+SYNTH_DOT_F_FILE = $(GEN_BUILD_DIR)/synth.f
 
 RTL_SRC_FILES += $(TOP_HDL_SV_WRAPPER_FILE)
 
@@ -44,15 +45,36 @@ RTL_SRC_FILES += $(TOP_HDL_SV_WRAPPER_FILE)
 # Systemc build phony targets
 #------------------------------------------------------------------------
 
-.PHONY : all lint
+.PHONY : all lint synthf
 .DEFAULT_GOAL := all lint
 
 all : lint
 
+# A top module with interface ports elaborates only inside its Verilator
+# wrapper, so lint requires one.
 lint: gen $(RTL_DOT_F_FILE)
+	$(if $(TOP_HDL_SV_WRAPPER_NAME),,$(error HDL_TOP_MODULE '$(HDL_TOP_MODULE)' has no Verilator wrapper in the build manifest. \
+	Lint needs the top instance's block or one of its direct children with hasVl: true \
+	(available: $(or $(patsubst A2C_VL_TOP_%,%,$(filter A2C_VL_TOP_%,$(.VARIABLES))),none)), \
+	or set TOP_HDL_SV_WRAPPER_NAME to the lint top))
 	verilator  $(VERILATOR_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(RTL_DOT_F_FILE) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(RTL_SRC_FILES)
+
+define SYNTH_NEWLINE
+
+
+endef
+SYNTH_FILES = $(strip $(A2C_SV_PACKAGE_FILES) $(A2C_SV_FILES))
+
+# Packages in compile order, then the manifest RTL modules, one path per line.
+# The Verilator wrapper and RTL_SRC_FILES additions are not listed. Make writes
+# the file itself since the list can exceed a shell argument, and an empty list
+# uses $(file >f) because $(file >f,) writes a newline.
+synthf: gen
+	$(if $(SYNTH_FILES),$(file >$(SYNTH_DOT_F_FILE),$(subst $() ,$(SYNTH_NEWLINE),$(SYNTH_FILES))),$(file >$(SYNTH_DOT_F_FILE)))
+	@echo "Wrote $(SYNTH_DOT_F_FILE)"
 
 help::
 	@echo "  all     	- Run all lint checks"
 	@echo "  lint    	- Run lint checks on the HDL files"
+	@echo "  synthf  	- Write the synthesis file list (packages, then modules) to .gen/synth.f"
 	@echo "  help    	- Show this help message"

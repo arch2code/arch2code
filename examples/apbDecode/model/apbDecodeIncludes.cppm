@@ -134,8 +134,8 @@ struct aRegSt {
 
 };
 struct un0BRegSt {
-    u16T fb; //[23:8] - byte 3-4
-    u8T fa; //[7:0] - byte 0-2
+    u16T fb; //[15:0] - bytes 0-1
+    u8T fa; //[23:16] - byte 2
 
     un0BRegSt() {}
 
@@ -183,15 +183,15 @@ struct un0BRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( fa & ((1ULL<<8)-1) ) << 0)
+        (( fa & ((1ULL<<8)-1) ) << 16)
  +
-        (( fb & ((1ULL<<16)-1) ) << 8);
+        (( fb & ((1ULL<<16)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
-        fb = ( u16T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 16 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u16T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 16 ) - 1)) ;
         }
     inline sc_bv<un0BRegSt::_bitWidth> sc_pack(void) const
     {
@@ -216,9 +216,9 @@ struct un0BRegSt {
 
 };
 struct un0ARegSt {
-    u8T fc; //[47:40] - byte 8-11
-    u32T fb; //[39:8] - byte 4-7
-    u8T fa; //[7:0] - byte 0-3
+    u8T fc; //[7:0] - byte 0
+    u32T fb; //[39:8] - bytes 1-4
+    u8T fa; //[47:40] - byte 5
 
     un0ARegSt() {}
 
@@ -272,18 +272,18 @@ struct un0ARegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( fa & ((1ULL<<8)-1) ) << 0)
+        (( fa & ((1ULL<<8)-1) ) << 40)
  +
         (( fb & ((1ULL<<32)-1) ) << 8)
  +
-        (( fc & ((1ULL<<8)-1) ) << 40);
+        (( fc & ((1ULL<<8)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
         fb = ( u32T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 32 ) - 1)) ;
-        fc = ( u8T ) (( packedValue >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fc = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
         }
     inline sc_bv<un0ARegSt::_bitWidth> sc_pack(void) const
     {
@@ -309,6 +309,102 @@ struct un0ARegSt {
         fa(fa_)
     {}
     explicit un0ARegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct un0ExtRegSt {
+    u8T fc; //[7:0] - byte 0
+    u16T fb; //[23:8] - bytes 1-2
+    u8T fa; //[31:24] - byte 3
+
+    un0ExtRegSt() {}
+
+    static constexpr uint16_t _bitWidth = 8 + 16 + 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint32_t _packedSt;
+    inline bool operator == (const un0ExtRegSt & rhs) const {
+        bool ret = true;
+        ret = ret && (fa == rhs.fa);
+        ret = ret && (fb == rhs.fb);
+        ret = ret && (fc == rhs.fc);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const un0ExtRegSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.fa, NAME + ".fa");
+        sc_trace(tf,v.fb, NAME + ".fb");
+        sc_trace(tf,v.fc, NAME + ".fc");
+    }
+    inline friend ostream& operator << ( ostream& os,  un0ExtRegSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("fa:0x{:02x} fb:0x{:04x} fc:0x{:02x}",
+           (uint64_t) fa,
+           (uint64_t) fb,
+           (uint64_t) fc
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, un0ExtRegSt::_byteWidth);
+        _ret = fc;
+        _ret |= (uint32_t)fb << (8 & 31);
+        _ret |= (uint32_t)fa << (24 & 31);
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        fc = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+        _pos += 8;
+        fb = (u16T)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
+        _pos += 16;
+        fa = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+    }
+    // register functions
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
+    uint64_t _getValue(void)
+    {
+        uint64_t ret =
+        (( fa & ((1ULL<<8)-1) ) << 24)
+ +
+        (( fb & ((1ULL<<16)-1) ) << 8)
+ +
+        (( fc & ((1ULL<<8)-1) ) << 0);
+        return( ret );
+    }
+    void _setValue(uint64_t packedValue)
+    {
+        fa = ( u8T ) (( packedValue >> 24 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u16T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        fc = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        }
+    inline sc_bv<un0ExtRegSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<un0ExtRegSt::_bitWidth> packed_data;
+        packed_data.range(7, 0) = fc;
+        packed_data.range(23, 8) = fb;
+        packed_data.range(31, 24) = fa;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<un0ExtRegSt::_bitWidth> packed_data)
+    {
+        fc = (u8T) packed_data.range(7, 0).to_uint64();
+        fb = (u16T) packed_data.range(23, 8).to_uint64();
+        fa = (u8T) packed_data.range(31, 24).to_uint64();
+    }
+    explicit un0ExtRegSt(sc_bv<un0ExtRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit un0ExtRegSt(
+        u8T fc_,
+        u16T fb_,
+        u8T fa_) :
+        fc(fc_),
+        fb(fb_),
+        fa(fa_)
+    {}
+    explicit un0ExtRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 struct aSizeRegSt {
@@ -805,6 +901,7 @@ void test_apbDecode_structs::test(void) {
     roundTrip<aRegSt>("aRegSt", patterns);
     roundTrip<un0BRegSt>("un0BRegSt", patterns);
     roundTrip<un0ARegSt>("un0ARegSt", patterns);
+    roundTrip<un0ExtRegSt>("un0ExtRegSt", patterns);
     roundTrip<aSizeRegSt>("aSizeRegSt", patterns);
     roundTrip<apbAddrSt>("apbAddrSt", patterns);
     roundTrip<apbDataSt>("apbDataSt", patterns);

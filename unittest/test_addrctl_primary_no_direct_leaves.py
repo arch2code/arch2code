@@ -34,14 +34,14 @@ blocks:
         hasMdl: true
 """
     + render_router('apbDecode', 'top')
-    + render_router('subDecode', 'sub')
+    + render_router('subDecode', 'sub', address_increment='0x00100000')
     + render_leaf('subLeafA')
     + render_leaf('subLeafB')
     + """
 instances:
     uTop:        { container: top, instanceType: top }
     uAPBDecode:  { container: top, instanceType: apbDecode }
-    uSub:        { container: top, instanceType: sub }
+    uSub:        { container: top, instanceType: sub, addressGroup: top }
     uSubDecode:  { container: sub, instanceType: subDecode }
     uSubLeafA:   { container: sub, instanceType: subLeafA, addressGroup: sub }
     uSubLeafB:   { container: sub, instanceType: subLeafB, addressGroup: sub }

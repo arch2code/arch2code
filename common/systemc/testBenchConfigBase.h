@@ -2,6 +2,7 @@
 #define TESTBENCH_CONFIG_BASE_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include <string>
+#include <vector>
 #include <boost/program_options.hpp>
 #include "logging.h"
 
@@ -31,9 +32,12 @@ public:
     
     static void addParam(const std::initializer_list<std::pair<std::string, uint64_t> > & params);
     static void addParam(std::string name, uint64_t value);
+    // replaces any registered default; used for command-line --param values
+    static void setParam(std::string name, uint64_t value);
     static uint64_t getParam(std::string name, uint64_t defaultValue);
     static uint64_t getParam(std::string name);
     static bool isValidParam(std::string name);
+    static std::vector<std::string> getParamNames();
 private:
     static std::map<std::string, uint64_t >& getParamMap();
 

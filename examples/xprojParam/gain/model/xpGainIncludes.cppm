@@ -84,9 +84,9 @@ struct videoSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (pixel_t_v<PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (PIXEL_WIDTH)) - 1));
+        data = (pixel_t_v<PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (PIXEL_WIDTH))));
         _pos += PIXEL_WIDTH;
-        tag = (tag_t)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
+        tag = (tag_t)((_src >> (_pos & 63)) & (~0ULL >> (64 - (4))));
     }
     inline sc_bv<videoSt_v<PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

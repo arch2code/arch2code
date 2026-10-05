@@ -95,7 +95,7 @@ inline const char* enumType_prt( enumType val )
 namespace fw_ns::nested {
 // structures
 struct test_st {
-    cmdidT a; //
+    cmdidT a; /* [9:0] */ //
 
     test_st() { memset(this, 0, sizeof(test_st)); }
 
@@ -118,7 +118,7 @@ struct test_st {
 
 };
 struct bigSt {
-    bigT b; //
+    bigT b; /* [95:0] */ //
 
     bigSt() { memset(this, 0, sizeof(bigSt)); }
 
@@ -144,7 +144,7 @@ struct bigSt {
 
 };
 struct testDataSt {
-    dataT data; //
+    dataT data; /* [127:0] */ //
 
     testDataSt() { memset(this, 0, sizeof(testDataSt)); }
 
@@ -170,7 +170,7 @@ struct testDataSt {
 
 };
 struct testDataHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; /* [9:0] */ //Command context
 
     testDataHdrSt() { memset(this, 0, sizeof(testDataHdrSt)); }
 
@@ -193,7 +193,7 @@ struct testDataHdrSt {
 
 };
 struct lengthHdrSt {
-    lengthT length; //
+    lengthT length; /* [15:0] */ //
 
     lengthHdrSt() { memset(this, 0, sizeof(lengthHdrSt)); }
 
@@ -216,7 +216,7 @@ struct lengthHdrSt {
 
 };
 struct cmdidHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; /* [9:0] */ //Command context
 
     cmdidHdrSt() { memset(this, 0, sizeof(cmdidHdrSt)); }
 

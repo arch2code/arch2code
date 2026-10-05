@@ -17,7 +17,7 @@ public:
 private:
 };
 
-template <class REG_DATA, int N=4>
+template <class REG_DATA, int N=4, bool RO=false>
 class hwRegister : public regBase
 {
 public:
@@ -39,10 +39,17 @@ public:
     void cpu_write(uint64_t address, uint32_t val) override
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");
+        if constexpr (RO)
+        {
+            // Matches the generated RTL: a CPU write to an RO register is
+            // acknowledged and leaves the hardware-owned value unchanged.
+            return;
+        }
         m_val_sc = m_val.sc_pack();
         m_val_sc.range(8*address+31, 8*address) = val;
         m_val.sc_unpack(m_val_sc);
-        if (m_event != nullptr && address == (N-4))
+        // Each 32-bit word takes effect on its own write, as in the generated RTL.
+        if (m_event != nullptr)
         {
             m_event->notify();
         }
@@ -105,15 +112,12 @@ public:
             return;
         } else {
             Q_ASSERT_CTX(address < N, "", "Address out of range");
-            // Assemble APB 32-bit words into m_val; issue one command on the last word.
+            // Each 32-bit word takes effect on its own write, as in the generated RTL.
             m_val_sc = m_val.sc_pack();
             m_val_sc.range(8*address+31, 8*address) = val;
             m_val.sc_unpack(m_val_sc);
-            if (address == (N-4))
-            {
-                // Command only: do not clobber the APB read mirror (busy-lock / W1C).
-                (*m_port)->reg_write_cmd(m_val);
-            }
+            // Command only: do not clobber the APB read mirror (busy-lock / W1C).
+            (*m_port)->reg_write_cmd(m_val);
         }
     }
     void copy(REG_DATA& to)

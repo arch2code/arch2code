@@ -40,9 +40,22 @@ that parses YAML and immediately renders templates.
 
 Project makefiles wrap this as `make db` followed by generation targets
 such as `make gen`, but the Python dispatch still follows this split.
-Run `make clean` before rebuilding after any change under `builder/base`. The db
-target depends only on YAML, so a Python, schema, or template edit leaves a stale
-db in place and `make gen` reuses it. Use make with `-j` for performance.
+The db rebuilds when its YAML changes, when the builder stamp changes, or when
+the build manifest is stale. `.gen/builder.stamp` and the manifest
+`.gen/build.mk` work as follows:
+- `builder.stamp` lists every file under `templates/`, `pysrc/`, `config/*.yaml`,
+  `config/*.py`, `arch2code.py`, and pro's `templates/` and `config/` when pro is
+  present, each with its mtime. Adding, removing or touching one of those files
+  rebuilds the db and regenerates every generated file.
+- `build.mk` records the project root it was written for. A manifest written
+  for another root (a copied or moved tree), or one naming YAML that no longer
+  exists (a moved builder, a deleted include), forces a db rebuild. A failed
+  rebuild leaves the manifest stale, so the next `make` forces again.
+
+A tree with no builder stamp rebuilds its db and regenerates everything on its
+next `make`. Nothing tracks templates kept inside the project tree or other
+builder files such as `include/make/`; run `make clean` after changing those.
+Use make with `-j` for performance.
 
 1. `projectCreate` builds the database.
   - Entry point: `arch2code.py` with both `--yaml` and `--db`.

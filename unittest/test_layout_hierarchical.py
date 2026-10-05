@@ -46,8 +46,8 @@ def _generate_tree():
         # Copy only the authored input (the node yaml/ dirs + prj/), never the
         # golden or any stale generated output.
         for node in ('prj', 'core', 'leaf'):
-            shutil.copytree(os.path.join(FIXTURE, node),
-                            os.path.join(tmp, node))
+            shutil.copytree(os.path.join(FIXTURE, node, 'yaml'),
+                            os.path.join(tmp, node, 'yaml'))
         proj = os.path.join(tmp, 'prj', 'yaml', 'hierProject.yaml')
         db = os.path.join(tmp, 'hier.db')
 
@@ -82,7 +82,7 @@ def _generate_tree():
                 # Skip the committed build harness (include/make/shared.mk): it
                 # is user-owned build config at the project root (Q-L3 amended),
                 # not generated output, so it must not appear in the
-                # generated-only golden. Only prj/, core/, leaf/ are copied into
+                # generated-only golden. Only the yaml/ dirs are copied into
                 # the temp tree, so the root include/, Makefile, and rundir/ never
                 # reach here; the guard stays as a belt-and-braces exclusion.
                 if parts[0] == 'include':

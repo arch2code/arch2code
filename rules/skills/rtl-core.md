@@ -248,7 +248,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     1.  Use `logic` everywhere, never `reg` or `wire`.
     2.  Use `'0` for zero, `'1` for all-ones.
     3.  Use `case () inside` for address decoding.
-    4.  Use `32'hBADD_C0DE` as default read data for invalid APB addresses.
+    4.  Use `32'hBADD_C0DE` as default read data for invalid APB addresses. The generated router returns it for an empty address space, and a generated register block for an address in its decoded range that no register or memory claims. Rows the address map reserves past a parameterizable memory's depth belong to no memory, so they read `32'hBADD_C0DE` too. An address past a block's decoded range aliases through its address mask onto an address in the range.
     5.  Use `automatic` keyword in functions and loop variables.
     6.  Use reduction `|` for overflow detection: `|accum[MSB:DATA_WIDTH]`.
     7.  Use ternary chains for mux-like selections.

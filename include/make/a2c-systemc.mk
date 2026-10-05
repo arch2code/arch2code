@@ -23,8 +23,13 @@ endif
 ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
+# A non-empty site BOOST_LIBS is the whole Boost link line; otherwise LD_BOOST
+# feeds the default one.
+ifeq ($(strip $(BOOST_LIBS)),)
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
+endif
+BOOST_LIBS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST)
 endif
 
 ifndef VERILATOR_ROOT
@@ -42,7 +47,7 @@ endif
 CPP_STD ?= $(C_STD_VER)
 
 CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
-LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
+LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 # The link recipe uses LD_FLAGS only, never CXX_FLAGS, so -pthread must be
 # repeated here for every link, not just the Verilated one: the runtime's
 # std::thread use resolves through a real libpthread DSO on glibc < 2.34,
@@ -373,7 +378,7 @@ compdb:
 	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
 		$(COMPDB_MAKE_N_FILES) \
 		$(REPO_ROOT)/compile_commands.json \
-		--directory $(PROJECT_RUNDIR) >/dev/null
+		--directory $(PROJECT_RUNDIR) --compiler $(CXX) >/dev/null
 	@echo "Generated $(REPO_ROOT)/compile_commands.json"
 
 #------------------------------------------------------------------------
@@ -394,7 +399,7 @@ clangd: compdb
 		for inc in $(CPP_INCLUDES); do \
 			echo "    - $$inc"; \
 		done; \
-		echo "  Compiler: clang++"; \
+		echo "  Compiler: $(CXX)"; \
 		echo "  Remove:"; \
 		echo "    - -m*"; \
 		echo "    - -W*fatal-errors"; \

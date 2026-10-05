@@ -488,14 +488,21 @@ def addressDecoder(args, prj, data):
     portPrefix = addressGroupData['registerDecoderPort']
     out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {parent_interface_port}, {{')
     # routedInstances arrives filtered to this router's address group and ordered
-    # by address slot, so the channel array is emitted in slot order. A routed
-    # instance the router does not dispatch to holds its slot with a null channel.
+    # by address slot. The channel array is indexed by addressID, as the RTL
+    # windows are. A slot before the last routed instance that no routed
+    # instance takes, and each slot of an instance the router does not dispatch
+    # to, holds a null channel. The array ends at the last routed instance's
+    # last slot, and the decoder treats a higher slot as empty.
+    slot = 0
     for instanceData in routedInstances:
-        if instanceData['instanceKey'] in instanceWithRegApb:
-            for channel in range(instanceData['addressMultiples']):
-                out.append(f'            &{portPrefix}_{instanceData["instance"]},')
-        else:
+        for _ in range(slot, instanceData['addressID']):
             out.append('            nullptr,')
+        for channel in range(instanceData['addressMultiples']):
+            if instanceData['instanceKey'] in instanceWithRegApb:
+                out.append(f'            &{portPrefix}_{instanceData["instance"]},')
+            else:
+                out.append('            nullptr,')
+        slot = instanceData['addressID'] + instanceData['addressMultiples']
 
     # replace the last comma with a space
     if out:

@@ -91,11 +91,11 @@ struct ilSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (ilMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (ilMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (ilPixelT_v<IL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (IL_WIDTH)) - 1));
+        data = (ilPixelT_v<IL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (IL_WIDTH))));
         _pos += IL_WIDTH;
-        tag = (ilTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (ilTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<ilSt_v<IL_WIDTH>::_bitWidth> sc_pack(void) const
     {

@@ -46,12 +46,16 @@ structures:
   aRegSt:
     a: {varType: thirtySevenBitT, generator: register}
   un0BRegSt:
-    fa: {varType: u8T, generator: register, desc: "[7:0] - byte 0-2"}
-    fb: {varType: u16T, generator: register, desc: "[23:8] - byte 3-4"}
+    fa: {varType: u8T, generator: register, desc: "[23:16] - byte 2"}
+    fb: {varType: u16T, generator: register, desc: "[15:0] - bytes 0-1"}
   un0ARegSt:
-    fa : {varType: u8T, generator: register, desc: "[7:0] - byte 0-3"}
-    fb : {varType: u32T, generator: register, desc: "[39:8] - byte 4-7" }
-    fc : {varType: u8T, generator: register, desc: "[47:40] - byte 8-11"}
+    fa : {varType: u8T, generator: register, desc: "[47:40] - byte 5"}
+    fb : {varType: u32T, generator: register, desc: "[39:8] - bytes 1-4" }
+    fc : {varType: u8T, generator: register, desc: "[7:0] - byte 0"}
+  un0ExtRegSt:
+    fa : {varType: u8T, generator: register, desc: "[31:24] - byte 3"}
+    fb : {varType: u16T, generator: register, desc: "[23:8] - bytes 1-2"}
+    fc : {varType: u8T, generator: register, desc: "[7:0] - byte 0"}
   aSizeRegSt:
     index: {varType: aSizeT, generator: register}
   apbAddrSt:
@@ -145,9 +149,9 @@ memories:
   - {memory: blockBTable,  block: blockB, structure: bMemSt, wordLines: MEMORYB_WORDS, addressStruct: bMemAddrSt, regAccess: true, desc: "Table to test memory access from cpu"}
 
 registers:
-  - {register: rwUn0B,   regType: rw,  block: blockB,   structure: un0BRegSt,  desc: A unaligned four bytes Read Write register}
+  - {register: rwUn0B,   regType: rw,  block: blockB,   structure: un0BRegSt,  desc: A unaligned three bytes Read Write register}
   - {register: roB,      regType: ro,  block: blockB,   structure: aSizeRegSt, desc: A Read Only register}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
   - {register: rwUn0A,   regType: rw,  block: blockA,   structure: un0ARegSt,  defaultValue: 0x1234abcdef, desc: A unaligned Read Write register}
   - {register: roUn0A,   regType: ro,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register}
-  - {register: extA,     regType: ext, block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register defined externally}
+  - {register: extA,     regType: ext, block: blockA,   structure: un0ExtRegSt, desc: A unaligned Read Only register defined externally}

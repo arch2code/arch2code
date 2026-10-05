@@ -63,7 +63,7 @@ import os
 from dataclasses import dataclass, field
 
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
-                                 extraVarRefs, SKIP_DIRS)
+                                 extraVarRefs, isSkippedDir)
 from pysrc.migrateIncludes import _userIncludeSites
 from pysrc.artifactPaths import (retiredSiblingPaths, artifactRows, currentArtifactRows,
                                  expandNewModulePath, unprefixedStem)
@@ -206,12 +206,12 @@ TODO_PORT = "TODO_PORT"                          # user-code file awaiting agent
 TODO_USER_INCLUDE = "TODO_USER_INCLUDE"          # user code #includes a deleted header
 TODO_MISSING_BASEPATH = "TODO_MISSING_BASEPATH"  # legacy basePath absent from current layout; entry skipped
 TODO_UNSUPPORTED_LAYOUT = "TODO_UNSUPPORTED_LAYOUT"  # context owner uses hierarchical layout; not swept
-TODO_UNMANIFESTED_SRC_DIR = "TODO_UNMANIFESTED_SRC_DIR"  # C++ dir the retired glob compiled, absent from the manifest
+TODO_UNMANIFESTED_SRC_DIR = "TODO_UNMANIFESTED_SRC_DIR"  # C++ dir the retired scan compiled, absent from the manifest
 
-# C++ compile units. A header-only directory is out of scope: what the manifest
+# C++ compile units, as the build globs them. A header-only directory is out of scope: what the manifest
 # switch changed is WHICH directories are compiled, and a directory holding no
 # compile unit was never one of them.
-_CPP_UNIT_EXTS = (".cpp", ".cc", ".cppm")
+_CPP_UNIT_EXTS = (".cpp", ".cppm")
 
 
 @dataclass(frozen=True)
@@ -653,53 +653,83 @@ def sweepOrphans(prj, write=False):
     return report
 
 
+# The project-root trees the retired find-based scan compiled. A tree outside
+# them, such as a vendored `thirdparty/`, was never built, so it is not scanned.
+_RETIRED_SCAN_ROOTS = ("base", "model", "fw", "tb")
+
+
 def _cppSourceDirs(rootDir):
-    """Every directory under `rootDir` holding at least one C++ compile unit."""
-    found = set()
-    for dirpath, dirnames, filenames in os.walk(rootDir):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        if any(fn.endswith(_CPP_UNIT_EXTS) for fn in filenames):
-            found.add(os.path.abspath(dirpath))
+    """Every directory under the retired scan roots holding a C++ compile unit,
+    mapped from its path under `rootDir` to its real path.
+
+    Symlinked directories are followed, as the retired `find -L` scan followed
+    them, and keep their path under `rootDir`. A link back to a directory on the
+    current path is a cycle and is not entered."""
+    found = {}
+    for top in _RETIRED_SCAN_ROOTS:
+        top = os.path.join(rootDir, top)
+        real = os.path.realpath(top)
+        onPath = {top: (real, {real})}
+        for dirpath, dirnames, filenames in os.walk(top, followlinks=True):
+            dirReal, ancestors = onPath.pop(dirpath)
+            kept = []
+            for d in dirnames:
+                real = os.path.realpath(os.path.join(dirpath, d))
+                if not isSkippedDir(d) and real not in ancestors:
+                    onPath[os.path.join(dirpath, d)] = (real, ancestors | {real})
+                    kept.append(d)
+            dirnames[:] = kept
+            if any(fn.endswith(_CPP_UNIT_EXTS)
+                   and os.path.isfile(os.path.join(dirpath, fn))
+                   for fn in filenames):
+                found[os.path.abspath(dirpath)] = dirReal
     return found
 
 
 def _reportUnmanifestedSrcDirs(prj, report, rootDir):
-    """Report each directory of C++ the build has stopped compiling.
+    """Report each directory of C++ under the retired scan roots that the build
+    does not compile.
 
-    Before the build manifest, the C++ source list came from walking the tree, so
-    a directory outside the segment roots — a firmware directory, a shared helper
-    directory, or a SUBDIRECTORY of a segment root — was compiled without ever
-    being declared. The manifest enumerates only the roots arch2code itself places
-    artifacts in and each is globbed one level deep, so every such directory
-    silently drops out of the build. The same list feeds the include path, so the
-    first symptom is usually a missing header or an undefined symbol in an
-    UNRELATED translation unit, far from the cause; that distance is why this is
-    detected here rather than left to the operator to notice.
-
-    Membership is by EXACT directory, never by prefix: a subdirectory of a
-    manifest root is genuinely uncovered because the glob does not recurse.
-    `EXTRA_PRJ_SRC_DIRS` counts as covered, which is what lets the item clear —
-    the operator wires the directory up (or removes it from the tree) and the next
-    sweep is silent, so this converges like every other TODO here.
+    The retired scan compiled every such directory. The manifest lists only the
+    segment roots and globs each one level deep, so a subdirectory of a root is
+    uncovered too. Coverage compares real paths, so a link into a covered
+    directory is covered. A directory reached by several paths is one item,
+    named by the first of its paths in sorted order, because wiring two paths
+    fails the build. An `EXTRA_PRJ_SRC_DIRS` ref covers a directory only when it
+    names an existing one, as make's wildcard does.
     """
     manifest = prj.config.getConfig("BUILDMANIFEST")
-    covered = {os.path.abspath(d)
+    covered = {os.path.realpath(d)
                for d in manifest["scSrcDirs"] + manifest["vlWrapDirs"]}
-    covered |= {os.path.abspath(os.path.join(rootDir, ref))
+    covered |= {os.path.realpath(os.path.join(rootDir, ref))
                 for _, _, var, ref in extraVarRefs(rootDir)
-                if var == "EXTRA_PRJ_SRC_DIRS"}
-    for path in sorted(_cppSourceDirs(rootDir) - covered):
-        rel = os.path.relpath(path, rootDir)
+                if var == "EXTRA_PRJ_SRC_DIRS"
+                and os.path.isdir(os.path.join(rootDir, ref))}
+    byReal = {}
+    for path, real in sorted(_cppSourceDirs(rootDir).items()):
+        if real not in covered:
+            byReal.setdefault(real, []).append(os.path.relpath(path, rootDir))
+    for rel, *aliases in sorted(byReal.values()):
+        aliasNote = ""
+        if aliases:
+            others = ", ".join(f"'{a}'" for a in aliases)
+            aliasNote = (f" The same directory is also reached as {others}. Wire "
+                         f"only one of its paths, because wiring a second one "
+                         f"fails the build. To take it out of the tree "
+                         f"instead, remove the directory itself or every path "
+                         f"to it.")
         report.manual.append(ReportItem(
             TODO_UNMANIFESTED_SRC_DIR, rel,
-            f"'{rel}' holds C++ that the build manifest does not compile, and "
-            f"the retired tree-walking scan did. Decide which this directory is: "
-            f"if the project must compile it, add "
-            f"`EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/{rel}` to rundir/Makefile "
-            f"(that also puts it on the include path); if it is not part of this "
-            f"build — vendored, an example, or dead code — take it out of the "
-            f"project tree. Either resolution clears this item; adding it "
-            f"reflexively compiles code that may never have been meant to build"))
+            f"'{rel}' holds C++ that the build manifest does not compile. A "
+            f"project built before the manifest compiled it through the retired "
+            f"tree-walking scan. A project already on the manifest never "
+            f"compiled it. If the project must compile it, add "
+            f"`EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/{rel}` to rundir/Makefile, "
+            f"which also puts it on the include path. If it is vendored code, an "
+            f"example or dead code, take it out of the project tree. Either "
+            f"change clears this item. Do not add it by default, because that "
+            f"compiles code that may never have been meant to build."
+            f"{aliasNote}"))
 
 
 def _dispositionMap(disposition):

@@ -39,7 +39,7 @@ import yaml
 
 from pysrc.migrateCommon import (
     _read, _write, _loc, _isGenerated, _topValueNode, userRegionLines,
-    SKIP_DIRS, SOURCE_EXTS,
+    isSkippedDir, SOURCE_EXTS,
 )
 
 
@@ -209,7 +209,7 @@ def _sourceFiles(rootDir):
     """All source files under the project root, excluding build trees. Uses the
     shared source-extension set so `.cppm`/`.svh` include sites are seen too."""
     for dirpath, dirnames, filenames in os.walk(rootDir):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if not isSkippedDir(d)]
         for fn in filenames:
             if not fn.endswith(SOURCE_EXTS):
                 continue

@@ -36,7 +36,7 @@ private:
 public:
 
     //registers
-    hwRegister< aRegSt, 4 > roA; // A Read Only register
+    hwRegister< aRegSt, 4, true > roA; // A Read Only register
 
     //local memory register infrastructure
     memory_channel< bSizeSt, aRegSt > blockATableLocal_channel;

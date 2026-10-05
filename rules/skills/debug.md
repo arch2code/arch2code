@@ -107,6 +107,7 @@ Guide the user on using debugging tools and techniques in SystemC, including Tra
     *   **Internal Consistency:** Use `Q_ASSERT` to verify internal state and assumptions.
     *   **Parameters:** Takes a condition and an error message string.
     *   **Failure:** Halts simulation immediately with the message if the condition is false.
+    *   **Outside a Module:** `Q_ASSERT` needs `name()`. For code without it, use `Q_ASSERT_CTX`; see **Assertions and Unique Names** in the **SystemC Core** skill.
 
     ```cpp
     void myModule::processData(uint32_t index) {

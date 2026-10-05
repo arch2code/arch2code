@@ -77,7 +77,7 @@ struct streamSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (streamDataT_v<DATA_WIDTH>)((_src) & ((1ULL << (DATA_WIDTH)) - 1));
+        data = (streamDataT_v<DATA_WIDTH>)((_src) & (~0ULL >> (64 - (DATA_WIDTH))));
     }
     inline sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> sc_pack(void) const
     {

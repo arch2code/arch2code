@@ -13,7 +13,15 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4 -DVL_DUT -MMD
+# Verilate threads, and the --build job count when no outer jobserver exists.
+VL_JOBS ?= 4
+VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j $(VL_JOBS) -DVL_DUT -MMD
+# verilated.mk names the compiler Verilator was built with, and its flags suit
+# that compiler. A Clang build swaps in the project's Clang; USE_GCC keeps
+# Verilator's own.
+ifndef USE_GCC
+VERILATOR_OPTS += -MAKEFLAGS CXX=$(CXX) -MAKEFLAGS LINK=$(CXX)
+endif
 VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES'
 
 ifdef VL_COV
@@ -70,13 +78,19 @@ endif
 # Systemc build file based targets
 #------------------------------------------------------------------------
 
+# Under a parallel outer make, verilator --build drops its own -j and runs its
+# C++ sub-make on the jobserver named in MAKEFLAGS. The `+` keeps that jobserver
+# open to the recipe (without it the sub-make falls back to one job).
+# A `+` line also runs under `make -n`, so a dry run drops it.
+VL_PLUS = $(if $(findstring n,$(firstword -$(MAKEFLAGS))),,+)
+
 # Compile the verilator common runtime objects (verilated.o, verilated_dpi.o,
 # verilated_vcd_c.o, verilated_threads.o) into their own Mdir. Framework sources
 # only: verilator leaves the target untouched when nothing changed, so a
 # generated-source stamp prerequisite would keep this rule permanently out of date.
 obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 	mkdir -p obj_dir/vl_dummy
-	verilator $(VERILATOR_OPTS) --Mdir obj_dir/vl_dummy -CFLAGS $(VERILATOR_CFLAG_OPTS) $(VL_DUMMY_SRC) --top vl_dummy -exe
+	$(VL_PLUS)verilator $(VERILATOR_OPTS) --Mdir obj_dir/vl_dummy -CFLAGS $(VERILATOR_CFLAG_OPTS) $(VL_DUMMY_SRC) --top vl_dummy -exe
 
 # One verilate per recorded top into its own --Mdir: the explicit design unit
 # (--top), the recorded physical .sv, and the recorded include search path (so a
@@ -85,7 +99,7 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 define vl_top_rule
 obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
-	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
+	$$(VL_PLUS)verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 

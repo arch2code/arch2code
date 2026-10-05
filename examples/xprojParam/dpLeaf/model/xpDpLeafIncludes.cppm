@@ -98,13 +98,13 @@ struct dpSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (dpMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (dpMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (dpPixelT_v<DP_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (DP_WIDTH)) - 1));
+        data = (dpPixelT_v<DP_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (DP_WIDTH))));
         _pos += DP_WIDTH;
-        algo = (dpAlgoT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        algo = (dpAlgoT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (dpTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (dpTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<dpSt_v<DP_WIDTH>::_bitWidth> sc_pack(void) const
     {

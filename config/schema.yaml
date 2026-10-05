@@ -428,6 +428,7 @@ blocks:
   addressBlock:
     _attribs: [dataGroup, post(registerAddressBlock)]
     addressGroup: required
+    # both powers of two, checked in _post_registerAddressBlock
     addressIncrement: required
     maxAddressSpaces: required
     varType: required

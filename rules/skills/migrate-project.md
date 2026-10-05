@@ -22,21 +22,9 @@ including an already-migrated hierarchical project) and makes no further
 unconditionally clears and regenerates the fully-generated segment (`base`) at
 the directory level on every run — this is intended wholesale cleanup, not a
 defect — so the generated tree is deterministically re-created each pass.
-Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
-that is not a delete-target) are left untouched and are not reported. The target
-is a seven-step pipeline. The first two steps halt the target on a non-zero exit, so an
-unresolved yaml-stage item stops the run before the database is built. Steps 3
-and 5 each exit 1 for pending hand work and 2 for a state the following steps cannot
-process. Exit 1 does not halt: a remaining agent-driven port (`TODO_PORT`) or a
-refused *External* port leaves its edits applied, `gen` still runs to fill the
-scaffolded files, and the code is re-raised at the end, so the tree is scaffolded
-while `make migrate` still signals non-zero. Exit 2 halts the target at once. Step 3
-returns it when the filename-prefix phase is blocked (`TODO_FILE_PREFIX_BOTH_EXIST`,
-`TODO_FILE_PREFIX_CHAIN`): `newmodule` would delete a file left at its unprefixed
-name as stale, together with the user code in it. Step 5 returns it for a refused
-`<block>Config.cpp` restructure: it leaves a bare `--template=tbConfig` region that
-the very next `gen` aborts on, so continuing would bury the migrator's report under
-a template traceback and half-regenerate the tree:
+Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker that is
+not a delete-target) are left untouched and are not reported. The target is an
+eight-step pipeline:
 
 1. **`migrateYaml.py --write <project.yaml>`** — the text conversion + stamp.
    Standalone and text-only (it never opens the database); runs the three
@@ -90,13 +78,14 @@ a template traceback and half-regenerate the tree:
    carries the **module end-label re-stamp** (`pysrc/migrateModuleEndlabel.py`),
    which — like `migrateProjectParam`, and for the same DB-backed reason — runs
    here to rewrite each RTL block module's user-owned `endmodule: <label>` to the
-   project-qualified `blockModuleName`. The module begin-declaration is
-   generator-owned and already emits the qualified name; without the matching
-   end-label Verilator raises `%Error-ENDLABEL`. It is idempotent (a file already
-   carrying the qualified label is a no-op) and owner-gated (a composed build
+   block's SV module name, `blockSvModuleName` (the stem of its RTL file). The
+   module begin-declaration is generator-owned and already emits that name;
+   without the matching end-label Verilator raises `%Error-ENDLABEL`. It is
+   idempotent (a file already carrying the current label is a no-op) and owner-gated (a composed build
    never rewrites a referenced child's file); a fully-generated RTL block that
    closes its module inside a generated region carries no user end-label and is
-   left untouched.
+   left untouched. Last, it reports hand-written SV that still names a generated
+   module or package by its old project-qualified name (`TODO_STALE_SV_NAME`).
 4. **`make newmodule`** — create-only; scaffolds the new-form files (for example
    the `<context>Includes.cppm` module interfaces). It runs after the sweep so
    the orphans are gone before regeneration.
@@ -130,6 +119,34 @@ a template traceback and half-regenerate the tree:
    **after `gen`**, since its transplant target is the gen-filled `<block>.cppm`.
    It moves each legacy block `.h`/`.cpp` pair's four user slots into the `.cppm`
    and deletes the pair, and flags the cases it must not attempt.
+8. **`migrateYaml.py --sweep --db <db>`**, without `--write`. This is a
+   read-only sweep of the finished tree, printed under `=== pending after all
+   phases (read-only sweep) ===`. Any manual item it still reports makes `make
+   migrate` exit non-zero.
+
+**Exit status.**
+
+- Steps 1 and 2 halt on any non-zero exit, so an unresolved yaml-stage item
+  stops the run before the database is built.
+- Exit 1 is pending hand work and does not halt. Steps 3, 5 and 7 return it. A
+  remaining `TODO_PORT` or a refused External port leaves its edits applied, and
+  `gen` still fills the scaffolded files. Step 3's exit 1 is not the verdict,
+  because steps 5 and 7 port the legacy pairs it counts.
+- Exit 2 halts at once. Step 3 returns it when the filename-prefix move is
+  blocked (`TODO_FILE_PREFIX_BOTH_EXIST`, `TODO_FILE_PREFIX_CHAIN`), or when
+  opening the database, the move or the blocked report raises, because
+  `newmodule` would otherwise delete a file left at its unprefixed name,
+  together with its user code. Step 5 returns it when the `<block>Config.cpp`
+  restructure is refused or raises, because that file keeps a bare
+  `--template=tbConfig` region and the next `gen` aborts on it with a template
+  traceback.
+- Exit 3 comes only from step 3, when a phase raises or the sweep raises outside
+  any phase. Both report `TODO_PHASE_FAILED`. The target does not halt, but the
+  recipe exits 1 at the end.
+- On a run that reaches step 8, the recipe exits 1 when step 3 exited 3, when
+  step 5 or 7 leaves a TODO, or when step 8 still reports one, and 0 otherwise.
+  Make prints the code in its `Error N` line, but make itself exits 2 for any
+  recipe failure, so a script must read `Error N`, not `$?`.
 
 The text conversion (step 1) runs these phases over the project's YAML file set:
 
@@ -262,6 +279,13 @@ Resolve every reported item, complete the recreation steps below when the
 includes or block-port work applies, then re-run `make migrate` to confirm a
 clean report.
 
+A phase that raises does not stop the others. Its traceback goes to stderr, it is
+listed under `Phase failures` as `TODO_PHASE_FAILED` naming the phase and the file
+or database it was given, and the step exits non-zero. A failed text phase blocks the stamp.
+A failure before the filename-prefix gate passes, or in the `<block>Config.cpp`
+restructure, halts `make migrate` with exit 2, for the same reasons a refusal
+there does.
+
 ### Manual-TODO kinds
 
 | Tool report `KIND` | Emitted by | Meaning | Resolve with |
@@ -274,7 +298,7 @@ clean report.
 | `TODO_MODULE_IMPORT` | module-header phase | A hand-added `import` line was left in the old header→class gap, which the restructure moved into the GMF zone (before `export module`) where imports are illegal. Never moved by the tool. | Section 4a below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
 | `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`, or a testbench `<block>External` / `<block>Testbench` pair. Never deleted by the sweep. | Section 6 below (agent-driven port). A testbench External and a testbench top are both handled automatically by step 5, so they clear on the same run. |
-| `TODO_PORT_SLOT0` | block / testbench port | The legacy pair's top-of-file span holds something the port will not place by guessing: a stray `import`, or a declaration. Placing it is a zone decision (GMF vs preamble vs purview), and the wrong zone attaches it to the wrong module — which can still compile and fail at link. Legacy pair left on disk. | Move the line into the target `.cppm`'s `// user imports here` slot (an `import`, first in the slot) or its class/purview (a declaration) by hand, delete it from the legacy file, then re-run. |
+| `TODO_PORT_SLOT0` | block / testbench port | The legacy pair's top-of-file span, or the header after the class's closing `};`, holds something the port will not place by guessing: a stray `import`, or a declaration such as an `extern` global. Each such line is its own item, located at its legacy file and line. Placing it is a zone decision (GMF vs preamble vs purview), and the wrong zone attaches it to the wrong module, which can still compile and fail at link. Legacy pair left on disk. | Move the line into the target `.cppm`'s `// user imports here` slot (an `import`, first in the slot) or its class/purview (a declaration) by hand, delete it from the legacy file, then re-run. |
 | `TODO_PORT_UNPLACED` | block / testbench port | The no-silent-loss guard. The extraction could not account for one or more code-bearing legacy lines — usually a hand-edited slot boundary the marker/brace walk cannot see (for example a class closing with `};  // comment` rather than a bare `};`). The report names the first such line. Nothing is written and the legacy pair is left intact. | Restore the boundary to its scaffold form (a bare `};` at column 0) and re-run, or port the file by hand. Never "fix" this by deleting the reported code. |
 | `TODO_PORT_PARAM_SPLIT` | testbench port | The legacy `.h` and `.cpp` of an `<block>External` carry different `GENERATED_CODE_PARAM` argument tails, or those of a `<block>Testbench` name different DUT `--variant=`s, so the port cannot tell which selection the user meant. | Make the two lines agree (they are meant to be identical), then re-run. |
 | `TODO_PORT_NO_PARAM_LINE` | testbench port | One of the legacy pair has no `GENERATED_CODE_PARAM` line at all. The port carries that line across to the `.cppm`, so it has nothing to carry. | Restore the line (copy it from the sibling file), then re-run. |
@@ -285,12 +309,14 @@ clean report.
 | `TODO_TBCONFIG_NO_REGISTRATION` | testbench port | A `<block>Config.cpp` has no out-of-class `<blk>Config::registerTestBenchConfig <blk>Config::registerTestBenchConfig_;` line. That line is the anchor the new `--section=registration` region replaces, and without the region the testbench is never registered with the factory — a **run-time** failure, not a build error. File left untouched. | Add the `--section=registration` region markers after the class's closing `};`, copying the shape from a fresh scaffold, then re-run. |
 | `TODO_PORT_TAIL_UNPLACED` | testbench port | A legacy `<block>Testbench`'s `GENERATED_CODE_PARAM` line holds an argument beyond the `--block=<dut>` a fresh scaffold writes and the `--variant=<name>` the port carries — a retargeted `--block`, an `--excludeInst`, or a space-spelled `--variant v`. Carrying only the variant would drop it silently, so nothing is stamped and the legacy pair is left on disk. | Put the reported argument(s) on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm` by hand, then delete the legacy pair. |
 | `TODO_PORT_STALE_VARIANT` | testbench port | A legacy `<block>Testbench` **or** `<block>External` names a DUT `--variant=` that `gen` would reject: either the block no longer declares it (migration renamed or removed it), or the block owns no `params:` and so takes no `--variant=` at all. The tb top has that value carried onto its `.cppm` and the External carries its whole tail verbatim, so either way it would land on the target and make `gen` fail or resolve the wrong config. Nothing is stamped and the legacy pair is left on disk. The check mirrors the generator, which resolves the variant against the file's own `--block=`: a `_tb`-retargeted External names another block, so it is not checked here. | Block with own `params:`: decide which variant the testbench drives. For the tb top, set `--variant=<name>` on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm`; for the External, correct it on both legacy files and re-run. The message lists the variants the block does declare. Block without own `params:`: for the tb top, delete the legacy pair (the scaffolded `.cppm` already selects no variant); for the External, remove `--variant=` from both legacy files and re-run. |
-| `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
+| `TODO_USER_INCLUDE` | orphan sweep, testbench port | Hand-written user code `#include`s a generated header the sweep deleted. The testbench port also reports a `.cpp` beside a legacy `<block>External.h` that `#include`s it, since the port deletes that header. | Section 4 below. For the External include, Section 4b. |
 | `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, and `registrar` on the layout migration's hierarchical path). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk, **and** a legacy header-mode artifact is still sitting next to that context's current generated file — i.e. hierarchical was opted into before the format migration finished. A cleanly hierarchical context with nothing left to migrate is silent. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 | `TODO_MISSING_PARAM_LINE` | param phase | A generated artifact carries a `GENERATED_CODE_BEGIN` marker but no `GENERATED_CODE_PARAM` line, so there is no line to re-stamp with `--project`. | Add the `GENERATED_CODE_PARAM` line the report quotes verbatim at the top of the file's generated preamble, then re-run. |
-| `TODO_UNMANIFESTED_SRC_DIR` | orphan sweep | A directory holding C++ compile units that the build manifest does not compile — outside every segment root, or a subdirectory of one (the manifest globs a root one level deep). The retired tree-walking scan compiled it; the manifest does not. | Decide whether the project must build it, then either wire it onto `EXTRA_PRJ_SRC_DIRS` or take it out of the tree (Section 3). |
+| `TODO_UNMANIFESTED_SRC_DIR` | orphan sweep | A directory under `base`, `model`, `fw` or `tb` at the project root holds C++ compile units that the build manifest does not compile. The retired tree-walking scan compiled these four trees, and no others. The manifest compiles only segment roots, one level deep, so a subdirectory of a segment root is reported too. The sweep follows symlinked directories and skips dot-directories and the `build`, `obj_dir`, `rundir` and `builder` trees. A project built before the manifest compiled the directory. One already on the manifest never did. | Decide whether the project must build it, then either wire it onto `EXTRA_PRJ_SRC_DIRS` or take it out of the tree (Section 3). |
+| `TODO_STALE_SV_NAME` | orphan sweep | User-owned SV (`.sv`, `.svh`, `.v`, `.vh`; outside generated regions, comments, strings and `endmodule` labels, which the end-label re-stamp owns) refers to a generated module or package by its pre-refactor name. Generated SV used to take the project-qualified name (`holoscan_mailbox`, `holoscan_holoscanTypes_package`) and is now named like its file (`mailbox`, `holoscanTypes_package`). A package name counts where `::` follows it. A module name counts as the type of an instantiation at a statement start, followed by `#` (not `##`), or by an instance name, any unpacked dimensions and `(`. It also counts as the name in a `module` or `macromodule` definition and in a `config` `cell`. A signal or instance that only shares the old spelling is not reported. `make gen` fixes the generated references only, and synthesis then fails on the hand-written ones. | Rename the reference to the name the message gives, then re-run. The report does not see a `bind` target, a name a macro builds, or a reference in a one-line `` `define ``, so if lint or synthesis names an unknown module after a clean run, rename that reference the same way. |
+| `TODO_PHASE_FAILED` | any `migrateYaml.py` step | A phase raised an exception. Its report is missing and its edits may be partial. The other phases still run, with these exceptions. A `--sweep` raise outside any phase skips the phases after it. A `--sweep` raise before the filename-prefix gate passes, or a raise in the `--port-tb` Config restructure, halts `make migrate` with exit 2. | Read the traceback on stderr, fix the cause, then re-run. |
 | `TODO_FILE_PREFIX_BOTH_EXIST` | filename-prefix phase | A file exists at both its unprefixed and its prefixed name. The phase cannot tell which holds the user code, so it moves neither. **Halts `make migrate`** (exit 2). | Keep the copy that holds your code at the prefixed name, delete the other, then re-run. |
 | `TODO_FILE_PREFIX_CHAIN` | filename-prefix phase | A file is missing from its prefixed name, and its unprefixed name is also another artifact's current name (block `foo` at `p_foo.sv` next to a new block `p_foo`), so nothing records whose code that file holds. No file is moved at all. **Halts `make migrate`** (exit 2). | Put each artifact's code at its current (prefixed) name by hand, then re-run. The message lists the chain of names. |
 
@@ -302,7 +328,8 @@ user-owned file it encounters is reported, not touched.
 ### Advisory kinds
 
 An **advisory** is printed on every run and never blocks the stamp or the exit
-code. It exists for a question with more than one right answer, where staying
+code. A crash inside the advisory check is different: it is a phase failure, so
+it blocks the stamp and the step exits 1. An advisory exists for a question with more than one right answer, where staying
 silent would let the migration decide by default.
 
 | Tool report `KIND` | Emitted by | Meaning | Act on it when |
@@ -370,37 +397,63 @@ a **required migration step**, not just a maintenance note. `PRJ_SRC_DIRS` is
 seeded from the manifest (`PRJ_SRC_DIRS = $(A2C_SC_SRC_DIRS)` in
 `a2c-systemc.mk`), which enumerates only the segment roots arch2code itself
 places artifacts in, and each listed directory is globbed **one level deep**
-(`$(wildcard $(dir)/*.cpp)`). The retired `find`-based scan walked the whole tree,
-so a project holding C++ outside those roots — a firmware directory, a shared
-helper directory, a subdirectory of a segment root — never had to declare it, and
-nothing in the project does. Nothing reports the loss either: the directory
-simply stops contributing, and since the same list also feeds the include path
-(one `-I` per directory), the symptom is usually a missing header or an undefined
-symbol in an **unrelated** translation unit, a long way from the cause.
+(`$(wildcard $(dir)/*.cpp)`). The retired `find`-based scan walked every
+directory under `$(REPO_ROOT)/base`, `model`, `fw` and `tb`, so a project holding
+C++ there outside the segment roots (a firmware source directory, a shared helper
+directory, a subdirectory of a segment root) never had to declare it, and nothing
+in the project does. The build does not report the loss. The directory stops
+contributing, and since the same list feeds the include path (one `-I` per
+directory), the symptom is usually a missing header or an undefined symbol in an
+**unrelated** translation unit, a long way from the cause.
 
 You do not have to hunt for these. The orphan sweep diffs the manifest against
 the directories on disk and reports each uncovered one as
 `TODO_UNMANIFESTED_SRC_DIR`, so `make migrate` will not go clean while one is
-outstanding. Membership is by exact directory, so a **subdirectory** of a
-manifest root is reported too — the glob does not recurse.
+outstanding. It scans the same four project-root trees the retired scan did:
+`base`, `model`, `fw` and `tb`. The retired scan compiled nothing outside those
+four trees, so a vendored tree such as `thirdparty/` is not reported. In a
+hierarchical project the four roots hold only the root node's segments, so a
+non-root node's segments are not scanned. The retired scan never ran on a
+hierarchical tree, so nothing there lost its build. Within the four roots the
+walk skips dot-directories and the `build`, `obj_dir`, `rundir` and `builder`
+trees. Migration never reads version control, so `.gitignore` has no effect.
+Membership is by exact directory, so a **subdirectory** of a manifest root is
+reported too, because the glob does not recurse.
 
 The report hands you a decision, not an instruction, because the tool cannot
 tell code that must build from code that merely happens to sit in the tree. For
 each reported directory, decide:
 
-- **It belongs in the build** — declare it in the project's `rundir/Makefile`
+- **It belongs in the build.** Declare it in the project's `rundir/Makefile`
   (see `examples/{simple_ip,ip_test}`), which also puts it on the include path:
 
   ```make
   EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
   ```
 
-- **It does not** — vendored code, an example, a dead directory — take it out of
-  the project tree.
+- **It does not.** If it is vendored code, an example or a dead directory, take
+  it out of the project tree.
 
-Either resolution clears the item. Do not reach for the first one reflexively:
-the retired scan compiled whatever it found, so a directory being reported is
-evidence it *was* built, not evidence it *should* be.
+Either resolution clears the item. Do not reach for the first one reflexively.
+On a project migrating from before the manifest, the retired scan compiled
+whatever it found, so a reported directory was built but may never have been
+meant to be. On a project already on the manifest it was never built at all.
+
+The sweep follows symlinked directories, as the retired `find -L` scan did, and
+reports a linked directory by its path under the project root. A link to a
+directory the walk is already inside is not entered, so a cycle ends. A link
+into a directory the manifest already compiles is not reported. A directory
+reached by two paths, such as `fw/src` and a `model/shared` link to it, is one
+item. It is named by the first of its paths in sorted order and lists the
+others. Wire only one of them, because wiring two fails the build. A `.cpp`
+unit fails at link on duplicate symbols, and a `.cppm` fails at the module scan,
+which rejects a module provided twice. To take it out of the tree instead,
+remove the directory itself or every one of these paths. Removing only the named
+path brings the item back under the next one.
+
+An `EXTRA_PRJ_SRC_DIRS` path covers a directory only if it names an existing
+directory. Reducing the string does not count, so `fw/gone/../src` does not
+cover `fw/src` while `fw/gone` is missing.
 
 Like `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`, these paths are
 **user-authored and the migrator never rewrites them**. Any of them pointing into
@@ -543,6 +596,41 @@ import-after-declaration (`imports must immediately follow the module
 declaration`). Removing the redundant pair leaves the slot empty and the generated
 imports valid. Only a body-only import the generated region does **not** re-emit
 must stay (see "Restore body-only context imports").
+
+## 4b. A `.cpp` that defines External members
+
+The testbench port moves `<block>External` into a module, `<block>.external`, and
+deletes `<block>External.h`. A sibling `.cpp` that included the header and
+defines `<block>External` members out of line is reported as `TODO_USER_INCLUDE`.
+Switching it to `import` does not compile: a member of a class attached to a
+module can only be defined in a unit of that module. Make the file a module
+implementation unit:
+
+```cpp
+module;
+#include "systemc.h"        // every #include goes here, before the module line
+module myblk.external;      // the name from `export module` in myblkExternal.cppm
+import myblk_tb;            // any import follows the module line
+```
+
+Keep the `.cpp` name. The build compiles every `.cpp` after all module
+interfaces, with each module mapped, so it needs no wiring. A `.cppm` holding
+`module <name>;` is not compiled at all.
+
+Names declared in a module unit are attached to that module, which changes their
+mangled symbol. A global or free function shared with a plain `.cpp`, such as a
+test-selection string read by `<block>Config.cpp`, no longer links against the
+plain `extern` declaration. Wrap its definition in `extern "C++"` so it stays in
+the global module:
+
+```cpp
+extern "C++" {
+std::string myblkTestSelection;
+}
+```
+
+The same applies to globals the port moved from the legacy `.cpp` tail into
+`<block>External.cppm`.
 
 ## 5. Adopt the generated `createTbTop()` helper
 
@@ -936,8 +1024,10 @@ migration, and resolve any manual item the report listed.
   (project-mode and context-mode), also part of `migrateYaml.py --sweep`. The
   required finish step after a hierarchical migration (Section 7).
 - `pysrc/migrateModuleEndlabel.py` — the RTL module end-label re-stamp
-  (user-owned `endmodule: <label>` → qualified `blockModuleName`), DB-backed and
+  (user-owned `endmodule: <label>` → `blockSvModuleName`), DB-backed and
   part of `migrateYaml.py --sweep`.
+- `pysrc/migrateStaleSvNames.py` — the `TODO_STALE_SV_NAME` report, DB-backed
+  and part of `migrateYaml.py --sweep`.
 - `pysrc/migrateFilePrefix.py` — the filename-prefix move, the first phase of
   `migrateYaml.py --sweep`, and its `TODO_FILE_PREFIX_*` reports.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the

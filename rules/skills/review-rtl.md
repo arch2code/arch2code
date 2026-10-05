@@ -58,6 +58,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 *   **No X/Z Propagation Risks:** Reset values are explicit. Uninitialized signals do not propagate to outputs.
 *   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, bit-slicing bounds, and shift amounts. Every such value should be a `localparam`, a package constant, or derived from one. Acceptable exceptions: `'0`, `'1`, `1'b0`, `1'b1`, single-bit literals in increment/decrement (`+ 1'b1`), and `32'hBADD_C0DE` (the standard invalid-address read-data sentinel).
 *   **No Combinational Loops:** No signal driven by an `always_comb` block that also reads itself without a flop in the path.
+*   **No Read-Before-Write in One `always_comb`:** Flag an `always_comb` block that reads a signal before the statement in that block that assigns it. Questa warns on this with vlog-2182 and Verilator does not, so a clean `make lint` does not clear it.
 *   **Functions:** Use `automatic` keyword. No side effects.
 *   **Generate Blocks:** All generate blocks have `gen_<desc>` labels. Use `genvar` for generate loops, `int` for procedural loops.
 

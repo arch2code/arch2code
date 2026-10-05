@@ -98,13 +98,13 @@ struct csDutSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (csMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (csMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (csPixelT_v<CS_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CS_PIXEL_WIDTH)) - 1));
+        data = (csPixelT_v<CS_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (CS_PIXEL_WIDTH))));
         _pos += CS_PIXEL_WIDTH;
-        cfg = (csCfgT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        cfg = (csCfgT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (csTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (csTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<csDutSt_v<CS_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

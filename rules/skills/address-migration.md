@@ -129,7 +129,10 @@ Open the project's `addressControl.yaml`. Record:
 
 - Each `AddressGroups:` row, its key fields (`addressIncrement`,
   `maxAddressSpaces`, `varType`, `enumPrefix`), and the
-  `decoderInstance` it names.
+  `decoderInstance` it names. Migration copies these values verbatim,
+  so a legacy `addressIncrement` or `maxAddressSpaces` that is not a
+  power of two migrates cleanly and then fails `make db` with the
+  power-of-two diagnostic. Fix the value in the `addressBlock:`.
 - The legacy `RegisterBusInterface:` value, if present. This becomes
   the router `addressBlock:` `upstreamPort` and `registerDecoderPort`
 - The `InstanceGroups:` and `AddressObjects:` sections.

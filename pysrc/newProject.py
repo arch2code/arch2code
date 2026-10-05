@@ -80,6 +80,8 @@ firmwareFileMapTemplate = \
   # declares registers or regAccess memories.
   fileMap:
     includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file"}}
+    # name: is used verbatim as the basename.
+    #regAddresses: {{ name : "regAddresses", ext: {{hdr: "h"}}, mode: project, basePath: fwInc, langDomain: fw, desc: "Per-project instance and register address defines"}}
 
 """
 

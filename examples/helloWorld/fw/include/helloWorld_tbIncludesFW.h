@@ -41,7 +41,7 @@ namespace fw_ns::helloWorld_tb {
 namespace fw_ns::helloWorld_tb {
 // structures
 struct test_st {
-    byteT a; //
+    byteT a; /* [7:0] */ //
 
     test_st() { memset(this, 0, sizeof(test_st)); }
 
@@ -64,7 +64,7 @@ struct test_st {
 
 };
 struct test_no_tracker_st {
-    byteT a; //
+    byteT a; /* [7:0] */ //
 
     test_no_tracker_st() { memset(this, 0, sizeof(test_no_tracker_st)); }
 
@@ -87,7 +87,7 @@ struct test_no_tracker_st {
 
 };
 struct data_st {
-    qwordT b; //
+    qwordT b; /* [63:0] */ //
 
     data_st() { memset(this, 0, sizeof(data_st)); }
 

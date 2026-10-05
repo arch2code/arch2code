@@ -56,8 +56,8 @@ inline const char* addr_id_bridge_prt( addr_id_bridge val )
 namespace fw_ns::ipBridge {
 // structures
 struct data8St {
-    data8T data; //8-bit payload; matches ipDataSt::data under variant0
-    bridgeMarkerT marker; //Marker bit; bit-width matches ipDataSt::marker
+    data8T data; /* [7:0] */ //8-bit payload; matches ipDataSt::data under variant0
+    bridgeMarkerT marker; /* [8:8] */ //Marker bit; bit-width matches ipDataSt::marker
 
     data8St() { memset(this, 0, sizeof(data8St)); }
 
@@ -86,8 +86,8 @@ struct data8St {
 
 };
 struct data70St {
-    data70T data; //70-bit payload; matches ipDataSt::data under variant1
-    bridgeMarkerT marker; //Marker bit; bit-width matches ipDataSt::marker
+    data70T data; /* [69:0] */ //70-bit payload; matches ipDataSt::data under variant1
+    bridgeMarkerT marker; /* [70:70] */ //Marker bit; bit-width matches ipDataSt::marker
 
     data70St() { memset(this, 0, sizeof(data70St)); }
 

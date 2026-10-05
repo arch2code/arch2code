@@ -40,8 +40,8 @@ namespace fw_ns::hierVlDemo_hierVlSharedTypes {
 namespace fw_ns::hierVlDemo_hierVlSharedTypes {
 // structures
 struct sharedInfoSt {
-    shared_bv32_t value; //
-    shared_bv8_t tag; //
+    shared_bv32_t value; /* [31:0] */ //
+    shared_bv8_t tag; /* [39:32] */ //
 
     sharedInfoSt() { memset(this, 0, sizeof(sharedInfoSt)); }
 

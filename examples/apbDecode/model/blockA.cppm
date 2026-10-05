@@ -30,10 +30,10 @@ private:
 public:
 
     //registers
-    hwRegister< aRegSt, 8 > roA; // A Read Only register
+    hwRegister< aRegSt, 8, true > roA; // A Read Only register
     hwRegister< un0ARegSt, 8 > rwUn0A; // A unaligned Read Write register
-    hwRegister< un0ARegSt, 8 > roUn0A; // A unaligned Read Only register
-    hwRegister< un0ARegSt, 8 > extA; // A unaligned Read Only register defined externally
+    hwRegister< un0ARegSt, 8, true > roUn0A; // A unaligned Read Only register
+    hwRegister< un0ExtRegSt, 4 > extA; // A unaligned Read Only register defined externally
 
     memories mems;
     //memories
@@ -102,7 +102,7 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROA, 5, "roA", &roA );
     _a2cRegs.addRegister( REG_ADDR_BLOCKA_RWUN0A, 6, "rwUn0A", &rwUn0A );
     _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROUN0A, 6, "roUn0A", &roUn0A );
-    _a2cRegs.addRegister( REG_ADDR_BLOCKA_EXTA, 6, "extA", &extA );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_EXTA, 4, "extA", &extA );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
@@ -113,10 +113,10 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 void blockA::LocalRegAccess() {
 
     // Register
-    un0ARegSt arw;
+    un0ExtRegSt arw;
 
     arw.fa = 'a';
-    arw.fb = 0xfefe1234;
+    arw.fb = 0x1234;
     arw.fc = 'c';
 
     extA.write(arw);

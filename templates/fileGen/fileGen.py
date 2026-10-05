@@ -573,8 +573,9 @@ tbConfigTemplate = \
     bool createTestBench(void) override
     {
         // Seed the testController with this testbench's tests, before sc_start().
-        // final() fails until every name here has been registered and completed
-        // by a model, BFM or External thread; replace the placeholder with them.
+        // final() fails until every name here has completed. Run each from an
+        // ADD_TEST function (recommended) or an old-style model, BFM or External
+        // thread; replace the placeholder with the names.
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "test_replace_me"
@@ -652,36 +653,35 @@ def testBench_cppm(args, prj, data):
     return("".join(out))
 
 # Guidance seeded into a fresh External's member slot: how to write a test that
-# terminates cleanly. The pair of registration lines lives in the constructor body
-# slot below it.
+# terminates cleanly. The matching registration lines live in the constructor
+# body slot below it.
 _TB_EXTERNAL_STIMULUS_GUIDE = [
-    '// Your stimulus goes here. The generated eotThread above stops the',
-    '// simulation when end-of-test latches, and a vote is the only thing that',
-    '// latches it. Nothing else bounds the run: scTimeLimit is unset by default',
-    '// and the framework watchdog\'s periodic wake rules out event starvation, so',
-    '// a test that never votes hangs rather than reaching final().',
-    '// The testbench config\'s createTestBench() seeds testController with the',
-    '// placeholder test "test_replace_me", and its final() fails unless every',
-    '// seeded test has completed. Rename the placeholder there, use the same',
-    '// name below, and add #include "testController.h" to the user #includes slot.',
-    '// Uncomment the lines below and the matching pair in the constructor body',
-    '// to get a test that terminates cleanly, then drive the DUT inside the',
-    '// thread.',
+    '// Your tests go here. A test is a member function that takes no arguments.',
+    '// Its name is the test name, and it must match a name in the Config\'s',
+    '// set_test_names list, which sets the run order. createTestBench() seeds',
+    '// the placeholder "test_replace_me"; rename it there and here. Register',
+    '// each test in the constructor with ADD_TEST, and add',
+    '// #include "testController.h" to the user #includes slot. --test runs only',
+    '// the tests you name.',
     '//',
-    '// void stimulusThread(void)',
+    '// void test_replace_me(void)',
     '// {',
-    '//     testController &tests = testController::GetInstance();',
-    '//     tests.register_test_name("test_replace_me");',
-    '//     tests.wait_test("test_replace_me");',
-    '//',
-    '//     // ... drive the DUT here ...',
-    '//',
-    '//     tests.test_complete("test_replace_me");',
-    '//     eot_.setEndOfTest(true);',
+    '//     // ... drive and check the DUT here ...',
     '// }',
     '//',
-    '// private:',
-    '//     endOfTest eot_{true};   // registers this thread as a voter',
+    '// The generated eotThread above stops the simulation when end-of-test',
+    '// latches, and only a vote latches it. A voter that never votes hangs the',
+    '// run unless --scTimeLimit is set. Vote from one thread that waits for',
+    '// every test. Keep the voter out of the test functions: a test that is',
+    '// not run never votes, and one that runs early can end the run before',
+    '// later tests start.',
+    '//',
+    '// void endOfTestVoter(void)',
+    '// {',
+    '//     endOfTest eot(true);',
+    '//     testController::GetInstance().wait_all_tests_complete();',
+    '//     eot.setEndOfTest(true);',
+    '// }',
     '',
 ]
 
@@ -711,8 +711,9 @@ def tbExternal_cppm(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=tbExternal --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('\n')
-    out.append('    // Register your stimulus thread here (see the member slot above for the pair).\n')
-    out.append('    // SC_THREAD(stimulusThread);\n')
+    out.append('    // Register your tests and the voter here (see the member slot above).\n')
+    out.append('    // ADD_TEST(test_replace_me);\n')
+    out.append('    // SC_THREAD(endOfTestVoter);\n')
     out.append('};\n')
     return("".join(out))
 

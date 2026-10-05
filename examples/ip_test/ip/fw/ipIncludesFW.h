@@ -178,7 +178,7 @@ struct ipCfgSt_v {
         memset((uint64_t *)&threshold, 0, sizeof(threshold));
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
-        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (2)) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (2))));
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -240,7 +240,7 @@ struct ipMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
     }
     explicit ipMemAddrSt_v(
         ipMemAddrT_v<IP_MEM_DEPTH> address_) :
@@ -304,7 +304,7 @@ struct ipDerivedMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(((IP_MEM_DEPTH * 2) * 2)))) - 1));
+        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(((IP_MEM_DEPTH * 2) * 2))))));
     }
     explicit ipDerivedMemAddrSt_v(
         ipDerivedMemAddrT_v<IP_MEM_DEPTH> address_) :
@@ -314,7 +314,7 @@ struct ipDerivedMemAddrSt_v {
 };
 template<typename Config> using ipDerivedMemAddrSt = ipDerivedMemAddrSt_v<Config::IP_MEM_DEPTH>;
 struct ipFixedSt {
-    ipFixedT b; //Fixed byte
+    ipFixedT b; /* [7:0] */ //Fixed byte
 
     ipFixedSt() { memset(this, 0, sizeof(ipFixedSt)); }
 
@@ -337,7 +337,7 @@ struct ipFixedSt {
 
 };
 struct ipFixedAddrSt {
-    ipFixedAddrT a; //Fixed-width address
+    ipFixedAddrT a; /* [7:0] */ //Fixed-width address
 
     ipFixedAddrSt() { memset(this, 0, sizeof(ipFixedAddrSt)); }
 
@@ -360,9 +360,9 @@ struct ipFixedAddrSt {
 
 };
 struct ipFixedHeaderSt {
-    ipNibbleT tag; //Fixed packet tag
-    ipFixedStatusT status; //Fixed status
-    ipFixedOpcodeT opcode; //Fixed opcode
+    ipNibbleT tag; /* [3:0] */ //Fixed packet tag
+    ipFixedStatusT status; /* [6:4] */ //Fixed status
+    ipFixedOpcodeT opcode; /* [14:7] */ //Fixed opcode
 
     ipFixedHeaderSt() { memset(this, 0, sizeof(ipFixedHeaderSt)); }
 
@@ -396,10 +396,10 @@ struct ipFixedHeaderSt {
 
 };
 struct ipFixedSignedSt {
-    ipUnsigned9T lane; //Unsigned 9-bit field
-    ipUnsigned5T magnitude; //Unsigned 5-bit field
-    ipSignedNibbleT offset; //Signed 4-bit field
-    ipSigned3T tiny; //Signed 3-bit field
+    ipUnsigned9T lane; /* [8:0] */ //Unsigned 9-bit field
+    ipUnsigned5T magnitude; /* [13:9] */ //Unsigned 5-bit field
+    ipSignedNibbleT offset; /* [17:14] */ //Signed 4-bit field
+    ipSigned3T tiny; /* [20:18] */ //Signed 3-bit field
 
     ipFixedSignedSt() { memset(this, 0, sizeof(ipFixedSignedSt)); }
 
@@ -447,8 +447,8 @@ struct ipFixedSignedSt {
 
 };
 struct ipFixedArraySt {
-    ipWordT words[IP_FIXED_PAIR_COUNT]; //Fixed word array
-    ipNibbleT nibbles[IP_FIXED_NIBBLE_COUNT]; //Fixed nibble array
+    ipWordT words[IP_FIXED_PAIR_COUNT]; /* [31:0] */ //Fixed word array
+    ipNibbleT nibbles[IP_FIXED_NIBBLE_COUNT]; /* [51:32] */ //Fixed nibble array
 
     ipFixedArraySt() { memset(this, 0, sizeof(ipFixedArraySt)); }
 
@@ -506,8 +506,8 @@ struct ipFixedArraySt {
 
 };
 struct ipFixedLog2St {
-    ipFixedIndexT index; //Fixed widthLog2minus1 index
-    ipFixedCountT count; //Fixed widthLog2 count
+    ipFixedIndexT index; /* [3:0] */ //Fixed widthLog2minus1 index
+    ipFixedCountT count; /* [7:4] */ //Fixed widthLog2 count
 
     ipFixedLog2St() { memset(this, 0, sizeof(ipFixedLog2St)); }
 
@@ -536,11 +536,11 @@ struct ipFixedLog2St {
 
 };
 struct ipFixedNestedSt {
-    ipWide37T wideValue; //Wide fixed value
-    ipFixedLog2St log2Fields; //Nested fixed log2 fields
-    ipFixedArraySt arrays[IP_FIXED_PAIR_COUNT]; //Nested fixed arrays
-    ipFixedSignedSt signedFields; //Nested signed and narrow fields
-    ipFixedHeaderSt header; //Nested fixed header
+    ipWide37T wideValue; /* [36:0] */ //Wide fixed value
+    ipFixedLog2St log2Fields; /* [44:37] */ //Nested fixed log2 fields
+    ipFixedArraySt arrays[IP_FIXED_PAIR_COUNT]; /* [148:45] */ //Nested fixed arrays
+    ipFixedSignedSt signedFields; /* [169:149] */ //Nested signed and narrow fields
+    ipFixedHeaderSt header; /* [184:170] */ //Nested fixed header
 
     ipFixedNestedSt() { memset(this, 0, sizeof(ipFixedNestedSt)); }
 
@@ -695,19 +695,19 @@ struct ipSignedParamSt_v {
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, index, clog2(IP_MEM_DEPTH));
         _pos += clog2(IP_MEM_DEPTH);
-        pack_bits((uint64_t *)&_ret, _pos, offset & ((1ULL << (IP_MEM_DEPTH)) - 1), IP_MEM_DEPTH);
+        pack_bits((uint64_t *)&_ret, _pos, offset & (~0ULL >> (64 - (IP_MEM_DEPTH))), IP_MEM_DEPTH);
         _pos += IP_MEM_DEPTH;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        index = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        index = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
         _pos += clog2(IP_MEM_DEPTH);
-        offset = (ipSignedParamT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & ((1ULL << (IP_MEM_DEPTH)) - 1));
+        offset = (ipSignedParamT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (IP_MEM_DEPTH))));
         _pos += IP_MEM_DEPTH;
         // Sign extension for signed type
         if (offset & (1ULL << (IP_MEM_DEPTH - 1))) {
-            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~((1ULL << (IP_MEM_DEPTH)) - 1));
+            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~(~0ULL >> (64 - (IP_MEM_DEPTH))));
         }
     }
     explicit ipSignedParamSt_v(
@@ -720,7 +720,7 @@ struct ipSignedParamSt_v {
 };
 template<typename Config> using ipSignedParamSt = ipSignedParamSt_v<Config::IP_MEM_DEPTH>;
 struct ipRegAddrSt {
-    ipRegAddrT address; //
+    ipRegAddrT address; /* [31:0] */ //
 
     ipRegAddrSt() { memset(this, 0, sizeof(ipRegAddrSt)); }
 
@@ -743,7 +743,7 @@ struct ipRegAddrSt {
 
 };
 struct ipRegDataSt {
-    ipRegDataT data; //
+    ipRegDataT data; /* [31:0] */ //
 
     ipRegDataSt() { memset(this, 0, sizeof(ipRegDataSt)); }
 

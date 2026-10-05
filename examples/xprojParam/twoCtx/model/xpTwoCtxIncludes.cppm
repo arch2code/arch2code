@@ -142,9 +142,9 @@ struct tcSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        val = (tcValT_v<TC_GAIN>)((_src >> (_pos & 63)) & ((1ULL << (TC_GAIN)) - 1));
+        val = (tcValT_v<TC_GAIN>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (TC_GAIN))));
         _pos += TC_GAIN;
-        tag = (tcTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (tcTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<tcSt_v<TC_GAIN>::_bitWidth> sc_pack(void) const
     {

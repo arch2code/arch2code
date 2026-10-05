@@ -44,7 +44,7 @@ public:
 
     //registers
     hwRegister< ipCfgSt<Config>, 20 > ipCfg; // IP configuration
-    hwRegister< ipDataSt<Config>, 20 > ipLastData; // Last data word received on ipDataIf
+    hwRegister< ipDataSt<Config>, 20, true > ipLastData; // Last data word received on ipDataIf
 
     memories mems;
     //memories

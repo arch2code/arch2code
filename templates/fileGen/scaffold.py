@@ -103,7 +103,7 @@ def rundirMk(data):
         f"{firmware}"
         "EXTRA_CPP_SRC      =\n"
         "EXTRA_CPP_INCLUDES =\n"
-        "EXTRA_LD_FLAGS     =\n"
+        "EXTRA_LD_FLAGS     +=\n"
         "\n"
         "include $(A2C_ROOT)/include/make/a2c-systemc.mk\n"
         "\n"

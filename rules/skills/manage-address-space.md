@@ -23,7 +23,7 @@ hand-create a top-level decoder.
 1.  **Address Configuration Sources:**
     *   Address-policy sections live in top-level `project.yaml`:
         *   `instanceGroups:` — ID enumeration (see step 4).
-        *   `addressObjects:` — register/memory packing policy (see step 6).
+        *   `addressObjects:` — register/memory packing policy (see step 7).
     *   The decode hierarchy is declared per-block: routers carry `addressBlock:` and reusable-IP leaves carry `registerPorts:`. There is no project-wide address-decode file to author. See `design-register-decode.md`.
     *   Converting a pre-existing `addressControl.yaml` project to this schema is a one-time migration handled entirely by `migrate-project.md` / `address-migration.md`.
 
@@ -69,7 +69,20 @@ hand-create a top-level decoder.
           desc: "Firmware include file"
     ```
 
-6.  **Address Object Sorting (`addressObjects:`):**
+6.  **Project-wide address header (`regAddresses`):**
+    *   One header for the whole project with the instance and register address defines. It is opt-in, because not every project has firmware.
+    *   A firmware project created by `--newproject` carries the entry commented out after `includeFW`. Uncomment it, or add it yourself:
+
+    ```yaml
+    # In project.yaml, under fileGeneration.fileMap
+    regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: fwInc, langDomain: fw, desc: "Per-project instance and register address defines"}
+    ```
+
+    *   `name:` is the basename verbatim, with no project stem, so a project normally spells its own (e.g. `debayerRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`. The default entry uses `fwInc` with `langDomain: fw`.
+    *   Run `make newmodule` to scaffold the file, then `make gen` to fill it.
+    *   If the project owns the file, leave the entry out. Write the file yourself with a `GENERATED_CODE_PARAM --project=<projectName>` line and the `includes` template's `addresses` and `regAddresses` regions, then list it on `EXTRA_SC_GEN_FILES` in `include/make/shared.mk`. See `manage-build.md`.
+
+7.  **Address Object Sorting (`addressObjects:`):**
     *   Control how objects are packed in the address space using `addressObjects`.
     *   **Best Practice:** Sort memories by size (`memsize` alignment) to optimize decoding.
     *   Declared in top-level `project.yaml`.
@@ -86,7 +99,7 @@ hand-create a top-level decoder.
         sortDescending: true
     ```
 
-7.  **Parameterizable Register/Memory Sizing:**
+8.  **Parameterizable Register/Memory Sizing:**
     *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.
     *   Structure width uses generated `maxBitwidth`; `wordLines` uses a parameterizable constant's `maxValue` or the maximum value bound in `parameters:` for pure block params.
     *   YAML authors should provide explicit bounds (`maxValue` for constants, `maxBitwidth` for literal-width types) so the address map reserves enough space for every variant.

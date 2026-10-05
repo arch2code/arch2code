@@ -77,6 +77,15 @@ Regression files are JSON. The root containers are `session`, `build`, and `run`
 
 Use `command`, `args`, `timeout`, `rules`, `count`, `seed`, and `labels` at the highest hierarchy level where they apply. Child groups and tests inherit parent attributes.
 
+To run one test of a testbench that declares its tests with `testController`, pass the framework `--test` option (see `verify-testbench`). Each regression test then selects its own. Two kinds of test work with `--test`: `ADD_TEST` tests, which never start when left out, and old-style threads that each run one test and hold no end-of-test voter, as in `examples/helloWorld`. An old-style thread that runs several tests in a row, or holds the end-of-test voter, waits for a test that never comes. If that thread holds a listed test, the run never completes that test. If `--scTimeLimit`, a watchdog or another voter ends the run, `final()` fails. If none does, the run hangs. A thread that holds only the voter never votes, so the run hangs after every listed test completes. If `--scTimeLimit` or a watchdog ends it, the run still fails.
+
+```json
+"test_group": {
+  "rdy_vld": { "args+": "--test test_rdy_vld" },
+  "req_ack": { "args+": "--test test_req_ack" }
+}
+```
+
 ## Adding Tests
 
 1. Read the existing regression JSON before editing and preserve its grouping style.
@@ -103,6 +112,8 @@ Use `command`, `args`, `timeout`, `rules`, `count`, `seed`, and `labels` at the 
 
 Rules files parse logs after each run. Use `default.json` unless a project-specific rule file is required.
 
+* Every test needs a `rules` key; the launcher has no built-in default, and a missing key fails the launch. An empty list (`"rules": []`) is accepted, and the run's result then comes from its exit status alone. Projects keep a `default.json` next to their regression JSON (see `examples/apbDecode/rundir`).
+* A relative `rules` entry is resolved against the directory of the regression JSON, not the directory the launcher runs from. An absolute entry is used as written. The same holds for files given with `--attr run.rules=<file>` or `--attr run.rules+=<file>`.
 * A rules file has `name`, `description`, `filters`, and `modifiers`.
 * `filters` match log patterns and classify severity as `info`, `warning`, `error`, or `fatal`.
 * `modifiers` normalize failure messages so repeated failures group together.

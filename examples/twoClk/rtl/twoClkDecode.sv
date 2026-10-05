@@ -45,7 +45,11 @@ always_comb begin
     set_trans_active = 1'b0;
     if (twoClkReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        twoClkReg_uTable_next_psel = '1;
+        if (apb_addr >= twoClkRegAddrSt'(32'h1_0000)) begin
+            // unmapped, selects no child
+        end else begin
+            twoClkReg_uTable_next_psel = '1;
+        end
     end
 end
 
@@ -60,6 +64,9 @@ always_comb begin
         twoClkReg_next_pready  = twoClkReg_uTable.pready;
         twoClkReg_next_prdata  = twoClkReg_uTable.prdata;
         twoClkReg_next_pslverr = twoClkReg_uTable.pslverr;
+    end else if (trans_active & ~pready) begin
+        twoClkReg_next_pready  = 1'b1;
+        twoClkReg_next_prdata  = twoClkRegDataSt'(32'hBADD_C0DE);
     end
 end
 

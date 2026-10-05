@@ -88,9 +88,9 @@ struct leafEqSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         _pos += LEAF_PIXEL_WIDTH;
-        tag = (leafTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (leafTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -166,9 +166,9 @@ struct leafOrderSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        second = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+        second = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         _pos += LEAF_PIXEL_WIDTH;
-        first = (leafFlagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        first = (leafFlagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -232,15 +232,15 @@ struct leafSignSt_v {
     {
         memset(&_ret, 0, leafSignSt_v<LEAF_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data & ((1ULL << (LEAF_PIXEL_WIDTH)) - 1), LEAF_PIXEL_WIDTH);
+        pack_bits((uint64_t *)&_ret, _pos, data & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))), LEAF_PIXEL_WIDTH);
         _pos += LEAF_PIXEL_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)((_src) & ((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+        data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)((_src) & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         // Sign extension for signed type
         if (data & (1ULL << (LEAF_PIXEL_WIDTH - 1))) {
-            data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(data | ~((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+            data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(data | ~(~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         }
     }
     inline sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
@@ -257,7 +257,7 @@ struct leafSignSt_v {
         data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
         // Sign extension for signed type
         if (data & (1ULL << (LEAF_PIXEL_WIDTH - 1))) {
-            data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(data | ~((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+            data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(data | ~(~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         }
         _pos += LEAF_PIXEL_WIDTH;
     }
@@ -327,13 +327,13 @@ struct leafNestSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (LEAF_PIXEL_WIDTH)) - 1));
+        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         _pos += LEAF_PIXEL_WIDTH;
-        tail = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tail = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        flag = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        flag = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        word = (leafWordT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (32)) - 1));
+        word = (leafWordT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (32))));
     }
     inline sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

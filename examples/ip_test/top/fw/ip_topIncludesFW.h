@@ -61,8 +61,8 @@ inline const char* addr_id_top_prt( addr_id_top val )
 namespace fw_ns::ip_test_ip_top {
 // structures
 struct srcOut0BoundarySt {
-    srcOut0BoundaryT data; //8-bit payload; matches srcOut0St::data@variantSrc0 and ipDataSt::data@variant0
-    boundaryMarkerT marker; //Marker bit; matches srcOut0St::marker / ipDataSt::marker
+    srcOut0BoundaryT data; /* [7:0] */ //8-bit payload; matches srcOut0St::data@variantSrc0 and ipDataSt::data@variant0
+    boundaryMarkerT marker; /* [8:8] */ //Marker bit; matches srcOut0St::marker / ipDataSt::marker
 
     srcOut0BoundarySt() { memset(this, 0, sizeof(srcOut0BoundarySt)); }
 
@@ -91,8 +91,8 @@ struct srcOut0BoundarySt {
 
 };
 struct srcOut1BoundarySt {
-    srcOut1BoundaryT data; //70-bit payload; matches srcOut1St::data@variantSrc0 and ipDataSt::data@variant1
-    boundaryMarkerT marker; //Marker bit; matches srcOut1St::marker / ipDataSt::marker
+    srcOut1BoundaryT data; /* [69:0] */ //70-bit payload; matches srcOut1St::data@variantSrc0 and ipDataSt::data@variant1
+    boundaryMarkerT marker; /* [70:70] */ //Marker bit; matches srcOut1St::marker / ipDataSt::marker
 
     srcOut1BoundarySt() { memset(this, 0, sizeof(srcOut1BoundarySt)); }
 

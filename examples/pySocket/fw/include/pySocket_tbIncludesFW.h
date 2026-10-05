@@ -53,9 +53,9 @@ inline const char* p2s_message_ID_t_prt( p2s_message_ID_t val )
 namespace fw_ns::pySocket_tb {
 // structures
 struct message_header_st {
-    word16_t tag; //Tag
-    word16_t ID; //Message ID
-    word16_t length; //Message payload length
+    word16_t tag; /* [15:0] */ //Tag
+    word16_t ID; /* [31:16] */ //Message ID
+    word16_t length; /* [47:32] */ //Message payload length
 
     message_header_st() { memset(this, 0, sizeof(message_header_st)); }
 
@@ -89,8 +89,8 @@ struct message_header_st {
 
 };
 struct p2s_message_st {
-    param_t param1; //Parameter 1
-    param_t param2; //Parameter 2
+    param_t param1; /* [31:0] */ //Parameter 1
+    param_t param2; /* [63:32] */ //Parameter 2
 
     p2s_message_st() { memset(this, 0, sizeof(p2s_message_st)); }
 
@@ -119,7 +119,7 @@ struct p2s_message_st {
 
 };
 struct p2s_response_st {
-    param_t response; //response
+    param_t response; /* [31:0] */ //response
 
     p2s_response_st() { memset(this, 0, sizeof(p2s_response_st)); }
 
@@ -142,7 +142,7 @@ struct p2s_response_st {
 
 };
 struct axis_tid_st {
-    axis_id_t id; //Stream TID
+    axis_id_t id; /* [7:0] */ //Stream TID
 
     axis_tid_st() { memset(this, 0, sizeof(axis_tid_st)); }
 
@@ -165,7 +165,7 @@ struct axis_tid_st {
 
 };
 struct axis_tdest_st {
-    axis_id_t id; //Stream TDEST
+    axis_id_t id; /* [7:0] */ //Stream TDEST
 
     axis_tdest_st() { memset(this, 0, sizeof(axis_tdest_st)); }
 

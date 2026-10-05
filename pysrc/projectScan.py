@@ -214,6 +214,12 @@ class ProjectScanner:
                 self._seen.add(f)
                 if depth > self._maxDepth:
                     self._maxDepth = depth
+                if not os.path.exists(os.path.join(g.yamlBasePath, f)):
+                    includers = sorted(k for k, refs in self.yamlReferences.items() if f in refs)
+                    if f in self.rootReferences:
+                        includers.insert(0, os.path.relpath(self.projFile, g.yamlBasePath))
+                    printError(f"YAML file {f} does not exist; it is named by {', '.join(includers)}.")
+                    exit(warningAndErrorReport())
                 raw = self._fastLoad(os.path.join(g.yamlBasePath, f))
                 nextOverrides = inherited
                 # A projectFiles-slot file carrying the project sentinel set

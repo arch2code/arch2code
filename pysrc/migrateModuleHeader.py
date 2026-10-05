@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from pysrc.migrateCommon import _read, _write, _loc, _importTarget, SKIP_DIRS
+from pysrc.migrateCommon import _read, _write, _loc, _importTarget, isSkippedDir
 
 
 # Marker fragments the phase keys on.
@@ -157,7 +157,7 @@ def migrateModuleHeaderInProject(projectYamlPath, write=False):
 def _cppmFiles(rootDir):
     """All `.cppm` files under the project root, excluding build trees."""
     for dirpath, dirnames, filenames in os.walk(rootDir):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if not isSkippedDir(d)]
         for fn in filenames:
             if not fn.endswith(".cppm"):
                 continue

@@ -241,7 +241,7 @@ addressObjects:
 # fileGeneration:
 #   fileMap:
 #     includeFW: {name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
-#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: fwInc, langDomain: fw, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
@@ -786,9 +786,11 @@ internal pipeline links between arch2code blocks.
 **Why it is problematic (even though supported):**
 1. No hardware backpressure — flow control cannot be expressed on the interface.
 2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
-3. `raw_channel` drives both handshake directions off one `sc_event`. `write()`
-   returns only once the consumer has taken the value, so no beat is lost, but
-   each side is woken once more per beat than a two-event channel would need.
+3. `raw_channel` drives both handshake directions off one `sc_event`, unless
+   the reader passes its own event to `setExternalEvent()`, which then carries
+   "value written". `write()` returns only once the consumer has taken the
+   value, so no beat is lost. On the single-event path each side is woken once
+   more per beat than two events would need.
 4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
 5. Easy to misuse in place of `status` or a real streaming protocol.
 
@@ -932,7 +934,7 @@ instances:
     addressMultiples: <number>   # Optional, defaults to 1
     variant: <variant_name>      # Optional, for variant-specific parameters
     color: <color_name>          # Optional, for visualization (not fully functional)
-    count: <number>              # Optional, defaults to 1 (not fully supported yet)
+    count: 1                     # Optional; replication is not supported, any other value is rejected
     offset: <number>             # Optional, defaults to 0 (overridden by address generation)
 ```
 
@@ -944,11 +946,11 @@ instances:
 4. **Self-Referential**: Top-level can have `container` = `instanceType`
 5. **Instance Groups**: Optional grouping for ID enumeration generation
 6. **Address Groups**: Required for blocks with registers, or memories with FW access
-7. **Unique Names**: All instance names must be unique across the entire project
+7. **Unique Names**: All instance names must be unique across the entire project. An instance name must also differ from every clock, reset, port, register, memory and connection channel of its container block, because the generated module and class declare them in one scope
 8. **Optional Fields**:
    - `variant`: Use with parameterized blocks (see parameters section)
    - `addressMultiples`: Use when block needs multiple address spaces (large memories)
-   - `count`: Not fully supported yet - defaults to 1
+   - `count`: Instance replication is not supported. `make db` rejects any value other than 1
    - `offset`: Not recommended - let arch2code auto-generate addresses
    - `color`: For visualization only (not fully functional)
 
@@ -1243,7 +1245,7 @@ registers:
 1. **Register Types**:
    - `rw`: Read-write register
    - `ro`: Read-only register (status)
-   - `ext`: External register (control handled by user logic, eg for registers that create actions on write)
+   - `ext`: External register (control handled by user logic, eg for registers that create actions on write). Its structure is at most 32 bits wide, the register bus width, and `make db` rejects a wider one, checking a parameterizable structure at its `maxBitwidth`
    - `memory`: Memory-style register with `wordLines` and `addressStruct`
 2. **Block**: The block that owns this register
 3. **Structure**: Data structure defining register fields
@@ -1802,8 +1804,8 @@ fileGeneration:
       name: "regAddresses",
       ext: {hdr: "h"},
       mode: project,
-      basePath: model,
-      langDomain: sc,
+      basePath: fwInc,
+      langDomain: fw,
       desc: "Per-project instance and register address defines"
     }
 ```
@@ -1813,7 +1815,7 @@ fileGeneration:
 - `smartInclude: true` means files are only created if there is register or memory content to export
 - `mode: context` generates one file per YAML file (not per block)
 - `mode: project` generates exactly one file for the whole product, keyed to its top context
-- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`
+- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`. The default entry uses `fwInc` with `langDomain: fw`, next to `includeFW`
 - Both are commented out by default in `builder/base/config/project.yaml`
 
 #### Custom Copyright Statement
@@ -2595,6 +2597,9 @@ Scaffolded by the opt-in `regAddresses` fileMap entry, `mode: project`, one file
 per product. The basename is that entry's `name:` verbatim and its directory is
 its `basePath:` segment, so the path is per project (`model/regAddresses.h` in
 `examples/apbDecode`, `fw/include/axi4sRegAddresses.h` in `examples/axi4sDemo`).
+The default entry uses `basePath: fwInc`, which puts the file at
+`fw/include/regAddresses.h` in the functional layout and `fw/regAddresses.h` in
+the hierarchical one.
 
 ```
 PARAM: --project=<projectName>

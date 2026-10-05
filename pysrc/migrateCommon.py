@@ -22,6 +22,13 @@ import yaml
 # the vendored toolchain dir (this generator's own source), never project code.
 SKIP_DIRS = ("build", ".gen", "obj_dir", ".git", "rundir", "builder")
 
+
+def isSkippedDir(name):
+    """True for a directory name a tree walk never enters: a SKIP_DIRS build or
+    toolchain tree, or a dot-directory (VCS metadata, agent tooling such as
+    `.opencode/node_modules`), which never holds project source."""
+    return name in SKIP_DIRS or name.startswith(".")
+
 # Generated/authored source file extensions. A file outside this set (Makefile,
 # .f filelist, .gitignore) is build scaffolding the user manages, not generated
 # source, and is left untouched by the migration sweeps.
@@ -44,13 +51,16 @@ RUNDIR_MK = os.path.join("rundir", "Makefile")
 # File IO
 # ---------------------------------------------------------------------------
 
+# Vendor files are routinely not UTF-8 (a cp1252 or truncated trademark sign in a
+# comment). surrogateescape decodes every byte and writes it back unchanged, so a
+# phase that rewrites such a file leaves the bytes it did not edit as they were.
 def _read(path):
-    with open(path, "r") as fh:
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as fh:
         return fh.read()
 
 
 def _write(path, text):
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as fh:
         fh.write(text)
 
 
@@ -115,7 +125,7 @@ def classifyGeneratedDir(dirs):
         if not os.path.isdir(directory):
             continue
         for root, dirnames, names in os.walk(directory):
-            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+            dirnames[:] = [d for d in dirnames if not isSkippedDir(d)]
             for name in sorted(names):
                 if not name.endswith(SOURCE_EXTS):
                     continue

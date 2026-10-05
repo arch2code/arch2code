@@ -122,6 +122,27 @@ structures:
     addr: {varType: dword32_t, desc: "Target address"}
 ```
 
+**Field order.** The first YAML field is the MSB of the packed value and the
+last field sits at bit 0. In `packet_header_t` above, `opcode` (a 2-bit enum)
+is bits `[1:0]` and `dest_id` is bits `[17:10]`. The firmware header declares
+the fields in reverse, last YAML field first, and writes each field's packed
+range next to it:
+
+```cpp
+struct packet_header_t {
+    opcode_t opcode; /* [1:0] */ //Operation code
+    byte_t src_id; /* [9:2] */ //Source ID
+    byte_t dest_id; /* [17:10] */ //Destination ID
+    ...
+};
+```
+
+Neither order gives bit numbers; the comments do. A range is an absolute bit
+index into the packed value, so in an 80-bit structure `[79:64]` is bits 15:0
+of `_packedSt[1]`. An array field's range covers every element, with element 0
+at the low end. A parameterizable structure gets no ranges, because its widths
+depend on the variant.
+
 **Generator tags:**
 *   `address` -- marks the field as an address (used by register bus generation)
 *   `data` -- marks the field as data (used by register bus generation)

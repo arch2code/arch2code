@@ -3,6 +3,7 @@
 #include "q_assert.h"
 
 #include "simController.h"
+#include <set>
 #include "instanceFactory.h"
 #include "workerThread.h"
 #include "watchDog.h" 
@@ -12,6 +13,7 @@ std::string simController::vlInst;
 std::string simController::vlType; 
 bool simController::vlTandem; 
 bool simController::vlTrace; 
+bool simController::tandemStatusFatal;
 sc_time simController::scMaxRunTime;  
 sc_time simController::startupDelay = sc_time(1, SC_NS);
 uint64_t simController::startupDelayns;
@@ -95,6 +97,7 @@ bool simController::addProgramOptions(po::options_description &options)
         ("vlTandem", po::bool_switch(&vlTandem), "Primary instance in tandem mode")
         ("vlTrace", po::bool_switch(&vlTrace)->default_value(false), "Enable VCD trace dump")
 #endif
+        ("tandemStatusFatal", po::bool_switch(&tandemStatusFatal), "Fail the run on a status tee data mismatch")
         ("delay", po::value<uint64_t>(&delayNSec), "Set delay in nsec for named instance or all")
         ("delayMode", po::value<std::string>(), "Set delay mode for named instance [fixedInit, randInit, randFull]")
         ("scTimeLimit", po::value<float>(&maxRuntimeUS)->default_value(0.0), "SystemC time limit (in microseconds)")
@@ -132,40 +135,53 @@ bool simController::handleTestBenchParams(po::variables_map &vm, std::shared_ptr
 {
     if (vm.count("param")) {
         auto paramStrings = vm["param"].as<std::vector<std::string>>();
+        std::set<std::string> seenKeys;
         for (const auto &entry : paramStrings) {
-            // Assume each entry is in the form "key,value"
             auto pos = entry.find(',');
-            if (pos != std::string::npos) {
-                std::string key = entry.substr(0, pos);
-                std::string value = entry.substr(pos + 1);
-                if (testBench->isValidParam(key)){
-                    uint64_t maxVal = testBench->getParam(key);
-                    // Check that the parameter is valid and that a value exists.
-                    if (maxVal == 0 || value.empty()) {
-                        std::cerr << "Invalid parameter: " << key << ". Ignoring\n";
-                        return false;
-                    } else {
-                        try {
-                            uint64_t val = std::stoul(value);
-                            if (val > maxVal) {
-                                std::cerr << "Invalid parameter value: " << key << ". Value " << val << " exceeds maximum value " << maxVal << ". Ignoring\n";
-                                return false;
-                            } else {
-                                testBench->addParam(key, val);
-                                std::cout << "Parameter " << key << " set to " << val << std::endl;
-                            }
-                        }
-                        catch (const std::exception &ex) {
-                            std::cerr << "Error converting parameter value for " << key << ": " << ex.what() << ". Ignoring\n";
-                            return false;
-                        }
-                    }
-                } else {
-                    std::cerr << "Invalid parameter: " << key << ". Ignoring\n";
+            if (pos == std::string::npos) {
+                std::cerr << "Invalid parameter format: " << entry << ". use key,value\n";
+                return false;
+            }
+            std::string key = entry.substr(0, pos);
+            std::string value = entry.substr(pos + 1);
+            if (!seenKeys.insert(key).second) {
+                std::cerr << "Invalid parameter: " << key << " is given more than once\n";
+                return false;
+            }
+            if (!testBench->isValidParam(key)) {
+                std::string validKeys;
+                for (const auto &name : testBench->getParamNames()) {
+                    validKeys += (validKeys.empty() ? "" : ", ") + name;
+                }
+                std::cerr << "Invalid parameter: " << key << ". Valid parameters: "
+                          << (validKeys.empty() ? "(none registered)" : validKeys) << "\n";
+                return false;
+            }
+            // the registered value is both the default and the maximum
+            uint64_t maxVal = testBench->getParam(key);
+            if (maxVal == 0) {
+                std::cerr << "Invalid parameter: " << key << " is registered with maximum value 0 and cannot be set\n";
+                return false;
+            }
+            if (value.empty()) {
+                std::cerr << "Invalid parameter: " << key << " has no value. use key,value\n";
+                return false;
+            }
+            if (value.find_first_not_of("0123456789") != std::string::npos) {
+                std::cerr << "Invalid parameter value: " << key << ". '" << value << "' is not a non-negative integer\n";
+                return false;
+            }
+            try {
+                uint64_t val = std::stoull(value);
+                if (val > maxVal) {
+                    std::cerr << "Invalid parameter value: " << key << ". Value " << val << " exceeds maximum value " << maxVal << "\n";
                     return false;
                 }
-            } else {
-                std::cerr << "Invalid parameter format: " << entry << ". use key,value\n";
+                testBench->setParam(key, val);
+                std::cout << "Parameter " << key << " set to " << val << std::endl;
+            }
+            catch (const std::exception &ex) {
+                std::cerr << "Error converting parameter value for " << key << ": " << ex.what() << "\n";
                 return false;
             }
         }

@@ -13,7 +13,7 @@ import apbDecode_package::*;
     status_if #(.data_t(aRegSt)) roA();
     status_if #(.data_t(un0ARegSt)) rwUn0A();
     status_if #(.data_t(un0ARegSt)) roUn0A();
-    external_reg_if #(.data_t(un0ARegSt)) extA();
+    external_reg_if #(.data_t(un0ExtRegSt)) extA();
 
     // Memory Interfaces
     memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable0();
@@ -67,10 +67,10 @@ memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .POR
     // LocalRegAccess parity: reproduce the model blockA startup thread so the
     // RTL block establishes the same power-up state the model seeds locally.
 
-    // extA local write {fa='a', fb=0xfefe1234, fc='c'}: power-up seed value,
+    // extA local write {fa='a', fb=0x1234, fc='c'}: power-up seed value,
     // then capture subsequent bus write pulses (extA.write) as before.
-    localparam un0ARegSt EXTA_SEED = '{fa: 8'h61, fb: 32'hfefe1234, fc: 8'h63};
-    `DFFR_INST(un0ARegSt, extAReg, EXTA_SEED)
+    localparam un0ExtRegSt EXTA_SEED = '{fa: 8'h61, fb: 16'h1234, fc: 8'h63};
+    `DFFR_INST(un0ExtRegSt, extAReg, EXTA_SEED)
     always_comb begin
         n_extAReg = extAReg;
         if (|extA.write) begin

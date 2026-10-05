@@ -116,14 +116,14 @@ struct axi4StreamInfoSt
 
     inline friend bool operator == ( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & a, axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & b ) {
         if constexpr (hasOptionalPayload<TUSER>) {
-            if (!(a.tuser.getStructValue() == b.tuser.getStructValue())) { return false; }
+            if (!(a.tuser == b.tuser)) { return false; }
         }
-        return (a.tdata.getStructValue() == b.tdata.getStructValue() &&
+        return (a.tdata == b.tdata &&
                 a.tstrb.sc_pack() == b.tstrb.sc_pack() &&
                 a.tkeep.sc_pack() == b.tkeep.sc_pack() &&
-                a.tid.getStructValue() == b.tid.getStructValue() &&
+                a.tid == b.tid &&
                 a.tlast == b.tlast &&
-                a.tdest.getStructValue() == b.tdest.getStructValue());
+                a.tdest == b.tdest);
     }
 
 };

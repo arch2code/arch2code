@@ -84,9 +84,9 @@ struct skSampleSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (skPixelT_v<SK_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (SK_PIXEL_WIDTH)) - 1));
+        data = (skPixelT_v<SK_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (SK_PIXEL_WIDTH))));
         _pos += SK_PIXEL_WIDTH;
-        tag = (skTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (skTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<skSampleSt_v<SK_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

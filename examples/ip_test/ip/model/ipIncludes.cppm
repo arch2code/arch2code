@@ -262,7 +262,7 @@ struct ipCfgSt_v {
         memset((uint64_t *)&threshold, 0, sizeof(threshold));
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
-        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (2)) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (2))));
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -437,7 +437,7 @@ struct ipMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
     }
     inline sc_bv<ipMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
@@ -598,7 +598,7 @@ struct ipDerivedMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(((IP_MEM_DEPTH * 2) * 2)))) - 1));
+        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(((IP_MEM_DEPTH * 2) * 2))))));
     }
     inline sc_bv<ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
@@ -1390,19 +1390,19 @@ struct ipSignedParamSt_v {
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, index, clog2(IP_MEM_DEPTH));
         _pos += clog2(IP_MEM_DEPTH);
-        pack_bits((uint64_t *)&_ret, _pos, offset & ((1ULL << (IP_MEM_DEPTH)) - 1), IP_MEM_DEPTH);
+        pack_bits((uint64_t *)&_ret, _pos, offset & (~0ULL >> (64 - (IP_MEM_DEPTH))), IP_MEM_DEPTH);
         _pos += IP_MEM_DEPTH;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        index = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        index = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
         _pos += clog2(IP_MEM_DEPTH);
-        offset = (ipSignedParamT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & ((1ULL << (IP_MEM_DEPTH)) - 1));
+        offset = (ipSignedParamT_v<IP_MEM_DEPTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (IP_MEM_DEPTH))));
         _pos += IP_MEM_DEPTH;
         // Sign extension for signed type
         if (offset & (1ULL << (IP_MEM_DEPTH - 1))) {
-            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~((1ULL << (IP_MEM_DEPTH)) - 1));
+            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~(~0ULL >> (64 - (IP_MEM_DEPTH))));
         }
     }
     inline sc_bv<ipSignedParamSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
@@ -1423,7 +1423,7 @@ struct ipSignedParamSt_v {
         offset = (ipSignedParamT_v<IP_MEM_DEPTH>) packed_data.range(_pos+IP_MEM_DEPTH-1, _pos).to_uint64();
         // Sign extension for signed type
         if (offset & (1ULL << (IP_MEM_DEPTH - 1))) {
-            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~((1ULL << (IP_MEM_DEPTH)) - 1));
+            offset = (ipSignedParamT_v<IP_MEM_DEPTH>)(offset | ~(~0ULL >> (64 - (IP_MEM_DEPTH))));
         }
         _pos += IP_MEM_DEPTH;
     }

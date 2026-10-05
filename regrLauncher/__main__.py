@@ -31,6 +31,13 @@ def merge_parent_attributes(dictionary, attributes):
                 dictionary[key] = str(attributes[key]) + ' ' + str(dictionary.pop(key_))
     return { **attributes, **dictionary }
 
+def resolve_rules_paths(dictionary, regr_dir):
+    for key, value in dictionary.items():
+        if key == 'rules':
+            dictionary[key] = [os.path.join(regr_dir, rules) for rules in value]
+        elif isinstance(value, dict):
+            resolve_rules_paths(value, regr_dir)
+
 def queue_run_commands(level, dictionary, test_commands):
     for key, value in dictionary.items():
         if isinstance(value, dict) and key != 'test_group':
@@ -85,7 +92,8 @@ def session_attr_args(args, session_db):
             continue
         attr = session_db[sect][key]
         attr_ = list(map(lambda x: convert_value(x), value.split(',')))
-        if len(attr_) == 1:
+        # rules is always a list of files, even with one entry
+        if len(attr_) == 1 and key != 'rules':
             attr_ = attr_[0]
         if is_append and isinstance(attr_, (int, str, list)):
             if isinstance(attr, int):
@@ -171,6 +179,9 @@ def main():
 
     # Propagate session attributes top-down
     session_db = propagate_attributes(session_db)
+
+    # Relative rules files are named relative to the regression file
+    resolve_rules_paths(session_db['run'], os.path.dirname(os.path.abspath(args.file.name)))
 
     # Prepare execution based on parameters from session attributes
     setup_session(session_db, args)

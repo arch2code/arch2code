@@ -43,7 +43,7 @@ module blockARegs
     un0ARegSt roUn0A_reg;
     assign roUn0A_reg = roUn0A.data;
 
-    un0ARegSt extA_reg;
+    un0ExtRegSt extA_reg;
     assign extA_reg = extA.rdata;
 
     // blockATable0
@@ -119,12 +119,6 @@ module blockARegs
                 REG_BLOCKA_EXTA : begin
                     extA.write = 1;
                     extA.wdata[31:0] = apbReg.pwdata[31:0];
-                    extA.wdata[47:32] = extA.rdata[47:32];
-                end
-                REG_BLOCKA_EXTA + 32'd4 : begin
-                    extA.write = 2;
-                    extA.wdata[31:0] = extA.rdata[31:0];
-                    extA.wdata[47:32] = apbReg.pwdata[15:0];
                 end
                 [REG_BLOCKA_BLOCKATABLE0:REG_BLOCKA_BLOCKATABLE0 + REG_BLOCKA_BLOCKATABLE0_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
@@ -195,10 +189,6 @@ module blockARegs
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(extA_reg[31:0]);
                 end
-                REG_BLOCKA_EXTA + 32'd4 : begin
-                    nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(extA_reg[47:32]);
-                end
                 [REG_BLOCKA_BLOCKATABLE0:REG_BLOCKA_BLOCKATABLE0 + REG_BLOCKA_BLOCKATABLE0_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
@@ -241,16 +231,17 @@ module blockARegs
                     endcase
                     nxt_blockATable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockATable1_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

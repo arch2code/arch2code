@@ -91,11 +91,11 @@ struct cpSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (cpMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (cpMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (cpPixelT_v<CP_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CP_WIDTH)) - 1));
+        data = (cpPixelT_v<CP_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (CP_WIDTH))));
         _pos += CP_WIDTH;
-        tag = (cpTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (cpTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<cpSt_v<CP_WIDTH>::_bitWidth> sc_pack(void) const
     {

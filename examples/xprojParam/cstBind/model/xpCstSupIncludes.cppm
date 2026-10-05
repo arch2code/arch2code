@@ -99,13 +99,13 @@ struct csOwnSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (csMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (csMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (csOwnPixelT_v<CS_OWN_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CS_OWN_WIDTH)) - 1));
+        data = (csOwnPixelT_v<CS_OWN_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (CS_OWN_WIDTH))));
         _pos += CS_OWN_WIDTH;
-        cfg = (csCfgT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        cfg = (csCfgT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (csTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (csTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<csOwnSt_v<CS_OWN_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -205,13 +205,13 @@ struct csIncSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (csMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (csMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (csIncPixelT_v<CS_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CS_PIXEL_WIDTH)) - 1));
+        data = (csIncPixelT_v<CS_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (CS_PIXEL_WIDTH))));
         _pos += CS_PIXEL_WIDTH;
-        cfg = (csCfgT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        cfg = (csCfgT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (csTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (csTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<csIncSt_v<CS_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

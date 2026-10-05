@@ -41,7 +41,7 @@ namespace fw_ns::simple {
 namespace fw_ns::simple {
 // structures
 struct tag_st {
-    tag tagId; //tag id
+    tag tagId; /* [4:0] */ //tag id
 
     tag_st() { memset(this, 0, sizeof(tag_st)); }
 

@@ -65,6 +65,17 @@ A2C_PRJ_YAML ?= $(REPO_ROOT)/arch/yaml/project.yaml
 A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db
 A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
 
+# A site EXTRA_LD_FLAGS arrives through the environment, and make exports it to
+# every sub-make with the project's `+=` already appended. Each sub-make
+# re-reads that `+=`, so it restarts from the site value the outermost make
+# captured here, before the project Makefile appends. Only a sub-make
+# (MAKELEVEL above 0) restores, so a marker left in the user's shell is ignored.
+ifneq ($(and $(filter-out 0,$(MAKELEVEL)),$(filter environment,$(origin A2C_SITE_EXTRA_LD_FLAGS))),)
+EXTRA_LD_FLAGS = $(A2C_SITE_EXTRA_LD_FLAGS)
+else
+export A2C_SITE_EXTRA_LD_FLAGS := $(value EXTRA_LD_FLAGS)
+endif
+
 PROJECT_RUNDIR = $(REPO_ROOT)/rundir
 
 # Binary/object/dependency tree of the rundir build. Defined here rather than in
@@ -88,9 +99,24 @@ $(GEN_BUILD_DIR)/build.mk: $(A2C_SQLDB_FILE) ;
 -include $(GEN_BUILD_DIR)/build.mk
 
 # YAML dependency list (db rebuild trigger) is the parsed include-tree closure
-# the manifest records; empty before the first db build, when the db is built
-# unconditionally anyway.
+# the manifest records. A manifest written for another project root (a copied
+# or moved tree), or naming YAML that no longer exists (a moved builder, a
+# deleted include), is stale: its YAML paths are dropped and the db rebuilds.
+# The manifest is rewritten only by a db build that reaches the manifest step,
+# so a failed rebuild leaves it stale and the next make forces again. Only the
+# first parse forces, so a restart after the rebuild cannot loop.
+A2C_MANIFEST_OTHER_ROOT := $(filter-out $(realpath $(A2C_MANIFEST_REPO_ROOT)),$(realpath $(REPO_ROOT)))
+A2C_MANIFEST_MISSING_YAML := $(filter-out $(wildcard $(A2C_YAML_FILES)),$(A2C_YAML_FILES))
+ifeq ($(A2C_MANIFEST_OTHER_ROOT)$(A2C_MANIFEST_MISSING_YAML),)
 YAML_FILES = $(A2C_YAML_FILES)
+else
+YAML_FILES =
+ifeq ($(MAKE_RESTARTS),)
+$(A2C_SQLDB_FILE): a2c-manifest-stale
+.PHONY: a2c-manifest-stale
+a2c-manifest-stale: ;
+endif
+endif
 
 # Generated source set is the manifest's authoritative DB-derived enumeration:
 # the files arch2code scaffolds whole through the fileMap. Filtered through
@@ -119,9 +145,11 @@ else
 $(warning "Forced skipping generation step (SKIP_GEN=1)")
 endif
 
-# C++ compilation global variables
+# C++ compilation global variables. A site names its Clang through A2C_CLANG, a
+# single compiler path with no launcher word; an exported CXX is ignored, so a
+# toolchain environment that exports CXX=g++ cannot switch compilers unseen.
 ifndef USE_GCC
-  CXX=clang++
+  CXX = $(or $(A2C_CLANG),clang++)
   C_STD_VER=c++23
 else
   CXX=g++
@@ -138,14 +166,23 @@ endif
 # .gen stamp, so a user source file is never a target here.
 .DELETE_ON_ERROR:
 
-# YAML_FILES (the manifest include-tree closure) is empty before the first db
-# build and never lists the project file itself, so name project.yaml as an
-# explicit prerequisite: a `migrate` run that stamps the project file (bumping
-# its mtime) then rebuilds the db from the stamped YAML rather than reusing a
-# stale (or gate-aborted shell) db.
-$(A2C_SQLDB_FILE): $(A2C_PRJ_YAML)
+# Builder stamp: every generator input of the builder (templates, generator
+# modules, config, arch2code.py, and pro's templates and config when present)
+# with its mtime. The parse rewrites the stamp only when that listing changes,
+# so an added, removed or edited builder file regenerates the project and an
+# unchanged builder leaves it alone.
+A2C_BUILDER_STAMP = $(GEN_BUILD_DIR)/builder.stamp
+A2C_BUILDER_INPUTS = find -L $(A2C_ROOT)/templates $(A2C_ROOT)/pysrc $(wildcard $(A2C_ROOT)/config/*.yaml $(A2C_ROOT)/config/*.py $(A2C_ROOT)/arch2code.py $(A2C_ROOT)/pro/templates $(A2C_ROOT)/pro/config) -name __pycache__ -prune -o -type f -printf '%p %T@\n' | LC_ALL=C sort
+$(shell mkdir -p $(GEN_BUILD_DIR); l="$$($(A2C_BUILDER_INPUTS))"; [ "$$(cat $(A2C_BUILDER_STAMP) 2>/dev/null)" = "$$l" ] || { printf '%s\n' "$$l" > $(A2C_BUILDER_STAMP).$$$$ && mv -f $(A2C_BUILDER_STAMP).$$$$ $(A2C_BUILDER_STAMP); })
+
+$(A2C_SQLDB_FILE): $(A2C_BUILDER_STAMP)
 $(A2C_SQLDB_FILE): $(YAML_FILES)
+	@# arch2code writes the manifest under dirs: root. Removing the old one first
+	@# means a missing manifest afterwards shows that dirs: root and REPO_ROOT
+	@# name different directories.
+	rm -f $(GEN_BUILD_DIR)/build.mk
 	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
+	@[ -f $(GEN_BUILD_DIR)/build.mk ] || echo "warning: $(GEN_BUILD_DIR)/build.mk stays stale: the db build wrote no manifest under REPO_ROOT $(REPO_ROOT). REPO_ROOT and the project's dirs: root in $(A2C_PRJ_YAML) name different directories, so every make rebuilds the db." >&2
 	touch $(A2C_SQLDB_DOTFILE)
 
 $(SC_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
@@ -176,22 +213,32 @@ db : $(A2C_SQLDB_FILE)
 # of files that already exist; --port-tb runs before gen so its region edits
 # are in place when gen renders; --port runs after gen because it transplants
 # user code into gen-filled .cppm files.
-# An exit of 1 from --sweep or --port-tb is pending hand-port work: the tree
-# still regenerates and the target fails at the end with that code. A higher
-# code halts the target at once: from --sweep when a filename-prefix move is
-# blocked (a file at both names, or an unattributable rename chain), which
-# needs a hand fix before newmodule runs; from --port-tb when a
-# Config.cpp restructure is refused, since gen would abort on it.
+# Exit 1 from --sweep, --port-tb or --port is pending hand work and does not
+# halt, so the tree still regenerates. The first sweep's exit 1 is not the
+# verdict, because the porters below resolve the legacy pairs it reports.
+# Exit 2 halts at once. --sweep returns it when the filename-prefix move is
+# blocked, or when opening the database, the move or its blocked report raises,
+# since newmodule would delete a file left unmoved. --port-tb returns it when
+# the Config.cpp restructure is refused or raises, since gen would abort on
+# that file. Exit 3 from --sweep means a phase raised. The final read-only
+# sweep cannot see a write that failed, so the recipe exits 1 for it. The
+# recipe also exits 1 when a porter or the final sweep reports a TODO.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
-	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
-	if [ $$rc -gt 1 ]; then exit $$rc; fi; \
+	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); src=$$?; \
+	case $$src in 0|1) rc=0 ;; 3) rc=1 ;; *) exit $$src ;; esac; \
+	if [ $$src -ne 0 ]; then echo "Later phases of this run may resolve TODO items reported above." \
+	  "A TODO_PHASE_FAILED item above needs a fix and a re-run."; fi; \
 	$(MAKE) newmodule && \
 	{ $(A2C_ROOT)/migrateYaml.py --port-tb --write --db $(A2C_SQLDB_FILE); trc=$$?; \
 	  if [ $$trc -eq 1 ]; then rc=1; elif [ $$trc -ne 0 ]; then exit $$trc; fi; } && \
 	$(MAKE) gen && \
-	$(A2C_ROOT)/migrateYaml.py --port --write --db $(A2C_SQLDB_FILE) && exit $$rc
+	{ $(A2C_ROOT)/migrateYaml.py --port --write --db $(A2C_SQLDB_FILE); prc=$$?; \
+	  if [ $$prc -eq 1 ]; then rc=1; elif [ $$prc -ne 0 ]; then exit $$prc; fi; } && \
+	echo "=== pending after all phases (read-only sweep) ===" && \
+	{ $(A2C_ROOT)/migrateYaml.py --sweep --db $(A2C_SQLDB_FILE) || rc=1; } && \
+	exit $$rc
 
 
 # Opt-in functional -> hierarchical layout migration. Separate from `migrate`:

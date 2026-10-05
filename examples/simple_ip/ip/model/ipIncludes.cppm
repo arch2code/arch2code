@@ -260,7 +260,7 @@ struct ipCfgSt_v {
         memset((uint64_t *)&threshold, 0, sizeof(threshold));
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
-        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (2)) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (2))));
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -435,7 +435,7 @@ struct ipMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
     }
     inline sc_bv<ipMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
@@ -596,7 +596,7 @@ struct ipDerivedMemAddrSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(((IP_MEM_DEPTH * 2) * 2)))) - 1));
+        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(((IP_MEM_DEPTH * 2) * 2))))));
     }
     inline sc_bv<ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {

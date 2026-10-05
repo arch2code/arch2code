@@ -52,6 +52,7 @@ genuinely clean.
 import argparse
 import os
 import sys
+import traceback
 from dataclasses import dataclass, field
 
 import yaml
@@ -82,6 +83,7 @@ from pysrc.migrateModuleEndlabel import (
     restampModuleEndlabel,
     renderModuleEndlabelReport,
 )
+from pysrc.migrateStaleSvNames import reportStaleSvNames, renderStaleSvNameReport
 from pysrc.migrateBlockModulePort import (
     portBlockModules,
     portTbExternals,
@@ -96,20 +98,73 @@ from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 
 
 # Exit statuses. `make migrate` runs the phases as a chain, and it needs to tell
-# two kinds of non-zero apart:
-#   RC_TODO     manual work remains but the tree is consistent — the pipeline
-#               carries on (the generated tree must not be left un-generated) and
-#               re-raises the status at the end, so the target still signals
-#               non-zero while the item is open.
+# three kinds of non-zero apart:
+#   RC_TODO     manual work remains but the tree is consistent. The pipeline
+#               carries on, because the generated tree must not be left
+#               un-generated. The target still exits non-zero at the end while
+#               the item is open.
 #   RC_BLOCKED  the tree is in a state the FOLLOWING steps cannot safely
 #               process, so the pipeline halts on it. A `<block>Config.cpp` still
 #               carrying a bare `--template=tbConfig` region makes gen fail with a
 #               template traceback. A file left at its unprefixed name next to its
 #               prefixed one is a stale file to newmodule, which deletes it along
 #               with the user code the TODO asks the user to keep.
+#   RC_PHASE_FAILED  a --sweep phase raised, or a --sweep raised outside any
+#               phase. On a writing run a write may be missing, and the
+#               read-only sweep that ends `make migrate` cannot detect that.
+#               The pipeline carries on, and the recipe exits 1 at the end. If
+#               opening the database, the prefix move or its blocked report
+#               raises, the filename-prefix gate has not passed, so the sweep
+#               returns RC_BLOCKED, exit 2.
 RC_CLEAN = 0
 RC_TODO = 1
 RC_BLOCKED = 2
+RC_PHASE_FAILED = 3
+
+
+TODO_PHASE_FAILED = "TODO_PHASE_FAILED"
+
+
+@dataclass(frozen=True)
+class PhaseFailure:
+    kind: str
+    location: str
+    message: str
+
+
+def _runPhase(failures, phase, location, fn, *args, **kwargs):
+    """Run one migration phase, or record why it failed and return None.
+
+    The phases are independent, so one that raises on a file it cannot handle
+    must not stop the rest from running and reporting. Any exception counts: the
+    traceback goes to stderr, the failure becomes a TODO in the report, and the
+    caller exits non-zero."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:
+        traceback.print_exc(file=sys.stderr)
+        failures.append(PhaseFailure(
+            TODO_PHASE_FAILED, location,
+            f"phase '{phase}' raised {type(exc).__name__}: {exc}. Its report is "
+            f"missing and its edits may be partial; the traceback is on stderr. "
+            f"Fix the cause and re-run"))
+        return None
+
+
+def _printPhaseFailures(failures):
+    lines = []
+    _renderPhaseFailures(failures, lines)
+    if lines:
+        print("\n".join(lines))
+
+
+def _renderPhaseFailures(failures, lines):
+    """Append the phase-failure section; silent when every phase ran."""
+    if not failures:
+        return
+    lines.extend(["", "Phase failures", "  manual TODO:"])
+    for item in failures:
+        lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
 @dataclass
@@ -124,6 +179,7 @@ class MigrateResult:
     langDomainReport: object = None                   # migrateLangDomain.LangDomainReport
     subProjectsReport: object = None                  # migrateSubProjects.SubProjectsReport
     leafAdvisory: list = field(default_factory=list)  # list[migrateAddressControl.ReportItem]
+    phaseFailures: list = field(default_factory=list)  # list[PhaseFailure]
     stamped: bool = False
     wrote: bool = False
 
@@ -144,7 +200,10 @@ class MigrateResult:
         encodes that no user-code import rewrite remains; the module-header
         phase's `clean` encodes that no stray GMF-zone import remains to
         relocate; the sub-project check's `clean` encodes that the rest of the
-        composition is migrated too. All are part of yamlFormat: 2."""
+        composition is migrated too. All are part of yamlFormat: 2. A phase that
+        failed leaves its report None, which blocks the stamp."""
+        if self.phaseFailures:
+            return False
         if (self.addressReport is None or self.includesReport is None
                 or self.moduleHeaderReport is None
                 or self.variantReport is None
@@ -170,13 +229,16 @@ def migrateProject(projectYamlPath, write=False):
     result = MigrateResult(projectYaml=projectYamlPath)
 
     projectData = yaml.safe_load(_read(projectYamlPath)) or {}
+    failures = result.phaseFailures
 
     # The include header -> cppm module conversion is part of yamlFormat: 2. It
     # runs on every invocation and is idempotent (a project whose include file
     # type is already the base cppm module is a no-op). It runs before the stamp
     # short-circuit so a project stamped before this phase existed still gets its
     # includes migrated; the eval/address phases already ran when it was stamped.
-    result.includesReport = migrateIncludesInProject(projectYamlPath, write=write)
+    result.includesReport = _runPhase(failures, "includes", projectYamlPath,
+                                      migrateIncludesInProject, projectYamlPath,
+                                      write=write)
 
     # The block-module header restructure (single header region -> GMF-only
     # blockModuleHeader + moduleExport + seeded user slots) is part of
@@ -184,7 +246,9 @@ def migrateProject(projectYamlPath, write=False):
     # idempotent (a file already in three-section form is a no-op), and runs
     # before the stamp short-circuit so a project stamped before this phase
     # existed still gets its block `.cppm` headers restructured.
-    result.moduleHeaderReport = migrateModuleHeaderInProject(projectYamlPath, write=write)
+    result.moduleHeaderReport = _runPhase(failures, "module header", projectYamlPath,
+                                          migrateModuleHeaderInProject,
+                                          projectYamlPath, write=write)
 
     # The nested variant-schema rewrite (per-row variant list -> nested mapping)
     # is part of yamlFormat: 2. It edits authored `parameters:` sections,
@@ -192,32 +256,40 @@ def migrateProject(projectYamlPath, write=False):
     # (an already-nested file is a no-op), and runs before the stamp short-circuit
     # so a project stamped before this phase existed still gets its variant
     # bindings regrouped.
-    result.variantReport = migrateVariantSchemaInProject(projectYamlPath, write=write)
+    result.variantReport = _runPhase(failures, "variant schema", projectYamlPath,
+                                     migrateVariantSchemaInProject, projectYamlPath,
+                                     write=write)
 
     # Every fileMap entry names its langDomain. The phase edits the project
     # file's fileMap, is idempotent, and runs before the stamp short-circuit so
     # a project stamped before the key existed still gets it.
-    result.langDomainReport = migrateLangDomainInProject(projectYamlPath, write=write)
+    result.langDomainReport = _runPhase(failures, "langDomain", projectYamlPath,
+                                        migrateLangDomainInProject, projectYamlPath,
+                                        write=write)
 
     # Composed builds: every child project this one names must be migrated in its
     # own tree. Runs before the short-circuit so a top stamped before a child was
     # added still reports it, and because it is the only check that looks past
     # this project at all.
-    result.subProjectsReport = checkSubProjects(projectYamlPath,
-                                                CURRENT_YAML_FORMAT)
+    result.subProjectsReport = _runPhase(failures, "composed-build check",
+                                         projectYamlPath, checkSubProjects,
+                                         projectYamlPath, CURRENT_YAML_FORMAT)
 
     # Advisory, not a phase: it writes nothing and is excluded from stampEligible
     # by construction. It sits before the short-circuit because its whole purpose
     # is to outlive the stamp — Phase B's equivalent TODO can only be raised on
     # the one run that still has the legacy AddressGroups table to read.
-    result.leafAdvisory = routedLeafRegisterPortsAdvisory(projectYamlPath)
+    advisory = _runPhase(failures, "routed-leaf advisory", projectYamlPath,
+                         routedLeafRegisterPortsAdvisory, projectYamlPath)
+    if advisory is not None:
+        result.leafAdvisory = advisory
 
     if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
         result.alreadyMigrated = True
-        result.wrote = write and (result.includesReport.written
-                                  or result.moduleHeaderReport.written
-                                  or result.variantReport.written
-                                  or result.langDomainReport.written)
+        result.wrote = write and _anyWritten([result.includesReport,
+                                              result.moduleHeaderReport,
+                                              result.variantReport,
+                                              result.langDomainReport])
         return result
 
     projectDir = os.path.dirname(projectYamlPath)
@@ -240,12 +312,16 @@ def migrateProject(projectYamlPath, write=False):
     # file. CONVERTED rows are rewritten under --write; NEEDS_MANUAL rows are
     # reported and block the stamp.
     for path in files:
-        result.evalReports.append(convertEvalsInFile(path, write=write))
+        evalReport = _runPhase(failures, "Phase A (eval)", path,
+                               convertEvalsInFile, path, write=write)
+        if evalReport is not None:
+            result.evalReports.append(evalReport)
 
     # Phase B — convert legacy addressControl to the per-block schema. Reads the
     # files fresh from disk, so it sees Phase A's rewrites.
-    result.addressReport = migrateAddressControlInProject(projectYamlPath,
-                                                          write=write)
+    result.addressReport = _runPhase(failures, "Phase B (addressControl)",
+                                     projectYamlPath, migrateAddressControlInProject,
+                                     projectYamlPath, write=write)
 
     # Phase C — stamp the sentinel only when both phases are clean.
     if write and result.stampEligible:
@@ -253,15 +329,19 @@ def migrateProject(projectYamlPath, write=False):
         result.stamped = True
 
     result.wrote = write and (
-        any(r.written for r in result.evalReports)
-        or result.addressReport.written
-        or result.includesReport.written
-        or result.moduleHeaderReport.written
-        or result.variantReport.written
-        or result.langDomainReport.written
+        _anyWritten(result.evalReports + [result.addressReport,
+                                          result.includesReport,
+                                          result.moduleHeaderReport,
+                                          result.variantReport,
+                                          result.langDomainReport])
         or result.stamped
     )
     return result
+
+
+def _anyWritten(reports):
+    """True when any phase that ran wrote an edit; a failed phase's report is None."""
+    return any(r is not None and r.written for r in reports)
 
 
 def _stamp(projectYamlPath):
@@ -288,6 +368,7 @@ def renderReport(result, write):
         _renderLangDomain(result, lines)
         _renderSubProjects(result, lines)
         _renderLeafAdvisory(result, lines)
+        _renderPhaseFailures(result.phaseFailures, lines)
         return "\n".join(lines)
 
     _renderPhaseA(result, lines)
@@ -298,8 +379,17 @@ def renderReport(result, write):
     _renderLangDomain(result, lines)
     _renderSubProjects(result, lines)
     _renderLeafAdvisory(result, lines)
+    _renderPhaseFailures(result.phaseFailures, lines)
     _renderPhaseC(result, write, lines)
     return "\n".join(lines)
+
+
+def _phaseFailed(report, lines):
+    """True, after saying so, when the section's phase failed and left no report."""
+    if report is not None:
+        return False
+    lines.append("  FAILED; see Phase failures")
+    return True
 
 
 def _renderPhaseA(result, lines):
@@ -327,6 +417,8 @@ def _renderPhaseB(result, lines):
     lines.append("")
     lines.append("Phase B - addressControl -> per-block schema")
     report = result.addressReport
+    if _phaseFailed(report, lines):
+        return
     if not report.applied and not report.manual:
         lines.append("  no legacy addressControl: pointer; nothing to do")
         return
@@ -344,7 +436,9 @@ def _renderIncludes(result, lines):
     lines.append("")
     lines.append("Includes - include header -> cppm module")
     report = result.includesReport
-    if report is None or (not report.applied and not report.manual):
+    if _phaseFailed(report, lines):
+        return
+    if not report.applied and not report.manual:
         lines.append("  include file type already cppm; nothing to do")
         return
     if report.applied:
@@ -361,7 +455,9 @@ def _renderModuleHeader(result, lines):
     lines.append("")
     lines.append("Module header - single region -> GMF + moduleExport sections")
     report = result.moduleHeaderReport
-    if report is None or (not report.applied and not report.manual):
+    if _phaseFailed(report, lines):
+        return
+    if not report.applied and not report.manual:
         lines.append("  block module headers already three-section; nothing to do")
         return
     if report.applied:
@@ -378,7 +474,9 @@ def _renderVariant(result, lines):
     lines.append("")
     lines.append("Variant schema - per-row variant list -> nested mapping")
     report = result.variantReport
-    if report is None or (not report.applied and not report.manual):
+    if _phaseFailed(report, lines):
+        return
+    if not report.applied and not report.manual:
         lines.append("  variant bindings already nested; nothing to do")
         return
     if report.applied:
@@ -395,6 +493,8 @@ def _renderLangDomain(result, lines):
     lines.append("")
     lines.append("langDomain - fileMap entries name their langDomain")
     report = result.langDomainReport
+    if _phaseFailed(report, lines):
+        return
     if not report.applied and not report.manual:
         lines.append("  every fileMap entry has langDomain; nothing to do")
         return
@@ -444,21 +544,18 @@ def _renderPhaseC(result, write, lines):
                          f"(dry-run; re-run with --write to apply)")
         return
     lines.append("  BLOCKED - project is not yet format-2 clean:")
+    for item in result.phaseFailures:
+        lines.append(f"    - {item.location} {item.message}")
     for path, row in result.evalManual:
         lines.append(f"    - {os.path.basename(path)}:{row.line} eval needs "
                      f"manual conversion: {row.original}")
-    for item in result.addressReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
-    for item in result.includesReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
-    for item in result.moduleHeaderReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
-    for item in result.variantReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
-    for item in result.langDomainReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
-    for item in result.subProjectsReport.manual:
-        lines.append(f"    - {item.location} {item.message}")
+    for report in (result.addressReport, result.includesReport,
+                   result.moduleHeaderReport, result.variantReport,
+                   result.langDomainReport, result.subProjectsReport):
+        if report is None:
+            continue
+        for item in report.manual:
+            lines.append(f"    - {item.location} {item.message}")
     lines.append("  Resolve the items above (see address-migration.md for the "
                  "address TODOs and the migration skill for the include "
                  "import rewrites), then re-run.")
@@ -530,6 +627,71 @@ def _renderRelocationMap(report, write, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
+def _sweep(args, failures):
+    """The post-database --sweep mode: every phase, then its exit status.
+    Phase failures accumulate in the caller's `failures`."""
+    prj = _runPhase(failures, "database open", args.db, projectOpen, args.db)
+    # Files a filename-prefix change renamed move first, so every pass
+    # below finds them at their current names.
+    prefixReport = None if prj is None else _runPhase(
+        failures, "filename-prefix move", args.db,
+        moveRenamedFiles, prj, write=args.write)
+    # A prefix conflict stops here, ahead of the orphan sweep deletions. So
+    # does any failure up to here: newmodule would delete a file left unmoved.
+    if prefixReport is None or not prefixReport.clean:
+        if prefixReport is not None:
+            _runPhase(failures, "filename-prefix report", args.db,
+                      lambda: print(renderFilePrefixReport(prefixReport, args.write)))
+        _printPhaseFailures(failures)
+        return RC_BLOCKED
+    print(renderFilePrefixReport(prefixReport, args.write))
+    report = _runPhase(failures, "orphan sweep", args.db,
+                       sweepOrphans, prj, write=args.write)
+    if report is not None:
+        print(renderOrphanReport(report, args.write))
+    # Re-stamp project-mode artifacts (rtl.f) from the retired context form to
+    # the --project form. Same DB-backed --sweep phase: identifying a
+    # project-mode file needs the merged fileMap and layout placement.
+    paramReport = _runPhase(failures, "project-mode re-stamp", args.db,
+                            restampProjectParam, prj, write=args.write)
+    if paramReport is not None:
+        print(renderProjectParamReport(paramReport, args.write))
+    # Re-stamp context-mode artifacts (module Includes, _package, firmware
+    # IncludesFW) to carry both --context (canonical yamlContext key) and
+    # --project (owning project). Same DB-backed phase: the owned-file set
+    # and canonical keys come from INCLUDEFILES + contextOwningProject.
+    contextReport = _runPhase(failures, "context-mode re-stamp", args.db,
+                              restampContextParam, prj, write=args.write)
+    if contextReport is not None:
+        print(renderProjectParamReport(contextReport, args.write,
+                                       label="context-mode"))
+    # Re-stamp the user-owned `endmodule: <label>` of each RTL block module to
+    # the block's SV module name (blockSvModuleName), matching the
+    # generator-owned begin-label. DB-backed because the name depends on the
+    # owning project's svFilePrefix.
+    endlabelReport = _runPhase(failures, "module end-label re-stamp", args.db,
+                               restampModuleEndlabel, prj, write=args.write)
+    if endlabelReport is not None:
+        print(renderModuleEndlabelReport(endlabelReport, args.write))
+    # Report hand-written SV that still names a module or package by its
+    # pre-refactor project-qualified name. DB-backed: both names are persisted.
+    svNameReport = _runPhase(failures, "stale SV names", args.db,
+                             reportStaleSvNames, prj)
+    if svNameReport is not None:
+        print(renderStaleSvNameReport(svNameReport))
+    _printPhaseFailures(failures)
+    if failures:
+        return RC_PHASE_FAILED
+    # A sweep that leaves manual items (ungenerated delete targets, pending
+    # ports, user include sites), or a re-stamp that hit an ungenerated
+    # project- or context-mode path, signals work remains, mirroring how the
+    # text phases fail when manual TODOs block the stamp.
+    return RC_CLEAN if (report.clean and paramReport.clean
+                        and contextReport.clean
+                        and endlabelReport.clean
+                        and svNameReport.clean) else RC_TODO
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Migrate an arch2code project's user YAML to the current "
@@ -573,84 +735,79 @@ def main(argv=None):
     if args.sweep:
         if not args.db:
             parser.error("--sweep requires --db")
-        prj = projectOpen(args.db)
-        # Files a filename-prefix change renamed move first, so every pass
-        # below finds them at their current names.
-        prefixReport = moveRenamedFiles(prj, write=args.write)
-        print(renderFilePrefixReport(prefixReport, args.write))
-        # A prefix conflict stops here, ahead of the orphan sweep deletions.
-        if not prefixReport.clean:
-            return RC_BLOCKED
-        report = sweepOrphans(prj, write=args.write)
-        print(renderOrphanReport(report, args.write))
-        # Re-stamp project-mode artifacts (rtl.f) from the retired context form to
-        # the --project form. Same DB-backed --sweep phase: identifying a
-        # project-mode file needs the merged fileMap and layout placement.
-        paramReport = restampProjectParam(prj, write=args.write)
-        print(renderProjectParamReport(paramReport, args.write))
-        # Re-stamp context-mode artifacts (module Includes, _package, firmware
-        # IncludesFW) to carry both --context (canonical yamlContext key) and
-        # --project (owning project). Same DB-backed phase: the owned-file set
-        # and canonical keys come from INCLUDEFILES + contextOwningProject.
-        contextReport = restampContextParam(prj, write=args.write)
-        print(renderProjectParamReport(contextReport, args.write, label="context-mode"))
-        # Re-stamp the user-owned `endmodule: <label>` of each RTL block module to
-        # the block's SV module name (blockSvModuleName), matching the
-        # generator-owned begin-label. DB-backed because the name depends on the
-        # owning project's svFilePrefix.
-        endlabelReport = restampModuleEndlabel(prj, write=args.write)
-        print(renderModuleEndlabelReport(endlabelReport, args.write))
-        # A sweep that leaves manual items (ungenerated delete targets, pending
-        # ports, user include sites), or a re-stamp that hit an ungenerated
-        # project- or context-mode path, signals work remains, mirroring how the
-        # text phases fail when manual TODOs block the stamp.
-        return RC_CLEAN if (report.clean and paramReport.clean
-                            and contextReport.clean
-                            and endlabelReport.clean) else RC_TODO
+        failures = []
+        # A raise outside any phase skips the phases after it, so report it as
+        # a failed phase.
+        try:
+            return _sweep(args, failures)
+        except Exception as exc:
+            traceback.print_exc(file=sys.stderr)
+            failures.append(PhaseFailure(
+                TODO_PHASE_FAILED, args.db,
+                f"the sweep raised {type(exc).__name__}: {exc} outside any "
+                f"phase, so the phases after it did not run; the traceback is "
+                f"on stderr. Fix the cause and re-run"))
+            _printPhaseFailures(failures)
+            return RC_PHASE_FAILED
 
     if args.portTb:
         if not args.db:
             parser.error("--port-tb requires --db")
         prj = projectOpen(args.db)
+        failures = []
         # Config first: it is the only file in the family gen cannot render at all
         # until its region carries a --section, so reporting it before the External
         # port puts the blocking item at the head of the output.
-        configReport = restructureTbConfigs(prj, write=args.write)
-        print(renderTbConfigReport(configReport, args.write))
+        configReport = _runPhase(failures, "tbConfig restructure", args.db,
+                                 restructureTbConfigs, prj, write=args.write)
+        if configReport is not None:
+            print(renderTbConfigReport(configReport, args.write))
+        configClean = configReport is not None and configReport.clean
         # A refused Config restructure blocks the pipeline below, so the two ports
         # that follow are reported but NOT applied on such a run: their targets are
         # files the blocked `gen` will never fill, and both delete a legacy pair.
         # They still run so one invocation reports every TODO in the family.
-        portWrite = args.write and configReport.clean
-        extReport = portTbExternals(prj, write=portWrite)
-        print(renderBlockPortReport(extReport, portWrite,
-                                    label="testbench External port"))
+        portWrite = args.write and configClean
+        extReport = _runPhase(failures, "testbench External port", args.db,
+                              portTbExternals, prj, write=portWrite)
+        if extReport is not None:
+            print(renderBlockPortReport(extReport, portWrite,
+                                        label="testbench External port"))
         # The tb top carries no user code, only its DUT --variant= selection, so it
         # is the cheapest member of the family and runs last.
-        topReport = portTbTops(prj, write=portWrite)
-        print(renderBlockPortReport(topReport, portWrite,
-                                    label="testbench top port"))
+        topReport = _runPhase(failures, "testbench top port", args.db,
+                              portTbTops, prj, write=portWrite)
+        if topReport is not None:
+            print(renderBlockPortReport(topReport, portWrite,
+                                        label="testbench top port"))
+        _printPhaseFailures(failures)
         # The two refusals are not equivalent. A refused Config restructure is
         # BLOCKING: the file keeps its bare `--template=tbConfig` region and the
         # next `make gen` aborts on it (templates/systemc/testbench.py raises on the
         # empty section), so the caller must stop here and act on this report. A
         # refused External port only leaves user code un-ported, which gen tolerates,
         # so it is the ordinary pending-work status.
-        if not configReport.clean:
+        if not configClean:
             return RC_BLOCKED
+        if failures:
+            return RC_TODO
         return RC_CLEAN if (extReport.clean and topReport.clean) else RC_TODO
 
     if args.port:
         if not args.db:
             parser.error("--port requires --db")
         prj = projectOpen(args.db)
-        report = portBlockModules(prj, write=args.write)
-        print(renderBlockPortReport(report, args.write,
-                                    label="block module port"))
+        failures = []
+        report = _runPhase(failures, "block module port", args.db,
+                           portBlockModules, prj, write=args.write)
+        if report is not None:
+            print(renderBlockPortReport(report, args.write,
+                                        label="block module port"))
+        _printPhaseFailures(failures)
         # Non-zero while any block is flagged for a hand port (parameterized,
         # reg-handler, module-hostile library, non-boilerplate slot-0), mirroring
         # how the sweep signals remaining TODO_PORT work.
-        return RC_CLEAN if report.clean else RC_TODO
+        return RC_CLEAN if (report is not None and report.clean) else RC_TODO
 
     if not args.projectYaml:
         parser.error("projectYaml is required unless --sweep, --port-tb or --port "
@@ -666,6 +823,8 @@ def main(argv=None):
 
     result = migrateProject(args.projectYaml, write=args.write)
     print(renderReport(result, args.write))
+    if result.phaseFailures:
+        return RC_TODO
 
     # Dry-run and an already-migrated project always succeed. A --write run that
     # could not stamp (manual work remains) fails so `make migrate` signals the

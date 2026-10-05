@@ -188,7 +188,8 @@ def render_default(args, prj, data):
         # Register data size from cpu is always 4-bytes aligned
         size = roundup_multiple(regData.get("maxBytes", regData["bytes"]), 4)
         regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
-        out.append( indent + f'hwRegister< { regType }, {size} > { regData["register"] }; // { regData["desc"] }')
+        ro = ', true' if regData['regType'] == 'ro' else ''
+        out.append( indent + f'hwRegister< { regType }, {size}{ro} > { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):
         out.append('')

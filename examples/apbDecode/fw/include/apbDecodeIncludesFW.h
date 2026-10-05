@@ -68,7 +68,7 @@ inline const char* addr_id_top_prt( addr_id_top val )
 namespace fw_ns::apbDecode {
 // structures
 struct aRegSt {
-    thirtySevenBitT a; //
+    thirtySevenBitT a; /* [36:0] */ //
 
     aRegSt() { memset(this, 0, sizeof(aRegSt)); }
 
@@ -91,8 +91,8 @@ struct aRegSt {
 
 };
 struct un0BRegSt {
-    u16T fb; //[23:8] - byte 3-4
-    u8T fa; //[7:0] - byte 0-2
+    u16T fb; /* [15:0] */ //[15:0] - bytes 0-1
+    u8T fa; /* [23:16] */ //[23:16] - byte 2
 
     un0BRegSt() { memset(this, 0, sizeof(un0BRegSt)); }
 
@@ -121,9 +121,9 @@ struct un0BRegSt {
 
 };
 struct un0ARegSt {
-    u8T fc; //[47:40] - byte 8-11
-    u32T fb; //[39:8] - byte 4-7
-    u8T fa; //[7:0] - byte 0-3
+    u8T fc; /* [7:0] */ //[7:0] - byte 0
+    u32T fb; /* [39:8] */ //[39:8] - bytes 1-4
+    u8T fa; /* [47:40] */ //[47:40] - byte 5
 
     un0ARegSt() { memset(this, 0, sizeof(un0ARegSt)); }
 
@@ -156,8 +156,44 @@ struct un0ARegSt {
     {}
 
 };
+struct un0ExtRegSt {
+    u8T fc; /* [7:0] */ //[7:0] - byte 0
+    u16T fb; /* [23:8] */ //[23:8] - bytes 1-2
+    u8T fa; /* [31:24] */ //[31:24] - byte 3
+
+    un0ExtRegSt() { memset(this, 0, sizeof(un0ExtRegSt)); }
+
+    static constexpr uint16_t _bitWidth = 8 + 16 + 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint32_t _packedSt;
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, un0ExtRegSt::_byteWidth);
+        _ret = fc;
+        _ret |= (uint32_t)fb << (8 & 31);
+        _ret |= (uint32_t)fa << (24 & 31);
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        fc = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+        _pos += 8;
+        fb = (u16T)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
+        _pos += 16;
+        fa = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+    }
+    explicit un0ExtRegSt(
+        u8T fc_,
+        u16T fb_,
+        u8T fa_) :
+        fc(fc_),
+        fb(fb_),
+        fa(fa_)
+    {}
+
+};
 struct aSizeRegSt {
-    aSizeT index; //
+    aSizeT index; /* [28:0] */ //
 
     aSizeRegSt() { memset(this, 0, sizeof(aSizeRegSt)); }
 
@@ -180,7 +216,7 @@ struct aSizeRegSt {
 
 };
 struct apbAddrSt {
-    apbAddrT address; //
+    apbAddrT address; /* [31:0] */ //
 
     apbAddrSt() { memset(this, 0, sizeof(apbAddrSt)); }
 
@@ -203,7 +239,7 @@ struct apbAddrSt {
 
 };
 struct apbDataSt {
-    apbDataT data; //
+    apbDataT data; /* [31:0] */ //
 
     apbDataSt() { memset(this, 0, sizeof(apbDataSt)); }
 
@@ -226,7 +262,7 @@ struct apbDataSt {
 
 };
 struct aMemAddrSt {
-    aAddrBitsT address; //
+    aAddrBitsT address; /* [4:0] */ //
 
     aMemAddrSt() { memset(this, 0, sizeof(aMemAddrSt)); }
 
@@ -249,7 +285,7 @@ struct aMemAddrSt {
 
 };
 struct aMemSt {
-    aDataBitsT data; //
+    aDataBitsT data; /* [62:0] */ //
 
     aMemSt() { memset(this, 0, sizeof(aMemSt)); }
 
@@ -272,7 +308,7 @@ struct aMemSt {
 
 };
 struct bMemAddrSt {
-    bAddrBitsT address; //
+    bAddrBitsT address; /* [4:0] */ //
 
     bMemAddrSt() { memset(this, 0, sizeof(bMemAddrSt)); }
 
@@ -295,7 +331,7 @@ struct bMemAddrSt {
 
 };
 struct bMemSt {
-    u32T data[3]; //
+    u32T data[3]; /* [95:0] */ //
 
     bMemSt() { memset(this, 0, sizeof(bMemSt)); }
 

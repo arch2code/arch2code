@@ -33,7 +33,7 @@ public:
     // GENERATED_CODE_END
     // block implementation members
 
-    void registerTest(void);
+    void test_apbDecode(void);
     void endOfTestThread(void);
     void memAccessTest(void);
 
@@ -67,7 +67,7 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    SC_THREAD(registerTest);
+    ADD_TEST(test_apbDecode);
     SC_THREAD(endOfTestThread);
 };
 
@@ -78,13 +78,8 @@ void cpu::endOfTestThread(void)
     eot.setEndOfTest(true);
 }
 
-void cpu::registerTest(void)
+void cpu::test_apbDecode(void)
 {
-    testController &controller = testController::GetInstance();
-    std::string test_name = "test_apbDecode";
-    controller.register_test_name(test_name);
-    controller.wait_test(test_name);
-
     apbAddrSt addr;
     apbDataSt writeData;
     apbDataSt readData;
@@ -98,14 +93,15 @@ void cpu::registerTest(void)
     apbReg->request(true, addr, writeData);
     apbReg->request(false, addr, readData);
     Q_ASSERT(readData.data == writeData.data, "readData.data == writeData.data");
-    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_EXTA + 0x0;
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_EXTA;
     apbReg->request(false, addr, readData);
-    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_EXTA + 0x4;
+    Q_ASSERT(readData.data == 0x61123463, std::format("extA seed got {:#x}", (uint64_t)readData.data));
+    writeData.data = 0xdeadbeef;
+    apbReg->request(true, addr, writeData);
     apbReg->request(false, addr, readData);
+    Q_ASSERT(readData.data == 0xdeadbeef, std::format("extA readback got {:#x}", (uint64_t)readData.data));
 
     memAccessTest();
-
-    controller.test_complete(test_name);
 }
 
 std::array<aMemSt, MEMORYA_WORDS>  aTableData0_ = {{

@@ -215,11 +215,17 @@ def packedStType(varType):
     return f"{prefix}{varType}::_packedSt"
 
 
-def cppWidthMask(widthExpr):
+def symbolicMask(widthExpr):
+    # A Config-dependent width may be 64, where 1ULL << W is undefined.
+    return f"(~0ULL >> (64 - ({widthExpr})))"
+
+def cppWidthMask(widthExpr, useConfig):
     if isinstance(widthExpr, int):
         widthExpr = str(widthExpr)
     if str(widthExpr) == '1':
         return ' & 1'
+    if useConfig:
+        return f" & {symbolicMask(widthExpr)}"
     return f" & ((1ULL << ({widthExpr})) - 1)"
 
 def printOneVar(prefix, space, varName, vardata, prtoss=True):
@@ -398,7 +404,9 @@ def oneStruct(args, prj, data, struct, value):
             out.append(f"template<{argList}>")
         out.append(f"struct {declStructName} {{")
         # declare vars
-        out.extend(declareVars(value, indent, prj, isParam))
+        # A parameterizable struct's positions depend on Config, so it gets none.
+        out.extend(declareVars(value, indent, prj, isParam,
+                               args.mode == 'fw' and not isParam))
         if args.mode == 'fw':
             out.append(f"\n{indent}{declStructName}() {{ memset(this, 0, sizeof({ declStructName })); }}\n")
         else:
@@ -500,7 +508,8 @@ def oneStruct(args, prj, data, struct, value):
             out.append(f"template<typename Config> using {structName} = {declStructName}<{configArgs}>;")
     return out
 
-def declareVars(vars, indent, prj, useConfig=False):
+def declareVars(vars, indent, prj, useConfig, bitPositions):
+    # Declared in pack() order, last YAML field first.
     out = list()
     for var, vardata in reversed(vars["vars"].items()):
         if vardata['isArray']:
@@ -509,10 +518,12 @@ def declareVars(vars, indent, prj, useConfig=False):
         else:
             myArray= ''
             #myArrayLoopIndex= ''
+        lsb = vardata['bitshift']
+        bits = f"/* [{lsb + vardata['arraywidth'] - 1}:{lsb}] */ " if bitPositions else ''
         if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType' or vardata['entryType'] == 'Reserved':
-            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] + myArray}; //{ vardata['desc'] }")
+            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] + myArray}; {bits}//{ vardata['desc'] }")
         elif vardata['entryType'] == 'NamedStruct':
-            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] +myArray}; //{ vardata['desc'] }")
+            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] +myArray}; {bits}//{ vardata['desc'] }")
     return out
 
 def equalTest(handle, args, structName, vars, indent):
@@ -757,6 +768,17 @@ def getSet(vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}inline void _setData({varType} value) {{ { var } = value; }}")
     return out
 def registerFeatures(vars, indent, prj, useConfig):
+    # A parameterizable struct's field positions depend on Config, so each
+    # shift is the sum of the later fields' widths, the same way sc_pack
+    # advances _pos.
+    shifts = dict()
+    later = []
+    for var, vardata in reversed(vars['vars'].items()):
+        if useConfig:
+            shifts[var] = f"({' + '.join(later)})" if later else 0
+            later.append(cppVarBitwidth(vardata, prj, useConfig))
+        else:
+            shifts[var] = vardata['bitshift']
     out = list()
     out.append(f"{indent}// register functions")
     out.append(f"{indent}inline int _size(void) {{return( (_bitWidth + 7) >> 4 ); }}")
@@ -768,12 +790,14 @@ def registerFeatures(vars, indent, prj, useConfig):
         varName = vardata['variable']
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
-            out.append(f"{indent}( {varName}._getValue() ) << { vardata['bitshift'] }")
+            out.append(f"{indent}(( {varName}._getValue() ) << { shifts[var] })")
         else:
-            if vardata['bitwidth'] < 64:
-                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { vardata['bitshift'] })")
+            if useConfig:
+                out.append(f"{indent}(( {varName} & {symbolicMask(widthExpr)} ) << { shifts[var] })")
+            elif vardata['bitwidth'] < 64:
+                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { shifts[var] })")
             else:
-                out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
+                out.append(f"{indent}( {varName} << { shifts[var] } )")
         out.append(f" +")
     out.pop()
     out[-1] = out[-1] + ";"
@@ -787,16 +811,21 @@ def registerFeatures(vars, indent, prj, useConfig):
         varName = vardata['variable']
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         typeName = cppTypeName(vardata, prj, useConfig)
-        if vardata['entryType'] == 'NamedStruct':
-            if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) )) ;")
-            else:
-                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ) ;")
+        if useConfig:
+            mask = symbolicMask(widthExpr)
+        elif vardata['bitwidth'] < 64:
+            mask = f"(( (uint64_t)1 << { widthExpr } ) - 1)"
         else:
-            if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) ) ;")
-            else:
-                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ;")
+            mask = None
+        field = (f"(( packedValue >> { shifts[var] } ) & {mask})" if mask
+                 else f"(( packedValue >> { shifts[var] } ) )")
+        if vardata['entryType'] == 'NamedStruct':
+            out.append(f"{indent}{ varName }._setValue( {field} ) ;")
+        else:
+            out.append(f"{indent}{ varName } = ( { typeName } ) {field} ;")
+            out.extend(get_sign_extension_code(varName, '', typeName, widthExpr, indent,
+                                               vardata['isSigned'],
+                                               None if useConfig else vardata['bitwidth']))
     out.append(f"{indent}}}")
     return out
 
@@ -994,7 +1023,8 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
                         # Add sign extension for signed types
                         isSigned = data['isSigned']
                         widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
-                        out.extend(get_sign_extension_code(varName, varIndex, varType, widthExpr, indent, isSigned))
+                        out.extend(get_sign_extension_code(varName, varIndex, varType, widthExpr, indent, isSigned,
+                                                           None if useConfig else data['bitwidth']))
                 else :
                     out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data;')
             elif data['entryType'] == 'NamedStruct':
@@ -1080,7 +1110,7 @@ def constructor_packed(structName, vars, indent):
 
 def get_unpack_mask_str(needBits, baseSize):
     if not isinstance(needBits, int):
-        return cppWidthMask(needBits)
+        return cppWidthMask(needBits, True)
     mask = ''
     # truncate the mask to the needed bits case
     if (needBits < baseSize):
@@ -1089,14 +1119,17 @@ def get_unpack_mask_str(needBits, baseSize):
         mask = ' & 1'
     return mask
 
-def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSigned):
-    """Generate sign extension code for signed types"""
+def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSigned, literalWidth):
+    """Sign extension for a signed field narrower than its C++ type.
+    `literalWidth` is the field's width outside a parameterizable struct and
+    None inside one; a fixed width of 64 has no upper bits to fill."""
     out = []
-    if isSigned and (not isinstance(bitwidth, int) or bitwidth < 64):
+    if isSigned and (literalWidth is None or literalWidth < 64):
         # Need to perform sign extension if the sign bit is set
         out.append(f"{indent}// Sign extension for signed type")
         out.append(f"{indent}if ({varName}{varIndex} & (1ULL << ({bitwidth} - 1))) {{")
-        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ~((1ULL << ({bitwidth})) - 1));")
+        fill = f"~{symbolicMask(bitwidth)}" if literalWidth is None else f"~((1ULL << ({bitwidth})) - 1)"
+        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | {fill});")
         out.append(f"{indent}}}")
     return out
 
@@ -1239,7 +1272,8 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                     out.append(f'{indent}_pos += {bitsLeft};') if usePos else None
                 # Add sign extension for signed types
                 isSigned = data['isSigned']
-                out.extend(get_sign_extension_code(varName, varIndex, varType, bitwidthExpr, indent, isSigned))
+                out.extend(get_sign_extension_code(varName, varIndex, varType, bitwidthExpr, indent, isSigned,
+                                                   None if useConfig else data['bitwidth']))
         elif data['entryType'] == 'NamedStruct':
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
             tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
@@ -1342,7 +1376,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
     # Generate mask for signed types to strip sign-extended bits after cast to uint64_t
     # For unsigned types, the cast naturally zero-extends so no mask is needed
     if isSigned and (useConfig or data['bitwidth'] < 64):
-        valueMask = cppWidthMask(bitwidthExpr)
+        valueMask = cppWidthMask(bitwidthExpr, useConfig)
     else:
         valueMask = ""
     fitsDirect = (pos + data['arraywidth'] <= 64 and not isArray and not useConfig)

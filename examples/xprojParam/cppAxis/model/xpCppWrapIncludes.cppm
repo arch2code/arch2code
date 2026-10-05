@@ -88,9 +88,9 @@ struct wrapEqSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (WRAP_PIXEL_WIDTH))));
         _pos += WRAP_PIXEL_WIDTH;
-        tag = (wrapTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (wrapTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -166,9 +166,9 @@ struct wrapOrderSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        second = (wrapFlagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        second = (wrapFlagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        first = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        first = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (WRAP_PIXEL_WIDTH))));
     }
     inline sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -237,7 +237,7 @@ struct wrapSignSt_v {
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src) & (~0ULL >> (64 - (WRAP_PIXEL_WIDTH))));
     }
     inline sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -384,9 +384,9 @@ struct wrapNestSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (WRAP_PIXEL_WIDTH))));
         _pos += WRAP_PIXEL_WIDTH;
-        tail = (wrapFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tail = (wrapFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
         {
             wrapNestHdrSt::_packedSt _tmp{0};

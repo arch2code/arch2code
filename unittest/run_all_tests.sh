@@ -138,6 +138,12 @@ echo "Test Suite 13e: AXI Envelope Pack"
 echo "------------------------------------------------------------------------"
 python3 test_axi_envelope_pack.py || FAILED=1
 
+# Test 13f: the axi4_stream compare checks whole payloads, not getStructValue()
+echo ""
+echo "Test Suite 13f: AXI4 Stream Compare"
+echo "------------------------------------------------------------------------"
+python3 test_axi4_stream_compare.py || FAILED=1
+
 # Test 14: Declared port resolved interface context
 echo ""
 echo "Test Suite 14: Declared Port Resolved Interface Context"
@@ -302,6 +308,16 @@ echo "------------------------------------------------------------------------"
 python3 test_migrate_tb_port.py || FAILED=1
 
 echo ""
+echo "Test Suite 19r: make migrate robustness (encoding, phase failures, port reports)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_robustness.py || FAILED=1
+
+echo ""
+echo "Test Suite 19s: make migrate exit status after every phase has run"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_exit_status.py || FAILED=1
+
+echo ""
 echo "Test Suite 19p: Project-mode --project param + re-stamp (migrateProjectParam.py)"
 echo "------------------------------------------------------------------------"
 python3 test_project_param.py || FAILED=1
@@ -350,9 +366,14 @@ ADDRCTL_TESTS=(
     "router-less container holds two consumers" "test_error_leaf_unserved.py"
     "router-less passthrough single consumer"   "test_addrctl_passthrough_single_consumer.py"
     "passthrough addressGroup diagnostics"      "test_error_passthrough_diagnostics.py"
+    "routed leaf missing router addressGroup"   "test_error_router_leaf_address_group.py"
+    "routed leaf addressGroup of another project" "test_error_router_leaf_project_group.py"
+    "nested router host instanced twice"        "test_error_router_nested_host_instances.py"
+    "router group with no register consumer"    "test_error_router_group_without_consumer.py"
     "register interfaceType mismatch"           "test_error_register_interface_type_mismatch.py"
     "register packed-form mismatch"             "test_error_register_packed_form.py"
     "nested decoder exceeds parent window"      "test_error_nested_decoder_overflow.py"
+    "addressBlock not a power of two"           "test_error_addrblock_not_power_of_two.py"
     "composed sibling address groups"           "test_addrgroup_composed_sibling_groups.py"
     "composed decoder channel scoping"          "test_addrgroup_composed_decoder_channels.py"
     "within-project duplicate address group"    "test_error_addrgroup_duplicate_in_project.py"
@@ -517,6 +538,18 @@ python3 test_error_connection_end_collision.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: child instance or connection channel named like another name of its block"
+echo "------------------------------------------------------------------------"
+python3 test_error_block_scope_name_collision.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: instance count other than 1 is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_instance_count.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: a register handler follows the Config of the block that owns its registers"
 echo "------------------------------------------------------------------------"
 python3 test_regs_handler_container_config.py || FAILED=1
@@ -649,6 +682,114 @@ python3 test_assert_exit_path.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: model APB decode of an empty address space reads 32'hBADD_C0DE and drops writes"
+echo "------------------------------------------------------------------------"
+python3 test_apb_bus_decode_unmapped.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated RTL APB decoder reads 32'hBADD_C0DE and drops writes at an unmapped address"
+echo "------------------------------------------------------------------------"
+python3 test_apb_decode_rtl_empty_slot.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: model register handler reads 0xBADDC0DE and drops writes at an address gap"
+echo "------------------------------------------------------------------------"
+python3 test_register_handler_gap.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated RTL register block reads 32'hBADD_C0DE and drops writes at an address gap"
+echo "------------------------------------------------------------------------"
+python3 test_regs_rtl_gap_read.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated RTL register block reads 32'hBADD_C0DE and drops writes past a memory's variant depth"
+echo "------------------------------------------------------------------------"
+python3 test_regs_rtl_mem_depth.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: model APB decoder slots match the RTL windows around a non-dispatched instance"
+echo "------------------------------------------------------------------------"
+python3 test_apb_decode_model_slot_gap.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: read-only hwRegister ignores CPU writes"
+echo "------------------------------------------------------------------------"
+python3 test_hw_register_ro.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: each word write to a wide hwRegister takes effect on its own"
+echo "------------------------------------------------------------------------"
+python3 test_hw_register_wide_word_write.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: each word write to a wide hwRegisterIf rw register reaches the child"
+echo "------------------------------------------------------------------------"
+python3 test_hw_register_if_wide_word_write.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: an ext register wider than the register bus is rejected at make db"
+echo "------------------------------------------------------------------------"
+python3 test_error_ext_register_width.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated model declares a read-only register read-only"
+echo "------------------------------------------------------------------------"
+python3 test_hw_register_ro_render.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: status_dst_bfm drives the latest status value"
+echo "------------------------------------------------------------------------"
+python3 test_status_dst_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
+echo "------------------------------------------------------------------------"
+python3 test_external_reg_dst_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: raw writer is released when the reader consumes, with or without an external event"
+echo "------------------------------------------------------------------------"
+python3 test_raw_external_event.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: --param overrides a registered default; unknown --param and --verbosity are fatal"
+echo "------------------------------------------------------------------------"
+python3 test_testbench_cli_options.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: --test runs the named tests in testbench order; --listTests prints them"
+echo "------------------------------------------------------------------------"
+python3 test_testbench_test_selection.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: ADD_TEST runs a function as a test in list order; mixing it with register_test_name is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_testbench_add_test.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: regression rules files resolve relative to the regression JSON"
+echo "------------------------------------------------------------------------"
+python3 test_regr_rules_path.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: combo-source diagnostics (missing/empty combo sources)"
 echo "------------------------------------------------------------------------"
 python3 test_error_combo_sources.py || FAILED=1
@@ -757,6 +898,12 @@ python3 test_register_accessor_emission.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: fw struct fields carry their packed bit range"
+echo "------------------------------------------------------------------------"
+python3 test_fw_struct_bit_positions.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: The builder compiles the generated context files at -O3 with no rundir help"
 echo "------------------------------------------------------------------------"
 python3 test_rundir_o3_context_src.py || FAILED=1
@@ -832,6 +979,48 @@ echo ""
 echo "Test Suite ${idx}: Verilated registrar registers each factory domain once"
 echo "------------------------------------------------------------------------"
 python3 test_vl_registrar_factory_domain.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a site environment picks the compiler and Boost link line"
+echo "------------------------------------------------------------------------"
+python3 test_make_site_env.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: the verilator sub-build takes VL_JOBS and the outer jobserver"
+echo "------------------------------------------------------------------------"
+python3 test_make_vl_jobs.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a builder template, generator or schema edit regenerates a project"
+echo "------------------------------------------------------------------------"
+python3 test_make_builder_stamp.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a copied project tree rebuilds its database"
+echo "------------------------------------------------------------------------"
+python3 test_make_relocated_tree.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: compile_commands.json and .clangd follow the configured compiler"
+echo "------------------------------------------------------------------------"
+python3 test_compdb_configured_compiler.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a deleted YAML include fails with one error naming it and its includer"
+echo "------------------------------------------------------------------------"
+python3 test_missing_include_diagnostic.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: make synthf writes an ordered synthesis list; lint names a missing wrapper"
+echo "------------------------------------------------------------------------"
+python3 test_make_synthf.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

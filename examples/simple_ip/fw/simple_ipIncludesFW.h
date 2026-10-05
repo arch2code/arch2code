@@ -53,8 +53,8 @@ inline const char* addr_id_top_prt( addr_id_top val )
 namespace fw_ns::simple_ip {
 // structures
 struct simpleData8St {
-    simpleData8T data; //8-bit payload @variant0
-    simpleMarkerT marker; //marker bit
+    simpleData8T data; /* [7:0] */ //8-bit payload @variant0
+    simpleMarkerT marker; /* [8:8] */ //marker bit
 
     simpleData8St() { memset(this, 0, sizeof(simpleData8St)); }
 
