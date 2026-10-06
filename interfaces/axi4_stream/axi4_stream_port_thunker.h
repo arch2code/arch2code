@@ -20,13 +20,15 @@
 // elsewhere; this class performs the runtime payload bridge via copyPayload()
 // and preserves the stream handshake at both ends.
 //
-// DirectTdata, DirectTid, DirectTdest and DirectTuser are the generator's
-// verdicts for the four payload pairs this protocol carries (tdata_t, tid_t,
-// tdest_t and tuser_t, in that order): true when the pair's two declarations
-// emit identical member storage, which lets copyPayload() transfer the value
-// whole instead of packing and unpacking it field by field. All four default to
+// DirectTdata, DirectTid and DirectTdest are the generator's verdicts for the
+// three required payload pairs this protocol carries (tdata_t, tid_t and
+// tdest_t, in that order): true when the pair's two declarations emit
+// identical member storage, which lets copyPayload() transfer the value whole
+// instead of packing and unpacking it field by field. All three default to
 // false, which is always correct and merely slower, so a hand-written
-// instantiation need not supply them.
+// instantiation need not supply them. tuser_t is optional and carries no
+// verdict: it is bridged packed when both sides bind it, and dropped (the
+// receiving envelope keeps its default) when only one side does.
 //
 // The envelope is bridged member by member, unlike axi_read / axi_write which
 // hand their whole envelope to copyPayload(). Two properties of
@@ -51,12 +53,13 @@
 // is a topological position, not a data-flow direction (the producer shape
 // below flows Down -> Up).
 //
-// axi4_stream_if.yaml lists four struct parameters (tdata_t, tid_t, tdest_t,
-// tuser_t), so the buildThunkerView payload enumeration is the parent's four
-// followed by the child's four, and the template parameter list carries those
-// eight types in that order, then one verdict bool per payload pair in
-// parameter order. tstrb_t and tkeep_t are hdlparams rather than struct
-// parameters and carry no verdict of their own.
+// axi4_stream_if.yaml lists three required struct parameters (tdata_t, tid_t,
+// tdest_t) and one optional (tuser_t). Template argument order matches the
+// generator (pysrc/intf_gen_utils.py _thunker_member_type): up-required,
+// down-required, one verdict bool per required pair, up-optional (tuser_t),
+// down-optional (tuser_t); an unbound tuser_t is left to its std::monostate
+// default. tstrb_t and tkeep_t are hdlparams rather than struct parameters and
+// carry no verdict of their own.
 //
 // Four construction shapes are supported, spanning a 2x2 family: the child
 // (down) end is either a consumer (axi4_stream_in<Down...>&) or a producer
@@ -91,10 +94,10 @@
 // member). The overloaded constructors are disambiguated by the child
 // end's port type (axi4_stream_in vs axi4_stream_out), so the container
 // generator emits identical wiring for both directions.
-template <class UpTDATA, class UpTID, class UpTDEST, class UpTUSER,
-          class DownTDATA, class DownTID, class DownTDEST, class DownTUSER,
-          bool DirectTdata = false, bool DirectTid = false,
-          bool DirectTdest = false, bool DirectTuser = false>
+template <class UpTDATA, class UpTID, class UpTDEST,
+          class DownTDATA, class DownTID, class DownTDEST,
+          bool DirectTdata = false, bool DirectTid = false, bool DirectTdest = false,
+          class UpTUSER = std::monostate, class DownTUSER = std::monostate>
 class axi4_stream_port_thunker
 {
 public:
@@ -224,8 +227,12 @@ private:
         out.tlast = in.tlast;
         static_assert( !DirectTdest || sizeof(ToTDEST) == sizeof(FromTDEST), "axi4_stream tdest_t direct copy requires equal payload size" );
         copyPayload<DirectTdest>( out.tdest, in.tdest );
-        static_assert( !DirectTuser || sizeof(ToTUSER) == sizeof(FromTUSER), "axi4_stream tuser_t direct copy requires equal payload size" );
-        copyPayload<DirectTuser>( out.tuser, in.tuser );
+        // tuser_t is optional: bridged only when both sides bind it (identical
+        // spellings take copyPayload's identity arm, differing ones are packed);
+        // a side that leaves it unbound has no member to read or write.
+        if constexpr (hasOptionalPayload<ToTUSER> && hasOptionalPayload<FromTUSER>) {
+            copyPayload<false>( out.tuser, in.tuser );
+        }
     }
 
     axi4_stream_in<UpTDATA, UpTID, UpTDEST, UpTUSER>*     m_up_port;

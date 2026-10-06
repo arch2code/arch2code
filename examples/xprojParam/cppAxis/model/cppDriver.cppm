@@ -102,4 +102,3 @@ void cppDriver::driveShapes(void)
             LOG_IMPORTANT);
     }
 }
-

@@ -87,4 +87,3 @@ void xpSinkUniq<Config>::checkVideo(void)
         SAMPLE_COUNT), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

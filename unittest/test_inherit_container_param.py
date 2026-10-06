@@ -99,10 +99,45 @@ def _run_create_subprocess(project_path, db_path):
 
 
 # --- Positive fixture: subset child inherits the container's Config ---------
+# The child also carries a type payload: a `types:` row sized by WIDTH
+# (`pT`), bound to a `datatype: type` interface parameter on one of the
+# child's own ports. `uSrc` gives that port a connection to satisfy
+# declared-ports validation; it declares no ports: of its own, so its side
+# of the connection is inferred rather than checked for compatibility, and
+# the fixture stays focused on the child's own payload resolution.
 POSITIVE_YAML = """ipParameters:
   constants:
     WIDTH: {value: 8, maxValue: 32, desc: "width param"}
     DEPTH: {value: 4, maxValue: 16, desc: "depth param"}
+
+types:
+  pT: {width: WIDTH, isParameterizable: true, desc: "type payload sized by the inherited WIDTH"}
+
+interface_defs:
+  type_intf:
+    parameters:
+      p_ty: {datatype: type}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'type_intf'
+      multicycle_types: []
+
+interfaces:
+  typeIf:
+    interfaceType: type_intf
+    desc: "type_intf binding its datatype: type payload to pT"
+    structures:
+      - {structure: pT, structureType: p_ty}
 
 blocks:
   containerIp:
@@ -111,6 +146,11 @@ blocks:
   childIp:
     desc: "Parameterized child block (subset params)"
     params: [WIDTH]
+    ports:
+      inTy: {interface: typeIf, direction: dst}
+  srcIp:
+    desc: "Type payload source sibling (implied port)"
+    params: [WIDTH]
   top:
     desc: "Top block"
 
@@ -118,12 +158,16 @@ instances:
   uTop:       { container: top, instanceType: top }
   uContainer: { container: top, instanceType: containerIp, variant: cv0 }
   uChild:     { container: containerIp, instanceType: childIp, inheritContainerParam: true }
+  uSrc:       { container: containerIp, instanceType: srcIp, inheritContainerParam: true }
 
 parameters:
   containerIp:
     cv0:
       WIDTH: 8
       DEPTH: 4
+
+connections:
+  - {interface: typeIf, src: uSrc, srcport: outTy, dst: uChild, dstport: inTy}
 """
 
 
@@ -157,7 +201,20 @@ def _run_positive():
         assert arg == '<Config>', \
             f"expected template arg '<Config>', got {arg!r}"
 
+        # The child's type payload (its `inTy` port, bound to `pT`) spells its
+        # width as `Config::WIDTH`. At the container's instantiation site
+        # `Config` is the bound cv0 struct, so the width is the container's
+        # WIDTH, not one the child freezes on its own.
+        typeif_row = next(r for r in prj.data['interfaces'].values()
+                          if r['interface'] == 'typeIf')
+        intf_def = prj.data['interface_defs'][typeif_row['interfaceTypeKey']]
+        (payload,) = prj.getIntfParamBindings(intf_def, typeif_row['structures'])
+        spelled = intf_gen_utils.sc_type_payload_name(payload, prj)
+        assert spelled == 'pT<Config>, Config::WIDTH', \
+            f"expected type payload 'pT<Config>, Config::WIDTH', got {spelled!r}"
+
         print("  PASS: inheriting instance types on the container's <Config>")
+        print("  PASS: inherited type payload width scopes to Config::WIDTH")
         return True
     except Exception as e:  # noqa: BLE001 - surface as a test failure
         print(f"  FAIL: {e}")

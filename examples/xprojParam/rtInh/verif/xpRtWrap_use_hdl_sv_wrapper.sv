@@ -9,7 +9,7 @@
 module xpRtWrap_use_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
-    import common_shared_types_package::*;
+    import shared_types_package::*;
 #(
     localparam RT_WIDTH = 32
 )(

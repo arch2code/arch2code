@@ -1,21 +1,18 @@
 """Re-stamp the USER-owned `endmodule: <label>` of each RTL block module file to
-the project-qualified module name.
+the block's SV module name.
 
-The SystemVerilog module begin-declaration is generator-owned
-(`moduleInterfacesInstances`) and now emits the project-qualified module name
-(`blockModuleName`). The matching `endmodule: <label>` in such a file is
-scaffolded OUTSIDE the generated region (the user writes the module body and
-closes it), so `make gen` never rewrites it. This one-time re-stamp aligns the
-user end-label with the qualified begin-label; without it Verilator raises
-`%Error-ENDLABEL`.
+The module begin-declaration is generator-owned (`moduleInterfacesInstances`)
+and emits `blockSvModuleName`, the stem of the block's RTL file. The matching
+`endmodule: <label>` sits OUTSIDE the generated region, so `make gen` never
+rewrites it, and a stale label makes Verilator raise `%Error-ENDLABEL`. The
+label goes stale when the name changes: a rename, an `svFilePrefix` change, or
+a project that predates file-stem module names.
 
-DB-backed, like migrateProjectParam: the qualified name is
-`qualify(blockName, owningProject)` and the owner (`contextOwningProject`) exists
-only after `make db`, so this runs in the `migrateYaml.py --sweep` phase. A
-fully-generated RTL block (`moduleRegs` / `apbDecodeModule`) closes its module
-INSIDE the generated region, so it carries no user end-label and is left
-untouched. Idempotent (a file already carrying the qualified label is a no-op)
-and owner-gated (a composed build never rewrites a referenced child's file).
+DB-backed, because the name depends on the owning project's prefix, so this
+runs in the `migrateYaml.py --sweep` phase. A fully generated RTL block
+(`moduleRegs` / `apbDecodeModule`) closes its module inside the generated
+region, carries no user label and is left alone. Idempotent, and owner-gated:
+a composed build never rewrites a referenced child's file.
 """
 
 import os
@@ -52,14 +49,14 @@ class ModuleEndlabelReport:
         return not self.manual
 
 
-def _restampEndlabel(text, qualified):
-    """Rewrite the user-region `endmodule: <label>` to `endmodule: <qualified>`.
+def _restampEndlabel(text, moduleName):
+    """Rewrite the user-region `endmodule: <label>` to `endmodule: <moduleName>`.
 
     Returns (found, newText):
       (True, <text>)  a user-region labelled endmodule was rewritten
-      (True, None)    it already reads the qualified label (idempotent no-op)
+      (True, None)    it already reads moduleName (idempotent no-op)
       (False, None)   no user-region labelled endmodule (generator-owned inside a
-                      region, unlabelled, or absent) — nothing to re-stamp
+                      region, unlabelled, or absent), so nothing to re-stamp
     """
     userIdx = {i for i, _ in userRegionLines(text)}
     lines = text.splitlines(keepends=True)
@@ -70,17 +67,17 @@ def _restampEndlabel(text, qualified):
         m = _ENDLABEL_RE.match(stripped)
         if not m:
             continue
-        if m.group(2) == qualified:
+        if m.group(2) == moduleName:
             return True, None
         newline = raw[len(stripped):]  # preserve original line ending
-        lines[i] = f"{m.group(1)}{qualified}{m.group(3)}{newline}"
+        lines[i] = f"{m.group(1)}{moduleName}{m.group(3)}{newline}"
         return True, "".join(lines)
     return False, None
 
 
 def restampModuleEndlabel(prj, write=False):
     """Re-stamp the user `endmodule:` label of every RTL block file this project
-    owns to the qualified module name. Returns a ModuleEndlabelReport."""
+    owns to the block's SV module name. Returns a ModuleEndlabelReport."""
     projectName = prj.config.getConfig("PROJECTNAME")
     report = ModuleEndlabelReport(projectName=projectName)
     rtlDef = prj.filemap["rtlModule"]
@@ -96,18 +93,18 @@ def restampModuleEndlabel(prj, write=False):
             continue
         filePath = expandNewModulePath(rtlDef, blockRow["dir"], blockRow["block"],
                                        blockRow["block"], layout, missingDirOk=True)
-        qualified = prj.blockModuleName[blockRow["blockKey"]]
+        moduleName = prj.blockSvModuleName[blockRow["blockKey"]]
         for ext in rtlDef["ext"]:
             path = filePath + "." + rtlDef["ext"][ext]
             if not os.path.exists(path) or not _isGenerated(path):
                 continue
-            found, newText = _restampEndlabel(_read(path), qualified)
+            found, newText = _restampEndlabel(_read(path), moduleName)
             if not found or newText is None:
-                continue  # generator-owned/unlabelled endmodule, or already qualified
+                continue  # generator-owned/unlabelled endmodule, or already current
             report.applied.append(ReportItem(
                 MODULE_ENDLABEL_RESTAMP, _loc(path, 0),
                 f"re-stamped {os.path.basename(path)} endmodule label to "
-                f"'{qualified}'"))
+                f"'{moduleName}'"))
             if write:
                 _write(path, newText)
                 wrote = True

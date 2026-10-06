@@ -74,9 +74,8 @@ Both stages are classes in `pysrc/processYaml.py`, dispatched from
 `arch2code.py`: supplying `--yaml` and `--db` runs `projectCreate`; supplying
 `--db` (with `--readonly`) runs `projectOpen`, after which independent post-open
 dispatch branches may run: `--systemc`,
-`--systemVerilogGenerator`, `--initialSystemVerilogPackagesGenerator`,
-`--docgen`, `--newmodule`, `--diagram`, `--drawStructure`, `--flows`,
-`--instancesWithBlockType`, `--blockContexts`. These are a sequence of
+`--systemVerilogGenerator`, `--docgen`, `--newmodule`, `--diagram`,
+`--drawStructure`, `--flows`, `--instancesWithBlockType`, `--blockContexts`. These are a sequence of
 independent `if`s, not a mutually exclusive mode selection, so several can run in
 one invocation. (`--newproject` is *not* one of them: it dispatches before any
 database is opened.) Project makefiles wrap this as `make db` then `make gen`.

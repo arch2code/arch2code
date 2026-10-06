@@ -6,7 +6,7 @@
 
 module xpRtLeaf_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import common_shared_types_package::*;
+    import shared_types_package::*;
     import xpRtInh_package::*;
 #(
     parameter RT_WIDTH
@@ -41,7 +41,7 @@ module xpRtLeaf_hdl_sv_wrapper
     assign #0 apbReg_prdata = apbReg.prdata;
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
-    xpRtInh_xpRtLeaf #(.RT_WIDTH(RT_WIDTH)) dut (
+    xpRtLeaf #(.RT_WIDTH(RT_WIDTH)) dut (
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

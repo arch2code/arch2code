@@ -7,9 +7,9 @@ module ip
 // Generated Import package statement(s)
 import ip_package::*;
 #(
-    parameter IP_DATA_WIDTH,
-    parameter IP_MEM_DEPTH,
-    parameter IP_NONCONST_DEPTH
+    parameter int unsigned IP_DATA_WIDTH = 32'h0000_0046,
+    parameter int unsigned IP_MEM_DEPTH = 32'h0000_0010,
+    parameter int unsigned IP_NONCONST_DEPTH = 32'h0000_0018
 )
 (
     push_ack_if.dst ipDataIf,
@@ -72,7 +72,7 @@ import ip_package::*;
     memory_if #(.data_t(ipMemSt), .addr_t(ipDerivedMemAddrSt)) ipDerivedDepthMem_unused();
 
 // Instances
-ip_ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) uIpRegs (
+ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) uIpRegs (
     .ipReg (regs),
     .ipMem (ipMem_reg),
     .ipFixedMem (ipFixedMem_reg),

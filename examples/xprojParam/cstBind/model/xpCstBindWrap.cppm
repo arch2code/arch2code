@@ -27,6 +27,7 @@ import xpCstIp_xpCstDut.base;
 import xpCstBind_xpCstChkInc.base;
 import xpCstBind_xpCstSrcOwn.base;
 import xpCstBind_xpCstChkOwn.base;
+import xpCstBind_xpCstBindTop;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
 // A #include here closes the preamble and attaches to THIS module; use it only for
@@ -34,6 +35,7 @@ import xpCstBind_xpCstChkOwn.base;
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace xpCstIp_ns;
 using namespace xpCstBind_xpCstSup_ns;
+using namespace xpCstBind_xpCstBindTop_ns;
 export SC_MODULE(xpCstBindWrap), public blockBase, public xpCstBindWrapBase
 {
 private:
@@ -58,10 +60,10 @@ public:
     std::shared_ptr<xpCstChkOwnBase<xpCstBind_xpCstChkOwnUseConfig>> uChkB;
 
     // cross-interface thunkers
-    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
-    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstChkIncDfltConfig>, true> thunker_out_1_uChkA;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstIp_xpCstDutDfltConfig>, xpCstBind_xpCstSup_ns::csIncSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstIp_xpCstDutDfltConfig>, xpCstBind_xpCstSup_ns::csIncSt<xpCstBind_xpCstChkIncDfltConfig>, true> thunker_out_1_uChkA;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstBind_xpCstDutUseConfig>, xpCstBind_xpCstSup_ns::csOwnSt<xpCstBind_xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
+    push_ack_port_thunker<xpCstIp_ns::csDutSt<xpCstBind_xpCstDutUseConfig>, xpCstBind_xpCstSup_ns::csOwnSt<xpCstBind_xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
 
     xpCstBindWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstBindWrap() override = default;
@@ -113,4 +115,3 @@ xpCstBindWrap::xpCstBindWrap(sc_module_name blockName, const char * variant, blo
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

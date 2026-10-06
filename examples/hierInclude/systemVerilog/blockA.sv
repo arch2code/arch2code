@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: hierInclude_blockA
-module hierInclude_blockA
+//module as defined by block: blockA
+module blockA
 // Generated Import package statement(s)
 import hierInclude_package::*;
 (
@@ -15,4 +15,4 @@ import hierInclude_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: hierInclude_blockA
+endmodule: blockA

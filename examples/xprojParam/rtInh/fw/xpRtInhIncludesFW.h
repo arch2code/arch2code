@@ -6,6 +6,8 @@
 // GENERATED_CODE_PARAM --project=xpRtInh --context=../../yaml/xpRtInh.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
+namespace fw_ns::xpRtInh {}
+namespace fw_ns { using namespace xpRtInh; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -16,21 +18,21 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::xpRtInh {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::xpRtInh
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::xpRtInh {
 // types
 template<uint32_t RT_WIDTH> using cfgDataT_v = uint64_t; // [max:32] xpRtLeaf configuration payload
 template<typename Config> using cfgDataT = cfgDataT_v<Config::RT_WIDTH>;
 
-} // namespace fw_ns
+} // namespace fw_ns::xpRtInh
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::xpRtInh {
 // enums
 enum  addr_id_xpRtInhTop {   //Generated type for addressing top instances
     ADDR_ID_XPRTINHTOP_UWRAP=0 }; // uWrap instance address
@@ -53,10 +55,10 @@ inline const char* addr_id_xpRtWrap_prt( addr_id_xpRtWrap val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace fw_ns
+} // namespace fw_ns::xpRtInh
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::xpRtInh {
 // structures
 template<uint32_t RT_WIDTH>
 struct cfgSt_v {
@@ -85,7 +87,7 @@ struct cfgSt_v {
 
 };
 template<typename Config> using cfgSt = cfgSt_v<Config::RT_WIDTH>;
-} // namespace fw_ns
+} // namespace fw_ns::xpRtInh
 
 // GENERATED_CODE_END
 #endif //XPRTINHINCLUDESFW_H_

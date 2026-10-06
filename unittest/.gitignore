@@ -3,3 +3,4 @@
 # mixed_test_arch/ stay tracked.
 /*.yaml
 /*.db
+/*.db-journal

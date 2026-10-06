@@ -2,13 +2,13 @@
 
 // GENERATED_CODE_PARAM --block=ipRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module ip_ipRegs
+module ipRegs
     // Generated Import package statement(s)
     import ip_package::*;
     #(
-        parameter IP_DATA_WIDTH,
-        parameter IP_MEM_DEPTH,
-        parameter IP_NONCONST_DEPTH,
+        parameter int unsigned IP_DATA_WIDTH = 32'h0000_0046,
+        parameter int unsigned IP_MEM_DEPTH = 32'h0000_0010,
+        parameter int unsigned IP_NONCONST_DEPTH = 32'h0000_0018,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -353,5 +353,5 @@ module ip_ipRegs
     assign ipReg.pready  = rd_ready | wr_ready;
     assign ipReg.pslverr = 1'b0;
 
-endmodule : ip_ipRegs
+endmodule : ipRegs
 // GENERATED_CODE_END

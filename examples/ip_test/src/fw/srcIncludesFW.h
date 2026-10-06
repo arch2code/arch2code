@@ -6,6 +6,8 @@
 // GENERATED_CODE_PARAM --project=ip_test --context=../../src/yaml/src.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipLeafIncludesFW.h"
+namespace fw_ns::ip_test_src {}
+namespace fw_ns { using namespace ip_test_src; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
@@ -17,13 +19,13 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::ip_test_src {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_src
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::ip_test_src {
 // types
 template<uint32_t OUT0_DATA_WIDTH> using srcOut0DataT_v = uint64_t; // [max:16] src out0 data word, parameterizable
 template<typename Config> using srcOut0DataT = srcOut0DataT_v<Config::OUT0_DATA_WIDTH>;
@@ -31,16 +33,16 @@ template<uint32_t OUT1_DATA_WIDTH> struct srcOut1DataT_v { uint64_t word[ 2 ]; }
 template<typename Config> using srcOut1DataT = srcOut1DataT_v<Config::OUT1_DATA_WIDTH>;
 typedef uint8_t srcMarkerT; // [1] src high-word marker bit
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_src
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::ip_test_src {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_src
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::ip_test_src {
 // structures
 template<uint32_t OUT0_DATA_WIDTH>
 struct srcOut0St_v {
@@ -113,7 +115,7 @@ struct srcOut1St_v {
 
 };
 template<typename Config> using srcOut1St = srcOut1St_v<Config::OUT1_DATA_WIDTH>;
-} // namespace fw_ns
+} // namespace fw_ns::ip_test_src
 
 // GENERATED_CODE_END
 #endif //SRCINCLUDESFW_H_

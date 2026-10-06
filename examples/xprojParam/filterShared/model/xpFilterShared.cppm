@@ -14,7 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpFilterShared.block;
 import xpFilterShared.base;
-import xpFilterShared.xpFilterShared.config;
+import xpFilterShared.config;
 import xpGain;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -81,4 +81,3 @@ void xpFilterShared<Config>::filterVideo(void)
         videoOut->push(sample);
     }
 }
-

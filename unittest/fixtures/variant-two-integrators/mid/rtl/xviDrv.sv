@@ -26,4 +26,4 @@ import xviLeaf_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: xviMid_xviDrv
+endmodule: xviDrv

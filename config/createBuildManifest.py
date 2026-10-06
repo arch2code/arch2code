@@ -7,8 +7,11 @@ from pysrc.arch2codeHelper import printWarning
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
+# .py catalogs are generated through the SystemC gen path (%.scgen) but are not
+# compiled; they are a separate gen set so A2C_SC_GEN_FILES stays C++-only.
 # rtl.f (ext 'f') is a file list, not a compiled source, so it is in neither set.
 _CPP_GEN_EXTS = {'cpp', 'h', 'cppm'}
+_PY_GEN_EXTS = {'py'}
 _SV_GEN_EXTS = {'sv', 'svh'}
 
 
@@ -29,12 +32,18 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_SV_SRC_DIRS := {asList(manifest['svSrcDirs'])}",
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
+        f"A2C_CPP_CONTEXT_MODULE_FILES := {asList(manifest['cppContextModuleFiles'])}",
+        f"A2C_CPP_CONTEXT_SRC_FILES := {asList(manifest['cppContextSrcFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_SV_DEP_FILES := {asList(manifest['svDepFiles'])}",
         f"A2C_SC_GEN_FILES := {asList(manifest['scGenFiles'])}",
+        f"A2C_PY_GEN_FILES := {asList(manifest['pyGenFiles'])}",
         f"A2C_SV_GEN_FILES := {asList(manifest['svGenFiles'])}",
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
+        # Recorded .cpp under A2C_SC_SRC_DIRS this build must not compile:
+        # foreign-owned VlRegistrar TUs that name pair tops.
+        f"A2C_CPP_EXCLUDE_FILES := {asList(manifest['cppExcludeFiles'])}",
     ]
     # DUT-top wrapper per HDL top block, keyed by block name: the wrapper of that
     # block's top instance at its resolved variant. The lint makefile looks this
@@ -58,8 +67,8 @@ def _writeBuildManifestMk(rootDir, manifest):
     for top in manifest['vlTops']:
         lines.append(f"A2C_VL_PORTMAP_{top['qualifiedTop']} := {top['portmap']}")
     lines.append(f"A2C_VL_GEN_INC := {os.path.join(genDir, 'vl')}")
-    # The registration TUs that include the per-top DUT headers, so the VCS
-    # flow can order them after shell generation.
+    # The compiled registration TUs that include the per-top DUT headers, so
+    # the VCS and Xcelium flows can order them after shell generation.
     lines.append(f"A2C_VL_REGISTRAR_SRC := {asList(manifest['vlRegistrarFiles'])}")
     lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
@@ -70,7 +79,6 @@ def create(prj):
     # Derive the per-project build directory/file set from the same emission
     # decisions the file generator makes, reading the same artifactRows() view
     # newModule and the orphan/stale-segment sweeps consume.
-    fileMap = prj.proj['fileGeneration']['fileMap']
     # Per-owning-project layouts. Object placement is resolved under the layout
     # of the project that owns the object's defining context, so a child-owned
     # artifact lands in the child project's segments. The root layout supplies
@@ -81,6 +89,10 @@ def create(prj):
 
     dirs = {group: set() for group in rootLayout['buildGroups']}
     moduleFiles = set()
+    # The context types modules, which every other module unit is ordered after.
+    contextModuleFiles = set()
+    # The context .cpp sources, which the rundir scaffold builds at -O3.
+    contextSrcFiles = set()
     svModuleFiles = set()
     # SV wrapper bodies reached only by `include`. No command line names them, so
     # they are dependencies of the owning block's tops but never compile inputs.
@@ -89,12 +101,14 @@ def create(prj):
     # generator emits is recorded here so the makefiles consume the DB-derived
     # set instead of rediscovering GENERATED-marked files on disk.
     scGenFiles = set()
+    pyGenFiles = set()
     svGenFiles = set()
 
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockCondData = {k: artifactPaths.blockCondRow(r, blocksParams) for k, r in blockByKey.items()}
-    rows = artifactPaths.artifactRows(prj, blockCondData, prj.flatData['instances'], fileMap)
+    rows = artifactPaths.artifactRows(prj, blockCondData, prj.flatData['instances'],
+                                      artifactPaths.projectFileMaps(prj))
 
     # Only blocks reachable from topInstance compile, so A2C_SV_FILES matches
     # rtl.f; a referenced child's standalone harness is in the database but
@@ -107,6 +121,17 @@ def create(prj):
         reachableBlockKeys.add(instRow['instanceTypeKey'])
         if instRow['containerKey'] in blockByKey:
             reachableBlockKeys.add(instRow['containerKey'])
+
+    # The testbenches this binary can run are those of the project whose harness
+    # it runs: the owner of the top instance's block. That is this project for a
+    # design of its own, or the child whose harness a composing project names as
+    # its topInstance. A reused child's harness inside a larger design stays in
+    # the database but is not a compile input.
+    topInst = next((inst for inst in prj.flatData['instances'].values()
+                    if inst['container'] == '_topInstance'), None)
+    harnessOwner = rootProject
+    if topInst is not None:
+        harnessOwner = prj.contextOwningProject[blockByKey[topInst['instanceTypeKey']]['_context']]
 
     def record(fileDef, filePath, objLayout, rootOwnedGen, svCompile=True):
         role = objLayout['segments'][fileDef['basePath']]['buildGroup']
@@ -121,6 +146,8 @@ def create(prj):
                 genFile = filePath + '.' + extVal
                 if extVal in _CPP_GEN_EXTS:
                     scGenFiles.add(genFile)
+                elif extVal in _PY_GEN_EXTS:
+                    pyGenFiles.add(genFile)
                 elif extVal in _SV_GEN_EXTS:
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
@@ -138,12 +165,19 @@ def create(prj):
     for row in rows:
         if row['mode'] != 'block':
             continue
+        if row['fileDef'].get('dutVariant', False) and row['owner'] != harnessOwner:
+            continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=row['blockKey'] in reachableBlockKeys)
 
     # registrar mode: trampolines and Config modules are gen targets; the SV
     # wrapper tops (pairVlTop, owner-qualified variant) are recorded by the
     # vlTops pass.
+    # A foreign-owned VlRegistrar TU #includes the owner build's V<top>.h
+    # headers. Literal-label tops exist in every build; pair tops exist only in
+    # the owner's, so a TU that names one is recorded but not compiled.
+    registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
+    cppExcludeFiles = set()
     vlRegistrarFiles = set()
     for row in rows:
         if row['mode'] != 'registrar':
@@ -153,15 +187,19 @@ def create(prj):
             continue
         if fileDef.get('ownerQualified', False) and fileDef.get('variant', False):
             continue
+        if row['fileType'] == 'blockVlRegistrar':
+            if row['owner'] != harnessOwner \
+                    and registrarPairs[(row['anchorKey'], row['blockKey'])]['ownerPairSpecific']:
+                cppExcludeFiles.add(row['files']['src'])
+            else:
+                vlRegistrarFiles.add(row['files']['src'])
         # Generated by the project that owns the assembler, as newModule scaffolds it.
         record(fileDef, row['stem'], row['layout'], row['owner'] == rootProject)
-        if row['fileType'] == 'blockVlRegistrar':
-            vlRegistrarFiles.add(row['files']['src'])
 
     # A generated file in an owned registrar directory that the contract does
     # not name is stale. Warn here; newmodule performs the deletion.
     registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
-        prj, rows, blockCondData, fileMap, 'registrar')
+        prj, rows, blockCondData, 'registrar')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
     staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
     for staleFile in staleRegistrarFiles:
@@ -174,7 +212,7 @@ def create(prj):
     # name is stale (left behind by a block/variant rename). Warn here;
     # newmodule performs the deletion.
     vlWrapFiles, vlWrapDirs = artifactPaths.getStaleSegmentFiles(
-        prj, rows, blockCondData, fileMap, 'vl_wrap')
+        prj, rows, blockCondData, 'vl_wrap')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(vlWrapDirs)
     staleVlWrapFiles = sorted(set(generatedInDirs) - vlWrapFiles)
     for staleFile in staleVlWrapFiles:
@@ -183,12 +221,33 @@ def create(prj):
     if staleVlWrapFiles:
         printWarning("run 'make newmodule' to remove stale verification-wrapper files")
 
+    # A `<context>VariantConfig.h` in an owned include directory is a generated
+    # file no fileMap entry names. Warn here; newmodule performs the deletion.
+    retiredFiles = artifactPaths.getRetiredContextFiles(prj, rows)
+    for staleFile in retiredFiles:
+        printWarning(f"stale retired file {staleFile} is no longer generated "
+                     f"(Config now lives in the per-block registrar Config modules)")
+    if retiredFiles:
+        printWarning("run 'make newmodule' to remove stale retired files; replace any "
+                     "#include of them with `import <project>.<block>.config;`")
+
+    legacyFwHeaders = artifactPaths.getLegacyFwHeaders(prj, rows)
+    for legacyFile in legacyFwHeaders:
+        printWarning(f"firmware header {legacyFile} wraps its generated regions in a "
+                     f"scaffold-owned namespace fw_ns block, which nests the context namespace")
+    if legacyFwHeaders:
+        printWarning("run 'make newmodule' to migrate legacy firmware headers")
+
     # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
     for row in rows:
         if row['mode'] != 'context':
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=False)
+        if 'cppm' in row['files']:
+            contextModuleFiles.add(row['files']['cppm'])
+        contextSrcFiles.update(path for ext, path in row['files'].items()
+                               if row['fileDef']['ext'][ext] == 'cpp')
 
     # project mode: one artifact per project at the top context; rtl.f's path
     # is published so the VL and lint makefiles read it instead of assuming
@@ -208,19 +267,28 @@ def create(prj):
 
     # One record per vl-buildGroup .sv wrapper: block-mode vlSvWrap per
     # variant, registrar-mode vlSvWrapForeign per foreign variant,
-    # vlSvWrapPair per pairSpecific registration. The design unit is the file
-    # basename, the same composition the SV wrapper view emits; a pair top
-    # uses its registration's topModule.
+    # vlSvWrapPair per pairSpecific registration. Each design unit is the name
+    # projectCreate saved for that top, the one the SV wrapper view emits.
     vlTops = list()
+    svWrapperNames = prj.config.getConfig('SVWRAPPERNAMES')
 
     genVlDir = os.path.join(prj.config.getConfig('DIRS')['root'], '.gen', 'vl')
 
-    def recordVlTop(fileDef, filePath, qualifiedTop=None):
-        top = qualifiedTop or os.path.basename(filePath)
+    def vlTopName(row):
+        if row['topModule'] is not None:
+            return row['topModule']
+        names = svWrapperNames[row['blockKey']]
+        if row['mode'] == 'registrar':
+            return names['foreignVariantTops'][row['owner']][row['variant']]
+        if row['variant']:
+            return names['variantTops'][row['variant']]
+        return names['bodyModule']
+
+    def recordVlTop(fileDef, filePath, qualifiedTop):
         vlTops.append({
             'physicalSv':   filePath + '.' + fileDef['ext']['sv'],
-            'portmap':      os.path.join(genVlDir, top + '.portmap'),
-            'qualifiedTop': top,
+            'portmap':      os.path.join(genVlDir, qualifiedTop + '.portmap'),
+            'qualifiedTop': qualifiedTop,
         })
 
     def isVlSvTop(fileDef, objLayout):
@@ -241,8 +309,6 @@ def create(prj):
     # several variants, a Verilated sibling shares its name prefix, or several
     # direct children are Verilated.
     dutTopVariantByBlock = dict()
-    topInst = next((inst for inst in prj.flatData['instances'].values()
-                    if inst['container'] == '_topInstance'), None)
     if topInst is not None:
         topBlockKey = topInst['instanceTypeKey']
         dutInsts = list()
@@ -260,7 +326,8 @@ def create(prj):
             continue
         if not isVlSvTop(row['fileDef'], row['layout']):
             continue
-        recordVlTop(row['fileDef'], row['stem'], row['topModule'])
+        topName = vlTopName(row)
+        recordVlTop(row['fileDef'], row['stem'], topName)
         # Every top here is verilated; only an owned one is regenerated here.
         if row['owner'] == rootProject:
             svGenFiles.add(row['files']['sv'])
@@ -268,7 +335,7 @@ def create(prj):
         # it (so the map and A2C_VL_TOPS agree exactly), keyed by block name
         # for the makefile's HDL_TOP_MODULE lookup.
         if row['mode'] == 'block' and dutTopVariantByBlock.get(row['blockKey']) == row['variant']:
-            dutTops[blockByKey[row['blockKey']]['block']] = os.path.basename(row['stem'])
+            dutTops[blockByKey[row['blockKey']]['block']] = topName
 
     # The SV a verilate run reads, as distinct from the modules named on its
     # command line. Project-wide: every top is verilated against the same rtl.f
@@ -294,12 +361,16 @@ def create(prj):
         'svSrcDirs':     sorted(dirs.get('sv', set())),
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'cppModuleFiles':sorted(moduleFiles),
+        'cppContextModuleFiles': sorted(contextModuleFiles),
+        'cppContextSrcFiles': sorted(contextSrcFiles),
         'svFiles':       sorted(svModuleFiles),
         'svDepFiles':    sorted(svDepFiles),
         'scGenFiles':    sorted(scGenFiles),
+        'pyGenFiles':    sorted(pyGenFiles),
         'svGenFiles':    sorted(svGenFiles),
         'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
+        'cppExcludeFiles': sorted(cppExcludeFiles),
         'dutTops':       dutTops,
         'vlRegistrarFiles': sorted(vlRegistrarFiles),
     }

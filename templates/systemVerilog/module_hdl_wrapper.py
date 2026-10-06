@@ -138,11 +138,7 @@ def intf_reconstruction(prj, data, mp_sig):
     return s
 
 def dut_instantiation(prj, data, blk_name, blk_param):
-    # The DUT is the (project-qualified) design-block module, so instantiate it
-    # by its qualified module name. The wrapper's own body/top module names stay
-    # plain (filename-coupled verilated tops); only the instantiated DUT tracks
-    # the block rename.
-    s = f"{data['blockModuleName']}{blk_param} dut (\n"
+    s = f"{data['blockSvModuleName']}{blk_param} dut (\n"
     s_1 = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():

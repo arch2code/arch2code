@@ -13,7 +13,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpDpMid.block;
 import xpDpMid.base;
-import xpDpMid.xpDpMid.config;
+import xpDpMid.config;
 import xpDpMid.xpDpLeaf.config;
 import xpDpLeaf.block;
 import xpDpLeaf;
@@ -79,4 +79,3 @@ xpDpMid<Config>::xpDpMid(sc_module_name blockName, const char * variant, blockBa
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

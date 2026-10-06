@@ -17,17 +17,12 @@ all: $(DOT_DB_FILE)
 $(DOT_DB_FILE): 
 	make -C ../arch && touch $@
 
-.PHONY: init-packages
-# initializes package files and creates the package.f file that is used during lint
-init-packages: $(DOT_DB_FILE)
-	$(REPO_ROOT)/arch2code.py -r --db $(DB_FILE) --initialSystemVerilogPackagesGenerator --moduledir $(SV_DIR)
-
 $(DOT_GEN_FILE): $(DOT_DB_FILE)
 	for i in $(SV_GEN_FILES); do $(REPO_ROOT)/arch2code.py --db $(DB_FILE) -r -sv --file $$i; done
 	touch $@
 
 lint: $(DOT_GEN_FILE)
-	verilator --lint-only -sv -F $(SV_COM)/a2c.f -f package.f $(SV_FILES) --top-module $(PROJECTNAME)_top -y $(SV_COM)
+	verilator --lint-only -sv -F $(SV_COM)/a2c.f -f package.f $(SV_FILES) --top-module top -y $(SV_COM)
 
 clean:
 	$(RM) $(DB_FILE) $(DOT_DB_FILE) $(DOT_GEN_FILE)

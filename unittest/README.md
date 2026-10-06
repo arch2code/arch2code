@@ -95,7 +95,12 @@ A new `test_*.py` file must follow the same shape. It is discovered automaticall
 
 ## Running Tests
 
-Run all tests:
+Run all tests (the parallel runner, also what `make unittest` and `make push-test` invoke):
+```bash
+./run_all_tests_parallel.sh
+```
+
+Run them serially:
 ```bash
 ./run_all_tests.sh
 ```

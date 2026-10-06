@@ -1527,28 +1527,16 @@ struct ipTestConfigDefault {
     static constexpr uint32_t IP_DATA_WIDTH = 70;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
     static constexpr uint32_t IP_NONCONST_DEPTH = 24;
-    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
-    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
 };
 struct ipTestConfigMid {
     static constexpr uint32_t IP_DATA_WIDTH = 64;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
     static constexpr uint32_t IP_NONCONST_DEPTH = 12;
-    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
-    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
 };
 struct ipTestConfigMax {
     static constexpr uint32_t IP_DATA_WIDTH = 128;
     static constexpr uint32_t IP_MEM_DEPTH = 32;
     static constexpr uint32_t IP_NONCONST_DEPTH = 24;
-    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
-    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
-    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
 };
 std::string test_ip_structs::name(void) { return "test_ip_structs"; }
 void test_ip_structs::test(void) {

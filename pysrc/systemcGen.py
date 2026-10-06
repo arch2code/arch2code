@@ -28,7 +28,9 @@ class genSystemC:
         fileName = args.file
         # setup the user source file helper object. This object will read in the file and chop it up into generated and non-generated pieces
         # the object will also find any generic parameters eg block name that will be the same for all pieces of the file that need rendering
-        self.code = codeText(fileName, "//")
+        # --python is set by the PY_GEN_FILES recipe; C++ hosts use //.
+        comment = '#' if args.python else '//'
+        self.code = codeText(fileName, comment)
         if not self.code.sections:
             # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
             return
@@ -51,7 +53,7 @@ class genSystemC:
             else:
                 exclude = set()
             # get a block based view of the database. This is used for block definitions
-            qualBlock = prj.getQualBlock( self.code.block)
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName)
             block = prj.data['blocks'][qualBlock]['block']
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
             if not data:

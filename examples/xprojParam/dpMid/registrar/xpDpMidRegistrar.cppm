@@ -8,7 +8,7 @@ module;
 
 export module xpDpMid.xpDpMid.registrar;
 import xpDpMid.block;
-import xpDpMid.xpDpMid.config;
+import xpDpMid.config;
 
 namespace {
 struct _xpDpMid_registrar {
@@ -16,13 +16,13 @@ struct _xpDpMid_registrar {
         instanceFactory::registerBlock(
             "xpDpMid_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMid_xpDpMidStdConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMidStdConfig>>(blockName, variant, bbMode));
             },
             "std", "xpDpMid");
         instanceFactory::registerBlock(
             "xpDpMid_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMid_xpDpMidStdConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMidStdConfig>>(blockName, variant, bbMode));
             },
             "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid");
     }

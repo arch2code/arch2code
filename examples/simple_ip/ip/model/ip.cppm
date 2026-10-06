@@ -18,7 +18,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip.block;
 import ip.base;
-import ip.ip.config;
+import ip.config;
 import ip;
 // GENERATED_CODE_END
 // user imports here

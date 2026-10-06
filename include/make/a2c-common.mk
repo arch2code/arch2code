@@ -115,6 +115,11 @@ YAML_FILES = $(A2C_YAML_FILES)
 SC_GEN_FILES =  $(wildcard $(A2C_SC_GEN_FILES)) $(wildcard $(EXTRA_SC_GEN_FILES))
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
+# Python catalogs share the SystemC gen path (%.scgen) but are not C++ hosts.
+# The PY recipe passes --python so the generator chooses the # delimiter.
+PY_GEN_FILES = $(wildcard $(A2C_PY_GEN_FILES))
+PY_GEN_DOT_FILES = $(PY_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
+
 SV_GEN_FILES =  $(wildcard $(A2C_SV_GEN_FILES)) $(wildcard $(A2C_RTL_DOT_F)) $(wildcard $(EXTRA_SV_GEN_FILES))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
@@ -122,7 +127,7 @@ SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 # from the database for every top the manifest lists.
 VL_BOUNDARY_STAMP = $(GEN_BUILD_DIR)/vl/.boundary
 ifndef SKIP_GEN
-GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES) $(PY_GEN_DOT_FILES)
 # The per-top boundary files serve only the VCS and Xcelium flows.
 ifneq ($(USE_VCS)$(USE_XCELIUM),)
 ifneq ($(strip $(A2C_VL_TOPS)),)
@@ -162,8 +167,12 @@ $(A2C_SQLDB_FILE): $(YAML_FILES)
 	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
 	touch $(A2C_SQLDB_DOTFILE)
 
-$(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
+$(SC_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $<
+	@mkdir -p $(@D) && touch $@
+
+$(PY_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python
 	@mkdir -p $(@D) && touch $@
 
 $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
@@ -190,13 +199,16 @@ db : $(A2C_SQLDB_FILE)
 # of files that already exist; --port-tb runs before gen so its region edits
 # are in place when gen renders; --port runs after gen because it transplants
 # user code into gen-filled .cppm files.
-# The sweep exit code is re-raised last, so pending hand ports still fail the
-# target after the tree is fully regenerated. A --port-tb exit of 1 is a
-# flagged hand port and folds into that code; higher codes halt.
+# An exit of 1 from --sweep or --port-tb is pending hand-port work: the tree
+# still regenerates and the target fails at the end with that code. A higher
+# code halts the target at once. The sweep halts it when a file sits at both
+# its unprefixed and prefixed names, since newmodule would delete the
+# unprefixed copy as stale.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
 	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
+	if [ $$rc -gt 1 ]; then exit $$rc; fi; \
 	$(MAKE) newmodule && \
 	{ $(A2C_ROOT)/migrateYaml.py --port-tb --write --db $(A2C_SQLDB_FILE); trc=$$?; \
 	  if [ $$trc -eq 1 ]; then rc=1; elif [ $$trc -ne 0 ]; then exit $$trc; fi; } && \

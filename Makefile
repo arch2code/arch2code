@@ -49,6 +49,10 @@ AXI_DIR = examples/axiDemo
 AXI_DOT_DB_FILE = $(AXI_DIR)/.axiDemo.db
 AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
+AXISOCKET_MASTER_DIR = examples/axiSocketMaster
+AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
+XIF_DIR = examples/xif
+
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 
 
@@ -147,6 +151,13 @@ xproj-nested-router:
 	make -C $(XPROJ_PARAM_DIR)/rtInh -j gen
 	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run-vl
+
+.PHONY : xproj-socket
+# Socket shell of a parameterized IP, built at a Config only the assembler
+# declares. sktAsm's gen also generates sktIp.
+xproj-socket:
+	make -C $(XPROJ_PARAM_DIR)/sktAsm -j gen
+	make -C $(XPROJ_PARAM_DIR)/sktAsm/rundir -j run
 
 .PHONY : xproj-param
 # Parameterized interface across separately named project boundaries. Leaf-first:
@@ -301,10 +312,14 @@ xproj-inherit:
 #               falling back to the constant's declared default of 8. The gate
 #               also asserts the diagnostic names the container site
 #               xpCpBadWrap at variant use.
-# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+# cpLayout also runs gen: rendering the leaf's view reaches the connection
+# through its port, a cross-interface bind whose ends sit in the container, not
+# in the rendered block. Adjudicated at db and never built. Shares no
+# sub-project, so needs no ordering.
 xproj-container-layout:
 	make -C $(XPROJ_PARAM_DIR)/cpLayout clean
 	make -C $(XPROJ_PARAM_DIR)/cpLayout -j db
+	make -C $(XPROJ_PARAM_DIR)/cpLayout -j gen
 	# The aborted db build leaves a partial file behind, which would satisfy
 	# the db target and make the assertion below vacuous; clean it away first.
 	make -C $(XPROJ_PARAM_DIR)/cpLayoutBad clean
@@ -338,10 +353,14 @@ xproj-container-layout:
 #                (24); the inner sibling stays a literal 16 at both. The alt
 #                site agrees and the use site disagrees, so db must REJECT
 #                naming the use site, not the first site enumerated (alt).
-# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+# inhLayout also runs gen: rendering an inheriting leaf's view reaches its
+# connection through its port, with both ends in the container, not in the
+# rendered block. Adjudicated at db and never built. Shares no sub-project, so
+# needs no ordering.
 xproj-inherit-layout:
 	make -C $(XPROJ_PARAM_DIR)/inhLayout clean
 	make -C $(XPROJ_PARAM_DIR)/inhLayout -j db
+	make -C $(XPROJ_PARAM_DIR)/inhLayout -j gen
 	# The aborted db build leaves a partial file behind, which would satisfy
 	# the db target and make the assertion below vacuous; clean it away first.
 	make -C $(XPROJ_PARAM_DIR)/inhLayoutBad clean
@@ -443,8 +462,8 @@ xproj-variant-unique:
 # against its own Config, so a broken container-sourced link fails the run.
 xif:
 	make -C $(XIF_DIR) -j db
-	@if ! grep -q 'A2C_SC_GEN_FILES.*registrar/xif_xif_tbVariantConfig.cppm' $(XIF_DIR)/.gen/build.mk; then \
-	    echo "ERROR: xif_xif_tbVariantConfig.cppm missing from A2C_SC_GEN_FILES; the fileMap no longer earns xif_tb (params, no model, no tb) a Config module"; \
+	@if ! grep -q 'A2C_SC_GEN_FILES.*registrar/xif_tbVariantConfig.cppm' $(XIF_DIR)/.gen/build.mk; then \
+	    echo "ERROR: xif_tbVariantConfig.cppm missing from A2C_SC_GEN_FILES; the fileMap no longer earns xif_tb (params, no model, no tb) a Config module"; \
 	    exit 1; \
 	fi
 	make -C $(XIF_DIR)/rundir -j all
@@ -478,14 +497,27 @@ apbDecode:
 .PHONY : mixed
 mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
-	make -C $(MIXED_DIR)/rundir run
+	make -C $(MIXED_DIR)/rundir -j run
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket
 pySocket:
 	make -C $(PYSOCKET_DIR)/rundir -j all VL_DUT=1
-	make -C $(PYSOCKET_DIR)/rundir run
+	make -C $(PYSOCKET_DIR)/rundir -j run
 	make -C $(PYSOCKET_DIR)/rtl lint -j
+
+.PHONY : axiSocketMaster
+# Python AXI master / SystemC memory slave over TCP sockets (model-only). Two
+# shells, each on its own consumer memory.
+axiSocketMaster:
+	make -C $(AXISOCKET_MASTER_DIR)/rundir -j all
+	make -C $(AXISOCKET_MASTER_DIR)/rundir run
+
+.PHONY : axiSocketSlave
+# SystemC AXI master / Python memory slave over TCP sockets (model-only).
+axiSocketSlave:
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir -j all
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir run
 
 .PHONY : in-and-out
 # sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
@@ -564,12 +596,42 @@ clean :
 	done
 
 # Invocation contract: see unittest/README.md, "Invocation contract".
+
+.PHONY : newmodule-all
+# Scaffold + fill generated regions for every example that exposes a2c-common
+# newmodule/gen (inAndOut / hierInclude are lint-only and are omitted). Nested
+# IP project roots are included alongside their assemblers.
+# Two make invocations per dir: gen's wildcard GEN_DEPS is fixed at parse time,
+# so it must re-parse after newmodule lays down new files (same as migrate).
+newmodule-all:
+	make -C $(NESTED_DIR) -j newmodule && make -C $(NESTED_DIR) -j gen
+	make -C $(HELLO_DIR) -j newmodule && make -C $(HELLO_DIR) -j gen
+	make -C $(MIXED_DIR) -j newmodule && make -C $(MIXED_DIR) -j gen
+	make -C $(PYSOCKET_DIR) -j newmodule && make -C $(PYSOCKET_DIR) -j gen
+	make -C $(AXISOCKET_MASTER_DIR) -j newmodule && make -C $(AXISOCKET_MASTER_DIR) -j gen
+	make -C $(AXISOCKET_SLAVE_DIR) -j newmodule && make -C $(AXISOCKET_SLAVE_DIR) -j gen
+	make -C $(XIF_DIR) -j newmodule && make -C $(XIF_DIR) -j gen
+	make -C $(APBDECODE_DIR) -j newmodule && make -C $(APBDECODE_DIR) -j gen
+	make -C $(AXI_DIR) -j newmodule && make -C $(AXI_DIR) -j gen
+	make -C $(AXI4SDEMO_DIR) -j newmodule && make -C $(AXI4SDEMO_DIR) -j gen
+	make -C $(HIER_VL_DEMO_DIR) -j newmodule && make -C $(HIER_VL_DEMO_DIR) -j gen
+	make -C $(IP_TEST_DIR) -j newmodule && make -C $(IP_TEST_DIR) -j gen
+	make -C $(IP_TEST_DIR)/ip -j newmodule && make -C $(IP_TEST_DIR)/ip -j gen
+	make -C $(IP_TEST_DIR)/bridge -j newmodule && make -C $(IP_TEST_DIR)/bridge -j gen
+	make -C $(SIMPLE_IP_DIR) -j newmodule && make -C $(SIMPLE_IP_DIR) -j gen
+	make -C $(SIMPLE_IP_DIR)/ip -j newmodule && make -C $(SIMPLE_IP_DIR)/ip -j gen
+
 .PHONY : unittest
 unittest:
-	cd unittest && ./run_all_tests.sh
+	cd unittest && ./run_all_tests_parallel.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
+# The example projects build in their own directories, so they run PIPELINE_JOBS
+# at a time; targets that share a project declare the order themselves.
+PIPELINE_JOBS ?= 8
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif
+pipeline-test:
+	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

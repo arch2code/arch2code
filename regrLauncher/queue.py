@@ -34,7 +34,10 @@ class rlJobQueuer:
     def run_command_gen(self):
         for key, value in self.__fetch_command():
             rl_seed = self.__get_seed_value(value['seed'])
-            self.__propagate_attr_env({ 'RL_SEED' : rl_seed })
+            self.__propagate_attr_env({
+                'RL_SEED': rl_seed,
+                'RL_RUN_ID': f'run_{self.run_id}',
+            })
             run_cmd = (key, self.run_id, subst_env(value['command'] + ' ' + value['args']), value['timeout'], value['rules'])
 
             self.run_id += 1

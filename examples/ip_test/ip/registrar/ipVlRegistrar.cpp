@@ -13,7 +13,7 @@
 #else
 #include "ip_variant0_hdl_sv_wrapper_xcelium.h"
 #endif
-import ip.ip.config;
+import ip.config;
 
 namespace {
 #if defined(VERILATOR)
@@ -23,19 +23,19 @@ using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 #else
 using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 #endif
-static_assert(ipDataSt<ip_ipVariant0Config>::_bitWidth == 9, "ip_variant0_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
+static_assert(ipDataSt<ipVariant0Config>::_bitWidth == 9, "ip_variant0_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
 struct _ip_vl_registrar {
     _ip_vl_registrar() {
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ip_ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip");
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ip_ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip.ip_ipStdTop.ip");
     }

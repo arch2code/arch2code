@@ -87,4 +87,3 @@ void xpMtxDstLit::check(void)
     log_.logPrint(std::format("{} checked {} samples", this->name(), SAMPLE_COUNT), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

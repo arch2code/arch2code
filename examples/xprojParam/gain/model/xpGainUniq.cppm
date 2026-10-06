@@ -81,4 +81,3 @@ void xpGainUniq<Config>::driveVideo(void)
         videoOut->push(sample);
     }
 }
-

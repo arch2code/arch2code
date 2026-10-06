@@ -93,4 +93,3 @@ void xpCstSharedChk<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)CSH_WIDTH), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

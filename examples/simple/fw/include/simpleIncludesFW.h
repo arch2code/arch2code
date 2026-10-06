@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=simple --context=simple.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::simple {}
+namespace fw_ns { using namespace simple; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -15,28 +17,28 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::simple {
 //constants
 inline constexpr uint32_t NUM_TAGS = 32;  // number of tags
 inline constexpr uint32_t NUM_TAGS_LOG2 = 5;  // log2 of number of tags
 
-} // namespace fw_ns
+} // namespace fw_ns::simple
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::simple {
 // types
 typedef uint8_t tag; // [5] tag
 
-} // namespace fw_ns
+} // namespace fw_ns::simple
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::simple {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::simple
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::simple {
 // structures
 struct tag_st {
     tag tagId; //tag id
@@ -61,7 +63,7 @@ struct tag_st {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::simple
 
 // GENERATED_CODE_END
 #endif //SIMPLEINCLUDESFW_H_

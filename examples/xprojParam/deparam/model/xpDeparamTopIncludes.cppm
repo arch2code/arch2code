@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=xpDeparam --context=../../yaml/xpDeparamTop.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

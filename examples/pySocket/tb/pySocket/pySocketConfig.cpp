@@ -19,7 +19,11 @@ import a2c.endOfTest;
 
 #include "socketFactory.h"
 #include "socketTransport.h"
+#include "pySocketSocketCatalog.h"
 #include "testController.h"
+
+// Instance path of the socket shell; pySocket.py spells the same path.
+constexpr const char *SHELL_INSTANCE = "pySocket_tb.u_pySocket";
 
 // Absolute path to pySocket.py: do not rely on getcwd() — runs may start from FIPS/rundir or .../pySocket/rundir.
 std::string resolvePySocketScriptPath()
@@ -83,18 +87,15 @@ private:
 public:
     bool createTestBench(void) override
     {
-        instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
+        instanceFactory::registerInstance(SHELL_INSTANCE, "socket");
 
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
-        if (socketFactory::registerInterface("test_req_ack") == 0) {
+        if (!pySocketSocketCatalog::registerInstance(SHELL_INSTANCE)) {
             return false;
         }
-        if (socketFactory::registerInterface("test2Python_req_ack") == 0) {
-            socketFactory::shutdownAll();
-            return false;
-        }
-        if (socketFactory::registerInterface("dut2Python_req_ack") == 0) {
+        if (pySocketSocketCatalog::uses_lockstep &&
+            socketFactory::registerInterface(PYSOCKET_SYNC_IFC) == 0) {
             socketFactory::shutdownAll();
             return false;
         }
@@ -163,10 +164,11 @@ public:
 
         socketFactory::acceptAll();
 
-        if (socketFactory::getFd("test_req_ack") < 0 || socketFactory::getFd("test2Python_req_ack") < 0
-            || socketFactory::getFd("dut2Python_req_ack") < 0) {
-            socketFactory::shutdownAll();
-            return false;
+        for (const char *suffix : pySocketSocketCatalog::listen_suffixes) {
+            if (socketFactory::getFd(std::string(SHELL_INSTANCE) + suffix) < 0) {
+                socketFactory::shutdownAll();
+                return false;
+            }
         }
 
         // Remove the ports file if it exists since we have already connected
@@ -176,6 +178,10 @@ public:
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "python2SystemCTest",
+            "pythonPushPopTest",
+            "pythonNotifyTest",
+            "pythonRdyVldTest",
+            "pythonAxi4StreamTest",
             "systemC2PythonTest"
         });
 
@@ -198,12 +204,7 @@ public:
         // m_outstanding_completions inconsistent with threads that already registered.
 
         // Release Python sidecar to send transactions only after enumeration and startup barrier.
-        for (const char *ifc : {"test_req_ack", "test2Python_req_ack", "dut2Python_req_ack"}) {
-            const int fd = socketFactory::getFd(ifc);
-            if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
-                return;
-            }
-        }
+        (void)socketFactory::handshakeAll();
     }
 
     void final(void) override
@@ -213,6 +214,7 @@ public:
         if (python_pid_ > 0) {
             int status = 0;
             (void)waitpid(python_pid_, &status, 0);
+            Q_ASSERT_CTX(WIFEXITED(status) && WEXITSTATUS(status) == 0, "final", "Python sidecar failed");
             python_pid_ = -1;
         }
         // Final cleanup if needed

@@ -73,6 +73,11 @@ CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wsh
 # link a shared Boost instead (see the LD_BOOST check above).
 BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)
 LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
+# The native C++ link recipe passes LD_FLAGS, never CXX_FLAGS, so -pthread is
+# repeated here whether or not a Verilated library is linked: the runtime's
+# std::thread use resolves through a real libpthread DSO on glibc < 2.34,
+# where omitting it fails the link with "DSO missing from command line".
+LD_FLAGS += -pthread
 ifdef USE_XCELIUM
 ifndef XCELIUM_TOOLS
 $(error XCELIUM_TOOLS is not set - point it at the Xcelium install's tools directory to build with USE_XCELIUM)
@@ -105,8 +110,9 @@ endif
 # Standard optimization source files.
 CPP_SRC =
 
-# Special optimization for some systemc files.
-O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
+# Special optimization for some systemc files and the generated firmware context
+# sources (see the -O3 rule below).
+O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp $(A2C_CPP_CONTEXT_SRC_FILES)
 
 # Extra compiler / linker dependencies (set by project Makefile)
 A2C_SRC_DIRS += $(EXTRA_A2C_SRC_DIRS)
@@ -120,6 +126,9 @@ LD_FLAGS     += $(EXTRA_LD_FLAGS)
 # Find all .cpp files in the A2C_SRC_DIRS and PRJ_SRC_DIRS directories.
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
+# The manifest names the recorded .cpp this build must not compile: a reused
+# IP's VlRegistrar TUs naming pair tops that only the IP's own build generates.
+CPP_SRC := $(filter-out $(A2C_CPP_EXCLUDE_FILES),$(CPP_SRC))
 
 # C++20 module interface units include both generated files and user-authored
 # .cppm files in project source directories. EXTRA_CPP_MODULE_SRC covers modules
@@ -325,19 +334,26 @@ endif
 
 # Actual target of the binary - depends on all .o files and, under VL_DUT, on the
 # verilated library LD_FLAGS links in. Only the objects are named on the command
-# line; the library reaches the link through -l.
+# line, once each ($^ drops an object listed twice); the library reaches the link
+# through -l.
 $(BIN_DIR)/$(BIN) : $(OBJ) $(VL_WRAP_LIB)
 ifndef USE_VCS
 ifndef USE_XCELIUM
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) -o $@ $(OBJ) $(LD_FLAGS)
+	$(CXX) -o $@ $(filter-out $(VL_WRAP_LIB),$^) $(LD_FLAGS)
 endif
 endif
 
-# Rule to compile files in O3_CPP_SRC to add -o3 optimization
-$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
+# -O3 compiles: the systemc runtime files above, the user's EXTRA_O3_CPP_SRC and
+# the generated context files, which hold the types, pack/unpack code and address
+# definitions every block calls. The context files come from the manifest: this
+# rule takes the firmware context .cpp (A2C_CPP_CONTEXT_SRC_FILES), and the module
+# object rules below take the context modules (A2C_CPP_CONTEXT_MODULE_FILES).
+# $(sort) drops a file listed twice, as when an older rundir Makefile still names
+# the context sources in EXTRA_O3_CPP_SRC.
+$(sort $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) -O3 $(CXX_FLAGS) -MMD -MP -c $< -o $@
 
@@ -354,6 +370,7 @@ $(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 # GCC does both in a single step and writes the CMI to the module cache. The
 # import-ordering edges below apply to whichever artifact the active compiler
 # produces (CPP_MODULE_DEPS): .pcm for Clang, .module.o for GCC.
+CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
 ifndef USE_GCC
 
 # Clang: precompile the interface unit to a PCM, then compile the PCM to an
@@ -369,16 +386,20 @@ $(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_pcm,$(call cpp_mod
 # global module fragment, and that header `import`s the block's context types
 # module. The module scanner sees only the .cppm's own `import` lines, so that
 # transitive dependency is invisible to the edge above. Order every
-# block-module pcm after all context (`*Includes.cppm`) pcms; the context
+# block-module pcm after all context (A2C_CPP_CONTEXT_MODULE_FILES) pcms; the context
 # modules' own inter-dependencies are already captured by the import-name scan.
-CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
-$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_pcm,$(src)): $(CPP_CONTEXT_MODULE_PCM)))
+CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
+$(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(eval $(call cpp_module_pcm,$(src)): $(CPP_CONTEXT_MODULE_PCM)))
 
 .SECONDARY: $(CPP_MODULE_PCM)
 
 $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
 	mkdir -p $(@D)
 	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
+
+# The context modules' code generation runs at -O3. Their PCMs keep the common
+# flags, so importers load a PCM built as before.
+$(CPP_CONTEXT_MODULE_OBJ): private CPP_MODULE_OBJ_FLAGS := -O3 $(CPP_MODULE_OBJ_FLAGS)
 
 else
 
@@ -389,11 +410,13 @@ $(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
 
+# The context modules compile at -O3. Their CMIs come from this same compile.
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_FLAGS := -O3 $(CXX_FLAGS)
+
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.
 $(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_obj,$(call cpp_module_src_for,$(module))): $(call cpp_module_import_objs,$(module))))
-CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
-$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
+$(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
 
 endif
 

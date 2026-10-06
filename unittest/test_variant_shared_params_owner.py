@@ -126,7 +126,8 @@ def test_shared_params_owner():
         # (e) A block-mode vlSvWrap row exists for projIp's own v0; no
         # registrar-mode vlSvWrapForeign row is emitted under projIp's name.
         blockCondData = {k: prj.getBlockCondRow(k) for k in prj.data['blocks']}
-        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'], prj.filemap)
+        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'],
+                                          artifactPaths.projectFileMaps(prj))
         ownV0Row = any(r['fileType'] == 'vlSvWrap' and r['mode'] == 'block'
                        and r['blockKey'] == leafKey and r['variant'] == 'v0'
                        and r['owner'] == 'projIp' for r in rows)

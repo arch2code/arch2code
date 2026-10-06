@@ -40,6 +40,9 @@ public:
     virtual uint32_t get_context(void) = 0;
     virtual uint32_t get_max_size(void) = 0;
     virtual void setTimedDelayPtr(std::shared_ptr<timedDelayBase> pTimedDelay) = 0;
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -147,6 +150,12 @@ public:
         return m_multicycle->getReadCycle();
     }
     virtual uint8_t * getReadPtr( void ) override;
+    uint32_t getReadBufferSize(void)
+    {
+        Q_ASSERT(m_multicycle != nullptr, "getReadBufferSize requires a burst buffer");
+        Q_ASSERT(tracker_==nullptr, "getReadBufferSize not supported with tracker");
+        return m_multicycle->getReadBufferSize(0);
+    }
     virtual void push_context(uint32_t size) override { m_multicycle->push_context(size); }
     virtual void set_rdy(bool rdy_state) override
     {
@@ -187,6 +196,14 @@ public:
 
     virtual bool get_rdy() const override
     { return ( m_ready ); }
+
+    virtual bool isActive() override { return(m_valid); }
+    virtual bool isNotActive() override { return(!m_valid); }
+    virtual void setExternalEvent( sc_event *event ) override
+    {
+        m_external_event_ptr = event;
+        m_external_arb = true;
+    }
 
     // other methods
     operator T ()
@@ -248,6 +265,8 @@ protected:
     bool m_tee_handle_context = false;
     bool m_tee_handle_copy = false;
     bool m_writer_waiting = false;
+    bool m_external_arb = false;
+    sc_event* m_external_event_ptr = nullptr;
     int64_t m_write_context = -1;
     int64_t m_read_context = -1;
     const int m_burst_size;
@@ -371,6 +390,11 @@ inline void rdy_vld_channel<T>::writeCore( const T& val_ )
     m_value_written = true;
     m_value = val_;
     m_valid = true;
+    // for external arb case, the reader is scanning isActive() rather than
+    // waiting on m_channel_sync_event, so it must be notified separately
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
     sc_prim_channel::request_update();
     sc_core::wait(m_channel_sync_event);
     m_multi_writer = false;

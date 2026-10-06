@@ -1,6 +1,6 @@
 
 // GENERATED_CODE_PARAM --project=vlInh --context=../../yaml/vliCont.yaml --mode=module
-// 
+//
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;

@@ -32,4 +32,4 @@ fileGeneration:
     # Firmware headers are the surface the varType collision gate protects, so
     # this fixture generates them; the base fileMap leaves includeFW off.
     fileMap:
-        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "yaml based fw include file" }

@@ -2,8 +2,8 @@
 interface_defs:
   req_ack : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
-      rdata_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
+      rdata_t : { datatype : struct }
     signals: 
       req : bool
       data : data_t
@@ -19,4 +19,7 @@ interface_defs:
     sc_channel :
       type : 'req_ack'
       multicycle_types : []
+    socket:
+      src: { kind: drive }
+      dst: { kind: drive }
 

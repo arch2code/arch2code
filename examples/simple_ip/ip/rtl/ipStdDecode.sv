@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=ipStdDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: ip_ipStdDecode
-module ip_ipStdDecode
+//module as defined by block: ipStdDecode
+module ipStdDecode
 // Generated Import package statement(s)
 import ip_package::*;
 (
@@ -70,5 +70,5 @@ assign ipReg.pready  = pready;
 assign ipReg.prdata  = prdata;
 assign ipReg.pslverr = pslverr;
 
-endmodule: ip_ipStdDecode
+endmodule: ipStdDecode
 // GENERATED_CODE_END

@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=nested --context=../../yaml/nested.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::nested {}
+namespace fw_ns { using namespace nested; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -15,7 +17,7 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::nested {
 //constants
 inline constexpr uint32_t NUM_COMMANDS = 1024;  // Number of Commands
 inline constexpr uint32_t NUM_COMMANDS_LOG2 = 10;  // Number of Commands log2
@@ -32,10 +34,10 @@ inline constexpr uint32_t TAGBASE_SECONDTAG = 0;  // base value for Tag type 2
 inline constexpr uint32_t TAGBASE_THIRDTAG = 1024;  // base value for Tag type 3
 inline constexpr uint32_t TAGBASE_FIRSTTAG = 2048;  // base value for Tag type 1
 
-} // namespace fw_ns
+} // namespace fw_ns::nested
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::nested {
 // types
 typedef uint16_t tagT; // [12] Read Tag
 typedef uint16_t cmdidT; // [10] Command ID
@@ -43,10 +45,10 @@ struct bigT { uint64_t word[ 2 ]; }; // [96] big width test case
 struct dataT { uint64_t word[ 2 ]; }; // [128] Data
 typedef uint16_t lengthT; // [16] Length of transfer
 
-} // namespace fw_ns
+} // namespace fw_ns::nested
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::nested {
 // enums
 enum  tagTypeT {             //type of tag for encode
     TAGTYPE_SECONDTAG=0,     // Tag type 2
@@ -87,10 +89,10 @@ inline const char* enumType_prt( enumType val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace fw_ns
+} // namespace fw_ns::nested
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::nested {
 // structures
 struct test_st {
     cmdidT a; //
@@ -236,7 +238,7 @@ struct cmdidHdrSt {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::nested
 
 // GENERATED_CODE_END
 #endif //NESTEDINCLUDESFW_H_

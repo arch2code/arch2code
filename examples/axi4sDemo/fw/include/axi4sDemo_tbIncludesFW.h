@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=axi4sDemo --context=axi4sDemo_tb.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::axi4sDemo_tb {}
+namespace fw_ns { using namespace axi4sDemo_tb; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -15,13 +17,13 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::axi4sDemo_tb {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::axi4sDemo_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::axi4sDemo_tb {
 // types
 typedef uint8_t bv4_t; // [4] Bit Vector 4 bits
 typedef uint8_t bv8_t; // [8] Bit Vector 8 bits
@@ -29,16 +31,16 @@ typedef uint16_t bv16_t; // [16] Bit Vector 16 bits
 typedef uint64_t bv64_t; // [64] Bit Vector 64 bits
 struct bv256_t { uint64_t word[ 4 ]; }; // [256] Bit Vector 256 bits
 
-} // namespace fw_ns
+} // namespace fw_ns::axi4sDemo_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::axi4sDemo_tb {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::axi4sDemo_tb
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::axi4sDemo_tb {
 // structures
 struct data_t1_t {
     bv256_t data; //
@@ -231,7 +233,7 @@ struct tuser_t2_t {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::axi4sDemo_tb
 
 // GENERATED_CODE_END
 #endif //AXI4SDEMO_TBINCLUDESFW_H_

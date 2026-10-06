@@ -2,8 +2,8 @@
 interface_defs:
   memory : 
     parameters : 
-      addr_t : { datatype : struct, default : 'bit' }
-      data_t : { datatype : struct, default : 'bit' }
+      addr_t : { datatype : struct }
+      data_t : { datatype : struct }
     signals: 
       write_data : data_t
       read_data : data_t

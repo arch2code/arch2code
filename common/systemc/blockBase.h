@@ -4,7 +4,13 @@
 #include "logging.h" // for logBlock
 #include "systemc.h"
 #if defined(VERILATOR)
-#include "verilated_vcd_sc.h"
+// Only vl_trace's pointer parameter needs this. blockBase.h is included in the
+// global module fragment of every generated <block>Base module unit (see
+// templates/systemc/moduleScaffold.py), never in a named module's purview, so
+// pulling in verilated_vcd_sc.h here would drag verilated.h and <atomic>/
+// <thread> into those units; clang 17/18 then fails to merge libstdc++'s
+// __waiter_pool_base with a2c.endOfTest. Same forward declaration as verilated.h.
+class VerilatedVcdC;
 #endif
 #include "timedDelay.h"
 

@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=ip --context=../../yaml/ip.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::ip {}
+namespace fw_ns { using namespace ip; }
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
@@ -16,7 +18,7 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::ip {
 //constants
 inline constexpr uint32_t IP_DATA_WIDTH_X2 = 70 * 2;  // Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
 inline constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;  // Second-level derived width, 4x data
@@ -29,10 +31,10 @@ inline constexpr uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and 
 inline constexpr uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
 inline constexpr uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
 
-} // namespace fw_ns
+} // namespace fw_ns::ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::ip {
 // types
 template<uint32_t IP_DATA_WIDTH> struct ipDataT_v { uint64_t word[ 2 ]; }; // [max:128] IP data word, parameterizable
 template<typename Config> using ipDataT = ipDataT_v<Config::IP_DATA_WIDTH>;
@@ -57,10 +59,10 @@ typedef uint8_t ipFixedIndexT; // [4] Fixed index field wide enough for 0..IP_FI
 typedef uint32_t ipRegAddrT; // [32] ip leaf register-bus address
 typedef uint32_t ipRegDataT; // [32] ip leaf register-bus data
 
-} // namespace fw_ns
+} // namespace fw_ns::ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::ip {
 // enums
 enum  ipModeT {              //IP operating mode
     IP_MODE_OFF=0,           // Off
@@ -105,10 +107,10 @@ inline const char* ipFixedOpcodeT_prt( ipFixedOpcodeT val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace fw_ns
+} // namespace fw_ns::ip
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::ip {
 // structures
 template<uint32_t IP_DATA_WIDTH>
 struct ipDataSt_v {
@@ -721,7 +723,7 @@ struct ipRegDataSt {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::ip
 
 // GENERATED_CODE_END
 #endif //IPINCLUDESFW_H_

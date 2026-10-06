@@ -1,6 +1,6 @@
-from pysrc.intf_gen_utils import FW_NAMESPACE, get_const, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, configType
+from pysrc.intf_gen_utils import FW_NAMESPACE, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, cpp_fw_namespace_name, configType
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from templates.systemc.includes import constReference_cpp, constReferenceValueKeyed_cpp, typeWidthExpression_cpp
+from templates.systemc.includes import constReferenceValueKeyed_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
     {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -31,14 +31,18 @@ def render(args, prj, data):
         args.mode = resolveMode(args.mode)
         if args.section == '':
             args.section = 'header'
+        if args.section == 'cpp' and args.mode == 'fw':
+            # Out-of-line definitions name the context's own fw namespace; the
+            # scaffold's `--namespace=fw_ns` names only the outer one.
+            args.namespace = cpp_fw_namespace_name(data['contextModuleIdentity'])
         out.append("// structures")
         for struct, value in data['structures'].items():
             out.extend(oneStruct(args, prj, data, struct, value))
         out = wrap_module_namespace(args, data, out)
         if args.section == 'header':
-            # The cpp section spells its out-of-line definitions `fw_ns::<struct>::`
-            # from args.namespace, so only the declarations are wrapped.
-            out = wrap_fw_namespace(args, out)
+            # The cpp section qualifies its out-of-line definitions from
+            # args.namespace, so only the declarations are wrapped.
+            out = wrap_fw_namespace(args, data, out)
     # handle system includes
     if (args.section == 'headerIncludes' or args.section == 'cppIncludes'):
         fwCpp = args.section == 'cppIncludes' and args.mode == 'fw'
@@ -1595,10 +1599,10 @@ def _roundTripHelperLines(indent):
 
 
 def _sampleConfigs(prj, data):
-    """Deterministic Default/Mid/Max sample points for the base parameterizable
-    constants a round-trip test needs (projectOpen._sampleConfigConstants),
-    taken from each constant's own declaration."""
-    baseParams = [v for v in data['sampleConfigConstants'].values() if not v['evalCanonical']]
+    """Deterministic Default/Mid/Max sample points for the root parameters a
+    round-trip test needs (projectOpen._sampleConfigConstants), taken from each
+    constant's own declaration."""
+    baseParams = list(data['sampleConfigConstants'].values())
     if not baseParams:
         return []
     defaultVals = {v['constant']: v['value'] for v in baseParams}
@@ -1648,7 +1652,7 @@ def structTest(args, prj, data):
     # in module mode (no Config in a non-module TU).
     samples = _sampleConfigs(prj, data) if useConfig else []
     for _, configName, baseValues in samples:
-        out.extend(config.configStructLines(prj, data, configName, baseValues))
+        out.extend(config.configStructLines(data, configName, baseValues))
 
     out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
     out.append(f'void test_{fn}::test(void) {{')

@@ -117,6 +117,10 @@ def is_known_orphan(repo_root, d):
     # domains, so the child harness's own registrar directory is unreachable.
     if parts == ['ip', 'registrar']:
         return True
+    # A composed child's own testbench directory (nested <child>/tb/<dut>) is
+    # standalone-only: its DUT is not at harness level in the composed build.
+    if len(parts) > 2 and parts[-2] == 'tb':
+        return True
     return False
 
 
@@ -409,8 +413,8 @@ def check_hierarchical_vl_wrap_path():
         'layout': 'hierarchical',
         'buildGroups': {'model': 'sc', 'vl_wrap': 'vl'},
         'fileMap': {
-            'block': {'basePath': 'model'},
-            'vlSvWrap': {'basePath': 'vl_wrap'},
+            'block': {'basePath': 'model', 'langDomain': 'sc'},
+            'vlSvWrap': {'basePath': 'vl_wrap', 'langDomain': 'sv'},
         },
         'hierarchicalDirs': {
             'model': 'model',
@@ -421,7 +425,8 @@ def check_hierarchical_vl_wrap_path():
             'include': '$root/include',
         },
     }
-    layout = pc._buildLayoutFor(dirMacros, fileGeneration)
+    layout = pc._buildLayoutFor(dirMacros, fileGeneration, {'sv': '', 'sc': '', 'fw': ''},
+                                'demo')
     return (layout['segments']['vl_wrap']['path'] == 'verif' and
             layout['segments']['model']['path'] == 'model')
 

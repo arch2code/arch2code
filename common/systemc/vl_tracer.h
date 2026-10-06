@@ -2,6 +2,7 @@
 #define VL_TRACER_H_
 
 #include "systemc.h"
+#include "socketSync.h"
 
 #include "verilated_vcd_sc.h"
 
@@ -31,7 +32,13 @@ public:
 
     void refresh_trace() {
         while (true) {
-            wait(1, SC_NS);
+            // Under gated lockstep, do not timed-wait (that free-runs SC time).
+            // Flush when the gated clock notes that time advanced.
+            if (socketSyncTimeGated()) {
+                wait(socketSyncTimeTickEvent());
+            } else {
+                wait(1, SC_NS);
+            }
             m_tfp->flush();
         }
     }

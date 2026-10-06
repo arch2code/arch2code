@@ -84,4 +84,3 @@ void xpInhLeaf<Config>::forward(void)
         out->push(sample);
     }
 }
-

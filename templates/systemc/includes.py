@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace, configType
+from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace, configType, BLOCK_CONFIG_PARAM
 import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
@@ -89,25 +89,16 @@ def includeConstants(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 
 def constReference_cpp(constKey, prj, useConfig=False):
     """Spell a constant reference for the shared context header. A
     Config-member constant spells as `Config::NAME`; a derived (eval)
-    constant is not a member, so it spells as its canonical expression."""
-    row = prj.data['constants'][constKey]
-    if not useConfig or not row['isParameterizable']:
-        return row['constant']
-    if row['evalCanonical']:
-        # Parenthesised because the caller substitutes this into a larger
-        # expression.
-        return '(' + emissionUtils.emitExpr(
-            row['evalCanonical'],
-            lambda symKey: constReference_cpp(symKey, prj, useConfig=True),
-            emissionUtils.C) + ')'
-    return f"Config::{row['constant']}"
+    constant is not a member, so it spells as its canonical expression
+    (emissionUtils.constReference_cpp owns the rule)."""
+    return emissionUtils.constReference_cpp(constKey, prj, BLOCK_CONFIG_PARAM if useConfig else None)
 
 
 def constReferenceValueKeyed_cpp(constKey, prj):
@@ -180,7 +171,7 @@ def includeTypes(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 
@@ -211,7 +202,7 @@ def includeEnum(args, prj, data):
 
     out.append("")
     out = wrap_module_namespace(args, data, out)
-    out = wrap_fw_namespace(args, out)
+    out = wrap_fw_namespace(args, data, out)
     return("\n".join(out))
 
 

@@ -23,12 +23,13 @@
 // and unpacking it field by field. It defaults to false, which is always
 // correct and merely slower, so a hand-written instantiation need not supply it.
 //
-// status is a published-value protocol rather than a handshake: write() is
-// non-blocking and suppresses a repeat of the value already published, and
-// read() blocks on the next update. The bridge therefore republishes on each
-// observed update and inherits both properties — a bridged value that equals
-// the one already published on the far side is dropped there, exactly as it
-// would be without the adapter.
+// status is a published-value protocol rather than a handshake: read() blocks
+// on the next notification and cannot tell a value change (write(), which
+// drops a repeat of the published value) from a command (reg_write_cmd(),
+// which always notifies). The source channel has already applied its own
+// suppression, so every notification the bridge observes is republished with
+// reg_write_cmd(): one far-side notification per near-side notification. A
+// silent reg_write() raises no notification and so never crosses.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -145,7 +146,7 @@ private:
             upIn->read( inVal );
             static_assert( !DirectData || sizeof(DownT) == sizeof(UpT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
-            m_down_channel.write( outVal );
+            m_down_channel.reg_write_cmd( outVal );
         }
     }
 
@@ -164,7 +165,7 @@ private:
             m_down_channel.read( inVal );
             static_assert( !DirectData || sizeof(UpT) == sizeof(DownT), "status data_t direct copy requires equal payload size" );
             copyPayload<DirectData>( outVal, inVal );
-            upOut->write( outVal );
+            upOut->reg_write_cmd( outVal );
         }
     }
 

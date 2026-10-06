@@ -57,8 +57,8 @@ def render(args, prj, data):
 
     # Imported from the same module the container imports; a second declaration
     # would give the container's dynamic_pointer_cast mismatched RTTI.
-    for mod in registrarConfig['verifConfigModules']:
-        out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
+    for moduleName in registrarConfig['verifConfigModules']:
+        out.append(f'import {moduleName};')
 
     out.append('')
     out.append(f'namespace {{')

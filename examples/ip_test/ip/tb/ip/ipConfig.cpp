@@ -5,7 +5,7 @@
 #include <string>
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-import ip.ip.config;
+import ip.config;
 import a2c.endOfTest;
 // GENERATED_CODE_END
 // user #includes and imports here

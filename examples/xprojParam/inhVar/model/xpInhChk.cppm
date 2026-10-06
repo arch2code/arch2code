@@ -99,4 +99,3 @@ void xpInhChk<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)sample.algo), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

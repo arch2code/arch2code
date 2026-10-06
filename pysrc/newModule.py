@@ -75,14 +75,16 @@ class newModule:
         templateDefinition = { 'templates': { 'fileGen': templateProg } }
         self.renderer = renderer(prj, docType='', directTemplate=templateDefinition)
 
-        fileMap = fileGenerationConfig['fileMap']
-        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'], fileMap)
+        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'],
+                                          artifactPaths.projectFileMaps(prj))
 
         self.block_create_from_rows(fileGenerationConfig, rows, blockCondData, prj, args)
         self.registrar_create_from_rows(fileGenerationConfig, rows, prj, args)
 
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'registrar')
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'vl_wrap')
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'registrar')
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'vl_wrap')
+        self.cleanup_retired_context_files(prj, rows)
+        self.migrate_legacy_fw_headers(prj, rows)
 
         self.project_create_from_rows(fileGenerationConfig, rows, prj, args)
         self.context_create_from_rows(fileGenerationConfig, rows, prj, args)
@@ -95,6 +97,8 @@ class newModule:
     # Layout keys that name a project-scope convention directory rather than a
     # fileMap segment (see processYaml._buildLayoutFor).
     _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
+    # a2c-common.mk: A2C_PRJ_YAML ?= $(REPO_ROOT)/arch/yaml/project.yaml
+    _A2C_PRJ_YAML_DEFAULT = 'arch/yaml/project.yaml'
 
     def _selectSingleVariant(self, fileDefinition, prj, qualBlock, blockCond):
         # The variant bound into a single-emission artifact's generated-code
@@ -128,10 +132,9 @@ class newModule:
             data['block'] = block
             data['qualBlock'] = qualBlock
             data['variants'] = list(prj.getStandaloneVariants(qualBlock))
-            # Project-qualified module name for the scaffold's user-owned
-            # `endmodule: <label>` so a freshly created block matches its
-            # generator-emitted (qualified) module begin-label.
-            data['blockModuleName'] = prj.blockModuleName[qualBlock]
+            # The scaffold's user-owned `endmodule: <label>` must match the
+            # generator-emitted module begin-label.
+            data['blockSvModuleName'] = prj.blockSvModuleName[qualBlock]
             # A dutVariant artifact has no per-variant row; seed it with the
             # block's first declared variant so one pass scaffolds every
             # testbench.
@@ -179,16 +182,29 @@ class newModule:
                 continue
             self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
-    def cleanup_stale_segment_files(self, prj, rows, blockCondData, fileMap, basePath):
+    def cleanup_stale_segment_files(self, prj, rows, blockCondData, basePath):
         # newmodule owns segment scaffolding, so it also deletes the generated
         # files in owned segment directories the current contract no longer
         # names.
         expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
-            prj, rows, blockCondData, fileMap, basePath)
+            prj, rows, blockCondData, basePath)
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
             print(f"Removing stale {basePath} file {staleFile}")
             os.remove(staleFile)
+
+    def cleanup_retired_context_files(self, prj, rows):
+        for staleFile in artifactPaths.getRetiredContextFiles(prj, rows):
+            print(f"Removing stale retired file {staleFile}")
+            os.remove(staleFile)
+
+    def migrate_legacy_fw_headers(self, prj, rows):
+        for legacyFile in artifactPaths.getLegacyFwHeaders(prj, rows):
+            print(f"Migrating legacy firmware header {legacyFile}")
+            with open(legacyFile, 'r') as f:
+                text = f.read()
+            with open(legacyFile, 'w') as f:
+                f.write(artifactPaths.unwrapLegacyFwHeader(text))
 
     def project_create_from_rows(self, fileGenerationConfig, rows, prj, args):
         # One artifact per project, anchored at the top context; only the
@@ -207,18 +223,22 @@ class newModule:
 
     def _deriveTopModules(self, prj):
         # Best-effort scaffold defaults for the shared.mk identity variables.
-        # TB_TOP_MODULE is the design's top block (the block instanced at
-        # _topInstance). HDL_TOP_MODULE is that top block's single RTL/verilated
-        # child when unambiguous, else it falls back to the top block. Both are
-        # create-once, user-editable defaults, so a definitions-only project (no
-        # topInstance) simply uses the project name.
+        # TB_TOP_MODULE is the name the run binary selects a testbench by, which
+        # is the block carrying hasTb (the block whose Config file registers with
+        # testBenchConfigFactory) -- not the top container, which is typically a
+        # hasTb: false wrapper. When the design has no single hasTb block the top
+        # block is the only sensible guess. HDL_TOP_MODULE is the top block's
+        # single RTL/verilated child when unambiguous, else it falls back to the
+        # top block. Both are create-once, user-editable defaults, so a
+        # definitions-only project (no topInstance) simply uses the project name.
         projectName = prj.config.getConfig('PROJECTNAME')
         topBlockKey = next((row['instanceTypeKey']
                             for row in prj.data['instances'].values()
                             if row['container'] == '_topInstance'), None)
         if topBlockKey is None:
             return projectName, projectName
-        tbTop = prj.data['blocks'][topBlockKey]['block']
+        tbBlocks = [row['block'] for row in prj.data['blocks'].values() if row['hasTb']]
+        tbTop = tbBlocks[0] if len(tbBlocks) == 1 else prj.data['blocks'][topBlockKey]['block']
         dutBlocks = {row['instanceTypeKey']
                      for row in prj.data['instances'].values()
                      if row['containerKey'] == topBlockKey
@@ -240,6 +260,16 @@ class newModule:
         projectName = prj.config.getConfig('PROJECTNAME')
         layout = prj.projectLayout[projectName]
         tbTop, hdlTop = self._deriveTopModules(prj)
+        # a2c-common.mk defaults A2C_PRJ_YAML to the functional-layout location;
+        # any project whose file sits elsewhere (every hierarchical project) must
+        # state it in shared.mk or the first `make db` looks in the wrong place.
+        prjYaml = os.path.relpath(prj.config.getConfig('PRJFILE'), layout['root'])
+        if prjYaml == self._A2C_PRJ_YAML_DEFAULT:
+            prjYaml = ''
+        # Firmware is enabled solely by the project declaring the includeFW
+        # fileMap entry; there is no schema flag. A firmware project additionally
+        # needs the fw source dir and the BSP, which is not in the default set.
+        hasFirmware = 'includeFW' in fileGenerationConfig['fileMap']
 
         templateProg = processYaml.expandDirMacros(scaffoldConfig['template'])
         scaffoldRenderer = renderer(
@@ -271,6 +301,8 @@ class newModule:
                 'projectName': projectName,
                 'tbTop': tbTop,
                 'hdlTop': hdlTop,
+                'prjYaml': prjYaml,
+                'hasFirmware': hasFirmware,
             }
             vars = {'prj': prj.data, 'block': data, 'args': args}
             newFileContents = scaffoldRenderer.render('scaffold', vars)

@@ -14,6 +14,7 @@ All logic and member usage described below must be implemented in the user regio
 
 1.  **Multi-Interface Arbitration Pattern:**
     *   **Use Case:** When a thread needs to service multiple input interfaces.
+    *   **Family support:** `setExternalEvent`/`isActive`/`isNotActive` is available on every base channel family's receive side: `rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack`, `notify_ack`. On `axi_read` and `axi_write`, the trio is on the **dst modport** and reflects the address sub-channel (the arbitration decision an interconnect or multi-port subordinate makes); a single `SC_THREAD` can service N `axi_read`/`axi_write` dst ports via one shared event this way. `axi4_stream` forwards to its one data channel. `external_reg`, `raw`, and `status` only carry `setExternalEvent` (no `isActive`/`isNotActive`), predate this pattern, and do not support the scan-then-wait idiom below.
     *   **Mechanism:**
         1.  Create a shared `sc_event`.
         2.  Bind interfaces to this event using `setExternalEvent(&event)`.

@@ -43,6 +43,8 @@ def render_default(args, prj, data):
         registrarConfig['ownerProject'],
         registrarConfig['childModuleIdentity'])
 
+    socketRegistrations = registrarConfig['socketRegistrations']
+
     # #includes are illegal in module purview, so all textual headers live here
     # in the global module fragment.
     out.append('module;')
@@ -55,9 +57,11 @@ def render_default(args, prj, data):
     # construct `<B><Config>`. A PRIVATE import (plain `import`, not
     # `export import`): the registrar exports nothing, it only runs its static.
     out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
+    if socketRegistrations:
+        out.append(f'import {intf_gen_utils.cpp_socket_module_name(data["blockModuleName"])};')
 
-    for mod in registrarConfig['configModules']:
-        out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
+    for moduleName in registrarConfig['configModules']:
+        out.append(f'import {moduleName};')
 
     registrations = list()
     for registration in registrarConfig['modelRegistrations']:
@@ -67,6 +71,17 @@ def render_default(args, prj, data):
             suffix='model',
             blockName=blockName,
             targetClass=f'{blockName}<{perVariantConfig}>',
+            variant=registration['variant'],
+            projectName=registration['factoryProject'],
+            indent='        ',
+        ))
+    for registration in socketRegistrations:
+        perVariantConfig = intf_gen_utils.cpp_config_expression_name(
+            registration['config'])
+        registrations.extend(_emit_register_call(
+            suffix='socket',
+            blockName=blockName,
+            targetClass=f'{blockName}Socket<{perVariantConfig}>',
             variant=registration['variant'],
             projectName=registration['factoryProject'],
             indent='        ',

@@ -48,6 +48,7 @@ def test_config_uses_maxvalue_for_type_width():
     }
     descriptor = {
         'declaringProject': 'proj', 'block': 'blk', 'variant': '',
+        'configModule': 'proj.blk.config',
         'structName': 'projBlkTestConfig', 'containerSourced': {},
         'values': {'WIDE_PARAM': 8, 'NARROW_PARAM': 4},
         'paramSourceKeys': {'WIDE_PARAM': 'WIDE_PARAM/wide.yaml',
@@ -77,6 +78,7 @@ def test_config_includes_clog2_unconditionally():
     }
     descriptor = {
         'declaringProject': 'proj', 'block': 'blk', 'variant': '',
+        'configModule': 'proj.blk.config',
         'structName': 'projBlkTestConfig', 'containerSourced': {},
         'values': {'WIDE_PARAM': 8},
         'paramSourceKeys': {'WIDE_PARAM': 'WIDE_PARAM/wide.yaml'},

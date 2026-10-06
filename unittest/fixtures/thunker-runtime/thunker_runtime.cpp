@@ -39,7 +39,13 @@
 // counts what it received, and sc_main asserts the totals after the kernel has
 // drained. A bridge that forwarded each beat twice would satisfy every value
 // check and fail the count.
+//
+// A further set of harnesses pins the protocols' notification semantics:
+// status commands, the separate external_reg command, read-back and mirror
+// legs, the external_reg owner as sole mirror publisher in all four shapes,
+// and memory/apb read data that reqReceive() never fills.
 
+#include "apb_port_thunker.h"
 #include "axi4_stream_port_thunker.h"
 #include "external_reg_port_thunker.h"
 #include "memory_port_thunker.h"
@@ -78,6 +84,34 @@ A2C_TEST_PAYLOAD( maskBSt );
 static_assert( sizeof( maskASt ) == sizeof( maskBSt ) );
 static_assert( std::is_trivially_copyable_v<maskASt> && std::is_trivially_copyable_v<maskBSt> );
 
+// A data payload that counts every pack() of a value nobody assigned. A
+// completer's reqReceive() leaves the data argument untouched on a read, so an
+// adapter that converts it anyway packs the constructor's sentinel.
+static constexpr std::uint32_t UNFILLED = 0xDEADBEEFu;
+static int g_unfilledPacks = 0;
+
+#define A2C_UNFILLED_PAYLOAD( NAME )                                            \
+    struct NAME                                                                 \
+    {                                                                           \
+        using _packedSt = std::uint32_t;                                        \
+        static constexpr unsigned _bitWidth = 16;                               \
+        static constexpr unsigned _byteWidth = sizeof( _packedSt );             \
+        void pack( _packedSt& v ) const                                         \
+        {                                                                       \
+            if (value == UNFILLED) ++g_unfilledPacks;                           \
+            v = value & PAYLOAD_MASK;                                           \
+        }                                                                       \
+        void unpack( const _packedSt& v ) { value = v & PAYLOAD_MASK; }         \
+        static const char* getValueType() { return ""; }                        \
+        std::uint64_t getStructValue() const { return value; }                  \
+        std::string prt( bool = false ) const { return #NAME; }                 \
+        bool operator==( const NAME& o ) const { return value == o.value; }     \
+        std::uint32_t value = UNFILLED;                                         \
+    }
+
+A2C_UNFILLED_PAYLOAD( unfilledASt );
+A2C_UNFILLED_PAYLOAD( unfilledBSt );
+
 // The value a bridged payload must arrive as: whole under a direct verdict,
 // truncated to _bitWidth under a packed one.
 static constexpr std::uint32_t bridged( std::uint32_t v, bool direct )
@@ -108,12 +142,10 @@ static std::uint32_t idVal( int i )   { return 0xCCC30000u | (std::uint32_t)( 0x
 static std::uint32_t destVal( int i ) { return 0xDDD40000u | (std::uint32_t)( 0x4000 + i ); }
 static std::uint32_t userVal( int i ) { return 0xEEE50000u | (std::uint32_t)( 0x5000 + i ); }
 
-// raw_channel drives both handshake directions off one event and write() waits
-// on the event it notifies, so a producer that writes again immediately can
-// overwrite a value the consumer has not taken. That is a raw_channel property,
-// not an adapter one - it reproduces with a hand-written forwarding thread and
-// no thunker whenever the forwarder's process is created before the producer's.
-// The raw harnesses therefore pace their producer instead of measuring it.
+// Spacing between beats for the publish/sample and request/response harnesses.
+// The raw harnesses write back to back on purpose: raw_channel::write() must not
+// return before the consumer has taken the value, and the thunker is the shape
+// that had the consumer parked at the moment of the write.
 static void pace() { sc_core::wait( 10, sc_core::SC_NS ); }
 
 // ===========================================================================
@@ -140,7 +172,6 @@ struct rawConsumerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             UpT v;
             v.value = dataVal( i );
             upChan.write( v, (std::uint64_t)-1 );
@@ -180,7 +211,6 @@ struct rawProducerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             DownT v;
             v.value = dataVal( i );
             childPort->write( v, (std::uint64_t)-1 );
@@ -225,7 +255,6 @@ struct rawUpPortConsumerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             UpT v;
             v.value = dataVal( i );
             upChan.write( v, (std::uint64_t)-1 );
@@ -267,7 +296,6 @@ struct rawUpPortProducerHarness : sc_core::sc_module
     void drive()
     {
         for (int i = 0; i < TRANSFERS; ++i) {
-            pace();
             DownT v;
             v.value = dataVal( i );
             childPort->write( v, (std::uint64_t)-1 );
@@ -369,6 +397,118 @@ struct statusProducerHarness : sc_core::sc_module
     }
 };
 
+// status notification semantics. read() cannot tell a value change from a
+// command, so a transparent bridge raises exactly one far-side notification per
+// near-side one. The sequence mixes the three writers: write() drops a repeat
+// of the published value, reg_write_cmd() always notifies, reg_write() never
+// does. The same sequence also drives a plain reference channel, so the pinned
+// count is what the channel itself does.
+static const int STATUS_SEQUENCE_NOTIFICATIONS = 4;
+
+template <class T, class Writer>
+static void statusCommandSequence( Writer* w )
+{
+    T x, y;
+    x.value = dataVal( 0 );
+    y.value = dataVal( 1 );
+    pace(); w->write( x );          // notifies
+    pace(); w->write( x );          // repeat of the published value: silent
+    pace(); w->reg_write_cmd( x );  // command: notifies although unchanged
+    pace(); w->reg_write_cmd( x );  // notifies again
+    pace(); w->reg_write( y );      // silent update
+    pace(); w->write( x );          // differs from the silent value: notifies
+}
+
+template <class UpT, class DownT, bool Direct>
+struct statusCommandConsumerHarness : sc_core::sc_module
+{
+    status_channel<UpT> refChan;
+    status_channel<UpT> upChan;
+    status_in<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int refBeats = 0;
+    int beats = 0;
+
+    statusCommandConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), refChan( "refChan", "tb" ), upChan( "upChan", "tb" ),
+        childPort( "childPort" ), thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( statusCommandConsumerHarness );
+        SC_THREAD( driveRef );
+        SC_THREAD( drive );
+        SC_THREAD( refSink );
+        SC_THREAD( sink );
+    }
+
+    void driveRef() { statusCommandSequence<UpT>( &refChan ); }
+    void drive() { statusCommandSequence<UpT>( &upChan ); }
+
+    void refSink()
+    {
+        while (true) {
+            UpT v;
+            refChan.read( v );
+            ++refBeats;
+        }
+    }
+
+    void sink()
+    {
+        while (true) {
+            DownT v;
+            childPort->read( v );
+            ++beats;
+            expectEqual( label, v.value, bridged( dataVal( 0 ), Direct ) );
+        }
+    }
+};
+
+template <class UpT, class DownT, bool Direct>
+struct statusCommandProducerHarness : sc_core::sc_module
+{
+    status_channel<DownT> refChan;
+    status_channel<UpT> upChan;
+    status_out<DownT> childPort;
+    status_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int refBeats = 0;
+    int beats = 0;
+
+    statusCommandProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), refChan( "refChan", "tb" ), upChan( "upChan", "tb" ),
+        childPort( "childPort" ), thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( statusCommandProducerHarness );
+        SC_THREAD( driveRef );
+        SC_THREAD( drive );
+        SC_THREAD( refSink );
+        SC_THREAD( sink );
+    }
+
+    void driveRef() { statusCommandSequence<DownT>( &refChan ); }
+    void drive() { statusCommandSequence<DownT>( childPort.operator->() ); }
+
+    void refSink()
+    {
+        while (true) {
+            DownT v;
+            refChan.read( v );
+            ++refBeats;
+        }
+    }
+
+    void sink()
+    {
+        while (true) {
+            UpT v;
+            upChan.read( v );
+            ++beats;
+            expectEqual( label, v.value, bridged( dataVal( 0 ), Direct ) );
+        }
+    }
+};
+
 // ===========================================================================
 // pop_ack - the payload travels on the acknowledge, opposite to the request.
 // ===========================================================================
@@ -451,23 +591,26 @@ struct popAckProducerHarness : sc_core::sc_module
 };
 
 // ===========================================================================
-// memory - both the write-data leg and the read-response leg, which is why
-// data_t gates four call sites while addr_t gates two.
+// memory and apb - both the write-data leg and the read-response leg, which is
+// why data_t gates four call sites while addr_t gates two. The two protocols
+// share the request / complete-on-read handshake, so one harness serves both.
 // ===========================================================================
-template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
-struct memoryConsumerHarness : sc_core::sc_module
+template <template <class, class> class Chan, template <class, class> class InPort,
+          template <class, class, class, class, bool, bool> class Thunker,
+          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+struct reqCompConsumerHarness : sc_core::sc_module
 {
-    memory_channel<UpA, UpD> upChan;
-    memory_in<DownA, DownD> childPort;
-    memory_port_thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
+    Chan<UpA, UpD> upChan;
+    InPort<DownA, DownD> childPort;
+    Thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
     const char* label;
     int beats = 0;
 
-    memoryConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+    reqCompConsumerHarness( sc_core::sc_module_name n, const char* label_ )
       : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
         thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
     {
-        SC_HAS_PROCESS( memoryConsumerHarness );
+        SC_HAS_PROCESS( reqCompConsumerHarness );
         SC_THREAD( drive );
         SC_THREAD( sink );
     }
@@ -511,20 +654,22 @@ struct memoryConsumerHarness : sc_core::sc_module
     }
 };
 
-template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
-struct memoryProducerHarness : sc_core::sc_module
+template <template <class, class> class Chan, template <class, class> class OutPort,
+          template <class, class, class, class, bool, bool> class Thunker,
+          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+struct reqCompProducerHarness : sc_core::sc_module
 {
-    memory_channel<UpA, UpD> upChan;
-    memory_out<DownA, DownD> childPort;
-    memory_port_thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
+    Chan<UpA, UpD> upChan;
+    OutPort<DownA, DownD> childPort;
+    Thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
     const char* label;
     int beats = 0;
 
-    memoryProducerHarness( sc_core::sc_module_name n, const char* label_ )
+    reqCompProducerHarness( sc_core::sc_module_name n, const char* label_ )
       : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
         thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
     {
-        SC_HAS_PROCESS( memoryProducerHarness );
+        SC_HAS_PROCESS( reqCompProducerHarness );
         SC_THREAD( drive );
         SC_THREAD( sink );
     }
@@ -567,6 +712,19 @@ struct memoryProducerHarness : sc_core::sc_module
     }
 };
 
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using memoryConsumerHarness = reqCompConsumerHarness<memory_channel, memory_in, memory_port_thunker,
+                                                     UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using memoryProducerHarness = reqCompProducerHarness<memory_channel, memory_out, memory_port_thunker,
+                                                     UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using apbConsumerHarness = reqCompConsumerHarness<apb_channel, apb_in, apb_port_thunker,
+                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using apbProducerHarness = reqCompProducerHarness<apb_channel, apb_out, apb_port_thunker,
+                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+
 // ===========================================================================
 // external_reg - the register-write leg and the read-back leg are independent,
 // which is why one data_t gates four sites and each shape runs two threads.
@@ -596,7 +754,7 @@ struct externalRegConsumerHarness : sc_core::sc_module
             pace();
             UpT v;
             v.value = dataVal( i );
-            upChan.reg_write( v );
+            upChan.reg_write_cmd( v );
         }
     }
 
@@ -649,7 +807,7 @@ struct externalRegProducerHarness : sc_core::sc_module
             pace();
             DownT v;
             v.value = dataVal( i );
-            childPort->reg_write( v );
+            childPort->reg_write_cmd( v );
         }
     }
 
@@ -675,13 +833,377 @@ struct externalRegProducerHarness : sc_core::sc_module
     }
 };
 
+// external_reg leg separation. A command (reg_write_cmd) notifies the owner and
+// leaves both mirrors alone; the owner's mirror publication (update_mirror)
+// crosses to the driver as a mirror update with its notification. Values that
+// originate on one side are checked unconverted on that side, so a mirror
+// echoed back through the bridge (and truncated by the packed arm) fails.
+template <class T>
+static T payloadOf( std::uint32_t v )
+{
+    T out;
+    out.value = v;
+    return out;
+}
+
+// Parent driver on upChan, child register owner behind the bridge.
+template <class UpT, class DownT, bool Direct>
+struct externalRegMirrorConsumerHarness : sc_core::sc_module
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_in<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int cmdBeats = 0;
+    int readBackBeats = 0;
+    int upMirrorEvents = 0;
+    int downMirrorEvents = 0;
+
+    externalRegMirrorConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( externalRegMirrorConsumerHarness );
+        SC_THREAD( drive );
+        SC_THREAD( ownerCommands );
+        SC_THREAD( driverReadBack );
+        SC_THREAD( upMirrorWatch );
+        SC_THREAD( downMirrorWatch );
+    }
+
+    void drive()
+    {
+        pace(); upChan.reg_write_cmd( payloadOf<UpT>( dataVal( 0 ) ) );
+        pace(); upChan.reg_write_cmd( payloadOf<UpT>( dataVal( 0 ) ) );
+        pace();
+        expectEqual( label, cmdBeats, 2 );
+        expectEqual( label, childPort->readNonBlocking().value, 0 );
+        expectEqual( label, upChan.readNonBlocking().value, 0 );
+        expectEqual( label, upMirrorEvents, 0 );
+        expectEqual( label, downMirrorEvents, 0 );
+
+        childPort->update_mirror( payloadOf<DownT>( dataVal( 1 ) ) );
+        pace();
+        expectEqual( label, upChan.readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, childPort->readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, cmdBeats, 2 );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
+
+        upChan.reg_write_cmd( payloadOf<UpT>( dataVal( 2 ) ) );
+        pace();
+        expectEqual( label, cmdBeats, 3 );
+        expectEqual( label, childPort->readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, upChan.readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
+
+        // Two publications one delta apart: the bridge's echo of the first
+        // must not overwrite the second on either side.
+        childPort->update_mirror( payloadOf<DownT>( dataVal( 3 ) ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        childPort->update_mirror( payloadOf<DownT>( dataVal( 4 ) ) );
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, dataVal( 4 ) );
+        expectEqual( label, upChan.readNonBlocking().value, bridged( dataVal( 4 ), Direct ) );
+
+        // Read-back: the repeat is dropped at the source and so crosses once.
+        childPort->write( payloadOf<DownT>( dataVal( 5 ) ) );
+        pace();
+        childPort->write( payloadOf<DownT>( dataVal( 5 ) ) );
+        pace();
+        expectEqual( label, readBackBeats, 1 );
+    }
+
+    void ownerCommands()
+    {
+        for (int i = 0;; ++i) {
+            DownT v;
+            childPort->read( v );
+            ++cmdBeats;
+            expectEqual( label, v.value, bridged( dataVal( i < 2 ? 0 : 2 ), Direct ) );
+        }
+    }
+
+    void driverReadBack()
+    {
+        while (true) {
+            UpT v;
+            upChan.reg_read( v );
+            ++readBackBeats;
+            expectEqual( label, v.value, bridged( dataVal( 5 ), Direct ) );
+        }
+    }
+
+    void upMirrorWatch() { while (true) { upChan.wait_mirror(); ++upMirrorEvents; } }
+    void downMirrorWatch() { while (true) { childPort->wait_mirror(); ++downMirrorEvents; } }
+};
+
+// Child driver behind the bridge, parent register owner on upChan.
+template <class UpT, class DownT, bool Direct>
+struct externalRegMirrorProducerHarness : sc_core::sc_module
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_out<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+    const char* label;
+    int cmdBeats = 0;
+    int readBackBeats = 0;
+    int upMirrorEvents = 0;
+    int downMirrorEvents = 0;
+
+    externalRegMirrorProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( externalRegMirrorProducerHarness );
+        SC_THREAD( drive );
+        SC_THREAD( ownerCommands );
+        SC_THREAD( driverReadBack );
+        SC_THREAD( upMirrorWatch );
+        SC_THREAD( downMirrorWatch );
+    }
+
+    void drive()
+    {
+        pace(); childPort->reg_write_cmd( payloadOf<DownT>( dataVal( 0 ) ) );
+        pace(); childPort->reg_write_cmd( payloadOf<DownT>( dataVal( 0 ) ) );
+        pace();
+        expectEqual( label, cmdBeats, 2 );
+        expectEqual( label, upChan.readNonBlocking().value, 0 );
+        expectEqual( label, childPort->readNonBlocking().value, 0 );
+        expectEqual( label, upMirrorEvents, 0 );
+        expectEqual( label, downMirrorEvents, 0 );
+
+        upChan.update_mirror( payloadOf<UpT>( dataVal( 1 ) ) );
+        pace();
+        expectEqual( label, childPort->readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, upChan.readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, cmdBeats, 2 );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
+
+        childPort->reg_write_cmd( payloadOf<DownT>( dataVal( 2 ) ) );
+        pace();
+        expectEqual( label, cmdBeats, 3 );
+        expectEqual( label, upChan.readNonBlocking().value, dataVal( 1 ) );
+        expectEqual( label, childPort->readNonBlocking().value, bridged( dataVal( 1 ), Direct ) );
+        expectEqual( label, upMirrorEvents, 1 );
+        expectEqual( label, downMirrorEvents, 1 );
+
+        upChan.update_mirror( payloadOf<UpT>( dataVal( 3 ) ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        upChan.update_mirror( payloadOf<UpT>( dataVal( 4 ) ) );
+        pace();
+        expectEqual( label, upChan.readNonBlocking().value, dataVal( 4 ) );
+        expectEqual( label, childPort->readNonBlocking().value, bridged( dataVal( 4 ), Direct ) );
+
+        upChan.write( payloadOf<UpT>( dataVal( 5 ) ) );
+        pace();
+        upChan.write( payloadOf<UpT>( dataVal( 5 ) ) );
+        pace();
+        expectEqual( label, readBackBeats, 1 );
+    }
+
+    void ownerCommands()
+    {
+        for (int i = 0;; ++i) {
+            UpT v;
+            upChan.read( v );
+            ++cmdBeats;
+            expectEqual( label, v.value, bridged( dataVal( i < 2 ? 0 : 2 ), Direct ) );
+        }
+    }
+
+    void driverReadBack()
+    {
+        while (true) {
+            DownT v;
+            childPort->reg_read( v );
+            ++readBackBeats;
+            expectEqual( label, v.value, bridged( dataVal( 5 ), Direct ) );
+        }
+    }
+
+    void upMirrorWatch() { while (true) { upChan.wait_mirror(); ++upMirrorEvents; } }
+    void downMirrorWatch() { while (true) { childPort->wait_mirror(); ++downMirrorEvents; } }
+};
+
+// external_reg mirror publisher: the owner publishes back to back and the
+// driver side must settle on the owner's last value, with the owner's own
+// mirror never written by the bridge. One sequence runs in all four shapes.
+// Publications land in one delta, one delta apart and 1 ns apart, and one
+// returns to the value before it. The lossy steps republish a value whose
+// packed image the driver already holds, so the packed arm forwards a mirror
+// that does not change. Where the shape leaves the driver-side mirror
+// writable (the consumer shapes' parent channel), a stray write there in the
+// same delta as an owner publication must lose to the owner and never reach
+// the owner's mirror.
+template <class OwnerT, bool Direct>
+struct externalRegMirrorPublisher : sc_core::sc_module
+{
+    const char* label;
+    std::uint32_t published = 0;
+    int ownerOverwrites = 0;
+
+    externalRegMirrorPublisher( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), label( label_ )
+    {
+        SC_HAS_PROCESS( externalRegMirrorPublisher );
+        SC_THREAD( publish );
+        SC_THREAD( ownerWatch );
+    }
+
+    virtual external_reg_in_if<OwnerT>* owner() = 0;
+    virtual std::uint32_t driverMirror() = 0;
+    virtual void stray( std::uint32_t ) {}
+
+    void post( std::uint32_t v )
+    {
+        published = v;
+        owner()->update_mirror( payloadOf<OwnerT>( v ) );
+    }
+
+    void settle()
+    {
+        pace();
+        expectEqual( label, driverMirror(), bridged( published, Direct ) );
+        expectEqual( label, owner()->readNonBlocking().value, published );
+    }
+
+    void publish()
+    {
+        pace();
+        post( dataVal( 0 ) );
+        post( dataVal( 1 ) );
+        settle();
+        post( dataVal( 2 ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 3 ) );
+        settle();
+        post( dataVal( 4 ) );
+        sc_core::wait( 1, sc_core::SC_NS );
+        post( dataVal( 5 ) );
+        settle();
+        post( dataVal( 5 ) & PAYLOAD_MASK );
+        settle();
+        post( dataVal( 6 ) );
+        settle();
+        post( dataVal( 7 ) );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 6 ) );
+        settle();
+        post( dataVal( 8 ) );
+        post( dataVal( 8 ) & PAYLOAD_MASK );
+        sc_core::wait( sc_core::SC_ZERO_TIME );
+        post( dataVal( 9 ) );
+        settle();
+        stray( dataVal( 10 ) );
+        post( dataVal( 11 ) );
+        settle();
+        post( dataVal( 12 ) );
+        stray( dataVal( 13 ) );
+        settle();
+        expectEqual( label, ownerOverwrites, 0 );
+    }
+
+    // Every change of the owner's mirror must be the owner's own publication.
+    void ownerWatch()
+    {
+        while (true) {
+            owner()->wait_mirror();
+            if (owner()->readNonBlocking().value != published) ++ownerOverwrites;
+        }
+    }
+};
+
+// connections shape: parent driver on upChan, child owner behind the bridge.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishConsumerHarness : externalRegMirrorPublisher<DownT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_in<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<DownT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ) {}
+
+    external_reg_in_if<DownT>* owner() override { return childPort.operator->(); }
+    std::uint32_t driverMirror() override { return upChan.readNonBlocking().value; }
+    void stray( std::uint32_t v ) override { upChan.update_mirror( payloadOf<UpT>( v ) ); }
+};
+
+// connectionMap shape: as above through an unbound parent in port.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishUpPortConsumerHarness : externalRegMirrorPublisher<DownT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_in<UpT> upPort;
+    external_reg_in<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishUpPortConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<DownT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), upPort( "upPort" ), childPort( "childPort" ),
+        thunker( "thunker", upPort, childPort, "tb" )
+    {
+        upPort( upChan );
+    }
+
+    external_reg_in_if<DownT>* owner() override { return childPort.operator->(); }
+    std::uint32_t driverMirror() override { return upChan.readNonBlocking().value; }
+    void stray( std::uint32_t v ) override { upChan.update_mirror( payloadOf<UpT>( v ) ); }
+};
+
+// producer (out) shape: parent owner on upChan, child driver behind the bridge.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishProducerHarness : externalRegMirrorPublisher<UpT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_out<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<UpT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ) {}
+
+    external_reg_in_if<UpT>* owner() override { return &upChan; }
+    std::uint32_t driverMirror() override { return childPort->readNonBlocking().value; }
+};
+
+// producer (out) port shape: as above through an unbound parent out port.
+template <class UpT, class DownT, bool Direct>
+struct externalRegPublishUpPortProducerHarness : externalRegMirrorPublisher<UpT, Direct>
+{
+    external_reg_channel<UpT> upChan;
+    external_reg_out<UpT> upPort;
+    external_reg_out<DownT> childPort;
+    external_reg_port_thunker<UpT, DownT, Direct> thunker;
+
+    externalRegPublishUpPortProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : externalRegMirrorPublisher<UpT, Direct>( n, label_ ),
+        upChan( "upChan", "tb" ), upPort( "upPort" ), childPort( "childPort" ),
+        thunker( "thunker", upPort, childPort, "tb" )
+    {
+        upPort( upChan );
+    }
+
+    external_reg_in_if<UpT>* owner() override { return &upChan; }
+    std::uint32_t driverMirror() override { return childPort->readNonBlocking().value; }
+};
+
 // ===========================================================================
 // axi4_stream - the envelope is bridged member by member, one verdict per
-// struct parameter.
+// REQUIRED struct parameter (tdata_t, tid_t, tdest_t). tuser_t is an optional
+// payload: it carries no verdict and, when present on both sides, always takes
+// the packed arm, so the harness expects the packed value for it.
 // ===========================================================================
 template <class UpTDATA, class UpTID, class UpTDEST, class UpTUSER,
           class DownTDATA, class DownTID, class DownTDEST, class DownTUSER,
-          bool DirectTdata, bool DirectTid, bool DirectTdest, bool DirectTuser>
+          bool DirectTdata, bool DirectTid, bool DirectTdest>
 struct axi4StreamConsumerHarness : sc_core::sc_module
 {
     using UpInfo = axi4StreamInfoSt<UpTDATA, UpTID, UpTDEST, UpTUSER>;
@@ -689,9 +1211,10 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
 
     axi4_stream_channel<UpTDATA, UpTID, UpTDEST, UpTUSER> upChan;
     axi4_stream_in<DownTDATA, DownTID, DownTDEST, DownTUSER> childPort;
-    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST, UpTUSER,
-                             DownTDATA, DownTID, DownTDEST, DownTUSER,
-                             DirectTdata, DirectTid, DirectTdest, DirectTuser> thunker;
+    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST,
+                             DownTDATA, DownTID, DownTDEST,
+                             DirectTdata, DirectTid, DirectTdest,
+                             UpTUSER, DownTUSER> thunker;
     const char* label;
     int beats = 0;
 
@@ -729,7 +1252,8 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
             expectEqual( label, info.tdata.value, bridged( dataVal( i ), DirectTdata ) );
             expectEqual( label, info.tid.value, bridged( idVal( i ), DirectTid ) );
             expectEqual( label, info.tdest.value, bridged( destVal( i ), DirectTdest ) );
-            expectEqual( label, info.tuser.value, bridged( userVal( i ), DirectTuser ) );
+            // Optional tuser_t has no verdict: it always crosses packed.
+            expectEqual( label, info.tuser.value, bridged( userVal( i ), false ) );
             // tlast and the byte qualifiers carry no verdict and must cross
             // unchanged.
             expectEqual( label, info.tlast ? 1u : 0u, ( i == TRANSFERS - 1 ) ? 1u : 0u );
@@ -743,7 +1267,7 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
 
 template <class UpTDATA, class UpTID, class UpTDEST, class UpTUSER,
           class DownTDATA, class DownTID, class DownTDEST, class DownTUSER,
-          bool DirectTdata, bool DirectTid, bool DirectTdest, bool DirectTuser>
+          bool DirectTdata, bool DirectTid, bool DirectTdest>
 struct axi4StreamProducerHarness : sc_core::sc_module
 {
     using UpInfo = axi4StreamInfoSt<UpTDATA, UpTID, UpTDEST, UpTUSER>;
@@ -751,9 +1275,10 @@ struct axi4StreamProducerHarness : sc_core::sc_module
 
     axi4_stream_channel<UpTDATA, UpTID, UpTDEST, UpTUSER> upChan;
     axi4_stream_out<DownTDATA, DownTID, DownTDEST, DownTUSER> childPort;
-    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST, UpTUSER,
-                             DownTDATA, DownTID, DownTDEST, DownTUSER,
-                             DirectTdata, DirectTid, DirectTdest, DirectTuser> thunker;
+    axi4_stream_port_thunker<UpTDATA, UpTID, UpTDEST,
+                             DownTDATA, DownTID, DownTDEST,
+                             DirectTdata, DirectTid, DirectTdest,
+                             UpTUSER, DownTUSER> thunker;
     const char* label;
     int beats = 0;
 
@@ -791,7 +1316,8 @@ struct axi4StreamProducerHarness : sc_core::sc_module
             expectEqual( label, info.tdata.value, bridged( dataVal( i ), DirectTdata ) );
             expectEqual( label, info.tid.value, bridged( idVal( i ), DirectTid ) );
             expectEqual( label, info.tdest.value, bridged( destVal( i ), DirectTdest ) );
-            expectEqual( label, info.tuser.value, bridged( userVal( i ), DirectTuser ) );
+            // Optional tuser_t has no verdict: it always crosses packed.
+            expectEqual( label, info.tuser.value, bridged( userVal( i ), false ) );
             expectEqual( label, info.tlast ? 1u : 0u, ( i == TRANSFERS - 1 ) ? 1u : 0u );
             expectEqual( label, info.tstrb[0] == Q_TRUE ? 1u : 0u, 1u );
             expectEqual( label, info.tkeep[1] == Q_TRUE ? 1u : 0u, 1u );
@@ -815,12 +1341,18 @@ template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, fa
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, true>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, false>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, true>;
-template class axi4_stream_port_thunker<maskASt, maskASt, maskASt, maskASt,
-                                        maskBSt, maskBSt, maskBSt, maskBSt,
-                                        true, false, true, false>;
-template class axi4_stream_port_thunker<maskASt, maskASt, maskASt, maskASt,
-                                        maskBSt, maskBSt, maskBSt, maskBSt,
-                                        false, true, false, true>;
+template class apb_port_thunker<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>;
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        true, false, true, maskASt, maskBSt>;
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        false, true, false, maskASt, maskBSt>;
+// The generator omits an absent optional payload: both tuser_t default to the
+// std::monostate sentinel and the tuser copy is compiled out.
+template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
+                                        maskBSt, maskBSt, maskBSt,
+                                        true, true, true>;
 
 int sc_main( int, char*[] )
 {
@@ -847,10 +1379,10 @@ int sc_main( int, char*[] )
 
     axi4StreamConsumerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              true, false, true, false> streamC0( "streamC0", "axi4_stream in tdata/tdest direct" );
+                              true, false, true> streamC0( "streamC0", "axi4_stream in tdata/tdest direct" );
     axi4StreamConsumerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              false, true, false, true> streamC1( "streamC1", "axi4_stream in tid/tuser direct" );
+                              false, true, false> streamC1( "streamC1", "axi4_stream in tid direct" );
 
     // -- producer-child shape: thunkOut() -----------------------------------
     rawProducerHarness<maskASt, maskBSt, false> rawP0( "rawP0", "raw out packed" );
@@ -867,10 +1399,41 @@ int sc_main( int, char*[] )
         memP1( "memP1", "memory out data-only direct" );
     axi4StreamProducerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              true, false, true, false> streamP0( "streamP0", "axi4_stream out tdata/tdest direct" );
+                              true, false, true> streamP0( "streamP0", "axi4_stream out tdata/tdest direct" );
     axi4StreamProducerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
-                              false, true, false, true> streamP1( "streamP1", "axi4_stream out tid/tuser direct" );
+                              false, true, false> streamP1( "streamP1", "axi4_stream out tid direct" );
+
+    // -- notification and leg semantics, both shapes, both verdicts ---------
+    statusCommandConsumerHarness<maskASt, maskBSt, false> statusCmdC0( "statusCmdC0", "status cmd in packed" );
+    statusCommandConsumerHarness<maskASt, maskBSt, true> statusCmdC1( "statusCmdC1", "status cmd in direct" );
+    statusCommandProducerHarness<maskASt, maskBSt, false> statusCmdP0( "statusCmdP0", "status cmd out packed" );
+    statusCommandProducerHarness<maskASt, maskBSt, true> statusCmdP1( "statusCmdP1", "status cmd out direct" );
+    externalRegMirrorConsumerHarness<maskASt, maskBSt, false> extMirC0( "extMirC0", "external_reg legs in packed" );
+    externalRegMirrorConsumerHarness<maskASt, maskBSt, true> extMirC1( "extMirC1", "external_reg legs in direct" );
+    externalRegMirrorProducerHarness<maskASt, maskBSt, false> extMirP0( "extMirP0", "external_reg legs out packed" );
+    externalRegMirrorProducerHarness<maskASt, maskBSt, true> extMirP1( "extMirP1", "external_reg legs out direct" );
+
+    // -- external_reg mirror: owner publications converge on the driver ------
+    externalRegPublishConsumerHarness<maskASt, maskBSt, false> extPubC0( "extPubC0", "external_reg publish in packed" );
+    externalRegPublishConsumerHarness<maskASt, maskBSt, true> extPubC1( "extPubC1", "external_reg publish in direct" );
+    externalRegPublishUpPortConsumerHarness<maskASt, maskBSt, false> extPubUpC0( "extPubUpC0", "external_reg publish in up-port packed" );
+    externalRegPublishUpPortConsumerHarness<maskASt, maskBSt, true> extPubUpC1( "extPubUpC1", "external_reg publish in up-port direct" );
+    externalRegPublishProducerHarness<maskASt, maskBSt, false> extPubP0( "extPubP0", "external_reg publish out packed" );
+    externalRegPublishProducerHarness<maskASt, maskBSt, true> extPubP1( "extPubP1", "external_reg publish out direct" );
+    externalRegPublishUpPortProducerHarness<maskASt, maskBSt, false> extPubUpP0( "extPubUpP0", "external_reg publish out up-port packed" );
+    externalRegPublishUpPortProducerHarness<maskASt, maskBSt, true> extPubUpP1( "extPubUpP1", "external_reg publish out up-port direct" );
+
+    // -- read data never filled by reqReceive() must not be converted --------
+    // Packed data verdict only: the direct arm bit_casts and packs nothing.
+    memoryConsumerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        memUnfilledC( "memUnfilledC", "memory in unfilled read data" );
+    memoryProducerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        memUnfilledP( "memUnfilledP", "memory out unfilled read data" );
+    apbConsumerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        apbUnfilledC( "apbUnfilledC", "apb in unfilled read data" );
+    apbProducerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        apbUnfilledP( "apbUnfilledP", "apb out unfilled read data" );
 
     // -- port shapes: the lazily resolved up side, both directions ----------
     rawUpPortConsumerHarness<maskASt, maskBSt, false> rawUpC( "rawUpC", "raw in up-port packed" );
@@ -908,6 +1471,23 @@ int sc_main( int, char*[] )
     expectEqual( "streamP1 beats", streamP1.beats, TRANSFERS );
     expectEqual( "rawUpC beats", rawUpC.beats, TRANSFERS );
     expectEqual( "rawUpP beats", rawUpP.beats, TRANSFERS );
+    expectEqual( "statusCmdC0 reference", statusCmdC0.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdC0 beats", statusCmdC0.beats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdC1 reference", statusCmdC1.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdC1 beats", statusCmdC1.beats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdP0 reference", statusCmdP0.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdP0 beats", statusCmdP0.beats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdP1 reference", statusCmdP1.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "statusCmdP1 beats", statusCmdP1.beats, STATUS_SEQUENCE_NOTIFICATIONS );
+    expectEqual( "extMirC0 commands", extMirC0.cmdBeats, 3 );
+    expectEqual( "extMirC1 commands", extMirC1.cmdBeats, 3 );
+    expectEqual( "extMirP0 commands", extMirP0.cmdBeats, 3 );
+    expectEqual( "extMirP1 commands", extMirP1.cmdBeats, 3 );
+    expectEqual( "memUnfilledC beats", memUnfilledC.beats, 2 * TRANSFERS );
+    expectEqual( "memUnfilledP beats", memUnfilledP.beats, 2 * TRANSFERS );
+    expectEqual( "apbUnfilledC beats", apbUnfilledC.beats, 2 * TRANSFERS );
+    expectEqual( "apbUnfilledP beats", apbUnfilledP.beats, 2 * TRANSFERS );
+    expectEqual( "unfilled read data converted", g_unfilledPacks, 0 );
 
     std::printf( "checks:%d failures:%d\n", g_checks, g_failures );
     if (g_checks == 0) {

@@ -14,6 +14,7 @@
 #include "instanceFactory.h"
 #include <sstream>
 #include <iomanip>  // For std::hex
+#include <boost/assert.hpp>  // BOOST_ASSERT; not pulled in transitively by Boost 1.83
 
 // SFINAE helper to check if T has std::string prt(void) method
 template<typename T, typename = void>

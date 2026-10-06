@@ -50,10 +50,10 @@ public:
     std::shared_ptr<xpSinkUniqBase<xpSink_xpSinkUniqV0Config>> uSink;
 
     // cross-interface thunkers
-    push_ack_port_thunker<boundarySt, gnVideoSt<xpGain_xpGainUniqV0Config>, false> thunker_videoOut_0_uGain;
-    push_ack_port_thunker<boundarySt, flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_0_uFilter;
-    push_ack_port_thunker<boundarySt, flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_1_uFilter;
-    push_ack_port_thunker<boundarySt, skVideoSt<xpSink_xpSinkUniqV0Config>, false> thunker_videoOut_1_uSink;
+    push_ack_port_thunker<xpUniq_xpUniqTop_ns::boundarySt, xpGain_xpGainUniq_ns::gnVideoSt<xpGain_xpGainUniqV0Config>, false> thunker_videoOut_0_uGain;
+    push_ack_port_thunker<xpUniq_xpUniqTop_ns::boundarySt, xpFilter_xpFilterUniq_ns::flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_0_uFilter;
+    push_ack_port_thunker<xpUniq_xpUniqTop_ns::boundarySt, xpFilter_xpFilterUniq_ns::flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_1_uFilter;
+    push_ack_port_thunker<xpUniq_xpUniqTop_ns::boundarySt, xpSink_xpSinkUniq_ns::skVideoSt<xpSink_xpSinkUniqV0Config>, false> thunker_videoOut_1_uSink;
 
     xpUniqTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpUniqTop() override = default;
@@ -95,4 +95,3 @@ xpUniqTop::xpUniqTop(sc_module_name blockName, const char * variant, blockBaseMo
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

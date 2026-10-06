@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
-from templates.systemVerilog.package import parameterizedDeclLines
+from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
 
 import pysrc.intf_gen_utils as intf_gen_utils
 
@@ -90,7 +90,7 @@ def render(args, prj, data):
     t = Template(regs_module_sv_j2_template)
 
     return(t.render(
-        modulename=data['blockModuleName'],
+        modulename=data['blockSvModuleName'],
         packages_imports=section_package_imports(args, prj, data),
         module_params=section_module_params(prj, data),
         param_decls=section_param_decls(prj, data),
@@ -128,7 +128,7 @@ def section_module_params(prj, data):
     if not params:
         return ""
     return string_joiner(
-        [ f"parameter {param['param']}," for param in params ], '\n')
+        [ f"{moduleParameterDecl(prj, param)}," for param in params ], '\n')
 
 def section_param_decls(prj, data):
     # Module-local parameterizable type/struct declarations, ordered
@@ -821,7 +821,9 @@ module {{ modulename }}
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
+        {%- if section_03a %}
         {{ section_03a | indent(8) }}
+        {%- endif %}
         if (rd_select) begin
             case (apb_addr) inside
                 {{ section_03b | indent(16) }}

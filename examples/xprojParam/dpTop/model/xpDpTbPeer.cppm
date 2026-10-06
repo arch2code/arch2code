@@ -116,4 +116,3 @@ void xpDpTbPeer<Config>::check(void)
         SAMPLE_COUNT, (uint64_t)PEER_ALGO), LOG_IMPORTANT);
     m_eot.setEndOfTest(true);
 }
-

@@ -58,4 +58,3 @@ xpCstSharedTop::xpCstSharedTop(sc_module_name blockName, const char * variant, b
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
-

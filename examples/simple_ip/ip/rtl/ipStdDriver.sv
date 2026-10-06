@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=ipStdDriver
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: ip_ipStdDriver
-module ip_ipStdDriver
+//module as defined by block: ipStdDriver
+module ipStdDriver
 // Generated Import package statement(s)
-import ip_ipTop_package::*;
+import ipTop_package::*;
 (
     push_ack_if.src out0,
     input clk, rst_n
@@ -16,4 +16,4 @@ import ip_ipTop_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: ip_ipStdDriver
+endmodule: ipStdDriver

@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 // GENERATED_CODE_PARAM --project=common --context=../../yaml/shared_types.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package common_shared_types_package;
+package shared_types_package;
 localparam int unsigned DWORD = 32'h0000_0020;  // Width of an APB dword
 
 // types
@@ -20,5 +20,5 @@ typedef struct packed {
     apbDataT data; //
 } apbDataSt;
 
-endpackage : common_shared_types_package
+endpackage : shared_types_package
 // GENERATED_CODE_END

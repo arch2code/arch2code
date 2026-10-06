@@ -2,7 +2,7 @@
 
 #include "socketFactory.h"
 #include "socketTransport.h"
-
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -93,6 +93,8 @@ void socketFactory::acceptConnection(const std::string &name)
     if (c < 0) {
         return;
     }
+    int one = 1;
+    setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (fcntl(c, F_SETFD, FD_CLOEXEC) != 0) {
         close(c);
         return;
@@ -107,6 +109,17 @@ void socketFactory::acceptAll()
     for (auto &kv : getMap()) {
         acceptConnection(kv.first);
     }
+}
+
+bool socketFactory::handshakeAll()
+{
+    for (const auto &kv : getMap()) {
+        const int fd = kv.second.conn_fd;
+        if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 uint16_t socketFactory::getPort(const std::string &name)
@@ -206,7 +219,8 @@ void socketFactory::shutdownAll()
             close(e.listen_fd);
             e.listen_fd = -1;
         }
-        if (e.has_thread && e.rx_thread.joinable()) {
+        if (e.has_thread && e.rx_thread.joinable() &&
+            e.rx_thread.get_id() != std::this_thread::get_id()) {
             e.rx_thread.join();
             e.has_thread = false;
         }
@@ -227,7 +241,9 @@ void socketFactory::shutdown_socket(SocketEntry &e)
         close(e.listen_fd);
         e.listen_fd = -1;
     }
-    if (e.has_thread && e.rx_thread.joinable()) {
+    // Never join the calling thread (rx paths may call shutdownByName on EOF).
+    if (e.has_thread && e.rx_thread.joinable() &&
+        e.rx_thread.get_id() != std::this_thread::get_id()) {
         e.rx_thread.join();
         e.has_thread = false;
     }

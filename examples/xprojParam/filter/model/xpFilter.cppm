@@ -14,7 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpFilter.block;
 import xpFilter.base;
-import xpFilter.xpFilter.config;
+import xpFilter.config;
 import xpFilter;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -81,4 +81,3 @@ void xpFilter<Config>::filterVideo(void)
         videoOut->push(sample);
     }
 }
-

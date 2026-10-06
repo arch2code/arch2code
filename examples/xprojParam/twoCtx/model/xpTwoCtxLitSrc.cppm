@@ -70,4 +70,3 @@ void xpTwoCtxLitSrc::drive(void)
         litOut->push(sample);
     }
 }
-

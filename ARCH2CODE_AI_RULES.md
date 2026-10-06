@@ -240,13 +240,13 @@ addressObjects:
 # Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
-#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "FW includes"}
-#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Address defines"}
+#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
 **AI Agent Guidance:**
-- Always create `project.yaml` as the first file in a new project
+- To start a new project, run `arch2code.py --newproject`, which creates the project file for you; hand-author a `project.yaml` only when adding a sub-project (child project file) to an existing project tree
 - Use `$root` and `$a2c` macros for path portability
 - The `root` directory in `dirs` is required and serves as the base for all other paths
 - `$a2c` is automatically defined and points to the arch2code installation directory
@@ -786,9 +786,9 @@ internal pipeline links between arch2code blocks.
 **Why it is problematic (even though supported):**
 1. No hardware backpressure — flow control cannot be expressed on the interface.
 2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
-3. Known channel hazard: `raw_channel` drives both handshake directions off one
-   `sc_event`; under some process orderings a value can be overwritten before it
-   is consumed.
+3. `raw_channel` drives both handshake directions off one `sc_event`. `write()`
+   returns only once the consumer has taken the value, so no beat is lost, but
+   each side is woken once more per beat than a two-event channel would need.
 4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
 5. Easy to misuse in place of `status` or a real streaming protocol.
 
@@ -1784,6 +1784,7 @@ fileGeneration:
       cond: {smartInclude: true}, 
       mode: context, 
       basePath: fwInc, 
+      langDomain: fw,
       desc: "Firmware include file"
     }
     # Add per-product address defines (only if you need them)
@@ -1792,6 +1793,7 @@ fileGeneration:
       ext: {hdr: "h"},
       mode: project,
       basePath: model,
+      langDomain: sc,
       desc: "Per-project instance and register address defines"
     }
 ```

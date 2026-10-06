@@ -2,11 +2,11 @@
 
 // GENERATED_CODE_PARAM --block=xpRtInhTop
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: xpRtInh_xpRtInhTop
-module xpRtInh_xpRtInhTop
+//module as defined by block: xpRtInhTop
+module xpRtInhTop
 // Generated Import package statement(s)
 import xpRtInh_package::*;
-import common_shared_types_package::*;
+import shared_types_package::*;
 (
     apb_if.dst cpu_main,
     input clk, rst_n
@@ -16,14 +16,14 @@ import common_shared_types_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uWrap();
 
 // Instances
-xpRtInh_xpRtPrimeDecode uPrimeDecode (
+xpRtPrimeDecode uPrimeDecode (
     .cpu_main (cpu_main),
     .apbReg_uWrap (apbReg_uWrap),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-xpRtInh_xpRtWrap #(.RT_WIDTH(32)) uWrap (
+xpRtWrap #(.RT_WIDTH(32)) uWrap (
     .apbReg (apbReg_uWrap),
     .clk (clk),
     .rst_n (rst_n)
@@ -31,4 +31,4 @@ xpRtInh_xpRtWrap #(.RT_WIDTH(32)) uWrap (
 
 // GENERATED_CODE_END
 
-endmodule: xpRtInh_xpRtInhTop
+endmodule: xpRtInhTop

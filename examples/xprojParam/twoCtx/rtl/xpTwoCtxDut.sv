@@ -2,14 +2,14 @@
 
 // GENERATED_CODE_PARAM --block=xpTwoCtxDut
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: xpTwoCtx_xpTwoCtxDut
-module xpTwoCtx_xpTwoCtxDut
+//module as defined by block: xpTwoCtxDut
+module xpTwoCtxDut
 // Generated Import package statement(s)
 import xpTwoCtx_package::*;
 import xpDpLeaf_package::*;
 #(
-    parameter DP_WIDTH,
-    parameter TC_GAIN
+    parameter int unsigned DP_WIDTH = 32'h0000_0008,
+    parameter int unsigned TC_GAIN = 32'h0000_0002
 )
 (
     push_ack_if.dst in,
@@ -38,4 +38,4 @@ import xpDpLeaf_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: xpTwoCtx_xpTwoCtxDut
+endmodule: xpTwoCtxDut

@@ -16,7 +16,7 @@
 #include "ip_variant0_hdl_sv_wrapper_xcelium.h"
 #include "ipBridge_ip_variant1_hdl_sv_wrapper_xcelium.h"
 #endif
-import ip.ip.config;
+import ip.config;
 import ipBridge.ip.config;
 
 namespace {
@@ -30,20 +30,20 @@ using ipBridge_ip_variant1_hdl_sv_wrapper_dut_t = ipBridge_ip_variant1_hdl_sv_wr
 using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 using ipBridge_ip_variant1_hdl_sv_wrapper_dut_t = ipBridge_ip_variant1_hdl_sv_wrapper;
 #endif
-static_assert(ipDataSt<ip_ipVariant0Config>::_bitWidth == 9, "ip_variant0_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
+static_assert(ipDataSt<ipVariant0Config>::_bitWidth == 9, "ip_variant0_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
 static_assert(ipDataSt<ipBridge_ipVariant1Config>::_bitWidth == 71, "ipBridge_ip_variant1_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
 struct _ip_vl_registrar {
     _ip_vl_registrar() {
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ip_ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip");
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ip_ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper_dut_t, ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip_test.ip_test_ip_top.ip");
         instanceFactory::registerBlock(

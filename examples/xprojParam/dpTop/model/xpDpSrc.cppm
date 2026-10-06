@@ -86,4 +86,3 @@ void xpDpSrc<Config>::drive(void)
         out4->push(sample);
     }
 }
-

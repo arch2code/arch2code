@@ -5,6 +5,8 @@
 
 // GENERATED_CODE_PARAM --project=xif --context=xif.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::xif {}
+namespace fw_ns { using namespace xif; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -15,28 +17,28 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-namespace fw_ns {
+namespace fw_ns::xif {
 //constants
 
-} // namespace fw_ns
+} // namespace fw_ns::xif
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-namespace fw_ns {
+namespace fw_ns::xif {
 // types
 template<uint32_t DATA_WIDTH> using streamDataT_v = uint64_t; // [max:32] Parameterized stream payload word
 template<typename Config> using streamDataT = streamDataT_v<Config::DATA_WIDTH>;
 typedef uint16_t streamBndryDataT; // [16] Non-parameterized boundary payload word (matches DATA_WIDTH=16)
 
-} // namespace fw_ns
+} // namespace fw_ns::xif
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-namespace fw_ns {
+namespace fw_ns::xif {
 // enums
 
-} // namespace fw_ns
+} // namespace fw_ns::xif
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-namespace fw_ns {
+namespace fw_ns::xif {
 // structures
 template<uint32_t DATA_WIDTH>
 struct streamSt_v {
@@ -88,7 +90,7 @@ struct streamBndrySt {
     {}
 
 };
-} // namespace fw_ns
+} // namespace fw_ns::xif
 
 // GENERATED_CODE_END
 #endif //XIFINCLUDESFW_H_
