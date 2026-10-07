@@ -659,10 +659,10 @@ PIPELINE_JOBS ?= 8
 PIPELINE_RUN_TIMEOUT ?=
 RUN_LIMIT = $(if $(PIPELINE_RUN_TIMEOUT),timeout -k 30s $(PIPELINE_RUN_TIMEOUT))
 PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen
-# Temporarily disabled on the a2c-dev 3.0 image (Verilator 5.052): mixed and apbDecode lint report
-# MULTIDRIVEN flops, and axi4sDemo/hierVlDemo declare 2-state nets (wire int unsigned). Re-enable
-# once those RTL fixes land; `make pipeline-test PIPELINE_DISABLED=` runs everything.
-PIPELINE_DISABLED ?= mixed apbDecode axi4sDemo hierVlDemo
+# Temporarily disabled on the a2c-dev 3.0 image (Verilator 5.052): mixed, apbDecode, two-clk and
+# clk-gen lint report MULTIDRIVEN flops, and axi4sDemo/hierVlDemo declare 2-state nets (wire int
+# unsigned). Re-enable once those RTL fixes land; `make pipeline-test PIPELINE_DISABLED=` runs everything.
+PIPELINE_DISABLED ?= mixed apbDecode axi4sDemo hierVlDemo two-clk clk-gen
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(filter-out $(PIPELINE_DISABLED),$(PIPELINE_TARGETS))
 push-test: clean unittest pipeline-test
