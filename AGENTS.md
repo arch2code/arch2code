@@ -13,7 +13,7 @@ template, and project database code.
 
 ## Skill Routing
 
-Load the development skill that matches the task before you edit. Treat these as
+Load the development skill that matches the task before you edit, build, test or verify. Treat these as
 instructions to follow, not background reading.
 
 | Task | Skill |
@@ -55,7 +55,7 @@ the build manifest is stale. `.gen/builder.stamp` and the manifest
 A tree with no builder stamp rebuilds its db and regenerates everything on its
 next `make`. Nothing tracks templates kept inside the project tree or other
 builder files such as `include/make/`; run `make clean` after changing those.
-Use make with `-j` for performance.
+Use make with `-j`, except for `push-test`.
 
 1. `projectCreate` builds the database.
   - Entry point: `arch2code.py` with both `--yaml` and `--db`.

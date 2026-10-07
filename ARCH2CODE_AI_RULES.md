@@ -1250,7 +1250,7 @@ registers:
 2. **Block**: The block that owns this register
 3. **Structure**: Data structure defining register fields
 4. **Memory Register Depth**: For `regType: memory`, `wordLines` may be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
-5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users
+5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users. A parameterizable `rw` or `ro` register decodes every word of that allocation in every variant, in the RTL and the model. Words above the bound variant's width read 0 and drop writes
 6. **Description**: Required for documentation
 
 #### Automatic Block-Level Register Handler Generation
@@ -1459,6 +1459,7 @@ memories:
 8. **wordLines**: Number of addressable locations
    - May be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
    - If the structure or `wordLines` is parameterizable, address allocation uses worst-case sizing (`maxBitwidth`, `maxValue`, or max bound variant value)
+   - Every variant uses one row stride, the worst-case row width in bytes rounded up to a power of two, at least 4. Row N is at `base + N * stride` in the RTL and the model. Bytes of a row above the bound variant's width read 0 and drop writes
    - Misspelled or out-of-scope bare names are errors; arch2code does not search unrelated YAML contexts for `wordLines`
 
 #### Example with Firmware Access
@@ -1812,7 +1813,7 @@ fileGeneration:
 
 **Notes:**
 - The `includeFW` mapping generates a header and a source file (`<context>IncludesFW.{h,cpp}`) in the `fwInc` directory (typically `$root/fw/include`)
-- `smartInclude: true` means files are only created if there is register or memory content to export
+- `smartInclude: true` creates a context's files only when the context has types, structures or constants. These come from `types:` (or its alias `enums:`), `structures:` and `constants:`, from `encoders:`, and from the address enum of a router's `addressBlock:`, which lands in the router block's own YAML file. A context whose YAML holds only registers, memories or `ipParameters:` gets no file. The default `include` (`Includes.cppm`) and `package` (`_package.sv`) entries follow the same rule
 - `mode: context` generates one file per YAML file (not per block)
 - `mode: project` generates exactly one file for the whole product, keyed to its top context
 - `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`. The default entry uses `fwInc` with `langDomain: fw`, next to `includeFW`

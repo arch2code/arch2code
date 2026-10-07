@@ -41,14 +41,13 @@ Three properties make it resist the pattern used for the other fixes:
    judgement call rather than a correctness question. That is precisely the kind of
    decision that should be prototyped and measured, not argued.
 
-## Second consumer: holoscan (2026-10-01)
+## Second consumer: an out-of-tree project (2026-10-01)
 
-Holoscan is an out-of-tree project that tees status ports in RTL/model tandem
-(issue log `holoscan/doc/arch2code_issues.md`, entries A34, A42, A45). It is the
-second consumer after the ISP work. Property 1 above still holds: no in-tree
+An out-of-tree project tees status ports in RTL/model tandem (its issue log
+entries A34, A42, A45). It is the second consumer after the ISP work. Property 1 above still holds: no in-tree
 example or test instantiates `status_tee_2in_1out`. The tandem generator
 includes the header for any status port
-(`pro/templates/systemc/classDeclTandem.py:26`). What holoscan hit, with line
+(`pro/templates/systemc/classDeclTandem.py:26`). What that project hit, with line
 numbers at base 69b06851 and pro 163778f:
 
 - **Registered outputs land one clock late.** `status_src_bfm`
@@ -62,26 +61,26 @@ numbers at base 69b06851 and pro 163778f:
   produced a value, forwards the first side's value (`:61`), and cannot see a
   change only one side makes. Testbench checks can therefore see stale or
   mixed-side data.
-- **ptpTime changes every clock.** HSB `ptpTime` changes every clock, and its pps
-  output is a 1-clock pulse. The model writes on a 1 us grid, so the tee pairs
-  each model update with an RTL sample up to about 1 us stale. The hsb 4, t3_ptp and hsb 8
-  tandem tests fail this way, and all of them pass with RTL substituted for the
-  model.
+- **A timestamp output changes every clock.** One block's timestamp output
+  changes every clock, and its pulse-per-second output is a 1-clock pulse. The
+  model writes on a 1 us grid, so the tee pairs each model update with an RTL
+  sample up to about 1 us stale. Three of the project's tandem tests fail this
+  way, and all of them pass with RTL substituted for the model.
 - **The first write always notifies.** `status_channel::write` drops only a
   repeat of a value already written (`status_channel.h:214`), so the first write
   notifies even when it equals the initial value. The RTL BFM's reset-value
-  write then needs a matching model write, and holoscan models now write their
-  idle values at start.
+  write then needs a matching model write, and that project's models now write
+  their idle values at start.
 - **A second input change within one clock is missed.** `status_dst_bfm` waits
   a posedge after each drive (`interfaces/status/status_bfm.h:59-65`), so it
   does not see a second change that lands inside that clock.
 - **Streams need an order-tolerant compare.** This is the axi4_stream tee, not
-  the status tee, but it is the same design question. A behavioural HSB model may
-  legitimately send a control frame and a RoCE data packet in either order when
-  both become eligible within a few clocks (t5/T6 hostTx order). The in-order tee
+  the status tee, but it is the same design question. A behavioural model may
+  legitimately send a control frame and a data packet in either order when both
+  become eligible within a few clocks. The in-order tee
   rejects that. The compare needs per-`tdest` or per-flow ordering.
 
-The issue log suggests a value-at-time comparison for status tees, an option to
+The project's issue log suggests a value-at-time comparison for status tees, an option to
 feed the testbench from the model side only, and the order-tolerant stream
 compare. These are inputs to the questions below. They do not change the status
 of this plan or the leading proposal.

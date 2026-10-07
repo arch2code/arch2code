@@ -3,7 +3,7 @@
 You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
 
 ## Skill Routing
-Before editing, you **must** load the project skill that matches the task. Do not treat skills as optional background docs. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
+Before editing, building, testing or verifying, you **must** load the project skill that matches the task. Do not treat skills as optional background docs. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
 
 | User Intent | Primary Skill File |
 | :--- | :--- |

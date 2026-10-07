@@ -71,9 +71,10 @@ def _renamedSvNames(prj):
         modules[prj.blockModuleName[key]] = (prj.blockSvModuleName[key],
                                              f"block '{blockRow['block']}' module")
     # Only contexts that emit a package; the rest (interface libraries, contexts
-    # with no content) never had one.
+    # with no content) never had one. INCLUDEFILES has no package_sv key at all
+    # when no context emits an SV package.
     packages = dict()
-    for context in prj.config.getConfig("INCLUDEFILES")["package_sv"]:
+    for context in prj.config.getConfig("INCLUDEFILES").get("package_sv", {}):
         packages[prj.contextModuleIdentity[context] + _OLD_PACKAGE_SUFFIX] = (
             prj.contextSvPackageName[context],
             f"context '{prj.includeName[context]}' package")

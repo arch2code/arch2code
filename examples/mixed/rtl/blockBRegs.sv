@@ -48,7 +48,7 @@ module blockBRegs
     logic nxt_blockBTable1_rd_enable, blockBTable1_rd_enable, blockBTable1_rd_capture;
     logic blockBTable1_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockBTable1_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockBTable1_addr, bSizeSt'((apb_addr - REG_BLOCKB_BLOCKBTABLE1) >> 3))
     `DFF_DOM(clk, rst_n, blockBTable1_wr_enable, blockBTable1_update_1)
     `DFF_DOM(clk, rst_n, blockBTable1_rd_enable, nxt_blockBTable1_rd_enable)
     `DFF_DOM(clk, rst_n, blockBTable1_rd_capture, blockBTable1_rd_enable)
@@ -69,7 +69,7 @@ module blockBRegs
     logic nxt_blockBTableExt_rd_enable, blockBTableExt_rd_enable, blockBTableExt_rd_capture;
     logic blockBTableExt_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockBTableExt_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, blockBTableExt_addr, bSizeSt'((apb_addr - REG_BLOCKB_BLOCKBTABLEEXT) >> 2))
     `DFF_DOM(clk, rst_n, blockBTableExt_wr_enable, blockBTableExt_update_0)
     `DFF_DOM(clk, rst_n, blockBTableExt_rd_enable, nxt_blockBTableExt_rd_enable)
     `DFF_DOM(clk, rst_n, blockBTableExt_rd_capture, blockBTableExt_rd_enable)
@@ -90,7 +90,7 @@ module blockBRegs
     logic nxt_blockBTable37Bit_rd_enable, blockBTable37Bit_rd_enable, blockBTable37Bit_rd_capture;
     logic blockBTable37Bit_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockBTable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockBTable37Bit_addr, bSizeSt'((apb_addr - REG_BLOCKB_BLOCKBTABLE37BIT) >> 3))
     `DFF_DOM(clk, rst_n, blockBTable37Bit_wr_enable, blockBTable37Bit_update_1)
     `DFF_DOM(clk, rst_n, blockBTable37Bit_rd_enable, nxt_blockBTable37Bit_rd_enable)
     `DFF_DOM(clk, rst_n, blockBTable37Bit_rd_capture, blockBTable37Bit_rd_enable)
@@ -126,7 +126,7 @@ module blockBRegs
                     rwD_reg_update_0 = 1'b1;
                 end
                 [REG_BLOCKB_BLOCKBTABLE1:REG_BLOCKB_BLOCKBTABLE1 + REG_BLOCKB_BLOCKBTABLE1_SIZE - 32'd4]: begin
-                    case (apb_addr[2:0])
+                    case (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE1))
                         3'h0: begin
                             blockBTable1_update_0 = 1'b1;
                             nxt_blockBTable1_data[31:0] = apbReg.pwdata[31:0];
@@ -139,7 +139,7 @@ module blockBRegs
                     endcase
                 end
                 [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
-                    case (apb_addr[2-1:0])
+                    case (2'(apb_addr - REG_BLOCKB_BLOCKBTABLEEXT))
                         2'h0: begin
                             blockBTableExt_update_0 = 1'b1;
                             nxt_blockBTableExt_data[4:0] = apbReg.pwdata[4:0];
@@ -148,7 +148,7 @@ module blockBRegs
                     endcase
                 end
                 [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
-                    case (apb_addr[3-1:0])
+                    case (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE37BIT))
                         3'h0: begin
                             blockBTable37Bit_update_0 = 1'b1;
                             nxt_blockBTable37Bit_data[31:0] = apbReg.pwdata[31:0];
@@ -185,7 +185,7 @@ module blockBRegs
                     nxt_rd_data = apbDataSt'(roBsize_reg[3:0]);
                 end
                 [REG_BLOCKB_BLOCKBTABLE1:REG_BLOCKB_BLOCKBTABLE1 + REG_BLOCKB_BLOCKBTABLE1_SIZE - 32'd4]: begin
-                    case (apb_addr[2:0])
+                    case (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE1))
                         3'h0: begin
                             if (blockBTable1_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -203,10 +203,10 @@ module blockBRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockBTable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockBTable1_rd_capture;
+                    nxt_blockBTable1_rd_enable = (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE1) inside {3'h0, 3'h4}) & ~blockBTable1_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
-                    case (apb_addr[2-1:0])
+                    case (2'(apb_addr - REG_BLOCKB_BLOCKBTABLEEXT))
                         2'h0: begin
                             if (blockBTableExt_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -218,10 +218,10 @@ module blockBRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockBTableExt_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockBTableExt_rd_capture;
+                    nxt_blockBTableExt_rd_enable = (2'(apb_addr - REG_BLOCKB_BLOCKBTABLEEXT) inside {2'h0}) & ~blockBTableExt_rd_capture;
                 end
                 [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
-                    case (apb_addr[3-1:0])
+                    case (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE37BIT))
                         3'h0: begin
                             if (blockBTable37Bit_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -239,7 +239,7 @@ module blockBRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockBTable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockBTable37Bit_rd_capture;
+                    nxt_blockBTable37Bit_rd_enable = (3'(apb_addr - REG_BLOCKB_BLOCKBTABLE37BIT) inside {3'h0, 3'h4}) & ~blockBTable37Bit_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;

@@ -48,10 +48,10 @@ public:
 
     memories mems;
     //memories
-    hwMemory< ipMemSt<Config> > ipMem;
+    hwMemory< ipMemSt<Config>, 16 > ipMem;
     hwMemory< ipFixedSt > ipFixedMem;
     hwMemory< ipFixedSt > ipNonConstMem;
-    hwMemory< ipMemSt<Config> > ipDerivedDepthMem;
+    hwMemory< ipMemSt<Config>, 16 > ipDerivedDepthMem;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using ipBase<Config>::IP_DATA_WIDTH_X2;
@@ -114,12 +114,12 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
     constexpr uint64_t REG_ADDR_IP_IPLASTDATA = 0x318;
 
     // register memories for FW access
-    _a2cRegs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
+    _a2cRegs.addMemory( REG_ADDR_IP_IPMEM, 16 * Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
     _a2cRegs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
     _a2cRegs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, Config::IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
     // register registers for FW access
-    _a2cRegs.addRegister( REG_ADDR_IP_IPCFG, 10, "ipCfg", &ipCfg );
-    _a2cRegs.addRegister( REG_ADDR_IP_IPLASTDATA, 9, "ipLastData", &ipLastData );
+    _a2cRegs.addRegister( REG_ADDR_IP_IPCFG, 17, "ipCfg", &ipCfg );
+    _a2cRegs.addRegister( REG_ADDR_IP_IPLASTDATA, 17, "ipLastData", &ipLastData );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

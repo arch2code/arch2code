@@ -1296,6 +1296,17 @@ def get_struct_width(struct_key, struct_dict):
         exit(warningAndErrorReport())
     return struct['width']
 
+def sc_explicit_row_bytes(row, prj):
+    """Address stride between rows that the model spells out for a memory or
+    memory register, or None when the structure is not parameterizable.
+
+    hwMemory, hwMemoryPort and addMemory derive a stride from the bound
+    variant's width. That matches the address map only when the structure has
+    one width."""
+    if prj.data['structures'][row['structureKey']]['isParameterizable']:
+        return row['rowBytes']
+    return None
+
 def get_sorted_memories(data):
     if 'memoriesParent' in data:
         memoryKey = 'memoriesParent'

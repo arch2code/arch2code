@@ -712,6 +712,30 @@ python3 test_regs_rtl_mem_depth.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: generated RTL register block drives a memory's row index from the memory's base"
+echo "------------------------------------------------------------------------"
+python3 test_regs_rtl_mem_index.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated RTL register block picks a memory word by its offset from the memory's base"
+echo "------------------------------------------------------------------------"
+python3 test_regs_rtl_mem_word_select.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: RTL and model decode a parameterizable-width register and memory at the worst-case footprint"
+echo "------------------------------------------------------------------------"
+python3 test_regs_param_width_footprint.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a context with only ipParameters: emits no package or Includes; gen, lint and run pass"
+echo "------------------------------------------------------------------------"
+python3 test_ipparam_only_context.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: model APB decoder slots match the RTL windows around a non-dispatched instance"
 echo "------------------------------------------------------------------------"
 python3 test_apb_decode_model_slot_gap.py || FAILED=1

@@ -41,7 +41,7 @@ def render(args, prj, data):
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
         row_is_param = reg_data['isParameterizable']
-        reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
+        reg_data['bitwidth'] = reg_data['worstBitwidth']
         # A register is parameterizable iff its storage structure is. Its
         # storage is then the variant-width module-local struct and its
         # per-word data flops/slices are elaborated away per variant via
@@ -51,7 +51,7 @@ def render(args, prj, data):
         
         # For memory registers, compute memory-specific fields
         if reg_data.get('regType') == 'memory':
-            reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
+            reg_data['rowwidth'] = clog2(reg_data['rowBytes'])
             # decodeSize is the worst-case decoded address range in bytes,
             # persisted by projectCreate's calcAddresses.
             reg_data['memsize'] = reg_data['decodeSize']
@@ -69,10 +69,10 @@ def render(args, prj, data):
         ctxt_memories = dict()
         for mem_key, mem_data in data['memoriesParent'].items():
             entry = dict(mem_data)
-            entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
+            entry['bitwidth'] = mem_data['worstBitwidth']
             entry['isParameterizable'] = prj.data['structures'][mem_data['structureKey']]['isParameterizable']
             entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES, 0))
-            entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
+            entry['rowwidth'] = clog2(mem_data['rowBytes'])
             # decodeSize is the worst-case decoded address range in bytes,
             # persisted by projectCreate's calcAddresses.
             entry['memsize'] = entry['decodeSize']
@@ -334,7 +334,7 @@ def section_01_mem_param(mem_intf, mem_data, mode):
     if writes:
         s += [ f"logic {mem_intf}_wr_enable;" ]
     s += [ "" ]
-    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'(apb_addr[31:{rowwidth}]))" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'((apb_addr - {mem_data['addr_const_name']}) >> {rowwidth}))" ]
     if writes:
         s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_wr_enable, {mem_intf}_update[{top_lp}])" ]
     if reads:
@@ -370,6 +370,7 @@ def section_01_memregs(reg_data):
         mem_addrtype=reg_data['addressStruct'],
         segments=reg_data['segments'],
         paddr_l = reg_data['rowwidth'],
+        addr_const_name = reg_data['addr_const_name'],
         seg_last = len(reg_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
@@ -389,6 +390,7 @@ def section_01_mems(mem_data):
         mem_addrtype=mem_data['addressStruct'],
         segments=mem_data['segments'],
         paddr_l = mem_data['rowwidth'],
+        addr_const_name = mem_data['addr_const_name'],
         seg_last = len(mem_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
@@ -538,7 +540,7 @@ def section_02b_mem_param(mem_intf, mem_data):
     rowwidth = mem_data['rowwidth']
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth-1}:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -564,7 +566,7 @@ def section_02b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o_rel = o - addr_l  # offset relative to base of mem mod bus width
@@ -595,7 +597,7 @@ def section_02b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
@@ -690,7 +692,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     word_offsets = []
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth-1}:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -706,7 +708,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     s_1 += [ f"            nxt_rd_data = '0;" ]
     s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     return string_joiner(s_1, '\n')
 
@@ -730,7 +732,7 @@ def section_03b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -749,7 +751,7 @@ def section_03b_mems(mem_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{mem_data['rowwidth']-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
 
     return string_joiner(s_1, '\n')
@@ -770,7 +772,7 @@ def section_03b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         _, (o, u, l, w, _) = seg
@@ -789,7 +791,7 @@ def section_03b_memregs(reg_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth}-1:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     
     return string_joiner(s_1, '\n')
@@ -938,7 +940,7 @@ logic nxt_{{mem_intf}}_rd_enable, {{mem_intf}}_rd_enable, {{mem_intf}}_rd_captur
 {% if writes -%}
 logic {{mem_intf}}_wr_enable;
 {% endif %}
-`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'(apb_addr[31:{{paddr_l}}]))
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'((apb_addr - {{addr_const_name}}) >> {{paddr_l}}))
 {% if writes -%}
 `DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_wr_enable, {{mem_intf}}_update_{{seg_last}})
 {% endif -%}

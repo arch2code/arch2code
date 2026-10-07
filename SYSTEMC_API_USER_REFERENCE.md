@@ -84,7 +84,7 @@ Every generated structure carries two separate notions of size:
 | Member | Represents | Used For |
 |--------|-----------|----------|
 | `_bitWidth` | **HW bit width** — sum of all field widths as defined in YAML | `sc_bv<>` sizing, pack/unpack serialization, address-map calculations |
-| `_byteWidth` | **HW byte width** — `(_bitWidth + 7) >> 3` | Register/memory byte footprint in address maps, `addMemory()` calls |
+| `_byteWidth` | **HW byte width** — `(_bitWidth + 7) >> 3` | Register/memory byte footprint in address maps, `addMemory()` calls. A parameterizable structure's footprint is its widest variant's, not this |
 | `sizeof(T)` | **C++ storage size** — actual memory footprint of the C++ struct | Multi-cycle burst sizing, `memcpy`, array allocation |
 
 These are **deliberately different**. C++ storage types are typically wider than the hardware reality they model. For example, a 1-bit `eol_t` field is stored in a `uint8_t` (8× wider), and a 3-field struct of single-bit types has `_byteWidth = 1` but `sizeof = 3`.
@@ -1349,7 +1349,7 @@ These APIs are used in generated code. Users rarely need to call them directly. 
 
 **Framework APIs:**
 - `addRegister(address, size, name, ptr)` - Register a register
-- `addMemory(address, size, name, ptr)` - Register a memory
+- `addMemory(address, size, name, ptr)` - Register a memory. A memory with a parameterizable structure is registered this way, with `size` the row stride times the row count
 - `addMemory(address, structByteWidth, wordLines, name, ptr)` - Register memory with dimensions
 - `cpu_read(address)` - Read from address space
 - `cpu_write(address, value)` - Write to address space
@@ -1391,9 +1391,11 @@ uBlockD(std::dynamic_pointer_cast<blockDBase>(
 
 **Framework APIs:**
 - `hwRegister<REG_DATA, N>(initialValue)` - Construct register
-- `hwMemory<MEM_DATA>(hierarchicalName, memName, memories, rows, type, fwAccess)` - Construct memory. `fwAccess` is `HWMEMORYFWACCESS_RW` (default), `_RO` or `_WO`, from the memory's `regAccess`
-- `hwMemoryPort<ADDR, DATA>(port, fwAccess, name)` - Firmware adapter a register handler uses to reach a memory over its channel; `fwAccess` and `name` default to rw and empty
+- `hwMemory<MEM_DATA, ROW_BYTES>(hierarchicalName, memName, memories, rows, type, fwAccess)` - Construct memory. `fwAccess` is `HWMEMORYFWACCESS_RW` (default), `_RO` or `_WO`, from the memory's `regAccess`
+- `hwMemoryPort<ADDR, DATA, ROW_BYTES>(port, fwAccess, name)` - Firmware adapter a register handler uses to reach a memory over its channel; `fwAccess` and `name` default to rw and empty
 - `bindPort()` - Bind memory to channel port
+
+`ROW_BYTES` is the address stride between rows. It defaults to the structure's byte width rounded up to a power of two, at least 4. A value that is not a power of two, or is smaller than that default, fails to compile. For a parameterizable structure the generated code passes the address map's stride, sized for the widest variant, so row N sits at the same address in every variant. Bytes of a row past the bound variant's width read 0 and drop writes, as in the RTL.
 
 Firmware access goes through `cpu_read`/`cpu_write`. On an `ro` memory `cpu_write` drops the write, and on a `wo` memory `cpu_read` returns 0; each logs at `LOG_ALWAYS`, so it prints at every verbosity, naming the memory and the offset. Block-side `read`/`write` ignore the mode.
 

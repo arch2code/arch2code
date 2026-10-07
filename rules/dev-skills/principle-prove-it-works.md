@@ -39,9 +39,9 @@ A generator change is proved by running the generator, not by reading the templa
 - `make gen` succeeding proves the run completed. It does not prove the emitted code is right. Read the emitted file.
 - `make run` proves the SystemC model. It does not touch RTL.
 - `make run VL_DUT=1` proves the RTL.
-- A change to shared generator code is proved across the whole base and pro example suite, not on one example.
-- `unittest/run_all_tests_parallel.sh` runs the unit suite.
-- Use `-j` on every build and gen command.
+- A change to shared generator code is proved by `make -C builder/base push-test`, then `make -C builder/pro -j pipeline-test`.
+- Run the unit suite with `make unittest`.
+- Use `-j` on every build and gen command, except `push-test`.
 - A subagent reporting success is not proof. Read the diff and the emitted artefact yourself.
 
 <!--

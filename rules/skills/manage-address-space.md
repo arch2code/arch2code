@@ -51,7 +51,7 @@ hand-create a top-level decoder.
 5.  **Firmware Header Generation (`includeFW`):**
     *   To generate C/C++ header files for firmware, configure `fileGeneration` in `project.yaml`.
     *   **Configuration:**
-        *   `smartInclude: true`: Only generate files if content (regs/mem) exists.
+        *   `smartInclude: true`: Generate a context's files only when the context has types, structures or constants. These come from `types:` (or its alias `enums:`), `structures:` and `constants:`, from `encoders:`, and from the address enum of a router's `addressBlock:`, which lands in the router block's own YAML file. A context whose YAML holds only registers, memories or `ipParameters:` gets no file.
         *   `mode: context`: Generate one header per YAML file.
         *   `basePath`: Directory to output headers.
 
@@ -103,6 +103,7 @@ hand-create a top-level decoder.
     *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.
     *   Structure width uses generated `maxBitwidth`; `wordLines` uses a parameterizable constant's `maxValue` or the maximum value bound in `parameters:` for pure block params.
     *   YAML authors should provide explicit bounds (`maxValue` for constants, `maxBitwidth` for literal-width types) so the address map reserves enough space for every variant.
+    *   Every variant decodes the worst-case footprint, in the RTL and the model alike. A parameterizable `rw` or `ro` register spans the worst case's words. Row N of a memory sits at `base + N * stride`, where the stride is the worst-case row width in bytes rounded up to a power of two, at least 4. Bytes above the bound variant's width read 0 and drop writes. Rows past the variant's depth read `32'hBADD_C0DE`.
 
     ```yaml
     ipParameters:

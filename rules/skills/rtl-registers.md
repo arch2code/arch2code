@@ -74,4 +74,5 @@ block to back its registers.
     *   **Layout:** The register bus is 32 bits wide, so a wider register spans consecutive words: bits `[31:0]` at offset `+0`, bits `[63:32]` at `+4`, and so on.
     *   **No atomic update:** Each word write takes effect on its own. After a write to `+0` the register already holds the new low word next to the old high word.
     *   **`ext` registers fit the bus:** An `ext` register is at most the register bus data width (32 bits), and `make db` rejects a wider one. Firmware writes it in one access, so its owner sees one `write` pulse carrying the whole value. Split wider external state into several `ext` registers.
+    *   **Parameterizable width:** An `rw` or `ro` register whose structure is parameterizable spans the words of its widest variant in every variant. Words above the bound variant's width read 0 and drop writes.
     *   **Access order:** Firmware that needs a consistent value writes the word that completes it last, usually the highest. To read a value that hardware changes, read the high word, the low word, then the high word again, and retry if the two high reads differ.

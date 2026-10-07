@@ -305,6 +305,7 @@ def constructorBody(args, prj, data):
                 'structureKey': memData["structureKey"],
                 'wordLines': memData["wordLines"],
                 'wordLinesKey': memData.get("wordLinesKey", ""),
+                'rowBytes': intf_gen_utils.sc_explicit_row_bytes(memData, prj),
                 'is_reg_handler': data['blockInfo']['isRegHandler']
             })
         
@@ -320,7 +321,8 @@ def constructorBody(args, prj, data):
                     'structure': regData["structure"],
                     'structureKey': regData["structureKey"],
                     'wordLines': regData["wordLines"],
-                    'wordLinesKey': regData.get("wordLinesKey", "")
+                    'wordLinesKey': regData.get("wordLinesKey", ""),
+                    'rowBytes': intf_gen_utils.sc_explicit_row_bytes(regData, prj)
                 })
         
         # Add regular registers
@@ -332,7 +334,7 @@ def constructorBody(args, prj, data):
                     'offset_value': f'0x{regData["offset"]:0x}',
                     'name': regData["register"],
                     'block': regData["block"],
-                    'size': regData["bytes"]
+                    'size': regData["maxBytes"]
                 })
         
         # Sort all items by offset
@@ -352,18 +354,15 @@ def constructorBody(args, prj, data):
                 if not memory_comment_written:
                     memory_comment_written = True
                     out.append(f'    // register memories for FW access')
-                if item['type'] == 'memory':
-                    memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
-                    memType = bareParameterizedType(memType, hasOwnParams)
-                    linesExpr = wordLinesExpr(item, prj, isParameterizable, data)
-                    if item['is_reg_handler']:
-                        out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
-                    else:
-                        out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
-                else:  # memory_register
-                    memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
-                    memType = bareParameterizedType(memType, hasOwnParams)
-                    out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, isParameterizable, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
+                memType = bareParameterizedType(memType, hasOwnParams)
+                linesExpr = wordLinesExpr(item, prj, isParameterizable, data)
+                if item['rowBytes']:
+                    sizeArgs = f'{item["rowBytes"]} * {linesExpr}'
+                else:
+                    sizeArgs = f'{memType}::_byteWidth, {linesExpr}'
+                adapter = '_adapter' if item['type'] == 'memory_register' or item['is_reg_handler'] else ''
+                out.append(f'    _a2cRegs.addMemory( {constName}, {sizeArgs}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}{adapter});')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True

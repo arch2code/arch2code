@@ -772,6 +772,28 @@ def test_model_only_name_does_not_hide_a_stale_module():
               f"block's current name matches it ({found})")
 
 
+def test_stale_sv_modules_reported_without_an_sv_package():
+    """A project with no types, structures or constants emits no context
+    files, so INCLUDEFILES is empty. Its old module names are still
+    reported."""
+    print("test_stale_sv_modules_reported_without_an_sv_package")
+    with tempfile.TemporaryDirectory() as root:
+        _writeTree(root, {"top.sv": "module t;\n  holoscan_mailbox u_mb ();\nendmodule\n"})
+        prj = _SvNamePrj(root)
+        prj.config = orphans._FakeConfig({
+            "PROJECTNAME": "holoscan",
+            "INCLUDEFILES": {}})
+        report = None
+
+        def run():
+            nonlocal report
+            report = reportStaleSvNames(prj)
+        exc = _raises(run)
+        check(exc is None, f"a project with no SV package does not crash the scan ({exc!r})")
+        check(report is not None and [i.location for i in report.manual] == ["top.sv:2"],
+              "the old module name is reported")
+
+
 def test_rtl_module_cond_on_has_own_params():
     """A fileMap block entry may test hasOwnParams, which is not a block
     column."""
@@ -843,6 +865,7 @@ def main():
     test_stale_sv_names_only_at_reference_positions()
     test_stale_sv_name_line_matches_user_regions()
     test_model_only_name_does_not_hide_a_stale_module()
+    test_stale_sv_modules_reported_without_an_sv_package()
     test_rtl_module_cond_on_has_own_params()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} "
           f"({PASS} checks, {FAIL} failures)")

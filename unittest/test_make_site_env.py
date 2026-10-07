@@ -37,12 +37,15 @@ EXAMPLE_ROOTS = [os.path.join(base_dir, 'examples'),
                  os.path.join(base_dir, 'unittest', 'fixtures'),
                  os.path.join(base_dir, '..', 'pro', 'examples')]
 SITE_VARS = ('A2C_CLANG', 'A2C_SITE_EXTRA_LD_FLAGS', 'BOOST_LIBS', 'CXX', 'EXTRA_LD_FLAGS', 'USE_GCC')
+# Each make() stands for a make started from a shell, so an outer make running
+# this suite must not pass its sub-make state down.
+SUBMAKE_VARS = ('MAKELEVEL', 'MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES')
 PRINTER = 'printVars: ; $(info CXX=$(CXX))$(info LD_FLAGS=$(LD_FLAGS))@:'
 LD_ASSIGN = re.compile(r'^EXTRA_LD_FLAGS\s*=', re.MULTILINE)
 
 
 def baseEnv():
-    e = {k: v for k, v in os.environ.items() if k not in SITE_VARS}
+    e = {k: v for k, v in os.environ.items() if k not in SITE_VARS + SUBMAKE_VARS}
     e['NO_COLOR'] = '1'
     return e
 

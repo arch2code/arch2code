@@ -33,6 +33,16 @@ CURRENT_YAML_FORMAT = 2
 # to match.
 REG_BUS_WIDTH_BYTES = 4
 
+def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
+    """Firmware reaches a register or memory row of every variant through one
+    address range, so the range is sized for the widest variant."""
+    return maxBitwidth if isParameterizable else width
+
+def rowFootprintBytes(bitwidth):
+    """Address stride between the rows of a memory whose rows are `bitwidth`
+    bits wide, as the address map allocates it."""
+    return roundup_pow2min4((bitwidth + 7) >> 3)
+
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
 
@@ -2342,6 +2352,10 @@ class projectOpen:
                 if objInfo['blockKey'] == block:
                     data[obj] = dict(objInfo)
                     ret['temp']['structs'][objInfo['structureKey']] = 0
+                    struct = self.data['structures'][objInfo['structureKey']]
+                    data[obj]['worstBitwidth'] = worstCaseBitwidth(struct['width'], struct['maxBitwidth'], struct['isParameterizable'])
+                    if designObject == 'memories' or objInfo['regType'] == 'memory':
+                        data[obj]['rowBytes'] = rowFootprintBytes(data[obj]['worstBitwidth'])
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
@@ -2363,13 +2377,7 @@ class projectOpen:
                                 data.pop(obj)
 
                     else:  # registers
-                        data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
-                        # Surface worst-case bytes alongside nominal bytes for parameterized structures.
-                        _struct = self.data['structures'][objInfo['structureKey']]
-                        if _struct.get('isParameterizable') and _struct.get('maxBitwidth'):
-                            data[obj]['maxBytes'] = (_struct['maxBitwidth'] + 7) >> 3
-                        else:
-                            data[obj]['maxBytes'] = data[obj]['bytes']
+                        data[obj]['bytes'] = (struct['width'] + 7) >> 3 # round up to whole byte
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             if objInfo.get('wordLinesKey'):
@@ -5837,9 +5845,8 @@ class projectCreate:
                     currentBlock = row['blockKey']
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
-                # Pick worst-case width when row is parameterizable.
                 isParam = bool(row['rowIsParam'])
-                width = row['maxBitwidth'] if (isParam and row['maxBitwidth']) else row['width']
+                width = worstCaseBitwidth(row['width'], row['maxBitwidth'], row['structIsParam'])
                 # for register memory type, use the memory objects alignment settings
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
@@ -5866,7 +5873,7 @@ class projectCreate:
                                    f"Address sizing requires a resolvable "
                                    f"wordLines value.")
                         exit(warningAndErrorReport())
-                    decodeSize = roundup_pow2min4((width + 7) >> 3) * wordLines
+                    decodeSize = rowFootprintBytes(width) * wordLines
                     size = decodeSize
                     if sizeRoundUpPowerOf2:
                         size = roundup_pow2min4(size)
@@ -9824,7 +9831,7 @@ class projectCreate:
     def _regWorstWidth(self, structKey):
         """Worst-case bit width of a register structure: maxBitwidth when parameterizable."""
         sEntry = self._rowByQualifiedKey('structures', structKey)
-        return sEntry['maxBitwidth'] if sEntry['isParameterizable'] else sEntry['width']
+        return worstCaseBitwidth(sEntry['width'], sEntry['maxBitwidth'], sEntry['isParameterizable'])
 
     def _auto_regMaxBytes(self, section, itemkey, item, field, yamlFile, processed):
         # Worst-case byte size for a register, derived from its structure.
