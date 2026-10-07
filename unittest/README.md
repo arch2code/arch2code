@@ -17,7 +17,7 @@ Each file's `run_all_tests()` (or equivalent `main`) maps its boolean results to
 
 pytest is not a supported runner. It discards return values, so a file that reports failure by returning `False` from a test function would pass vacuously under pytest.
 
-A new `test_*.py` file must follow the same shape. It is discovered automatically by glob, but the expected-suite-count constant in `run_all_tests_parallel.sh` must be bumped whenever a file is added or removed.
+A new `test_*.py` file must follow the same shape. It is discovered automatically by glob. A file that reads or copies an `examples/` tree must also be listed in `EXAMPLE_READERS` in `run_all_tests_parallel.sh`, so that it never runs alongside the example writer.
 
 ## Test Files
 

@@ -28,7 +28,7 @@ import os
 from dataclasses import dataclass
 
 import pysrc.arch2codeGlobals as g
-from pysrc.arch2codeHelper import printIfDebug, printWarning
+from pysrc.arch2codeHelper import printError, printIfDebug, printWarning, warningAndErrorReport
 from pysrc.processYaml import projectCreate, _expand_with_macros
 
 # PyYAML fast loader - the deliberate NOT-ruamel path for the discovery scan.
@@ -132,10 +132,11 @@ class ProjectScanner:
         # directory, mirroring _resolveDirMacros' root anchor. projectFileDirKey
         # is '' for the root project or a root-relative dir for a child copy.
         if 'root' not in dirsBlock:
-            raise ValueError(
+            printError(
                 "Definition for project root directory missing in project "
                 "file. This should reflect the root of all generated files "
                 "and is relative to the project file.")
+            exit(warningAndErrorReport())
         rootRel = _expand_with_macros(dirsBlock['root'], {'a2c': self.a2cRoot})
         return os.path.abspath(
             os.path.join(g.yamlBasePath, projectFileDirKey, rootRel))
@@ -285,13 +286,16 @@ class ProjectScanner:
             elif depth == self.overrideDepth[projName]:
                 existingTarget, existingDecl = self.effectiveOverrides[projName]
                 if existingTarget != targetKey:
-                    raise ValueError(
+                    printError(
                         f"conflicting projectOverrides for projectName "
                         f"'{projName}': '{existingDecl}' selects "
                         f"'{existingTarget}' and '{declDir}' selects "
                         f"'{targetKey}' at the same nesting depth ({depth}); "
                         f"neither declarer dominates the other, so no single "
-                        f"master can be chosen.")
+                        f"master can be chosen. Make both overrides select the "
+                        f"same file, or declare the override once in a project "
+                        f"that contains both.")
+                    exit(warningAndErrorReport())
 
     def _referenceClosure(self, seeds, ownProvider):
         # Walk the projectFiles:/include: reference graph from `seeds`,
@@ -353,9 +357,11 @@ class ProjectScanner:
             # short-circuited as already-known.
             if b in onStack:
                 cycle = onStack[onStack.index(b):] + [b]
-                raise ValueError(
-                    "projectFiles:/include: reference cycle: " +
-                    " -> ".join(cycle))
+                printError(
+                    "projectFiles:/include: references form a cycle: " +
+                    " -> ".join(cycle) + ". Remove one of these references "
+                    "so that no project reaches itself.")
+                exit(warningAndErrorReport())
             if b in providerChildren:
                 return
             onStack.append(b)
@@ -407,9 +413,11 @@ class ProjectScanner:
             def dfs(b):
                 if b in stack:
                     cycle = stack[stack.index(b):] + [b]
-                    raise ValueError(
-                        "projectFiles:/include: reference cycle: " +
-                        " -> ".join(cycle))
+                    printError(
+                        "projectFiles:/include: references form a cycle: " +
+                        " -> ".join(cycle) + ". Remove one of these references "
+                        "so that no project reaches itself.")
+                    exit(warningAndErrorReport())
                 if b in visited:
                     return
                 stack.append(b)
@@ -461,11 +469,14 @@ class ProjectScanner:
         for f in sorted(directOwners):
             owners = directOwners[f]
             if len(owners) > 1:
-                raise ValueError(
+                printError(
                     f"'{f}' is listed directly in projectFiles: by more than "
                     f"one project: "
                     f"{', '.join(sorted(directLabel(o) for o in owners))}; "
-                    f"only one project may claim a file directly.")
+                    f"only one project may list a file directly. Remove it "
+                    f"from every projectFiles: list except the owning "
+                    f"project's.")
+                exit(warningAndErrorReport())
             owner = owners[0]
             ownership[f] = self.rootName if owner is None else self.providerName[owner]
             owningProvider[f] = owner
@@ -485,11 +496,12 @@ class ProjectScanner:
             maxDepth = max(depth[b] for b in providers)
             winners = sorted(b for b in providers if depth[b] == maxDepth)
             if len(winners) > 1:
-                raise ValueError(
+                printError(
                     f"'{f}' has no single owner: it is reached at the same "
                     f"depth by {', '.join(winners)}. List the file directly "
                     f"in the owning project's projectFiles: to resolve the "
                     f"tie.")
+                exit(warningAndErrorReport())
             winner = winners[0]
             ownership[f] = self.providerName[winner]
             owningProvider[f] = winner
@@ -527,20 +539,25 @@ class ProjectScanner:
                     # target is therefore invalid; report which of live's
                     # structural rejections applies.
                     if not os.path.exists(target):
-                        raise ValueError(
+                        printError(
                             f"projectOverrides in '{declDir}' selects '{target}' "
                             f"for projectName '{name}', but that file does not "
-                            f"exist.")
-                    raise ValueError(
+                            f"exist. Correct the path.")
+                        exit(warningAndErrorReport())
+                    printError(
                         f"projectOverrides in '{declDir}' selects '{target}' "
                         f"for projectName '{name}', but that file is not a child "
                         f"project file (missing the projectName/dirs/"
-                        f"fileGeneration sentinel).")
+                        f"fileGeneration sentinel). Point the override at "
+                        f"a copy of the '{name}' project file.")
+                    exit(warningAndErrorReport())
                 if declared != name:
-                    raise ValueError(
+                    printError(
                         f"projectOverrides in '{declDir}' selects '{target}' "
                         f"for projectName '{name}', but that file declares "
-                        f"projectName '{declared}'.")
+                        f"projectName '{declared}'. Point the override at "
+                        f"a copy of the '{name}' project file.")
+                    exit(warningAndErrorReport())
                 masterProviderByName[name] = target
             elif len(providers) == 1:
                 masterProviderByName[name] = providers[0]

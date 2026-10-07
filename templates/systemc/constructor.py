@@ -2,6 +2,10 @@ import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport
 from templates.systemc.includes import constReference_cpp
 
+# hwMemoryFwAccess spelling of each firmware access mode that restricts
+# cpu_read/cpu_write. rw is the constructor default and is not spelled.
+FW_ACCESS_ENUM = {'ro': 'HWMEMORYFWACCESS_RO', 'wo': 'HWMEMORYFWACCESS_WO'}
+
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
 
@@ -237,7 +241,11 @@ def constructorInit(args, prj, data):
         # For register handlers, use hwMemoryPort for all register-accessible memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]})')
+            if memData['regAccess'] in FW_ACCESS_ENUM:
+                out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]}, {FW_ACCESS_ENUM[memData["regAccess"]]}, '
+                           f'std::string(this->name()) + ".{memData["memory"]}")')
+            else:
+                out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]})')
         # Also handle memory registers - connect adapter to base class port
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
@@ -245,7 +253,10 @@ def constructorInit(args, prj, data):
     else:
         for mem, memData in data['memories'].items():
             linesExpr = wordLinesExpr(memData, prj, isParameterizable, data)
-            if memData["local"]:
+            memType = 'HWMEMORYTYPE_LOCAL' if memData["local"] else 'HWMEMORYTYPE_NORMAL'
+            if memData['regAccess'] in FW_ACCESS_ENUM:
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr}, {memType}, {FW_ACCESS_ENUM[memData["regAccess"]]})')
+            elif memData["local"]:
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr}, HWMEMORYTYPE_LOCAL)')
             else:
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr})')

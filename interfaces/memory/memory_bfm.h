@@ -33,6 +33,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             ADDR_T addr;
             DATA_T data;
@@ -79,7 +80,7 @@ public:
     }
 
     void bfm_driver_thread() {
-        while(!rst_n) wait(clk.posedge_event());
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             ADDR_T addr;
             DATA_T data;

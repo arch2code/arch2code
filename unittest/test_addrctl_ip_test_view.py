@@ -81,10 +81,9 @@ def _assert_leaf_interface_scoping(prj):
     assert lad.get('registerBusPort') == 'regs', \
         f"ip leaf registerBusPort expected 'regs', got {lad.get('registerBusPort')}"
 
-    # The leaf-to-handler connectionMap is where the leaf-scoped `ipReg`
-    # and the router-side `apbReg` port meet: the leaf side carries
-    # `ipReg` on port `regs`, the handler side carries the router's
-    # `apbReg` port name.
+    # The leaf-to-handler connectionMap carries the leaf-scoped `ipReg`
+    # from the leaf's port `regs` to the handler's port, which takes the
+    # leaf's registerPorts: key `regs`.
     handler_maps = find_connection_maps(prj, instance='uIpRegs')
     assert len(handler_maps) == 1, \
         f"expected one uIpRegs leaf-to-handler connectionMap, got {len(handler_maps)}"
@@ -93,8 +92,8 @@ def _assert_leaf_interface_scoping(prj):
         f"uIpRegs connectionMap interface expected 'ipReg', got {cm.get('interface')}"
     assert cm.get('port') == 'regs', \
         f"uIpRegs connectionMap port expected 'regs', got {cm.get('port')}"
-    assert cm.get('instancePort') == 'apbReg', \
-        f"uIpRegs connectionMap instancePort expected 'apbReg', got {cm.get('instancePort')}"
+    assert cm.get('instancePort') == 'regs', \
+        f"uIpRegs connectionMap instancePort expected 'regs', got {cm.get('instancePort')}"
 
     # Handler block / instance synthesised once for the reused `ip` block.
     handler_block_key, handler_block_row = find_block(prj, 'ipRegs')
@@ -142,6 +141,19 @@ def _assert_nested_router_subtree(prj):
             f"uBridgeAPBDecode->{leaf} must not carry _context '_global'"
 
 
+def _assert_unreachable_router_ports_on_bus_domain(prj):
+    """The child project's router ipStdDecode has no instance under this
+    build's top, yet its view still stamps every port with its own bus
+    clock/reset ports."""
+    router_key, _ = find_block(prj, 'ipStdDecode')
+    ports = prj.getBlockData(router_key)['ports']
+    domains = {name: (row['domainClock'], row['domainReset'])
+               for port_type in ports.values() for name, row in port_type.items()}
+    assert domains, "ipStdDecode view has no ports"
+    wrong = {name: domain for name, domain in domains.items() if domain != ('clk', 'rst_n')}
+    assert not wrong, f"ipStdDecode ports {wrong} expected on ('clk', 'rst_n')"
+
+
 def _run():
     print("migrated ip_test view assertions")
     db_path = _build_ip_test_db()
@@ -150,6 +162,7 @@ def _run():
         _assert_leaf_interface_scoping(prj)
         _assert_primary_serves_leaves_and_nested_router(prj)
         _assert_nested_router_subtree(prj)
+        _assert_unreachable_router_ports_on_bus_domain(prj)
         assert_no_global_register_binds(prj)
         print("PASS: ip_test view assertions")
         return True

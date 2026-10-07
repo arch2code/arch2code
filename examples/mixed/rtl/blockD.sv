@@ -55,4 +55,29 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
+// Reads return the addressed row one cycle after enable, as the register
+// handler captures it; a row past BSIZE reads as zero.
+test37BitRegSt blockBTable37Bit_rd_data;
+`DFFEN(blockBTable37Bit_rd_data,
+       (blockBTable37Bit.addr.index < bSizeT'(BSIZE)) ? blockBTable37Bit_mem[blockBTable37Bit.addr.index] : '0,
+       blockBTable37Bit.enable & ~blockBTable37Bit.wr_en)
+assign blockBTable37Bit.read_data = blockBTable37Bit_rd_data;
+
+seeSt blockBTableExt_rd_data;
+`DFFEN(blockBTableExt_rd_data,
+       (blockBTableExt.addr.index < bSizeT'(BSIZE)) ? blockBTableExt_mem[blockBTableExt.addr.index] : '0,
+       blockBTableExt.enable & ~blockBTableExt.wr_en)
+assign blockBTableExt.read_data = blockBTableExt_rd_data;
+
+// Stands in for the blockD model's port1 write, so blockBTable1 row 0 holds
+// BLOCKBTABLE1_SEED once out of reset. The flag sets only out of reset, so the
+// write also fires when the reset style gives flops no reset.
+localparam bigSt BLOCKBTABLE1_SEED = bigSt'(64'h1234_5678_1234_5678);
+logic blockBTable1_seeded;
+`DFF(blockBTable1_seeded, blockBTable1_seeded | rst_n)
+assign blockBTable1.enable     = rst_n & ~blockBTable1_seeded;
+assign blockBTable1.wr_en      = rst_n & ~blockBTable1_seeded;
+assign blockBTable1.addr       = '0;
+assign blockBTable1.write_data = BLOCKBTABLE1_SEED;
+
 endmodule: blockD

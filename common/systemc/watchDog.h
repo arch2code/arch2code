@@ -18,6 +18,7 @@ public:
     static void disableWatchdog(void); 
 };
 
-
+// Watchdog process body; sc_main spawns it once per run.
+void watchDogHandler(void);
 
 #endif //WATCHDOG_H

@@ -9,11 +9,10 @@
 #     mutually exclusive with any suite that reads an examples/ tree.
 #
 #   READERS of shared examples/ trees (read-only):
-#     The eval/addrctl ip_test parity suites, the boundary-signal suite, the
-#     nested-layout suite, and the layout-migration suite all READ an examples/
-#     tree (projectCreate/arch2code parse the shared YAML and write their DB to
-#     a unique temp path, or copytree the tree into a private tempdir). They are
-#     safe concurrently with each other (concurrent reads) but NOT concurrent
+#     EXAMPLE_READERS below all READ an examples/ tree (projectCreate/
+#     arch2code parse the shared YAML and write their DB to a unique temp
+#     path, or copytree the tree into a private tempdir). They are safe
+#     concurrently with each other (concurrent reads) but NOT concurrent
 #     with test_build_manifest.py.
 #
 #   ISOLATED (everything else):
@@ -54,6 +53,10 @@ EXAMPLE_READERS=(
     test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
     test_sv_names_match_file_stem.py  # reads every examples/ tree
     test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
+    test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
+    test_db_failure_no_stale_artifact.py      # reads examples/simple + xprojParam/cpLayoutBad (copytree)
+    test_tb_variant_plain_block.py            # reads examples/helloWorld (copytree)
+    test_vl_registrar_factory_domain.py       # reads examples/twoClk + examples/mixed (db to a temp path)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
@@ -76,12 +79,19 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping or double-counting suites: ALL plus DISABLED
-# must contain every test_*.py exactly once. Derived from the glob rather than a
-# literal count, so adding or removing a suite never requires editing this number.
-TOTAL_TEST_FILES=(test_*.py)
-if [[ $(( ${#ALL[@]} + ${#DISABLED[@]} )) -ne ${#TOTAL_TEST_FILES[@]} ]]; then
-    echo "WARNING: expected ${#TOTAL_TEST_FILES[@]} suites (all test_*.py), found ${#ALL[@]} in the bucketed set." >&2
+# Guard against silently dropping or missing suites: diff ALL by name against
+# the suites run_all_tests.sh invokes (direct python3 calls and the
+# ADDRCTL_TESTS script column; comment lines excluded).
+mapfile -t SERIAL_SUITES < <(grep -v '^[[:space:]]*#' run_all_tests.sh | grep -oE '\btest_[A-Za-z0-9_]+\.py\b' | sort -u)
+mapfile -t ONLY_SERIAL < <(comm -23 <(printf '%s\n' "${SERIAL_SUITES[@]}") <(printf '%s\n' "${ALL[@]}" | sort -u))
+mapfile -t ONLY_HERE   < <(comm -13 <(printf '%s\n' "${SERIAL_SUITES[@]}") <(printf '%s\n' "${ALL[@]}" | sort -u))
+if [[ ${#ONLY_SERIAL[@]} -gt 0 || ${#ONLY_HERE[@]} -gt 0 ]]; then
+    for f in ${ONLY_SERIAL[@]+"${ONLY_SERIAL[@]}"}; do
+        echo "WARNING: ${f} is run by run_all_tests.sh but not found here" >&2
+    done
+    for f in ${ONLY_HERE[@]+"${ONLY_HERE[@]}"}; do
+        echo "WARNING: ${f} exists but run_all_tests.sh never runs it" >&2
+    done
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

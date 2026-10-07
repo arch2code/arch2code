@@ -73,7 +73,7 @@ import ip_package::*;
 
 // Instances
 ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) uIpRegs (
-    .ipReg (regs),
+    .regs (regs),
     .ipMem (ipMem_reg),
     .ipFixedMem (ipFixedMem_reg),
     .ipNonConstMem (ipNonConstMem_reg),
@@ -84,25 +84,25 @@ ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONS
 );
 
 // Memory Instances
-memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipMemSt)) uIpMem (
+memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpMem (
     .mem_portA (ipMem),
     .mem_portB (ipMem_reg),
     .clk (clk)
 );
 
-memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipFixedSt)) uIpFixedMem (
+memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipFixedSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpFixedMem (
     .mem_portA (ipFixedMem),
     .mem_portB (ipFixedMem_reg),
     .clk (clk)
 );
 
-memory_dp #(.DEPTH(IP_NONCONST_DEPTH), .data_t(ipFixedSt)) uIpNonConstMem (
+memory_dp #(.DEPTH(IP_NONCONST_DEPTH), .data_t(ipFixedSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpNonConstMem (
     .mem_portA (ipNonConstMem),
     .mem_portB (ipNonConstMem_reg),
     .clk (clk)
 );
 
-memory_dp #(.DEPTH(IP_MEM_DEPTH_X4), .data_t(ipMemSt)) uIpDerivedDepthMem (
+memory_dp #(.DEPTH(IP_MEM_DEPTH_X4), .data_t(ipMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpDerivedDepthMem (
     .mem_portA (ipDerivedDepthMem),
     .mem_portB (ipDerivedDepthMem_unused),
     .clk (clk)

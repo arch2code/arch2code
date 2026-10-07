@@ -14,6 +14,7 @@
 #include "testBenchConfigFactory.h"
 #include "synchLock.h"
 #include "simController.h"
+#include "watchDog.h"
 import a2c.endOfTest;
 
 #ifdef VERILATOR
@@ -266,6 +267,10 @@ int sc_main(int argc, char* argv[])
         wait(simController::startupDelay);
         endOfTestState::GetInstance().setStartupComplete();
     });
+
+    // Watchdog for every run: stall detection once all enablers vote it on,
+    // and the no-terminator check.
+    sc_spawn([]() { watchDogHandler(); });
 
     std::stringstream exitMsg;
     //std::cout << instanceFactory::dumpInstances();

@@ -4,7 +4,7 @@
 Containment must be a tree. A block placed inside itself gives the design no
 bottom, and every pass that descends the hierarchy - parameter inheritance,
 register decode, port validation - either runs forever or resolves nothing.
-`projectCreate.validateBlockNotSelfContaining` in `pysrc/processYaml.py` walks
+`projectCreate._validateContainmentAcyclic` in `pysrc/processYaml.py` walks
 the containment adjacency and must reject the design.
 
 The rule is one rule at any depth, so the cases here are depths of it rather
@@ -108,20 +108,22 @@ instances:
     childTop: { container: childTop, instanceType: childTop }
 """
 
-CYCLE_STEM = "contains itself"
+CYCLE_STEM = "A block cannot contain itself, directly or through the blocks it contains."
 
-# Block keys are context-qualified and the context is a temp filename, so only
-# the simple name ahead of the separator is stable.
-PATH_TEXT = re.compile(r"contains itself: (.+?)\. A block")
-SIMPLE_NAME = re.compile(r"([^/\s]+)/\S*")
+# The diagnostic spells the loop as a containment chain: "block 'A' contains
+# 'uB' (B), which contains 'uA' (A). A block cannot contain itself".
+CHAIN_TEXT = re.compile(
+    r"block '([^']+)' contains ('[^']+' \([^)]+\)(?:, which contains '[^']+' \([^)]+\))*)"
+    r"\. A block cannot contain itself")
+CHAIN_STEP = re.compile(r"'[^']+' \(([^)]+)\)")
 
 
 def _reported_path(combined):
-    """The loop the diagnostic printed, as simple block names."""
-    match = PATH_TEXT.search(combined)
+    """The loop the diagnostic printed, as block names, closed on itself."""
+    match = CHAIN_TEXT.search(combined)
     if match is None:
         return None
-    return SIMPLE_NAME.findall(match.group(1))
+    return [match.group(1)] + CHAIN_STEP.findall(match.group(2))
 
 
 def _rotations(loop):

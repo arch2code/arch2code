@@ -1,5 +1,5 @@
 """Mechanized `.cpp`/`.h` -> `.cppm` port of the two user-code file families:
-the block implementation (item 5) and the testbench External.
+the block implementation and the testbench External.
 
 Both families are the SAME four-slot transplant over a different marker
 vocabulary, so the mechanism below is parameterized by a `PortShape`. Three entry
@@ -20,11 +20,11 @@ points drive it, the third being a PARAM-line carry with no slots at all:
                       same `--port-tb` schedule and for the same reason: only the
                       user's DUT `--variant=` survives the re-scaffold this way.
 
-The rest of this docstring describes the block port (item 5).
+The rest of this docstring describes the block port.
 
-Item 5 converts EVERY block implementation to a single C++20 module interface
-unit (`<block>.cppm`), regardless of parameterization. After the `blockModule`
-fileMap gate is relaxed to `cond: {hasMdl: true}`, a non-parameterized block's
+The block port converts EVERY block implementation to a single C++20 module interface
+unit (`<block>.cppm`), regardless of parameterization. With the `blockModule`
+fileMap gate at `cond: {hasMdl: true}`, a non-parameterized block's
 current artifact is a `.cppm` that `make newmodule` + `make gen` scaffold with
 empty user slots, while its hand-written code still lives in the legacy
 `<block>.h` + `<block>.cpp` pair the orphan sweep reports as `TODO_PORT`. This
@@ -62,7 +62,7 @@ hand-port):
     member, routerDecode thread, and ctor init are likewise fully generated.
 
 DETECT-and-FLAG (never ported) — left for an agent, legacy pair untouched:
-  - a parameterized block (`hasOwnParams`): its templatization (T2) is semantic;
+  - a parameterized block (`hasOwnParams`): its templatization is semantic;
   - a module-hostile library (e.g. OpenCV) in any user slot: needs a design call;
   - non-boilerplate content in a top-of-file slot (anything that is not a
     comment, blank, include guard, or `#include`): the port cannot place it.
@@ -92,7 +92,7 @@ TB_EXTERNAL_PORTED = "TB_EXTERNAL_PORTED"  # testbench External: four-slot trans
 TB_TOP_PORTED = "TB_TOP_PORTED"    # testbench top: DUT --variant= carried onto the .cppm, legacy pair deleted
 
 # Manual-TODO kinds (block left un-ported, legacy pair untouched).
-TODO_PORT_PARAM = "TODO_PORT_PARAM"            # parameterized block; templatize by hand (T2)
+TODO_PORT_PARAM = "TODO_PORT_PARAM"            # parameterized block; templatize by hand
 TODO_PORT_HOSTILE_LIB = "TODO_PORT_HOSTILE_LIB"  # module-hostile library in a user slot
 TODO_PORT_SLOT0 = "TODO_PORT_SLOT0"            # non-boilerplate top-of-file content
 TODO_PORT_NO_CPPM = "TODO_PORT_NO_CPPM"        # legacy pair present but no gen'd .cppm target
@@ -625,12 +625,13 @@ def portBlockModules(prj, write=False):
                 wrote = True
             continue
 
-        # A parameterized block's templatization (T2) is semantic; leave it.
+        # A parameterized block's templatization is semantic; leave it.
         if bool(prj.getBlockConfigView(blockRow["blockKey"])["hasOwnParams"]):
             report.manual.append(ReportItem(
                 TODO_PORT_PARAM, location,
-                f"block '{blockName}' is parameterized; templatize (T2) and port "
-                f"its .h/.cpp by hand"))
+                f"block '{blockName}' is parameterized, so its code must become a "
+                f"template on Config before it can move into the .cppm. Make the "
+                f".h/.cpp code template-correct, then move it into the .cppm by hand"))
             continue
 
         if not cppmReady:
@@ -806,15 +807,22 @@ def portTbExternals(prj, write=False):
         declared = _generatorValidatedVariants(prj, blockRow, hTail)
         if (carriedVariant is not None and declared is not None
                 and carriedVariant not in declared):
+            if declared:
+                reason = (f"which the block no longer declares (declared: "
+                          f"{', '.join(declared)})")
+                fix = ("Decide which variant this testbench drives, correct "
+                       "`--variant=<name>` on both legacy files, then re-run")
+            else:
+                reason = ("but the block declares no params:, so its testbench "
+                          "takes no `--variant=`")
+                fix = "Remove `--variant=` from both legacy files, then re-run"
             report.manual.append(ReportItem(
                 TODO_PORT_STALE_VARIANT, location,
                 f"block '{blockName}': the legacy External {PARAM_MARKER} line "
-                f"carries DUT variant {carriedVariant!r}, which the block no longer "
-                f"declares (declared: {', '.join(declared) if declared else 'none'}). "
-                f"The tail is carried across verbatim, so stamping it would make "
-                f"`make gen` resolve the wrong config or fail; the legacy pair is "
-                f"left in place. Decide which variant this testbench drives, correct "
-                f"`--variant=<name>` on both legacy files, then re-run"))
+                f"carries DUT variant {carriedVariant!r}, {reason}. The tail is "
+                f"carried across verbatim, so stamping it would make `make gen` "
+                f"fail or resolve the wrong config; the legacy pair is left in "
+                f"place. {fix}"))
             continue
         # A scaffold always emits a PARAM line and every region the transplant
         # anchors on, so a target lacking either has been damaged. Both are checked
@@ -831,11 +839,11 @@ def portTbExternals(prj, write=False):
                 f"with `make newmodule`"))
             continue
 
-        # An External's top-of-file span is a closed boilerplate set in every
-        # measured instance, so there is no sibling-block or contained-child header
-        # to convert: a genuinely external header simply relocates to the GMF slot,
-        # which is the placement that preserves the global-module attachment it
-        # already had as a plain header/TU include.
+        # An External's top-of-file span is a closed boilerplate set, so there is
+        # no sibling-block or contained-child header to convert: a genuinely
+        # external header simply relocates to the GMF slot, which is the placement
+        # that preserves the global-module attachment it already had as a plain
+        # header/TU include.
         dropIncludes = TB_EXTERNAL_SHAPE.dropIncludes + (os.path.basename(hPath),)
         slots = _extractSlots(hText, cppText, TB_EXTERNAL_SHAPE, dropIncludes,
                               dict(), set())
@@ -893,32 +901,26 @@ def portTbExternals(prj, write=False):
 
 
 def _generatorValidatedVariants(prj, blockRow, tail):
-    """The declared variant set the GENERATOR will check a carried `--variant=`
-    against, or None when it checks nothing.
+    """The variants the generator accepts on a carried `--variant=`, or None when
+    the tail's `--block=` names another block (the `_tb` container an External is
+    routinely retargeted to), whose variants this port does not know.
 
-    Mirrors the real resolution rather than assuming it. `systemcGen` resolves the
-    block view from the file's OWN `--block=` argument
-    (`prj.getQualBlock(self.code.block)`), and
-    `intf_gen_utils.resolve_dut_variant_selection` then rejects a `--variant=` that is
-    not in that block's declared variant set — but ONLY when that block has own
-    `params:`; without them it early-returns and passes the variant straight through
-    as the instanceFactory key, unchecked. Both conditions are therefore skips here,
-    because refusing either would refuse a migration `make gen` accepts:
-
-      * the tail retargets `--block=` away from the block being ported (the `_tb`
-        container an External is routinely pointed at), so this block's variants are
-        not the ones resolved against;
-      * that block has no own `params:` (`xif_tb` is parameterizable transitively yet
-        owns none), so nothing is resolved at all.
-
-    `getQualBlockVariants` is the declared set the generator compares against: its
-    labels are identical to the `variantConfigs` descriptors
-    `resolve_dut_variant_selection` reads, both being the block's declared variants.
+    `systemcGen` resolves the block from the file's own `--block=` argument, and
+    `intf_gen_utils.resolve_dut_variant_selection` rejects any `--variant=` outside
+    that block's declared variants. A block with no own `params:` accepts no
+    `--variant=` at all, so its set is empty even when it is parameterizable
+    transitively (`xif_tb`).
     """
     if f"--block={blockRow['block']}" not in tail.split():
         return None
+    return _acceptedVariants(prj, blockRow)
+
+
+def _acceptedVariants(prj, blockRow):
+    """The variants the generator accepts on a `--variant=` resolved against this
+    block: its declared variants, or none when it has no own `params:`."""
     if not prj.getBlockConfigView(blockRow["blockKey"])["hasOwnParams"]:
-        return None
+        return []
     return prj.getQualBlockVariants(blockRow["blockKey"])
 
 
@@ -928,9 +930,8 @@ def portTbTops(prj, write=False):
     Returns a BlockPortReport.
 
     The tb top is the one member of the testbench family with NO user code slots to
-    transplant — measured across every instance in base, pro and the isp workspace,
-    every slot is empty — so `make gen` recreates the module unit in full. Its
-    file-level GENERATED_CODE_PARAM line is not generated content though: the
+    transplant (every slot is empty), so `make gen` recreates the module unit in
+    full. Its file-level GENERATED_CODE_PARAM line is not generated content though: the
     `--variant=` there selects which DUT variant this testbench drives and is a user
     edit, while a create-only re-scaffold seeds the block's first declared variant.
     Deleting the pair without carrying that value would silently point the testbench
@@ -1028,22 +1029,29 @@ def portTbTops(prj, write=False):
                 f"({', '.join(repr(v) for v in selected)}), so the port cannot tell "
                 f"which the user meant; make the two lines agree, then re-run"))
             continue
-        # Same membership rule as the External path. The tail-accounting guard above
-        # has already established that any `--block=` here names this block, so only
-        # the own-params condition can skip the check.
-        declared = _generatorValidatedVariants(prj, blockRow, legacyTail)
-        if selected and declared is not None and selected[0] not in declared:
+        # The carried variant lands on the scaffold, whose `--block=` is this block.
+        declared = _acceptedVariants(prj, blockRow)
+        if selected and selected[0] not in declared:
+            legacyNames = ', '.join(os.path.basename(p) for p in present)
+            if declared:
+                reason = (f"which the block no longer declares (declared: "
+                          f"{', '.join(declared)}). Carrying it would make `make "
+                          f"gen` resolve the wrong config or fail")
+                fix = (f"Decide which variant this testbench drives, set "
+                       f"`--variant=<name>` on the {PARAM_MARKER} line of "
+                       f"{', '.join(os.path.basename(p) for p in targets)}, then "
+                       f"delete {legacyNames}")
+            else:
+                reason = ("but the block declares no params:, so its testbench "
+                          "takes no `--variant=` and `make gen` would fail on it")
+                fix = (f"The scaffolded "
+                       f"{', '.join(os.path.basename(p) for p in targets)} already "
+                       f"selects no variant; delete {legacyNames}")
             report.manual.append(ReportItem(
                 TODO_PORT_STALE_VARIANT, location,
                 f"block '{blockName}': the legacy Testbench selects DUT variant "
-                f"{selected[0]!r}, which the block no longer declares "
-                f"(declared: {', '.join(declared) if declared else 'none'}). "
-                f"Carrying it would make `make gen` resolve the wrong config or "
-                f"fail, so the legacy pair is left in place. Decide which variant "
-                f"this testbench drives, set `--variant=<name>` on the "
-                f"{PARAM_MARKER} line of "
-                f"{', '.join(os.path.basename(p) for p in targets)}, then delete "
-                f"{', '.join(os.path.basename(p) for p in present)}"))
+                f"{selected[0]!r}, {reason}, so the legacy pair is left in place. "
+                f"{fix}"))
             continue
 
         # Write before delete, as the block/External ports do: the value has to be

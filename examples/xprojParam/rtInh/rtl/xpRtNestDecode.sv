@@ -26,23 +26,23 @@ apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(apbReg.paddr) & apbAddrSt'(32'hff_ffff);
 //signals for interface apbReg
 apbAddrSt paddr_q;
-`DFF (paddr_q, apbReg.paddr)
+`DFF_DOM(clk, rst_n, paddr_q, apbReg.paddr)
 apbDataSt pwdata_q;
-`DFF (pwdata_q, apbReg.pwdata)
+`DFF_DOM(clk, rst_n, pwdata_q, apbReg.pwdata)
 logic penable_q;
-`DFF (penable_q, apbReg.penable)
+`DFF_DOM(clk, rst_n, penable_q, apbReg.penable)
 logic pwrite_q;
-`DFF (pwrite_q, apbReg.pwrite)
+`DFF_DOM(clk, rst_n, pwrite_q, apbReg.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_DOM(clk, rst_n, trans_active, set_trans_active, pready)
 
 //signals for interface apbReg_uLeaf
 logic apbReg_uLeaf_psel;
 logic apbReg_uLeaf_next_psel;
-`SCFF(apbReg_uLeaf_psel, apbReg_uLeaf_next_psel, apbReg_uLeaf.pready)
+`SCFF_DOM(clk, rst_n, apbReg_uLeaf_psel, apbReg_uLeaf_next_psel, apbReg_uLeaf.pready)
 
 assign apbReg_uLeaf.paddr   = paddr_q;
 assign apbReg_uLeaf.penable = penable_q & apbReg_uLeaf_psel;
@@ -73,9 +73,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, apbReg_next_pready)
-`DFF(prdata, apbReg_next_prdata)
-`DFF(pslverr, apbReg_next_pslverr)
+`DFF_DOM(clk, rst_n, pready, apbReg_next_pready)
+`DFF_DOM(clk, rst_n, prdata, apbReg_next_prdata)
+`DFF_DOM(clk, rst_n, pslverr, apbReg_next_pslverr)
 assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;

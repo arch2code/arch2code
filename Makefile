@@ -29,6 +29,9 @@ SIMPLE_IP_DIR = examples/simple_ip
 XPROJ_PARAM_DIR = examples/xprojParam
 XIF_DIR = examples/xif
 
+TWO_CLK_DIR = examples/twoClk
+CLK_GEN_DIR = examples/clkGen
+
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
 IN_OUT_DB_FILE = $(IN_OUT_DIR)/inAndOut.db
@@ -51,7 +54,6 @@ AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
 AXISOCKET_MASTER_DIR = examples/axiSocketMaster
 AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
-XIF_DIR = examples/xif
 
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 
@@ -104,19 +106,19 @@ diagram-and-doc : mixed-db nested-db
 .PHONY : nested
 nested: nested-db
 	make -C $(NESTED_DIR)/rundir -j all
-	make -C $(NESTED_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(NESTED_DIR)/rundir run
 
 .PHONY : axiDemo
 # axiDemo migrated to the newer rundir/ build (module-capable). VL_DUT cosim is
 # omitted because its producer/consumer RTL are passthrough stubs with no datapath.
 axiDemo: axiDemo-gen
 	make -C $(AXI_DIR)/rundir -j all
-	make -C $(AXI_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(AXI_DIR)/rundir run
 
 .PHONY : axi4sDemo
 axi4sDemo:
 	make -C $(AXI4SDEMO_DIR)/rundir -j all VL_DUT=1
-	make -C $(AXI4SDEMO_DIR)/rundir -j run VL_DUT=1
+	$(RUN_LIMIT) make -C $(AXI4SDEMO_DIR)/rundir -j run VL_DUT=1
 
 .PHONY : hierVlDemo
 # Hierarchical-layout twin of axi4sDemo: guards the hierarchical verilator wrapper
@@ -124,24 +126,44 @@ axi4sDemo:
 # package path resolution. Single-node (top node == project root).
 hierVlDemo:
 	make -C $(HIER_VL_DEMO_DIR)/rundir -j all VL_DUT=1
-	make -C $(HIER_VL_DEMO_DIR)/rundir -j run VL_DUT=1
+	$(RUN_LIMIT) make -C $(HIER_VL_DEMO_DIR)/rundir -j run VL_DUT=1
 
 .PHONY : ip-test
 ip-test:
 	make -C $(IP_TEST_DIR) gen
-	make -C $(IP_TEST_DIR)/rundir -j run
-	make -C $(IP_TEST_DIR)/rundir -j run-vl
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/rundir -j run-vl
 	# Standalone IP projects (ip, ipBridge): model + verilated cosim.
-	make -C $(IP_TEST_DIR)/ip/rundir -j run
-	make -C $(IP_TEST_DIR)/ip/rundir -j run-vl
-	make -C $(IP_TEST_DIR)/bridge/rundir -j run
-	make -C $(IP_TEST_DIR)/bridge/rundir -j run-vl
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/ip/rundir -j run
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/ip/rundir -j run-vl
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/bridge/rundir -j run
+	$(RUN_LIMIT) make -C $(IP_TEST_DIR)/bridge/rundir -j run-vl
 
 .PHONY : simple-ip
 simple-ip:
 	make -C $(SIMPLE_IP_DIR) gen
-	make -C $(SIMPLE_IP_DIR)/rundir -j run
-	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
+	$(RUN_LIMIT) make -C $(SIMPLE_IP_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
+
+.PHONY : two-clk
+# Two projects, so two gen invocations: the vendored twoClkIp child has its own.
+two-clk:
+	make -C $(TWO_CLK_DIR) gen
+	make -C $(TWO_CLK_DIR)/ip gen
+	$(RUN_LIMIT) make -C $(TWO_CLK_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(TWO_CLK_DIR)/rundir -j run-vl
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
+
+.PHONY : clk-gen
+# Single self-contained project (no child project): output clocks/resets,
+# local nets, an export and a `~` binding.
+clk-gen:
+	make -C $(CLK_GEN_DIR) gen
+	$(RUN_LIMIT) make -C $(CLK_GEN_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(CLK_GEN_DIR)/rundir -j run-vl
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
 
 # Nested register-bus router inheriting its container's parameter; firmware
 # round-trips a parameter-sized leaf register through both routers, model and
@@ -149,15 +171,15 @@ simple-ip:
 .PHONY : xproj-nested-router
 xproj-nested-router:
 	make -C $(XPROJ_PARAM_DIR)/rtInh -j gen
-	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run
-	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run-vl
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run-vl
 
 .PHONY : xproj-socket
 # Socket shell of a parameterized IP, built at a Config only the assembler
 # declares. sktAsm's gen also generates sktIp.
 xproj-socket:
 	make -C $(XPROJ_PARAM_DIR)/sktAsm -j gen
-	make -C $(XPROJ_PARAM_DIR)/sktAsm/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/sktAsm/rundir -j run
 
 .PHONY : xproj-param
 # Parameterized interface across separately named project boundaries. Leaf-first:
@@ -170,14 +192,14 @@ xproj-param:
 	make -C $(XPROJ_PARAM_DIR)/filter -j gen
 	make -C $(XPROJ_PARAM_DIR)/sink -j gen
 	make -C $(XPROJ_PARAM_DIR)/uniq -j gen
-	make -C $(XPROJ_PARAM_DIR)/uniq/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/uniq/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/cppLeaf -j gen
 	make -C $(XPROJ_PARAM_DIR)/cppAxis -j gen
-	make -C $(XPROJ_PARAM_DIR)/cppAxis/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/cppAxis/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/filterShared -j gen
 	make -C $(XPROJ_PARAM_DIR)/sinkShared -j gen
 	make -C $(XPROJ_PARAM_DIR)/shared -j gen
-	make -C $(XPROJ_PARAM_DIR)/shared/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/shared/rundir -j run
 
 .PHONY : xproj-matrix
 # Three-party parameterization matrix: channel + both ports, each parameterized
@@ -188,11 +210,11 @@ xproj-param:
 xproj-matrix:
 	make -C $(XPROJ_PARAM_DIR)/mtxIp -j gen
 	make -C $(XPROJ_PARAM_DIR)/mtxLit -j gen
-	make -C $(XPROJ_PARAM_DIR)/mtxLit/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/mtxLit/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/mtxTpl -j gen
-	make -C $(XPROJ_PARAM_DIR)/mtxTpl/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/mtxTpl/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/mtxElect -j gen
-	make -C $(XPROJ_PARAM_DIR)/mtxElect/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/mtxElect/rundir -j run
 
 .PHONY : xproj-reuse
 # Cross-project reuse of a params-less TRANSIT container: mtxComp instantiates
@@ -206,7 +228,7 @@ xproj-matrix:
 # concurrently under -j would have two sub-makes generating one tree.
 xproj-reuse: xproj-matrix
 	make -C $(XPROJ_PARAM_DIR)/mtxComp -j gen
-	make -C $(XPROJ_PARAM_DIR)/mtxComp/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/mtxComp/rundir -j run
 
 .PHONY : xproj-matrix-probes
 # The matrix row that does not build, kept out of every aggregate target.
@@ -239,11 +261,11 @@ xproj-matrix-probes:
 xproj-const:
 	make -C $(XPROJ_PARAM_DIR)/cstIp -j gen
 	make -C $(XPROJ_PARAM_DIR)/cstBind -j gen
-	make -C $(XPROJ_PARAM_DIR)/cstBind/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/cstBind/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/cstUse -j gen
-	make -C $(XPROJ_PARAM_DIR)/cstUse/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/cstUse/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/cstShared -j gen
-	make -C $(XPROJ_PARAM_DIR)/cstShared/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/cstShared/rundir -j run
 
 .PHONY : xproj-depth
 # containerParam inheritance through two project levels: the customer states one
@@ -267,7 +289,7 @@ xproj-depth:
 	    exit 1; \
 	fi
 	make -C $(XPROJ_PARAM_DIR)/dpTop -j gen
-	make -C $(XPROJ_PARAM_DIR)/dpTop/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/dpTop/rundir -j run
 
 .PHONY : xproj-twoctx
 # The two-context block: params: names one constant from an included file and
@@ -285,7 +307,7 @@ xproj-twoctx:
 	    echo "ERROR: xpTwoCtxBare.sv did not spell the include-reached parameter DP_WIDTH on localparam DP_WIDTH_X2"; \
 	    exit 1; \
 	fi
-	make -C $(XPROJ_PARAM_DIR)/twoCtx/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/twoCtx/rundir -j run
 
 xproj-twoctx: | xproj-depth
 
@@ -298,7 +320,7 @@ xproj-twoctx: | xproj-depth
 # Shares no sub-project with any other target, so it needs no ordering.
 xproj-inherit:
 	make -C $(XPROJ_PARAM_DIR)/inhVar -j gen
-	make -C $(XPROJ_PARAM_DIR)/inhVar/rundir -j run
+	$(RUN_LIMIT) make -C $(XPROJ_PARAM_DIR)/inhVar/rundir -j run
 
 .PHONY : xproj-container-layout
 # The layout gate on a container-sourced width, both arms. Both are needed: the
@@ -467,7 +489,7 @@ xif:
 	    exit 1; \
 	fi
 	make -C $(XIF_DIR)/rundir -j all
-	make -C $(XIF_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(XIF_DIR)/rundir run
 
 .PHONY : xproj-param-probes
 # Expected to fail to compile, so kept outside pipeline-test: deparam has three
@@ -483,7 +505,7 @@ xproj-param-probes:
 .PHONY : hello-world
 hello-world:
 	make -C $(HELLO_DIR)/rundir -j all
-	make -C $(HELLO_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(HELLO_DIR)/rundir run
 
 .PHONY : apbDecode
 # apbDecode migrated to the newer rundir/ build. Full run-vl cosim is omitted
@@ -492,18 +514,19 @@ hello-world:
 apbDecode:
 	make -C $(APBDECODE_DIR)/rtl lint -j
 	make -C $(APBDECODE_DIR)/rundir -j all
-	make -C $(APBDECODE_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(APBDECODE_DIR)/rundir run
 
 .PHONY : mixed
 mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
-	make -C $(MIXED_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(MIXED_DIR)/rundir -j run VL_DUT=1
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket
 pySocket:
 	make -C $(PYSOCKET_DIR)/rundir -j all VL_DUT=1
-	make -C $(PYSOCKET_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(PYSOCKET_DIR)/rundir -j run
 	make -C $(PYSOCKET_DIR)/rtl lint -j
 
 .PHONY : axiSocketMaster
@@ -511,13 +534,13 @@ pySocket:
 # shells, each on its own consumer memory.
 axiSocketMaster:
 	make -C $(AXISOCKET_MASTER_DIR)/rundir -j all
-	make -C $(AXISOCKET_MASTER_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(AXISOCKET_MASTER_DIR)/rundir run
 
 .PHONY : axiSocketSlave
 # SystemC AXI master / Python memory slave over TCP sockets (model-only).
 axiSocketSlave:
 	make -C $(AXISOCKET_SLAVE_DIR)/rundir -j all
-	make -C $(AXISOCKET_SLAVE_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(AXISOCKET_SLAVE_DIR)/rundir run
 
 .PHONY : in-and-out
 # sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
@@ -629,7 +652,13 @@ unittest:
 # The example projects build in their own directories, so they run PIPELINE_JOBS
 # at a time; targets that share a project declare the order themselves.
 PIPELINE_JOBS ?= 8
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif
+# Wall-clock limit on each example simulation step, for example 30m, so a hung
+# run fails with exit 124 under its target name. Empty by default because
+# timeout moves the step out of the terminal's process group, and Ctrl-C would
+# then leave the simulation running.
+PIPELINE_RUN_TIMEOUT ?=
+RUN_LIMIT = $(if $(PIPELINE_RUN_TIMEOUT),timeout -k 30s $(PIPELINE_RUN_TIMEOUT))
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen
 # Temporarily disabled on the a2c-dev 3.0 image (Verilator 5.052): mixed and apbDecode lint report
 # MULTIDRIVEN flops, and axi4sDemo/hierVlDemo declare 2-state nets (wire int unsigned). Re-enable
 # once those RTL fixes land; `make pipeline-test PIPELINE_DISABLED=` runs everything.

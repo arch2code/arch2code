@@ -24,6 +24,10 @@ public:
     endOfTestState(const endOfTestState&) = delete;
     bool isEndOfTest(void) {return done;};
     void forceEndOfTest(void) {done = true;}; // bypass counting
+    // Zero means nothing in the run is able to vote it to an end. Registration
+    // is lazy for firmware and host-thread voters, so a zero read is only
+    // meaningful once the run has had wall-clock time to register them.
+    int registeredVoters(void) {return voters;};
 
     // General framework startup gate. End-of-test must not latch before the
     // framework has finished starting up: at sim time 0, before every voter has
@@ -59,25 +63,15 @@ private:
         }
         evaluateEndOfTest();
     }
-    // Latch and notify end-of-test only once startup is complete, at least one
-    // voter has cast a vote, and the vote threshold is met. Called on each vote
-    // change and once when startup completes, so an end-of-test is never missed:
-    // a self-driving model-only test can register its voter, run to completion
-    // and vote done entirely inside startupDelay, and that vote must still latch
-    // when the gate opens.
+    // Latch and notify end-of-test once startup is complete, a vote has been
+    // cast, and the threshold is met. Also called when startup completes, so a
+    // test that votes done inside startupDelay still latches then.
     //
-    // Invariant: a cast vote is the evidence that the test ran, and it is
-    // recorded when the vote happens. Do NOT infer activity from
-    // endOfTestCounter < voters here - evaluation does not run while the gate is
-    // closed, so a test that finishes before the gate opens never presents that
-    // condition and would never latch. voteCast is what stops the gate opening
-    // from latching a project that has never voted at all, for which voters == 0
-    // makes endOfTestCounter >= voters trivially true; such a project terminates
-    // by scTimeLimit or event starvation instead. Not latching before
-    // startupComplete is therefore the only barrier against the transient
-    // all-idle threshold seen while lazily-registered voters (firmware and
-    // runtime host threads) are still registering, which is exactly what
-    // startupDelay is sized for.
+    // Do not infer activity from endOfTestCounter < voters: a test finishing
+    // before the gate opens never presents that condition. voteCast stops a
+    // project that never voted (voters == 0, so the threshold holds trivially)
+    // from latching. The startup gate is the only barrier against the all-idle
+    // threshold seen while lazily-registered voters are still registering.
     void evaluateEndOfTest(void)
     {
         if (!startupComplete) return; // do not latch or notify during startup

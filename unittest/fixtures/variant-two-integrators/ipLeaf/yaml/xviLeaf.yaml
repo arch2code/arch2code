@@ -41,6 +41,11 @@ blocks:
         hasVl: true
         hasTb: false
         hasRtl: true
+        # The leaf has no instance in its own project, so its standalone
+        # Verilated build takes its clock rate from here. It matches the
+        # default testbench clock the integrators feed it.
+        clocks:
+            clk: { period: 1, timeUnit: ns }
         ports:
             in:  { interface: xviIf, direction: dst }
             out: { interface: xviIf, direction: src }

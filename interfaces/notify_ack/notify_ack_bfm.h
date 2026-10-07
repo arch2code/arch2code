@@ -32,6 +32,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->ack = false;
             do {
@@ -63,6 +64,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->notify = false;
             if_p->waitNotify();

@@ -17,12 +17,6 @@ struct _xpRtInhTop_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpRtInhTop_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "xpRtInh");
-        instanceFactory::registerBlock(
-            "xpRtInhTop_verif",
-            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpRtInhTop_hdl_sc_wrapper>(blockName, variant, bbMode));
-            },
-            "", "xpRtInh");
     }
 };
 static _xpRtInhTop_vl_registrar _xpRtInhTop_vl_registrar_instance;

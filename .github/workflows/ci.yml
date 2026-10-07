@@ -9,9 +9,12 @@ on:
       - '**'
 
 jobs:
+  # A normal run takes about an hour. The limit stops a hung run well before
+  # GitHub's 6-hour default.
   lint-build:
     #runs-on: [self-hosted, linux, x64]
     runs-on: [ubuntu-22.04]
+    timeout-minutes: 120
     container:
       image: arch2code/a2c-dev:3.0
     steps:
@@ -24,7 +27,7 @@ jobs:
       - name: Run Make Pipeline Tests
         run: |
           git config --global --add safe.directory /__w/arch2code/arch2code 
-          make pipeline-test
+          make pipeline-test PIPELINE_RUN_TIMEOUT=30m
 
       - name: Check for unclean repo
         run: |
@@ -41,6 +44,7 @@ jobs:
   # gets the same clean-repo check as the pipeline job.
   unit-test:
     runs-on: [ubuntu-22.04]
+    timeout-minutes: 120
     container:
       image: arch2code/a2c-dev:3.0
     steps:

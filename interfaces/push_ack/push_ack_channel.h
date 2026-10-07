@@ -319,6 +319,14 @@ void push_ack_channel<T>::status(void)
         log_.logPrint(std::format("{} has data/or no ack received", name()  ), LOG_IMPORTANT );
         dump();
     }
+    if (m_active)
+    {
+        log_.logPrint(std::format("{} pushed, blocked waiting for ack", name()), LOG_IMPORTANT);
+    }
+    if (m_waiting)
+    {
+        log_.logPrint(std::format("{} blocked waiting for a push", name()), LOG_IMPORTANT);
+    }
     teeStatus();
 }
 

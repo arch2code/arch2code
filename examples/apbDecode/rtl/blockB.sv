@@ -28,7 +28,7 @@ blockBRegs ublockBRegs (
 );
 
 // Memory Instances
-memory_dp #(.DEPTH(MEMORYB_WORDS), .data_t(bMemSt)) uBlockBTable (
+memory_dp #(.DEPTH(MEMORYB_WORDS), .data_t(bMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockBTable (
     .mem_portA (blockBTable),
     .mem_portB (blockBTable_reg),
     .clk (clk)

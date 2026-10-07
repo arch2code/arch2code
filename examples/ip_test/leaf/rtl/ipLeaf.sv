@@ -32,7 +32,7 @@ import ipLeaf_package::*;
 
 // Instances
 // Memory Instances
-memory_dp #(.DEPTH(LEAF_MEM_DEPTH), .data_t(ipLeafMemSt)) uIpLeafMem (
+memory_dp #(.DEPTH(LEAF_MEM_DEPTH), .data_t(ipLeafMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpLeafMem (
     .mem_portA (ipLeafMem),
     .mem_portB (ipLeafMem_unused),
     .clk (clk)

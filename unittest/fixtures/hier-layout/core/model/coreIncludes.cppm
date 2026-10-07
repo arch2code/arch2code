@@ -10,33 +10,33 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module core;
+export module hier_core;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace core_ns {
+export namespace hier_core_ns {
 //constants
-const uint32_t W = 8;  // data width
+inline constexpr uint32_t W = 8;  // data width
 
-} // namespace core_ns
+} // namespace hier_core_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace core_ns {
+export namespace hier_core_ns {
 // types
 typedef uint8_t dat; // [8] data word
 
-} // namespace core_ns
+} // namespace hier_core_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace core_ns {
+export namespace hier_core_ns {
 // enums
 
-} // namespace core_ns
+} // namespace hier_core_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace core_ns {
+export namespace hier_core_ns {
 // structures
 struct dat_st {
     dat d; //data
@@ -93,11 +93,11 @@ struct dat_st {
     explicit dat_st(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace core_ns
+} // namespace hier_core_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace core_test_ns {
+export namespace hier_core_test_ns {
 class test_core_structs {
 public:
     static std::string name(void);
@@ -148,12 +148,12 @@ private:
         }
     }
 };
-} // namespace core_test_ns
+} // namespace hier_core_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace core_test_ns {
-using namespace core_ns;
+export namespace hier_core_test_ns {
+using namespace hier_core_ns;
 std::string test_core_structs::name(void) { return "test_core_structs"; }
 void test_core_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -161,6 +161,6 @@ void test_core_structs::test(void) {
     cout << "Running " << name() << endl;
     roundTrip<dat_st>("dat_st", patterns);
 }
-} // namespace core_test_ns
+} // namespace hier_core_test_ns
 
 // GENERATED_CODE_END

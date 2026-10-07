@@ -12,6 +12,7 @@ module;
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 #include "q_assert.h"
 #include "rcvRegAddresses.h"
+#include "testController.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module rcvTest_rcvCpu.block;
 import rcvTest_rcvCpu.base;
@@ -70,6 +71,10 @@ rcvCpu::rcvCpu(sc_module_name blockName, const char * variant, blockBaseMode bbM
 void rcvCpu::fwTest(void)
 {
     m_eot.registerVoter();
+    const std::string test_name = "test_cfg_readback";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
     apbAddrSt addr;
     apbDataSt data;
 
@@ -86,5 +91,6 @@ void rcvCpu::fwTest(void)
     Q_ASSERT(readback == CFG_VALUE,
              "cfg did not read back what firmware wrote, so the register "
              "handler did not serve the access");
+    controller.test_complete(test_name);
     m_eot.setEndOfTest(true);
 }
