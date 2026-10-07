@@ -34,292 +34,287 @@ A2C_BASE_REL := $(patsubst $(REPO_ROOT)/%,%,$(A2C_BASE_DIR))
 #------------------------------------------------------------------------
 # AI Agent Setup Targets
 #
-#   agents-setup  : Claude Code, Gemini CLI, OpenCode (.claude/, .gemini/, .opencode/, .agents/)
-#   cursor-setup  : Cursor IDE (.cursorrules, .cursor/rules/, .cursor/skills/)
+#   agents-setup  : Claude Code, Gemini CLI, OpenCode, Cursor IDE and the cross-tool .agents/ dir
+#   agents-clean  : Remove what agents-setup deploys
+#   cursor-setup  : Alias of agents-setup
+#   cursor-clean  : Alias of agents-clean
 #   agent-dev-setup : Install Arch2Code builder/base development skills to all platforms
-#   agents-clean  : Remove OpenCode/generic agent artifacts
-#   cursor-clean  : Remove Cursor IDE artifacts (rules, skills, .cursorrules)
 #   agent-dev-clean : Remove Arch2Code builder/base development skills from all platforms
+#
+# .agents-setup.md5 holds an md5sum line for each deployed file, path relative
+# to REPO_ROOT. Setup replaces each deployed file unless its recorded checksum
+# shows you edited it. It keeps and names each edited file. A file with no
+# checksum line is replaced, except an AGENTS.md that agents-setup did not
+# create. Setup and clean leave that one in place, and agents-clean FORCE=1
+# removes it. Clean removes the same files and leaves edited ones in place.
 #------------------------------------------------------------------------
 
 .PHONY: agents-setup agents-clean agents_setup agents_clean
 .PHONY: cursor-setup cursor-clean cursor_setup cursor_clean
 .PHONY: agent-dev-setup agent-dev-clean agent_dev_setup agent_dev_clean
 
+# Shell functions for the recipes below. a2c_install SRC REL copies SRC to REL
+# and records it, and returns 1 when it keeps REL. a2c_remove REL returns 1
+# unless it removed REL. a2c_count DIR NOUN prints how many files a2c_remove
+# took from DIR. The lock on REPO_ROOT serializes recipes that share the
+# manifest under make -j. Deployed paths contain no whitespace or glob
+# characters, which the word-split lists rely on.
+define A2C_AGENTS_SH
+R="$(REPO_ROOT)"; M="$$R/.agents-setup.md5"; kept=0; gone=""; \
+exec 9<"$$R" && flock 9 || exit 1; \
+a2c_state() { \
+	if [ ! -e "$$R/$$1" ]; then echo missing; \
+	elif [ -f "$$M" ] && grep -Fxq -- "$$(cd "$$R" && md5sum -- "$$1")" "$$M"; then echo unmodified; \
+	elif [ -f "$$M" ] && cut -c35- "$$M" | grep -Fxq -- "$$1"; then echo modified; \
+	else echo untracked; fi; }; \
+a2c_keep() { echo "  = Kept $$1 (modified since setup)"; kept=$$((kept + 1)); }; \
+a2c_foreign() { [ "$$1" = AGENTS.md ] && echo "  = Kept AGENTS.md (not created by agents-setup)"; }; \
+a2c_record() { \
+	[ -f "$$M" ] || [ -n "$$2" ] || return 0; \
+	{ if [ -f "$$M" ]; then awk -v p="$$1" 'substr($$0, 35) != p' "$$M"; fi; \
+	  if [ -n "$$2" ]; then (cd "$$R" && md5sum -- "$$1"); fi; } > "$$M.tmp" && \
+	mv -f "$$M.tmp" "$$M" || { rm -f "$$M.tmp"; echo "  ! Failed to update .agents-setup.md5 for $$1"; exit 1; }; }; \
+a2c_install() { \
+	case "$$(a2c_state "$$2")" in \
+	modified) a2c_keep "$$2"; return 1;; \
+	untracked) if a2c_foreign "$$2"; then return 1; fi;; \
+	esac; \
+	mkdir -p "$$(dirname "$$R/$$2")" && cp -- "$$1" "$$R/$$2.a2c-tmp" && mv -f -- "$$R/$$2.a2c-tmp" "$$R/$$2" || \
+	{ rm -f -- "$$R/$$2.a2c-tmp"; echo "  ! Failed to write $$2"; exit 1; }; \
+	a2c_record "$$2" add; }; \
+a2c_remove() { \
+	case "$$(a2c_state "$$1")" in \
+	missing) a2c_record "$$1"; return 1;; \
+	modified) a2c_keep "$$1"; return 1;; \
+	untracked) if a2c_foreign "$$1"; then return 1; fi;; \
+	esac; \
+	rm -f -- "$$R/$$1" || { echo "  ! Failed to remove $$1"; exit 1; }; \
+	gone="$$gone $$1"; \
+	a2c_record "$$1"; }; \
+a2c_count() { \
+	n=0; for g in $$gone; do case "$$g" in "$$1"/*) n=$$((n + 1));; esac; done; \
+	if [ $$n = 1 ]; then echo "  - Removed 1 $$2 file from $$1/"; \
+	elif [ $$n -gt 1 ]; then echo "  - Removed $$n $$2 files from $$1/"; fi; }; \
+a2c_rmdir() { if [ -d "$$R/$$1" ] && [ -z "$$(ls -A "$$R/$$1")" ]; then rmdir "$$R/$$1" && echo "  - Removed empty $$1 directory"; fi; }; \
+a2c_setup_note() { \
+	if [ $$kept -gt 0 ]; then \
+		echo "  ! Kept $$kept file(s) listed above. To replace them with the shipped version, delete them, then run make $$1 and make $$2"; \
+	fi; }; \
+a2c_clean_note() { \
+	if [ -f "$$M" ] && [ ! -s "$$M" ]; then rm -f "$$M" && echo "  - Removed .agents-setup.md5"; fi; \
+	if [ $$kept -gt 0 ]; then \
+		echo "  ! Left $$kept file(s) listed above in place. To finish the clean, delete them and rerun make $$1"; \
+	fi; }
+endef
+
 #------------------------------------------------------------------------
-# agents-setup: OpenCode / Claude Code / Gemini CLI / generic agents
+# agents-setup: Claude Code / Gemini CLI / OpenCode / Cursor IDE / generic agents
 #------------------------------------------------------------------------
 agents-setup agents_setup:
-	@echo "Setting up AI agent rules (OpenCode, Claude Code, Gemini CLI)..."
-	@# Create AGENTS.md from template and record its checksum
-	@if [ ! -e "$(REPO_ROOT)/AGENTS.md" ]; then \
-		if [ -f "$(A2C_BASE_DIR)/AGENTS.md.template" ]; then \
-			cp $(A2C_BASE_DIR)/AGENTS.md.template $(REPO_ROOT)/AGENTS.md && \
-			echo "  + Created AGENTS.md from template"; \
-			for root in $(A2C_RULES_DIRS); do \
-				frag="$$(dirname $$root)/AGENTS.append.md"; \
-				if [ -f "$$frag" ]; then \
-					printf '\n' >> $(REPO_ROOT)/AGENTS.md && \
-					cat "$$frag" >> $(REPO_ROOT)/AGENTS.md && \
-					echo "  + Appended skill routing from $$frag"; \
-				fi; \
-			done; \
-			(cd "$(REPO_ROOT)" && md5sum AGENTS.md > .agents-setup.md5); \
-		else \
-			echo "  ! Warning: AGENTS.md.template not found - create AGENTS.md manually"; \
-		fi \
-	else \
-		echo "  = AGENTS.md already exists"; \
-	fi
-	@# Create symlinks for tool-specific entry points
-	@if [ ! -L "$(REPO_ROOT)/CLAUDE.md" ] && [ ! -e "$(REPO_ROOT)/CLAUDE.md" ]; then \
-		ln -s AGENTS.md $(REPO_ROOT)/CLAUDE.md && \
+	@$(A2C_AGENTS_SH); \
+	echo "Setting up AI agent rules (Claude Code, Gemini CLI, OpenCode, Cursor IDE)..."; \
+	trap 'rm -f "$$R/.AGENTS.md.new" "$$R/.cursorrules.new"' EXIT; \
+	new="$$R/.AGENTS.md.new"; \
+	if ! ( cp "$(A2C_BASE_DIR)/AGENTS.md.template" "$$new" || exit 1; \
+	     for root in $(A2C_RULES_DIRS); do \
+	       frag="$$(dirname "$$root")/AGENTS.append.md"; \
+	       if [ -f "$$frag" ]; then \
+	         { printf '\n' && cat "$$frag"; } >> "$$new" || exit 1; \
+	         echo "  + Appended skill routing from $$frag"; \
+	       fi; \
+	     done ); then \
+		echo "  ! Failed to write AGENTS.md"; \
+		exit 1; \
+	fi; \
+	if a2c_install "$$new" AGENTS.md; then echo "  + Wrote AGENTS.md from template"; fi; \
+	if [ ! -L "$$R/CLAUDE.md" ] && [ ! -e "$$R/CLAUDE.md" ]; then \
+		ln -s AGENTS.md "$$R/CLAUDE.md" || exit 1; \
 		echo "  + Created symlink: CLAUDE.md -> AGENTS.md"; \
 	else \
 		echo "  = CLAUDE.md already exists"; \
-	fi
-	@if [ ! -L "$(REPO_ROOT)/GEMINI.md" ] && [ ! -e "$(REPO_ROOT)/GEMINI.md" ]; then \
-		ln -s AGENTS.md $(REPO_ROOT)/GEMINI.md && \
+	fi; \
+	if [ ! -L "$$R/GEMINI.md" ] && [ ! -e "$$R/GEMINI.md" ]; then \
+		ln -s AGENTS.md "$$R/GEMINI.md" || exit 1; \
 		echo "  + Created symlink: GEMINI.md -> AGENTS.md"; \
 	else \
 		echo "  = GEMINI.md already exists"; \
-	fi
-	@# Create symlink to ARCH2CODE_AI_RULES.md in project root
-	@if [ ! -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ] && [ ! -e "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
-		ln -s $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md $(REPO_ROOT)/ARCH2CODE_AI_RULES.md && \
+	fi; \
+	if [ ! -L "$$R/ARCH2CODE_AI_RULES.md" ] && [ ! -e "$$R/ARCH2CODE_AI_RULES.md" ]; then \
+		ln -s $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md "$$R/ARCH2CODE_AI_RULES.md" || exit 1; \
 		echo "  + Created symlink: ARCH2CODE_AI_RULES.md -> $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"; \
 	else \
 		echo "  = ARCH2CODE_AI_RULES.md already exists in project root"; \
-	fi
-	@# Deploy skills to each platform's expected layout:
-	@#   Claude Code:  .claude/skills/{name}/SKILL.md
-	@#   Gemini CLI:   .gemini/skills/{name}/SKILL.md
-	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
-	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
-	@for dir in .claude .gemini .opencode .agents; do \
-		mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
+	fi; \
+	new="$$R/.cursorrules.new"; \
+	printf '%s\n' "# arch2code Project Rules" "" "See .cursor/rules/ for project rules and .cursor/skills/ for skills." > "$$new" || \
+	{ echo "  ! Failed to write .cursorrules"; exit 1; }; \
+	if a2c_install "$$new" .cursorrules; then echo "  + Wrote .cursorrules"; fi; \
+	for root in $(A2C_RULES_DIRS); do \
+		for f in "$$root"/*.md; do \
+			if [ -f "$$f" ]; then a2c_install "$$f" ".cursor/rules/$$(basename "$$f" .md).mdc"; fi; \
+		done; \
+	done; \
+	echo "  + Installed rules to .cursor/rules/"; \
+	for dir in .claude .gemini .opencode .agents .cursor; do \
 		for root in $(A2C_RULES_DIRS); do \
-			if [ -d "$$root/skills" ]; then \
-				for f in $$root/skills/*.md; do \
-					if [ -f "$$f" ]; then \
-						sname=$$(basename $$f .md); \
-						mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-						cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md"; \
-					fi \
-				done; \
-			fi; \
+			for f in "$$root"/skills/*.md; do \
+				if [ -f "$$f" ]; then a2c_install "$$f" "$$dir/skills/$$(basename "$$f" .md)/SKILL.md"; fi; \
+			done; \
 		done; \
 		echo "  + Installed skills to $$dir/skills/"; \
-	done
-	@echo ""
-	@echo "Agent setup complete!"
-	@echo ""
-	@echo "Deployed for:"
-	@echo "  - Claude Code    : CLAUDE.md, .claude/skills/"
-	@echo "  - Gemini CLI     : GEMINI.md, .gemini/skills/"
-	@echo "  - OpenCode       : AGENTS.md, .opencode/skills/"
-	@echo "  - Cross-tool     : .agents/skills/"
-	@echo ""
-	@echo "Reference documentation:"
-	@echo "  - $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"
-	@echo "  - $(A2C_BASE_REL)/SYSTEMC_API_USER_REFERENCE.md"
+	done; \
+	echo ""; \
+	echo "Agent setup complete!"; \
+	echo ""; \
+	echo "Deployed for:"; \
+	echo "  - Claude Code    : CLAUDE.md, .claude/skills/"; \
+	echo "  - Gemini CLI     : GEMINI.md, .gemini/skills/"; \
+	echo "  - OpenCode       : AGENTS.md, .opencode/skills/"; \
+	echo "  - Cursor IDE     : .cursorrules, .cursor/rules/, .cursor/skills/"; \
+	echo "  - Cross-tool     : .agents/skills/"; \
+	echo ""; \
+	echo "Reference documentation:"; \
+	echo "  - $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"; \
+	echo "  - $(A2C_BASE_REL)/SYSTEMC_API_USER_REFERENCE.md"; \
+	a2c_setup_note agents-clean agents-setup
 
-#------------------------------------------------------------------------
-# cursor-setup: Cursor IDE
-#------------------------------------------------------------------------
-cursor-setup cursor_setup:
-	@echo "Setting up Cursor IDE rules and skills..."
-	@# Create .cursorrules file
-	@if [ ! -e "$(REPO_ROOT)/.cursorrules" ]; then \
-		echo "# arch2code Project Rules" > $(REPO_ROOT)/.cursorrules && \
-		echo "" >> $(REPO_ROOT)/.cursorrules && \
-		echo "See .cursor/rules/ for project rules and skill files." >> $(REPO_ROOT)/.cursorrules && \
-		echo "  + Created .cursorrules"; \
-	else \
-		echo "  = .cursorrules already exists"; \
-	fi
-	@# Deploy rules to .cursor/rules/ (flat copy, .md -> .mdc)
-	@mkdir -p $(REPO_ROOT)/.cursor/rules
-	@for root in $(A2C_RULES_DIRS); do \
-		for f in $$root/*.md; do \
-			if [ -f "$$f" ]; then \
-				fname=$$(basename $$f .md).mdc; \
-				cp "$$f" "$(REPO_ROOT)/.cursor/rules/$$fname" && \
-				echo "  + Installed Cursor rule: $$fname"; \
-			fi \
-		done; \
-	done
-	@# Deploy skills to .cursor/skills/{name}/SKILL.md (directory per skill)
-	@mkdir -p $(REPO_ROOT)/.cursor/skills
-	@for root in $(A2C_RULES_DIRS); do \
-		if [ -d "$$root/skills" ]; then \
-			for f in $$root/skills/*.md; do \
-				if [ -f "$$f" ]; then \
-					sname=$$(basename $$f .md); \
-					mkdir -p "$(REPO_ROOT)/.cursor/skills/$$sname" && \
-					cp "$$f" "$(REPO_ROOT)/.cursor/skills/$$sname/SKILL.md" && \
-					echo "  + Installed Cursor skill: $$sname"; \
-				fi \
-			done; \
-		fi; \
-	done
-	@echo ""
-	@echo "Cursor setup complete!"
-	@echo ""
-	@echo "Deployed:"
-	@echo "  - .cursorrules"
-	@echo "  - .cursor/rules/*.mdc  (auto-applied rules with globs frontmatter)"
-	@echo "  - .cursor/skills/*/SKILL.md (on-demand skills)"
+cursor-setup cursor_setup: agents-setup
 
 #------------------------------------------------------------------------
 # agent-dev-setup: Arch2Code builder/base development skills for all platforms
 #------------------------------------------------------------------------
 agent-dev-setup agent_dev_setup:
-	@echo "Setting up Arch2Code builder/base development skills..."
-	@# Deploy dev skills to each platform's expected layout:
-	@#   Claude Code:  .claude/skills/{name}/SKILL.md
-	@#   Gemini CLI:   .gemini/skills/{name}/SKILL.md
-	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
-	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
-	@#   Cursor IDE:   .cursor/skills/{name}/SKILL.md
 	@# CONTEXT.md ships beside wait-what so the skill reads it without naming a
 	@# submodule path, which the host project chooses.
-	@for dir in .claude .gemini .opencode .agents .cursor; do \
-		mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
+	@$(A2C_AGENTS_SH); \
+	echo "Setting up Arch2Code builder/base development skills..."; \
+	for dir in .claude .gemini .opencode .agents .cursor; do \
 		for root in $(A2C_RULES_DIRS); do \
-			if [ -d "$$root/dev-skills" ]; then \
-				for f in $$root/dev-skills/*.md; do \
-					if [ -f "$$f" ]; then \
-						sname=$$(basename $$f .md); \
-						mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-						cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md" && \
-						echo "  + Installed dev skill $$sname to $$dir/skills/"; \
-					fi \
-				done; \
-			fi; \
+			for f in "$$root"/dev-skills/*.md; do \
+				if [ -f "$$f" ]; then a2c_install "$$f" "$$dir/skills/$$(basename "$$f" .md)/SKILL.md"; fi; \
+			done; \
 		done; \
-		if [ -f "$(A2C_BASE_DIR)/CONTEXT.md" ] && [ -d "$(REPO_ROOT)/$$dir/skills/wait-what" ]; then \
-			cp "$(A2C_BASE_DIR)/CONTEXT.md" "$(REPO_ROOT)/$$dir/skills/wait-what/CONTEXT.md" && \
-			echo "  + Installed CONTEXT.md to $$dir/skills/wait-what/"; \
+		if [ -f "$(A2C_BASE_DIR)/CONTEXT.md" ] && [ -d "$$R/$$dir/skills/wait-what" ]; then \
+			a2c_install "$(A2C_BASE_DIR)/CONTEXT.md" "$$dir/skills/wait-what/CONTEXT.md"; \
 		fi; \
-	done
-	@echo ""
-	@echo "Arch2Code builder/base development skill setup complete!"
+		echo "  + Installed dev skills to $$dir/skills/"; \
+	done; \
+	echo ""; \
+	echo "Arch2Code builder/base development skill setup complete!"; \
+	a2c_setup_note agent-dev-clean agent-dev-setup
 
 #------------------------------------------------------------------------
 # agent-dev-clean: Remove Arch2Code builder/base development skills
 #------------------------------------------------------------------------
 agent-dev-clean agent_dev_clean:
-	@echo "Removing Arch2Code builder/base development skills..."
-	@for dir in .claude .gemini .opencode .agents .cursor; do \
+	@$(A2C_AGENTS_SH); \
+	echo "Removing Arch2Code builder/base development skills..."; \
+	for dir in .claude .gemini .opencode .agents .cursor; do \
+		if [ -f "$(A2C_BASE_DIR)/CONTEXT.md" ]; then a2c_remove "$$dir/skills/wait-what/CONTEXT.md"; fi; \
 		for root in $(A2C_RULES_DIRS); do \
-			if [ -d "$$root/dev-skills" ]; then \
-				for f in $$root/dev-skills/*.md; do \
-					if [ -f "$$f" ]; then \
-						sname=$$(basename $$f .md); \
-						if [ -d "$(REPO_ROOT)/$$dir/skills/$$sname" ]; then \
-							rm -rf "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-							echo "  - Removed dev skill $$sname from $$dir/skills/"; \
-						fi; \
-					fi; \
-				done; \
-			fi; \
+			for f in "$$root"/dev-skills/*.md; do \
+				if [ -f "$$f" ]; then \
+					sname=$$(basename "$$f" .md); \
+					a2c_remove "$$dir/skills/$$sname/SKILL.md"; \
+					if [ -d "$$R/$$dir/skills/$$sname" ] && [ -z "$$(ls -A "$$R/$$dir/skills/$$sname")" ]; then rmdir "$$R/$$dir/skills/$$sname"; fi; \
+				fi; \
+			done; \
 		done; \
-		if [ -d "$(REPO_ROOT)/$$dir/skills" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir/skills" 2>/dev/null)" ]; then \
-			rmdir "$(REPO_ROOT)/$$dir/skills" && \
-			echo "  - Removed empty $$dir/skills directory"; \
-		fi; \
-		if [ -d "$(REPO_ROOT)/$$dir" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir" 2>/dev/null)" ]; then \
-			rmdir "$(REPO_ROOT)/$$dir" && \
-			echo "  - Removed empty $$dir directory"; \
-		fi; \
-	done
-	@echo "Arch2Code builder/base development skill cleanup complete!"
+		a2c_count "$$dir/skills" skill; \
+		a2c_rmdir "$$dir/skills"; \
+		a2c_rmdir "$$dir"; \
+	done; \
+	a2c_clean_note agent-dev-clean; \
+	echo "Arch2Code builder/base development skill cleanup complete!"
 
 #------------------------------------------------------------------------
-# agents-clean: Remove OpenCode / generic agent artifacts
+# agents-clean: Remove what agents-setup deploys
+#
+# Besides the files the shipped sources name, it takes every manifest entry
+# outside the current dev skills, so a skill dropped or renamed upstream goes
+# too.
 #------------------------------------------------------------------------
 agents-clean agents_clean:
-	@echo "Removing OpenCode/generic agent setup files..."
-	@if [ -L "$(REPO_ROOT)/CLAUDE.md" ]; then \
-		rm $(REPO_ROOT)/CLAUDE.md && \
+	@$(A2C_AGENTS_SH); \
+	echo "Removing AI agent setup files..."; \
+	if [ -L "$$R/CLAUDE.md" ]; then \
+		rm "$$R/CLAUDE.md" || exit 1; \
 		echo "  - Removed CLAUDE.md symlink"; \
-	fi
-	@if [ -L "$(REPO_ROOT)/GEMINI.md" ]; then \
-		rm $(REPO_ROOT)/GEMINI.md && \
+	fi; \
+	if [ -L "$$R/GEMINI.md" ]; then \
+		rm "$$R/GEMINI.md" || exit 1; \
 		echo "  - Removed GEMINI.md symlink"; \
-	fi
-	@if [ -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
-		rm $(REPO_ROOT)/ARCH2CODE_AI_RULES.md && \
+	fi; \
+	if [ -L "$$R/ARCH2CODE_AI_RULES.md" ]; then \
+		rm "$$R/ARCH2CODE_AI_RULES.md" || exit 1; \
 		echo "  - Removed ARCH2CODE_AI_RULES.md symlink"; \
-	fi
-	@# Remove skills from all platform directories
-	@for dir in .claude .gemini .opencode .agents; do \
-		if [ -d "$(REPO_ROOT)/$$dir/skills" ]; then \
-			rm -rf "$(REPO_ROOT)/$$dir/skills" && \
-			echo "  - Removed $$dir/skills directory"; \
-		fi; \
-		if [ -d "$(REPO_ROOT)/$$dir" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir" 2>/dev/null)" ]; then \
-			rmdir "$(REPO_ROOT)/$$dir" && \
-			echo "  - Removed empty $$dir directory"; \
-		fi; \
-	done
-	@# Clean up legacy .ai/skills/ if present
-	@if [ -d "$(REPO_ROOT)/.ai/skills" ]; then \
-		rm -rf $(REPO_ROOT)/.ai/skills && \
+	fi; \
+	if a2c_remove .cursorrules; then echo "  - Removed .cursorrules"; fi; \
+	list=""; \
+	for root in $(A2C_RULES_DIRS); do \
+		for f in "$$root"/*.md; do \
+			if [ -f "$$f" ]; then list="$$list .cursor/rules/$$(basename "$$f" .md).mdc"; fi; \
+		done; \
+	done; \
+	for dir in .claude .gemini .opencode .agents .cursor; do \
+		for root in $(A2C_RULES_DIRS); do \
+			for f in "$$root"/skills/*.md; do \
+				if [ -f "$$f" ]; then list="$$list $$dir/skills/$$(basename "$$f" .md)/SKILL.md"; fi; \
+			done; \
+		done; \
+	done; \
+	dev=""; \
+	for root in $(A2C_RULES_DIRS); do \
+		for f in "$$root"/dev-skills/*.md; do \
+			if [ -f "$$f" ]; then dev="$$dev $$(basename "$$f" .md)"; fi; \
+		done; \
+	done; \
+	if [ -f "$$M" ]; then \
+		for rel in $$(cut -c35- "$$M"); do \
+			case "$$rel" in AGENTS.md|.cursorrules) continue;; esac; \
+			for s in $$dev; do case "$$rel" in */skills/$$s/*) continue 2;; esac; done; \
+			list="$$list $$rel"; \
+		done; \
+	fi; \
+	for rel in $$(printf '%s\n' $$list | awk '!seen[$$0]++'); do \
+		a2c_remove "$$rel"; \
+		case "$$rel" in */skills/*/*) \
+			d="$$R/$$(dirname "$$rel")"; \
+			if [ -d "$$d" ] && [ -z "$$(ls -A "$$d")" ]; then rmdir "$$d"; fi;; \
+		esac; \
+	done; \
+	a2c_count .cursor/rules rule; \
+	a2c_rmdir .cursor/rules; \
+	for dir in .claude .gemini .opencode .agents .cursor; do \
+		a2c_count "$$dir/skills" skill; \
+		a2c_rmdir "$$dir/skills"; \
+		a2c_rmdir "$$dir"; \
+	done; \
+	if [ -d "$$R/.ai/skills" ]; then \
+		rm -rf "$$R/.ai/skills" || exit 1; \
 		echo "  - Removed legacy .ai/skills directory"; \
-	fi
-	@if [ -d "$(REPO_ROOT)/.ai" ] && [ -z "$$(ls -A $(REPO_ROOT)/.ai 2>/dev/null)" ]; then \
-		rmdir $(REPO_ROOT)/.ai && \
+	fi; \
+	if [ -d "$$R/.ai" ] && [ -z "$$(ls -A "$$R/.ai")" ]; then \
+		rmdir "$$R/.ai" && \
 		echo "  - Removed empty .ai directory"; \
-	fi
-	@if [ -f "$(REPO_ROOT)/AGENTS.md" ]; then \
-		if [ "$(FORCE)" = "1" ]; then \
-			rm "$(REPO_ROOT)/AGENTS.md" && \
-			echo "  - Removed AGENTS.md (forced)"; \
-		elif [ -f "$(REPO_ROOT)/.agents-setup.md5" ] && \
-		   (cd "$(REPO_ROOT)" && md5sum --status -c .agents-setup.md5 2>/dev/null); then \
-			rm "$(REPO_ROOT)/AGENTS.md" && \
-			echo "  - Removed AGENTS.md (unchanged since setup)"; \
-		else \
-			echo "  ! Skipping AGENTS.md (modified or no checksum; use FORCE=1 to override)"; \
-		fi \
-	fi
-	@if [ -f "$(REPO_ROOT)/.agents-setup.md5" ]; then \
-		rm "$(REPO_ROOT)/.agents-setup.md5" && \
-		echo "  - Removed .agents-setup.md5"; \
-	fi
-	@echo "Agent cleanup complete!"
+	fi; \
+	if [ "$(FORCE)" = "1" ] && [ -f "$$R/AGENTS.md" ]; then \
+		rm "$$R/AGENTS.md" && a2c_record AGENTS.md && \
+		echo "  - Removed AGENTS.md (forced)"; \
+	elif a2c_remove AGENTS.md; then \
+		echo "  - Removed AGENTS.md"; \
+	fi; \
+	a2c_clean_note agents-clean; \
+	echo "Agent cleanup complete!"
 
-#------------------------------------------------------------------------
-# cursor-clean: Remove Cursor IDE artifacts
-#------------------------------------------------------------------------
-cursor-clean cursor_clean:
-	@echo "Removing Cursor IDE setup files..."
-	@if [ -f "$(REPO_ROOT)/.cursorrules" ]; then \
-		rm $(REPO_ROOT)/.cursorrules && \
-		echo "  - Removed .cursorrules"; \
-	fi
-	@if [ -d "$(REPO_ROOT)/.cursor/rules" ]; then \
-		rm -rf $(REPO_ROOT)/.cursor/rules && \
-		echo "  - Removed .cursor/rules directory"; \
-	fi
-	@if [ -d "$(REPO_ROOT)/.cursor/skills" ]; then \
-		rm -rf $(REPO_ROOT)/.cursor/skills && \
-		echo "  - Removed .cursor/skills directory"; \
-	fi
-	@if [ -d "$(REPO_ROOT)/.cursor" ] && [ -z "$$(ls -A $(REPO_ROOT)/.cursor 2>/dev/null)" ]; then \
-		rmdir $(REPO_ROOT)/.cursor && \
-		echo "  - Removed empty .cursor directory"; \
-	fi
-	@echo "Cursor cleanup complete!"
+cursor-clean cursor_clean: agents-clean
 
 help::
-	@echo "  agents-setup - Setup Claude Code/Gemini CLI/OpenCode rules and skills"
-	@echo "  agents-clean - Remove agent setup files (FORCE=1 to remove modified AGENTS.md)"
-	@echo "  cursor-setup - Setup Cursor IDE rules (.cursor/rules/) and skills (.cursor/skills/)"
-	@echo "  cursor-clean - Remove Cursor IDE setup files (rules, skills, .cursorrules)"
-	@echo "  agent-dev-setup - Install Arch2Code builder/base development skills to all platforms"
-	@echo "  agent-dev-clean - Remove Arch2Code builder/base development skills from all platforms"
+	@echo "  agents-setup - Set up Claude Code/Gemini CLI/OpenCode/Cursor IDE rules and skills; replaces each deployed file unless its recorded checksum shows you edited it, and leaves an AGENTS.md it did not create in place"
+	@echo "  agents-clean - Remove the agent setup files, keeping an AGENTS.md agents-setup did not create and each file whose recorded checksum shows you edited it (FORCE=1 removes AGENTS.md in every case)"
+	@echo "  cursor-setup - Alias of agents-setup"
+	@echo "  cursor-clean - Alias of agents-clean"
+	@echo "  agent-dev-setup - Install Arch2Code builder/base development skills to all platforms; replaces each skill file unless its recorded checksum shows you edited it"
+	@echo "  agent-dev-clean - Remove Arch2Code builder/base development skills from all platforms, keeping each file whose recorded checksum shows you edited it"
 
 endif # A2C_INCLUDE_MAKE_A2C_AGENTS_MK_INCLUDED

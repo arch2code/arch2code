@@ -663,6 +663,6 @@ pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test
 
-# AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).
+# AI agent rule/skill install targets (agents-setup, agent-dev-setup, ...).
 # Included last so the default goal stays the first target above.
 include $(REPO_ROOT)/include/make/a2c-agents.mk

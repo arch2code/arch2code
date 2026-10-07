@@ -51,10 +51,12 @@ compile_commands.json
 **/.cache/**
 .container-prerequisites
 
-# generated AI agent rule/skill deployments (make agents-setup / agent-dev-setup / cursor-setup)
+# generated AI agent rule/skill deployments (make agents-setup / agent-dev-setup)
 .claude/
 .gemini/
 .opencode/
 .agents/
 .cursor/
+.cursorrules
 GEMINI.md
+.agents-setup.md5
