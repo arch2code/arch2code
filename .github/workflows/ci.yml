@@ -13,7 +13,7 @@ jobs:
     #runs-on: [self-hosted, linux, x64]
     runs-on: [ubuntu-22.04]
     container:
-      image: arch2code/a2c-dev:2.0
+      image: arch2code/a2c-dev:3.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -42,7 +42,7 @@ jobs:
   unit-test:
     runs-on: [ubuntu-22.04]
     container:
-      image: arch2code/a2c-dev:2.0
+      image: arch2code/a2c-dev:3.0
     steps:
       # Full history: test_file_prefix extracts main's examples from a pinned commit.
       - name: Checkout code
