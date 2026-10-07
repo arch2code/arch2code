@@ -2,253 +2,199 @@
 name: rtl-patterns
 description: Reference for common RTL implementation patterns including pipelines, FSMs, interpolation, saturation, resource sharing, and memory access sequences
 ---
-# Skill: RTL Patterns
+# Skill: RTL patterns
 
 ## Purpose
-Reference common RTL implementation patterns to solve frequent design problems efficiently and consistently in SystemVerilog.
+Common SystemVerilog patterns for arch2code blocks. Flop macros, clock domains and FSMs are in `rtl-core.md`.
 
-## 1. Pipeline Stage Pattern
+## Pipeline stages
 
-Pipelines are the most common structure. Each stage propagates `vld`, `data`, and sideband metadata (e.g., transaction IDs, frame signals, sequence numbers):
+Each stage carries `vld`, its data and the sideband metadata, such as transaction IDs, frame markers or sequence numbers:
 
 ```systemverilog
 // Stage 1: Capture input
-`DFF_INST(data_t, s1_data)
-`DFF_INST(meta_t, s1_meta)
-`DFF_INST(logic, s1_vld)
+`DFF_INST(dataT, s1Data)
+`DFF_INST(metaT, s1Meta)
+`DFF_INST(logic, s1Vld)
 
 always_comb begin
-    n_s1_vld  = in_port.vld;
-    n_s1_meta = in_port.data.meta;
-    n_s1_data = in_port.data.payload;
+    n_s1Vld  = inPort.vld;
+    n_s1Meta = inPort.data.meta;
+    n_s1Data = inPort.data.payload;
 end
 
 // Stage 2: Process
-`DFF_INST(logic, s2_vld)
-`DFF_INST(meta_t, s2_meta)
-`DFF_INST(result_t, s2_result)
+`DFF_INST(logic, s2Vld)
+`DFF_INST(metaT, s2Meta)
+`DFF_INST(resultT, s2Result)
 
 always_comb begin
-    n_s2_vld    = s1_vld;
-    n_s2_meta   = s1_meta;
-    n_s2_result = s1_data * coeff;
+    n_s2Vld    = s1Vld;
+    n_s2Meta   = s1Meta;
+    n_s2Result = s1Data * coeff;
 end
 
 // Stage 3: Output
-`DFF_INST(out_data_t, s3_data)
-`DFF_INST(meta_t, s3_meta)
-`DFF_INST(logic, s3_vld)
+`DFF_INST(outDataT, s3Data)
+`DFF_INST(metaT, s3Meta)
+`DFF_INST(logic, s3Vld)
 
 always_comb begin
-    n_s3_vld  = s2_vld;
-    n_s3_meta = s2_meta;
-    n_s3_data = clip(s2_result);
+    n_s3Vld  = s2Vld;
+    n_s3Meta = s2Meta;
+    n_s3Data = clip(s2Result);
 end
 
 // Drive output
-assign out_port.vld       = s3_vld;
-assign out_port.data.payload = s3_data;
-assign out_port.data.meta    = s3_meta;
+assign outPort.vld          = s3Vld;
+assign outPort.data.payload = s3Data;
+assign outPort.data.meta    = s3Meta;
 ```
 
-**Key rules:**
-*   Propagate `vld` and all sideband signals through every stage.
-*   Use `assign` from last stage or `always_comb` when driving multiple interfaces.
+Drive the output interface with `assign` from the last stage, or from an `always_comb` when one stage drives several interfaces.
 
-## 2. Hold-Value-Else Pattern
+## Position and counter tracking
 
-When pipeline data must be held on invalid cycles, use an explicit `if/else` with the else branch re-assigning current values:
+Track a row and column position in a stream from its start and end markers. Register the end-of-group marker on each valid beat and use it as the start of the next group. Take sub-indices by bit slicing, which divides by a power of two and takes the remainder at no cost:
 
 ```systemverilog
-always_comb begin
-    n_stg2_vld = stg1_vld;
-    if (stg1_vld) begin
-        n_stg2_data = stg1_data;
-        n_stg2_meta = stg1_meta;
-    end else begin
-        n_stg2_data = stg2_data;    // hold current value
-        n_stg2_meta = stg2_meta;    // hold current value
-    end
-end
-```
-
-Alternative to the "default-at-top" style. Use when hold behavior must be explicit for all signals.
-
-## 3. Finite State Machine (FSM)
-Use for control logic with multiple states.
-*   **Key:** Use `always_comb` for next state logic and DFF macros for state register.
-*   **Ref:** `rtl-core.md`
-
-## 4. Streaming Pipeline (`rdy_vld`)
-Use for data processing stages.
-*   **Forward Flow:** `vld` indicates data availability.
-*   **Backward Flow:** `rdy` indicates ability to accept.
-*   **Logic:** `process_en = in.vld & out.rdy`.
-*   **Ref:** `rtl-interfaces.md`
-
-## 5. Request-Response (`req_ack`)
-Use for transactional operations (e.g., memory access, configuration).
-*   **Req:** Source drives `req` high.
-*   **Ack:** Destination drives `ack` high when complete.
-*   **Handshake:** Source holds `req` until `ack` is seen.
-
-## 6. Arbitration
-Use when multiple sources contend for a single resource.
-*   **Round Robin:** Fair access.
-*   **Fixed Priority:** Critical path optimization.
-*   **Components:** `memArb` (memory ports), `vldAckArb` (streaming interfaces).
-*   **Ref:** `rtl-arbitration.md`
-
-## 7. Datapath Buffering
-Use to break timing paths or match rates.
-*   **FIFO:** Store data, decouple rates.
-*   **Capture Reg:** Latch `rdy_vld` data (`rdyVldCapture`).
-*   **Ref:** `rtl-datapath.md`
-
-## 8. Position / Counter Tracking Pattern
-
-Track position within a stream using start/end boundary signals. Common in streaming datapaths where you need to know row/column index, element position, or group boundaries.
-
-Use a delayed end-of-group signal as start-of-next-group. Extract sub-indices via bit-slicing (zero-cost division/modulo):
-
-```systemverilog
-`DFF_INST(x_pos_t, pos_x)
-`DFF_INST(y_pos_t, pos_y)
-`DFF_INST(logic, start_of_group)
+`DFF_INST(xPosT, posX)
+`DFF_INST(yPosT, posY)
+`DFF_INST(logic, startOfGroup)
 
 always_comb begin
-    n_pos_x = pos_x;
-    n_pos_y = pos_y;
-    n_start_of_group = in_meta.end_of_group;
+    n_posX = posX;
+    n_posY = posY;
+    n_startOfGroup = startOfGroup;
 
-    if (in_vld) begin
-        if (in_meta.start_of_frame) begin
-            n_pos_x = '0;
-            n_pos_y = '0;
-        end else if (start_of_group) begin
-            n_pos_x = '0;
-            n_pos_y = pos_y + 1;
+    if (inVld) begin
+        n_startOfGroup = inMeta.endOfGroup;
+        if (inMeta.startOfFrame) begin
+            n_posX = '0;
+            n_posY = '0;
+        end else if (startOfGroup) begin
+            n_posX = '0;
+            n_posY = posY + 1'b1;
         end else begin
-            n_pos_x = pos_x + x_pos_t'(ELEMENTS_PER_CYCLE);
+            n_posX = posX + xPosT'(ELEMENTS_PER_CYCLE);
         end
     end
 end
 
-// Bit-slicing for grid index and sub-grid offset (zero-cost in hardware)
-grid_idx_t grid_y;
-grid_count_t sub_y;
+// Grid index and offset within the grid cell, by bit slicing
+gridIdxT gridY;
+gridCountT subY;
 always_comb begin
-    grid_y = pos_y[MSB:GRID_SIZE_LOG2];               // pos_y / GRID_SIZE
-    sub_y  = {1'b0, pos_y[GRID_SIZE_LOG2-1:0]};       // pos_y % GRID_SIZE
+    gridY = posY[MSB:GRID_SIZE_LOG2];               // posY / GRID_SIZE
+    subY  = {1'b0, posY[GRID_SIZE_LOG2-1:0]};       // posY % GRID_SIZE
 end
 ```
 
-## 9. Piecewise-Linear Interpolation (Slope-Accumulate)
+## Piecewise-linear interpolation (slope accumulate)
 
 For linear interpolation across a grid or region, compute the start value and slope at the boundary, then accumulate per-cycle:
 
 ```systemverilog
-`DFF_INST(factor_t, interp_val)
-`DFF_INST(factor_t, interp_slope)
+`DFF_INST(factorT, interpVal)
+`DFF_INST(factorT, interpSlope)
 
 always_comb begin
-    if (boundary_start) begin
-        n_interp_val   = start_value;
-        n_interp_slope = (end_value - start_value) >>> DIVISIONS_LOG2;
-    end else begin
-        n_interp_val   = interp_val + interp_slope;  // accumulate
-        n_interp_slope = interp_slope;                // hold slope
+    n_interpVal   = interpVal + interpSlope;  // accumulate
+    n_interpSlope = interpSlope;              // hold slope
+    if (boundaryStart) begin
+        n_interpVal   = startValue;
+        n_interpSlope = (endValue - startValue) >>> DIVISIONS_LOG2;
     end
 end
 ```
 
 Use `>>>` (arithmetic shift right) for signed values to preserve the sign bit. Use `>>` only for unsigned values.
 
-## 10. Saturation / Clipping Patterns
+`>>>` rounds toward minus infinity. If the model divides with `/`, apply the bias in `systemc-to-rtl.md` ("Types and math", the signed-division step).
+
+## Saturation and clipping
 
 Three common patterns:
 
 **Signed two-sided clamp** (negative -> 0, overflow -> max, else extract):
 ```systemverilog
-function automatic result_t saturate(input accum_t accum);
-    if (accum[ACCUM_W-1]) return result_t'('0);
-    if (|accum[ACCUM_W-2:RESULT_WIDTH]) return result_t'(2**RESULT_WIDTH-1);
-    return result_t'(accum);
+function automatic resultT saturate(input accumT accum);
+    if (accum[ACCUM_W-1]) return resultT'('0);
+    if (|accum[ACCUM_W-2:RESULT_WIDTH]) return resultT'(2**RESULT_WIDTH-1);
+    return resultT'(accum);
 endfunction
 ```
 
 **Unsigned fixed-point overflow clip** (MSB check on multiply result):
 ```systemverilog
-function automatic result_t clip_mult(input mult_out_t mult_val);
-    if (|mult_val[WIDTH-1:WIDTH-INTEGER_WIDTH]) return result_t'(MAX_VALUE);
-    return result_t'(mult_val[WIDTH-1-INTEGER_WIDTH:WIDTH-INTEGER_WIDTH-RESULT_WIDTH]);
+function automatic resultT clipMult(input multOutT multVal);
+    if (|multVal[WIDTH-1:WIDTH-INTEGER_WIDTH]) return resultT'(MAX_VALUE);
+    return resultT'(multVal[WIDTH-1-INTEGER_WIDTH:WIDTH-INTEGER_WIDTH-RESULT_WIDTH]);
 endfunction
 ```
 
 **Unsigned subtraction with floor-clamp** (prevent underflow):
 ```systemverilog
-n_out_val = (in_val > offset) ? (in_val - offset) : result_t'('0);
+n_outVal = (inVal > offset) ? (inVal - offset) : resultT'('0);
 ```
 
-## 11. Rounding Functions
+## Rounding functions
 
-Hardware-friendly banker's rounding (round half to even) for power-of-2 divisors:
+Round half to even when dividing by 2 or by 4:
 
 ```systemverilog
 localparam W_P1 = WIDTH + 1;
 localparam W_P2 = WIDTH + 2;
-typedef logic [W_P1-1:0] acc2_t;
-typedef logic [W_P2-1:0] acc4_t;
+typedef logic [W_P1-1:0] acc2T;
+typedef logic [W_P2-1:0] acc4T;
 
-function automatic result_t round_div2(input acc2_t sum);
+function automatic resultT roundDiv2(input acc2T sum);
     return (sum[1:0] == 2'b11) ? (sum[W_P1-1:1] + 1'b1) : sum[W_P1-1:1];
 endfunction
 
-function automatic result_t round_div4(input acc4_t sum);
+function automatic resultT roundDiv4(input acc4T sum);
     return ((sum[1:0] == 2'b11) || (sum[1:0] == 2'b10 && sum[2] == 1'b1)) ?
         (sum[W_P2-1:2] + 1'b1) : sum[W_P2-1:2];
 endfunction
 ```
 
-## 12. Shared Multiplier (Resource Reuse via FSM)
+## Parallel-lane reduction
 
-When a complex calculation requires multiple multiplications, use a single shared multiplier driven by an FSM that loads different operands each cycle. Maps to a single DSP block in FPGA:
-
-```systemverilog
-`DFF_INST(mult_in_t, mult_in_a)
-`DFF_INST(mult_in_t, mult_in_b)
-`DFF_INST(mult_out_t, mult_out)
-always_comb begin
-    n_mult_out = mult_in_a * mult_in_b;
-end
-// FSM loads different operands into mult_in_a/b each state
-```
-
-## 13. Parallel-Lane Reduction Trees
-
-When accumulating across `LANES` parallel elements, use `generate if` for lane-count-specific partial sum trees. Higher lane counts need intermediate pipeline stages:
+To accumulate `LANES` parallel elements, sum the lanes first, then add the sum to the accumulator. With many lanes, register the partial sums and delay `vld` and `start` by the same stage, so every lane of a beat lands in the accumulator together:
 
 ```systemverilog
+`DFF_INST(accT, acc)
+
 generate
-    if (LANES == 1) begin : gen_1lane
-        always_comb n_acc = in_vld ? (start ? element[0] : acc + element[0]) : acc;
-    end else if (LANES == 4) begin : gen_4lane
-        always_comb n_acc = in_vld ? (start ? (element[0] + element[1] + element[2] + element[3])
-                                            : acc + element[0] + element[1] + element[2] + element[3])
-                                   : acc;
+    if (LANES == 4) begin : gen_4lane
+        always_comb begin
+            n_acc = acc;
+            if (inVld) begin
+                n_acc = (start ? '0 : acc) + element[0] + element[1] + element[2] + element[3];
+            end
+        end
     end else if (LANES == 8) begin : gen_8lane
-        `DFF_INST(partial_t, partial_sum)
-        always_comb n_partial_sum = element[0] + element[1] + element[2] + element[3];
-        always_comb n_acc = vld_d1 ? (start_d1 ? partial_sum
-                                               : acc + partial_sum + element[4] + element[5] + element[6] + element[7])
-                                   : acc;
+        `DFF_INST(partialT, sumLo)
+        `DFF_INST(partialT, sumHi)
+        `DFF_INST(logic, vldD1)
+        `DFF_INST(logic, startD1)
+        always_comb begin
+            n_sumLo   = element[0] + element[1] + element[2] + element[3];
+            n_sumHi   = element[4] + element[5] + element[6] + element[7];
+            n_vldD1   = inVld;
+            n_startD1 = start;
+            n_acc = acc;
+            if (vldD1) begin
+                n_acc = (startD1 ? '0 : acc) + sumLo + sumHi;
+            end
+        end
     end
 endgenerate
 ```
 
-## 14. Generate Blocks
+## Generate blocks
 
-### Conditional Generation
+### Conditional generation
 
 ```systemverilog
 generate
@@ -260,33 +206,33 @@ generate
 endgenerate
 ```
 
-### Replicated Instances
+### Replicated logic
 
 ```systemverilog
 genvar i;
 generate
-    for (i = 0; i < NUM_PORTS; i++) begin : gen_mem_inst
-        memory_dp #(.DEPTH(MEM_DEPTH), .data_t(mem_data_t)) mem_inst (
-            .mem_portA (mem_rd[i]),
-            .mem_portB (mem_wr[i]),
-            .clk (clk)
-        );
+    for (i = 0; i < NUM_LANES; i++) begin : gen_lane
+        `DFF_INST(laneT, laneData)
+        assign n_laneData = laneIn[i];
+        assign laneOut[i] = laneData;
     end
 endgenerate
 ```
 
-**Rules:**
+The generator writes memory and child instances from YAML, so never replicate those by hand.
+
+Rules:
 *   Always name generate blocks with `gen_<description>` labels.
 *   Use `genvar` for generate loop variables.
 *   Use `int` for `always_comb` / procedural loop variables.
-*   A library sub-module's port is named `clk`, but the signal bound to it is the enclosing module's clock port, which is only spelled `clk` when the block sits in the project's default clock domain. In any other domain bind that domain's declared clock name (`.clk (clkSlow)`).
+*   A library instance on a non-default clock binds its clock and reset explicitly (`rtl-core.md`).
 
-## 15. FSM-Sequenced Memory Reads (Paired FSMs)
+## FSM-sequenced memory reads (paired FSMs)
 
-When multiple addresses must be read from `memory_if`, use an FSM to sequence them. `read_data` is valid one cycle after `enable`. Use two scoped FSMs in lockstep: one drives addresses, the other consumes `read_data` one cycle later:
+When multiple addresses must be read from `memory_if`, use an FSM to sequence them. The example uses the A2C Pro FSM macros. In a base project, write each FSM in the plain `case` form from `rtl-core.md`. `read_data` is valid one cycle after `enable`. Use two scoped FSMs in lockstep: one drives addresses, the other consumes `read_data` one cycle later:
 
 ```systemverilog
-if (1) begin: mem_read_fsm
+if (1) begin: gen_memReadFsm
     typedef enum logic [1:0] {RD0, RD1, RD2, RD3} statesT;
     `include "fsmDefs.svh"
     always_comb begin
@@ -299,7 +245,6 @@ if (1) begin: mem_read_fsm
         `fsmCase
             `fsmState(RD0) begin
                 if (trigger) begin
-                    mem.addr = addr0;
                     mem.enable = 1'b1;
                     `nxtState(RD1)
                 end
@@ -319,28 +264,42 @@ if (1) begin: mem_read_fsm
                 mem.enable = 1'b1;
                 `nxtState(RD0)
             end
+            default: `qAssertFatal(0, "Default clause should not be reached")
         `fsmEndCase
     end
-end: mem_read_fsm
+end: gen_memReadFsm
 
-if (1) begin: compute_fsm
+if (1) begin: gen_computeFsm
     typedef enum logic [1:0] {CALC0, CALC1, CALC2, CALC3} statesT;
     `include "fsmDefs.svh"
     always_comb begin
         nState = state;
+        operand = '0;
         `fsmCase
             `fsmState(CALC0) begin
                 operand = mem.read_data.val;  // data from RD0
-                if (trigger_d1) `nxtState(CALC1)
+                if (triggerD1) begin
+                    `nxtState(CALC1)
+                end
             end
             `fsmState(CALC1) begin
                 operand = mem.read_data.val;  // data from RD1
                 `nxtState(CALC2)
             end
             // ... CALC2, CALC3 follow same pattern
+            default: `qAssertFatal(0, "Default clause should not be reached")
         `fsmEndCase
     end
-end: compute_fsm
+end: gen_computeFsm
 ```
 
+The same shape lets several multiplies share one registered multiplier, with an FSM that loads new operands into its inputs in each state.
+
 See also `rtl-interfaces.md` for `memory_if` signal details.
+
+## Related skills
+*   FSMs, in the plain `case` form and with the A2C Pro `fsmDefs.svh` macros: `rtl-core.md`.
+*   `rdy_vld` streaming stages and backpressure: `rtl-interfaces.md`.
+*   `req_ack` requests: `rtl-interfaces.md`.
+*   Several sources sharing one resource: `rtl-arbitration.md` (A2C Pro `memArb`, `vldAckArb`, `lockLocation`).
+*   FIFOs and capture registers: `rtl-datapath.md` (A2C Pro `rdyVldFifo`, `rdyVldCapture`).

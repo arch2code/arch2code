@@ -1,12 +1,12 @@
 ---
 description: Architecture YAML conventions for defining hardware blocks, interfaces, connections, and types
-globs: "arch/yaml/**/*.yaml"
+globs: "**/yaml/**/*.yaml"
 alwaysApply: false
 ---
 # Architecture YAML Rules
 
 ## Overview
-YAML files in `arch/yaml/` define the hardware architecture. YAML is the **Single Source of Truth** - all implementation artifacts are generated from these definitions.
+The design YAML files define the hardware architecture. They sit in `<node>/yaml/` in the hierarchical layout and under `arch/yaml/` in the functional layout (see `setup-project.md`). YAML is the **Single Source of Truth** - all implementation artifacts are generated from these definitions.
 
 ## Key Patterns
 
@@ -28,7 +28,7 @@ Define elements in dependency order:
 # Constants
 constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size"}
-  ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
+  ADDR_WIDTH: {eval: '$clog2($BUFFER_SIZE)', desc: "Address width"}
 
 # IP-local parameterizable constants/types
 ipParameters:
@@ -36,11 +36,11 @@ ipParameters:
     IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
   types:
     ip_data_t: {width: IP_DATA_WIDTH, desc: "IP data word"}
+    literal_param_t: {width: 8, maxBitwidth: 16, desc: "Literal-width parameterized type"}
 
 # Types - width REQUIRED for non-enum types
 types:
   byte_t: {width: 8, desc: "8-bit byte"}
-  literal_param_t: {width: 8, maxBitwidth: 16, desc: "Literal-width parameterized type"}
   status_t:
     desc: "Status enum"  # width auto-calculated for enums
     enum:
@@ -86,7 +86,7 @@ parameters:
       IP_DATA_WIDTH: 12
 ```
 
-A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
+A `parameters:` section may sit in any file whose scope reaches the block. It need not be the block's own file. An instance's `variant:` resolves through the file holding the instance row, the files it includes, and the files those include, and exactly one of them must declare that label for the block.
 
 If a block is RTL-enabled (`hasRtl: true`), every block instantiated inside it
 must also be RTL-enabled. Model-only blocks (`hasRtl: false`) may only appear
@@ -103,7 +103,7 @@ include:
   - dma/dma_block.yaml
 ```
 
-Paths are relative to the including file. Include order matters -- define dependencies before dependents. Top-level file listing is in `project.yaml` under `projectFiles`.
+Paths are relative to the including file. Each file is its own context, and `include:` only makes names visible. A file sees itself, the files it includes, and the files those include. Nothing deeper is visible, so list every file whose names you use. The order of the `include:` list does not matter. The project file's `projectFiles:` lists the entry files and adds no visibility. See `design-yaml-includes.md`.
 
 ### Connection Maps
 
@@ -120,28 +120,28 @@ connectionMaps:
 - `instance`: The internal instance to route to
 - `port`: (Optional) Must match `srcport`/`dstport` if used in connection
 
-### Eval Expressions in Constants
+### Eval expressions in constants
 
-Constants support Python `eval` expressions referencing other constants with `$`:
+`eval` is a SystemVerilog constant expression. Reference another constant as `$NAME`:
 
 ```yaml
 constants:
   DEPTH: {value: 256, desc: "Queue depth"}
-  DEPTH_BITS: {eval: '($DEPTH-1).bit_length()', desc: "Bits for depth"}
+  DEPTH_BITS: {eval: '$clog2($DEPTH)', desc: "Bits for depth"}
   TOTAL_SIZE: {eval: '$DEPTH * 64', desc: "Total bytes"}
 ```
 
-The `$CONSTANT_NAME` syntax references previously defined constants. Expressions are evaluated in definition order.
+It accepts SV integer literals (`255`, `8'hFF`, `'b1010`), `+ - * / %`, `& | ^ ~`, `<< >>`, comparisons, `?:`, `$clog2(...)`, `$NAME` and parentheses. `/` is integer division and truncates toward zero. `make db` rejects anything outside this list, including `**`, C-style `0x` literals and method calls such as `.bit_length()`. See `design-types-structures.md`.
 
 ### Parameterizable Values
 
-Use `ipParameters` in the IP-root YAML for constants/types that vary by instance or variant:
+Declare `ipParameters` in the block's own file or in a file it sees through `include:`. Use them for constants/types that vary by instance or variant:
 
 - Direct parameterizable constants require `maxValue > 0`.
 - Direct literal-width parameterizable types require `maxBitwidth`.
 - Derived constants/types inherit maximums from referenced parameterizable constants.
-- Do not put `ipParameters` in shared include files that only define common constants/types/structures.
-- If memory `wordLines` is an `ipParameters` constant or pure block param, address allocation uses the worst-case value.
+- A file with no regular `constants:`, `types:`, `enums:` or `structures:` entry gets no context module, so a type it declares under `ipParameters:` has no model declaration. Give such a file at least one regular entry.
+- Address allocation reserves a parameterizable register or memory at its worst case. A row's width comes from its structure's `maxBitwidth`. A `wordLines` that names a parameterizable constant or a block parameter sizes with the `maxValue` of the backing `ipParameters` constant, not the largest variant binding, and `make db` rejects a variant that binds the parameter above that `maxValue`. See `design-register-decode.md` §5.
 
 ## Common Pitfalls
 
@@ -177,8 +177,10 @@ blocks:
 instances:
   u_apb_decode: {container: top, instanceType: apb_decode}
 ```
-Both the decoder RTL and the per-leaf `<blockname>_regs` handlers are generated;
-you author only the upstream feed into the primary router. Never hand-write a
+Both the decoder RTL and the register handlers are generated. Each block that
+owns registers or `regAccess` memories gets a handler named `<block>` plus
+`fileGeneration.regBlockNaming.blockSuffix`, which defaults to `_regs`. The
+examples set `Regs`. You author only the upstream feed into the primary router. Never hand-write a
 decoder. See `design-register-decode.md`.
 
 ### 3. Connections Across Containers
@@ -198,11 +200,16 @@ instances:
 # GOOD - create RTL for the child, or make the parent model-only too
 ```
 
-### 5. Missing addressGroup for Registers
-Instances with registers need `addressGroup`:
+### 5. Missing addressGroup on a routed instance
+An instance a router dispatches to carries `addressGroup:` set to the router's
+`addressBlock.addressGroup`. That is a leaf that owns registers or `regAccess`
+memories, the outermost passthrough container, or a nested-router host. A
+register consumer inside a passthrough container carries none, and `make db`
+rejects one that does. See
+`design-register-decode.md` §1.
 ```yaml
 instances:
-  u_my_block: {container: top, instanceType: my_block, addressGroup: system}  # Required for register access
+  u_my_block: {container: top, instanceType: my_block, addressGroup: system}  # served by the router of group system
 ```
 
 ### 6. Missing Worst-Case Bounds for Parameterizable Values

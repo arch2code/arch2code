@@ -1,82 +1,52 @@
 ---
 name: verify-cosimulation
-description: Guide for performing co-simulation of RTL and SystemC models using Verilator for tandem verification
+description: Guide for running Verilated RTL in place of a SystemC model instance (co-simulation) with VL_DUT and --vlInst, including wrapper generation, clocks and resets, and tracing
 ---
-# Skill: Verify Co-Simulation
+# Skill: Verify co-simulation
 
-## Purpose
-Guide the user on performing co-simulation of RTL and SystemC models using Verilator. This allows verifying the RTL implementation against the SystemC reference model (Tandem Verification) or running RTL within a SystemC testbench.
+Co-simulation runs the RTL of one block instance, verilated, in place of its SystemC model inside the normal testbench. The rest of the design stays as models.
 
-## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Blocks & Instances" section for `hasVl` flag)
-
-## Instructions
-
-1.  **Enabling Verilator Generation:**
-    *   In your YAML block definition, set `hasVl: true`.
-    *   This triggers the generation of:
-        *   `_hdl_sv_wrapper.sv`: SystemVerilog wrapper for the RTL.
-        *   `_hdl_sc_wrapper.h`: SystemC wrapper class for the Verilator model.
+## Enable the wrapper
+1.  Set `hasVl: true` on the block. `hasRtl` and `hasMdl` default to true.
 
     ```yaml
     blocks:
       dma_controller:
         desc: "DMA Controller"
-        hasRtl: true
-        hasMdl: true
-        hasVl: true  # Enables Verilator wrapper generation
+        hasVl: true
     ```
 
-2.  **Using the Wrapper in SystemC:**
-    *   Include the generated wrapper header.
-    *   Instantiate the wrapper instead of (or alongside) the SystemC model.
-    *   The wrapper exposes standard SystemC ports that match your block's interface.
+2.  Run `make newmodule`, then `make gen`. `make newmodule` creates these files, and `make gen` fills them:
+    *   `<block>_hdl_sv_wrapper.sv`, the SystemVerilog top Verilator compiles. A block with its own `params:` instead gets one `<block>_<variant>_hdl_sv_wrapper.sv` per variant, plus a shared `<block>_hdl_sv_wrapper.svh` body. A variant that another project declares for the block gets `<project>_<block>_<variant>_hdl_sv_wrapper.sv` in that project's `vl_wrap` directory, for example `examples/ip_test/bridge/verif/ipBridge_ip_variant1_hdl_sv_wrapper.sv`.
+    *   `<block>_hdl_sc_wrapper.h`, the SystemC class around the verilated model. Its `end_ctor_init()` body is yours.
+    *   `<block>VlRegistrar.cpp`, which registers the wrapper with the instance factory as `<block>_verif`.
 
-    ```cpp
-    #include "dma_controller_hdl_sc_wrapper.h"
+    The wrappers go in the `vl_wrap` directory and the registrar in the `registrar` directory of the project's `dirs:` layout, for example `verif/vl_wrap/` and `registrar/`.
 
-    class myTestbench : public sc_module {
-        // ...
-        // Instantiate Verilator wrapper
-        dma_controller_hdl_sc_wrapper* dut;
-        
-        void build() {
-            dut = new dma_controller_hdl_sc_wrapper("dut");
-            // Connect ports just like a normal SystemC module
-            dut->clk(clk);
-            dut->rst_n(rst_n);
-            dut->apb_s->bind(*apb_channel);
-        }
-    };
-    ```
+You never instantiate the wrapper yourself. The testbench keeps building the model hierarchy, and the instance factory swaps in the wrapper at run time.
 
-3.  **Tandem Verification:**
-    *   **Concept:** Run both the SystemC model (Golden Reference) and the RTL (via Verilator) in parallel.
-    *   **Mechanism:** Compare state and transactions at key boundaries (interfaces, registers).
-    *   **Setup:**
-        *   Instantiate both models.
-        *   Feed same stimulus to both.
-        *   Use a scoreboard or "Tandem" mode in the framework to compare outputs.
+## Build and run
+From `rundir/`:
 
-4.  **Tracing:**
-    *   Verilator supports waveform tracing (VCD/FST).
-    *   Enable tracing in the wrapper or testbench configuration (typically via `vl_trace()` or makefile arguments).
+```text
+make VL_DUT=1
+build/run <testbench> --vlInst <instance path>
+```
 
-5.  **Compilation:**
-    *   Use `make gen` to generate the wrappers.
-    *   Ensure your `Makefile` or build system compiles the generated Verilator C++ sources.
+*   `make VL_DUT=1` verilates every `hasVl` block and links the result into `build/run`. See `manage-build`.
+*   `--vlInst` names the instance to replace. The path is dot-separated and starts at the DUT, which the testbench names after the DUT block, so `--vlInst clkGen.uDivider` in `examples/clkGen` replaces child `uDivider` of DUT `clkGen`. A leading `tb.` is optional. A path that matches no instance fails the run with `Unknown instance <path>`.
+*   `make run VL_DUT=1` runs with `--vlInst $(HDL_TOP_MODULE)`, which replaces the DUT top. Projects that verify every RTL instance add their own targets, such as `run-vl` in `examples/clkGen/rundir/Makefile`.
+*   The named instance and everything below it run as RTL. The rest stays as models, so to check each block against model neighbours, run once per instance.
 
-6.  **Troubleshooting:**
-    *   **Signal Mismatches:** Ensure RTL port types match SystemC interface types.
-    *   **Clocking:** Verilator models require explicit clocking. The wrapper usually handles pin connections, but ensure your testbench drives `clk`.
-    *   **Build Errors:** Check `hasVl: true` is set and `make gen` ran successfully.
-    *   **Wide `sc_bv` Output From a Struct Concatenation:** The wrapper build always passes `-sc --pins-bv 2` to Verilator (`include/make/a2c-vl-wrap.mk:16`). Verilator 5.038 then turns an assignment of a struct concatenation to a wide `sc_bv` output into word-by-word writes, and the wrapper C++ fails to compile with "lvalue required". Assign the concatenation to an intermediate struct signal marked `public_flat_rd`, then drive the port from it:
+## Clocks and resets
+The SC wrapper drives the RTL's input clocks and resets itself. It toggles each clock at the period declared in the YAML, holds each reset for that reset's `releaseCycles` edges of its own clock, then releases it. A clock or reset the RTL drives out is observed, not generated. The testbench drives none of them.
 
-    ```systemverilog
-    wide_out_t wide_val /* verilator public_flat_rd */;
-    assign wide_val     = '{hi: hi_q, lo: lo_q, flag: flag_q};
-    assign wideOut.data = wide_val;
-    ```
+## Tracing
+Add `--vlTrace` to the run command. It writes a VCD of the verilated instance to `simx.vcd` in the run directory. FST is not supported, and no make variable turns tracing on.
 
-7.  **Running Tandem Mode:**
-    *   For detailed operational instructions on building and running tandem verification (model/model and RTL/model), see the **run-tandem** skill.
+## Tandem
+Tandem runs the RTL and the model side by side on the same stimulus and compares their outputs. It adds `--vlTandem` to `--vlInst`, works on leaf blocks only, and needs A2C Pro. A base build fails the run with `Tandem mode not supported`. In A2C Pro, see `run-tandem`.
+
+## Troubleshooting
+*   **`Attempted to create an instance <name> of an unregistered block type <block>_verif`.** Rebuild with `make VL_DUT=1`, because a plain `make` binary has no verilated wrappers. If that fails too, check `hasVl: true` on the block, then rerun `make newmodule` and `make gen` so the VlRegistrar exists.
+*   **Port type mismatch.** The RTL port types must match the SystemC interface types the YAML declares.

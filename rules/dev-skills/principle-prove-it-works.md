@@ -3,46 +3,35 @@ name: principle-prove-it-works
 description: "Apply after completing a task, before declaring done. Verify against the real artifact (run the feature, read the actual value, inspect the diff), not a proxy, self-report, or 'it compiles.'"
 ---
 
-# Prove It Works
+# Prove it works
 
-Verify every task output by checking the real thing directly. Do not infer from proxies, self-reports, or "it compiles."
+Check the real thing before you call a task done. A file mtime, a cached result, a passing compile or an agent's summary is a proxy, and a proxy can be wrong while the work is broken.
 
-**Why:** Unverified work has unknown correctness. Indirect verification (file mtimes, output freshness, agent self-reports, cached screenshots) feels cheaper than direct observation. Acting on a wrong inference costs far more than checking the source.
+After each task, ask how you would prove it works, then do that:
 
-**Pattern:** After completing any task, ask: "how do I prove this actually works?"
+1. Build it. A clean build is necessary and proves nothing more.
+2. Run the feature path you changed, with input that reaches the change.
+3. Read the output the change affects, from input to output.
 
-Check the real thing, not a proxy:
-- Check process liveness directly, not indirectly through derived state
-- Read the actual value, not a cached or derived representation
-- When verification fails, suspect the observation method before suspecting the system
+When a check fails, make sure the check itself is sound. A failure that reproduces is real. Do not explain it away.
 
-Code and features:
-1. Build it (necessary but not sufficient)
-2. Run it and exercise the actual feature path
-3. Check the full chain: does data flow from input to output?
-4. For integrations, test the full communication path end-to-end
-
-Delegation: trust artifacts, not self-reports.
-When verifying delegated work, inspect the actual output artifact (git diff, file contents, runtime behavior), not the delegate's summary. Agents report what they intended, not always what happened.
+A delegate's report says what it meant to do. Read its diff and the files it produced.
 
 ## Script the check when you can
 
-The strongest proof is a deterministic script that re-runs the same comparison, not a one-time eyeball. Write the script, run it, and keep its output as an artifact a reviewer can re-run instead of trusting your word. A script comparing the old and new compiled output catches what a glance misses.
-
-Keep the artifact visible for the human. Commit it only for large or complex work where the trail has to be auditable later, like a big port or migration. Most work just needs it visible, not committed.
+A deterministic script that re-runs the comparison beats a one-time look. A script that diffs the old and new generated output catches what a glance misses. Write it, run it, and keep the script and its output where the user can see and re-run them. Name that location in your report. Do not stage or commit them. The user decides whether the script belongs in the tree, for example as the audit trail of a large port or migration.
 
 ## What counts as proof here
 
-A generator change is proved by running the generator, not by reading the template diff.
+Run the generator to prove a generator change. Reading the template diff is not proof.
 
-- `make clean` first. Generator edits do not invalidate the db, so `make gen` otherwise reuses a stale one.
-- `make gen` succeeding proves the run completed. It does not prove the emitted code is right. Read the emitted file.
+- `.gen/builder.stamp` tracks `templates/`, `pysrc/`, `config/*.yaml`, `config/*.py`, `arch2code.py`, and Pro's `templates/` and `config/`. An edit to any of these rebuilds the db and regenerates everything on the next `make`. After an edit to `include/make/`, or to a template kept inside the project tree, run `make clean` first.
+- `make gen` succeeding proves the run finished. Read the emitted file to prove its content.
 - `make run` proves the SystemC model. It does not touch RTL.
-- `make run VL_DUT=1` proves the RTL.
-- A change to shared generator code is proved by `make -C builder/base push-test`, then `make -C builder/pro -j pipeline-test`.
-- Run the unit suite with `make unittest`.
-- Use `-j` on every build and gen command, except `push-test`.
-- A subagent reporting success is not proof. Read the diff and the emitted artefact yourself.
+- `make run VL_DUT=1` substitutes only `HDL_TOP_MODULE`. Where a project has `run-vl`, use it to cover every RTL instance. `make lint`, from the project's `rtl/` directory, checks that the RTL compiles.
+- Prove a change to shared generator code with `make -C builder push-test`, run from the workspace root without `-j`. It cleans both trees, runs the unit suite, then runs the base and Pro pipelines.
+- Never run the unit suite while any example builds. The suite regenerates the examples in place, so the two corrupt each other.
+- Use `-j` on other build and gen commands.
 
 <!--
 from the `principle-prove-it-works` skill in the pstack plugin,

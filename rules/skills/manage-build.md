@@ -2,72 +2,81 @@
 name: manage-build
 description: Guide for building, simulating, creating implementation file scaffolds, and managing the arch2code project using make targets
 ---
-# Skill: Manage Build
+# Skill: Manage build
 
-## Purpose
-Guide the user on how to build, simulate, and manage the project using the `make` system, adhering to the standard workflow.
+## Workflow
+1.  Edit the YAML. Set the artifact flags on each block: `hasMdl` and `hasRtl` default to true, `hasTb` and `hasVl` to false.
+2.  `make db` validates the YAML and builds the database.
+3.  `make newmodule` creates any implementation file that does not exist yet.
+4.  `make gen` fills the generated regions of files that exist. It never creates a file.
+5.  Write code in the user regions under `model/` or `rtl/`.
+6.  From `rundir/`, `make` builds the model and `make run` runs it.
 
-## Instructions
+## Where to run each target
+*   **Project root.** The root `Makefile` has the common targets `db`, `gen`, `newmodule`, `migrate`, `migrate-hierarchical`, `clean` and `help`, plus the agent-setup targets `agents-setup`, `agents-clean`, `cursor-setup`, `cursor-clean`, `agent-dev-setup` and `agent-dev-clean`. It has no build or simulation targets.
+*   **`rundir/`.** Build and simulation: `make` (the default `all` target), `make VL_DUT=1`, `make run`, `make compdb`, `make clangd`, and the project's own targets such as `regr` or `run-vl`. The common targets work here too.
+*   **`rtl/`.** `make lint` and `make synthf`.
 
-1.  **Standard Targets:**
-    *   `make gen`: Generates all code (RTL headers, SystemC wrappers, etc.) from the architecture YAML. **Run this first after any YAML change.**
-    *   `make db`: Loads the project configuration and architecture into the database. Useful for validation without full generation.
-    *   `make clean`: Cleans generated files and build artifacts.
-    *   `make help`: Lists available targets.
-    *   `make`: Runs full build with just the model
-    *   `make VL_DUT=1`: Runs full build with model and RTL
-    *   `make compdb`: Generates `compile_commands.json` for clangd. Also refreshed automatically by `make newmodule` after sources are added.
-    *   `make clangd`: Generates the `.clangd` IDE configuration at the repo root (depends on `compdb`). Reload your IDE after running to apply changes.
-    *   `make synthf` (in the rtl dir): Writes `.gen/synth.f` under the project root for synthesis. It lists every package in the compile closure, including child projects' packages, in rtl.f compile order, then the RTL modules from the build manifest, one absolute path per line with no tool switches. It leaves out the Verilator wrapper and any `RTL_SRC_FILES` additions. The synthesis project must add the interface `.sv` files the design uses, from `$(A2C_ROOT)/interfaces/<protocol>/`. It must also add the macro files `$(A2C_ROOT)/common/systemVerilog/flops.sv` and `asserts.svh` ahead of the synth.f entries. A design with memories also needs the memory models it uses from the same directory: `memory_sp.sv`, `memory_sp_ext.sv`, `memory_dp.sv` or `memory_dp_ext.sv`. synth.f also omits library and include directories passed through `VERILATOR_USER_OPTS`. In a pro tree, `pro/common/systemVerilog/a2cPro.f` adds `pro/common/systemVerilog` and `pro/interfaces/lmmi` as `+incdir+` and `-y` directories, so the synthesis project must also add that include directory (for `fsmDefs.svh`), the library modules the design uses from it (`memArb.sv`, `vldAckArb.sv`, the fifos and the rest), and `pro/interfaces/lmmi/lmmi_if.sv`.
+`make help` in each directory lists its targets.
 
-2.  **Module and Implementation File Creation:**
-    *   Use `make newmodule` before creating any implementation file (`.sv`, `.cppm`, `.cpp`, `.h`) that arch2code should scaffold.
-    *   This applies to new blocks and to existing blocks that are gaining a previously skipped artifact, such as changing `hasRtl: false` to `hasRtl: true`.
-    *   `make newmodule` creates the directory structure, initial YAML when needed, and implementation skeletons in `model/`, `rtl/`, and related generated locations. The `model/` skeleton is a single C++20 module file, `model/<block>.cppm` (the `blockModule` fileMap entry, gated `cond: hasMdl`), not a `.cpp`/`.h` pair.
-    *   Do not use a direct file write for these scaffolds. Edit only the user-owned body regions after `make newmodule` and `make gen` have produced the file.
-    *   `make newmodule` also removes stale generated files that a block, variant or instance rename left behind. In `registrar/` it deletes every stale marker-carrying file. In `vl_wrap` it deletes a stale file only when its text outside the generated regions matches its scaffold, because the SC wrapper header `<block>_hdl_sc_wrapper.h` holds user code in its `end_ctor_init()` body. A stale `vl_wrap` file that differs is kept and reported as a warning (`kept stale vl_wrap file ...`). Move any code you need into the current wrapper, then delete the file by hand.
+## Targets
+*   `make db` builds the project database from the YAML. It validates the YAML without generating code.
+*   `make gen` regenerates every `GENERATED_CODE_BEGIN`/`GENERATED_CODE_END` region and keeps everything outside them.
+*   `make newmodule` creates the missing files that the `fileGeneration.fileMap` entries name, such as the block files in `model/` and `rtl/` and the testbench files in `tb/`. It never rewrites an existing file and never creates YAML.
+*   `make clean` removes the database, `.gen/` and `rundir/build/`. It leaves source files alone, generated regions included.
+*   `make` in `rundir/` regenerates and builds the model binary, `rundir/build/run`.
+*   `make VL_DUT=1` in `rundir/` regenerates, verilates the RTL into `rundir/build/vl`, and builds the binary with it linked in.
+*   `make run` builds the binary when its sources changed and runs it. It does not regenerate, so after a YAML edit run `make` first. `make run VL_DUT=1` substitutes the RTL for `HDL_TOP_MODULE` only. Where a project has `run-vl`, use it to cover every RTL instance. See `verify-cosimulation`.
+*   `make lint` in `rtl/` checks that the RTL compiles.
+*   `make compdb` writes `compile_commands.json` for clangd at the project root, `REPO_ROOT`. `make newmodule` also refreshes it and discards any error. That refresh leaves out a new `.cppm` scaffold, which has no `export module` line until `make gen` fills it. After adding a block, run `make compdb` once `make gen` has run.
+*   `make clangd` writes `.clangd` at the project root. Reload the IDE afterwards.
 
-3.  **Generated-region host files:**
-    *   The build enumerates generated source from the DB-derived manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`, emitted by `config/createBuildManifest.py` and consumed wildcard-filtered in `a2c-common.mk`).
-    *   Declare a host in `fileGeneration.fileMap` when arch2code owns the whole file. `make newmodule` scaffolds it, `make gen` updates its generated regions, and the manifest includes it in generation and compilation. A project-wide address header is one example: use `mode: project` and set `name:` and `basePath:` to the required basename and segment. The default entry uses `basePath: fwInc` and `langDomain: fw`.
-    *   Use the `EXTRA_` seam when the project owns the host and arch2code only injects generated regions. Such a file carries `GENERATED_CODE_BEGIN` markers but has no fileMap entry, so `make newmodule` does not create it and the manifest does not list it.
-    *   Add each project-owned host to the matching variable in the project's `include/make/shared.mk`, above the `include … a2c-common.mk` line. Put SystemC/C++ hosts (`.h`/`.cpp`/`.cppm`) on `EXTRA_SC_GEN_FILES` and SystemVerilog hosts (`.sv`/`.svh`) on `EXTRA_SV_GEN_FILES`.
-    *   The seams are empty by default. An unlisted project-owned host is omitted from both generation and compilation.
+Run arch2code only through these targets. Two tools run directly: `arch2code.py --newproject`, before a makefile exists (see `setup-project`), and `regrLauncher.py` (see `run-regression-tests`).
+
+## Creating implementation files
+*   Run `make newmodule` before you write any implementation file (`.sv`, `.cppm`, `.cpp`, `.h`) that arch2code scaffolds. This covers new blocks and existing blocks gaining an artifact, for example `hasRtl: false` changed to `hasRtl: true`.
+*   The model file is one C++20 module, `model/<block>.cppm`, not a `.cpp`/`.h` pair.
+*   Never write a scaffold by hand. After `make newmodule` and `make gen`, edit only the user regions.
+*   `make newmodule` also deletes stale generated files left by a block, variant or instance rename. In `registrar/` it deletes every stale file that carries generated markers. In `vl_wrap/` it deletes a stale file only when its text outside the generated regions matches the scaffold, because `<block>_hdl_sc_wrapper.h` holds user code in `end_ctor_init()`. It keeps a stale `vl_wrap` file that differs and warns `kept stale vl_wrap file ...`. Move any code you need into the current wrapper, then delete the file by hand.
+
+## Files with generated regions
+*   The build takes its generated file set from the manifest the database build writes (`A2C_SC_GEN_FILES` and `A2C_SV_GEN_FILES` in `.gen/build.mk`).
+*   When arch2code owns the whole file, declare it in `fileGeneration.fileMap`. `make newmodule` creates it, `make gen` fills it, and the manifest lists it. The project-wide address header is one case; see `manage-address-space`.
+*   When the project owns the file and arch2code only fills its generated regions, list the file in the project's `include/make/shared.mk`, above the `include $(A2C_ROOT)/include/make/a2c-common.mk` line. C++ hosts (`.h`, `.cpp`, `.cppm`) go on `EXTRA_SC_GEN_FILES`, SystemVerilog hosts (`.sv`, `.svh`) on `EXTRA_SV_GEN_FILES`. Both are empty by default, and `make gen` skips an unlisted host.
+*   These two lists drive regeneration. They do not add the host to the compile. The build compiles the host the way it compiles any project file: a C++ host through its source directory or an `#include`, an SV host through Verilator options you supply, such as `VERILATOR_USER_OPTS`. An edit to an `EXTRA_SV_GEN_FILES` host also re-verilates every verilated top.
 
     ```make
-    # Project-owned hosts whose generated regions arch2code updates.
     EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/mixedEncoders.h
     EXTRA_SV_GEN_FILES = $(REPO_ROOT)/rtl/mixedEncoder_package.sv
     ```
 
-4.  **Simulation:**
-    *   `make run`: Runs the compiled SystemC simulation.
-    *   **Note:** The model binary is at `rundir/build/run`. The whole-design Verilator build (`make VL_DUT=1`) lands under `rundir/build/vl`.
-    *   `VL_JOBS` (default 4) sets verilator's threads and its C++ build jobs. Under `make -jN` the verilator build uses the outer job pool instead; a bare `make -j` starts no job pool, so `VL_JOBS` applies there too. The verilate recipe is `+`-prefixed, so `make -n` still runs it.
-    *   `A2C_CLANG` names the Clang for the whole build. It must be a single compiler path or name, such as `/opt/llvm/bin/clang++` or `clang++-20`, never a launcher plus compiler; Verilator's own `OBJCACHE` already adds ccache.
-    *   The verilated objects follow `A2C_CLANG`. Under `USE_GCC` they keep the compiler Verilator was configured with, because verilated.mk's flags suit that compiler.
-    *   A site can export `BOOST_LIBS` as the whole Boost link line, for example `-lboost_system -lboost_program_options -lboost_stacktrace_basic -L/site/lib`. `LD_BOOST` is then not needed.
-    *   An exported site `EXTRA_LD_FLAGS` goes on the link line after the Boost and SystemC libraries and before the project's `EXTRA_LD_FLAGS +=` additions. A site `-L` there cannot override the default Boost search path; set `BOOST_LIBS` to change Boost.
-    *   Site values use make syntax and then pass through the link command's shell, so a literal `$` is written `$$` inside shell quotes: `export EXTRA_LD_FLAGS="-Wl,-rpath,'\$\$ORIGIN/lib'"`.
+## Regeneration triggers
+*   The manifest records the YAML include closure as `A2C_YAML_FILES`. An edit to any of those files, interface definitions included, rebuilds the database.
+*   `.gen/builder.stamp` tracks `templates/`, `pysrc/`, `config/*.yaml`, `config/*.py`, `arch2code.py`, and Pro's `templates/` and `config/`. An edit to any of these rebuilds the database and regenerates everything on the next `make`.
+*   After an edit to `include/make/`, or to a template kept inside the project tree, run `make clean` first. Nothing tracks those.
+*   The manifest records the project root it was written for. The next `make` rebuilds the database when the tree has moved to a new path or the manifest names YAML that no longer exists. A failed rebuild is retried on the following `make`.
+*   Each database build deletes the manifest before it writes a new one. A warning that `build.mk` stays stale means no manifest appeared under `REPO_ROOT`, because `REPO_ROOT` and the project file's `dirs: root:` name different directories.
 
-5.  **Verification (Project Specific):**
-    *   Check the project's specific `Makefile` for verification targets (e.g., `test`, `regr`, `verif`).
-    *   Commonly, `make all` builds everything including verification components.
+## Toolchain
+*   Clang is the recommended compiler. Use GCC (`USE_GCC=1`) only where a simulator requires it.
+*   `A2C_CLANG` names the Clang for the whole build. Give one compiler path or name, such as `/opt/llvm/bin/clang++` or `clang++-20`, never a launcher plus a compiler. Verilator's `OBJCACHE` already adds ccache. The build ignores an exported `CXX`.
+*   The verilated objects use `A2C_CLANG` too. Under `USE_GCC` they use the compiler Verilator was configured with, because `verilated.mk` sets flags for that compiler.
+*   `VL_JOBS` (default 4) sets Verilator's threads and its C++ build jobs. Under `make -jN` the Verilator build shares the outer job pool instead. A bare `make -j` has no job pool, so `VL_JOBS` applies there too. `make -n` does not run the verilate step.
+*   A site can export `BOOST_LIBS` as the whole Boost link line, for example `-lboost_system -lboost_program_options -lboost_stacktrace_basic -L/site/lib`. `LD_BOOST` is then not needed.
+*   A site `EXTRA_LD_FLAGS` goes on the link line after the Boost and SystemC libraries and before the project's `EXTRA_LD_FLAGS +=` additions. A `-L` there cannot override the Boost search path, so set `BOOST_LIBS` to change Boost.
+*   Site values are make syntax and then pass through the shell, so write a literal `$` as `$$` inside shell quotes: `export EXTRA_LD_FLAGS="-Wl,-rpath,'\$\$ORIGIN/lib'"`.
 
-6.  **Regeneration triggers:**
-    *   The db's YAML list tracks YAML edits, interface definitions included.
-    *   `.gen/builder.stamp` tracks the builder's templates, `pysrc/`, `config/`, `arch2code.py`, and pro's templates and config. A change there rebuilds the db and regenerates every file.
-    *   The build manifest `.gen/build.mk` records the project root it was written for. When a tree is copied or moved to a new path, or the manifest names YAML that no longer exists, the next `make` rebuilds the db. If that rebuild fails, the following `make` tries again. Each db build removes the manifest first. If `make` then warns that `build.mk` stays stale, no manifest was written under `REPO_ROOT`, because `REPO_ROOT` and the project file's `dirs: root:` name different directories.
-    *   Nothing tracks templates kept inside the project tree, or other builder files such as `include/make/`. Run `make clean` after changing those.
+## Synthesis file list
+`make synthf` in `rtl/` writes `.gen/synth.f`, one absolute path per line with no tool switches. It lists every package in the compile closure, child projects' packages included, in `rtl.f` order, then the RTL modules from the manifest. It leaves out the Verilator wrapper, `RTL_SRC_FILES` additions, and the directories passed through `VERILATOR_USER_OPTS`.
 
-## Workflow
-1.  **Edit YAML** (`arch/yaml/...`)
-2.  **`make db`** (Validate Schema)
-3.  **`make gen`** (Generate Code)
-4.  **Implement** (`model/...` or `rtl/...`)
-5.  **`make run`** (Build & Simulate)
+The synthesis project adds the rest itself:
+*   `$(A2C_ROOT)/common/systemVerilog/flops.sv` and `asserts.svh`, ahead of the `synth.f` entries.
+*   The interface `.sv` files the design uses, from `$(A2C_ROOT)/interfaces/<protocol>/`.
+*   The memory models the design uses, from `$(A2C_ROOT)/common/systemVerilog/`: `memory_sp.sv`, `memory_sp_ext.sv`, `memory_dp.sv`, `memory_dp_2clk.sv` or `memory_dp_ext.sv`.
+*   In an A2C Pro tree, `pro/common/systemVerilog` as an include directory (for `fsmDefs.svh`), the library modules the design uses from it (`memArb.sv`, `vldAckArb.sv`, the FIFOs and the rest), and `pro/interfaces/lmmi/lmmi_if.sv`. `a2cPro.f` adds these for Verilator only.
+
+## Project verification targets
+Check the project's `rundir/Makefile` for its own targets, such as `regr` or `run-vl`.
 
 ## Constraints
-*   **Do not** invoke Python scripts directly (e.g., `arch2code.py`). Always use the `make` targets which set up the correct environment and paths.
-*   **Do not** edit generated files. They are overwritten by `make gen`.
-*   Most commands should be run from the `rundir` or project root where the main `Makefile` resides. Exception is `make lint` in the rtl dir
+*   Never edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`. `make gen` rewrites those regions.

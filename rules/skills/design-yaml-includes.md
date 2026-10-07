@@ -1,125 +1,84 @@
 ---
 name: design-yaml-includes
-description: Guide for using YAML include directives and managing multi-file architecture definitions in arch2code
+description: Guide for splitting arch2code architecture across YAML files. Covers include visibility, projectFiles, using another project's files, and the C++ module, namespace and SV package each file generates, named from includeName. Use when adding a YAML file, an include, or a child project.
 ---
-# Skill: YAML Include & Multi-File Management
+# Skill: YAML includes and multi-file designs
 
 ## Purpose
-Guide the user on splitting architecture definitions across multiple YAML files using `include:` directives and `projectFiles` in `project.yaml`.
+Split an architecture across YAML files with `projectFiles:` and `include:`, predict what each file generates, and use names from another project. For where YAML files and generated files sit on disk, see `setup-project.md`.
 
-## Two Mechanisms
+## How files load
 
-### 1. `projectFiles` in `project.yaml`
-
-Lists the top-level YAML files that define the architecture. These are the entry points the toolchain loads.
+*   The project file's `projectFiles:` lists the entry files, with paths relative to the project file.
+*   A design file's `include:` lists the files whose names it uses, with paths relative to the including file.
+*   Every file reached through either list is loaded. A file reached only through `include:` does not need a `projectFiles:` entry.
+*   `projectFiles:` adds no visibility. Listing a file there does not make its names visible to any other file.
 
 ```yaml
-# project.yaml
-projectName: my_chip
-topInstance: top_tb
-
+# prj/yaml/my_chipProject.yaml
 projectFiles:
-  - top.yaml
-  - subsystem_a/subsystem_a.yaml
-  - subsystem_b/subsystem_b.yaml
-  - shared/shared_types.yaml
+  - ../../yaml/my_chip.yaml
+
+# yaml/my_chip.yaml
+include:
+  - ../shared/yaml/shared_types.yaml
+  - ../subsystem_a/yaml/subsystem_a.yaml
 ```
 
-Paths are relative to the directory containing `project.yaml`.
+## Each file is its own context
 
-### 2. `include:` Directive in YAML Files
+Each YAML file is its own context, and `include:` only makes names visible. Nothing is inlined. A file sees itself, the files it includes, and the files those include. Nothing deeper is visible.
 
-Any YAML file can include other files. Included files are parsed as if their content were inlined at the include point.
+If `a.yaml` includes `b.yaml`, `b.yaml` includes `c.yaml`, and `c.yaml` includes `d.yaml`, then `a.yaml` sees the names in `b.yaml` and `c.yaml` but not `d.yaml`. To use a name from `d.yaml` in `a.yaml`, add `d.yaml` to the `include:` of `a.yaml`. List every file whose names you use rather than relying on a chain.
+
+*   The order of the `include:` list does not matter. A file is processed after every file it includes.
+*   Inside one file, declare a name in an earlier section than its use, for example `types:` before `structures:`.
+*   A circular include stops `make db` with "Circular include dependancy detected".
+*   A name used outside its scope fails `make db` with "value ... was not valid in context ...". When another loaded file declares it, the message names that file and says to add it to the `include:` chain.
+
+## What each file generates
+
+A file generates context files only when it declares `constants:`, `types:`, `enums:` or `structures:`. A file that declares only other sections, such as `interfaces:`, `ipParameters:`, `blocks:`, `instances:` or connections, produces no context file, and no generated code imports it. Entries inside `ipParameters:` do not count.
+
+| Artifact | Location | Name |
+| :--- | :--- | :--- |
+| C++ module | `model/` | `<includeName>Includes.cppm` |
+| SystemVerilog package | `rtl/` | `<includeName>_package.sv`, package `<includeName>_package` |
+| Firmware header | `fw/` (`fw/include/` in the functional layout) | `<includeName>IncludesFW.h` and `.cpp`, only when the project's `fileMap` declares `includeFW` |
+
+*   `includeName` is the file stem unless the file sets a top-level `includeName:`.
+*   File names, and the SV package name, take the owning project's `scFilePrefix`, `svFilePrefix` or `fwFilePrefix` when it sets one.
+*   The C++ module is `<project>_<includeName>`, where `<project>` is the project that owns the file. An `includeName` that equals the project name, or already starts with `<project>_`, is used unchanged. The namespace is the module name plus `_ns`.
+*   Copy a module name from the generated file's `export module` line rather than building it by hand.
+*   Two files that give the same C++ module name fail `make db`, even when neither generates a context file. Two files whose generated SV packages share a name also fail. Two projects with no `svFilePrefix` hit this when each has a file of the same stem. Set `includeName:` in one of them.
+*   A package name that matches a block's SV module name fails the same way. Set `includeName:` in one file, or give one project a distinct `svFilePrefix`.
+
+For example, `common/yaml/shared_types.yaml` in project `common` generates `common/model/shared_typesIncludes.cppm` with `export module common_shared_types;` and namespace `common_shared_types_ns`, and `common/rtl/shared_types_package.sv`. A file `ip.yaml` in project `ip` gives module `ip`.
+
+## Using another project's files
+
+*   A child project opens only through the parent's `projectFiles:`, by listing the child's project file.
+*   Naming a project file in `include:` stops `make db`. To use a child's names, include the child's design YAML file that declares them.
+*   The child owns its files. Their generated files sit in the child's tree, placed by the child's layout, and their module names use the child's project name.
+*   Reach a child's design file by its real path, the same one the child's own project file resolves to. A path through a symlinked copy names a second context.
 
 ```yaml
-# subsystem_a/subsystem_a.yaml
+# prj/yaml/ip_testProject.yaml (parent)
+projectFiles:
+  - ../../common/prj/yaml/commonProject.yaml   # opens child project common
+  - ../../top/yaml/ip_top.yaml
+
+# top/yaml/ip_top.yaml
 include:
-  - ../shared/shared_types.yaml
-  - local_types.yaml
-
-blocks:
-  subsystem_a:
-    desc: "Subsystem A"
+  - ../../common/yaml/shared_types.yaml        # names owned by project common
 ```
 
-**Path rules:**
-*   Paths are **relative to the including file**, not the project root.
-*   Use `../` to navigate up directories.
-*   **Never** use absolute paths.
+Code in `ip_top`'s blocks then uses module `common_shared_types` and namespace `common_shared_types_ns`.
 
-## Best Practices
+## Path rules
 
-### 1. Organize by Subsystem
-
-```
-arch/yaml/
-  project.yaml
-  config/                      # Optional legacy address-control files
-  shared/
-    shared_types.yaml        # Common types and constants
-    shared_interfaces.yaml   # Common interfaces
-  subsystem_a/
-    subsystem_a.yaml         # Blocks, instances, connections for subsystem A
-  subsystem_b/
-    subsystem_b.yaml         # Blocks, instances, connections for subsystem B
-  top.yaml                   # Top-level instances and connections
-```
-
-### 2. Shared Types First
-
-Put commonly referenced types, constants, and structures in a shared file. Include it from subsystem files that need those definitions.
-
-```yaml
-# shared/shared_types.yaml
-constants:
-  DATA_WIDTH: {value: 64, desc: "Common data width"}
-
-types:
-  datapath_t: {width: DATA_WIDTH, desc: "Datapath type"}
-
-structures:
-  data_st:
-    data: {varType: datapath_t, desc: "Data payload"}
-```
-
-```yaml
-# subsystem_a/subsystem_a.yaml
-include:
-  - ../shared/shared_types.yaml
-
-interfaces:
-  my_data_if:
-    interfaceType: rdy_vld
-    desc: "Uses shared type"
-    structures:
-      - {structure: data_st, structureType: data_t}
-```
-
-### 3. Avoid Circular Includes
-
-File A should not include File B if File B also includes File A. Structure your includes as a DAG (directed acyclic graph).
-
-### 4. Include Order Matters
-
-Elements must be defined before they are referenced. If File B uses a type from File A, File A must be included (directly or transitively) before File B defines structures using that type.
-
-## Common Pitfalls
-
-```yaml
-# BAD - absolute path
-include:
-  - /home/user/project/arch/yaml/shared.yaml
-
-# BAD - wrong relative path (common in nested directories)
-include:
-  - shared_types.yaml  # Won't find it if file is in a subdirectory
-
-# GOOD - relative to current file
-include:
-  - ../shared/shared_types.yaml
-  - common/interfaces.yaml
-```
+*   Write paths relative to the including file, with `../` to go up. Absolute paths tie the project to one checkout.
+*   An entry with no directory part, such as `types.yaml`, resolves to the project file's directory instead when that directory's `types.yaml` is already loaded. Write `./types.yaml` for a file beside the including file.
 
 ## Validation
-*   Run `make db` to verify all includes resolve correctly.
-*   Missing includes produce clear error messages with the expected path.
+Run `make db`. It reports a missing file, a circular include, a project file named in `include:`, a name outside a file's scope, and a module or package name two files share.

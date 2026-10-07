@@ -1,256 +1,234 @@
 ---
 name: rtl-core
-description: Guide for writing core RTL modules in SystemVerilog including module structure, FSMs, reset logic, flip-flop macros, naming conventions, and coding idioms
+description: Guide for writing core RTL modules in SystemVerilog including module structure, FSMs, reset logic, flip-flop macros, clock domains, naming conventions, and coding idioms
 ---
-# Skill: RTL Core
+# Skill: RTL core
 
 ## Purpose
-Guide the user in writing core RTL modules in SystemVerilog, focusing on module structure, FSMs, flip-flop macros, naming conventions, and coding idioms.
+Write the hand-written SystemVerilog of an arch2code block: module structure, flop macros and clock domains, FSMs, naming and coding idioms. Other RTL skills link here for the flop macros, the `clk`/`rst_n` aliases and FSMs.
 
 ## References
-*   **Code Generation Markers:** `ARCH2CODE_AI_RULES.md` (Section 9 — "Code Generation Markers — Comprehensive Reference") for all `GENERATED_CODE_PARAM` and `GENERATED_CODE_BEGIN` options, templates, and sections.
+*   `ARCH2CODE_AI_RULES.md`, section "Code Generation Markers", lists every `GENERATED_CODE_PARAM` and `GENERATED_CODE_BEGIN` option.
 
 ## Instructions
 
-1.  **Module Structure & Generated Code:**
-    *   **Auto-Generation:** The module declaration, interface ports, and package imports are **auto-generated** by `arch2code` based on the YAML definition.
-    *   **Safe Zones:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
-    *   **Implementation:** Place all manual logic (FSMs, internal signals, sub-module instances) after the generated sections.
-    *   Module ends with `endmodule: <module_name>` (named end).
-    *   The block's clocks and resets are always the last ports, in declared order with the default first; a declared `output` clock or reset is an `output` port among them. A block that declares none gets `clk` and `rst_n` (active-low reset), both `input`; a multi-clock block gets one port per clock it declares and per reset.
+### 1. Module structure
 
-    ```systemverilog
-    // GENERATED_CODE_PARAM --block=<block_name>
-    // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-    module tagScheduler
-        import NVMe_package::*;
-        import sharedTop_package::*;
-    (
-        // Auto-generated ports from YAML connections
-        input clk, rst_n
-    );
-    // ... generated instances ...
-    // GENERATED_CODE_END
+*   The generator writes the module declaration, ports, package imports, interface instances, child instances and memory instances. Never edit between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END`.
+*   Put your logic after `// GENERATED_CODE_END`. End the module with `endmodule: <module_name>`.
+*   Ports come in this order: interface ports, then the block's clocks, then its resets, each in declaration order. A block with no `clocks:` gets an input `clk`. A block with no `resets:` gets an input `rst_n` on its default clock. `resets: {}` gives no reset port at all.
+*   The generated region imports the package of each YAML context whose types or constants the generated code uses. That includes the types on the block's ports, interface instances, registers, memories and parameterized type declarations. It also includes the constants that child-instance parameter bindings name, and the context of each parameterizable child. The block's own context is imported only when one of these uses it.
+*   Never write a package import by hand. If your logic names a type or constant from a package the region does not import, add the package with `--importPackages` on the `GENERATED_CODE_PARAM` line. List every package after one flag, as in `--importPackages a_package b_package`. The generator reads only the first flag.
 
-    // <--- Your code goes here --->
+```systemverilog
+// GENERATED_CODE_PARAM --block=twoClkSlowTick
+// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
+module twoClkSlowTick
+import twoClkIp_package::*;
+(
+    push_ack_if.src out,
+    input clkTick, rstTick_n
+);
+    // Default-domain aliases: the bare flop macros expand to clk / rst_n
+    wire clk = clkTick;
+    wire rst_n = rstTick_n;
+// GENERATED_CODE_END
 
-    endmodule: tagScheduler
-    ```
+    // your logic here
 
-2.  **Naming Conventions:**
+endmodule: twoClkSlowTick
+```
 
-    | Element | Convention | Example |
-    |---------|------------|---------|
-    | Modules | `snake_case` | `dma_engine`, `tag_scheduler` |
-    | Instances | `u_<name>` | `u_dma_engine`, `u_tag_scheduler` |
-    | Constants | `UPPER_SNAKE_CASE` | `MAX_BURST_LEN`, `DATA_WIDTH` |
-    | Types | `snake_case_t` | `count_t`, `addr_t`, `accum_t` |
-    | Structs | `snake_case_t` or `snake_case_st` | `cmd_entry_t`, `lut_entry_st` |
-    | Enums | `UPPER_SNAKE_CASE` values | `IDLE`, `ACTIVE`, `DONE` |
-    | Next-state (`_INST` macros) | `n_<name>` (auto-declared) | `n_stg1_valid`, `n_count` |
-    | Next-state (raw macros) | `nxt_<name>` (manually declared) | `nxt_wr_ready`, `nxt_data` |
-    | Pipeline stages | `stgN_` or `sN_` prefix | `stg1_valid`, `s2_data` |
-    | Generate blocks | `gen_<desc>` label | `gen_mem_inst`, `gen_lane` |
+### 2. Clock domains and the `clk`/`rst_n` aliases
 
-3.  **Finite State Machines (FSMs):**
-    *   **Use Macros:** Do NOT write raw `case` statements for state machines. Use `fsmDefs.svh` macros.
-    *   **Critical:** The enum type **must** be named `statesT`. The include file references this name to derive `stateT`, declare `state`/`nState`, and instantiate the state flop. Do **not** declare `state` or `nState` yourself.
-    *   **Pattern:** `always_comb` block with `nState = state;` default.
+Every block with an input clock has `clk` for its default domain, and `rst_n` when the default clock has a selected reset. They are either ports, or the generated region declares them as aliases (`wire clk = <default clock>;` and `wire rst_n = <its selected reset>;`), as above. The generator skips an alias when a declared port already has that name. The bare flop macros, the Pro FSM macros and `.*` therefore bind the default domain whatever its ports are called.
 
-    ```systemverilog
-    typedef enum logic [1:0] {RDY, WORK, DONE} statesT;
-    `include "fsmDefs.svh"
+The aliases are missing, or name the wrong signal, in these cases:
+*   The block has no input clock. There is no `clk` alias, and a declared output clock named `clk` is what the bare macros use.
+*   The default clock has no selected synchronous reset: `resets: {}`, every reset `async: true`, or every reset on another clock. There is no `rst_n` alias, and a declared reset named `rst_n` is used as is.
+*   A declared clock named `clk` is not the default clock, or a declared reset named `rst_n` is not the default clock's selected reset (for example an `async: true` `rst_n`). The bare macros then use that clock or reset.
 
-    always_comb begin
-        nState = state;
-        out_vld = 1'b0;
+In the first and third cases, name the clock and reset with the `_DOM` macros and bind library instances explicitly. In the second case there is no synchronous reset to name. Use the no-reset macros (`DFFNR`, `DFFNR_INST`), or add a reset synchroniser on the default clock, whose output then becomes the selected reset and the `rst_n` alias.
 
-        `fsmCase
-            `fsmState(RDY) begin
-                if (start) begin
-                    `nxtState(WORK)
-                end
+Pick the macro form by the flop's clock:
+
+| Flop's clock | Form | Example |
+| :--- | :--- | :--- |
+| Default clock | Bare | `` `DFF_INST(logic, busy) `` |
+| Any other clock | `_DOM`, clock and reset given | `` `DFF_INST_DOM(clkSlow, rstSlow_n, logic, busy) `` |
+| Another clock that shares `rst_n`, where `rst_n` is safe to use in that domain | `_CLK` is allowed | `` `DFF_INST_CLK(clkFast, logic, busy) `` |
+
+`_CLK` always resets on `rst_n`. In the table, `clkFast` shares `rst_n`, so `_CLK` is correct there. On a clock that has its own reset, `_CLK` puts the flop in the wrong reset domain, so use `_DOM`. When in doubt, use `_DOM`.
+
+A library instance (A2C Pro `memArb`, `rdyVldFifo` and so on) on another clock binds that clock and its own reset explicitly, `.clk(clkSlow), .rst_n(rstSlow_n)`, instead of relying on `.*`.
+
+### 3. Flop macros
+
+Never write `always_ff` directly. The one exception is a reset supplier's assertion path, such as a reset synchroniser's asynchronous input flop or a PLL wrapper's raw output reset. Write those with explicit asynchronous flops so the domain resets while its clock is stopped.
+
+The macros live in `flops.sv`. Each family has a bare, a `_CLK` and a `_DOM` form:
+*   `_DOM` takes the clock and the reset as its first two arguments, and holds the only flop body.
+*   `_CLK` takes the clock as its first argument and passes `rst_n` to `_DOM`.
+*   Bare passes `clk` to `_CLK`.
+
+| Bare macro | Behaviour | Declares |
+| :--- | :--- | :--- |
+| `` `DFF_INST(type, name) `` | Resets to `'0` | `type name, n_name;` |
+| `` `DFFR_INST(type, name, rval) `` | Resets to `rval` | `type name, n_name;` |
+| `` `DFFNR_INST(type, name) `` | No reset | `type name, n_name;` |
+| `` `DFFEN_INST(type, name, en) `` | Loads when `en`, resets to `'0` | `type name, n_name;` |
+| `` `DFF_KEEP_INST(type, name) `` | As `DFF_INST`, kept by synthesis | `type name, n_name;` |
+| `` `DFFR_KEEP_INST(type, name, rval) `` | As `DFFR_INST`, kept by synthesis | `type name, n_name;` |
+| `` `DFF(q, d) `` | Resets to `'0` | nothing |
+| `` `DFFR(q, d, rval) `` | Resets to `rval` | nothing |
+| `` `DFFNR(q, d) `` | No reset | nothing |
+| `` `DFFEN(q, d, en) `` | Loads when `en`, resets to `'0` | nothing |
+| `` `DFFREN(q, d, en, rval) `` | Loads when `en`, resets to `rval` | nothing |
+| `` `SCFF(q, s, c) `` | Set-clear flop, set wins | nothing |
+
+There is no `DFFREN_INST` or `SCFF_INST`. For those, declare the signals and use the raw macro.
+
+The other forms add arguments at the front: `` `DFFR_INST_DOM(clkSlow, rstSlow_n, cntT, count, '0) ``, `` `DFFEN_DOM(clkSlow, rstSlow_n, q, d, en) ``, `` `SCFF_DOM(clkSlow, rstSlow_n, q, s, c) ``.
+
+The KEEP macros add Synplify's `syn_keep` and `syn_preserve` attributes, so Synplify does not merge the register with an equivalent one. Other synthesis tools need their own attribute.
+
+```systemverilog
+`DFF_INST(logic, stg1Vld)
+`DFFR_INST(countT, credits, MAX_CREDITS)
+
+always_comb begin
+    n_stg1Vld = inPort.vld;
+    n_credits = credits;
+    if (consume) begin
+        n_credits = credits - 1'b1;
+    end
+end
+```
+
+### 4. Reset style
+
+`flops.sv` builds every flop in one of three styles. Exactly one is active per compilation:
+*   `A2C_RESET_SYNC`, the default. Synchronous active-low reset.
+*   `A2C_RESET_ASYNC`. Asynchronous active-low reset on the flop's sensitivity list.
+*   `A2C_RESET_NONE`. No reset. An `initial` statement sets the start value, for FPGA images.
+
+`ASIC` is an alias for `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` for `A2C_RESET_NONE`. Defining two styles fails to compile. Select a style with a define, for example `make lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC`, or the same define in your synthesis tool. Write RTL the same way for every style.
+
+### 5. Finite state machines
+
+Every project can write an FSM as a plain `case` with the state in a flop macro:
+
+```systemverilog
+typedef enum logic [1:0] {RDY, WORK, DONE} fsmStateT;
+`DFFR_INST(fsmStateT, state, RDY)
+
+always_comb begin
+    n_state = state;
+    outVld = 1'b0;
+    case (state)
+        RDY: begin
+            if (start) begin
+                n_state = WORK;
             end
-
-            `fsmState(WORK) begin
-                out_vld = 1'b1;
-                if (out_ack) begin
-                    `nxtState(DONE)
-                end
+        end
+        WORK: begin
+            outVld = 1'b1;
+            if (outAck) begin
+                n_state = DONE;
             end
+        end
+        DONE: begin
+            n_state = RDY;
+        end
+        default: `qAssertFatal(0, "Default clause should not be reached")
+    endcase
+end
+```
 
-            `fsmState(DONE) begin
-                `nxtState(RDY)
+For an FSM on a non-default clock, declare the state with `DFFR_INST_DOM`.
+
+**A2C Pro FSM macros.** `fsmDefs.svh` ships only with A2C Pro (`builder/pro/common/systemVerilog`, on the Verilator path through `a2cPro.f`). It runs on the default domain only.
+*   Name the enum `statesT`. The include derives `stateT`, declares `state` and `nState`, and adds the state flop, reset to the first enum value. Do not declare `state` or `nState` yourself.
+*   Define `QS_ONEHOT_FSM` for one-hot encoding. The default is encoded.
+*   `` `pushState(ST) `` and `` `popState `` use `pushState` and `nPushState`, which the include does not declare. Declare `stateT pushState, nPushState;`, flop them with `` `DFFR(pushState, nPushState, <a valid state>) ``, and default `nPushState = pushState;` in the `always_comb`. The reset value must be a state in the FSM's encoding. When encoded, use a state name such as `RDY`. Under `QS_ONEHOT_FSM`, use a one-hot value such as `stateT'(1)`, the first state. `stateT'(0)` is no state there.
+
+```systemverilog
+typedef enum logic [1:0] {RDY, WORK, DONE} statesT;
+`include "fsmDefs.svh"
+
+always_comb begin
+    nState = state;
+    outVld = 1'b0;
+    `fsmCase
+        `fsmState(RDY) begin
+            if (start) begin
+                `nxtState(WORK)
             end
+        end
+        `fsmState(WORK) begin
+            outVld = 1'b1;
+            if (outAck) begin
+                `nxtState(DONE)
+            end
+        end
+        `fsmState(DONE) begin
+            `nxtState(RDY)
+        end
+        default: `qAssertFatal(0, "Default clause should not be reached")
+    `fsmEndCase
+end
+```
 
-            default: `qAssertFatal(0, "Default clause should not be reached")
-        `fsmEndCase
-    end
-    ```
+`` `testState(ST) `` tests the current state.
 
-    **FSM Macros:**
-    *   `` `fsmCase `` / `` `fsmEndCase ``: wraps case statement (supports encoded or one-hot via `QS_ONEHOT_FSM` define)
-    *   `` `fsmState(ST) ``: case label for a state
-    *   `` `nxtState(ST) ``: transition to next state
-    *   `` `testState(ST) ``: test current state (returns logic)
-    *   `` `pushState(ST) ``: save a state for later return
-    *   `` `popState ``: restore previously pushed state
+For several FSMs in one module, scope each one in `if (1) begin: gen_<fsm> ... end: gen_<fsm>`. Each scope then has its own enum, `state` and `n_state` (or `nState`).
 
-    **Scoped FSMs:** Use `if (1) begin: <label>` blocks for multiple FSMs in the same module, each with their own `statesT`:
+### 6. Combinational logic
 
-    ```systemverilog
-    if (1) begin: read_fsm
-        typedef enum logic [1:0] {IDLE, REQ, WAIT, DONE} statesT;
-        `include "fsmDefs.svh"
-        always_comb begin /* ... */ end
-    end: read_fsm
+*   Use `always_comb`, one per logical section such as a pipeline stage.
+*   Assign every driven signal a default at the top of the block (`n_x = x;`, `out = '0;`), then override it in branches. This prevents latches.
+*   Use `begin`/`end` on every branch.
+*   Declare combinational intermediates at module scope and drive them in `always_comb`. They cost no flops.
 
-    if (1) begin: write_fsm
-        typedef enum logic [1:0] {IDLE, BURST, RESP} statesT;
-        `include "fsmDefs.svh"
-        always_comb begin /* ... */ end
-    end: write_fsm
-    ```
+### 7. Assertions
 
-4.  **Flip-Flop Macro System:**
+`asserts.svh` defines three macros:
+*   `` `qAssertFatal(cond, "msg") `` stops the simulation.
+*   `` `qAssertError(cond, "msg") `` reports an error. The simulator decides whether to stop.
+*   `` `qAssertWarning(cond, "msg") `` reports a warning.
 
-    **Never write `always_ff` directly.** Use DFF macros instead.
+The macros expand to immediate assertions, so place them inside a procedural block:
 
-    | Macro | Purpose | Creates |
-    |-------|---------|---------|
-    | `` `DFF_INST(type, name) `` | Flop reset to `'0` | `type name, n_name;` + flop |
-    | `` `DFFR_INST(type, name, rval) `` | Flop with explicit reset value | `type name, n_name;` + flop |
-    | `` `DFFNR_INST(type, name) `` | Flop with no reset | `type name, n_name;` + flop |
-    | `` `DFFEN_INST(type, name, en) `` | Flop with enable | `type name, n_name;` + flop |
-    | `` `DFFREN(q, d, en, rval) `` | Flop with reset+enable (raw) | flop only (no signal decl) |
-    | `` `DFFR(q, d, rval) `` | Flop with reset (raw) | flop only (no signal decl) |
-    | `` `DFF(q, d) `` | Flop reset to `'0` (raw) | flop only (no signal decl) |
-    | `` `DFFEN(q, d, en) `` | Flop with enable (raw) | flop only (no signal decl) |
-    | `` `DFFNR(q, d) `` | Flop with no reset (raw) | flop only (no signal decl) |
-    | `` `SCFF(q, s, c) `` | Set-clear flop, set priority (raw) | flop only (no signal decl) |
+```systemverilog
+always_comb begin
+    `qAssertError(count <= MAX_COUNT, "Counter overflow")
+end
+```
 
-    The `_INST` macros declare both the signal and its `n_<name>` next-state signal automatically. The raw macros require you to declare signals yourself -- use `nxt_<name>` as the convention for manually declared next-state signals.
+### 8. Naming
 
-    **The `_CLK` Family (clock not named `clk`):**
+| Element | Convention | Example |
+| :--- | :--- | :--- |
+| Modules, ports, instances, YAML types and constants | Generated. Keep the YAML spelling. | `twoClkTable`, `uTwoClkTableRegs`, `twoClkDataT`, `TWO_CLK_TICK_DIV` |
+| Hand-written signals | camelCase, as in the examples and the Pro library | `sweepAddr`, `statsValid` |
+| `localparam` constants | `UPPER_SNAKE_CASE` | `EXTA_SEED` |
+| Local types | camelCase, `T` suffix, or `St` for a struct | `fsmStateT`, `lutEntrySt` |
+| Enum values | `UPPER_SNAKE_CASE` | `RDY`, `WORK` |
+| Next state of an `_INST` flop | `n_<name>`, declared by the macro | `n_sweepAddr` |
+| Next state for a raw macro | `nxt_<name>`, declared by you | `nxt_rdData` |
+| Generate blocks | `gen_<desc>` label | `gen_lane` |
 
-    Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
+Keep one style within a module. A module written in snake_case stays in snake_case.
 
-    *   Use the bare macro for a flop on the block's default clock. That is the normal case in every block: when the block's default clock is not named `clk`, or its selected reset not named `rst_n`, the generated region of its module declares `wire clk = <default clock>;` (and/or `wire rst_n = <selected reset>;`) as an alias, so the bare macros expand to a real net whatever the domain is called. An alias is emitted only for the name that differs; a block that declares nothing needs neither.
-    *   Use the `_CLK` form for a flop on another clock of a multi-clock block only when that clock shares the block's `rst_n`; otherwise use the `_DOM` form below, which names both the clock and the reset. Generated modules (`<block>_regs`, `apbDecode`) emit `_DOM` with their own resolved clock and reset.
-    *   `_CLK` resets on `rst_n`, the block's own reset domain (a port or the generated default-domain alias). Every `_CLK` macro is one line onto its `_DOM` form, and every bare macro one line onto its `_CLK` form.
-    *   A reset **supplier**'s assertion path — a synchroniser's asynchronous input flop, a PLL wrapper's raw output reset — is written with explicit asynchronous flops outside this macro library, so the domain resets even while its clock is stopped; the selected reset style governs ordinary flops, not a supplier's assertion path.
+The A2C Pro FSM macros require the names `state`, `nState`, `pushState` and `nPushState`. They are exempt from the `n_` and `nxt_` rules.
 
-    **Reset Style:**
-    *   Exactly one of `A2C_RESET_SYNC` (default), `A2C_RESET_ASYNC`, `A2C_RESET_NONE` is active per compilation, selected at the top of `flops.sv`. `ASIC` aliases to `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` aliases to `A2C_RESET_NONE`, for compatibility with existing defines. Defining more than one style is a compile error.
-    *   **A2C_RESET_SYNC** (default): synchronous, active-low reset in the clocked `always_ff`.
-    *   **A2C_RESET_ASYNC**: asynchronous, active-low reset on the flop's own `posedge clkSig or negedge rstSig` sensitivity list.
-    *   **A2C_RESET_NONE**: no reset; an `initial` statement sets the FPGA image start value instead.
-    *   Write code the same way; the macros handle the difference.
-    *   For a flop on a second domain of a multi-clock block, use the `_DOM(clkSig, rstSig, ...)` form, which takes both the clock and the reset signal explicitly: `` `DFF_DOM(clkSig, rstSig, q, d) ``, and so on. `_CLK` and bare are one-line aliases onto `_DOM`.
-    *   `` `DFF_KEEP_INST(type, name) ``: same as `DFF_INST`, but marks the register keep/preserve so synthesis does not merge it with an apparently-equivalent register.
-    *   `` `DFFR_KEEP_INST(type, name, rval) ``: keep/preserve with a reset value, the same as `DFFR_INST` otherwise. Both keep macros have `_CLK` and `_DOM` forms (`DFF_KEEP_INST_CLK`, `DFF_KEEP_INST_DOM`, `DFFR_KEEP_INST_CLK`, `DFFR_KEEP_INST_DOM`).
+### 9. Idioms
 
-    **Pattern: Declare then Drive:**
-
-    ```systemverilog
-    `DFF_INST(logic, stg1_valid)
-    `DFF_INST(data_t, stg1_data)
-
-    always_comb begin
-        n_stg1_valid = in_port.vld;
-        n_stg1_data = in_port.data;
-    end
-    ```
-
-    **Pattern: Custom Reset Value:**
-
-    ```systemverilog
-    `DFFR_INST(count_t, counter, MAX_COUNT)
-
-    always_comb begin
-        n_counter = counter;
-        if (decrement) n_counter = counter - 1'b1;
-    end
-    ```
-
-5.  **Combinational Logic:**
-    *   Always use `always_comb`.
-    *   Assign default values at the top of the block to prevent latches.
-    *   One `always_comb` per logical section (pipeline stage, functional unit).
-    *   Use `begin`/`end` for all conditional blocks.
-
-6.  **Combinational Intermediate Signals:**
-
-    Not all signals need flops. Declare combinational intermediates at module scope and drive them in `always_comb`. These are zero-cost in hardware (just wires):
-
-    ```systemverilog
-    addr_t derived_addr;
-    logic  is_aligned;
-
-    always_comb begin
-        derived_addr = base_addr + offset;
-        is_aligned = (derived_addr[1:0] == 2'b00);
-    end
-    ```
-
-    Use this for bit-slicing decomposition, derived flags, and any intermediate value consumed in the same or next cycle.
-
-7.  **Assertions (`qAssert` / `qAssertFatal`):**
-    *   `qAssert(condition, "message")` -- logs error but continues simulation.
-    *   `qAssertFatal(condition, "message")` -- halts simulation immediately.
-
-    ```systemverilog
-    `qAssert(count <= MAX_COUNT, "Counter overflow detected")
-    `qAssertFatal(state != ILLEGAL_STATE, "Illegal state reached")
-    ```
-
-8.  **Type Casting and Constants:**
-
-    ```systemverilog
-    addr_t'(bus_addr) & 32'h7f
-    count_t'(MAX_VALUE)
-    $signed({1'b0, unsigned_val})    // Zero-extend to signed
-
-    localparam int unsigned DATA_WIDTH = 32'h0000_0008;
-    localparam DERIVED_W = DATA_WIDTH + 2;
-    typedef logic signed [DERIVED_W-1:0] accum_t;
-    ```
-
-9.  **Package Organization:**
-
-    ```systemverilog
-    package <block>_package;
-    import shared_types_package::*;
-
-    localparam int unsigned SOME_WIDTH = 32'h0000_0012;
-    typedef logic [SOME_WIDTH-1:0] data_t;
-
-    typedef struct packed {
-        data_t value;
-    } entry_t;
-
-    endpackage : <block>_package
-    ```
-
-10. **Verilator Lint Pragmas:**
-
-    ```systemverilog
-    /* verilator lint_off WIDTHTRUNC */
-    // ... code with intentional width truncation ...
-    /* verilator lint_on WIDTHTRUNC */
-
-    /* verilator lint_off WIDTHEXPAND */
-    // ... code with intentional width expansion ...
-    /* verilator lint_on WIDTHEXPAND */
-    ```
-
-11. **Key Idioms:**
-    1.  Use `logic` everywhere, never `reg` or `wire`.
-    2.  Use `'0` for zero, `'1` for all-ones.
-    3.  Use `case () inside` for address decoding.
-    4.  Use `32'hBADD_C0DE` as default read data for invalid APB addresses. The generated router returns it for an empty address space, and a generated register block for an address in its decoded range that no register or memory claims. Rows the address map reserves past a parameterizable memory's depth belong to no memory, so they read `32'hBADD_C0DE` too. An address past a block's decoded range aliases through its address mask onto an address in the range.
-    5.  Use `automatic` keyword in functions and loop variables.
-    6.  Use reduction `|` for overflow detection: `|accum[MSB:DATA_WIDTH]`.
-    7.  Use ternary chains for mux-like selections.
-    8.  Propagate `vld` and sideband metadata through every pipeline stage.
-    9.  `assign in_port.rdy = 1'b1;` when module applies no backpressure.
+*   Use `logic` for everything you declare. `wire` appears only in the generated region, for the `clk`/`rst_n` aliases and for clock and reset nets a child instance drives.
+*   Use `'0` and `'1` for all-zeros and all-ones.
+*   Mark functions and procedural loop variables `automatic`.
+*   Detect overflow with a reduction OR, `|accum[MSB:DATA_WIDTH]`.
+*   Cast with the type: `addrT'(busAddr)`, `$signed({1'b0, uval})` to zero-extend into a signed value.
+*   Waive an intentional width mismatch around the expression only: `/* verilator lint_off WIDTHTRUNC */ ... /* verilator lint_on WIDTHTRUNC */`.
+*   Carry `vld` and sideband data through every pipeline stage.
+*   Tie `in.rdy = 1'b1` only when the block can accept every cycle. Otherwise derive `rdy` from downstream, as in `rtl-interfaces.md`.

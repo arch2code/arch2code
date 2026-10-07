@@ -1,124 +1,166 @@
 ---
 name: setup-project
-description: Guide for initializing a new arch2code project, setting up directory structure, and configuring project.yaml
+description: Guide for initializing a new arch2code project, the directory layout (hierarchical or functional), and configuring the project file, including its testbench clocks and resets
 ---
-# Skill: Setup Project
+# Skill: Set up a project
 
 ## Purpose
-Guide the user through initializing a new project, setting up the directory structure, and configuring the base `project.yaml`.
+Create a project, understand where YAML and generated files go, and configure the project file.
 
 ## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Project Configuration" and "Directory Structure Mapping")
+*   `ARCH2CODE_AI_RULES.md`, sections "Project File (`project.yaml`)" and "Project Configuration".
+*   `builder/readme.md` for the bootstrap sequence.
 
-## Instructions
+## 1. Create the project
 
-1.  **Directory Structure:**
-    *   Create the standard directory layout if it doesn't exist.
-    *   **Crucial:** Always include `arch/yaml/project.yaml` as the entry point.
-    *   Typically, the build system (`Makefile`) lives in `rundir` or the project root.
+Start from an empty git repository with arch2code added as a submodule at `builder/`, then run `./builder/arch2code.py --newproject`. It asks for the project name, firmware, RTL and the copyright line, then:
+*   writes the project file `prj/yaml/<name>Project.yaml`, the design file `yaml/<name>.yaml` and a `.gitignore`;
+*   builds the database;
+*   scaffolds `Makefile`, `include/make/shared.mk`, `rundir/Makefile`, `rtl/Makefile` and the seed blocks' implementation files;
+*   runs `make gen` to fill the generated regions.
 
-    ```text
-    project_root/
-    ├── arch/
-    │   └── yaml/
-    │       ├── project.yaml          # Main configuration (defines the mirror root)
-    │       ├── config/                    # Optional legacy address-control files
-    │       └── <group>/             # Subsystem/module architecture (e.g. ip/, top/)
-    │           └── <module>.yaml
-    ├── model/                        # SystemC models      (mirrors arch/yaml layout)
-    ├── rtl/                          # SystemVerilog RTL   (mirrors arch/yaml layout)
-    ├── base/                         # Generated base classes (mirrors arch/yaml layout)
-    ├── tb/                           # Testbench files     (mirrors arch/yaml layout)
-    ├── verif/vl_wrap/                # Verilator wrappers  (mirrors arch/yaml layout)
-    ├── rundir/                       # Run directory containing Makefile (standard practice)
-    └── Makefile                      # Top-level Makefile
-    ```
+Edit the files it writes from then on. Do not copy makefiles from an example. `make newmodule` also creates any of the four makefiles that is missing, and never rewrites one that exists.
 
-    ### Directory Mirroring (default behavior)
-    *   **The generated implementation tree mirrors the architecture YAML tree.** A block's (and a YAML file's context) generated files are placed in a subdirectory, **relative to `arch/yaml/`**, that matches the location of the YAML file that defines it. There is no separate setting to enable this; it is the default.
-    *   Example: a block defined in `arch/yaml/ip/ip.yaml` generates to `model/ip/`, `rtl/ip/`, `base/ip/`, and `verif/vl_wrap/ip/`. Per-file context artifacts (SystemC `*Includes.cppm`, SV `*_package.sv`) follow the same rule (e.g. `rtl/ip/ip_package.sv`).
-    *   **Testbench files nest one extra level** by the block name: a `hasTb` block in `arch/yaml/top/ip_top.yaml` generates testbench files into `tb/top/ip_top/`.
-    *   Put YAML into subdirectories purely to organize; keep `project.yaml` at the `arch/yaml/` root (it defines the mirror root). Update relative `include:` / `projectFiles:` paths accordingly (e.g. `include: [../common/shared_types.yaml]`).
-    *   Source discovery is manifest-driven: `projectCreate` records the layout's source/include dirs in the DB and emits them to `.gen/build.mk`, so no Makefile changes are needed when you add subdirectories.
+## 2. Directory layout
 
-    ### `blockDir` override (exception only)
-    *   The default mirror is almost always what you want. **Do not add `blockDir:` just to reproduce the default.**
-    *   A top-level `blockDir:` directive in a YAML file overrides the output directory for **all** blocks and context artifacts defined in that file (relative to each `dirs` base path). For example `blockDir: .` forces a flat layout (everything directly under `model/`, `rtl/`, etc.) regardless of where the YAML file lives.
-    *   A per-block `dir:` field overrides the output directory for a single block.
-    *   Use these only for genuine exceptions (e.g. placing one block's files outside the mirrored tree). Otherwise omit them and let the YAML location drive the layout.
+The project file's `fileGeneration.layout` picks the layout. `--newproject` writes `hierarchical`. A project file that sets no layout gets `functional`.
 
-2.  **`project.yaml` Configuration:**
-    *   **Must** define `projectName`, `topInstance`, and `dirs`.
-    *   Use `$root` and `$a2c` macros for portable paths.
-    *   **Do not** define `fileGeneration` maps unless overriding defaults.
+### Hierarchical
 
-    ```yaml
-    # Example project.yaml
-    projectName: my_chip
-    topInstance: top_tb
-    
-    projectFiles:
-      - top.yaml
-      - subsystem_a/subsystem_a.yaml
-    
-    dirs:
-      root: ../..
-      base: $root/base
-      model: $root/model
-      rtl: $root/rtl
-      # ... standard paths
-    
-    # Optional: Custom schema
-    dbSchema: config/schema.yaml
+Generated files sit beside the YAML of each node. A node is the parent of the directory holding a YAML file, so a file at `<node>/yaml/<file>.yaml` generates into `<node>/model/`, `<node>/rtl/`, `<node>/base/`, `<node>/tb/`, `<node>/verif/`, `<node>/fw/` and `<node>/registrar/`. The project file sits in `prj/yaml/`, and `rundir/` and `include/` stay at the project root.
 
-    # Project-level address-policy sections
-    instanceGroups:
-      all_instances:
-        varType: global_inst_id_t
-        enumPrefix: GID_
+```text
+<root>/
+├── prj/yaml/my_chipProject.yaml    # project file
+├── yaml/my_chip.yaml               # root node
+├── model/ rtl/ base/ tb/ verif/ fw/ registrar/
+├── isp/                            # subsystem node
+│   ├── yaml/isp.yaml
+│   └── model/ rtl/ base/ tb/ verif/ fw/ registrar/
+├── include/make/shared.mk
+├── rundir/Makefile
+└── Makefile
+```
 
-    addressObjects:
-      memories:
-        alignment: memsize
-        sizeRoundUpPowerOf2: true
-        sortDescending: true
-      registers:
-        alignment: 8
-        sortDescending: true
+Put each node's YAML directly in its `yaml/` directory. A file at `yaml/isp/isp.yaml` has node `yaml/`, so it would generate into `yaml/rtl/`. To add a subsystem, create `<subsystem>/yaml/<file>.yaml`.
 
-    # Optional: project-scoped clocks and resets (omit both for the built-in
-    # clk / rst_n). Exactly one entry per section carries default: true.
+### Functional
+
+Each generated segment has one root under the project root, set by `dirs:` (`$root/model`, `$root/rtl`, `$root/base`, `$root/tb`, `$root/verif/vl_wrap`, `$root/fw/include`, `$root/registrar`). Inside each, files mirror the YAML file's directory relative to the project file. With the project file in `arch/yaml/`, a block in `arch/yaml/ip/ip.yaml` generates into `model/ip/`, `rtl/ip/`, `base/ip/` and `verif/vl_wrap/ip/`. Keep the project file at the top of the YAML tree.
+
+### Both layouts
+
+*   Context files (`*Includes.cppm`, `*_package.sv`) follow the same rule as blocks.
+*   Testbench files nest one level further, under the block name: `tb/<block>/`.
+*   `include:` and `projectFiles:` paths are relative to the file that holds them. See `design-yaml-includes.md`.
+*   `make db` records the source and include directories in `.gen/build.mk`, so adding a directory needs no Makefile change.
+
+### Placement overrides
+
+The default placement is almost always right, so do not add an override to reproduce it. In the functional layout, a top-level `blockDir:` in a YAML file sets the directory for every block and context in that file, relative to each segment root. `blockDir: .` puts them directly under `model/`, `rtl/` and so on. A per-block `dir:` sets it for one block. In the hierarchical layout, do not set `blockDir:` or `dir:`. Move the YAML file into the node directory you want instead.
+
+## 3. The project file
+
+| Key | Rule |
+| :--- | :--- |
+| `yamlFormat: 2` | Required. `make db` rejects a project file without it and tells you to run `make migrate`. |
+| `projectName` | The project's name. It prefixes the project's C++ module names. |
+| `dirs:` | Only `root` is required, relative to the project file. Other segments come from the base config. |
+| `projectFiles:` | The entry design files. See `design-yaml-includes.md`. |
+| `topInstance` | Required when the project declares instances. A definitions-only project omits it. |
+| `fileGeneration:` | `layout`, `fileCopyrightStatement`, and any `fileMap` entries the project adds. |
+| `svFilePrefix`, `scFilePrefix`, `fwFilePrefix` | Optional filename prefixes. |
+| `instanceGroups:`, `addressObjects:` | Address policy. See `manage-address-space.md`. |
+| `clocks:`, `resets:` | The testbench. See below. |
+
+Use the `$root` and `$a2c` macros in paths. List only the settings the project changes. Do not restate the base config's `dirs:`, `fileMap` or templates.
+
+```yaml
+yamlFormat: 2
+projectName: my_chip
+
+projectFiles:
+  - ../../yaml/my_chip.yaml
+
+topInstance: my_chip_tb
+
+dirs:
+  root: ../..
+
+fileGeneration:
+  layout: hierarchical
+  fileCopyrightStatement: "Copyright My Company 2026"
+
+instanceGroups:
+  top:
+    varType: inst_top
+    enumPrefix: INST_TOP_
+
+addressObjects:
+  memories:
+    alignment: memsize
+    sizeRoundUpPowerOf2: true
+    sortDescending: true
+  registers:
+    alignment: 8
+    sortDescending: true
+```
+
+`--newproject` writes the `top` instance group. Keep it, because the seed design's instances set `instGroup: top` and `make db` rejects a group the project file does not declare.
+
+### Firmware headers
+
+A project that wants firmware headers adds `includeFW` under `fileGeneration.fileMap`. `--newproject` writes it when you ask for firmware. A project-wide address header needs a `regAddresses` entry with `mode: project`, whose `name:` is the file's literal basename. The base config has no active `regAddresses` entry, so a project gets the header only by declaring one. See `manage-address-space.md`.
+
+## 4. Testbench clocks and resets
+
+The project file's `clocks:` and `resets:` declare the testbench. They bind the input clocks and resets of the top block, the `topInstance`'s block. A block's own clocks and resets are declared on the block. See "Clocks and resets" in `design-architecture.md`.
+
+A project that omits `clocks:` gets one testbench clock, `clk`, with `period` 1 ns. One that omits `resets:` gets one reset, `rst_n`, on the default clock.
+
+*   `clocks.<name>`: `desc` (required), `default` (exactly one `true`, implied with one entry), `period` (positive integer, default `1`; an odd value in `ps` is rejected) and `timeUnit` (`ps`, `ns` or `us`, default `ns`).
+*   `resets.<name>`: `desc` (required), `default` (exactly one `true`, implied with one entry), `clock` (default: the default clock) and `releaseCycles` (positive integer, default `3`, the reset's own clock edges before release).
+*   The default reset belongs to the default clock. A clock and a reset may not share a name. Every reset is active-low.
+
+Each top-block input is bound by the first rule that applies:
+1.  The `topInstance` row's `clocks:`/`resets:` map, `<top-block port>: <testbench name>`.
+2.  A testbench entry of the same name.
+3.  `clk` falls back to the default testbench clock. `rst_n` falls back to the selected reset of the testbench clock its own clock is bound to.
+
+`make db` rejects a top-block input that no rule binds, and a testbench entry that binds no top-block input. So every entry needs a matching input on the top block, either by name or by the map:
+
+```yaml
+# project file
+clocks:
+  clk:     { desc: "main clock", default: true, period: 1, timeUnit: ns }
+  clkSlow: { desc: "slow clock", period: 3, timeUnit: ns }
+resets:
+  rst_n:     { desc: "main reset", default: true, clock: clk }
+  rstSlow_n: { desc: "slow reset", clock: clkSlow, releaseCycles: 4 }
+
+# design YAML: the top block declares both domains
+blocks:
+  my_chip_tb:
+    desc: "Testbench container"
     clocks:
-      clk:     { desc: "main clock",  default: true, period: 1, timeUnit: ns }
-      clkSlow: { desc: "slow clock",  period: 3, timeUnit: ns }
+      clk:     { default: true }
+      clkSlow: {}
     resets:
-      rst_n:     { desc: "main reset", default: true, clock: clk }
-      rstSlow_n: { desc: "slow reset", clock: clkSlow, releaseCycles: 4 }
-    ```
+      rst_n:     { clock: clk }
+      rstSlow_n: { clock: clkSlow }
+```
 
-    *   **`clocks:` / `resets:`** declare the **testbench**: each entry binds an `input` clock or reset of the top block by name, or by default fallback for `clk`/`rst_n`. A project that omits `clocks:` gets one testbench clock, `clk`, at `period` 1 ns; one that omits `resets:` gets one testbench reset, `rst_n`, on the default clock. A block's own clocks and resets are declared on the block, not here — see **Clocks and Resets** in `design-architecture.md`.
-        *   `clocks.<name>`: `desc` (required), `default` (exactly one `true` per project, implied with one entry), `period` (positive integer, default `1`), `timeUnit` (`ps`, `ns`, `us`; default `ns`).
-        *   `resets.<name>`: `desc` (required), `default` (exactly one `true` per project, implied with one entry), `clock` (the testbench clock the reset belongs to; default: the project default clock), `releaseCycles` (positive integer, default `3`; edges of the reset's own clock before release).
-        *   The default reset must belong to the default clock.
-        *   A clock name and a reset name may not collide. Every reset is active-low; there is no polarity field. When this project is a child of another, its `clocks:`/`resets:` are not used to bind the top block — the assembling project's instance map does that — though a `hasVl` block's own standalone `period`/`releaseCycles` still come from its own project file.
-    *   For how blocks and connections pick up these domains, see **Clocks and Resets** in `design-architecture.md`.
+When this project is a child of another, its `clocks:`/`resets:` do not bind its top block. The parent's instance map does.
 
-3.  **Address Policy and Register Decode:**
-    *   Place reusable address-policy sections in `project.yaml`:
-        *   `instanceGroups:` for non-address-space ID enumeration.
-        *   `addressObjects:` for register and memory packing policy.
-    *   If the project has register access, define at least one address group via the per-block schema: a router block carries `addressBlock:` and routed leaves tag their instance `addressGroup:`.
-    *   The register-bus decoder/router is a **generated** block: declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves (its RTL comes from `apbDecodeModule`). Do **not** hand-author it. For the decode hierarchy decision rule and the upstream feed you do author, use the **Register/Memory Decode** skill (`design-register-decode.md`).
-    *   Converting an existing `addressControl.yaml` project to this schema is a one-time migration — see `migrate-project.md` / `address-migration.md`.
+## 5. Address policy and register decode
 
-4.  **Makefile Setup:**
-    *   For a brand-new project in a clean repository, run `arch2code.py --newproject`. It writes the project file and seed design, builds the database, and scaffolds all four build files (`Makefile`, `include/make/shared.mk`, `rundir/Makefile`, `rtl/Makefile`) for you. Do not copy makefiles from an example, and do not hand-author `project.yaml`. See `readme.md` for the full bootstrap sequence.
-    *   The same four files are scaffolded create-once by `make newmodule` for an existing project, so a project that predates them picks them up without manual copying.
-    *   The per-project `include/make/shared.mk` sets `PROJECTNAME` / `TB_TOP_MODULE` / `HDL_TOP_MODULE` and then includes `a2c-common.mk`; the `rundir/Makefile` includes it and then `a2c-systemc.mk`.
-    *   The build compiles with `clang++` unless `USE_GCC` is set (`include/make/a2c-common.mk:123-129`). Use Clang 18 or later. Do not set `USE_GCC` for a project with `.cppm` modules. GCC 13.2 has crashed with an internal compiler error compiling one.
-    *   The build is manifest-driven: `make db` derives the source/include dirs and the generated-file set from the layout and emits `.gen/build.mk`; no Makefile edits are needed as blocks are added. Model output lands in `rundir/build/run`, the whole-design Verilator build in `rundir/build/vl`.
-    *   Declare files that arch2code owns under `fileGeneration.fileMap`. For example, a project-wide instance and register address header uses the `regAddresses` key with `mode: project`; set `name:` to its basename and `basePath:` to its segment. The default entry uses `basePath: fwInc` and `langDomain: fw`. `make newmodule` scaffolds the host and the manifest includes it in generation and compilation.
-    *   If the project owns a file and arch2code only injects generated regions, add it to `EXTRA_SC_GEN_FILES` or `EXTRA_SV_GEN_FILES` in `shared.mk`. See the **Build/Run** skill (`manage-build.md`).
+*   `instanceGroups:` and `addressObjects:` belong in the project file. See `manage-address-space.md`.
+*   Register decode is declared per block: a router block carries `addressBlock:` and is generated, never hand-written. See `design-register-decode.md`.
+
+## 6. Build files
+
+*   `include/make/shared.mk` sets `PROJECTNAME`, `TB_TOP_MODULE`, `HDL_TOP_MODULE` and `A2C_PRJ_YAML`, then includes `a2c-common.mk`. `rundir/Makefile` includes `shared.mk` and then `a2c-systemc.mk`.
+*   Clang is the recommended compiler. Set `USE_GCC` only where a simulator requires GCC. See `manage-build.md` for the compiler settings and for `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`.
 
 ## Validation
-*   Run `make db` to verify the project configuration loads correctly.
+Run `make db` to check that the project file and design load.

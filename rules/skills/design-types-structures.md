@@ -1,132 +1,108 @@
 ---
 name: design-types-structures
-description: Guide for editing regular YAML constants, types, and structures - the foundational elements that interfaces, registers, and memories reference. For ipParameters and variant-bound types, use design-parameterizable-blocks.
+description: Guide for editing regular YAML constants, types and structures, which interfaces, registers and memories reference. For ipParameters and variant-bound types, use design-parameterizable-blocks.
 ---
-# Skill: Design Types & Structures
+# Skill: Design types and structures
 
 ## Purpose
-Guide the user in defining regular constants, types, and structures in arch2code YAML. These are the foundational elements referenced by interfaces, registers, and memories. For `ipParameters`, parameterizable types, and variant-bound structures, use `design-parameterizable-blocks.md`.
+Define regular constants, types and structures in arch2code YAML. Interfaces, registers and memories reference them. For `ipParameters`, parameterizable types and variant-bound structures, use `design-parameterizable-blocks.md`.
 
 ## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Low-Level Architecture Elements")
-*   **Definitive Representation Reference:** `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for YAML field ordering, generated SystemVerilog packed structs, generated SystemC storage, `_packedSt`, pack/unpack, and thunkers.
+*   `ARCH2CODE_AI_RULES.md`, section "Low-Level Architecture Elements".
+*   `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` covers what the YAML generates: SystemVerilog packed structs, SystemC storage, `_bitWidth`, `_byteWidth`, `_packedSt`, `sizeof(T)`, pack/unpack and thunkers.
 
-## Definition Order
+## Definition order
 
-Define in dependency order -- later elements reference earlier ones:
-1. **Constants** -- parameters and sizing
-2. **Types** -- bit widths and enums
-3. **Structures** -- composite data (reference types)
+A name must be visible where it is used. Inside one file, declare it in an earlier section than its use, so `constants:` comes before `types:`, and `types:` before `structures:`. For a name from another file, see `design-yaml-includes.md`.
 
-## Instructions
+## 1. Constants (`constants:`)
 
-### 1. Constants (`constants` dictionary)
-
-Fixed parameters used for sizing, addresses, and configuration.
-
-**Properties:**
-*   `value`: Literal integer. **Use `value` OR `eval`, not both.**
-*   `eval`: Python expression string. Reference other constants with `$NAME`.
-*   `maxValue`: Optional worst-case integer for parameterizable constants; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound values.
-*   `desc`: **(Required)** Description.
+| Field | Meaning |
+| :--- | :--- |
+| `value` | Literal integer. Give `value` or `eval`, not both. |
+| `eval` | SystemVerilog constant expression. Reference another constant as `$NAME`. |
+| `desc` | Required. |
+| `valueType` | `uint` (default), `int` or `real`. A `real` constant needs a literal `value`. |
 
 ```yaml
 constants:
   DATA_WIDTH: {value: 64, desc: "Data bus width"}
-  DEPTH: {value: 256, desc: "Queue depth"}
-  DEPTH_BITS: {eval: '($DEPTH-1).bit_length()', desc: "Bits for depth index"}
-  TOTAL_SIZE: {eval: '$DEPTH * $DATA_WIDTH // 8', desc: "Total bytes"}
+  DEPTH:      {value: 256, desc: "Queue depth"}
+  DEPTH_BITS: {eval: '$clog2($DEPTH)', desc: "Bits for a depth index"}
+  TOTAL_SIZE: {eval: '$DEPTH * $DATA_WIDTH / 8', desc: "Total bytes"}
 ```
 
-**Eval rules:**
-*   `$CONSTANT_NAME` references previously defined constants
-*   Expressions are Python and evaluated in definition order
-*   Standard Python operators and builtins are available (e.g., `bit_length()`, `//`, `**`)
-*   If an `eval` references a parameterizable constant, `maxValue` is auto-derived; do not hand-write it
+`eval` is a SystemVerilog integer constant expression:
+*   It accepts integer literals in SV form (`255`, `8'hFF`, `'b1010`), `+ - * / %`, `& | ^ ~`, `<< >>`, comparisons, `?:`, `$clog2(...)`, `$NAME` and parentheses.
+*   `/` is integer division and truncates toward zero.
+*   `make db` rejects anything outside this list, including `**`, C-style `0x` literals and method calls such as `.bit_length()`.
 
-### 2. Types (`types` dictionary)
+Do not write `maxValue` on a regular constant. It makes the constant parameterizable. An `eval` that references a parameterizable constant derives its own `maxValue`, and `make db` rejects one written by hand. See `design-parameterizable-blocks.md`.
 
-Define bit-vector widths and enumerations.
+## 2. Types (`types:`)
 
-**Properties:**
-*   `width`: **(Required for non-enum types)** Bit width (integer or constant name).
-*   `widthLog2` / `widthLog2minus1`: Alternatives for address/index widths.
-*   `maxBitwidth`: Optional worst-case bit width for parameterizable types; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound types.
-*   `desc`: **(Required)** Description.
-*   `enum`: (Optional) List of enum values. Width is auto-calculated from max value.
+| Field | Meaning |
+| :--- | :--- |
+| `width` | Bit width, an integer or a constant name. |
+| `widthLog2` | Bits needed to hold the value N: 256 gives 9 bits. |
+| `widthLog2minus1` | Bits needed to index N entries, 0 to N-1: 256 gives 8 bits. |
+| `enum` | List of `{enumName, value, desc}`. `desc` is optional on an entry. |
+| `isSigned` | Default `false`. |
+| `desc` | Required. |
+
+Give exactly one of `width`, `widthLog2` or `widthLog2minus1`. An enum type may omit all three. Its width is then the bit length of its largest value. A type with no width and no enum fails `make db`.
 
 ```yaml
 types:
-  # Simple bit-vector types
-  byte_t: {width: 8, desc: "8-bit byte"}
-  addr_t: {width: ADDR_WIDTH, desc: "Address type (width from constant)"}
-  
-  # Enum types (width auto-calculated)
+  byte_t:   {width: 8, desc: "8-bit byte"}
+  addr_t:   {width: ADDR_WIDTH, desc: "Address"}
+  index_t:  {widthLog2minus1: DEPTH, desc: "Index into DEPTH entries"}
   opcode_t:
     desc: "Operation code"
     enum:
-      - {enumName: OP_READ, value: 0, desc: "Read operation"}
-      - {enumName: OP_WRITE, value: 1, desc: "Write operation"}
-      - {enumName: OP_CONFIG, value: 2, desc: "Config operation"}
+      - {enumName: OP_READ,   value: 0, desc: "Read"}
+      - {enumName: OP_WRITE,  value: 1, desc: "Write"}
+      - {enumName: OP_CONFIG, value: 2, desc: "Config"}
 ```
 
-**Common pitfall -- missing width:**
-```yaml
-# BAD - width required for non-enum types
-types:
-  data_t: {desc: "Data"}  # ERROR!
+`maxBitwidth` makes a type parameterizable, the same as `maxValue` on a constant. Leave it off regular types.
 
-# GOOD
-types:
-  data_t: {width: 32, desc: "Data"}
-```
+## 3. Structures (`structures:`)
 
-### 3. Structures (`structures` dictionary)
+Every key under a structure's name is a field. A structure has no `desc:` key. If you write one, `make db` warns `unknown field desc` and then stops with a Python error (`'str' object has no attribute 'get'`).
 
-Composite data types built from types or other structures.
+| Field property | Meaning |
+| :--- | :--- |
+| `varType` | A type name. |
+| `subStruct` | A structure name, to nest it. Use `varType` or `subStruct`, not both. |
+| `arraySize` | Element count, an integer or a constant. The default `0` means a scalar. Any value of 1 or more makes an array, so `1` gives a one-element array. |
+| `desc` | Optional. |
+| `generator` | Optional tag that adds generated accessors (see below). |
 
-**Field properties:**
-*   `varType`: **(Required unless using `subStruct`)** Type name from `types`.
-*   `subStruct`: (Alternative to `varType`) Nest another structure.
-*   `desc`: **(Required)** Description.
-*   `arraySize`: (Optional) Fixed array size. **Default: `1`**
-*   `generator`: (Optional) Code generation tag (e.g., `address`, `data`, `tracker(name)`).
-*   `local`: (Optional) Field exists only in model, not in RTL. **Default: `false`**
+A field may give neither `varType` nor `subStruct` when a `variables:` entry of the same name is visible. The field then takes that variable's type and `desc`.
 
 ```yaml
+variables:
+  src_id: {type: byte_t, desc: "Source ID"}
+
 structures:
-  # Simple structure
-  apb_addr_t:
-    address: {varType: dword32_t, generator: address, desc: "APB address"}
-  
-  # Structure with multiple fields
   packet_header_t:
     dest_id: {varType: byte_t, desc: "Destination ID"}
-    src_id: {varType: byte_t, desc: "Source ID"}
+    src_id: {}
     opcode: {varType: opcode_t, desc: "Operation code"}
-  
-  # Structure with array field
+
   axi_data_t:
     data: {varType: datapath_t, desc: "Data payload"}
     strb: {varType: bit_t, arraySize: 4, desc: "Byte strobes"}
-    last: {varType: bit_t, desc: "Last transfer flag"}
-  
-  # Nested structure
+
   full_packet_t:
-    header: {subStruct: packet_header_t, desc: "Packet header"}
+    header:  {subStruct: packet_header_t, desc: "Packet header"}
     payload: {varType: byte_t, arraySize: 256, desc: "Payload data"}
-  
-  # Structure with tracker for debug
-  command_t:
-    cmd: {varType: opcode_t, generator: tracker(cmd), desc: "Tracked command"}
-    addr: {varType: dword32_t, desc: "Target address"}
 ```
 
-**Field order.** The first YAML field is the MSB of the packed value and the
-last field sits at bit 0. In `packet_header_t` above, `opcode` (a 2-bit enum)
-is bits `[1:0]` and `dest_id` is bits `[17:10]`. The firmware header declares
-the fields in reverse, last YAML field first, and writes each field's packed
-range next to it:
+### Field order
+
+The first YAML field is the MSB of the packed value and the last field sits at bit 0. In `packet_header_t` above, `opcode` (a 2-bit enum) is bits `[1:0]` and `dest_id` is bits `[17:10]`. Every generated C++ struct declares the fields in reverse, last YAML field first. The firmware header also writes each field's packed range next to it:
 
 ```cpp
 struct packet_header_t {
@@ -137,36 +113,22 @@ struct packet_header_t {
 };
 ```
 
-Neither order gives bit numbers; the comments do. A range is an absolute bit
-index into the packed value, so in an 80-bit structure `[79:64]` is bits 15:0
-of `_packedSt[1]`. An array field's range covers every element, with element 0
-at the low end. A parameterizable structure gets no ranges, because its widths
-depend on the variant.
+Read bit positions from those comments, not from either declaration order. A range is an absolute bit index into the packed value, so in an 80-bit structure `[79:64]` is bits 15:0 of `_packedSt[1]`. An array field's range covers every element, with element 0 at the low end. A parameterizable structure gets no ranges, because its widths depend on the variant.
 
-**Generator tags:**
-*   `address` -- marks the field as an address (used by register bus generation)
-*   `data` -- marks the field as data (used by register bus generation)
-*   `tracker(name)` -- links to a debug tracker for transaction tracing
+### Generator tags
 
-## Representation Reference
+*   `address` adds `_getAddress()` to the C++ struct. Address-bus payloads such as the APB address use it.
+*   `data` adds `_getData()` and `_setData()`.
+*   `tracker(name)` links the field to a debug tracker for transaction logging.
 
-Keep this skill focused on YAML authoring. For how YAML widths map to generated
-SystemVerilog and SystemC, including `_bitWidth`, `_byteWidth`, `_packedSt`,
-`sizeof(T)` differences, field order, pack/unpack behavior, and thunkers, read
-`STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
+## Common pitfalls
 
-For parameterizable structures, arch2code computes worst-case metadata from
-parameterizable field types, sub-structures, and `arraySize` constants. Users
-should not write those structure metadata fields directly; use
-`design-parameterizable-blocks.md`.
-
-## Common Pitfalls
-
-1.  **Referencing undefined types:** Types must be defined before use. If in a separate file, use `include:` to pull in dependencies.
-2.  **Using `varType` and `subStruct` together:** Choose one per field, not both.
-3.  **Forgetting `desc`:** Required on every element (constants, types, structures, fields).
-4.  **Missing `width` on non-enum types:** Only enums auto-calculate width.
-5.  **Putting variant-specific sizing in shared files:** Use `ipParameters` in the owning block's YAML when values vary by instance.
+1.  Using a name that is not visible. Declare it in an earlier section, or include the file that declares it (`design-yaml-includes.md`).
+2.  Writing an `eval` outside the subset in section 1, such as `0x10` or `2**4`.
+3.  Picking `widthLog2` for an index. It holds the value N itself, one bit more than indexing N entries needs when N is a power of two.
+4.  Writing `arraySize: 1` for a scalar. Omit `arraySize`.
+5.  Missing `desc` on a constant or type.
+6.  Sizing a per-instance width with a regular constant. Declare it under `ipParameters:` and list it in the block's `params:` (`design-parameterizable-blocks.md`).
 
 ## Validation
-*   Run `make db` to parse and validate all YAML definitions.
+Run `make db` to parse and validate the YAML.

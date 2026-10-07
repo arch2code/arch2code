@@ -1,201 +1,129 @@
 ---
 name: rtl-interfaces
-description: Guide for using standard interface protocols (rdy_vld, push_ack, axi, status_if, external_reg_if, memory_if) in SystemVerilog RTL
+description: Guide for using standard interface protocols (rdy_vld, push_ack, req_ack, pop_ack, notify_ack, status, external_reg, memory, apb, axi, axi4_stream, raw) in SystemVerilog RTL
 ---
-# Skill: RTL Interfaces
+# Skill: RTL interfaces
 
 ## Purpose
-Guide the user on using standard interface protocols (`rdy_vld`, `push_ack`, `axi`, `status_if`, `external_reg_if`, `memory_if`) in SystemVerilog.
+Drive and read the standard arch2code interfaces in hand-written SystemVerilog.
 
-## Implementation Location
-All logic described below must be placed **after** the `// GENERATED_CODE_END` marker in your SystemVerilog file. **DO NOT** modify the auto-generated interface ports at the top of the file.
+## Ports come from YAML
+The generator declares every interface port, interface instance and memory instance from the YAML, inside the generated region. Do not declare them by hand. To add or change a port, edit the YAML connection and regenerate (`design-architecture.md`). Your logic goes after `// GENERATED_CODE_END`.
 
 ## Instructions
 
-1.  **Port Directions (Modports):**
+### 1. Modports
+Every interface has two modports and no others:
 
-    | Modport | Meaning | Used for |
-    |---------|---------|----------|
-    | `.dst` | Destination (consumer) | Input streams, config inputs |
-    | `.src` | Source (producer) | Output streams, status outputs |
-    | `.master` | Bus master | AXI initiator |
-    | `.slave` | Bus slave | AXI target |
+| Modport | Side | Example |
+| :--- | :--- | :--- |
+| `.src` | Producer, initiator | stream output, AXI initiator, `ro` value driver |
+| `.dst` | Consumer, target | stream input, AXI target, `status` input |
 
-2.  **Interface Types:**
+### 2. Interface types
 
-    | Interface | Purpose | Key signals |
-    |-----------|---------|-------------|
-    | `rdy_vld_if` | Streaming data | `.vld`, `.rdy`, `.data` |
-    | `push_ack_if` | Transactional request/response | `.push`, `.ack`, `.data` |
-    | `req_ack_if` | Simple handshake (no data) | `.req`, `.ack` |
-    | `status_if` | Config/status registers | `.data` |
-    | `raw_if` | **Last resort** — legacy/boundary handshake-less data bus | `.data` only |
-    | `apb_if` | Register bus | `.psel`, `.penable`, `.pwrite`, `.paddr`, `.pwdata`, `.prdata`, `.pready`, `.pslverr` |
-    | `memory_if` | Memory access | `.addr`, `.write_data`, `.read_data`, `.enable`, `.wr_en` |
-    | `external_reg_if` | External register (write-pulse) | `.write`, `.wdata`, `.rdata` |
-    | `axi_read_if` / `axi_write_if` | AXI4 bus | Standard AXI signals |
+| Interface | Purpose | Signals |
+| :--- | :--- | :--- |
+| `rdy_vld_if` | Stream, non-blocking | `vld`, `data` from src; `rdy` from dst |
+| `push_ack_if` | Push a transaction | `push`, `data` from src; `ack` from dst |
+| `req_ack_if` | Request with response data | `req`, `data` from src; `ack`, `rdata` from dst |
+| `pop_ack_if` | Pull data from dst | `pop` from src; `ack`, `rdata` from dst |
+| `notify_ack_if` | Event with no data | `notify` from src; `ack` from dst |
+| `status_if` | Level value such as config or status | `data` |
+| `external_reg_if` | Register owned outside the handler | `write`, `wdata` from src; `rdata` from dst |
+| `memory_if` | Memory port | `addr`, `write_data`, `enable`, `wr_en` from src; `read_data` from dst |
+| `apb_if` | Register bus | `psel`, `penable`, `pwrite`, `paddr`, `pwdata` from src; `pready`, `prdata`, `pslverr` from dst |
+| `axi_read_if`, `axi_write_if` | AXI4 | standard AXI4 channel signals |
+| `axi4_stream_if` | AXI4-Stream | `tvalid`, `tdata`, `tstrb`, `tkeep`, `tlast`, `tid`, `tdest`, `tuser`; `tready` from dst |
+| `raw_if` | Last resort, no handshake | `data` |
 
-3.  **Usage (Ports):**
-    *   Declare interfaces in module header.
-    *   Use modports for direction.
+The SV definitions are in `builder/base/interfaces/<name>/<name>_if.sv`.
 
-    ```systemverilog
-    module my_module (
-        rdy_vld_if.dst data_in,  // Input stream
-        rdy_vld_if.src data_out, // Output stream
-        status_if.dst config,    // Config register input
-        status_if.src status,    // Status register output
-        axi_read_if.master axi_m // AXI Master port
-    );
-    ```
+### 3. `rdy_vld_if`
+A transfer happens in a cycle where `vld && rdy`. The source holds `vld` and `data` until then. A pass-through stage passes backpressure upstream:
 
-4.  **Ready/Valid (`rdy_vld_if`):**
+```systemverilog
+always_comb begin
+    dataOut.vld  = dataIn.vld;
+    dataOut.data = process(dataIn.data);
+    dataIn.rdy   = dataOut.rdy;
+end
+```
 
-    ```systemverilog
-    always_comb begin
-        data_in.rdy = 1'b0;
-        data_out.vld = 1'b0;
-        data_out.data = '0;
+Tie `dataIn.rdy = 1'b1` only when the block can accept every cycle.
 
-        if (data_in.vld) begin
-            data_in.rdy = 1'b1;
-            data_out.data = process(data_in.data);
-            data_out.vld = 1'b1;
-        end
+### 4. `notify_ack_if`
+The source raises `notify` and holds it until a cycle where `notify && ack`. The destination raises `ack` for one cycle per event, in the first `notify` cycle or any later one. `notify` still high in the cycle after that handshake is a new event.
+
+### 5. `status_if`
+`data` is a level, always valid. Read it combinationally on the `.dst` side and drive it on the `.src` side:
+
+```systemverilog
+`DFF_INST(logic, modeFlag)
+always_comb begin
+    n_modeFlag = (cfg.data.mode == ACTIVE);
+end
+
+assign status.data = computedResult;
+```
+
+`config` is a SystemVerilog keyword, so never name a port `config`.
+
+### 6. `external_reg_if`
+`write` is nonzero for one cycle per firmware write, with the value on `wdata`. The owner drives `rdata`. `write` is a 2-bit vector. Test it with `|write`. `rtl-registers.md` has the full owner pattern.
+
+```systemverilog
+`DFF_INST(logic, cmdFlag)
+always_comb begin
+    n_cmdFlag = cmdFlag;
+    if (|cmdReg.write) begin
+        n_cmdFlag = cmdReg.wdata.trigger;
     end
-    ```
-
-    For modules that are always ready (no backpressure):
-    ```systemverilog
-    assign data_in.rdy = 1'b1;
-    ```
-
-5.  **`status_if` (Config/Status Registers):**
-
-    **Reading config (`.dst` direction):** `status_if.data` is always valid and can be read combinationally:
-    ```systemverilog
-    `DFF_INST(logic, mode_flag)
-    always_comb begin
-        n_mode_flag = (config.data.mode == ACTIVE) ? 1'b1 : 1'b0;
+    if (doneCondition && cmdFlag) begin
+        n_cmdFlag = 1'b0;
     end
-    ```
+end
+```
 
-    **Writing status back (`.src` direction):** Drive computed values for CPU readback:
-    ```systemverilog
-    always_comb begin
-        status.data = computed_result;
+### 7. `memory_if`
+*   `enable` must be high for a read or a write. `wr_en` selects write (1) or read (0).
+*   `read_data` is registered inside the memory, so it is valid the cycle after the read's `enable`. Drive the address in cycle N and use `read_data` in cycle N+1.
+*   Drive every `.src` signal on every cycle. Give each a default at the top of the `always_comb`.
+
+```systemverilog
+always_comb begin
+    mem.write_data = '0;
+    mem.wr_en      = 1'b0;
+    mem.addr       = '0;
+    mem.enable     = 1'b0;
+    if (readCondition) begin
+        mem.addr   = targetAddr;
+        mem.enable = 1'b1;
     end
-    ```
+end
+```
 
-6.  **`raw_if` (Last Resort — Handshake-Less Boundary):**
+The generator instantiates each memory the block declares, inside the generated region. It picks `memory_sp` or `memory_dp` from the port count. It adds `_2clk` when the two ports run on different clocks, and `_ext` for a `local: true` memory. Never hand-write a memory instance or its `memory_if` instances. To get a different memory, change the memory's `memoryType`, `regAccess`, `clock:` or `local:` in YAML.
 
-    **`raw_if` is supported but is an interface of last resort.** Prefer `rdy_vld_if`
-    (or another handshaked protocol) for new interconnect. Use `raw_if` only at
-    design boundaries when matching legacy/external IP with a free-running data
-    bus and no ready/valid/ack wires.
+A block that owns a memory drives the block-side `memory_if` instance the generated region declares, which is named after the memory. A child block that `memoryConnections` connects to its container's memory gets a `memory_if.src` port, and drives it the same way.
 
-    *   Sample `raw_if.data` on clock; do not invent backpressure on this interface.
-    *   Convert to `rdy_vld_if` (or similar) at the first internal hop.
-    *   Same wire shape as `status_if`, but different intent: free-running
-        boundary data vs config/status levels. See `ARCH2CODE_AI_RULES.md` (§ raw).
+To read several addresses in sequence, see `rtl-patterns.md` (FSM-sequenced memory reads).
 
-    ```systemverilog
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            /* reset */ ;
-        end else begin
-            sampled_data <= csi_video_in.data;
-        end
-    end
-    ```
+### 8. `raw_if`
+Use `raw_if` only at a design boundary, to match external IP with a free-running data bus and no handshake. Prefer `rdy_vld_if` or another handshaked interface everywhere else.
+*   Sample `data` on the clock. Do not add backpressure to this interface.
+*   Convert to `rdy_vld_if` at the first internal stage.
 
-7.  **`external_reg_if` (Write-Pulse Commands):**
+```systemverilog
+`DFF_INST(videoSt, sampledData)
+assign n_sampledData = csiVideoIn.data;
+```
 
-    Provides a single-cycle write pulse (`|write`) rather than a level. Use for command registers (e.g., clear, trigger):
+### 9. AXI
+Drive the channel signals directly. `rdata` is the interface's `data_t`, and `bresp` is on `axi_write_if` only.
 
-    ```systemverilog
-    `DFF_INST(logic, cmd_flag)
-    always_comb begin
-        n_cmd_flag = cmd_flag;
-        if (|cmd_reg.write) begin
-            n_cmd_flag = cmd_reg.wdata.trigger;
-        end
-        if (done_condition && cmd_flag) begin
-            n_cmd_flag = 1'b0;
-        end
-    end
-    ```
-
-8.  **`memory_if` (Memory Access):**
-
-    **Signals:**
-
-    | Signal | `.src` direction | Purpose |
-    |--------|-----------------|---------|
-    | `addr` | output | Address (parameterized `addr_t`) |
-    | `write_data` | output | Write data (parameterized `data_t`) |
-    | `enable` | output | Port enable (must be high for read or write) |
-    | `wr_en` | output | Write enable (0 = read, 1 = write) |
-    | `read_data` | input | Read data (valid 1 cycle after `enable`) |
-
-    **Read Timing:** `read_data` is registered inside `memory_dp` and valid **one cycle after** `enable` is asserted. Drive address in stage N, consume `read_data` in stage N+1.
-
-    **Driving from a core module:**
-    ```systemverilog
-    always_comb begin
-        mem.write_data = '0;
-        mem.wr_en = 1'b0;
-        mem.addr = '0;
-        mem.enable = 1'b0;
-
-        if (read_condition) begin
-            mem.addr = target_addr;
-            mem.enable = 1'b1;
-        end
-    end
-    ```
-
-    **Instantiation at container level** using `memory_dp`:
-    ```systemverilog
-    memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_core();
-    memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_reg();
-
-    memory_dp #(.DEPTH(MEM_DEPTH), .data_t(mem_data_t)) uMem (
-        .mem_portA (mem_core),
-        .mem_portB (mem_reg),
-        .clk (clk)
-    );
-    ```
-
-    `memory_dp` runs both ports on one clock. A memory whose ports run on two clocks uses `memory_dp_2clk`, which has the same parameters and binds `.clkA` and `.clkB` instead of `.clk`. `memory_dp_ext` has one clock only.
-
-    **Conditional multi-port access:** Drive all ports with the same address but conditional `enable`:
-    ```systemverilog
-    mem_a.addr = target_addr;
-    mem_a.enable = select_a;
-    mem_b.addr = target_addr;
-    mem_b.enable = ~select_a;
-    data_val = select_a ? mem_a.read_data.val : mem_b.read_data.val;
-    ```
-
-    **FSM-sequenced reads:** When multiple addresses must be read sequentially, use an FSM. See `rtl-patterns.md` for the paired-FSM pattern.
-
-9.  **Instantiating Internal Interfaces:**
-
-    ```systemverilog
-    status_if #(.data_t(config_t)) internal_config();
-    rdy_vld_if #(.data_t(result_t)) processed_stream();
-    memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_rd [NUM_PORTS-1:0]();
-    ```
-
-10. **AXI Usage:**
-    *   Drive individual AXI signals (e.g., `axi_m.arvalid`, `axi_m.araddr`).
-    *   Use `axi_pkg` structs for clean data handling (`axi_m.rdata.data`, `axi_m.bresp`).
-
-    ```systemverilog
-    axi_m.arvalid = start_read;
-    axi_m.araddr = target_addr;
-    if (axi_m.arready && axi_m.arvalid) begin
-        // Read accepted
-    end
-    ```
+```systemverilog
+assign axiRd.arvalid = startRead;
+assign axiRd.araddr  = targetAddr;
+// address accepted in a cycle where axiRd.arvalid && axiRd.arready
+```
