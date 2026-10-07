@@ -14,11 +14,17 @@ exercises two renames in turn:
     (`_hdl_sv_wrapper.sv`, `_hdl_sv_wrapper.svh`, `_hdl_sc_wrapper.h`) and its
     registrar files become stale.
 
-For each rename: `make db newmodule gen` removes the stale files and
-scaffolds the renamed ones; `make db gen` alone warns about the stale files
-and leaves them in place; a following `make newmodule` removes them and a
-`make gen` after that warns of nothing. A hand-authored file with no
-GENERATED_CODE marker dropped into verif/vl_wrap survives every pass.
+For each rename: `make db gen` alone warns about the stale files and leaves
+them in place; a following `make newmodule` removes them and a `make gen`
+after that warns of nothing. A hand-authored file with no GENERATED_CODE
+marker dropped into verif/vl_wrap survives every pass.
+
+A stale vl_wrap file is removed only while its text outside the generated
+regions is what the scaffold writes. In the block rename, the stale SC wrapper
+header first carries user code in its end_ctor_init() body: newmodule keeps
+and reports it while still removing the untouched stale files and the stale
+registrar files. Once the header is restored to its scaffold text, newmodule
+removes it.
 """
 
 import os
@@ -225,6 +231,11 @@ def _run_block_rename():
             os.path.join(vlWrapDir, 'leaf_hdl_sv_wrapper.svh'),
             os.path.join(vlWrapDir, 'leaf_hdl_sc_wrapper.h'),
         ]
+        registrarDir = os.path.join(project, 'registrar')
+        oldRegistrar = os.path.join(registrarDir, 'vliLeafRegistrar.cppm')
+        if not os.path.exists(oldRegistrar):
+            print(f"FAIL: expected baseline registrar file {oldRegistrar}")
+            return False
         rename_leaf_block(project, 'leaf')
 
         combined = require_make(['db', 'gen'], project, e)
@@ -240,11 +251,38 @@ def _run_block_rename():
                 print(f"FAIL: gen alone deleted {oldFile}; only newmodule should")
                 return False
 
-        require_make(['newmodule'], project, e)
+        # User code in the stale SC wrapper's end_ctor_init() body.
+        scWrap = expected['h']
+        with open(scWrap) as f:
+            scaffoldText = f.read()
+        hook = '        // Register synchLock,...\n'
+        if hook not in scaffoldText:
+            print(f"FAIL: {scWrap} does not carry the scaffold's end_ctor_init() body")
+            return False
+        with open(scWrap, 'w') as f:
+            f.write(scaffoldText.replace(hook, hook + '        userSetup();\n'))
+
+        combined = require_make(['newmodule'], project, e)
+        if not os.path.exists(scWrap):
+            print(f"FAIL: newmodule deleted {scWrap}, which holds user code")
+            return False
+        if 'kept stale vl_wrap file' not in combined or scWrap not in combined:
+            print(f"FAIL: newmodule did not report keeping {scWrap}:\n{combined}")
+            return False
         for oldFile in oldFiles:
-            if os.path.exists(oldFile):
+            if oldFile != scWrap and os.path.exists(oldFile):
                 print(f"FAIL: newmodule did not remove {oldFile}")
                 return False
+        if os.path.exists(oldRegistrar):
+            print(f"FAIL: newmodule did not remove the stale registrar file {oldRegistrar}")
+            return False
+
+        with open(scWrap, 'w') as f:
+            f.write(scaffoldText)
+        require_make(['newmodule'], project, e)
+        if os.path.exists(scWrap):
+            print(f"FAIL: newmodule did not remove the untouched stale header {scWrap}")
+            return False
         for newFile in newFiles:
             if not os.path.exists(newFile):
                 print(f"FAIL: newmodule did not scaffold {newFile}")
@@ -260,7 +298,9 @@ def _run_block_rename():
             return False
 
         print("PASS: a leaf block rename leaves stale vl_wrap files that gen "
-              "warns about and newmodule replaces; the hand-authored file survives")
+              "warns about and newmodule replaces, keeping a stale header that "
+              "holds user code until it is restored; the stale registrar files "
+              "and the hand-authored file are handled as before")
         return True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

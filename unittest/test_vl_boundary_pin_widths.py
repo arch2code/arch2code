@@ -68,6 +68,8 @@ blocks:
         hasTb: false
         hasRtl: true
         hasVl: true
+        clocks:
+            clk: { period: 10 }
         ports:
             in:  { interface: xferIf, direction: dst }
             out: { interface: xferIf, direction: src }

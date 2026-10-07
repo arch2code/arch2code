@@ -262,6 +262,22 @@ instances:
   addressID: auto(addressID) #note that even if specified in instances section, will be overridden
   instGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
   instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
+  # The instance's own clock/reset binding map: key = a block clock/reset of
+  # instanceType, value = a container clock/reset name, a new local net name
+  # (an output binding only), or `~` to leave an output unconnected. The set
+  # of valid values (local nets included) only exists after binding
+  # resolution runs, so both the key and the value are validated in
+  # clockTree.build()/projectCreate, not by a schema foreign key.
+  clocks:
+    _attribs: [optional, multiple]
+    _singular: bind
+    clock: key
+    bind: optional
+  resets:
+    _attribs: [optional, multiple]
+    _singular: bind
+    reset: key
+    bind: optional
 
 blocks:
   _attribs: [flat, post(validateBlockAddressDecl)]
@@ -295,6 +311,63 @@ blocks:
       _validate:
         section: constants
         field: constant
+  # The clocks and resets the block's implementation uses, named for its own
+  # module ports. The declaration is complete: nothing is inferred from
+  # children, connections or ports. A block declaring no clocks: has one input
+  # clock, `clk`; one declaring no resets: has `rst_n` on its default clock,
+  # if it has one. Neither implicit row is a schema row, so a clock:/reset:
+  # reference below resolves only on a block that declares its
+  # clocks:/resets:.
+  # A single-name list ('clocks: [clkSlow]') is accepted as the mapping form
+  # with every field defaulted (processYaml.py::_normalizeClockResetShortForm).
+  clocks:
+    _attribs: [optional, multiple, post(resolveBlockClockPeriod)]
+    clock: key
+    desc: optional
+    direction:
+      _type: optional(input)
+      _validate:
+        values:
+          - input
+          - output
+    default: optional(false)
+    # No schema default: unset means undeclared, which the build must tell
+    # apart from an authored value. An undeclared clock's simulated rate is
+    # supplied by getBDClocksResets.
+    period: optional
+    timeUnit:
+      _type: optional(ns)
+      _validate:
+        values:
+          - ps
+          - ns
+          - us
+  resets:
+    _attribs: [optional, multiple]
+    reset: key
+    desc: optional
+    direction:
+      _type: optional(input)
+      _validate:
+        values:
+          - input
+          - output
+    default: optional(false)
+    # The block-local clock this reset belongs to; unstated means the block
+    # default clock. A stated name must be one of the block's own clocks:
+    # rows, checked by the blockClock combo below.
+    clock: optional
+    blockClock:
+      _combo:
+        block: required
+        clock: required
+      _validate:
+        section: blocksclocks
+        field: blockclock
+    async: optional(false)
+  # An empty `resets: {}` or `resets: []` means no reset at all, distinct
+  # from omitting resets: (implicit rst_n); recorded as parse-time state
+  # (processYaml.py::_normalizeClockResetShortForm), not a schema field.
   ports:
     _attribs: [optional, multiple]
     port: key
@@ -309,6 +382,17 @@ blocks:
         values:
           - src
           - dst
+    # The block clock this port is timed by; block-local, unstated means the
+    # block default clock. A stated name must be one of the same
+    # block's own clocks: rows (the blockClock combo).
+    clock: optional
+    blockClock:
+      _combo:
+        block: required
+        clock: required
+      _validate:
+        section: blocksclocks
+        field: blockclock
   # leaf-owned register-bus ingress ports; direction is implicitly dst,
   # and interface.interfaceType must resolve to an interface_defs entry
   # with addressBus: true
@@ -320,6 +404,25 @@ blocks:
       _validate:
         section: interfaces
         field: interface
+    # Block-local bus clock/reset, each one of the same block's own clocks:/
+    # resets: rows when stated; unstated means the block default clock
+    # and its selected reset.
+    clock: optional
+    blockClock:
+      _combo:
+        block: required
+        clock: required
+      _validate:
+        section: blocksclocks
+        field: blockclock
+    reset: optional
+    blockReset:
+      _combo:
+        block: required
+        reset: required
+      _validate:
+        section: blocksresets
+        field: blockreset
   # per-router address-group attributes; mutually exclusive with
   # registerPorts on the same block
   addressBlock:
@@ -331,6 +434,25 @@ blocks:
     enumPrefix: required
     upstreamPort: optional(apbReg)
     registerDecoderPort: optional(apbReg)
+    # The router's own bus clock/reset, each one of the same block's own
+    # clocks:/resets: rows when stated; unstated means the block default
+    # clock and its selected reset.
+    clock: optional
+    blockClock:
+      _combo:
+        block: required
+        clock: required
+      _validate:
+        section: blocksclocks
+        field: blockclock
+    reset: optional
+    blockReset:
+      _combo:
+        block: required
+        reset: required
+      _validate:
+        section: blocksresets
+        field: blockreset
 
 # Variants are authored as a nested mapping: the variant label is stated once
 # and its parameters are listed underneath it as `<param>: <value>`.
@@ -430,6 +552,11 @@ connections: # custom handler
           - deallocReq # outbound interface only dealloc
           - allocAck   # inbound interface only alloc
           - deallocAck # inbound interface only dealloc
+    # Clock domain of this wire: a container clock, not a project reference.
+    # Unstated means each endpoint's own block default independently, not a
+    # name both endpoints must share; validated against the container's nets
+    # in projectCreate (clockTree.build()), not by a schema foreign key.
+    clock: optional()
     connection:  # at the end to ensure calculated fieldfs populated
       _key:
         interface: required
@@ -469,6 +596,7 @@ connections: # custom handler
   channel: optional #filled programatically based on src portName
   maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
   tracker: optional
+  clock: optional()       # storage side of the _dataSchema field above
   isParameterizable: auto(interfaceRefIsParameterizable)
   ends:
     _attribs: multiple
@@ -516,13 +644,15 @@ connectionMaps:
     _type: optional
   instancePortName: auto(instancePortName)
   isParameterizable: auto(interfaceRefIsParameterizable)
+  # A connectionMaps row's boundary port
+  # takes the inner port's derived domain; it carries no clock: of its own.
   portId : # at end for ordering
     _key:
       block: required  # metadata will use qualified version (blockKey)
       portName: required
 
 memories:
-  _attribs: [flat]
+  _attribs: [flat, post(validateMemoryPorts)]
   memory: required
   structure:
     _type: required
@@ -544,9 +674,24 @@ memories:
   count: optionalConst(1)
   offset: optional(0)
   decodeSize: optional(0)   # filled out by calcAddresses; bytes of memory-decoded address range (worst case)
-  regAccess: optional(false)
+  # Firmware access mode: false, rw, ro or wo. true means rw.
+  regAccess:
+    _type: optional(false)
+    _validate:
+      values: [true, false, rw, ro, wo]
   local: optional(false) # for memories that need to be in flops with fast array access
   isParameterizable: auto(memIsParameterizable)
+  # The owning block's clock this memory's block-side ports run on: one of
+  # the owning block's own clocks: rows when stated, else the block default
+  # clock, resolved by clockTree.BlockDomains.build().
+  clock: optional
+  blockClock:
+    _combo:
+      block: required
+      clock: required
+    _validate:
+      section: blocksclocks
+      field: blockclock
   memoryBlock:
     _key:
       memory: required
@@ -557,6 +702,9 @@ memories:
       values:
         - singlePort
         - dualPort
+        - portRportRW
+        - portRWportW
+        - portRportW
         - register
   ports:
     _attribs: [optional, singleEntryList, multiple]  # singleEntryList means that the user provides a single entry and all other fields are derived from this
@@ -644,6 +792,9 @@ memoryConnections:
       section: instances
       field: instance
   isParameterizable: auto(memoryConnectionIsParameterizable)
+  # A memoryConnections row carries no clock: of its own; the accessing side
+  # derives its own domain from its own block and instance, and must agree
+  # with the memory's declared domain.
   memoryBlockInstance:
     _key:
       memory: required
@@ -673,6 +824,9 @@ registerConnections:
       section: instances
       field: instance
   isParameterizable: auto(registerConnectionIsParameterizable)
+  # A registerConnections row carries no clock: of its own; the register's
+  # domain is that of the bus reaching its owning block's register port, and
+  # the accessing side derives its own.
   registerBlockInstance:
     _key:
       register: required
@@ -708,3 +862,37 @@ encoders:
     numBits: const
     itemOrder: optional(0) # filled out by custom handler, result of sorting by size
     encodingValue: optional(0) # filled out by custom handler, value detected by encoder
+
+# projectScope: authored in the project file, not design YAML, and stored in a
+# bucket keyed by the declaring projectName. Design YAML references these with
+# _validate scope: project, which resolves in the referring row's own project.
+clocks:
+  _attribs: [flat, projectScope, post(resolveClockPeriod)]
+  clock: key
+  desc: required
+  default: optional(false)
+  period: optional(1)     # simulation attribute only, no synthesis meaning
+  timeUnit:
+    _type: optional(ns)
+    _validate:
+      values:
+        - ps
+        - ns
+        - us
+
+resets:
+  _attribs: [flat, projectScope, post(resolveReset)]
+  reset: key
+  desc: required
+  default: optional(false)
+  clock:                  # domain this reset belongs to, the default clock if unstated
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
+  # Cycles of this reset's own clock the co-simulation wrapper holds it asserted.
+  # Per reset, not per project: a reset in a 3 ns domain and one in a 1 ns domain
+  # share no release requirement. The default of three exceeds the two cycles a
+  # synchronous reset needs.
+  releaseCycles: optional(3)

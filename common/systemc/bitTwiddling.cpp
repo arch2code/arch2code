@@ -12,9 +12,8 @@
 // and part of the SystemC/RTL equivalence contract; read
 // STRUCTURES_AND_DATA_TYPES_REFERENCE.md before changing it.
 
-// Out-of-line symbol for the header's constexpr implementation. Delegating
-// keeps one implementation: an open-coded copy here once drifted, losing the
-// `>> 32` step and returning non-powers of two above 2^32.
+// Out-of-line symbol for the header's constexpr implementation, so both
+// spellings share one implementation.
 uint64_t findNextPowerOf2(uint64_t n)
 {
     return findNextPowerOf2Constexpr(n);

@@ -1,0 +1,217 @@
+# twoClk - top design: one reused twoClkIpSrc producer (owned by the vendored
+# 'twoClkIp' child project) feeds one assembler-owned sink over twoClkDataIf, so
+# the fixture holds a block on each side of the composition boundary and a
+# connection across it. A second pair (twoClkSlowTick -> twoClkSlowSink) sits
+# wholly in clkSlow over the same twoClkDataIf; its connection's clock: puts
+# the BFM on clkSlow, so the slow domain is checked in flow, not just elaborated.
+#
+# Every instance binds explicitly through a clocks:/resets: map. uSlowTick's
+# map binds twoClkSlowTick's own clkTick to the container's clkSlow, an IP
+# clock renamed at its assembler; uIpSrc's map is the identity case across the
+# composition boundary. Project-level clocks:/resets: (prj/yaml/project.yaml)
+# describe the testbench and validate connections' clock: references.
+#
+# A third trio, twoClkCpu -> twoClkDecode -> twoClkTable, adds a firmware-facing
+# register bus to the fixture: twoClkCpu drives twoClkReg on clk, twoClkDecode
+# decodes it on clk, and twoClkTable's tbl memory sits on clkSlow, a different
+# clock from the twoClkReg bus on clk. tbl is portRportRW: the generated
+# twoClkTableRegs handler takes its read/write port B on clk, and twoClkTable
+# keeps the read-only port A on clkSlow, tied off. lut and stats are
+# portRportW on clkSlow. Firmware loads lut (wo) through port B on clk, and
+# reads stats (ro) through port A on clk. twoClkTable sweeps both on clkSlow,
+# reading lut on port A and writing stats = lut + 1 on port B.
+
+include:
+    # The include edge puts the child's definitions on this context's resolution
+    # chain; ownership stays with twoClkIp (CONTEXTOWNINGPROJECT).
+    - ../ip/yaml/twoClkIp.yaml
+
+constants:
+    TWO_CLK_TICK_DIV: { value: 4, desc: "clkSlow cycles between consecutive tick words" }
+    TWO_CLK_TICK_WORDS: { value: 4, desc: "Tick words the slow sink checks before voting end-of-test" }
+    TWO_CLK_SLOW_PERIOD_NS: { value: 3, desc: "clkSlow period in ns; must equal clocks.clkSlow.period in prj/yaml/project.yaml" }
+    TWO_CLK_TBL_WORDS: { value: 8, desc: "Row count of twoClkTable's tbl memory" }
+    TWO_CLK_TBL_WORDS_LOG2: { eval: "$clog2($TWO_CLK_TBL_WORDS)", desc: "tbl row address width in bits" }
+    TWO_CLK_LUT_WORDS: { value: 4, desc: "Row count of twoClkTable's lut and stats memories" }
+    TWO_CLK_LUT_WORDS_LOG2: { eval: "$clog2($TWO_CLK_LUT_WORDS)", desc: "lut and stats row address width in bits" }
+    TWO_CLK_REG_ADDR_WIDTH: { value: 32, desc: "twoClkReg address bus width" }
+    TWO_CLK_REG_DATA_WIDTH: { value: 32, desc: "twoClkReg data bus width" }
+
+types:
+    twoClkRegAddrT: { width: TWO_CLK_REG_ADDR_WIDTH, desc: "for addressing a register via twoClkReg" }
+    twoClkRegDataT: { width: TWO_CLK_REG_DATA_WIDTH, desc: "for data sent or received via twoClkReg" }
+    twoClkTblAddrBitsT: { width: TWO_CLK_TBL_WORDS_LOG2, desc: "size of tbl's row address in bits" }
+    twoClkTblLoT: { width: 32, desc: "tbl row bits [31:0]" }
+    twoClkTblHiT: { width: 16, desc: "tbl row bits [47:32]" }
+    twoClkLutAddrBitsT: { width: TWO_CLK_LUT_WORDS_LOG2, desc: "size of lut and stats row address in bits" }
+    twoClkLutValT: { width: 16, desc: "lut and stats row value" }
+
+structures:
+    twoClkRegAddrSt:
+        address: { varType: twoClkRegAddrT, generator: address }
+    twoClkRegDataSt:
+        data: { varType: twoClkRegDataT, generator: data }
+    twoClkTblAddrSt:
+        address: { varType: twoClkTblAddrBitsT, generator: address }
+    twoClkTblSt:
+        hi: { varType: twoClkTblHiT, generator: memory, desc: "row bits [47:32]" }
+        lo: { varType: twoClkTblLoT, generator: memory, desc: "row bits [31:0]" }
+    twoClkLutAddrSt:
+        address: { varType: twoClkLutAddrBitsT, generator: address }
+    twoClkLutSt:
+        val: { varType: twoClkLutValT, generator: memory, desc: "value firmware loads" }
+    twoClkStatsSt:
+        val: { varType: twoClkLutValT, generator: memory, desc: "lut value plus one, written by the sweep" }
+
+interfaces:
+    twoClkReg:
+        desc: "twoClkCpu access to twoClkTable's tbl memory"
+        interfaceType: apb
+        structures:
+            - { structure: twoClkRegAddrSt, structureType: addr_t }
+            - { structure: twoClkRegDataSt, structureType: data_t }
+
+blocks:
+    twoClk_tb:
+        desc: "Testbench container for twoClk (root container); declares clk and clkSlow purely to pass them down to u_twoClk by name match"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    twoClk:
+        desc: "DUT: the reused twoClkIpSrc producer, the assembler's sink, and the clkSlow tick/sink pair"
+        hasVl: true
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+        clocks:
+            clk:     { default: true, period: 1, timeUnit: ns }
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+    twoClkSink:
+        desc: "Assembler-owned consumer of the reused IP's twoClkDataIf stream"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: twoClkDataIf, direction: dst }
+    twoClkSlowTick:
+        desc: "clkSlow tick counter streaming its count out; declares its own clock as a block port named clkTick, distinct from the container's clkSlow, bound to it by its instance map"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clkTick: { period: 3, timeUnit: ns }
+        resets:
+            rstTick_n: { clock: clkTick }
+        ports:
+            out: { interface: twoClkDataIf, direction: src }
+    twoClkSlowSink:
+        desc: "Slow-domain consumer: checks tick values and their clkSlow cadence; declares the same clkSlow/rstSlow_n block port names so its ports (block default clock) sit in the slow domain without a connection clock: override"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rstSlow_n: { clock: clkSlow }
+        ports:
+            in: { interface: twoClkDataIf, direction: dst }
+    twoClkCpu:
+        desc: "Register-bus master: writes and reads back every row of twoClkTable's tbl memory, loads lut and checks stats, over twoClkReg"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        clocks:
+            clk: { default: true }
+        resets:
+            rst_n: { clock: clk }
+    twoClkDecode:
+        desc: "twoClkReg router: decodes twoClkCpu's requests down to twoClkTable"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk: { default: true, period: 1, timeUnit: ns }
+        resets:
+            rst_n: { clock: clk }
+        addressBlock:
+            addressGroup: tbl
+            addressIncrement: 0x00010000
+            maxAddressSpaces: 4
+            varType: addr_id_tbl
+            enumPrefix: ADDR_ID_TBL_
+            upstreamPort: twoClkReg
+            registerDecoderPort: twoClkReg
+    twoClkTable:
+        desc: "Routed leaf: its tbl, lut and stats memories sit on clkSlow, one clock away from the twoClkReg bus on clk"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks:
+            clk:     { default: true, period: 1, timeUnit: ns }
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
+
+instances:
+    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top, # self reference
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,        instGroup: top,
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+    uCpu:       { container: twoClk_tb, instanceType: twoClkCpu,     instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uSlowTick:  { container: twoClk,    instanceType: twoClkSlowTick, instGroup: top,
+                  clocks: { clkTick: clkSlow }, resets: { rstTick_n: rstSlow_n } }
+    uSlowSink:  { container: twoClk,    instanceType: twoClkSlowSink, instGroup: top,
+                  clocks: { clkSlow: clkSlow }, resets: { rstSlow_n: rstSlow_n } }
+    uDecode:    { container: twoClk,    instanceType: twoClkDecode,  instGroup: top,
+                  clocks: { clk: clk }, resets: { rst_n: rst_n } }
+    uTable:     { container: twoClk,    instanceType: twoClkTable,   instGroup: top, addressGroup: tbl,
+                  clocks: { clk: clk, clkSlow: clkSlow }, resets: { rst_n: rst_n, rstSlow_n: rstSlow_n } }
+
+connections:
+    # Crosses the composition boundary: src block owned by twoClkIp, dst block
+    # owned by twoClk.
+    - { interface: twoClkDataIf, src: uIpSrc, srcport: out, dst: uSink, dstport: in }
+    # The fixture's only non-default-clock connection: both uSlowTick and
+    # uSlowSink sit in clkSlow, so clock: pins the BFM there with no crossing.
+    - { interface: twoClkDataIf, src: uSlowTick, srcport: out, dst: uSlowSink, dstport: in, clock: clkSlow }
+    # Register-bus feed: uCpu sits beside the DUT instance u_twoClk in
+    # twoClk_tb (a model-only block cannot nest inside the RTL block twoClk),
+    # so this connection crosses the DUT boundary and the connectionMap below
+    # routes it on to the router uDecode inside twoClk.
+    - { interface: twoClkReg, src: uCpu, dst: u_twoClk }
+
+connectionMaps:
+    - { interface: twoClkReg, block: twoClk, direction: dst, instance: uDecode }
+
+memories:
+    - { memory: tbl, block: twoClkTable, structure: twoClkTblSt, addressStruct: twoClkTblAddrSt,
+        wordLines: TWO_CLK_TBL_WORDS, memoryType: portRportRW, regAccess: true, clock: clkSlow,
+        desc: "Firmware-accessible table, written and read by twoClkCpu through port B on clk" }
+    - { memory: lut, block: twoClkTable, structure: twoClkLutSt, addressStruct: twoClkLutAddrSt,
+        wordLines: TWO_CLK_LUT_WORDS, memoryType: portRportW, regAccess: wo, clock: clkSlow,
+        desc: "Loaded by twoClkCpu through port B on clk, read by the sweep through port A on clkSlow" }
+    - { memory: stats, block: twoClkTable, structure: twoClkStatsSt, addressStruct: twoClkLutAddrSt,
+        wordLines: TWO_CLK_LUT_WORDS, memoryType: portRportW, regAccess: ro, clock: clkSlow,
+        desc: "Written by the sweep through port B on clkSlow, read by twoClkCpu through port A on clk" }

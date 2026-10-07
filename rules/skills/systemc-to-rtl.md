@@ -214,7 +214,7 @@ assign in_port.rdy = 1'b1; // No backpressure
 
 ## Critical Rules
 - **NEVER** edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`.
-- **ALWAYS** use `DFF_INST` for sequential logic.
+- **ALWAYS** use a DFF macro for sequential logic -- `DFF_INST` and friends, or their `_CLK` form when the module's clock port is not named `clk` (see `rtl-core.md`).
 - **ALWAYS** use `logic` and `always_comb`.
 - **ALWAYS** import the block package.
 - **Parallel Accumulation**: If summing parallel lanes, sum them first then add to the main accumulator.

@@ -38,19 +38,21 @@ A **router** (decoder) is a block with a populated `addressBlock:`. Its RTL is
 `make newmodule` — you never hand-write decode logic, demux, or a manual
 top-level decoder.
 
-A **routed leaf** is a block that owns `registers` or `regAccess: true`
-memories, **or** authors a `registerPorts:` row. The framework synthesises its
+A **routed leaf** is a block that owns `registers` or `regAccess` memories,
+**or** authors a `registerPorts:` row. The framework synthesises its
 `<block>_regs` handler and a router→leaf dispatch connection.
 
 The single most important fact:
 
-> **A router serves the other instances in its OWN container (its siblings) and
-> nested routers. It NEVER decodes its own container block.**
+> **A router serves the other instances in its OWN container (its siblings),
+> nested routers, and, through a chain of router-less single-consumer
+> containers, a leaf further down. It NEVER decodes its own container block.**
 
 So the decision is **not** "container vs leaf". It is: **is this block served by
-a sibling/parent decoder?** A block that owns registers is fine as long as some
-*other* decoder (a sibling in its container, or a parent decoder) dispatches to
-it.
+a sibling/parent decoder, directly or through a router-less container that
+passes the bus through to it alone?** A block that owns registers is fine as
+long as some *other* decoder (a sibling in its container, a parent decoder, or
+one reached through such a passthrough container) dispatches to it.
 
 ### The decision rule
 
@@ -85,8 +87,9 @@ parent (the block is then itself a routed leaf of that parent). Apply:
     routed leaf, or move those registers onto a child leaf the inner decoder
     already serves. **Do not** "fix" it with a hand-authored `connectionMap`.
 
-`regAccess: true` (with `local:` absent) is the single switch that makes a
-memory firmware-accessible. No custom streaming/"load" interface is ever needed.
+`regAccess` (`rw`, `ro` or `wo`, with `local:` absent) is the single switch
+that makes a memory firmware-accessible. No custom streaming/"load" interface
+is ever needed.
 
 ---
 
@@ -95,7 +98,8 @@ memory firmware-accessible. No custom streaming/"load" interface is ever needed.
 To make a block's registers/memories firmware-accessible:
 
 1.  **Mark the state.** `regType: rw|ro|ext` registers and/or memories with
-    `regAccess: true` (and no `local:`). Never substitute a custom interface.
+    `regAccess: rw|ro|wo` (`true` means `rw`; no `local:`). Never substitute
+    a custom interface.
 2.  **Place a router in the leaf's container.** Declare a decoder block with a
     populated `addressBlock:` and instance it as a sibling of the routed leaf
     (same container). Pick an `addressGroup` name for that router.
@@ -135,7 +139,10 @@ Everything below the primary router is **synthesized** by
     leaf-to-handler `connectionMap`;
 *   the router→leaf dispatch connection;
 *   for nested routers, **both** the parent-router→child-container connection
-    **and** the child-container boundary `connectionMap` into the nested router.
+    **and** the child-container boundary `connectionMap` into the nested router;
+*   for a router-less container passing the bus through to its single register
+    consumer, the container's own boundary port and a `connectionMap` bridging
+    it to that consumer.
 
 So for nested routers you author **nothing** for the register bus below the
 primary feed. Over-authoring the nested boundary map is wrong.
@@ -149,9 +156,15 @@ does.
 
 ## 4. The four invariants (keep these)
 
-1.  **Co-location.** A routed leaf and its serving decoder share one container.
-    The leaf instance's `addressGroup:` must name the serving router's
-    `addressBlock.addressGroup`.
+1.  **Co-location.** A routed leaf and its serving decoder share one container,
+    or reach one another through a chain of router-less containers that each
+    pass the bus through to exactly one register consumer. The instance the
+    decoder actually dispatches to (the leaf itself, or the outermost such
+    passthrough container) carries `addressGroup:` naming the serving
+    router's `addressBlock.addressGroup`; a leaf fed through a passthrough
+    container carries none. A nested router's container must sit directly in
+    its dispatching router's container; a passthrough chain ends at a leaf or
+    a `registerPorts:` IP, never at another router.
 2.  **Decoder-as-generated-block.** The decoder is a first-class block whose RTL
     is generated from `apbDecodeModule` (auto-selected by `make newmodule`
     because the block carries `addressBlock:`). Never hand-write it.
@@ -159,14 +172,71 @@ does.
     declared and co-located, the entire register-bus fan-out below the primary
     router is synthesized. A need to hand-plumb the bus below the primary feed is
     a symptom of a broken invariant, not a fix.
-4.  **Single `regAccess` switch.** `regAccess: true` (with `local:` absent) is
-    the only switch to make a memory firmware-accessible.
+4.  **Single `regAccess` switch.** `regAccess` (with `local:` absent) is the
+    only switch to make a memory firmware-accessible. Its value is the
+    firmware access mode, below.
 
 > There is **no** "leaf-ownership invariant." Container blocks may own
 > registers/memories (see `examples/mixed`'s `blockB`). The real constraint is
 > the decoder-position rule
 > in §1: a block must be served by a sibling/parent decoder, and is never
 > decoded by a decoder it contains.
+
+### Firmware access modes
+
+`regAccess` sets what firmware may do to a memory: `rw` (also spelled
+`true`), `ro` (firmware only reads) or `wo` (firmware only writes). Any other
+value is rejected. The mode is a contract with firmware. Breaking it never
+raises `pslverr`.
+
+| Access | RTL | Model |
+| :--- | :--- | :--- |
+| Firmware write to an `ro` memory | The transfer completes and the memory is unchanged. | The write is dropped and logged at `LOG_ALWAYS`, naming the memory and the offset. |
+| Firmware read of a `wo` memory | The transfer completes with zero. The handler never reads the memory. | Returns zero, logged the same way. |
+
+RTL simulation prints nothing for these accesses. The generated handler has
+no write path for an `ro` memory and no read pipeline for a `wo` one.
+
+### Which port the register handler takes
+
+`memoryType` fixes what each port can do. The register handler takes one
+port and the block keeps the other. The generator keeps the ports that
+support the mode (`ro` needs a port that can read, `wo` one that can write,
+`rw` one that can do both), then prefers the port whose capability matches
+the mode exactly, then takes port B. A memory with no supporting port is
+rejected.
+
+| `memoryType` | `rw` / `true` | `ro` | `wo` |
+| :--- | :--- | :--- | :--- |
+| `dualPort` | B | B | B |
+| `portRportRW` | B | A | B |
+| `portRWportW` | A | A | B |
+| `portRportW` | error | A | B |
+| `singlePort` | the port | the port | the port |
+
+A table that firmware loads and the datapath reads is `portRportW` with
+`regAccess: wo`. A capture buffer that the datapath fills and firmware reads
+is `portRportW` with `regAccess: ro`. Because the handler takes a port, a
+dual-port `regAccess` memory lists at most one block-side port in `ports:`,
+and a `singlePort` one lists none.
+
+### A memory on another clock
+
+The register handler's port runs on the owning block's register clock. The
+block-side port runs on the memory's `clock:`, which defaults to the block's
+default clock. A dual-port `regAccess` memory may sit on any clock its block
+declares, and the two ports cross inside the RAM with no extra bus latency.
+A `singlePort` memory has one clock, so with `regAccess` its `clock:` must be
+the register clock, or the build is rejected. A memory has no `reset:`.
+
+The RAM does not order the two ports. Firmware should load a table while the
+datapath is not reading it, or accept that a read colliding with a write
+returns undefined data, as the block RAM does in silicon.
+
+`examples/twoClk` is the worked case. `twoClkTable`'s memory `tbl` is
+`portRportRW`. The generated handler takes the read/write port B on the
+`twoClkReg` bus clock `clk`, and the block keeps the read-only port A on
+`clkSlow`.
 
 ---
 
@@ -234,8 +304,60 @@ blocks:
 ```
 
 A plain top-down leaf authors **no** `registerPorts:`; it infers its register
-bus from the serving router. A block declaring `addressBlock:` must **not** also
-declare `registerPorts:` (routers are not leaves).
+bus from the nearest authored boundary of each of its instances: the
+`registerPorts:` boundary of the innermost router-less passthrough container
+that encloses the instance, if one does, else the serving router. Each boundary
+offers a port name and an interface: the container's `registerPorts:` key and
+interface (so a wrapper IP's own `regs: { interface: ipReg }` reaches the leaf
+inside it), or the router's `registerDecoderPort` and register-bus interface.
+A block declaring `addressBlock:` must **not** also declare `registerPorts:`
+(routers are not leaves).
+
+The inferring block has one register-bus port, and its name depends only on the
+block, never on which instance is declared first:
+
+- When every instance's boundary offers the same name, the port takes that
+  name.
+- When the names differ (for example two wrappers with different
+  `registerPorts:` keys, routers with different `registerDecoderPort`s, or a
+  leaf served directly by a router and also behind a wrapper), the port takes
+  the name of the inferred register-bus interface.
+
+Each instance's own wiring lives on its own rows: the router's dispatch
+`connections` row lands on the block's port through its `dstport`, and a
+passthrough container's `connectionMaps` row bridges the container's own port
+to it. The router side of a dispatch stays named after the router
+(`<registerDecoderPort>_<instance>`).
+
+A synthesised `<block>_regs` handler's register-bus port takes the leaf's own
+port name: the authored `registerPorts:` key for a reusable IP (so `ip`'s
+`regs:` names its handler's port `regs` in every build that instantiates it),
+or the per-block name above for a top-down leaf. A router's
+`registerDecoderPort` reaches the handler only through the leaf's own port
+name, so routers with different `registerDecoderPort`s may serve the same
+block.
+
+A name difference is never rejected. An interface difference
+is: every instance must infer the same interface. When instances reach
+boundaries on different interfaces, the build is rejected, naming each boundary
+and the interface and file it supplies:
+
+- Different interfaces between authored boundaries: give the boundaries the
+  same `registerPorts:` interface, or use a separate block per boundary; a
+  block has one register port type.
+- Different interfaces where a source is a router, which cannot declare
+  `registerPorts:`: make the `registerPorts:` boundary use that router's
+  `upstreamPort` interface, or use a separate block per boundary. With no
+  authored boundary among the sources (two routers on different interfaces),
+  use a separate block per boundary.
+
+The inferred interface is named unqualified in the file where the block's
+register-bus rows are synthesised: the block's own file for a block that gets
+a handler, and, on the passthrough path, the file that declares the inner
+instance the container feeds. The build is rejected if that file sees a
+different interface of the same name, or no interface of that name at all.
+Rename one of the interfaces, include the file that declares the interface, or
+declare `registerPorts:` on the block.
 
 ---
 
@@ -350,10 +472,15 @@ output.
 
 | Symptom / message | Root cause | Fix |
 | --- | --- | --- |
-| `Leaf instance '…' (block '…') is in container '…' which is not served by any router.` | Routed leaf has no decoder in its container (co-location). Classic: DUT-top owns registers but the only decoder is *inside* it. | Add a router as the leaf's sibling, or make the owning block a routed leaf of a parent decoder. Not a manual `connectionMap`. |
-| `Leaf block '…' needs a register handler but no router was found serving any of its instances.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container. |
+| `Leaf instance '…' (block '…') is in container '…' which is not served by any router, directly or through single-consumer containers.` | Routed leaf has no decoder in its container, and no chain of router-less single-consumer containers reaches one either (co-location). Classic: DUT-top owns registers but the only decoder is *inside* it. | Add a router as the leaf's sibling, place it under a chain of containers a router ultimately serves and that each hold no other register consumer, or make the owning block a routed leaf of a parent decoder. Not a manual `connectionMap`. |
+| `Container block '…' hosts N instances that need a register bus (…) but no register-decode router (addressBlock:).` | A router-less container has two or more register consumers; it can pass the bus through to only one. | Add an `addressBlock:` router to the container, or move all but one consumer under a routed container. |
+| `Container block '…' owns firmware-accessible registers/memories itself and also hosts register-bus consumer(s) (…) but no register-decode router (addressBlock:).` | A router-less container that owns registers/memories is already its own boundary's consumer; it cannot also pass the bus through to another. | Add an `addressBlock:` router to the container, or move its registers/memories onto a leaf the router serves. |
+| `Leaf block '…' needs a register handler but no router was found serving any of its instances, directly or through single-consumer containers.` | Same co-location violation seen from handler synthesis. | Place the leaf in a router's container, or in a container that a router serves and that holds no other register consumer. |
+| `Block '…' declares no registerPorts: and infers its register-bus interface from the nearest authored boundary of each instance, but its instances infer different interfaces: …` | A leaf or passthrough container that infers its register bus has instances whose nearest authored boundaries (a container's `registerPorts:` boundary, else the serving router) supply different interfaces; the block has one register port type. This includes a leaf served directly by a router and also behind a wrapper. Different port names alone are not rejected: the block's port takes the interface name. | Different interfaces between authored boundaries: give the boundaries the same `registerPorts:` interface, or use a separate block per boundary. Different interfaces where a source is a router: make the `registerPorts:` boundary use the router's `upstreamPort` interface, or use a separate block per boundary (only the latter when every source is a router). |
+| `Block '…' declares no registerPorts: and infers register-bus interface '…' declared in file …, but in file …, where its register-bus rows are synthesised, …` | The inferred interface name resolves to a different interface, or to none, in the file where the block's register-bus rows are emitted: the block's own file for a block that gets a handler, or the file declaring the inner instance on the passthrough path. | Rename one of the interfaces, include the file that declares the interface, or declare `registerPorts:` on the named block. |
 | `No primary router could be inferred …` | Every router is nested under another; no dispatch-tree root. | Ensure exactly one router is not contained in another router's served scope. |
 | `Multiple candidate primary routers: …` | Two+ routers are both un-nested. | Nest all but one under the primary (give the subsystem container an `addressGroup`). |
+| `Nested router '…' (block '…') is hosted by block '…', whose instance '…' sits in router-less container '…' … not supported.` | The nested router's container is instantiated inside a router-less container rather than directly in the dispatching router's container; passthrough does not carry the bus to another router. | Move the named instance directly into the dispatching router's container, or add an `addressBlock:` router to the router-less container so it becomes a real nested-router hop. |
 | `Router block '…' has multiple instances … Multi-instance routers are not supported …` | A router block is instanced more than once. | Use one instance per router block; add distinct router blocks per scope (see `apbDecode` vs `bridgeApbDecode`). |
 | `Router blocks declare addressBlock: but have no instances in the design: …` | Router block declared but never instanced. | Instance the router in the container it serves. |
 | `addressGroup '…' declared on block '…' duplicates a prior addressBlock: declaration on block '…' in …, both in project '…'. Each addressGroup may have at most one router-block declaration within a project.` | Two router blocks *in one project* name the same group. Only the cross-project case is legal — a group name is owned by the project declaring it. | Rename one group (and give it its own `varType:` / `enumPrefix:`), or drop the redundant router. |
@@ -364,6 +491,11 @@ output.
 | Decoder RTL is an empty skeleton (ports only). | `make newmodule` ran before `addressBlock:` was present, so the generic template was seeded. | Add `addressBlock:`, re-run `make newmodule`; it selects `apbDecodeModule`. Never hand-write the demux. |
 | `<block>_regs` instantiated but its source file is missing. | Stale generated files or an out-of-date `.gen` cache. (`_regs` is synthesized for any block with registers **or** `regAccess` memories — register-only blocks DO get one.) | Remove orphaned generated files and `rm -rf .gen`, then `make db && make gen`. |
 | `Nested register decoder '…' (group '…') routes a 0x…-byte footprint …, which exceeds the 0x…-byte window that parent decoder '…' allocates to slot '…'.` | db-time nested-decoder address-containment check. A routed slot whose block contains a nested decoder must fit that decoder's whole footprint (`addressIncrement × maxAddressSpaces`) inside the per-child window the parent allocates. A bare register-block slot is covered instead by the decoded-span check (a router owns no registers, so it needs this separate check); a project with no `addressBlock:` at all has no groups to check (the `ip_test` no-decoder fixture). | Reduce the nested decoder's `addressIncrement` or `maxAddressSpaces`, or widen the parent decoder's `addressIncrement`. |
+| `… field regAccess, … is not in the allowed values …` | `regAccess` is not one of `true`, `false`, `rw`, `ro`, `wo`. | Use one of those values. |
+| `… memory '…' of block '…' has regAccess: rw, which needs a port that can both read and write, and no port of a portRportW memory does. Change memoryType or regAccess.` | No port of the memory supports the firmware access mode. Only `rw` on `portRportW` hits this. | Use `ro` or `wo`, or a `memoryType` with a read/write port. |
+| `… memory '…' of block '…' lists N ports ('…') but has M free. A … memory has K ports and the register handler takes one. …` | `ports:` names more block-side ports than the memory has free: its port count, less one when the register handler takes a port. | List fewer ports, or use a dual-port `memoryType`. If the memory has `regAccess`, removing it frees the handler's port. The message lists the fixes that apply. |
+| `Memory '…' of block '…' has regAccess and is on clock '…', but the block's register bus is on '…'. A singlePort memory has one clock, so firmware can reach it only on the register bus clock. …` | A `singlePort` `regAccess` memory's `clock:` is not the register clock. | Set the memory's `clock:` to the register clock, or use a dual-port `memoryType`. |
+| `In file …, memory '…' sets a reset field. A memory has no reset state, so remove the field.` | A memory row sets `reset:`. | Remove `reset:`. |
 | `Container block '…' declares registerPorts: key '…', but the nested router '…' it hosts names upstreamPort '…'. The registerPorts: key must match the served router's upstreamPort.` | The synthesised boundary map wires the container's `registerPorts:` port straight through to the nested router's upstream port by name, so the two names are one port. | Rename the `registerPorts:` key to the nested router's `upstreamPort` (as `ipBridge.yaml` does with `apbReg`). |
 | `Interface '…' has interfaceType '…', an address-bus interface, but carries parameterizable structure(s) ….` | A register bus is fixed-width on every side of every router; registers and memories behind it may be parameterized (address allocation scopes them at their maximum), the bus structure may not. | Move the parameter onto the register or memory payload and give the bus a fixed-width structure. |
 

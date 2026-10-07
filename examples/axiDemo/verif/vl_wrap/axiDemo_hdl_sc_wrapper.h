@@ -54,9 +54,8 @@ public:
         blockBase("axiDemo_hdl_sc_wrapper", name(), bbMode),
         axiDemoBase(name(), variant),
         clk("clk"),
-        
         rst_n("rst_n", true),
-        clk_half_(0.5, SC_NS)
+        clk_half_(sc_time(1, SC_NS) / 2)
     {
 #if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new axiDemo_hdl_sv_wrapper("dut_hdl");
@@ -70,8 +69,8 @@ public:
         
 
         clk.write(true);
-        SC_THREAD(clock_gen);
-        SC_THREAD(reset_driver);
+        SC_THREAD(clock_gen_clk);
+        SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
 
@@ -92,40 +91,70 @@ private:
     sc_signal<bool> rst_n;
     sc_time clk_half_;
 
-    void clock_gen() {
-        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
-        // owns timed waits; we only toggle when an edge is requested.
+    // Free-run: toggle every half period until gated lockstep begins. Gated
+    // lockstep: the quantum thread broadcasts one edge request per
+    // socketSyncClockHalfPeriod() of advanced time, and a clock toggles once
+    // its own half period has accumulated, so a slower clock keeps its period
+    // at quantum resolution and no clock can free-run during wait(ack). A half
+    // period that is not a whole number of lockstep steps would be silently
+    // moved onto the step grid, so it is fatal on entry to gated mode. Losing
+    // the sync link ends gating for good and wakes the gated wait without an
+    // edge, so the clock returns to free-running.
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        while (!socketSyncTimeGated()) {
+            wait(half);
+            sig.write(!sig.read());
+        }
+        const sc_time step = socketSyncClockHalfPeriod();
+        Q_ASSERT(half.value() % step.value() == 0,
+                 std::string("clock ") + sig.name() + " half period "
+                 + half.to_string() + " is not a whole multiple of the lockstep step "
+                 + step.to_string() + "; lockstep co-simulation cannot represent it. "
+                 "Declare a period that is a whole multiple of " + (step + step).to_string()
+                 + ", or set PYSOCKET_LOCKSTEP=0 to run free-running.");
+        sc_time gated = SC_ZERO_TIME;
         while (true) {
-            if (socketSyncTimeGated()) {
-                socketSyncWaitClockEdge();
-                clk.write(!clk.read());
-            } else {
-                wait(clk_half_);
-                clk.write(!clk.read());
+            socketSyncWaitClockEdge();
+            if (!socketSyncTimeGated()) {
+                break;
             }
+            gated += step;
+            if (gated >= half) {
+                gated -= half;
+                sig.write(!sig.read());
+            }
+        }
+        while (true) {
+            wait(half);
+            sig.write(!sig.read());
         }
     }
 
-    void reset_driver() {
-        // rst_n starts deasserted so the first write(false) is a negedge.
-        // Verilator async reset (@(negedge rst_n)) does not run if the pin
-        // is born low and only later rises.
-        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
-        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
-        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
-        // Free-run / non-socket: assert, hold, then release.
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    // The clock parameter is named reset_driver_clk, not clk: a block whose
+    // own default clock is literally named clk declares a same-named member,
+    // which a parameter named clk would otherwise shadow (-Wshadow).
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
         if (socketSyncLockstepActive()) {
-            rst_n.write(socketSyncRstN());
+            rst.write(socketSyncRstN());
             while (true) {
                 wait(socketSyncRstNEvent());
-                rst_n.write(socketSyncRstN());
+                rst.write(socketSyncRstN());
             }
         } else {
-            rst_n.write(false);
-            wait(5, SC_NS);
-            rst_n.write(true);
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(reset_driver_clk.posedge_event());
+            }
+            rst.write(true);
         }
     }
+
+    void clock_gen_clk() { clock_gen(clk, clk_half_); }
+    void reset_driver_rst_n() { reset_driver(rst_n, clk, 3); }
 
 // GENERATED_CODE_END
 

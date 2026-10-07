@@ -30,12 +30,6 @@ def render(args, prj, data):
     # inheritContainerParam these are the CONTAINER's variants.
     verifRegistrations = registrarConfig['verifRegistrations']
 
-    # projectName the `_verif` key is registered under: the same projectName the
-    # container's createInstance lookup targets (mirrors createInstanceProjectName
-    # / getBDInstances). A child that owns params re-registers under the assembling
-    # project; a child owned by another project but only transiting parameterized
-    # types registers under its owner.
-    childOwner = prj.contextOwningProject[data['blockInfo']['_context']]
     out.append('#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
@@ -99,7 +93,7 @@ def render(args, prj, data):
             blockName=blockName,
             targetClass=targetClass,
             variant=reg['variant'],
-            projectName=reg['factoryProject'] if data['hasOwnParams'] else childOwner,
+            projectName=reg['factoryProject'],
             indent='        '))
 
     out.append('    }')

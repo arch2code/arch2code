@@ -51,9 +51,9 @@ def render(args, prj, data):
             out.append(f'#include "{data["includeFiles"]["includeFW_src"][data["context"]]["siblingHeaderName"]}"')
         out.extend(systemIncludes(args.mode, args.section, hasStructures))
         if fwCpp:
-            # Covers a future split definition's leading return type, which is looked up
-            # at namespace scope. No fw feature is 'split' today, and the declarator
-            # itself stays qualified from args.namespace either way.
+            # Resolves a split fw definition's leading return type, which is looked up
+            # at namespace scope; the declarator itself stays qualified from
+            # args.namespace.
             out.append(f'using namespace {FW_NAMESPACE};')
     if (args.section == 'testStructsHeader' or args.section == 'testStructsCPP'):
         out.extend(structTest(args, prj, data))

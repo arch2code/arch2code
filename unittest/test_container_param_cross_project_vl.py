@@ -93,8 +93,11 @@ def enable_leaf_vl(leaf):
     yaml = os.path.join(leaf, 'yaml', 'xpDpLeaf.yaml')
     with open(yaml) as f:
         text = f.read()
-    old = '        hasVl: false\n        hasTb: false\n'
-    new = '        hasVl: true\n        hasTb: false\n'
+    # A standalone Verilated leaf needs its clock's rate declared: the leaf
+    # has no instance in its own project to resolve one through.
+    old = '        hasVl: false\n        hasTb: false\n        hasRtl: true\n'
+    new = ('        hasVl: true\n        hasTb: false\n        hasRtl: true\n'
+           '        clocks:\n            clk: { period: 1, timeUnit: ns }\n')
     if text.count(old) != 1:
         raise AssertionError("xpDpLeaf hasVl anchor changed")
     with open(yaml, 'w') as f:

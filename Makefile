@@ -29,6 +29,9 @@ SIMPLE_IP_DIR = examples/simple_ip
 XPROJ_PARAM_DIR = examples/xprojParam
 XIF_DIR = examples/xif
 
+TWO_CLK_DIR = examples/twoClk
+CLK_GEN_DIR = examples/clkGen
+
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
 IN_OUT_DB_FILE = $(IN_OUT_DIR)/inAndOut.db
@@ -51,7 +54,6 @@ AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
 AXISOCKET_MASTER_DIR = examples/axiSocketMaster
 AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
-XIF_DIR = examples/xif
 
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 
@@ -142,6 +144,26 @@ simple-ip:
 	make -C $(SIMPLE_IP_DIR) gen
 	make -C $(SIMPLE_IP_DIR)/rundir -j run
 	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
+
+.PHONY : two-clk
+# Two projects, so two gen invocations: the vendored twoClkIp child has its own.
+two-clk:
+	make -C $(TWO_CLK_DIR) gen
+	make -C $(TWO_CLK_DIR)/ip gen
+	make -C $(TWO_CLK_DIR)/rundir -j run
+	make -C $(TWO_CLK_DIR)/rundir -j run-vl
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
+
+.PHONY : clk-gen
+# Single self-contained project (no child project): output clocks/resets,
+# local nets, an export and a `~` binding.
+clk-gen:
+	make -C $(CLK_GEN_DIR) gen
+	make -C $(CLK_GEN_DIR)/rundir -j run
+	make -C $(CLK_GEN_DIR)/rundir -j run-vl
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(CLK_GEN_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
 
 # Nested register-bus router inheriting its container's parameter; firmware
 # round-trips a parameter-sized leaf register through both routers, model and
@@ -498,6 +520,7 @@ apbDecode:
 mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
 	make -C $(MIXED_DIR)/rundir -j run
+	make -C $(MIXED_DIR)/rundir -j run VL_DUT=1
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : pySocket
@@ -629,7 +652,7 @@ unittest:
 # The example projects build in their own directories, so they run PIPELINE_JOBS
 # at a time; targets that share a project declare the order themselves.
 PIPELINE_JOBS ?= 8
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

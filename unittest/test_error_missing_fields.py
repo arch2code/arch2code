@@ -316,6 +316,122 @@ memories:
     )
 
 
+def _reported_yaml_line(arch_content, test_name):
+    """Build a project whose design YAML has an unknown section and return the
+    line number the diagnostic reports, plus the fixture's own lines.
+
+    The unknown-section error is the probe for the location contract because its
+    line comes straight from the section body's ruamel lc with nothing else in
+    between. Returns (reportedLine, fixtureLines) or (None, reason).
+    """
+    project_path = arch_path = db_path = None
+    try:
+        project_path, arch_path = create_test_files(arch_content)
+        arch_basename = os.path.basename(arch_path)
+        db_fd, db_path = tempfile.mkstemp(suffix='.db', prefix='test_', dir=test_dir)
+        os.close(db_fd)
+        os.unlink(db_path)
+
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            ['python3', os.path.join(base_dir, 'arch2code.py'),
+             '-y', project_path, '--db', db_path],
+            capture_output=True, text=True, timeout=30, cwd=base_dir, env=env)
+        output = result.stdout + '\n' + result.stderr
+
+        if 'Traceback (most recent call last):' in output:
+            return None, f"{test_name}: build raised a stack trace instead of a diagnostic:\n{output}"
+        if result.returncode == 0:
+            return None, f"{test_name}: build succeeded; the unknown section was not rejected:\n{output}"
+        match = re.search(re.escape(arch_basename) + r':(\d+)', output)
+        if not match:
+            return None, (f"{test_name}: no '{arch_basename}:<line>' location in the diagnostic, "
+                          f"so it does not name a line at all:\n{output}")
+        # Read the fixture back rather than trusting the literal above it.
+        with open(arch_path) as f:
+            fixture_lines = f.read().split('\n')
+        return int(match.group(1)), fixture_lines
+    finally:
+        for path in (project_path, arch_path, db_path):
+            if path and os.path.exists(path):
+                os.unlink(path)
+
+
+def test_diagnostic_reports_1_based_yaml_line():
+    """Test 9: a YAML diagnostic names the line as an editor numbers it.
+
+    ruamel counts lines from 0, so a location built from a raw lc must add 1 or
+    it sends the author one line too high. Both body shapes must report the
+    section key's own line: a section's own lc is the lc of its BODY mapping,
+    which sits a line lower in block style, so the key's position has to come
+    from the parent map. Block style is the shape that distinguishes the two, and
+    flow style is the shape that isolates the 1-based conversion. Both numbers
+    are derived by reading the fixture back and locating the tokens, not written
+    as literals.
+    """
+    print("=" * 70)
+    print("Test: diagnostics report 1-based YAML line numbers")
+    print("=" * 70)
+    ok = True
+
+    # Flow-style body: 'notASection:' and its body begin on the same line, so the
+    # reported line must equal the line the author sees the section name on.
+    flow_fixture = """constants:
+  FOO:
+    value: 1
+    desc: "probe constant"
+notASection: {alpha: {beta: 1}}
+"""
+    reported, info = _reported_yaml_line(flow_fixture, "flow-style body")
+    if reported is None:
+        print(f"  ❌ FAIL: {info}")
+        ok = False
+    else:
+        expected = next(i + 1 for i, line in enumerate(info)
+                        if line.startswith('notASection:'))
+        if reported == expected:
+            print(f"  ✓ PASS: flow-style body reported line {reported}, the line "
+                  f"'notASection:' is on")
+        else:
+            print(f"  ❌ FAIL: flow-style body reported line {reported}, but "
+                  f"'notASection:' is on line {expected} of the fixture. A "
+                  f"0-based ruamel line was reported without converting it.")
+            ok = False
+
+    # Block-style body: the body mapping starts a line below the section key, so
+    # this is the shape that fails if the position is taken from the body instead
+    # of from the parent map.
+    block_fixture = """constants:
+  FOO:
+    value: 1
+    desc: "probe constant"
+notASection:
+  alpha:
+    beta: 1
+"""
+    reported, info = _reported_yaml_line(block_fixture, "block-style body")
+    if reported is None:
+        print(f"  ❌ FAIL: {info}")
+        ok = False
+    else:
+        section_line = next(i + 1 for i, line in enumerate(info)
+                            if line.startswith('notASection:'))
+        body_line = next(i + 1 for i, line in enumerate(info)
+                         if line.startswith('  alpha:'))
+        if reported == section_line and body_line == section_line + 1:
+            print(f"  ✓ PASS: block-style body reported line {reported}, the line "
+                  f"'notASection:' is on, not its body's first key on {body_line}")
+        else:
+            print(f"  ❌ FAIL: block-style body reported line {reported}; "
+                  f"'notASection:' is on line {section_line} and its body's first "
+                  f"key on line {body_line}. A section's own lc is its body "
+                  f"mapping, so the key's line must come from the parent map.")
+            ok = False
+
+    return ok
+
+
 def run_all_tests():
     """Run all tests and report results."""
     print("\n" + "="*70)
@@ -333,6 +449,7 @@ def run_all_tests():
         test_connection_missing_src,
         test_register_missing_structure,
         test_memory_missing_wordlines,
+        test_diagnostic_reports_1_based_yaml_line,
     ]
     
     results = []

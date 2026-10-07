@@ -37,8 +37,8 @@ module blockARegs
     logic rwUn0A_reg_update_0;
     logic rwUn0A_reg_update_1;
     assign rwUn0A.data = rwUn0A_reg;
-    `DFFREN(rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0, 32'h34abcdef)
-    `DFFREN(rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1, 16'h00000012)
+    `DFFREN_DOM(clk, rst_n, rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0, 32'h34abcdef)
+    `DFFREN_DOM(clk, rst_n, rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1, 16'h00000012)
 
     un0ARegSt roUn0A_reg;
     assign roUn0A_reg = roUn0A.data;
@@ -55,13 +55,13 @@ module blockARegs
     logic nxt_blockATable0_rd_enable, blockATable0_rd_enable, blockATable0_rd_capture;
     logic blockATable0_wr_enable;
 
-    `DFF(blockATable0_addr, aMemAddrSt'(apb_addr[31:3]))
-    `DFF(blockATable0_wr_enable, blockATable0_update_1)
-    `DFF(blockATable0_rd_enable, nxt_blockATable0_rd_enable)
-    `DFF(blockATable0_rd_capture, blockATable0_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable0_addr, aMemAddrSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockATable0_wr_enable, blockATable0_update_1)
+    `DFF_DOM(clk, rst_n, blockATable0_rd_enable, nxt_blockATable0_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable0_rd_capture, blockATable0_rd_enable)
 
-    `DFFEN(blockATable0_data[31:0], nxt_blockATable0_data[31:0], blockATable0_update_0)
-    `DFFEN(blockATable0_data[62:32], nxt_blockATable0_data[62:32], blockATable0_update_1)
+    `DFFEN_DOM(clk, rst_n, blockATable0_data[31:0], nxt_blockATable0_data[31:0], blockATable0_update_0)
+    `DFFEN_DOM(clk, rst_n, blockATable0_data[62:32], nxt_blockATable0_data[62:32], blockATable0_update_1)
 
     assign blockATable0.enable      = blockATable0_rd_enable | blockATable0_wr_enable;
     assign blockATable0.wr_en       = blockATable0_wr_enable;
@@ -77,13 +77,13 @@ module blockARegs
     logic nxt_blockATable1_rd_enable, blockATable1_rd_enable, blockATable1_rd_capture;
     logic blockATable1_wr_enable;
 
-    `DFF(blockATable1_addr, aMemAddrSt'(apb_addr[31:3]))
-    `DFF(blockATable1_wr_enable, blockATable1_update_1)
-    `DFF(blockATable1_rd_enable, nxt_blockATable1_rd_enable)
-    `DFF(blockATable1_rd_capture, blockATable1_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable1_addr, aMemAddrSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockATable1_wr_enable, blockATable1_update_1)
+    `DFF_DOM(clk, rst_n, blockATable1_rd_enable, nxt_blockATable1_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable1_rd_capture, blockATable1_rd_enable)
 
-    `DFFEN(blockATable1_data[31:0], nxt_blockATable1_data[31:0], blockATable1_update_0)
-    `DFFEN(blockATable1_data[62:32], nxt_blockATable1_data[62:32], blockATable1_update_1)
+    `DFFEN_DOM(clk, rst_n, blockATable1_data[31:0], nxt_blockATable1_data[31:0], blockATable1_update_0)
+    `DFFEN_DOM(clk, rst_n, blockATable1_data[62:32], nxt_blockATable1_data[62:32], blockATable1_update_1)
 
     assign blockATable1.enable      = blockATable1_rd_enable | blockATable1_wr_enable;
     assign blockATable1.wr_en       = blockATable1_wr_enable;
@@ -213,9 +213,12 @@ module blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable0.read_data[62:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable0_rd_enable = ~blockATable0_rd_capture;
+                    nxt_blockATable0_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockATable0_rd_capture;
                 end
                 [REG_BLOCKA_BLOCKATABLE1:REG_BLOCKA_BLOCKATABLE1 + REG_BLOCKA_BLOCKATABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
@@ -231,9 +234,12 @@ module blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable1.read_data[62:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable1_rd_enable = ~blockATable1_rd_capture;
+                    nxt_blockATable1_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~blockATable1_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;
@@ -247,9 +253,9 @@ module blockARegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

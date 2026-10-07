@@ -73,6 +73,22 @@ SUBC_SHARED_PROJECT = '../../subC/shared/yaml/sharedProject.yaml'
 TYPES_LOGICAL = (SHARED, 'yaml/shared_types.yaml')
 
 
+def _scanError(proj):
+    """Scan a project expected to be rejected. Returns the printed diagnostic,
+    or None when the scan succeeded. Restores the global error count so later
+    tests start clean."""
+    captured = io.StringIO()
+    errorCount, warningCount = g.errorCount, g.warningCount
+    try:
+        with contextlib.redirect_stdout(captured):
+            ProjectScanner(proj).scan()
+    except SystemExit:
+        return captured.getvalue()
+    finally:
+        g.errorCount, g.warningCount = errorCount, warningCount
+    return None
+
+
 def _scan_multi_copy(work):
     shutil.copytree(MULTI_COPY, work, dirs_exist_ok=True)
     proj = os.path.join(work, 'integrator', 'yaml', 'integratorProject.yaml')
@@ -276,15 +292,11 @@ def test_mistargeted_override_diagnostic():
         with open(root, 'w') as f:
             f.write(text)
 
-        try:
-            ProjectScanner(root).scan()
-        except ValueError as e:
-            msg = str(e)
-            assert 'shared' in msg and 'doesNotExist.yaml' in msg, \
-                f"diagnostic did not name projectName and target: {msg}"
-            print("PASS: mis-targeted override raises a clear diagnostic")
-            return
-        assert False, "mis-targeted override did not raise a diagnostic"
+        msg = _scanError(root)
+        assert msg is not None, "mis-targeted override did not raise a diagnostic"
+        assert 'shared' in msg and 'doesNotExist.yaml' in msg, \
+            f"diagnostic did not name projectName and target: {msg}"
+        print("PASS: mis-targeted override raises a clear diagnostic")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -446,7 +458,7 @@ def test_cross_branch_override_master_discovered():
 
 def test_conflicting_sibling_overrides_fail_loud():
     """Fix 2: two non-dominating sibling projects at the same nesting depth that
-    redirect one projectName to DIFFERENT targets is contradictory and must raise
+    redirect one projectName to DIFFERENT targets is contradictory and must report
     a clear conflict diagnostic naming the projectName and both targets, not
     silently keep the first-folded one."""
     work = tempfile.mkdtemp(prefix='project_scan_conflict_', dir=test_dir)
@@ -454,17 +466,13 @@ def test_conflicting_sibling_overrides_fail_loud():
         shutil.copytree(CONFLICT, work, dirs_exist_ok=True)
         proj = os.path.join(work, 'integrator', 'yaml', 'integratorProject.yaml')
 
-        try:
-            ProjectScanner(proj).scan()
-        except ValueError as e:
-            msg = str(e)
-            assert 'shared' in msg, f"conflict diagnostic omits projectName: {msg}"
-            assert 'subA' in msg and 'subB' in msg, \
-                f"conflict diagnostic did not name both conflicting targets: {msg}"
-            print("PASS: conflicting sibling overrides fail loud (clear conflict "
-                  "diagnostic, no silent first-win)")
-            return
-        assert False, "conflicting sibling overrides did not raise a diagnostic"
+        msg = _scanError(proj)
+        assert msg is not None, "conflicting sibling overrides did not raise a diagnostic"
+        assert 'shared' in msg, f"conflict diagnostic omits projectName: {msg}"
+        assert 'subA' in msg and 'subB' in msg, \
+            f"conflict diagnostic did not name both conflicting targets: {msg}"
+        print("PASS: conflicting sibling overrides fail loud (clear conflict "
+              "diagnostic, no silent first-win)")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -523,23 +531,18 @@ def test_ownership_tie_fails_loud():
     """Two unrelated projects (projA, projB) both include one shared
     definitions file that neither owns and neither lists the other: both
     reach it at the same depth, so there is no way to rank one above the
-    other. Must raise, naming the file, both providers, and projectFiles: as
+    other. Must be rejected, naming the file, both providers, and projectFiles: as
     the way to resolve it."""
-    try:
-        ProjectScanner(
-            os.path.join(SCAN_TIE, 'top', 'yaml', 'tieProject.yaml')).scan()
-    except ValueError as e:
-        msg = str(e)
-        assert 'sharedDefs.yaml' in msg, \
-            f"tie diagnostic omits the shared file: {msg}"
-        assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
-            f"tie diagnostic did not name both tied providers: {msg}"
-        assert 'projectFiles' in msg, \
-            f"tie diagnostic omits the projectFiles: resolution: {msg}"
-        print("PASS: ownership tie fails loud (names the file, both "
-              "providers, and the projectFiles: resolution)")
-        return
-    assert False, "ownership tie did not raise a diagnostic"
+    msg = _scanError(os.path.join(SCAN_TIE, 'top', 'yaml', 'tieProject.yaml'))
+    assert msg is not None, "ownership tie did not raise a diagnostic"
+    assert 'sharedDefs.yaml' in msg, \
+        f"tie diagnostic omits the shared file: {msg}"
+    assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+        f"tie diagnostic did not name both tied providers: {msg}"
+    assert 'projectFiles' in msg, \
+        f"tie diagnostic omits the projectFiles: resolution: {msg}"
+    print("PASS: ownership tie fails loud (names the file, both "
+          "providers, and the projectFiles: resolution)")
 
 
 def test_ownership_tie_resolved_by_direct_listing():
@@ -576,7 +579,7 @@ def test_ownership_tie_resolved_by_direct_listing():
 def test_ownership_direct_listing_conflict_fails_loud():
     """Rule 1's own conflict: BOTH projA and projB list the shared file
     directly in their own projectFiles:. Two owners claiming one file
-    directly is unresolvable and must raise, naming the file and both
+    directly is unresolvable and must be rejected, naming the file and both
     provider files."""
     work = tempfile.mkdtemp(prefix='project_scan_direct_conflict_',
                              dir=test_dir)
@@ -595,25 +598,21 @@ def test_ownership_direct_listing_conflict_fails_loud():
                 f.write(text)
 
         proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
-        try:
-            ProjectScanner(proj).scan()
-        except ValueError as e:
-            msg = str(e)
-            assert 'sharedDefs.yaml' in msg, \
-                f"direct-listing conflict omits the shared file: {msg}"
-            assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
-                f"direct-listing conflict did not name both providers: {msg}"
-            print("PASS: direct-listing conflict fails loud (names the "
-                  "file and both providers)")
-            return
-        assert False, "direct-listing conflict did not raise a diagnostic"
+        msg = _scanError(proj)
+        assert msg is not None, "direct-listing conflict did not raise a diagnostic"
+        assert 'sharedDefs.yaml' in msg, \
+            f"direct-listing conflict omits the shared file: {msg}"
+        assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+            f"direct-listing conflict did not name both providers: {msg}"
+        print("PASS: direct-listing conflict fails loud (names the "
+              "file and both providers)")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
 def test_ownership_cycle_fails_loud():
     """projA listing projB's project file and projB listing projA's back is a
-    projectFiles: reference cycle, an authoring error. Must raise, naming
+    projectFiles: reference cycle, an authoring error. Must be rejected, naming
     both provider files and the word 'cycle'."""
     work = tempfile.mkdtemp(prefix='project_scan_cycle_', dir=test_dir)
     try:
@@ -638,17 +637,13 @@ def test_ownership_cycle_fails_loud():
             f.write(text)
 
         proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
-        try:
-            ProjectScanner(proj).scan()
-        except ValueError as e:
-            msg = str(e)
-            assert 'cycle' in msg, f"cycle diagnostic omits 'cycle': {msg}"
-            assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
-                f"cycle diagnostic did not name both provider files: {msg}"
-            print("PASS: projectFiles: reference cycle fails loud (names "
-                  "both provider files)")
-            return
-        assert False, "projectFiles: reference cycle did not raise a diagnostic"
+        msg = _scanError(proj)
+        assert msg is not None, "projectFiles: reference cycle did not raise a diagnostic"
+        assert 'cycle' in msg, f"cycle diagnostic omits 'cycle': {msg}"
+        assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+            f"cycle diagnostic did not name both provider files: {msg}"
+        print("PASS: projectFiles: reference cycle fails loud (names "
+              "both provider files)")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -689,7 +684,7 @@ def test_master_edge_ranking_cycle_fails_loud():
     A master edge can close a cycle the reference graph alone did not have:
     projA lists projB, projB lists a second copy of projA, and the root's
     projectOverrides selects the real projA as that copy's master, so the
-    master edge redirects back onto projA itself. Must raise, naming
+    master edge redirects back onto projA itself. Must be rejected, naming
     'cycle', not hang. The second copy is a plain file rather than a symlink
     onto projA (as ip_test vendors ip): symlinking the whole projA directory
     would share projA's real content, including the new projA -> projB
@@ -730,16 +725,12 @@ def test_master_edge_ranking_cycle_fails_loud():
                     'fileGeneration:\n    template: none\n')
 
         proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
-        try:
-            ProjectScanner(proj).scan()
-        except ValueError as e:
-            msg = str(e)
-            assert 'cycle' in msg, \
-                f"rank-cycle diagnostic omits 'cycle': {msg}"
-            print("PASS: master-edge ranking cycle fails loud (names "
-                  "'cycle', does not hang)")
-            return
-        assert False, "master-edge ranking cycle did not raise a diagnostic"
+        msg = _scanError(proj)
+        assert msg is not None, "master-edge ranking cycle did not raise a diagnostic"
+        assert 'cycle' in msg, \
+            f"rank-cycle diagnostic omits 'cycle': {msg}"
+        print("PASS: master-edge ranking cycle fails loud (names "
+              "'cycle', does not hang)")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

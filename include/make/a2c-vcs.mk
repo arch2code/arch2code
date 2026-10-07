@@ -68,9 +68,12 @@ $(A2C_VL_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VCS_SC_MODEL_STAMP)
 VCS_LINK_DEPS = $(VCS_SC_MODEL_STAMP)
 endif
 
+# vcs ignores -pthread (Warning-[UNKWN_OPTVSIM]) and links libpthread itself.
+VCS_LD_FLAGS = $(filter-out -pthread,$(LD_FLAGS))
+
 # The link command's options, elaboration arguments, and linker flags are part
 # of the snapshot: record them so a change relinks without recompiling.
-VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(LD_FLAGS) $(DUT_ELAB_ARGS)
+VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(VCS_LD_FLAGS) $(DUT_ELAB_ARGS)
 VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/elab_args
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "$(VCS_LINK_OPTS)" ] || printf '%s\n' "$(VCS_LINK_OPTS)" > $(VCS_ELAB_STAMP))
 
@@ -84,7 +87,7 @@ $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "
 $(BIN_DIR)/$(BIN): $(VCS_LINK_DEPS) $(VCS_ELAB_STAMP)
 	mkdir -p $(@D)
 	cd $(VCS_RUNDIR) && for skel in csrc/sysc/*/sysc_skeleton.v; do [ -e "$$skel" ] && $(RM) -r "$${skel%/*}"; done; \
-		cd $(VCS_RUNDIR) && MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) -l vcs.log $(LD_FLAGS) $(OBJ) sc_main -o $@ \
+		cd $(VCS_RUNDIR) && MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
 		|| { $(RM) -rf csrc AN.DB $(VCS_RTL_STAMP) $(VCS_SC_MODEL_STAMP); exit 1; }
 
 help::

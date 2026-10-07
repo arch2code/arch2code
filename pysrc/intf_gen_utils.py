@@ -210,15 +210,65 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     return out
 
-def sv_gen_ports(data, prj, indent, block_data):
+def clock_reset_port_names(block_data):
+    # The block's clock and reset port names, clocks then resets, each set in
+    # the persisted declaration order. Clocks and resets share one
+    # module port namespace, so one order serves every emission site: a module
+    # port list, its instantiation, and the verilated wrapper that
+    # reconstructs it must agree name for name and position for position.
+    return ([row['clock'] for row in block_data['clocks']]
+            + [row['reset'] for row in block_data['resets']])
+
+def clock_reset_ports(block_data):
+    # (name, direction) pairs in the same order as clock_reset_port_names, so
+    # a port list generator can spell each entry's SystemVerilog port
+    # direction (input/output map directly onto the YAML direction values).
+    return ([(row['clock'], row['direction']) for row in block_data['clocks']]
+            + [(row['reset'], row['direction']) for row in block_data['resets']])
+
+# Two spellings of the same list, both built on clock_reset_ports so they share
+# one order. The block module port list joins clocks and resets onto one line;
+# the verilated SV wrapper and <block>_regs declare one per line.
+def sv_clock_reset_input(block_data):
+    # Grouped by consecutive direction, so an all-input block emits one
+    # joined 'input clk, rst_n'.
+    groups = []
+    for name, direction in clock_reset_ports(block_data):
+        if groups and groups[-1][0] == direction:
+            groups[-1][1].append(name)
+        else:
+            groups.append((direction, [name]))
+    return ', '.join(f"{direction} {', '.join(names)}" for direction, names in groups)
+
+def sv_clock_reset_input_lines(block_data):
+    return ',\n'.join(f"{direction} {name}"
+                      for name, direction in clock_reset_ports(block_data))
+
+def sv_clock_reset_binds(block_data):
+    return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
+
+# The bare flop macros expand to `clk`, and hand-written RTL names `rst_n`, so
+# a block with other names aliases them onto its default clock and selected
+# reset, when each exists and no declared port already has that name.
+def sv_default_domain_aliases(block_data):
+    out = []
+    defaultClock = block_data['defaultClock']
+    if defaultClock and not any(row['clock'] == 'clk' for row in block_data['clocks']):
+        out.append(f"wire clk = {defaultClock};")
+    defaultReset = block_data['defaultReset']
+    if defaultReset and not any(row['reset'] == 'rst_n' for row in block_data['resets']):
+        out.append(f"wire rst_n = {defaultReset};")
+    return out
+
+def sv_gen_ports(data, prj, indent):
     out = []
     for sourceType in data['ports']:
         for port, port_data in data['ports'][sourceType].items():
             connectionData = port_data.get('connection', {})
             intf_data = get_intf_data(connectionData, prj)
-            intf_type = get_intf_type(intf_data['interfaceType'], block_data)
+            intf_type = get_intf_type(intf_data['interfaceType'], data)
             out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
-    out.append(f"{indent}input clk, rst_n")
+    out.append(f"{indent}{sv_clock_reset_input(data)}")
     out.append(");\n")
     return out
 
@@ -775,11 +825,11 @@ def wrap_module_namespace(args, data, lines):
     namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
-def cpp_fw_namespace_name(includeName):
+def cpp_fw_namespace_name(contextModuleIdentity):
     # A context's firmware declarations live in their own namespace nested under
     # fw_ns, so two contexts declaring the same type name stay distinct when one
     # firmware header includes both.
-    return f'{FW_NAMESPACE}::{cpp_module_name(includeName)}'
+    return f'{FW_NAMESPACE}::{cpp_module_name(contextModuleIdentity)}'
 
 def fw_namespace_surface(data):
     # Opens the context's firmware namespace and folds it into fw_ns, so firmware

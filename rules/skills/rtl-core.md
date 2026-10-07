@@ -17,7 +17,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     *   **Safe Zones:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
     *   **Implementation:** Place all manual logic (FSMs, internal signals, sub-module instances) after the generated sections.
     *   Module ends with `endmodule: <module_name>` (named end).
-    *   `clk` and `rst_n` are always the last two ports. Active-low reset: `rst_n`.
+    *   The block's clocks and resets are always the last ports, in declared order with the default first; a declared `output` clock or reset is an `output` port among them. A block that declares none gets `clk` and `rst_n` (active-low reset), both `input`; a multi-clock block gets one port per clock it declares and per reset.
 
     ```systemverilog
     // GENERATED_CODE_PARAM --block=<block_name>
@@ -131,10 +131,24 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
 
     The `_INST` macros declare both the signal and its `n_<name>` next-state signal automatically. The raw macros require you to declare signals yourself -- use `nxt_<name>` as the convention for manually declared next-state signals.
 
-    **FPGA vs ASIC Behavior:**
-    *   **FPGA** (default): Uses `initial` for reset values, `always_ff` without reset.
-    *   **ASIC** (`ASIC` define): Uses synchronous reset in `always_ff`.
+    **The `_CLK` Family (clock not named `clk`):**
+
+    Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
+
+    *   Use the bare macro for a flop on the block's default clock. That is the normal case in every block: when the block's default clock is not named `clk`, or its selected reset not named `rst_n`, the generated region of its module declares `wire clk = <default clock>;` (and/or `wire rst_n = <selected reset>;`) as an alias, so the bare macros expand to a real net whatever the domain is called. An alias is emitted only for the name that differs; a block that declares nothing needs neither.
+    *   Use the `_CLK` form for a flop on another clock of a multi-clock block only when that clock shares the block's `rst_n`; otherwise use the `_DOM` form below, which names both the clock and the reset. Generated modules (`<block>_regs`, `apbDecode`) emit `_DOM` with their own resolved clock and reset.
+    *   `_CLK` resets on `rst_n`, the block's own reset domain (a port or the generated default-domain alias). Every `_CLK` macro is one line onto its `_DOM` form, and every bare macro one line onto its `_CLK` form.
+    *   A reset **supplier**'s assertion path — a synchroniser's asynchronous input flop, a PLL wrapper's raw output reset — is written with explicit asynchronous flops outside this macro library, so the domain resets even while its clock is stopped; the selected reset style governs ordinary flops, not a supplier's assertion path.
+
+    **Reset Style:**
+    *   Exactly one of `A2C_RESET_SYNC` (default), `A2C_RESET_ASYNC`, `A2C_RESET_NONE` is active per compilation, selected at the top of `flops.sv`. `ASIC` aliases to `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` aliases to `A2C_RESET_NONE`, for compatibility with existing defines. Defining more than one style is a compile error.
+    *   **A2C_RESET_SYNC** (default): synchronous, active-low reset in the clocked `always_ff`.
+    *   **A2C_RESET_ASYNC**: asynchronous, active-low reset on the flop's own `posedge clkSig or negedge rstSig` sensitivity list.
+    *   **A2C_RESET_NONE**: no reset; an `initial` statement sets the FPGA image start value instead.
     *   Write code the same way; the macros handle the difference.
+    *   For a flop on a second domain of a multi-clock block, use the `_DOM(clkSig, rstSig, ...)` form, which takes both the clock and the reset signal explicitly: `` `DFF_DOM(clkSig, rstSig, q, d) ``, and so on. `_CLK` and bare are one-line aliases onto `_DOM`.
+    *   `` `DFF_KEEP_INST(type, name) ``: same as `DFF_INST`, but marks the register keep/preserve so synthesis does not merge it with an apparently-equivalent register.
+    *   `` `DFFR_KEEP_INST(type, name, rval) ``: keep/preserve with a reset value, the same as `DFFR_INST` otherwise. Both keep macros have `_CLK` and `_DOM` forms (`DFF_KEEP_INST_CLK`, `DFF_KEEP_INST_DOM`, `DFFR_KEEP_INST_CLK`, `DFFR_KEEP_INST_DOM`).
 
     **Pattern: Declare then Drive:**
 

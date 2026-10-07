@@ -326,10 +326,10 @@ def test_no_registrar_for_paramsless_transit_container():
         cleanup([project_path, db_path] + arch_paths)
 
 
-def test_cross_project_vl_key_for_paramsless_transit_block():
-    """A foreign child that only transits parameterized types uses its owner's
-    factory key, matching the generated createInstance lookup."""
-    print("cross-project params-less transit VL registrar uses the child owner key")
+def test_vl_registrar_emits_view_factory_project():
+    """The VL registrar emits each `_verif` row's `factoryProject` from the
+    registrar view as the registerBlock projectName, not the assembler's name."""
+    print("VL registrar emits the view's factoryProject as the projectName")
 
     class Config:
         def getConfig(self, name):
@@ -339,7 +339,6 @@ def test_cross_project_vl_key_for_paramsless_transit_block():
 
     class Project:
         config = Config()
-        contextOwningProject = {'ip.yaml': 'child'}
 
         def getRegistrarConfigView(self, _qualBlock, _parentBlock):
             return {
@@ -353,20 +352,18 @@ def test_cross_project_vl_key_for_paramsless_transit_block():
                     'vcsDutHeader': 'transitLeaf_hdl_sv_wrapper.h',
                     'xceliumDutClass': 'transitLeaf_hdl_sv_wrapper',
                     'xceliumDutHeader': 'transitLeaf_hdl_sv_wrapper_xcelium.h',
+                    'factoryProject': 'child',
                 }],
                 'verifConfigModules': [],
                 'configHeaderContexts': [],
-                'factoryProject': 'unused-for-paramsless-child',
             }
 
     data = {
         'blockName': 'transitLeaf',
         'qualBlock': 'transitLeaf/ip.yaml',
         'isParameterizable': True,
-        'hasOwnParams': False,
         'defaultConfig': '',
         'parent': 'assemblerTop',
-        'blockInfo': {'_context': 'ip.yaml'},
         'configIncludeContext': [],
         'includeFiles': {},
         'standaloneVariants': [],
@@ -382,7 +379,7 @@ def test_cross_project_vl_key_for_paramsless_transit_block():
     rendered = vlRegistrar.render(None, Project(), data)
     expected = '"", "child");'
     if expected not in rendered or '"", "assembler");' in rendered:
-        print(f"FAIL: registrar key does not match the child owner:\n{rendered}")
+        print(f"FAIL: registrar key does not match the view's factoryProject:\n{rendered}")
         return False
     print("PASS")
     return True
@@ -530,7 +527,7 @@ def test_untypeable_channel_is_rejected():
 def run_all_tests():
     ok = test_literal_endpoint_on_parameterized_channel()
     ok = test_no_registrar_for_paramsless_transit_container() and ok
-    ok = test_cross_project_vl_key_for_paramsless_transit_block() and ok
+    ok = test_vl_registrar_emits_view_factory_project() and ok
     ok = test_endpoint_config_context_stays_in_its_own_file() and ok
     ok = test_included_parameters_keep_their_declaring_file() and ok
     ok = test_undeclared_port_fallback_still_takes_the_connection_interface() and ok

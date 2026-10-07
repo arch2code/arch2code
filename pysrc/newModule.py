@@ -3,7 +3,8 @@
 import pysrc.processYaml as processYaml
 import pysrc.artifactPaths as artifactPaths
 import pysrc.migrateCommon as migrateCommon
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport
+from pysrc.textfileHelper import paramLineParser
 import os
 import importlib
 from pysrc.renderer import renderer
@@ -81,9 +82,9 @@ class newModule:
         self.block_create_from_rows(fileGenerationConfig, rows, blockCondData, prj, args)
         self.registrar_create_from_rows(fileGenerationConfig, rows, prj, args)
 
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'registrar')
-        self.cleanup_stale_segment_files(prj, rows, blockCondData, 'vl_wrap')
-        self.cleanup_retired_context_files(prj, rows)
+        self.cleanup_stale_registrar_files(prj, rows, blockCondData)
+        self.cleanup_stale_vl_wrap_files(fileGenerationConfig, prj, rows, blockCondData, args)
+        self.cleanup_retired_context_files(prj)
         self.migrate_legacy_fw_headers(prj, rows)
 
         self.project_create_from_rows(fileGenerationConfig, rows, prj, args)
@@ -142,6 +143,14 @@ class newModule:
             data['variant'] = variant if variant else None
             self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
+    def _renderScaffold(self, fileGenerationConfig, fileType, fileDef, ext, fileName, data, prj, args):
+        data['headerName'] = fileName
+        data['target'] = fileType + "_" + ext
+        data['targetDetails'] = fileDef
+        data['fileGeneration'] = fileGenerationConfig
+        vars = {'prj': prj.data, 'block': data, 'args': args}
+        return self.renderer.render('fileGen', vars)
+
     def _writeRowFiles(self, fileGenerationConfig, row, data, prj, args):
         for ext, filePathExt in row['files'].items():
             moduleDirAbs, fileName = os.path.split(filePathExt)
@@ -151,12 +160,9 @@ class newModule:
                 print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
-                data['headerName'] = fileName
-                data['target'] = row['fileType'] + "_" + ext
-                data['targetDetails'] = row['fileDef']
-                data['fileGeneration'] = fileGenerationConfig
-                vars = {'prj': prj.data, 'block': data, 'args': args}
-                newFileContents = self.renderer.render('fileGen', vars)
+                newFileContents = self._renderScaffold(fileGenerationConfig, row['fileType'],
+                                                       row['fileDef'], ext, fileName,
+                                                       data, prj, args)
                 with open(filePathExt, "w") as f:
                     f.write(newFileContents)
 
@@ -182,19 +188,67 @@ class newModule:
                 continue
             self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
-    def cleanup_stale_segment_files(self, prj, rows, blockCondData, basePath):
+    def cleanup_stale_registrar_files(self, prj, rows, blockCondData):
         # newmodule owns segment scaffolding, so it also deletes the generated
-        # files in owned segment directories the current contract no longer
+        # files in owned registrar directories the current contract no longer
         # names.
         expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
-            prj, rows, blockCondData, basePath)
+            prj, rows, blockCondData, 'registrar')
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
-            print(f"Removing stale {basePath} file {staleFile}")
+            print(f"Removing stale registrar file {staleFile}")
             os.remove(staleFile)
 
-    def cleanup_retired_context_files(self, prj, rows):
-        for staleFile in artifactPaths.getRetiredContextFiles(prj, rows):
+    def cleanup_stale_vl_wrap_files(self, fileGenerationConfig, prj, rows, blockCondData, args):
+        # A vl_wrap file can hold user code outside its generated regions (the
+        # SC wrapper's end_ctor_init() body), so a stale one is deleted only
+        # when everything outside its regions is what a scaffold writes.
+        expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
+            prj, rows, blockCondData, 'vl_wrap')
+        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
+        for staleFile in sorted(set(generatedInDirs) - expectedFiles):
+            if self._isUntouchedScaffold(fileGenerationConfig, staleFile, prj, args):
+                print(f"Removing stale vl_wrap file {staleFile}")
+                os.remove(staleFile)
+            else:
+                printWarning(f"kept stale vl_wrap file {staleFile}: no current block or "
+                             f"variant names it, but its text outside the generated "
+                             f"regions differs from what make newmodule writes, so it "
+                             f"may hold user code. Move any code you need into the "
+                             f"current wrapper, then delete the file.")
+
+    def _isUntouchedScaffold(self, fileGenerationConfig, path, prj, args):
+        # True when the file's text outside its generated regions equals that of
+        # some vl_wrap scaffold rendered with the file's own PARAM arguments.
+        text = migrateCommon._read(path)
+        tail = migrateCommon.paramTail(text)
+        if tail is None:
+            return False
+        params, unknown = paramLineParser().parse_known_args(tail.split())
+        if unknown or params.block is None:
+            return False
+        userLines = migrateCommon._stripBlankEnds(
+            line for _, line in migrateCommon.userRegionLines(text))
+        fileName = os.path.basename(path)
+        fileMap = prj.projectLayout[prj.config.getConfig('PROJECTNAME')]['fileMap']
+        for fileType, fileDef in fileMap.items():
+            if fileDef['basePath'] != 'vl_wrap':
+                continue
+            for ext in fileDef['ext']:
+                # variants is read by the SC wrapper scaffold's renderer but
+                # not written into the file.
+                data = {'block': params.block, 'variant': params.variant,
+                        'parent': params.parent, 'variants': []}
+                scaffold = self._renderScaffold(fileGenerationConfig, fileType, fileDef,
+                                                ext, fileName, data, prj, args)
+                scaffoldLines = migrateCommon._stripBlankEnds(
+                    line for _, line in migrateCommon.userRegionLines(scaffold))
+                if scaffoldLines == userLines:
+                    return True
+        return False
+
+    def cleanup_retired_context_files(self, prj):
+        for staleFile in artifactPaths.getRetiredContextFiles(prj):
             print(f"Removing stale retired file {staleFile}")
             os.remove(staleFile)
 

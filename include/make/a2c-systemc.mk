@@ -76,7 +76,8 @@ LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 # The native C++ link recipe passes LD_FLAGS, never CXX_FLAGS, so -pthread is
 # repeated here whether or not a Verilated library is linked: the runtime's
 # std::thread use resolves through a real libpthread DSO on glibc < 2.34,
-# where omitting it fails the link with "DSO missing from command line".
+# where omitting it fails the link with "DSO missing from command line". The
+# vcs link drops it (a2c-vcs.mk).
 LD_FLAGS += -pthread
 ifdef USE_XCELIUM
 ifndef XCELIUM_TOOLS
@@ -441,7 +442,7 @@ all: gen
 ifdef VL_DUT
 ifndef USE_VCS
 ifndef USE_XCELIUM
-	mkdir -p $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) -f $(A2C_ROOT)/include/make/a2c-vl-build-entry.mk vlwrap REPO_ROOT=$(REPO_ROOT)
+	mkdir -p $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) -f $(A2C_ROOT)/include/make/a2c-vl-build-entry.mk vlwrap REPO_ROOT=$(REPO_ROOT) VL_CXX='$(VL_CXX)' VL_CXX_FLAGS='$(VL_CXX_FLAGS)' VL_LD_FLAGS='$(VL_LD_FLAGS)'
 endif
 endif
 endif

@@ -1,3 +1,9 @@
-# Declares no variant of its own.
+# Declares no variant of its own. Its only content is this project's own
+# topInstance row: a root project declares its topInstance in its own files,
+# and the row's block is the second integrator's testbench block.
 include:
     - ../../ipLeaf/yaml/xviLeaf.yaml
+    - ../../top/yaml/xviTop.yaml
+
+instances:
+    xviBoth_tb: { container: xviTop_tb, instanceType: xviTop_tb, instGroup: top }

@@ -24,6 +24,7 @@ Guide the user on how to build, simulate, and manage the project using the `make
     *   This applies to new blocks and to existing blocks that are gaining a previously skipped artifact, such as changing `hasRtl: false` to `hasRtl: true`.
     *   `make newmodule` creates the directory structure, initial YAML when needed, and implementation skeletons in `model/`, `rtl/`, and related generated locations. The `model/` skeleton is a single C++20 module file, `model/<block>.cppm` (the `blockModule` fileMap entry, gated `cond: hasMdl`), not a `.cpp`/`.h` pair.
     *   Do not use a direct file write for these scaffolds. Edit only the user-owned body regions after `make newmodule` and `make gen` have produced the file.
+    *   `make newmodule` also removes stale generated files that a block, variant or instance rename left behind. In `registrar/` it deletes every stale marker-carrying file. In `vl_wrap` it deletes a stale file only when its text outside the generated regions matches its scaffold, because the SC wrapper header `<block>_hdl_sc_wrapper.h` holds user code in its `end_ctor_init()` body. A stale `vl_wrap` file that differs is kept and reported as a warning (`kept stale vl_wrap file ...`). Move any code you need into the current wrapper, then delete the file by hand.
 
 3.  **Generated-region host files:**
     *   The build enumerates generated source from the DB-derived manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`, emitted by `config/createBuildManifest.py` and consumed wildcard-filtered in `a2c-common.mk`).

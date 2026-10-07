@@ -22,6 +22,20 @@ endif
 
 VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 
+# Compiler and flags for Verilator's own make, which builds the verilated model
+# and runtime with the compiler Verilator was configured with unless overridden.
+# A build whose SystemC side uses another compiler sets these in the parent
+# make; a2c-systemc.mk passes them down.
+ifdef VL_CXX
+VERILATOR_OPTS += -MAKEFLAGS CXX=$(VL_CXX) -MAKEFLAGS LINK=$(VL_CXX)
+endif
+ifdef VL_CXX_FLAGS
+VERILATOR_OPTS += -CFLAGS '$(VL_CXX_FLAGS)'
+endif
+ifdef VL_LD_FLAGS
+VERILATOR_OPTS += -LDFLAGS '$(VL_LD_FLAGS)'
+endif
+
 # Design SV inputs of a verilate run: the manifest's DB-derived set plus the
 # user-hosted generated-region SV the manifest never lists, the same seam
 # a2c-common.mk layers for generation. Wildcard-filtered because the manifest

@@ -2,10 +2,17 @@
 """Router declared but no leaves under it.
 
 A router with `addressBlock:` declared but no routed leaves (and no
-register-bearing leaves) is legal: the pass synthesises no handler
+register-bearing leaves) builds: the pass synthesises no handler
 blocks or instances and emits no router-to-leaf binds.
+
+Its own view is still rejected: the router is in this build's design tree,
+so a decoder with no channels to dispatch is an error there. Only a router
+outside the tree (a referenced child's standalone harness) renders with no
+channels.
 """
 
+import contextlib
+import io
 import sys
 
 from _addrctl_helpers import (
@@ -13,6 +20,7 @@ from _addrctl_helpers import (
     assert_no_global_register_binds,
     build_database,
     cleanup,
+    find_block,
     find_connections,
     projectOpen,
     render_plain_block,
@@ -66,6 +74,20 @@ def _run():
             f"INSTANCES_WITH_REGAPB expected empty list, got {instances_with_regapb}"
 
         assert_no_global_register_binds(prj)
+
+        router_key, _ = find_block(prj, 'apbDecode')
+        captured = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(captured):
+                prj.getBlockData(router_key)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(
+                "the reachable router's view rendered with no channels to "
+                "dispatch; it must be rejected")
+        assert "no channels to dispatch" in captured.getvalue(), \
+            f"the router's view exited for another reason:\n{captured.getvalue()}"
         print("PASS")
         return True
     finally:
