@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Lint checks for common/systemVerilog/memory_dp.sv and memory_dp_ext.sv.
+"""Lint checks for common/systemVerilog/memory_dp.sv, memory_dp_ext.sv and
+memory_dp_2clk.sv.
 
-The two memories take their widths from a parameterised memory_if and cannot
-be linted on their own, so each case writes a small top that instantiates one
-of them with real widths and lints it with the flags `make lint` uses
+The memories take their widths from a parameterised memory_if and cannot be
+linted on their own, so each case writes a small top that instantiates one of
+them with real widths and lints it with the flags `make lint` uses
 (include/make/a2c-rtl.mk, common/systemVerilog/a2c.f). Every
-PORTA_READ_ONLY / PORTB_WRITE_ONLY combination is linted for both modules.
+PORTA_READ_ONLY / PORTB_WRITE_ONLY combination is linted for each module,
+memory_dp_2clk on two clocks.
 """
 
 import os
@@ -19,16 +21,10 @@ base_dir = os.path.dirname(test_dir)
 COMMON_DIR = os.path.join(base_dir, 'common', 'systemVerilog')
 A2C_F = os.path.join(COMMON_DIR, 'a2c.f')
 
-# (PORTA_READ_ONLY, PORTB_WRITE_ONLY, clkA and clkB on separate nets).
-# Two writing ports on separate clocks raise Verilator MULTIDRIVEN on the
-# shared array, so the combinations where port A writes are linted with both
-# clocks on one net.
-CASES = (
-    (0, 0, False),
-    (0, 1, False),
-    (1, 0, True),
-    (1, 1, True),
-)
+# (PORTA_READ_ONLY, PORTB_WRITE_ONLY)
+CASES = ((0, 0), (0, 1), (1, 0), (1, 1))
+
+TWO_CLK_INFO = 'memory_dp_2clk: two write ports on two clocks'
 
 TOP = """module memory_lint_top (
     input  logic clkA,
@@ -55,8 +51,7 @@ TOP = """module memory_lint_top (
     {module} #(.DEPTH(320), .data_t(data_t), .PORTA_READ_ONLY(1'b{aRo}), .PORTB_WRITE_ONLY(1'b{bWo})) uMem (
         .mem_portA (portA),
         .mem_portB (portB),{mem_bind}
-        .clkA (clkA),
-        .clkB ({clkB})
+        {clocks}
     );
 endmodule
 """
@@ -72,10 +67,11 @@ def _run_case(label, fn):
     return True
 
 
-def lint_one(module, aRo, bWo, separate):
+def lint_one(module, aRo, bWo):
     isExt = module == 'memory_dp_ext'
-    top = TOP.format(module=module, aRo=aRo, bWo=bWo,
-                     clkB='clkB' if separate else 'clkA',
+    clocks = ('.clkA (clkA),\n        .clkB (clkB)' if module == 'memory_dp_2clk'
+              else '.clk (clkA)')
+    top = TOP.format(module=module, aRo=aRo, bWo=bWo, clocks=clocks,
                      mem_port=',\n    output logic [17:0] mem [320-1:0]' if isExt else '',
                      mem_bind='\n        .mem (mem),' if isExt else '')
     with tempfile.TemporaryDirectory() as tmp:
@@ -88,20 +84,25 @@ def lint_one(module, aRo, bWo, separate):
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=COMMON_DIR, timeout=300)
         if result.returncode != 0:
             raise AssertionError(f"lint failed:\n{result.stdout}{result.stderr}")
+        # Two writers on two clocks are a supported simulation mode, reported
+        # but never a lint failure.
+        twoWriters = module == 'memory_dp_2clk' and not aRo
+        if (TWO_CLK_INFO in result.stdout + result.stderr) != twoWriters:
+            raise AssertionError(
+                f"expected the two-writer $info {'' if twoWriters else 'not '}to be "
+                f"reported:\n{result.stdout}{result.stderr}")
 
 
 def main():
     print("=" * 72)
-    print("memory_dp / memory_dp_ext lint")
+    print("memory_dp / memory_dp_ext / memory_dp_2clk lint")
     print("=" * 72)
     ok = []
-    for module in ('memory_dp', 'memory_dp_ext'):
-        for aRo, bWo, separate in CASES:
+    for module in ('memory_dp', 'memory_dp_ext', 'memory_dp_2clk'):
+        for aRo, bWo in CASES:
             ok.append(_run_case(
-                f"{module} PORTA_READ_ONLY={aRo} PORTB_WRITE_ONLY={bWo}, clkA and clkB "
-                f"{'on separate nets' if separate else 'on one net'}",
-                lambda module=module, aRo=aRo, bWo=bWo, separate=separate:
-                    lint_one(module, aRo, bWo, separate)))
+                f"{module} PORTA_READ_ONLY={aRo} PORTB_WRITE_ONLY={bWo}",
+                lambda module=module, aRo=aRo, bWo=bWo: lint_one(module, aRo, bWo)))
     print()
     if all(ok):
         print("RESULT: all memory_dp lint checks passed")

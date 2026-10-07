@@ -8,7 +8,7 @@ access mode (true, ro, wo), render the
 owning blocks' RTL and assert on the generated memory_if declarations and
 memory instances: the PORTA_READ_ONLY / PORTB_WRITE_ONLY parameters, which
 port carries <memory>_reg, the ports: list filling the block-side ports in
-order, and the clkA/clkB binds. Rejection fixtures cover regAccess on a
+order, and the single clock bind. Rejection fixtures cover regAccess on a
 memoryType with no read/write port, and memories that list more ports than
 are left for the block once the register handler takes its port.
 
@@ -275,9 +275,8 @@ def check_memory_instance(emitted, rel, memory, module, aRo, bWo, binds, clock):
         expectedParams += f", .PORTA_READ_ONLY(1'b{aRo}), .PORTB_WRITE_ONLY(1'b{bWo})"
     if params != expectedParams:
         raise AssertionError(f"{memory} parameters are {params!r}, expected {expectedParams!r}")
-    clocks = [('clkA', clock), ('clkB', clock)] if aRo is not None else [('clk', clock)]
-    if gotBinds != binds + clocks:
-        raise AssertionError(f"{memory} binds are {gotBinds}, expected {binds + clocks}")
+    if gotBinds != binds + [('clk', clock)]:
+        raise AssertionError(f"{memory} binds are {gotBinds}, expected {binds + [('clk', clock)]}")
     declared = _interfaces(text, memory)
     signals = [signal for port, signal in binds if port != 'mem']
     if declared != signals:

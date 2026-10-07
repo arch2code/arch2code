@@ -237,10 +237,9 @@ Rules:
   block with several declared resets on its default clock marks one (V18), so
   that the reset its implementation refers to as `rst_n` is always defined.
   Generated logic clocked by a block clock uses its selected reset: a register
-  handler or decode router on the clock of its bus port, the memory side of the
-  R20 bridge on the memory's clock. A clock hosting generated logic with zero
-  or several unmarked candidates is an error (V19); declaration order never
-  decides. Where the implementation refers to the block default clock and its
+  handler or decode router on the clock of its bus port. A clock hosting
+  generated logic with zero or several unmarked candidates is an error (V19);
+  declaration order never decides. Where the implementation refers to the block default clock and its
   reset by the conventional names `clk` and `rst_n` without declaring them,
   those names denote the block default clock and its selected reset.
 - A block clock need have **no reset**. Logic in such a domain is reset by the
@@ -389,7 +388,7 @@ way).
 
 Every register and the handler that implements it sit in that one domain,
 reset by the selected reset of that block clock; a `registerPorts:` entry may
-name `reset:` to choose among several, mirroring memories (V19). The selected
+name `reset:` to choose among several (V19). The selected
 ports are a block-level result computed from the design's instances, so a
 leaf's standalone testbench and tandem wrapper drive the register-bus BFM on
 the same selected clock and reset port; a leaf with no serving router has no
@@ -409,20 +408,19 @@ export: registers of children clocked by such a net are reached by placing the
 clock's supplier in a container above the one that routes to them, or by
 exporting the clock and feeding the tree from that domain.
 
-**Memories.** A memory belongs to one block and is clocked by that block: its
+**Memories.** A memory belongs to one block and is clocked by that block. Its
 declaration carries `clock:` naming a block clock of the owning block, `input`
 or `output` as a port's may, default the block default clock. The field matters
-only for a multi-clock block choosing which of its clocks the store sits on. A
-memory served by a register handler in another domain (R20) also needs a reset
-in its own domain for the bridge's memory side: `reset:` names a block reset
-belonging to the memory's clock, and defaults to the selected reset of that
-clock. The memory array itself is never reset, so `reset:` is consulted only
-when the bridge exists (V19).
+only for a multi-clock block choosing which of its clocks the store sits on.
+`clock:` sets the clock of every block-side port. A memory with `regAccess` has
+one more port, the register port, and it runs on the owning block's register
+clock (R20). A memory has no reset. The array is never reset, and the schema
+has no memory `reset:` field.
 
 ```yaml
 memories:
     lineBuf: { block: scaler, structure: pixelSt, addressStruct: lineAddrT, desc: "line store",
-               clock: clkPixel, reset: rstPixel_n }
+               clock: clkPixel }
 ```
 
 A memory has three access paths, and the specification treats them differently
@@ -432,19 +430,27 @@ because their rates and their wiring owners differ:
 | :--- | :--- |
 | The owning block's own logic | Same domain as the memory by construction; this is the datapath path and sets the memory's clock. |
 | A hardware accessor via `memoryConnections:` | Must be in the memory's domain (V8). A raw crossing on a memory interface at datapath rate is a functional defect, and the generated wiring has no place for a synchroniser. |
-| Firmware via the register handler (`regAccess: true`) | May differ from the memory's domain. The **register handler provides the crossing** (R20): it is the one place the tool owns both sides, the bus clock from its feed and the memory clock from the declaration, and the access is a single request with a single response, which a handshake bridge carries safely. The bridge costs a few bus cycles per access. |
+| Firmware via the register handler (`regAccess`) | May differ from the memory's domain. The register port runs on the register clock and the block-side port on the memory's clock, so **the dual-clock RAM is the crossing** (R20). The tool generates no handshake or synchroniser for it, and a firmware access costs no extra bus cycles. |
 
-This makes the register handler the one place the tool generates
-synchronisation logic. Everywhere else a crossing is the designer's, because
-only here does the tool own both sides and the protocol. A memory is never
-moved onto the bus clock to serve firmware access; the datapath sets the domain,
-and the handler adapts. A memory whose own ports run on two clocks is not
-provided; a design needing one implements it outside the generator, and any
-crossing at its ports is the designer's (R17). The single-clock dual-port RTL
-primitive (`memory_dp.sv`) returns old data on a same-address cross-port read
-during a write. The SystemC memory model gives no ordering guarantee for a
-same-time read and write on two ports, so a design must not rely on either
-ordering across ports.
+A memory is never moved onto the bus clock to serve firmware access. The
+datapath sets the domain, and the memory takes a second clock for its register
+port. The tool generates synchronisation logic for no crossing. The dual-clock
+memory is the one generated primitive whose two ports sit in different
+domains.
+
+How many sides write decides what is allowed on two clocks. A memory with one
+writer works on one clock or two. A memory where firmware and the block both
+write works on one clock on FPGA. On two clocks it is for simulation only, or
+for an ASIC memory macro, which is outside this specification. A
+single-port or `local: true` memory has one clock, so with `regAccess` its
+`clock:` is the register clock (V24). `spec-memory-access-modes.md` gives the
+full table and the module the generator picks for each case.
+
+The dual-port RTL returns old data on a same-address read on one port during a
+write on the other. Block RAM in silicon leaves that read undefined. The
+SystemC memory model gives no ordering guarantee for a same-time read and write
+on two ports. A design must not rely on either ordering across ports, and
+firmware loads a table while the datapath is not reading it.
 
 ### 4.4 Instance: `clocks:` and `resets:` maps
 
@@ -941,51 +947,36 @@ the emitted design rather than by a diagnostic.
   internal net per local net, under the binding's name.
 - **R19.** A memory is in one domain, the block clock its declaration names,
   default the owning block's default clock. Every hardware access to it is in
-  that domain.
-- **R20.** A register handler serving a memory whose domain differs from the
-  handler's bus domain provides a domain-safe access path to that memory, with
-  these properties:
-  - the access crosses on a request and acknowledge handshake, each side
-    synchronised into the other's domain, with address, write data and write
-    enable held stable from request until acknowledge;
-  - the memory-side access is performed by logic clocked by the memory's clock
-    and reset by the block's reset in that domain, and read data is captured
-    there after the primitive's read latency and held until the bus side has
-    acknowledged it;
-  - the bus stalls the access until the response is in the bus domain, and
-    at most one access is outstanding per memory;
+  that domain. Its register port, when it has `regAccess`, is in the domain of
+  the owning block's register clock (R20).
+- **R20.** A memory with `regAccess` whose clock differs from the owning
+  block's register clock has two clocks. The RAM is the crossing, with these
+  properties:
+  - the register port is clocked by the register clock and the block-side port
+    by the memory's `clock`. The register handler drives the register port
+    directly, in the bus domain, with the memory's read latency;
+  - the tool generates no handshake or synchroniser for the crossing, and no
+    reset for the memory;
+  - the port topology contains no arbiter. A dual-port memory gives the handler
+    one port and the datapath the other. `memoryType` and `regAccess` choose
+    which port the handler takes (`spec-memory-access-modes.md`). A
+    single-port memory gives the handler its only port, and a `local: true`
+    memory has one clock, so with `regAccess` either one is on the register
+    clock (V24);
   - the memory's datapath access is unaffected, and the memory is never
     re-clocked to the bus to avoid the crossing;
-  - the bridge's memory side drives the memory-side port the handler already
-    owns, clocked by the memory's `clock` and reset by its `reset`. The port
-    topology is unchanged by this specification and contains no arbiter: a
-    dual-port memory gives the handler one port and the datapath the other; a
-    single-port memory gives the handler its only port, and the datapath
-    reaches such a memory only when it is `local`, by reading the array
-    directly inside the block. Every one of those accesses is in the memory
-    domain, so nothing is shared across the crossing and nothing needs
-    arbitration;
-  - a reset on either side returns that side to idle and discards any
-    outstanding request, and the handshake re-synchronises so that neither a
-    permanent bus stall nor a duplicated access can result. If the memory side
-    resets while a bus access is outstanding, the bridge completes that access
-    with the bus protocol's error indication, `pslverr` on APB, read data
-    undefined, and does not retry it; firmware re-issues the access. If the bus
-    side resets, the bus transaction no longer exists and the memory side
-    returns to idle without completing anything;
-  - a request that arrives while the memory side is held in reset completes
-    with the same error indication without touching the memory; the memory
-    side's reset state is synchronised into the bus domain for this purpose.
-    A request whose memory clock is not running stalls the bus: no timeout is
-    specified, the bus protocol has none, and firmware shall not access a
-    memory whose domain clock is not running;
-  - the error indication reaches the bus master: every generated router between
-    the handler and the bus feed propagates it, since an error absorbed at the
-    first router leaves firmware reading undefined data as valid.
-  This is the only crossing for which the tool generates synchronisation logic.
-  Generated wiring carries every crossing the designer authors, and those remain
-  the designer's. A generator that does not implement R20 rejects a memory
-  served by a handler in another domain (V24).
+  - a firmware access completes whether or not the memory's clock is running,
+    because the register port runs on the register clock;
+  - a read on one port of an address that the other port writes at the same
+    time returns undefined data in silicon. Firmware loads a table while the
+    datapath is not reading it;
+  - two write ports on two clocks are for simulation only, or for an ASIC
+    memory macro, which is outside this specification. The generator emits
+    them, and the RTL reports the mode at elaboration.
+  The handler builds only the paths its `regAccess` mode needs and ties off the
+  rest. A firmware access in the wrong direction completes with no bus error:
+  a write to an `ro` memory is dropped, and a read of a `wo` memory returns
+  zero.
 - **R21.** Every reset is active-low. A testbench reset is asserted from time
   zero and released synchronously to its own clock by the environment. Under
   co-simulation lockstep, the partner owns release timing and the environment
@@ -1029,7 +1020,7 @@ line of the offending entry.
 - **V1.** A block reset's `clock` names a block clock of the same block. A
   reset declared `async: true` carries no `clock` and is an `input`.
 - **V2.** A port's `clock` names a block clock of the same block. The same
-  holds for a `registerPorts:`, `addressBlock:` or memory `clock:`/`reset:`.
+  holds for a `registerPorts:`, `addressBlock:` or memory `clock:`.
   The existence part of V1 and V2 is the schema's `blockClock`/`blockReset`
   combo foreign key (`config/schema.yaml`), matched against the block's own
   `clocks:`/`resets:` rows at parse time. An unstated name is not checked;
@@ -1120,18 +1111,17 @@ line of the offending entry.
   most one reset per block clock carries `default: true`, and a block with
   several declared resets on its default clock marks exactly one.
 - **V19.** A block clock that hosts generated logic, the bus clock of a
-  register port or the memory clock of a memory served by a handler in another
-  domain, the clock of a decode router's upstream port, or the clock of a port
-  of a block with `hasVl`, has exactly one selected reset: the one
-  the `registerPorts:`, `addressBlock:` or memory `reset:` names, or, for a
+  register port, the clock of a decode router's upstream port, or the clock of
+  a port of a block with `hasVl`, has exactly one selected reset: the one
+  the `registerPorts:` or `addressBlock:` names, or, for a
   top-down leaf's register port, the leaf reset port its `resets:` map binds
   to the bus reset (R25); else the declared reset on that clock marked
   `default: true`, else the sole candidate among the declared resets and local
   reset nets on that clock, a local net consumed only by asynchronous inputs
   excluded. Zero or several unmarked candidates is an error. A `reset:` so
   named is a declared reset or local net belonging to the entry's clock;
-  otherwise an error. A memory not served across a crossing needs no reset,
-  and a block clock hosting no generated logic needs none.
+  otherwise an error. A memory needs no reset, and a block clock hosting no
+  generated logic needs none.
 - **V20.** The supply graph is acyclic and rooted. Its edges are taken at
   every instance of a block, for each `output` of the block that no child of
   the block drives: from the resolved net of each `input` clock or reset of
@@ -1158,8 +1148,11 @@ line of the offending entry.
 - **V23.** A project file's `clocks:` and `resets:` each carry exactly one
   `default: true`, implied for a single entry, and the default reset belongs to
   the default clock.
-- **V24.** A memory served by a register handler in another domain (R20) is
-  rejected at build when the generator does not implement the R20 bridge.
+- **V24.** A memory with `regAccess` that has one clock, because it is
+  single-port or `local: true`, names the owning block's register clock as its
+  `clock:`. Otherwise it is an error whose diagnostic names both clocks and
+  directs the author to set the memory's clock or use a non-local dual-port
+  memory.
 - **V25.** A top-down leaf none of whose declared reset ports is bound to
   the bus's reset (R25) is an error at the instance map; the fix is to map a
   leaf reset port to that container reset.

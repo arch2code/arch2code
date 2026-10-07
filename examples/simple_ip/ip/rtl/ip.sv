@@ -82,29 +82,25 @@ ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONS
 memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpMem (
     .mem_portA (ipMem),
     .mem_portB (ipMem_reg),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 memory_dp #(.DEPTH(IP_MEM_DEPTH), .data_t(ipFixedSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpFixedMem (
     .mem_portA (ipFixedMem),
     .mem_portB (ipFixedMem_reg),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 memory_dp #(.DEPTH(IP_NONCONST_DEPTH), .data_t(ipFixedSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpNonConstMem (
     .mem_portA (ipNonConstMem),
     .mem_portB (ipNonConstMem_reg),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 memory_dp #(.DEPTH(IP_MEM_DEPTH_X4), .data_t(ipMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpDerivedDepthMem (
     .mem_portA (ipDerivedDepthMem),
     .mem_portB (ipDerivedDepthMem_unused),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 // GENERATED_CODE_END

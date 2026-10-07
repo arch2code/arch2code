@@ -11,7 +11,7 @@ module, never the reverse.
 from collections import OrderedDict
 from dataclasses import dataclass
 
-from pysrc.memoryPortAccess import MEMORY_PORT_ACCESS
+from pysrc.memoryPortAccess import MEMORY_PORT_ACCESS, memoryRegisterPort
 
 
 @dataclass
@@ -49,6 +49,7 @@ class MemoryDomain:
     memoryType: str
     clock: str
     regAccess: bool | str
+    local: bool
 
 
 @dataclass
@@ -570,7 +571,7 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     for memoryBlockKey, memRow in memories.items():
         memoriesByBlock.setdefault(memRow['blockKey'], list()).append(
             MemoryDomain(memoryBlockKey, memRow['memory'], memRow['memoryType'],
-                         memRow['clock'], memRow['regAccess']))
+                         memRow['clock'], memRow['regAccess'], memRow['local']))
 
     # A router's module is generated whole from its addressBlock:, so it
     # cannot contain instances; reported before any router clock/reset check.
@@ -1890,14 +1891,15 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                 f"reset on '{domain.registerClock}', or mark one of its "
                 f"resets default: true.")
 
-    # A single-port memory has one clock, so the register handler can reach
-    # it only on the register bus clock.
+    # A single-port or local memory has one clock, so the register handler
+    # can reach it only on the register bus clock.
     for domain in domains.values():
         if domain.registerClock is None:
             continue
         for memDomain in domain.memories:
-            if (memDomain.regAccess and len(MEMORY_PORT_ACCESS[memDomain.memoryType]) == 1
-                    and memDomain.clock != domain.registerClock):
+            if not memDomain.regAccess or memDomain.clock == domain.registerClock:
+                continue
+            if len(MEMORY_PORT_ACCESS[memDomain.memoryType]) == 1:
                 diag.logError(
                     f"Memory '{memDomain.memory}' of block '{domain.block}' has "
                     f"regAccess and is on clock '{memDomain.clock}', but the "
@@ -1906,6 +1908,19 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                     f"can reach it only on the register bus clock. Set the memory's "
                     f"clock to '{domain.registerClock}', or use a dual-port "
                     f"memoryType.")
+                continue
+            if memDomain.local:
+                regPort, portAccess = memoryRegisterPort(memDomain.memoryType, memDomain.regAccess)
+                portClocks = ' and '.join(
+                    f"port {port}, the register port, on '{domain.registerClock}'" if port == regPort
+                    else f"port {port} on '{memDomain.clock}'"
+                    for port in portAccess)
+                diag.logError(
+                    f"In {_diagLoc(diag, memories[memDomain.memoryBlockKey])}, memory "
+                    f"'{memDomain.memory}' of block '{domain.block}' is local, and its "
+                    f"ports run on two clocks: {portClocks}. A local memory has one "
+                    f"clock. Set the memory's clock: to '{domain.registerClock}', or "
+                    f"remove local.")
 
     _checkSupplyGraph(domains, containers, instances, blocks, diag)
 

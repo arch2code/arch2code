@@ -4437,6 +4437,20 @@ def run_regaccess_single_port_memory_on_other_clock_rejected():
         projectDomains=PIX_PROJECT_DOMAINS)
 
 
+def run_regaccess_local_dual_port_memory_on_other_clock_rejected():
+    """A local memory has one clock, even when it is dual-port, so a regAccess
+    one on clkPix cannot also run on leafA's register bus clock clkBus."""
+    return _expect_diagnostic(
+        "a local dual-port regAccess memory off the register bus clock is rejected",
+        ("memory 'tbl' of block 'leafA' is local, and its ports run on two "
+         "clocks: port A on 'clkPix' and port B, the register port, on 'clkBus'. "
+         "A local memory has one clock. Set the memory's clock: to 'clkBus', or "
+         "remove local.", "In ", ".yaml:"),
+        design=PIX_LEAF_DESIGN % ('', '\n            rstPix_n: { clock: clkPix }',
+                                  ', rstPix_n: rstPix_n', PIX_MEMORY_ROW % ', local: true'),
+        projectDomains=PIX_PROJECT_DOMAINS)
+
+
 def run_memory_reset_rejected():
     """A memory holds no reset state, so a memory row may not author reset:."""
     return _expect_diagnostic(
@@ -8140,6 +8154,7 @@ def _run():
                                    run_memory_accessor_uninstantiated_container_domain_cases)),
         ("regAccess memory on a second clock", (run_regaccess_dual_port_memory_on_other_clock_builds,
                                                 run_regaccess_single_port_memory_on_other_clock_rejected,
+                                                run_regaccess_local_dual_port_memory_on_other_clock_rejected,
                                                 run_memory_reset_rejected)),
         ("Register-bus port domain override (registerBusPort)",
          (run_registerports_reset_disambiguates_bus_port_domain,

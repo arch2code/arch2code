@@ -128,8 +128,13 @@ def render(args, prj, data):
         isLocal = mem_data['local']
         portAccess = mem_data['portAccess']
         isDualPort = len(portAccess) == 2
+        # Ports on two block clocks need the two-clock module; a local memory
+        # always has one clock, which clockTree enforces.
+        isTwoClock = len(set(mem_data['portClock'].values())) == 2
         memory_type = 'memory_dp' if isDualPort else 'memory_sp'
-        if isLocal:
+        if isTwoClock:
+            memory_type += '_2clk'
+        elif isLocal:
             memory_type += '_ext'
             localMemInst =f"{mem_data['memory']}Mem"
             out.append(f"{mem_data['structure']} {localMemInst} [{mem_data['wordLines']}-1:0];")
@@ -143,8 +148,9 @@ def render(args, prj, data):
             out.append(f"{indent}.mem_port{port} ({port_data}),")
         if isLocal:
             out.append(f"{indent}.mem ({localMemInst}),")
-        # Each port's clock is spelled clk plus its port suffix: clkA/clkB, or
-        # clk on a single-port memory.
-        out.append(",\n".join(f"{indent}.clk{port} ({clock})"
-                              for port, clock in mem_data['portClock'].items()) + "\n);\n")
+        if isTwoClock:
+            out.append(",\n".join(f"{indent}.clk{port} ({clock})"
+                                  for port, clock in mem_data['portClock'].items()) + "\n);\n")
+        else:
+            out.append(f"{indent}.clk ({next(iter(mem_data['portClock'].values()))})\n);\n")
     return "\n".join(out)

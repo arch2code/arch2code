@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Simulation tests for common/systemVerilog/memory_dp.sv.
+"""Simulation tests for common/systemVerilog/memory_dp.sv and memory_dp_2clk.sv.
 
 Builds unittest/fixtures/memory_dp_ports_tb.sv with Verilator
 `--binary --timing` and runs it at several port A / port B clock ratios, in a
 temporary directory per ratio. The bench runs every PORTA_READ_ONLY /
-PORTB_WRITE_ONLY combination against the plain dual-port memory and ends with
-TB_PASS on stdout and an exit code of 0; anything else is a failure, reported
-with the full build and run output.
+PORTB_WRITE_ONLY combination of both modules against the plain dual-port
+memory and ends with TB_PASS on stdout and an exit code of 0; anything else is
+a failure, reported with the full build and run output.
 """
 
 import os
@@ -19,6 +19,7 @@ test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 
 MEMORY_DP_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_dp.sv')
+MEMORY_DP_2CLK_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_dp_2clk.sv')
 MEMORY_IF_DIR = os.path.join(base_dir, 'interfaces', 'memory')
 TB_SV = os.path.join(test_dir, 'fixtures', 'memory_dp_ports_tb.sv')
 
@@ -44,12 +45,8 @@ def run_one(a_half, b_half):
         cmd = ['verilator', '--binary', '--timing', '-j', '4', '--top-module',
                'memory_dp_ports_tb', '-Mdir', obj_dir, '+libext+.sv',
                '-y', MEMORY_IF_DIR, f'+incdir+{MEMORY_IF_DIR}',
-               # u_rw and u_bw have a write path on each port, each on its
-               # own clock, which Verilator reports as MULTIDRIVEN on the
-               # array whether or not the bench writes both ports at once.
-               '-Wno-MULTIDRIVEN',
                f'-GA_HALF_PERIOD={a_half}', f'-GB_HALF_PERIOD={b_half}',
-               MEMORY_DP_SV, TB_SV]
+               MEMORY_DP_SV, MEMORY_DP_2CLK_SV, TB_SV]
         # Timed binaries built through Verilator's ccache wrapper in a fresh
         # temporary directory abort at startup; build without the cache.
         build_env = dict(os.environ, CCACHE_DISABLE='1')
@@ -75,7 +72,7 @@ def run_one(a_half, b_half):
 
 def main():
     print("=" * 72)
-    print("memory_dp port access simulation")
+    print("memory_dp / memory_dp_2clk port access simulation")
     print("=" * 72)
 
     start = time.time()

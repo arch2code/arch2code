@@ -32,21 +32,21 @@ twoClkTableRegs uTwoClkTableRegs (
 );
 
 // Memory Instances
-memory_dp #(.DEPTH(TWO_CLK_TBL_WORDS), .data_t(twoClkTblSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b0)) uTbl (
+memory_dp_2clk #(.DEPTH(TWO_CLK_TBL_WORDS), .data_t(twoClkTblSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b0)) uTbl (
     .mem_portA (tbl),
     .mem_portB (tbl_reg),
     .clkA (clkSlow),
     .clkB (clk)
 );
 
-memory_dp #(.DEPTH(TWO_CLK_LUT_WORDS), .data_t(twoClkLutSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uLut (
+memory_dp_2clk #(.DEPTH(TWO_CLK_LUT_WORDS), .data_t(twoClkLutSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uLut (
     .mem_portA (lut),
     .mem_portB (lut_reg),
     .clkA (clkSlow),
     .clkB (clk)
 );
 
-memory_dp #(.DEPTH(TWO_CLK_LUT_WORDS), .data_t(twoClkStatsSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uStats (
+memory_dp_2clk #(.DEPTH(TWO_CLK_LUT_WORDS), .data_t(twoClkStatsSt), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uStats (
     .mem_portA (stats_reg),
     .mem_portB (stats),
     .clkA (clk),
