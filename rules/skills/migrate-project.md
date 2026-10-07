@@ -25,14 +25,18 @@ defect — so the generated tree is deterministically re-created each pass.
 Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
 that is not a delete-target) are left untouched and are not reported. The target
 is a seven-step pipeline. The first two steps halt the target on a non-zero exit, so an
-unresolved yaml-stage item stops the run before the database is built. The sweep
-(step 3) does **not** halt, and nor does a refused *External* port in step 5: they apply
-their edits, then `gen` always runs to fill the scaffolded files, and only afterward is
-their exit code re-raised — so a remaining agent-driven port (`TODO_PORT`) leaves the
-tree scaffolded while `make migrate` still signals non-zero. A refused
-`<block>Config.cpp` restructure in step 5 **does** halt (exit 2): it leaves a bare
-`--template=tbConfig` region that the very next `gen` aborts on, so continuing would
-bury the migrator's report under a template traceback and half-regenerate the tree:
+unresolved yaml-stage item stops the run before the database is built. Steps 3
+and 5 each exit 1 for pending hand work and 2 for a state the following steps cannot
+process. Exit 1 does not halt: a remaining agent-driven port (`TODO_PORT`) or a
+refused *External* port leaves its edits applied, `gen` still runs to fill the
+scaffolded files, and the code is re-raised at the end, so the tree is scaffolded
+while `make migrate` still signals non-zero. Exit 2 halts the target at once. Step 3
+returns it when the filename-prefix phase is blocked (`TODO_FILE_PREFIX_BOTH_EXIST`,
+`TODO_FILE_PREFIX_CHAIN`): `newmodule` would delete a file left at its unprefixed
+name as stale, together with the user code in it. Step 5 returns it for a refused
+`<block>Config.cpp` restructure: it leaves a bare `--template=tbConfig` region that
+the very next `gen` aborts on, so continuing would bury the migrator's report under
+a template traceback and half-regenerate the tree:
 
 1. **`migrateYaml.py --write <project.yaml>`** — the text conversion + stamp.
    Standalone and text-only (it never opens the database); runs the three
@@ -42,7 +46,17 @@ bury the migrator's report under a template traceback and half-regenerate the tr
 2. **`make db`** — builds the database from the now-stamped YAML (the yamlFormat
    gate passes).
 3. **`migrateYaml.py --sweep --db <db>`** — the orphan sweep. This step opens the
-   database **read-only**, removes the stale purely-generated orphans the form
+   database **read-only**. Its first phase is the **filename-prefix move**
+   (`pysrc/migrateFilePrefix.py`): when a project sets `svFilePrefix`,
+   `scFilePrefix` or `fwFilePrefix` where it had none, every owned artifact of that
+   kind is renamed, so each file still at its unprefixed name in the same
+   directory is moved byte for byte to its prefixed name (user code included).
+   Changing one non-empty prefix to another is not migrated. A move that cannot
+   be made safely is reported, and the sweep then exits 2 before any other phase
+   runs, which halts `make migrate`. On `TODO_FILE_PREFIX_CHAIN` no file is moved
+   at all. On `TODO_FILE_PREFIX_BOTH_EXIST` only the conflicting file stays put;
+   every other pending file is still moved under `--write`. The rest of the sweep
+   then removes the stale purely-generated orphans the form
    changes left behind (every delete marker-guarded by `GENERATED_CODE_BEGIN`,
    never `git`), and reports the files it cannot touch (`TODO_PORT`,
    `TODO_USER_INCLUDE`, `TODO_UNGENERATED_FILE`). It sweeps two ways, keyed on the
@@ -270,13 +284,15 @@ clean report.
 | `TODO_TBCONFIG_NO_REGION` / `TODO_TBCONFIG_NO_PARAM` / `TODO_TBCONFIG_UNGENERATED` | testbench port | The `<block>Config.cpp` has no `--template=tbConfig` region, no `GENERATED_CODE_PARAM` line above it, or no generated marker at all. | Restore the missing marker line from a fresh scaffold, then re-run. |
 | `TODO_TBCONFIG_NO_REGISTRATION` | testbench port | A `<block>Config.cpp` has no out-of-class `<blk>Config::registerTestBenchConfig <blk>Config::registerTestBenchConfig_;` line. That line is the anchor the new `--section=registration` region replaces, and without the region the testbench is never registered with the factory — a **run-time** failure, not a build error. File left untouched. | Add the `--section=registration` region markers after the class's closing `};`, copying the shape from a fresh scaffold, then re-run. |
 | `TODO_PORT_TAIL_UNPLACED` | testbench port | A legacy `<block>Testbench`'s `GENERATED_CODE_PARAM` line holds an argument beyond the `--block=<dut>` a fresh scaffold writes and the `--variant=<name>` the port carries — a retargeted `--block`, an `--excludeInst`, or a space-spelled `--variant v`. Carrying only the variant would drop it silently, so nothing is stamped and the legacy pair is left on disk. | Put the reported argument(s) on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm` by hand, then delete the legacy pair. |
-| `TODO_PORT_STALE_VARIANT` | testbench port | A legacy `<block>Testbench` **or** `<block>External` names a DUT `--variant=` the block no longer declares (migration renamed or removed it). The tb top has that value carried onto its `.cppm` and the External carries its whole tail verbatim, so either way it would land on the target and make `gen` resolve the wrong config or fail. Nothing is stamped and the legacy pair is left on disk. The check mirrors the generator: it applies only when the file's own `--block=` names the block being ported **and** that block owns `params:` — a `_tb`-retargeted External and a block without own params are not validated by `gen` either, so they are not refused here. | Decide which variant the testbench drives. For the tb top, set `--variant=<name>` on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm`; for the External, correct it on both legacy files and re-run. The message lists the variants the block does declare. |
+| `TODO_PORT_STALE_VARIANT` | testbench port | A legacy `<block>Testbench` **or** `<block>External` names a DUT `--variant=` that `gen` would reject: either the block no longer declares it (migration renamed or removed it), or the block owns no `params:` and so takes no `--variant=` at all. The tb top has that value carried onto its `.cppm` and the External carries its whole tail verbatim, so either way it would land on the target and make `gen` fail or resolve the wrong config. Nothing is stamped and the legacy pair is left on disk. The check mirrors the generator, which resolves the variant against the file's own `--block=`: a `_tb`-retargeted External names another block, so it is not checked here. | Block with own `params:`: decide which variant the testbench drives. For the tb top, set `--variant=<name>` on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm`; for the External, correct it on both legacy files and re-run. The message lists the variants the block does declare. Block without own `params:`: for the tb top, delete the legacy pair (the scaffolded `.cppm` already selects no variant); for the External, remove `--variant=` from both legacy files and re-run. |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
 | `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, and `registrar` on the layout migration's hierarchical path). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk, **and** a legacy header-mode artifact is still sitting next to that context's current generated file — i.e. hierarchical was opted into before the format migration finished. A cleanly hierarchical context with nothing left to migrate is silent. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 | `TODO_MISSING_PARAM_LINE` | param phase | A generated artifact carries a `GENERATED_CODE_BEGIN` marker but no `GENERATED_CODE_PARAM` line, so there is no line to re-stamp with `--project`. | Add the `GENERATED_CODE_PARAM` line the report quotes verbatim at the top of the file's generated preamble, then re-run. |
 | `TODO_UNMANIFESTED_SRC_DIR` | orphan sweep | A directory holding C++ compile units that the build manifest does not compile — outside every segment root, or a subdirectory of one (the manifest globs a root one level deep). The retired tree-walking scan compiled it; the manifest does not. | Decide whether the project must build it, then either wire it onto `EXTRA_PRJ_SRC_DIRS` or take it out of the tree (Section 3). |
+| `TODO_FILE_PREFIX_BOTH_EXIST` | filename-prefix phase | A file exists at both its unprefixed and its prefixed name. The phase cannot tell which holds the user code, so it moves neither. **Halts `make migrate`** (exit 2). | Keep the copy that holds your code at the prefixed name, delete the other, then re-run. |
+| `TODO_FILE_PREFIX_CHAIN` | filename-prefix phase | A file is missing from its prefixed name, and its unprefixed name is also another artifact's current name (block `foo` at `p_foo.sv` next to a new block `p_foo`), so nothing records whose code that file holds. No file is moved at all. **Halts `make migrate`** (exit 2). | Put each artifact's code at its current (prefixed) name by hand, then re-run. The message lists the chain of names. |
 
 The address-control kinds are documented in depth in the `address-migration`
 skill; each converter message points at the resolving step or note named in the
@@ -922,6 +938,8 @@ migration, and resolve any manual item the report listed.
 - `pysrc/migrateModuleEndlabel.py` — the RTL module end-label re-stamp
   (user-owned `endmodule: <label>` → qualified `blockModuleName`), DB-backed and
   part of `migrateYaml.py --sweep`.
+- `pysrc/migrateFilePrefix.py` — the filename-prefix move, the first phase of
+  `migrateYaml.py --sweep`, and its `TODO_FILE_PREFIX_*` reports.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
   embedded legacy file map, its `delete`/`port`/`edit` dispositions, and the
   `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports. Its `ext`

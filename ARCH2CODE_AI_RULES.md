@@ -240,7 +240,7 @@ addressObjects:
 # Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
-#     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
+#     includeFW: {name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
 #     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
@@ -835,7 +835,6 @@ blocks:
     hasRtl: <true|false>      # Has RTL implementation
     hasMdl: <true|false>      # Has SystemC model
     hasTb: <true|false>       # Has testbench
-    isRegHandler: <true|false> # Is this a register decoder block (special)
     params:                    # Optional, for parameterized blocks
       - <param_name>
 ```
@@ -851,8 +850,8 @@ blocks:
    - `hasTb: true`: Generate testbench skeleton
    - RTL hierarchy is closed: if a parent block has `hasRtl: true`, every block instantiated inside it must also have `hasRtl: true`. A `hasRtl: false` child is only valid under a model-only parent.
 4. **Special Flags**:
-   - `isRegHandler: true`: Indicates this is a register decoder block (auto-generated blocks have this)
-   - **Do not manually set** `isRegHandler` - it's set automatically for `<blockname>_regs` blocks
+   - `isRegHandler: true`: Marks a synthesised register handler block. It is set automatically on the `<blockname>_regs` blocks.
+   - **Do not manually set** `isRegHandler` - a block that sets `isRegHandler: true` is rejected
 5. **Parameters**:
    - `params` names block parameters that can be bound by variant under the project-level `parameters:` section
    - Parameters that affect type widths, structure widths, or memory depth should be declared in `ipParameters` when they have a backing constant/type
@@ -862,7 +861,6 @@ blocks:
    - `hasMdl`: defaults to `true` (most blocks have model)
    - `hasVl`: defaults to `false`; explicitly set it to `true` for normal user-authored RTL blocks
    - `hasTb`: defaults to `false` (set on the DUT block, not the `_tb` wrapper)
-   - `isRegHandler`: defaults to `false` (only for register handler blocks)
 7. **RTL/Verilator Guidance**:
    - Prefer `hasRtl: true` and `hasVl: true` together for user-authored RTL blocks.
    - `hasRtl: true` with `hasVl: false` is legal but unusual; use it only when a block intentionally should not get a Verilator wrapper.
@@ -1255,14 +1253,14 @@ registers:
 
 #### Automatic Block-Level Register Handler Generation
 
-**Important:** When you define registers for a block OR when a block has firmware-accessible memories (`regAccess: true`), arch2code automatically generates:
+**Important:** When you define registers for a block OR when a block has firmware-accessible memories (`regAccess` set), arch2code automatically generates:
 
 1. **Register Handler Block**: A block named `<blockname>_regs`
    - Example: If block is `dma_controller` → `dma_controller_regs`
    - Example: If block is `uart` → `uart_regs`
    - Generated for blocks with:
      - One or more registers defined
-     - One or more memories with `regAccess: true` (FW accessible)
+     - One or more memories with `regAccess` set (FW accessible)
    - This block handles register read/write operations within that specific block
 
 2. **Purpose**: The `<blockname>_regs` block:
@@ -1292,7 +1290,7 @@ register-bus fan-out below it.
    container (its siblings) and nested routers — it never decodes its own
    container block.
 
-3. **Routed Leaves**: a block that owns registers or `regAccess: true` memories
+3. **Routed Leaves**: a block that owns registers or `regAccess` memories
    (or authors `registerPorts:`) is a routed leaf. Tag the leaf **instance**
    with `addressGroup:` naming the serving router's `addressBlock.addressGroup`.
 
@@ -1428,26 +1426,35 @@ memories:
     addressStruct: <address_structure_name>
     wordLines: <size_constant_or_param>
     desc: "<description>"
-    regAccess: <true|false>     # Optional, defaults to false
+    regAccess: <false|rw|ro|wo|true>  # Optional, defaults to false; true means rw
     local: <true|false>          # Optional, defaults to false
-    memoryType: <singlePort|dualPort|register>  # Optional, defaults to dualPort
+    memoryType: <singlePort|dualPort|portRportRW|portRWportW|portRportW|register>  # Optional, defaults to dualPort
+    ports: [<port_name>, ...]    # Optional, block-side ports, filling A then B
+    clock: <owning_block_clock>  # Optional, the block-side port's clock, defaults to the block default clock
 ```
 
 #### Rules
 
 1. **Memory Types**:
    - `singlePort`: Single-port memory (one read/write port)
-   - `dualPort`: Dual-port memory (default, separate read and write ports)
+   - `dualPort`: Dual-port memory (default, two read/write ports A and B)
+   - `portRportRW`: read-only port A, read/write port B
+   - `portRWportW`: read/write port A, write-only port B
+   - `portRportW`: read-only port A, write-only port B
    - `register`: Register-based memory (flops)
-2. **regAccess**: Set to `true` for firmware-accessible memories
+2. **regAccess**: the firmware access mode. `rw` (or `true`) lets firmware read and write, `ro` only read, `wo` only write. Any other value is an error.
    - **Triggers automatic `<blockname>_regs` generation** (just like registers)
    - Memory becomes memory-mapped via register interface
    - The block-level register handler manages both registers and memories
-3. **local**: Set to `true` for flop-based memories with fast array access
-4. **Block**: The block that owns/implements this memory
-5. **Structure**: Data structure defining memory data format
-6. **addressStruct**: Address structure for memory addressing
-7. **wordLines**: Number of addressable locations
+   - The handler takes one port. Among the ports that support the mode it prefers the one whose capability matches the mode exactly. If two ports are still left, it takes port B. `portRportW` with `rw` has no supporting port and is an error
+   - A firmware write to an `ro` memory, or read of a `wo` one, completes with no `pslverr`. The write is dropped and the read returns zero. The SystemC model logs it
+   - With `regAccess`, a dual-port memory lists at most one port in `ports:` and a `singlePort` memory lists none
+3. **clock**: the block-side port's clock. The handler's port always runs on the register clock, so a dual-port memory may sit on another clock. A `singlePort` `regAccess` memory must be on the register clock. A memory has no `reset:`; setting it is an error
+4. **local**: Set to `true` for flop-based memories with fast array access
+5. **Block**: The block that owns/implements this memory
+6. **Structure**: Data structure defining memory data format
+7. **addressStruct**: Address structure for memory addressing
+8. **wordLines**: Number of addressable locations
    - May be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
    - If the structure or `wordLines` is parameterizable, address allocation uses worst-case sizing (`maxBitwidth`, `maxValue`, or max bound variant value)
    - Misspelled or out-of-scope bare names are errors; arch2code does not search unrelated YAML contexts for `wordLines`
@@ -1459,6 +1466,9 @@ memories:
 memories:
   - {memory: buffer_mem, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: BUFFER_SIZE, desc: "DMA buffer memory", regAccess: true, memoryType: dualPort}  # Makes it FW-accessible, triggers dma_controller_regs generation
 
+  # Table that firmware loads and the datapath reads on its own clock
+  - {memory: gamma_lut, block: isp, structure: lut_entry_t, addressStruct: lut_addr_t, wordLines: 256, desc: "Gamma LUT", regAccess: wo, memoryType: portRportW, ports: [rd], clock: pixClk}  # firmware writes port B on the register clock, the block reads port A on pixClk
+
   # Parameterized FW-accessible memory
   - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized IP memory", regAccess: true}  # Uses IP_MEM_DEPTH.maxValue for address sizing
 
@@ -1469,12 +1479,12 @@ memories:
   - {memory: fifo_storage, block: fifo, structure: fifo_entry_t, addressStruct: fifo_addr_t, wordLines: 16, desc: "FIFO storage", local: true, regAccess: false}  # No FW access, internal only
 ```
 
-**Important:** When `regAccess: true`:
+**Important:** When `regAccess` is set:
 - Arch2code automatically generates the `<blockname>_regs` block (just like for registers)
 - The `<blockname>_regs` block handles both register and memory access for that block
 - The memory becomes memory-mapped and accessible via the register bus interface
 - The instance must have `addressGroup` set, naming a serving router's `addressBlock.addressGroup`
-- `regAccess: true` (with `local:` absent) is the single switch for FW-accessible memory; the serving router is a generated `addressBlock:` block (see the Register/Memory Decode skill)
+- `regAccess` (with `local:` absent) is the single switch for FW-accessible memory; the serving router is a generated `addressBlock:` block (see the Register/Memory Decode skill)
 
 ### Address Policy and Address Control
 
@@ -1666,7 +1676,7 @@ synthesized.
   - Emits the router→leaf dispatch connection
 - **Triggered By**:
   - Registers defined for the block, **or**
-  - Memories with `regAccess: true` for the block
+  - Memories with `regAccess` set for the block
   - (register-only blocks DO get a synthesizable `_regs`)
 - **Example**: `dma_controller_regs`, `uart_regs`
 
@@ -1780,7 +1790,7 @@ fileGeneration:
     # Add firmware includes (only if you need FW headers generated)
     includeFW: { 
       name: "IncludesFW", 
-      ext: {hdr: "h"}, 
+      ext: {hdr: "h", src: "cpp"}, 
       cond: {smartInclude: true}, 
       mode: context, 
       basePath: fwInc, 
@@ -1799,7 +1809,7 @@ fileGeneration:
 ```
 
 **Notes:**
-- The `includeFW` mapping generates header files in the `fwInc` directory (typically `$root/fw/include`)
+- The `includeFW` mapping generates a header and a source file (`<context>IncludesFW.{h,cpp}`) in the `fwInc` directory (typically `$root/fw/include`)
 - `smartInclude: true` means files are only created if there is register or memory content to export
 - `mode: context` generates one file per YAML file (not per block)
 - `mode: project` generates exactly one file for the whole product, keyed to its top context

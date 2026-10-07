@@ -1,12 +1,14 @@
 // copyright QiStor 2025
 
 #include "logging.h"
-import a2c.endOfTest;
 #include "simController.h"
 #include "systemc.h"
 #include "instanceFactory.h"
 #include "watchDog.h"
 #include "q_assert.h"
+import a2c.endOfTest;
+
+#include <ctime>
 
 bool watchDog::tickled = false;
 bool watchDog::enabled = false;
@@ -29,6 +31,9 @@ void watchDog::disableWatchdog(void)
 };
 
 
+// Instantiable watchDog block. sc_main runs watchDogHandler() for every
+// project, so the block adds only the "systemCWatchdog" startup vote, which a
+// design counts in setStartupVoters(), and stopping the run at end-of-test.
 SC_MODULE(watchDogBlock), public blockBase
 {
 private:
@@ -36,7 +41,6 @@ private:
     {
         registerBlock()
         {
-            // lamda function to construct the block
             // watchDog is a framework-shared block owned by no user project, so
             // it registers under the unqualified (empty) projectName.
             instanceFactory::registerBlock("watchDog_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<watchDogBlock>(blockName, variant, bbMode));}, "", "" );
@@ -49,8 +53,7 @@ public:
     void setTimed(int nsec, timedDelayMode mode) override {};
     void setLogging(verbosity_e verbosity) override {};
 private:
-    void watchDogHandler(void);
-
+    void startupVoteAndStop(void);
 };
 
 
@@ -63,8 +66,23 @@ watchDogBlock::watchDogBlock(sc_module_name blockName, const char * variant, blo
         ,blockBase("watchDog", name(), bbMode)
 {
     log_.logPrint("watchDog initialized.", LOG_IMPORTANT );
-    // GENERATED_CODE_END
-    SC_THREAD(watchDogHandler);
+    SC_THREAD(startupVoteAndStop);
+}
+
+void watchDogBlock::startupVoteAndStop(void)
+{
+    endOfTestState &eot = endOfTestState::GetInstance();
+    log_.logPrint("Startup delay begin", LOG_IMPORTANT);
+    wait(simController::startupDelay);
+    log_.logPrint("Startup delay " + simController::startupDelay.to_string() + " complete", LOG_IMPORTANT);
+    simController::advanceStartupPhase("systemCWatchdog");
+    // Polled: forceEndOfTest() latches end-of-test without notifying eotEvent.
+    while (!eot.isEndOfTest())
+    {
+        wait(watchDog::timeout);
+    }
+    wait(sc_time(1, SC_US));
+    sc_stop();
 }
 
 
@@ -77,19 +95,43 @@ enum watchdogTimeoutT {
     WATCHDOG_TIMEOUT = MILLI_TO_NANO * 1000LL // 1s
 };
 
-// watchdog is necessary to ensure there are always event in the system - otherwise simulation stops
-// this is necessary as the stimuli is outside of the model
-void watchDogBlock::watchDogHandler(void)
+// Wall-clock nanoseconds since the timer was started. The call that finds it
+// stopped starts it and reports zero, so clearing *running* rewinds it.
+static uint64_t elapsedNsec(struct timespec &start, bool &running)
+{
+    struct timespec now;
+    if (!running)
+    {
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        running = true;
+        return 0;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (now.tv_sec * SECS_TO_NANO + now.tv_nsec) - (start.tv_sec * SECS_TO_NANO + start.tv_nsec);
+}
+
+// The periodic wake keeps events queued, so a model driven from outside does not
+// end on starvation. Two paths, each bounded by wall clock, since a running
+// clock advances simulation time forever.
+//
+// Stall: armed once every registered enabler has voted it on; every tickle
+// restarts its timer, since a tickle is evidence of progress.
+//
+// No terminator: no end-of-test voter, no --scTimeLimit and no latched
+// end-of-test (forceEndOfTest() ends a run without a voter). A static property
+// of the configuration, so tickles do not restart its timer; the wall-clock
+// wait keeps it off runs whose voters register lazily. Its condition only goes
+// true->false, so the timer is never rearmed.
+void watchDogHandler(void)
 {
     logging &lg = logging::GetInstance();
+    logBlock log_("watchDog");
     endOfTestState &eot = endOfTestState::GetInstance();
-    log_.logPrint("Startup delay begin", LOG_IMPORTANT);
     wait(simController::startupDelay); // wait for the system to start up
-    log_.logPrint("Startup delay " + simController::startupDelay.to_string() + " complete", LOG_IMPORTANT);
     bool timerRunning = false;
-    struct timespec now;
+    bool noTerminatorTimerRunning = false;
     struct timespec start;
-    simController::advanceStartupPhase("systemCWatchdog");
+    struct timespec noTerminatorStart;
     while(true)
     {
         wait(watchDog::timeout); // use a large timeout so if we are busy the watchdog isnt using up much time
@@ -100,27 +142,26 @@ void watchDogBlock::watchDogHandler(void)
         }
         else
         {
-            if (!timerRunning)
+            uint64_t nseconds = elapsedNsec(start, timerRunning);
+            if (nseconds > WATCHDOG_TIMEOUT)
             {
-                clock_gettime(CLOCK_MONOTONIC, &start);
-                timerRunning = true;
-            } else {
-                clock_gettime(CLOCK_MONOTONIC, &now);
-                uint64_t nseconds = (now.tv_sec * SECS_TO_NANO + now.tv_nsec ) - (start.tv_sec * SECS_TO_NANO + start.tv_nsec);
-                if (watchDog::enabled && nseconds > WATCHDOG_TIMEOUT)
-                {
-                    watchDog::isTimeout = true;
-                    log_.logPrint("Watchdog timeout - timeout" + std::to_string(nseconds), LOG_IMPORTANT);
-                    lg.statusPrint();
-                    Q_ASSERT_NODUMP(false, "Simulation stuck Watchdog timeout");
-                }
+                watchDog::isTimeout = true;
+                log_.logPrint(std::format("no design progress in {} ms of wall clock at {}",
+                                          nseconds / MILLI_TO_NANO, sc_time_stamp().to_string()), LOG_IMPORTANT);
+                lg.statusPrint();
+                Q_ASSERT_CTX_NODUMP(false, "watchDog", "Simulation stuck Watchdog timeout");
             }
         }
-        if (eot.isEndOfTest())
+        if (eot.isEndOfTest() == false && eot.registeredVoters() == 0 && simController::maxRuntimeUS == 0)
         {
-            wait(sc_time(1, SC_US));
-            sc_stop();  // this is how we stop the simulation
+            uint64_t nseconds = elapsedNsec(noTerminatorStart, noTerminatorTimerRunning);
+            if (nseconds > WATCHDOG_TIMEOUT)
+            {
+                log_.logPrint(std::format("no end-of-test voter after {} ms of wall clock at {}",
+                                          nseconds / MILLI_TO_NANO, sc_time_stamp().to_string()), LOG_IMPORTANT);
+                lg.statusPrint();
+                Q_ASSERT_CTX_NODUMP(false, "watchDog", "No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate");
+            }
         }
     }
 }
-

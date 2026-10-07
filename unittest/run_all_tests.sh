@@ -335,16 +335,21 @@ ADDRCTL_TESTS=(
     "parameterized router upstream"             "test_addrctl_parameterized_router_upstream.py"
     "parent router variant interface"           "test_addrctl_parent_router_variant_interface.py"
     "addressBlock and registerPorts both"       "test_error_addr_and_register_ports.py"
+    "router owning a regAccess memory"          "test_error_router_regaccess_memory.py"
+    "router owning a register"                  "test_error_router_registers.py"
     "multi registerPorts rows"                  "test_error_multi_register_ports.py"
     "registerPort interface not addressBus"     "test_error_register_port_not_addressbus.py"
     "duplicate addressGroup"                    "test_error_duplicate_address_group.py"
     "registerPort out-of-scope interface"       "test_error_register_port_out_of_scope.py"
     "router has no instance"                    "test_error_router_no_instance.py"
+    "block authors isRegHandler"                "test_error_authored_reg_handler.py"
     "multi-instance router"                     "test_error_multi_instance_router.py"
-    "self-containment precedes register decode" "test_error_no_primary_router.py"
+    "cyclic router placement"                   "test_error_no_primary_router.py"
     "multiple primary router candidates"        "test_error_multi_primary_router.py"
-    "routed leaf in unserved container"         "test_error_leaf_unserved.py"
-    "no serving router for reg leaf"            "test_error_leaf_no_serving_router.py"
+    "nested router in router-less container"    "test_error_nested_router_in_passthrough.py"
+    "router-less container holds two consumers" "test_error_leaf_unserved.py"
+    "router-less passthrough single consumer"   "test_addrctl_passthrough_single_consumer.py"
+    "passthrough addressGroup diagnostics"      "test_error_passthrough_diagnostics.py"
     "register interfaceType mismatch"           "test_error_register_interface_type_mismatch.py"
     "register packed-form mismatch"             "test_error_register_packed_form.py"
     "nested decoder exceeds parent window"      "test_error_nested_decoder_overflow.py"
@@ -488,6 +493,18 @@ python3 test_error_containment_cycle.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: a root topInstance declared only in a child project's files"
+echo "------------------------------------------------------------------------"
+python3 test_error_topinstance_not_root_owned.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a decode router as the topInstance's block"
+echo "------------------------------------------------------------------------"
+python3 test_error_topinstance_router.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: transit vs own-surface classification at a connection"
 echo "------------------------------------------------------------------------"
 python3 test_transit_surface_classification.py || FAILED=1
@@ -542,9 +559,99 @@ python3 test_error_intf_hdlparam_unresolved.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: project-scoped declarations (scope: project)"
+echo "------------------------------------------------------------------------"
+python3 test_project_scope.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: per-block clock and reset derivation"
+echo "------------------------------------------------------------------------"
+python3 test_clock_domains.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated register-decode clock domain"
+echo "------------------------------------------------------------------------"
+python3 test_register_decode_clock.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: connectionMap boundary port validation"
+echo "------------------------------------------------------------------------"
+python3 test_validate_ports.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: clock and reset port emission"
+echo "------------------------------------------------------------------------"
+python3 test_clock_reset_emission.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory_dp port access simulation"
+echo "------------------------------------------------------------------------"
+python3 test_memory_dp_ports_sim.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory_dp lint"
+echo "------------------------------------------------------------------------"
+python3 test_memory_dp_lint.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory port assignment"
+echo "------------------------------------------------------------------------"
+python3 test_memory_access_ports.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: memory firmware access modes"
+echo "------------------------------------------------------------------------"
+python3 test_memory_firmware_access.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: lsc write-only LUT memories on the register clock"
+echo "------------------------------------------------------------------------"
+python3 test_memory_lsc_luts.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: clock/reset local nets, exports, and ~ bindings"
+echo "------------------------------------------------------------------------"
+python3 test_clock_local_nets.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: interface definition data contracts"
 echo "------------------------------------------------------------------------"
 python3 test_interface_def_contracts.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
+echo "------------------------------------------------------------------------"
+python3 test_tb_completion_gate.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: watchdog termination of a run with no terminator"
+echo "------------------------------------------------------------------------"
+python3 test_watchdog_no_terminator.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Q_ASSERT exit path per context"
+echo "------------------------------------------------------------------------"
+python3 test_assert_exit_path.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: combo-source diagnostics (missing/empty combo sources)"
+echo "------------------------------------------------------------------------"
+python3 test_error_combo_sources.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -578,9 +685,153 @@ python3 test_multicycle_ctor_args.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: connectionMap boundary port validation"
+echo "Test Suite ${idx}: A register-bus interface may not carry a parameterizable structure"
 echo "------------------------------------------------------------------------"
-python3 test_validate_ports.py || FAILED=1
+python3 test_addressbus_not_parameterizable.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: container-sourced variant Verilator wrapper migration"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_vl_wrapper_migration.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: variant descriptor selector uniqueness"
+echo "------------------------------------------------------------------------"
+python3 test_descriptor_selector_uniqueness.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Project filename prefixes: svFilePrefix, scFilePrefix and fwFilePrefix"
+echo "------------------------------------------------------------------------"
+python3 test_file_prefix.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: A child project can rename many of its fileMap entries at once"
+echo "------------------------------------------------------------------------"
+python3 test_filemap_name_overrides.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: firmware header context namespaces in a composed root"
+echo "------------------------------------------------------------------------"
+python3 test_fw_context_namespace.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Unit tests for the langDomain migration phase (pysrc/migrateLangDomain.py)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_langdomain.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: nested router inheriting its container's parameters"
+echo "------------------------------------------------------------------------"
+python3 test_nested_router_inherit.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: nested router registerPorts key must match upstreamPort"
+echo "------------------------------------------------------------------------"
+python3 test_nested_router_registerports_mismatch.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: A child project's own fileMap names its artifacts inside a composing root"
+echo "------------------------------------------------------------------------"
+python3 test_per_project_filemap.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Register- and memory-connection-implied ports are independent of ports:"
+echo "------------------------------------------------------------------------"
+python3 test_ports_register_memory_connections_independent.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: register accessor emission"
+echo "------------------------------------------------------------------------"
+python3 test_register_accessor_emission.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: The builder compiles the generated context files at -O3 with no rundir help"
+echo "------------------------------------------------------------------------"
+python3 test_rundir_o3_context_src.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: sample Config members are root parameters only"
+echo "------------------------------------------------------------------------"
+python3 test_sample_config_members.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: stale registrar file cleanup"
+echo "------------------------------------------------------------------------"
+python3 test_stale_registrar_cleanup.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: stale vl_wrap file cleanup"
+echo "------------------------------------------------------------------------"
+python3 test_stale_vl_wrap_cleanup.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Generate and execute SV parameters with declared defaults and wide overrides"
+echo "------------------------------------------------------------------------"
+python3 test_sv_module_parameter_defaults.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Every committed example's SV modules and packages are named by their files"
+echo "------------------------------------------------------------------------"
+python3 test_sv_names_match_file_stem.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: parameterized register handler and router SV defaults"
+echo "------------------------------------------------------------------------"
+python3 test_sv_regs_router_parameter_defaults.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: testbench param line carries no --variant on a plain block"
+echo "------------------------------------------------------------------------"
+python3 test_tb_variant_plain_block.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: transit container Verilator wrapper"
+echo "------------------------------------------------------------------------"
+python3 test_transit_container_vl_wrapper.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: variant shared params owner selection"
+echo "------------------------------------------------------------------------"
+python3 test_variant_shared_params_owner.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Renaming the vlScWrap fileMap entry renames the header, not the class"
+echo "------------------------------------------------------------------------"
+python3 test_vl_sc_wrap_name.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated clock_gen falls back to free-running after lockstep link loss"
+echo "------------------------------------------------------------------------"
+python3 test_clockgen_link_loss.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Verilated registrar registers each factory domain once"
+echo "------------------------------------------------------------------------"
+python3 test_vl_registrar_factory_domain.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

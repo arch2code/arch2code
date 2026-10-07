@@ -178,9 +178,10 @@ db : $(A2C_SQLDB_FILE)
 # user code into gen-filled .cppm files.
 # An exit of 1 from --sweep or --port-tb is pending hand-port work: the tree
 # still regenerates and the target fails at the end with that code. A higher
-# code halts the target at once. The sweep halts it when a file sits at both
-# its unprefixed and prefixed names, since newmodule would delete the
-# unprefixed copy as stale.
+# code halts the target at once: from --sweep when a filename-prefix move is
+# blocked (a file at both names, or an unattributable rename chain), which
+# needs a hand fix before newmodule runs; from --port-tb when a
+# Config.cpp restructure is refused, since gen would abort on it.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db

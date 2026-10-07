@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""The six new protocol port thunkers bridge a payload at runtime, not just at compile time.
+"""The payload-carrying protocol port thunkers bridge a payload at runtime, not just at compile time.
 
-`interfaces/<proto>/<proto>_port_thunker.h` exists for `axi4_stream`,
-`external_reg`, `memory`, `pop_ack`, `raw` and `status` as well as for the seven
-protocols that already had one. A header that compiles but is never run proves
-nothing about the adapter: a forwarding loop that deadlocks, drops a beat,
-duplicates one, or selects the wrong arm of `copyPayload` compiles perfectly.
+A `interfaces/<proto>/<proto>_port_thunker.h` header that compiles but is never
+run proves nothing about the adapter: a forwarding loop that deadlocks, drops a
+beat, duplicates one, or selects the wrong arm of `copyPayload` compiles
+perfectly.
 
 This suite therefore builds and RUNS `fixtures/thunker-runtime/thunker_runtime.cpp`
-under the SystemC kernel. That program instantiates every one of the six templates
+under the SystemC kernel. That program instantiates each covered template
 explicitly and drives real transactions through each, in both forwarding
-directions and at both settings of the adapter's direct-copy verdict.
+directions and at both settings of the adapter's direct-copy verdict, except
+`axi_read` and `axi_write`, which run only in the consumer shape at a direct
+verdict.
 
 WHAT MAKES THE RUN EVIDENCE RATHER THAN A SMOKE TEST, in the fixture's own words
 and pinned here so a future edit that weakens it is visible:
@@ -21,9 +22,11 @@ and pinned here so a future edit that weakens it is visible:
   therefore says WHICH ARM RAN.
 - The two multi-payload protocols are instantiated at complementary verdict
   subsets, so a flag wired to the wrong payload slot fails.
-- Each protocol runs in the consumer-child shape (`thunkIn`) and the
-  producer-child shape (`thunkOut`), and `raw` additionally in the two port
-  shapes, which are the ones that resolve their up-side interface lazily.
+- Each protocol except `axi_read` and `axi_write` runs in the consumer-child
+  shape (`thunkIn`) and the producer-child shape (`thunkOut`), and `raw`
+  additionally in the two port shapes, which are the ones that resolve their
+  up-side interface lazily. `axi_read` and `axi_write` run in the consumer
+  shape only.
 - Every sink loop runs forever and counts; the totals are asserted after the
   kernel drains, so a duplicated transaction fails even though every value
   matched.
@@ -33,6 +36,13 @@ and pinned here so a future edit that weakens it is visible:
   publications that cross to the driver with their notification in all four
   shapes and never come back to the owner, and
   `memory`/`apb` read data that is never converted before it is filled.
+- A `status` bridge hands the child the up side's initial value in every
+  shape and through a chain of two bridges without notifying any reader, and
+  a child's write before its first `wait()` reaches the parent whichever
+  process the kernel runs first.
+- `axi_read` and `axi_write` run with the same optional user type on both
+  sides and a non-default id width, the combination the AXI harness below
+  does not cover.
 
 `fixtures/thunker-runtime/axi_thunker_runtime.cpp` does the same for `axi_read` and
 `axi_write`. Each case runs one traffic pattern through a thunker and again over a
@@ -44,7 +54,7 @@ side only, in all four construction shapes.
 
 The build is done here rather than by a project makefile because the harness is
 not a generated artifact of any project: it needs no database, and no example
-design exercises these six protocols across a cross-interface bind. The
+design exercises every one of these protocols across a cross-interface bind. The
 toolchain, defines, warning set and libraries mirror `include/make/a2c-systemc.mk`,
 so a header that trips a warning the real model build treats as an error fails
 here too.
@@ -80,11 +90,14 @@ LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
         '-ldl', '-lrt', '-lsystemc', '-pthread']
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
-# twelve notification-semantics and unfilled-read-data harnesses, and eight
-# external_reg mirror-publisher harnesses (four shapes, two verdicts). Pinned so
-# a harness that stopped being constructed fails here rather than reducing the
+# twelve notification-semantics and unfilled-read-data harnesses, eight
+# external_reg mirror-publisher harnesses (four shapes, two verdicts), eight
+# status initial-value harnesses in the channel and up-port shapes, four chained
+# status initial-value harnesses, four status time-zero write harnesses, and
+# two axi_read/axi_write harnesses with the optional parameters. Pinned so a
+# harness that stopped being constructed fails here rather than reducing the
 # evidence silently.
-EXPECTED_CHECKS = 757
+EXPECTED_CHECKS = 877
 # Twenty-eight axi_read and fifty axi_write cases, each with its direct-connection
 # control run.
 AXI_EXPECTED_CASES = 78
@@ -171,7 +184,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert failures == 'failures:0', f"{output}"
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} payload and beat-count checks across 48 harnesses, 0 failures")
+    print(f"  {count} payload and beat-count checks across 66 harnesses, 0 failures")
 
 
 def test_axi_thunkers_match_a_direct_connection():

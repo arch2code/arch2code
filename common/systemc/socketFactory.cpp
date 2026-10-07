@@ -186,11 +186,26 @@ std::shared_ptr<ThreadSafeEvent> socketFactory::getPeerClosedEvent(const std::st
     return it->second.peer_closed_event;
 }
 
+bool socketFactory::isPeerClosed(const std::string &name)
+{
+    auto it = getMap().find(name);
+    if (it == getMap().end()) {
+        return false;
+    }
+    return it->second.peer_closed->load(std::memory_order_acquire);
+}
+
 void socketFactory::notifyPeerClosed(const std::string &name)
 {
-    auto ev = getPeerClosedEvent(name);
-    if (ev) {
-        ev->notify();
+    auto it = getMap().find(name);
+    if (it == getMap().end()) {
+        return;
+    }
+    // Latched before the notify, so a waiter that checks isPeerClosed() first
+    // cannot miss the close.
+    it->second.peer_closed->store(true, std::memory_order_release);
+    if (it->second.peer_closed_event) {
+        it->second.peer_closed_event->notify();
     }
 }
 

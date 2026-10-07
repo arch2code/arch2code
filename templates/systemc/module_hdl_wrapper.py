@@ -5,6 +5,14 @@ import textwrap
 
 from jinja2 import Template
 
+# sc_time unit spelling per timeUnit the clocks: schema admits. A unit added to
+# the schema without a spelling here fails loudly at generation.
+SC_TIME_UNIT = {'ps': 'SC_PS', 'ns': 'SC_NS', 'us': 'SC_US'}
+
+def resetDriverName(resetRow):
+    # One driver thread per reset, so the method name carries the reset it drives.
+    return f"reset_driver_{resetRow['reset']}"
+
 # args from generator line
 # prj object
 # data set dict
@@ -83,21 +91,122 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s.append(mp_sig[port]['bfm_ctor_init'])
-        s = (',\n'.join(s) + ',') if s else ''
-        return s
+        return ',\n'.join(s)
+
+    def sec_clock_decl(args, prj, data):
+        # A gated sc_signal, not an sc_clock: under socket lockstep every clock
+        # must stop while the Python partner holds the quantum, and an sc_clock
+        # cannot be paused.
+        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
+
+    def sec_clock_ctor_init(args, prj, data):
+        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks'])
+
+    def sec_clock_half_decl(args, prj, data):
+        # An `output` block clock is produced by the DUT and observed, not
+        # generated: it needs no half-period to toggle on.
+        return '\n'.join(f"sc_time {row['clock']}_half_;"
+                         for row in data['clocks'] if row['direction'] == 'input')
+
+    def sec_clock_half_ctor_init(args, prj, data):
+        # Each clock runs at its own declared period; the half period is what the
+        # generator toggles on.
+        return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
+                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
+                          for row in data['clocks'] if row['direction'] == 'input')
+
+    def sec_clock_start(args, prj, data):
+        return '\n'.join(f"{row['clock']}.write(true);"
+                         for row in data['clocks'] if row['direction'] == 'input')
+
+    def sec_clock_threads(args, prj, data):
+        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});"
+                         for row in data['clocks'] if row['direction'] == 'input')
+
+    def sec_clock_gens(args, prj, data):
+        return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
+                         for row in data['clocks'] if row['direction'] == 'input')
+
+    def sec_reset_decl(args, prj, data):
+        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
+
+    def sec_reset_ctor_init(args, prj, data):
+        # Born released: the driver's first write(false) is then a real negedge,
+        # which Verilator's async-reset processes need to see.
+        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
+
+    def sec_reset_threads(args, prj, data):
+        # An `output` block reset is produced by the DUT and observed, not
+        # driven: it gets no driver thread.
+        return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
+                         for row in data['resets'] if row['direction'] == 'input')
+
+    def sec_reset_drivers(args, prj, data):
+        # One thunk per reset, counting edges of THAT reset's own clock: two
+        # resets in domains of different periods must not be released together.
+        return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
+                         f'{row["clock"]}, {row["releaseCycles"]}); }}'
+                         for row in data['resets'] if row['direction'] == 'input')
+
+    def sec_edge_track_decl(args, prj, data):
+        # End-of-run report: one edge counter per OUTPUT clock this
+        # wrapper observes (never drives), and one release
+        # flag per OUTPUT reset. The wrapper observes the block's own output
+        # clocks and resets; internal nets elsewhere in the design are not
+        # visible here.
+        s = [f"int {row['clock']}_edges_ = 0;"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"bool {row['reset']}_released_ = false;"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_edge_track_registrations(args, prj, data):
+        s = [f"SC_METHOD({row['clock']}_edge_count); sensitive << {row['clock']}.value_changed_event(); "
+            f"dont_initialize();"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"SC_METHOD({row['reset']}_release_track); sensitive << {row['reset']}.value_changed_event(); "
+             f"dont_initialize();"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_edge_track_methods(args, prj, data):
+        s = [f"void {row['clock']}_edge_count() {{ {row['clock']}_edges_++; }}"
+            for row in data['clocks'] if row['direction'] == 'output']
+        s += [f"void {row['reset']}_release_track() {{ if ({row['reset']}.read()) "
+             f"{row['reset']}_released_ = true; }}"
+             for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(s)
+
+    def sec_end_of_simulation(args, prj, data):
+        # An output clock with no edge or an output reset never released is
+        # reported here rather than left to a silent, activity-free run.
+        lines = [f'if (!{row["clock"]}_edges_) {{ std::cerr << "warning: '
+                f'clock \'{row["clock"]}\' produced no edge by end of run" '
+                f'<< std::endl; }}'
+                for row in data['clocks'] if row['direction'] == 'output']
+        lines += [f'if (!{row["reset"]}_released_) {{ std::cerr << "warning: '
+                 f'output reset \'{row["reset"]}\' was never observed to '
+                 f'release during the run" << std::endl; }}'
+                 for row in data['resets'] if row['direction'] == 'output']
+        return '\n'.join(lines)
 
     def sec_dut_connect(args, prj, data):
         s = []
         for port_type in data['ports']:
             for port in data['ports'][port_type]:
                 s.append('\n'.join(mp_sig[port]['dut_ports_decl']))
-        s.append(f'dut_hdl->clk(clk);')
-        s.append(f'dut_hdl->rst_n(rst_n);')
+        for name in intf_gen_utils.clock_reset_port_names(data):
+            s.append(f'dut_hdl->{name}({name});')
         s = '\n'.join(s)
         return s
 
     def sec_bfm_connect(args, prj, data):
         s = []
+        # A BFM drives one interface, so both its clock and its reset are that
+        # interface's own domain: the block view resolves each port's connection
+        # clock into this block's derived clock set as `domainClock` and the
+        # block's reset of that domain as `domainReset`, and every clock and reset
+        # of those sets is a member declared here, so the binds compile.
         # Inherited ports (e.g. `ipDataIf`, `out0`) live on the
         # `<block>Base{cfg}` base class. When the wrapper is Config-templated
         # (cfg names a template parameter) those names are dependent and
@@ -108,13 +217,14 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s_ = []
-                intf_name = data['ports'][port_type][port]['name']
+                port_data = data['ports'][port_type][port]
+                intf_name = port_data['name']
                 bfm_name = intf_name + '_bfm'
                 hdl_intf_name = intf_name + '_hdl_if'
                 s_.append(f'{bfm_name}.if_p(this->{intf_name});')
                 s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
-                s_.append(f'{bfm_name}.clk(clk);')
-                s_.append(f'{bfm_name}.rst_n(rst_n);')
+                s_.append(f'{bfm_name}.clk({port_data["domainClock"]});')
+                s_.append(f'{bfm_name}.rst_n({port_data["domainReset"]});')
                 s.append('\n'.join(s_))
         s = '\n\n'.join(s)
         return s
@@ -133,19 +243,47 @@ def render_sc(args, prj, data):
         # A templated wrapper binds its base class to its own `Config` template
         # parameter, so the concrete Config comes from the registrar.
         isTemplate = data['svWrapper']['scWrapperConfigTemplated']
+        # The end-of-run report has nothing to say for a block with no
+        # OUTPUT clock or reset (there is nothing this wrapper observes
+        # rather than drives), so the override is emitted only then -
+        # otherwise every hasVl wrapper gets an empty override body.
+        has_edge_track = any(row['direction'] == 'output' for row in data['clocks']) \
+            or any(row['direction'] == 'output' for row in data['resets'])
+        # Each section below returns its joined entries with no trailing
+        # comma, so an empty section (e.g. no resets) drops out cleanly
+        # instead of leaving a bare ',' in the initialiser list.
+        sec_ctor_init = ',\n'.join(p for p in (
+            sec_clock_ctor_init(args, prj, data),
+            sec_bfm_ctor_init(args, prj, data),
+            sec_reset_ctor_init(args, prj, data),
+            sec_clock_half_ctor_init(args, prj, data),
+        ) if p)
         s = t.render(
             blockname=data['blockName'],
             sc_wrapper_class=data['svWrapper']['scWrapperModule'],
             is_template=isTemplate,
+            has_edge_track=has_edge_track,
             concrete_sv_module=concrete['svModule'],
             concrete_dut_class=concrete['dutClass'],
             cfg='<Config>' if isTemplate else cfg,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
-            sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
+            sec_ctor_init=sec_ctor_init,
             sec_dut_connect=sec_dut_connect(args, prj, data),
             sec_bfm_connect=sec_bfm_connect(args, prj, data),
-            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data)
+            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
+            sec_clock_decl=sec_clock_decl(args, prj, data),
+            sec_clock_half_decl=sec_clock_half_decl(args, prj, data),
+            sec_clock_start=sec_clock_start(args, prj, data),
+            sec_clock_threads=sec_clock_threads(args, prj, data),
+            sec_clock_gens=sec_clock_gens(args, prj, data),
+            sec_reset_decl=sec_reset_decl(args, prj, data),
+            sec_reset_threads=sec_reset_threads(args, prj, data),
+            sec_reset_drivers=sec_reset_drivers(args, prj, data),
+            sec_edge_track_decl=sec_edge_track_decl(args, prj, data),
+            sec_edge_track_registrations=sec_edge_track_registrations(args, prj, data),
+            sec_edge_track_methods=sec_edge_track_methods(args, prj, data),
+            sec_end_of_simulation=sec_end_of_simulation(args, prj, data)
         )
         return(s)
 
@@ -191,7 +329,11 @@ def render_sc(args, prj, data):
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)
         case 'channel_decl': return sec_channel_decl(args, prj, data)
         case 'bfm_decl': return sec_bfm_decl(args, prj, data)
-        case 'bfm_ctor_init': return sec_bfm_ctor_init(args, prj, data)
+        case 'bfm_ctor_init':
+            # Emitted standalone, the section ends in a comma, ready for the
+            # member initialisers that follow it.
+            s = sec_bfm_ctor_init(args, prj, data)
+            return s + ',' if s else ''
         case 'dut_connect': return sec_dut_connect(args, prj, data)
         case 'bfm_connect': return sec_bfm_connect(args, prj, data)
         case 'hdl_if_decl': return sec_hdl_if_decl(args, prj, data)
@@ -236,7 +378,7 @@ public:
 
     DUT_T *dut_hdl;
 {% endif %}
-    sc_signal<bool> clk;
+    {{ sec_clock_decl | indent(4) }}
 
     {{ sec_bfm_decl | indent(4) }}
 {%- if not is_template %}
@@ -253,11 +395,8 @@ public:
     {{sc_wrapper_class}}(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("{{sc_wrapper_class}}", name(), bbMode),
-        {{blockname}}Base{{cfg}}(name(), variant),
-        clk("clk"),
-        {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n("rst_n", true),
-        clk_half_(0.5, SC_NS)
+        {{blockname}}Base{{cfg}}(name(), variant){% if sec_ctor_init %},
+        {{ sec_ctor_init | indent(8) }}{% endif %}
     {
 {%- if not is_template %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -273,9 +412,12 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
-        clk.write(true);
-        SC_THREAD(clock_gen);
-        SC_THREAD(reset_driver);
+        {{ sec_clock_start | indent(8) }}
+        {{ sec_clock_threads | indent(8) }}
+        {{ sec_reset_threads | indent(8) }}
+{%- if has_edge_track %}
+        {{ sec_edge_track_registrations | indent(8) }}
+{%- endif %}
 
         end_ctor_init();
 
@@ -289,46 +431,91 @@ public:
     }
 #endif
 
+{%- if has_edge_track %}
+
+    // An output clock with no edge or an output reset never released is
+    // reported at end of run rather than left to a silent, activity-free run.
+    void end_of_simulation() override {
+        {{ sec_end_of_simulation | indent(8) }}
+    }
+{%- endif %}
+
 private:
 
     {{ sec_hdl_if_decl | indent(4) }}
 
-    sc_signal<bool> rst_n;
-    sc_time clk_half_;
+    {{ sec_reset_decl | indent(4) }}
+    {{ sec_clock_half_decl | indent(4) }}
+{%- if has_edge_track %}
+    {{ sec_edge_track_decl | indent(4) }}
+{%- endif %}
 
-    void clock_gen() {
-        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
-        // owns timed waits; we only toggle when an edge is requested.
+    // Free-run: toggle every half period until gated lockstep begins. Gated
+    // lockstep: the quantum thread broadcasts one edge request per
+    // socketSyncClockHalfPeriod() of advanced time, and a clock toggles once
+    // its own half period has accumulated, so a slower clock keeps its period
+    // at quantum resolution and no clock can free-run during wait(ack). A half
+    // period that is not a whole number of lockstep steps would be silently
+    // moved onto the step grid, so it is fatal on entry to gated mode. Losing
+    // the sync link ends gating for good and wakes the gated wait without an
+    // edge, so the clock returns to free-running.
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        while (!socketSyncTimeGated()) {
+            wait(half);
+            sig.write(!sig.read());
+        }
+        const sc_time step = socketSyncClockHalfPeriod();
+        Q_ASSERT(half.value() % step.value() == 0,
+                 std::string("clock ") + sig.name() + " half period "
+                 + half.to_string() + " is not a whole multiple of the lockstep step "
+                 + step.to_string() + "; lockstep co-simulation cannot represent it. "
+                 "Declare a period that is a whole multiple of " + (step + step).to_string()
+                 + ", or set PYSOCKET_LOCKSTEP=0 to run free-running.");
+        sc_time gated = SC_ZERO_TIME;
         while (true) {
-            if (socketSyncTimeGated()) {
-                socketSyncWaitClockEdge();
-                clk.write(!clk.read());
-            } else {
-                wait(clk_half_);
-                clk.write(!clk.read());
+            socketSyncWaitClockEdge();
+            if (!socketSyncTimeGated()) {
+                break;
             }
+            gated += step;
+            if (gated >= half) {
+                gated -= half;
+                sig.write(!sig.read());
+            }
+        }
+        while (true) {
+            wait(half);
+            sig.write(!sig.read());
         }
     }
 
-    void reset_driver() {
-        // rst_n starts deasserted so the first write(false) is a negedge.
-        // Verilator async reset (@(negedge rst_n)) does not run if the pin
-        // is born low and only later rises.
-        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
-        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
-        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
-        // Free-run / non-socket: assert, hold, then release.
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    // The clock parameter is named reset_driver_clk, not clk: a block whose
+    // own default clock is literally named clk declares a same-named member,
+    // which a parameter named clk would otherwise shadow (-Wshadow).
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
         if (socketSyncLockstepActive()) {
-            rst_n.write(socketSyncRstN());
+            rst.write(socketSyncRstN());
             while (true) {
                 wait(socketSyncRstNEvent());
-                rst_n.write(socketSyncRstN());
+                rst.write(socketSyncRstN());
             }
         } else {
-            rst_n.write(false);
-            wait(5, SC_NS);
-            rst_n.write(true);
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(reset_driver_clk.posedge_event());
+            }
+            rst.write(true);
         }
     }
+
+    {{ sec_clock_gens | indent(4) }}
+    {{ sec_reset_drivers | indent(4) }}
+{%- if has_edge_track %}
+    {{ sec_edge_track_methods | indent(4) }}
+{%- endif %}
 
 """

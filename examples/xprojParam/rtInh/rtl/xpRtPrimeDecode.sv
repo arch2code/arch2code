@@ -16,23 +16,23 @@ apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(cpu_main.paddr) & apbAddrSt'(32'hfff_ffff);
 //signals for interface cpu_main
 apbAddrSt paddr_q;
-`DFF (paddr_q, cpu_main.paddr)
+`DFF_DOM(clk, rst_n, paddr_q, cpu_main.paddr)
 apbDataSt pwdata_q;
-`DFF (pwdata_q, cpu_main.pwdata)
+`DFF_DOM(clk, rst_n, pwdata_q, cpu_main.pwdata)
 logic penable_q;
-`DFF (penable_q, cpu_main.penable)
+`DFF_DOM(clk, rst_n, penable_q, cpu_main.penable)
 logic pwrite_q;
-`DFF (pwrite_q, cpu_main.pwrite)
+`DFF_DOM(clk, rst_n, pwrite_q, cpu_main.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_DOM(clk, rst_n, trans_active, set_trans_active, pready)
 
 //signals for interface apbReg_uWrap
 logic apbReg_uWrap_psel;
 logic apbReg_uWrap_next_psel;
-`SCFF(apbReg_uWrap_psel, apbReg_uWrap_next_psel, apbReg_uWrap.pready)
+`SCFF_DOM(clk, rst_n, apbReg_uWrap_psel, apbReg_uWrap_next_psel, apbReg_uWrap.pready)
 
 assign apbReg_uWrap.paddr   = paddr_q;
 assign apbReg_uWrap.penable = penable_q & apbReg_uWrap_psel;
@@ -63,9 +63,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, cpu_main_next_pready)
-`DFF(prdata, cpu_main_next_prdata)
-`DFF(pslverr, cpu_main_next_pslverr)
+`DFF_DOM(clk, rst_n, pready, cpu_main_next_pready)
+`DFF_DOM(clk, rst_n, prdata, cpu_main_next_prdata)
+`DFF_DOM(clk, rst_n, pslverr, cpu_main_next_pslverr)
 assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;

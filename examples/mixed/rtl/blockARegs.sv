@@ -36,12 +36,12 @@ module blockARegs
     logic nxt_blockATableLocal_rd_enable, blockATableLocal_rd_enable, blockATableLocal_rd_capture;
     logic blockATableLocal_wr_enable;
 
-    `DFF(blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
-    `DFF(blockATableLocal_wr_enable, blockATableLocal_update_0)
-    `DFF(blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
-    `DFF(blockATableLocal_rd_capture, blockATableLocal_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, blockATableLocal_wr_enable, blockATableLocal_update_0)
+    `DFF_DOM(clk, rst_n, blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATableLocal_rd_capture, blockATableLocal_rd_enable)
 
-    `DFFEN(blockATableLocal_data[6:0], nxt_blockATableLocal_data[6:0], blockATableLocal_update_0)
+    `DFFEN_DOM(clk, rst_n, blockATableLocal_data[6:0], nxt_blockATableLocal_data[6:0], blockATableLocal_update_0)
 
     assign blockATableLocal.enable      = blockATableLocal_rd_enable | blockATableLocal_wr_enable;
     assign blockATableLocal.wr_en       = blockATableLocal_wr_enable;
@@ -57,13 +57,13 @@ module blockARegs
     logic nxt_blockATable37Bit_rd_enable, blockATable37Bit_rd_enable, blockATable37Bit_rd_capture;
     logic blockATable37Bit_wr_enable;
 
-    `DFF(blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
-    `DFF(blockATable37Bit_wr_enable, blockATable37Bit_update_1)
-    `DFF(blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
-    `DFF(blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockATable37Bit_wr_enable, blockATable37Bit_update_1)
+    `DFF_DOM(clk, rst_n, blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
+    `DFF_DOM(clk, rst_n, blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
 
-    `DFFEN(blockATable37Bit_data[31:0], nxt_blockATable37Bit_data[31:0], blockATable37Bit_update_0)
-    `DFFEN(blockATable37Bit_data[36:32], nxt_blockATable37Bit_data[36:32], blockATable37Bit_update_1)
+    `DFFEN_DOM(clk, rst_n, blockATable37Bit_data[31:0], nxt_blockATable37Bit_data[31:0], blockATable37Bit_update_0)
+    `DFFEN_DOM(clk, rst_n, blockATable37Bit_data[36:32], nxt_blockATable37Bit_data[36:32], blockATable37Bit_update_1)
 
     assign blockATable37Bit.enable      = blockATable37Bit_rd_enable | blockATable37Bit_wr_enable;
     assign blockATable37Bit.wr_en       = blockATable37Bit_wr_enable;
@@ -134,9 +134,12 @@ module blockARegs
                                 nxt_rd_data = apbDataSt'(blockATableLocal.read_data[6:0]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
+                    nxt_blockATableLocal_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockATableLocal_rd_capture;
                 end
                 [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
@@ -152,9 +155,12 @@ module blockARegs
                                 nxt_rd_data = apbDataSt'(blockATable37Bit.read_data[36:32]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_blockATable37Bit_rd_enable = ~blockATable37Bit_rd_capture;
+                    nxt_blockATable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockATable37Bit_rd_capture;
                 end
                 default: begin // unmapped read: ACK with 0 (never stall, never error)
                     nxt_rd_ready = 1'b1;
@@ -168,9 +174,9 @@ module blockARegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_DOM(clk, rst_n, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

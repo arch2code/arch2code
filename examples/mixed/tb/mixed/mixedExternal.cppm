@@ -9,6 +9,7 @@ module;
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
+#include "testController.h"
 // GENERATED_CODE_BEGIN --template=moduleExport --fileMapKey=tbExternal
 export module mixed.external;
 import a2c.endOfTest;
@@ -44,6 +45,9 @@ public:
     // GENERATED_CODE_END
     // external implementation members
 
+    // End-of-test voter that stays when mixed is verilated and blockB's
+    // model voter is gone.
+    void doneTest(void);
 };
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
@@ -61,4 +65,13 @@ mixedExternal::mixedExternal(sc_module_name modulename) :
 
     SC_THREAD(eotThread);
     // GENERATED_CODE_END
+    SC_THREAD(doneTest);
 };
+
+void mixedExternal::doneTest(void)
+{
+    endOfTest eot;
+    eot.registerVoter();
+    testController::GetInstance().wait_all_tests_complete();
+    eot.setEndOfTest(true);
+}

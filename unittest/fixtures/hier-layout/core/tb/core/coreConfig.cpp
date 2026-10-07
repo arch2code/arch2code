@@ -24,6 +24,12 @@ public:
     static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~coreConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
+protected:
+    // The testbench top is instantiated through this generated helper so its
+    // factory-key projectName is emitted here on every make gen (matching the
+    // tb-top registration), instead of being hand-written into the user body.
+    std::shared_ptr<blockBase> createTbTop(void) { return instanceFactory::createInstance("", "tb", "coreTestbench", "", "hier"); }
+public:
 // GENERATED_CODE_END
 
     bool createTestBench(void) override

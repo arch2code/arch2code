@@ -31,6 +31,9 @@ public:
     }
 
     void bfm_driver_thread() {
+        // rst_n is asserted a delta after construction, so sample it at clock
+        // edges rather than at time zero.
+        do { wait(clk.posedge_event()); } while (!rst_n);
         DATA_T data;
         while (true) {
             hdl_if_p->ack = false;
@@ -64,6 +67,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         DATA_T data;
         while (true) {
             hdl_if_p->push = false;

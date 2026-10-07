@@ -7,6 +7,7 @@ Pins the C++ expression translation, the parenthesization of a derived
 constant substituted into a larger expression, and the real Config and Base
 renders on the ip_test tree."""
 
+import copy
 import os
 import sys
 import tempfile
@@ -24,6 +25,14 @@ from templates.systemc import baseClassDecl
 from templates.systemc import config
 from templates.systemc import includes
 from templates.systemc import structures
+
+# projectCreate keeps its parse state in CLASS attributes, so two in-process
+# builds in one interpreter share it. Snapshotted at import time, before any
+# build has mutated one.
+PRISTINE_CLASS_STATE = {
+    name: copy.deepcopy(value) for name, value in vars(projectCreate).items()
+    if not name.startswith('_') and not callable(value)
+}
 
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
@@ -132,22 +141,27 @@ def test_const_reference_cpp_parenthesizes_nested_derived_reference():
 
 
 def _reset_project_create_class_state():
-    projectCreate.data = dict()
-    projectCreate.flatData = dict()
-    projectCreate.counterGroup = {}
-    projectCreate.counterGroupControl = {}
-    projectCreate.counterData = {}
-    projectCreate.addressObjects = {}
-    projectCreate.yamlAllFiles = {}
-    projectCreate.yamlUnread = []
-    projectCreate.yamlRaw = {}
-    projectCreate.yamlDependancies = {}
-    projectCreate.yamlContext = {}
-    projectCreate.enums = {}
-    projectCreate.qualEnums = {}
-    projectCreate.includeName = {}
-    projectCreate.includeValid = {}
-    projectCreate.errorState = False
+    """Return projectCreate's class-level state to its import-time values."""
+    if not any(isinstance(value, (dict, list, set))
+               for value in PRISTINE_CLASS_STATE.values()):
+        raise AssertionError(
+            "no mutable class attributes were discovered on projectCreate, so "
+            "the import-time snapshot is empty and this reset does nothing; each "
+            "in-process build would inherit the previous build's parse state")
+    # Re-derived from the class, not from the snapshot's own keys, so an omission
+    # is visible. The excluded underscore attributes are read-only templates.
+    missed = sorted(name for name, value in vars(projectCreate).items()
+                    if not name.startswith('_')
+                    and isinstance(value, (dict, list, set))
+                    and name not in PRISTINE_CLASS_STATE)
+    if missed:
+        raise AssertionError(
+            f"projectCreate carries mutable class attributes {missed} that the "
+            f"import-time snapshot does not hold, so this reset leaves them "
+            f"holding the previous build's parse state. The snapshot must "
+            f"discover the attributes from the class rather than select them.")
+    for name, pristine in PRISTINE_CLASS_STATE.items():
+        setattr(projectCreate, name, copy.deepcopy(pristine))
 
 
 def _build_fresh_db():

@@ -685,9 +685,10 @@ with.
 The same parameterized block becomes:
 
 - **C++** — a class template. The parameter set becomes a **Config struct**: one
-  per declared variant, emitted in the block's *config context* (the file where
-  its parameterizable declarations live, which is not necessarily its declaring
-  file), in a header `<context>VariantConfig.h`. Members are
+  per declared variant, emitted in an owner-qualified Config module interface
+  unit, `<project>_<block>VariantConfig.cppm` in the declaring project's
+  `registrar` segment (the `configModule` fileMap entry). Each project that
+  declares variants of the block gets its own module. Members are
   `static constexpr`, with the C++ type chosen from `max(value, maxValue)`, so a
   worst-case-wide parameter gets a 64-bit field even when its current value is
   small. (`maxBitwidth` is a separate worst-case sizing input, used for
@@ -839,13 +840,22 @@ So: **`make gen` does not create files; `make newmodule` does not fill them.**
 
 File classes are keyed on **segment role**, not literal directory (so the rule is
 identical in both layouts). Migration derives wholesale-clean eligibility from
-the frozen legacy map, where the wholesale-clean set is `{base, vl_wrap}`:
+the frozen legacy map, where the wholesale-clean set is `{base}`:
 
-1. **GENERATED-deletable** — `base`, `registrar`, `vl_wrap`, `fwInc`.
-2. **USER-PRESERVE in place** — `model`, `rtl`, `tb`, plus `fw/src`. Never
+1. **GENERATED-deletable** — `base`, `registrar`, `fwInc`.
+2. **MIXED** — `vl_wrap`. Its files are generated, but the SC wrapper header
+   `<block>_hdl_sc_wrapper.h` holds user code outside its generated regions
+   (the `end_ctor_init()` body). The migration sweep deletes legacy `vl_wrap`
+   files per file and never deletes that header. `make newmodule` deletes a
+   stale marker-carrying `vl_wrap` file (one no current block or variant names)
+   only when its text outside the generated regions matches the scaffold
+   rendered from the file's own `GENERATED_CODE_PARAM` arguments; otherwise it
+   keeps the file and reports it as a warning. Stale `registrar` files are
+   deleted outright.
+3. **USER-PRESERVE in place** — `model`, `rtl`, `tb`, plus `fw/src`. Never
    deleted; generated regions inside *are* still rewritten.
-3. **INPUT** — `arch/yaml`. Never touched.
-4. **USER BUILD-CONFIG** — `include/`, per-segment makefiles. Never deleted.
+4. **INPUT** — `arch/yaml`. Never touched.
+5. **USER BUILD-CONFIG** — `include/`, per-segment makefiles. Never deleted.
 
 Segment class answers "who owns the bytes"; it does **not** mean the generator
 never rewrites the file. Named exceptions: `fw` is split (`fw/include` generated,

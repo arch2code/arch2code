@@ -206,14 +206,15 @@ def create(prj):
         printWarning(f"stale vl_wrap file {staleFile} is not part of "
                     f"this project's current verification-wrapper contract")
     if staleVlWrapFiles:
-        printWarning("run 'make newmodule' to remove stale verification-wrapper files")
+        printWarning("run 'make newmodule' to remove stale verification-wrapper files; "
+                     "it keeps and reports any that may hold user code")
 
-    # A `<context>VariantConfig.h` in an owned include directory is a generated
+    # A retired `<includeName>VariantConfig.h` beside an owned context include is a generated
     # file no fileMap entry names. Warn here; newmodule performs the deletion.
-    retiredFiles = artifactPaths.getRetiredContextFiles(prj, rows)
+    retiredFiles = artifactPaths.getRetiredContextFiles(prj)
     for staleFile in retiredFiles:
         printWarning(f"stale retired file {staleFile} is no longer generated "
-                     f"(Config now lives in the per-block registrar Config modules)")
+                     f"(Config lives in the per-block registrar Config modules)")
     if retiredFiles:
         printWarning("run 'make newmodule' to remove stale retired files; replace any "
                      "#include of them with `import <project>.<block>.config;`")
@@ -223,7 +224,10 @@ def create(prj):
         printWarning(f"firmware header {legacyFile} wraps its generated regions in a "
                      f"scaffold-owned namespace fw_ns block, which nests the context namespace")
     if legacyFwHeaders:
-        printWarning("run 'make newmodule' to migrate legacy firmware headers")
+        printWarning("run 'make newmodule' to remove the scaffold-owned fw_ns block from "
+                     "these firmware headers: the generated regions open fw_ns themselves, "
+                     "so the block nests it twice. User text inside the block keeps its "
+                     "own fw_ns block")
 
     # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
     for row in rows:

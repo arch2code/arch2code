@@ -127,8 +127,8 @@ class _FakeConfig:
 class _FakePrj:
     """The subset of a projectOpen handle the phases read.
 
-    `hasOwnParams` is a DB fact the carried-variant check keys on: the generator only
-    validates a `--variant=` against a block that owns `params:`, so a fixture has to
+    `hasOwnParams` is a DB fact the carried-variant check keys on: the generator
+    rejects any `--variant=` on a block that owns no `params:`, so a fixture has to
     be able to say either.
     """
 
@@ -811,16 +811,15 @@ def test_external_retired_variant_is_refused():
               "the TODO names the retired selection and the declared variants")
 
 
-def test_external_variant_check_skips_what_the_generator_does_not_resolve():
-    """The check mirrors the generator, so it must skip where the generator skips.
+def test_external_variant_check_mirrors_the_generator():
+    """The check mirrors the generator's resolution of the tail's own `--block=`.
 
-    Two shapes must still port: the documented `_tb` retarget (the tail's `--block=`
-    names a different block, whose variants are the ones actually resolved against),
-    and a DUT that owns no `params:` (resolve_dut_variant_selection early-returns and
-    passes the variant through to the instance factory unchecked). Refusing either
-    would refuse a migration `make gen` accepts.
+    The documented `_tb` retarget still ports: its `--block=` names a different
+    block, whose variants are the ones actually resolved against. A DUT that owns
+    no `params:` accepts no `--variant=` (resolve_dut_variant_selection rejects it),
+    so a carried one is reported stale rather than stamped.
     """
-    print("test_external_variant_check_skips_what_the_generator_does_not_resolve")
+    print("test_external_variant_check_mirrors_the_generator")
     with tempfile.TemporaryDirectory() as root:
         # retargeted --block plus a variant that is NOT declared by the ported block
         p = _stageExternalWithTail(
@@ -833,11 +832,16 @@ def test_external_variant_check_skips_what_the_generator_does_not_resolve():
 
     with tempfile.TemporaryDirectory() as root:
         p = _stageExternalWithTail(root, f"--block={BLOCK} --variant=retired")
+        before = _read(p["cppm"])
         report = portTbExternals(_FakePrj(root, hasOwnParams=False), write=True)
-        check([i.kind for i in report.applied] == [TB_EXTERNAL_PORTED]
-              and not report.manual,
-              "a block owning no params: is not variant-validated")
-        check(not os.path.exists(p["h"]), "that pair still ports")
+        check([i.kind for i in report.manual] == [TODO_PORT_STALE_VARIANT]
+              and not report.applied,
+              "a --variant= on a block owning no params: is reported stale")
+        check(os.path.exists(p["h"]) and _read(p["cppm"]) == before,
+              "the legacy pair stays and the target is untouched")
+        message = report.manual[0].message if report.manual else ""
+        check("declares no params:" in message and "Remove `--variant=`" in message,
+              "the TODO states the rule and the fix")
 
     with tempfile.TemporaryDirectory() as root:
         # the default in-tree shape: retargeted --block, no --variant at all
@@ -897,6 +901,33 @@ def test_tb_top_undeclared_variant_is_refused():
         message = report.manual[0].message if report.manual else ""
         check("'retired'" in message and "small" in message and "large" in message,
               "the TODO names the stale selection and the variants the block declares")
+
+
+def test_tb_top_of_a_plain_block():
+    """A DUT owning no `params:` takes no `--variant=`: its scaffold carries none,
+    and `make gen` rejects one. A carried variant is reported stale, never sent to
+    re-scaffold; a pair carrying none is deleted."""
+    print("test_tb_top_of_a_plain_block")
+    with tempfile.TemporaryDirectory() as root:
+        p = _stageTbTop(root, f"--block={BLOCK} --variant=large", "")
+        before = _read(p["tbTopCppm"])
+        report = portTbTops(_FakePrj(root, hasOwnParams=False), write=True)
+        check([i.kind for i in report.manual] == [TODO_PORT_STALE_VARIANT]
+              and not report.applied,
+              "a carried variant on a plain block is reported stale")
+        check(_read(p["tbTopCppm"]) == before and os.path.exists(p["tbTopH"]),
+              "the target is untouched and the legacy pair stays")
+        message = report.manual[0].message if report.manual else ""
+        check("declares no params:" in message and "make newmodule" not in message,
+              "the TODO states the rule and does not ask for a re-scaffold")
+
+    with tempfile.TemporaryDirectory() as root:
+        p = _stageTbTop(root, f"--block={BLOCK}", "")
+        report = portTbTops(_FakePrj(root, hasOwnParams=False), write=True)
+        check([i.kind for i in report.applied] == [TB_TOP_PORTED] and not report.manual,
+              "a plain block's pair with no variant ports")
+        check(not os.path.exists(p["tbTopH"]) and not os.path.exists(p["tbTopCpp"]),
+              "the legacy pair is deleted")
 
 
 def test_tb_top_without_a_variant_is_just_deleted():
@@ -1002,13 +1033,14 @@ def main():
     test_tbconfig_missing_registration_anchor_is_reported()
     test_tb_top_carries_the_user_variant_and_deletes_the_pair()
     test_tb_top_undeclared_variant_is_refused()
+    test_tb_top_of_a_plain_block()
     test_tb_top_without_a_variant_is_just_deleted()
     test_tb_top_refuses_a_tail_argument_it_cannot_carry()
     test_tb_top_variant_disagreement_is_reported()
     test_tb_top_with_no_param_line_is_just_deleted()
     test_external_carries_a_declared_variant()
     test_external_retired_variant_is_refused()
-    test_external_variant_check_skips_what_the_generator_does_not_resolve()
+    test_external_variant_check_mirrors_the_generator()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} "
           f"({PASS} checks, {FAIL} failures)")
     return 1 if FAIL else 0
