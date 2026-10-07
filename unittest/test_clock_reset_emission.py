@@ -2048,14 +2048,15 @@ def check_memory_instance_binds_the_accessor_domain(emitted):
     memory that clkSlow flops in the handler write, and nothing else in the
     toolchain reports that. Port B is the handler's port, on the register
     clock clkSlow, and port A is the block-side port, on the memory's own
-    clock, also clkSlow here."""
-    expected = (('clkA', 'clkSlow'), ('clkB', 'clkSlow'))
+    clock, also clkSlow here, so the memory has the one clock clkSlow."""
+    expected = [('clk', 'clkSlow')]
     for name, bound in _memory_instance_binds(emitted, 'leafA module').items():
-        if tuple(bound[-2:]) != expected:
+        clocks = [bind for bind in bound if bind[0].startswith('clk')]
+        if clocks != expected or bound[-1:] != expected:
             raise AssertionError(
-                f"leafA memory {name} ends with {tuple(bound[-2:])}, expected "
-                f"{expected}; port B binds the register clock and port A the "
-                f"memory's clock, both clkSlow in this fixture")
+                f"leafA memory {name} binds clocks {clocks}, expected {expected} "
+                f"last; both ports run on clkSlow in this fixture, so the memory "
+                f"takes the single clock")
     return True
 
 
@@ -2063,14 +2064,14 @@ def check_memory_instance_default_domain(emitted):
     """The same memory bind in the DEFAULT domain names the default clock.
 
     In a single-domain project the memory's accessor domain is the default
-    clock, so both of memory_dp's clock binds read `clk`."""
-    expected = (('clkA', 'clk'), ('clkB', 'clk'))
+    clock, so memory_dp's one clock bind reads `clk`."""
+    expected = [('clk', 'clk')]
     for name, bound in _memory_instance_binds(
             emitted, 'default-domain leafA module').items():
-        if tuple(bound[-2:]) != expected:
+        clocks = [bind for bind in bound if bind[0].startswith('clk')]
+        if clocks != expected or bound[-1:] != expected:
             raise AssertionError(
-                f"leafA memory {name} ends with {tuple(bound[-2:])}, expected "
-                f"{expected}")
+                f"leafA memory {name} binds clocks {clocks}, expected {expected} last")
     return True
 
 

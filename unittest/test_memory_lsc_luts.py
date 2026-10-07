@@ -5,7 +5,7 @@ The leaf lsc runs on clk and takes its register bus on cfg_clk. It owns three
 18-bit LUTs, mem_r, mem_g and mem_b, each portRportW with regAccess: wo and a
 block-side port core. Firmware loads each LUT through port B on cfg_clk and
 the block reads it through port A on clk. The check compares each generated
-memory_dp instance with the instance text written by hand for this design,
+memory_dp_2clk instance with the instance text written by hand for this design,
 and checks that the register handler instance binds only the cfg_clk domain.
 
 Fixtures are written outside the repository working tree.
@@ -111,7 +111,7 @@ memories:
     for c in 'rgb')
 
 # The expected instance text, verbatim; only the depth and memory name vary.
-EXPECTED_INSTANCE = """memory_dp #(.DEPTH({depth}), .data_t(lsc_mem_data_t), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uMem_{c} (
+EXPECTED_INSTANCE = """memory_dp_2clk #(.DEPTH({depth}), .data_t(lsc_mem_data_t), .PORTA_READ_ONLY(1'b1), .PORTB_WRITE_ONLY(1'b1)) uMem_{c} (
     .mem_portA (mem_{c}_core),
     .mem_portB (mem_{c}_reg),
     .clkA (clk),
@@ -188,7 +188,7 @@ def main():
     print("=" * 72)
     fixture, text = _generate()
     try:
-        ok = [_run_case(f"mem_{c} matches the hand-edited memory_dp instance", lambda c=c: check_lut_instance(text, c))
+        ok = [_run_case(f"mem_{c} matches the hand-edited memory_dp_2clk instance", lambda c=c: check_lut_instance(text, c))
               for c in 'rgb']
         ok.append(_run_case("the lsc_regs handler instance is clocked on cfg_clk only",
                             lambda: check_handler_on_cfg_clk(text)))

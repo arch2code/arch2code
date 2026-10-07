@@ -224,10 +224,16 @@ and a `singlePort` one lists none.
 
 The register handler's port runs on the owning block's register clock. The
 block-side port runs on the memory's `clock:`, which defaults to the block's
-default clock. A dual-port `regAccess` memory may sit on any clock its block
-declares, and the two ports cross inside the RAM with no extra bus latency.
-A `singlePort` memory has one clock, so with `regAccess` its `clock:` must be
-the register clock, or the build is rejected. A memory has no `reset:`.
+default clock. When that clock differs from the register clock, the two
+ports cross inside the RAM with no extra bus latency. On FPGA only a memory
+with one writer synthesizes on two clocks, which means `portRportW` or
+`portRportRW`. `dualPort` and `portRWportW` have two writers, and on two
+clocks they are for simulation or an ASIC memory macro only. The generated
+RTL uses `memory_dp` with one `clk` when both ports share a clock, and
+`memory_dp_2clk` with `clkA` and `clkB` when they do not. A
+`singlePort` memory and a `local: true` memory have one clock, so with
+`regAccess` their `clock:` must be the register clock, or the build is
+rejected. A memory has no `reset:`.
 
 The RAM does not order the two ports. Firmware should load a table while the
 datapath is not reading it, or accept that a read colliding with a write
@@ -495,6 +501,7 @@ output.
 | `… memory '…' of block '…' has regAccess: rw, which needs a port that can both read and write, and no port of a portRportW memory does. Change memoryType or regAccess.` | No port of the memory supports the firmware access mode. Only `rw` on `portRportW` hits this. | Use `ro` or `wo`, or a `memoryType` with a read/write port. |
 | `… memory '…' of block '…' lists N ports ('…') but has M free. A … memory has K ports and the register handler takes one. …` | `ports:` names more block-side ports than the memory has free: its port count, less one when the register handler takes a port. | List fewer ports, or use a dual-port `memoryType`. If the memory has `regAccess`, removing it frees the handler's port. The message lists the fixes that apply. |
 | `Memory '…' of block '…' has regAccess and is on clock '…', but the block's register bus is on '…'. A singlePort memory has one clock, so firmware can reach it only on the register bus clock. …` | A `singlePort` `regAccess` memory's `clock:` is not the register clock. | Set the memory's `clock:` to the register clock, or use a dual-port `memoryType`. |
+| `In …, memory '…' of block '…' is local, and its ports run on two clocks: port A on '…' and port B, the register port, on '…'. A local memory has one clock. …` | A `local: true` `regAccess` memory's `clock:` is not the register clock. `memory_dp_ext` has one clock. | Set the memory's `clock:` to the register clock, or remove `local`. |
 | `In file …, memory '…' sets a reset field. A memory has no reset state, so remove the field.` | A memory row sets `reset:`. | Remove `reset:`. |
 | `Container block '…' declares registerPorts: key '…', but the nested router '…' it hosts names upstreamPort '…'. The registerPorts: key must match the served router's upstreamPort.` | The synthesised boundary map wires the container's `registerPorts:` port straight through to the nested router's upstream port by name, so the two names are one port. | Rename the `registerPorts:` key to the nested router's `upstreamPort` (as `ipBridge.yaml` does with `apbReg`). |
 | `Interface '…' has interfaceType '…', an address-bus interface, but carries parameterizable structure(s) ….` | A register bus is fixed-width on every side of every router; registers and memories behind it may be parameterized (address allocation scopes them at their maximum), the bus structure may not. | Move the parameter onto the register or memory payload and give the bus a fixed-width structure. |

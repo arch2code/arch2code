@@ -203,6 +203,8 @@ memory_dp #(.DEPTH(MEM_DEPTH), .data_t(mem_data_t)) uMem (
 );
 ```
 
+When the register clock differs from the memory's clock, the generator emits `memory_dp_2clk` with `.clkA` and `.clkB` instead.
+
 ### 7. Connect Outputs
 Assign the output ports to the final pipeline stage signals.
 

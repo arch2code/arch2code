@@ -35,8 +35,7 @@ import ipLeaf_package::*;
 memory_dp #(.DEPTH(LEAF_MEM_DEPTH), .data_t(ipLeafMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uIpLeafMem (
     .mem_portA (ipLeafMem),
     .mem_portB (ipLeafMem_unused),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 // GENERATED_CODE_END

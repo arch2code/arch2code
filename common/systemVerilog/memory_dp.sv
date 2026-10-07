@@ -1,4 +1,6 @@
-// Dual-port memory. Port A and port B have independent clocks (clkA / clkB).
+// Dual-port memory with a single clock for both ports.
+// Modes: 1W1R (A read-only, B write-only), 1RW1R (A read-only, B read/write),
+// 2RW (both read/write), RW+WO (A read/write, B write-only).
 module memory_dp #(
     parameter DEPTH  = 2 ,
     parameter type data_t = logic [1:0],
@@ -9,8 +11,7 @@ module memory_dp #(
 (
     memory_if.dst mem_portA,
     memory_if.dst mem_portB,
-    input clkA,
-    input clkB
+    input clk
 );
 
     typedef logic [$size(mem_portA.addr)-1:0] _addrA_t;
@@ -20,61 +21,74 @@ module memory_dp #(
     /* verilator lint_off WIDTHTRUNC */
     _data_t mem [DEPTH-1:0];
 
-    // Port A
-
     _addrA_t addrA;
+    _addrB_t addrB;
     _data_t write_dataA, read_dataA;
+    _data_t write_dataB, read_dataB;
 
     assign addrA = _addrA_t'(mem_portA.addr);
     assign write_dataA = _data_t'(mem_portA.write_data);
-
-    // single cycle flop'd output on reads
-    generate if (PORTA_READ_ONLY) begin : g_portA_ro
-        // No write path at all, rather than a write guarded by a constant, so
-        // the inferred RAM has one write port however hard the tool squints.
-        always @(posedge clkA) begin
-            if (mem_portA.enable) begin
-                read_dataA <= mem[addrA];
-            end
-        end
-    end else begin : g_portA_rw
-        always @(posedge clkA) begin
-            if (mem_portA.enable && mem_portA.wr_en) begin
-                mem[addrA] <= write_dataA;
-            end else if (mem_portA.enable) begin
-                read_dataA <= mem[addrA];
-            end
-        end
-    end endgenerate
-
-    assign mem_portA.read_data = data_t'(read_dataA);
-
-    // Port B
-
-    _addrB_t addrB;
-    _data_t write_dataB, read_dataB;
-
     assign addrB = _addrB_t'(mem_portB.addr);
     assign write_dataB = _data_t'(mem_portB.write_data);
 
-    // single cycle flop'd output on reads (port B runs on its own clock clkB)
-    generate if (PORTB_WRITE_ONLY) begin : g_portB_wo
-        always @(posedge clkB) begin
-            if (mem_portB.enable && mem_portB.wr_en) begin
-                mem[addrB] <= write_dataB;
+    // All reads and writes in one always block per mode, so each storage bit
+    // has a single driver. Reads are single cycle flop'd and return the old
+    // contents on a same-address read and write. A read-only port has no write
+    // statement at all, so the inferred RAM has only the write ports the mode
+    // needs.
+    generate
+        if (PORTA_READ_ONLY && PORTB_WRITE_ONLY) begin : g_1w1r
+            always @(posedge clk) begin
+                if (mem_portB.enable && mem_portB.wr_en) begin
+                    mem[addrB] <= write_dataB;
+                end
+                if (mem_portA.enable) begin
+                    read_dataA <= mem[addrA];
+                end
             end
-        end
-        assign read_dataB = '0;
-    end else begin : g_portB_rw
-        always @(posedge clkB) begin
-            if (mem_portB.enable && mem_portB.wr_en) begin
-                mem[addrB] <= write_dataB;
-            end else if (mem_portB.enable) begin
-                read_dataB <= mem[addrB];
+            assign read_dataB = '0;
+        end else if (PORTA_READ_ONLY) begin : g_1rw1r
+            always @(posedge clk) begin
+                if (mem_portB.enable && mem_portB.wr_en) begin
+                    mem[addrB] <= write_dataB;
+                end else if (mem_portB.enable) begin
+                    read_dataB <= mem[addrB];
+                end
+                if (mem_portA.enable) begin
+                    read_dataA <= mem[addrA];
+                end
             end
+        end else if (!PORTB_WRITE_ONLY) begin : g_2rw
+            always @(posedge clk) begin
+                if (mem_portA.enable && mem_portA.wr_en) begin
+                    mem[addrA] <= write_dataA;
+                end else if (mem_portA.enable) begin
+                    read_dataA <= mem[addrA];
+                end
+                // After port A, so port B wins a same-address double write.
+                if (mem_portB.enable && mem_portB.wr_en) begin
+                    mem[addrB] <= write_dataB;
+                end else if (mem_portB.enable) begin
+                    read_dataB <= mem[addrB];
+                end
+            end
+        end else begin : g_rw_wo
+            always @(posedge clk) begin
+                if (mem_portA.enable && mem_portA.wr_en) begin
+                    mem[addrA] <= write_dataA;
+                end else if (mem_portA.enable) begin
+                    read_dataA <= mem[addrA];
+                end
+                // After port A, so port B wins a same-address double write.
+                if (mem_portB.enable && mem_portB.wr_en) begin
+                    mem[addrB] <= write_dataB;
+                end
+            end
+            assign read_dataB = '0;
         end
-    end endgenerate
+    endgenerate
 
+    assign mem_portA.read_data = data_t'(read_dataA);
     assign mem_portB.read_data = data_t'(read_dataB);
 
 endmodule : memory_dp
