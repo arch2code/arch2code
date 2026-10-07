@@ -29,8 +29,7 @@ import mixedBlockC_package::*;
 memory_dp #(.DEPTH(bob), .data_t(seeSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uTest (
     .mem_portA (test),
     .mem_portB (test_unused),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 // GENERATED_CODE_END

@@ -1,7 +1,10 @@
 # Implementation plan: memory port access modes
 
 Implements `plans/spec-memory-access-modes.md`. Source of the RTL change is
-uvc_rd pull request 6, merged as `7a38aac`.
+uvc_rd pull request 6, merged as `7a38aac`, and pull request 7, merged as
+`916733a`, which split `memory_dp` into single-clock and dual-clock modules.
+
+Status: passes 1-4 landed in base `69b06851`. Pass 5 implements the split.
 
 ## How the work runs
 
@@ -208,9 +211,88 @@ Predicted churn: none in existing examples, since they use only `true` and
 4. Final gate: the full unit suite, then every example serially, including
    lint. Then the comment sweep over the whole branch diff.
 
+## Pass 5: single-clock and dual-clock modules
+
+The spec sections "Port configurations", "Generated RTL" and "Errors the
+generator reports" define the target. uvc_rd `4323b99` is the RTL reference,
+with the differences listed in step 1.
+
+1. Library, `common/systemVerilog/`
+   - `memory_dp.sv` becomes single-clock with `input clk`. Take uvc_rd's
+     `memory_dp.sv`: all reads and writes of a mode in one `always` block, port
+     B winning a same-address double write. Differences from uvc_rd: RW+WO
+     (`PORTA_READ_ONLY=0`, `PORTB_WRITE_ONLY=1`) is supported instead of
+     raising `$error`, and there is no `syn_ramstyle` comment.
+   - New `memory_dp_2clk.sv` with `clkA` and `clkB`. It is today's
+     `memory_dp.sv` with the module renamed. In 2RW and RW+WO it reports
+     `$info` at elaboration, saying the mode is for simulation or an ASIC
+     memory macro. No `$warning`, no `$error`, no `syn_ramstyle`. Verilator
+     raises `MULTIDRIVEN` on `mem` for two writers on two clocks and reports
+     it at the declaration, so a `lint_off MULTIDRIVEN` wraps the declaration.
+     The spec makes simulation of those modes a supported use.
+   - `memory_dp_ext.sv` becomes single-clock with `input clk`, keeping its
+     `mem` output, with the same single-block structure as `memory_dp`.
+     There is no two-clock `_ext` module.
+   - Check how builds find these files (library path, `+libext`, file lists)
+     and make sure `memory_dp_2clk.sv` is found everywhere `memory_dp.sv` is.
+2. Generator
+   - `templates/systemVerilog/moduleInterfacesInstances.py:125-156`: a
+     dual-port memory whose two `portClock` entries are the same block clock
+     emits `memory_dp`, or `memory_dp_ext` when local, connecting `.clk`.
+     Different clocks emit `memory_dp_2clk`, connecting `.clkA` and `.clkB`.
+     Clocks compare by block clock name. Single-port memories do not change.
+   - `pysrc/clockTree.py:1764-1779`: extend the single-port check so that a
+     `local: true` memory with `regAccess` on a clock other than the register
+     clock is also an error. Use the spec's diagnostic for the local case.
+     `MemoryDomain` needs the memory's `local` flag if it lacks one.
+3. Hand-written instances: search `examples/` for `memory_dp` and
+   `memory_dp_ext` instances outside generated regions. One-clock instances
+   move to `.clk`. Two-clock instances move to `memory_dp_2clk`.
+4. Tests
+   - `unittest/fixtures/memory_dp_ports_tb.sv` and
+     `test_memory_dp_ports_sim.py`: the existing two-clock instances move to
+     `memory_dp_2clk`, which keeps 2RW (`u_rw`) and RW+WO (`u_bw`) as
+     simulation coverage. Add single-clock `memory_dp` instances for all four
+     modes, checked the same way, including port B winning a same-address
+     double write. Compile `memory_dp_2clk.sv` into the bench.
+   - `test_memory_dp_lint.py`: lint `memory_dp` and `memory_dp_ext` in all four
+     modes on one clock, and `memory_dp_2clk` in all four modes on two clocks,
+     under the flags the test uses today. The two-writer, two-clock cases are
+     no longer left out. Assert that 2RW and RW+WO on `memory_dp_2clk` print
+     the `$info` and exit 0.
+   - `test_memory_access_ports.py`, `test_memory_lsc_luts.py` and
+     `test_clock_reset_emission.py:2066`: update expected module names and
+     clock connections. Add a generation case where the register clock differs
+     from the memory clock, expecting `memory_dp_2clk`, and keep the same-clock
+     cases expecting `memory_dp` with `.clk`.
+   - A rejection fixture for a local dual-port memory with `regAccess` on a
+     clock other than the register clock. It must fail on the unchanged tree.
+5. Documentation: `rules/skills/rtl-interfaces.md:141-170`,
+   `rules/skills/rtl-patterns.md:269`, `rules/skills/systemc-to-rtl.md:193-205`
+   and `rules/skills/rtl-to-systemc.md:162` show `memory_dp` instances or
+   describe the module. Show `.clk` and name `memory_dp_2clk` for two clocks.
+   Search `ARCH2CODE_AI_RULES.md` and `GENERATOR_ARCHITECTURE.md` for
+   `memory_dp`, `clkA` and `clkB`. Run `make agent-dev-setup`.
+6. Gate: the full unit suite, then every example with `make clean` first,
+   including lint, then `make pipeline-test`.
+
+Predicted churn:
+
+- Every generated `memory_dp` and `memory_dp_ext` instance with both ports on
+  one clock changes `.clkA (x),` / `.clkB (x)` to `.clk (x)`.
+- The three `twoClk` memories (`uTbl`, `uLut`, `uStats` in
+  `examples/twoClk/rtl/twoClkTable.sv`) change module name to
+  `memory_dp_2clk` and keep their clocks and parameters.
+- Nothing else in generated output changes.
+
+Downstream, after the user commits the base change: the ISP pins move, isp_lsc
+regenerates, and the hand-written isp_lut and debayer preprocess instances
+change back to `.clk`.
+
 ## Not in scope
 
-- The `syn_ramstyle` attribute.
+- The `syn_ramstyle` attribute. No module carries a RAM style attribute.
+- Memory macros for ASIC flows.
 - A read-only port B or write-only port A type. The spec's `ro` case uses
   `portRportW` with the register port on A.
 - Showing the access mode in the generated documents and firmware headers.
@@ -218,12 +300,15 @@ Predicted churn: none in existing examples, since they use only `true` and
 - `memoryConnections:` clock rules. A block-side port still runs on the
   memory's `clock:`.
 
-## Pending RTL decision
+## RTL decisions
 
-Verilator raises `MULTIDRIVEN` on `mem` when both ports can write and `clkA`
-and `clkB` are different nets, which fails `make lint`. The RTL engineer will
-choose between a scoped `lint_off MULTIDRIVEN` in `memory_dp` and
-`memory_dp_ext`, and a generator error for two writers on two clocks. The
-passes above do not depend on the answer: `twoClk` uses `portRportRW`, and the
-lint test leaves the two-writer, two-clock case out until it is decided. The
-answer lands as a small follow-up pass with its own review and gate.
+Settled 2026-10-06, and recorded in the spec.
+
+- Two writers on two clocks are allowed for simulation and for a future ASIC
+  memory macro. `memory_dp_2clk` reports them with `$info`, which does not
+  fail a Verilator build. Verilator 5.038 reports their `MULTIDRIVEN` at the
+  `mem` declaration, not at the write branches, so the waiver wraps the
+  declaration in `memory_dp_2clk` and covers every mode of that module.
+- The single-clock port is `.clk`. `memory_dp_ext` is single-clock only.
+- Unused register-port paths are tied off in the register handler, which
+  passes 1-4 already generate.

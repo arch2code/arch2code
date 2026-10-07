@@ -167,6 +167,8 @@ All logic described below must be placed **after** the `// GENERATED_CODE_END` m
     );
     ```
 
+    `memory_dp` runs both ports on one clock. A memory whose ports run on two clocks uses `memory_dp_2clk`, which has the same parameters and binds `.clkA` and `.clkB` instead of `.clk`. `memory_dp_ext` has one clock only.
+
     **Conditional multi-port access:** Drive all ports with the same address but conditional `enable`:
     ```systemverilog
     mem_a.addr = target_addr;

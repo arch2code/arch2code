@@ -40,22 +40,19 @@ blockARegs ublockARegs (
 memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATable0 (
     .mem_portA (blockATable0),
     .mem_portB (blockATable0_reg),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATableX (
     .mem_portA (blockATableX),
     .mem_portB (blockATableX_unused),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ONLY(1'b0)) uBlockATable1 (
     .mem_portA (blockATable1),
     .mem_portB (blockATable1_reg),
-    .clkA (clk),
-    .clkB (clk)
+    .clk (clk)
 );
 
 // GENERATED_CODE_END
