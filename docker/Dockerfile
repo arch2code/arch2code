@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=arch2code/a2c-dev:2.0
+ARG BASE_IMAGE=arch2code/a2c-dev:3.0
 FROM $BASE_IMAGE
 
 ARG USERNAME=
@@ -33,7 +33,8 @@ EOF
 RUN sed -i 's/\\\$/$/g' /etc/skel/.bash_custom
 
 COPY requirements.txt /tmp/a2c-requirements.txt
-RUN pip3 install -r /tmp/a2c-requirements.txt
+# Ubuntu 24.04 marks the system Python as externally managed (PEP 668); the env var is ignored by older pip
+RUN PIP_BREAK_SYSTEM_PACKAGES=1 pip3 install -r /tmp/a2c-requirements.txt
 
 # Create the user
 RUN groupadd -f --gid $USER_GID $USERNAME
