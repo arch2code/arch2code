@@ -30,15 +30,16 @@ ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
 # A non-empty BOOST_LIBS is the whole Boost link line, which lets a site or a
-# farm layer link a shared Boost. Otherwise the default links the site Boost in
-# LD_BOOST. Boost.System is header-only, and the stacktrace in q_assert.cpp uses
-# the header-only backend, which needs only -ldl, so the default links
+# farm layer link a shared Boost. An empty one, from the command line too,
+# counts as unset, and the default links the site Boost in LD_BOOST.
+# Boost.System is header-only, and the stacktrace in q_assert.cpp uses the
+# header-only backend, which needs only -ldl, so the default links
 # program_options alone.
 ifeq ($(strip $(BOOST_LIBS)),)
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
-BOOST_LIBS = -lboost_program_options -L$(LD_BOOST)
+override BOOST_LIBS = -lboost_program_options -L$(LD_BOOST)
 endif
 
 ifndef VERILATOR_ROOT

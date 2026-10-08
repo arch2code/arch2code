@@ -10,6 +10,7 @@ CXX and LD_FLAGS. Checks:
 - an exported BOOST_LIBS replaces the default Boost libraries and LD_BOOST is
   then not required; an empty BOOST_LIBS counts as unset; with neither set the
   build still stops on LD_BOOST;
+- `BOOST_LIBS=` on the make command line keeps the default Boost libraries;
 - an exported EXTRA_LD_FLAGS reaches the link line, because the scaffolded and
   committed rundir Makefiles append to it rather than assign it, and a stale
   A2C_SITE_EXTRA_LD_FLAGS left in the shell does not replace it;
@@ -126,6 +127,11 @@ def main():
         result, values = printVars(project, e)
         check(values.get('LD_FLAGS', '').startswith(defaultBoost),
               f"an empty exported BOOST_LIBS keeps the default Boost libraries "
+              f"(got {values.get('LD_FLAGS')!r})")
+
+        result, values = printVars(project, base, 'BOOST_LIBS=')
+        check(values.get('LD_FLAGS', '').startswith(defaultBoost),
+              f"BOOST_LIBS= on the command line keeps the default Boost libraries "
               f"(got {values.get('LD_FLAGS')!r})")
 
         e = dict(base, BOOST_LIBS='')
