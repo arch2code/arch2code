@@ -56,11 +56,11 @@ import tempfile
 import yaml
 
 from _addrctl_helpers import base_dir, test_dir
-import pysrc.arch2codeGlobals as g
 from pysrc import checkSvNames, migrateFilePrefix, migrateOrphans
 from pysrc.artifactPaths import currentArtifactRows, fileNamePrefix
 from pysrc.newProject import firmwareFileMapTemplate, projectFileTemplate
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 SOURCE = os.path.join(base_dir, 'examples', 'simple_ip')
@@ -96,23 +96,34 @@ def make(directory, *targets):
     return result.stdout + result.stderr
 
 
-def copy_simple_ip():
-    work = tempfile.mkdtemp(prefix='file_prefix_', dir=test_dir)
-    shutil.copytree(SOURCE, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
-        'build', '.gen', '*.db', '*.db-*', 'compile_commands.json'))
-    point_repo_root(work)
+def populated_dir(prefix, populate):
+    # The caller never receives the directory when populate fails, so remove it here.
+    work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
+    try:
+        populate(work)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
+
+
+def copy_simple_ip():
+    def populate(work):
+        shutil.copytree(SOURCE, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
+            'build', '.gen', '*.db', '*.db-*', 'compile_commands.json'))
+        point_repo_root(work)
+    return populated_dir('file_prefix_', populate)
 
 
 def extract_main_simple_ip():
     # examples/simple_ip as origin/main generated it, before filename prefixes.
-    work = tempfile.mkdtemp(prefix='file_prefix_main_', dir=test_dir)
-    archive = subprocess.run(['git', '-C', base_dir, 'archive', MAIN_COMMIT, 'examples/simple_ip'],
-                             capture_output=True, check=True)
-    subprocess.run(['tar', '-x', '-C', work, '--strip-components=2'],
-                   input=archive.stdout, check=True)
-    point_repo_root(work)
-    return work
+    def populate(work):
+        archive = subprocess.run(['git', '-C', base_dir, 'archive', MAIN_COMMIT, 'examples/simple_ip'],
+                                 capture_output=True, check=True)
+        subprocess.run(['tar', '-x', '-C', work, '--strip-components=2'],
+                       input=archive.stdout, check=True)
+        point_repo_root(work)
+    return populated_dir('file_prefix_main_', populate)
 
 
 def point_repo_root(work):
@@ -133,15 +144,6 @@ def point_repo_root(work):
             lines[hits[0]] = f'REPO_ROOT = {root}\n'
             with open(path, 'w') as f:
                 f.write(''.join(lines))
-
-
-def remove(work):
-    # An open database file on NFS leaves a .nfs placeholder that keeps its
-    # directory from being removed, so the last connection is closed first.
-    if g.db is not None:
-        g.db.close()
-        g.db = None
-    shutil.rmtree(work)
 
 
 def set_prefixes(work, project, prefixes):
@@ -214,7 +216,7 @@ def check_omitted_equals_empty():
         print("PASS: omitted prefix keys and \"\" give identical names, paths and manifest")
         return True
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_each_language_alone():
@@ -263,7 +265,7 @@ def check_each_language_alone():
                       f"({renamed} files) and leaves C++ names alone")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def add_marker(path, before):
@@ -354,7 +356,7 @@ def check_main_migrate_without_prefix():
                   f"leaves ip and common alone, and the Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_main_migrate_with_prefixes():
@@ -428,7 +430,7 @@ def check_main_migrate_with_prefixes():
                   f"Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_main_migrate_ports_legacy_tb_with_prefix():
@@ -467,7 +469,7 @@ def check_main_migrate_ports_legacy_tb_with_prefix():
                   "Testbench pairs into ipc_ipExternal.cppm and ipc_ipTestbench.cppm")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def run_nested(mutate):
@@ -481,7 +483,7 @@ def run_nested(mutate):
                       '--db', db])
         return result.returncode, result.stdout + result.stderr
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def edit(path, old, new):
@@ -564,7 +566,7 @@ def run_db(files, projectFile):
                       '--db', os.path.join(work, 'test.db')])
         return result.returncode, result.stdout + result.stderr
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def expect_db_failure(label, files, projectFile, expected):
@@ -799,13 +801,13 @@ instances:
 
 
 def write_files(prefix, files):
-    work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    for relpath, text in files.items():
-        path = os.path.join(work, relpath)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
-            f.write(text)
-    return work
+    def populate(work):
+        for relpath, text in files.items():
+            path = os.path.join(work, relpath)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                f.write(text)
+    return populated_dir(prefix, populate)
 
 
 def arch2code(*args):
@@ -863,7 +865,7 @@ constants:
                   "file and context p_foo's legacy package name, and reports it")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_keyword_module_name():
@@ -922,7 +924,7 @@ def check_wrapper_body_name():
                   "and the Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_scaffold_keys():
@@ -1008,7 +1010,7 @@ def check_langdomain_picks_prefix():
             print(f"FAIL: ip's includeFW with langDomain sc gave {files}, not scx_ names")
             ok = False
     finally:
-        remove(work)
+        remove_tree(work)
     if ok:
         print("PASS: langDomain alone picks an entry's prefix, through make db too")
     return ok
@@ -1052,7 +1054,7 @@ instances:
         else:
             print("PASS: the root make db rejects a child's entry without langDomain, naming the child")
     finally:
-        remove(work)
+        remove_tree(work)
     return ok
 
 
@@ -1097,7 +1099,7 @@ def check_prefix_conflict_halts_migrate():
                   "unprefixed file survives byte-identical")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 PREFIXED_TWIN_BLOCK = '''blocks:
@@ -1154,7 +1156,7 @@ def check_prefix_chain_after_new_block_halts():
                   "unprefixed name is another block's prefixed file")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_prefix_chain_from_main_halts():
@@ -1183,7 +1185,7 @@ def check_prefix_chain_from_main_halts():
                   "code 2 and every rtl file is unchanged")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_settled_prefixed_twin_migrates():
@@ -1227,7 +1229,7 @@ def check_settled_prefixed_twin_migrates():
                   "p_p_ipStdMaster.sv migrates again and both files are unchanged")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def main():

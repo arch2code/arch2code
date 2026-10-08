@@ -1,6 +1,6 @@
 ---
 name: run-regression-tests
-description: Authoritative Arch2Code workflow for creating, editing, running, filtering, and triaging regression tests with regrLauncher.py and project make targets. Use when the user mentions regression tests, regrLauncher.py, regression JSON files, make regr, CI regressions, labels, seeds, or JUnit regression reports.
+description: Authoritative Arch2Code workflow for creating, editing, running, filtering, and triaging regression tests with regrLauncher.py and project make targets, including the VCS and Xcelium snapshot regressions. Use when the user mentions regression tests, regrLauncher.py, regression JSON files, make regr, make regr_vcs, make regr_xcelium, simulator snapshots, DUT_TOPOLOGIES, CI regressions, labels, seeds, or JUnit regression reports.
 ---
 # Skill: Run regression tests
 
@@ -65,6 +65,7 @@ A regression file is JSON with three sections: `session`, `build` and `run`.
 *   Set an attribute at the highest level it applies to. Child groups and tests inherit it.
 *   A key ending in `+` (`args+`, `rules+`, `labels+`) appends to the inherited value. Without `+`, the child replaces it. A `+` key with no parent value to append to raises a `KeyError`.
 *   `run.command` is relative to the directory the launcher runs from, normally `rundir/`.
+*   `build` has no parent section, so `command+` there appends to `build.command` itself. It takes a string or a list, and the launcher joins a list with spaces, so a long command can list one entry per line. See "Simulator regressions" below. `--attr build.command+=<value>` appends after those entries, and `--attr build.command=<value>` replaces the resolved command. `--attr` splits its value on commas, so give a comma-separated entry one configuration per `--attr`.
 
 ## Adding tests
 1.  Read the existing regression file first and keep its grouping style.
@@ -81,6 +82,30 @@ A regression file is JSON with three sections: `session`, `build` and `run`.
 
 5.  An RTL test needs `VL_DUT=1` in the build command and `--vlInst <path>` in its arguments; see `verify-cosimulation`. A tandem test also needs `--vlType model|verif` and `--vlTandem`; see `run-tandem` (A2C Pro).
 6.  Give tests labels to select them by. `examples/apbDecode` uses `mdl` and `hdl`.
+
+## Simulator regressions (VCS, Xcelium)
+The Verilator flow runs every test on one binary. VCS and Xcelium fix the SystemC/HDL topology when they elaborate the snapshot, so these flows build one snapshot per DUT topology, and a dispatcher picks the snapshot from each test's arguments. A project keeps one regression file per simulator. The debayer project has `regr_<project>_vcs.json` and `regr_<project>_xcelium.json`, with `make regr_vcs` and `make regr_xcelium` wrappers in its `rundir/Makefile`.
+
+1.  **Environment.** Source the site setup script before `make`. It exports the simulator installation, licence, SystemC, Boost and compiler variables the flows need: `VCS_HOME` for VCS, `XCELIUM_TOOLS`, `XRUN_GCC_VERS` and `LM_LICENSE_FILE` for Xcelium, and `A2C_CLANG` for both. `make help USE_VCS=1` and `make help USE_XCELIUM=1` list the flow variables. See `manage-build` for the single-snapshot build targets.
+2.  **Build command.** The session builds `run_model` plus one snapshot per listed topology. The regression file holds the topology list, one `build.command+` entry per block:
+
+    ```json
+    "build": {
+        "command": "make -j8 USE_VCS=1 vcs_snapshots",
+        "command+": [
+            "DUT_TOPOLOGIES+=debayer:verif,verif:tandem,model:tandem",
+            "DUT_TOPOLOGIES+=debayer.u_preprocess:verif,verif:tandem,model:tandem"
+        ],
+        "timeout": 900
+    }
+    ```
+
+    Xcelium uses `make -j8 USE_XCELIUM=1 xrun_snapshots`. An entry is `<inst>:<cfg>[,<cfg>]...`, where `<inst>` is the `--vlInst` path and `<cfg>` is `verif`, `verif:tandem` or `model:tandem`. The makefiles hold no topology list, and the project `rundir/Makefile` must not define `DUT_TOPOLOGIES`.
+3.  **Configurations a block needs.** Take them from the block's tests. `--vlType verif` needs `verif`. `--vlType verif --vlTandem` needs `verif:tandem`. `--vlType model --vlTandem` needs `model:tandem`, because the tandem wrapper constructs a second model instance that the plain model snapshot does not hold. Tests without `--vlInst`, and model tests without `--vlTandem`, run on `run_model` and need no entry. Leave out the configurations a block's tests do not use.
+4.  **Run command.** Keep one run command that names the base binary through the dispatcher: `../builder/dutRun.py build/run <testbench>` for VCS and `../builder/dutRun.py build_xrun/run <testbench>` for Xcelium. The dispatcher maps the test's `--vlInst`, `--vlType` and `--vlTandem` to `<base>_<inst>_<type>[_tandem]` or `<base>_model`. A test whose snapshot is missing fails with `dutRun: no snapshot <binary>`. Fix it by adding the configuration to the block's `DUT_TOPOLOGIES+=` line, never by building the snapshot by hand.
+5.  **Rules.** Add the simulator rules file after `default.json`. `vcs.json` classifies `Error-[...]` and `Fatal-[...]` lines, and `xcelium.json` classifies `*E,` and `*F,` lines. Keep them in `rundir/` next to `default.json`.
+6.  **Jobs.** Set `session.jobs` to the number of simulator runtime licences available. A run beyond that waits for a licence until the test times out, so the wrappers pass no `-j` for the simulator regressions.
+7.  **Adding a block.** Add its test groups under `model_tests` and `hdl_tests` as for the Verilator regression, then add one `DUT_TOPOLOGIES+=<inst>:<cfg>,...` line to `build.command+` in each simulator regression file. A new `unstable` label or delay variant needs no topology change.
 
 ## Seeds, counts and filters
 *   `seed` is a number, a list, or `"random"`, which gives each run a random 32-bit seed.

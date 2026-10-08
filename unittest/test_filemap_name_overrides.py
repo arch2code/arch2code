@@ -16,7 +16,8 @@ import re
 import sys
 
 from test_file_prefix import (PROJECT_FILES, check_sv_names_and_run, copy_simple_ip,
-                              currentArtifactRows, edit, make, open_db, remove, run)
+                              currentArtifactRows, edit, make, open_db, run)
+from _tmp_helpers import remove_tree
 
 
 # fileMap entry -> the new name ip gives it. Every other field keeps the base
@@ -170,7 +171,7 @@ def main():
         print("ALL TESTS PASSED")
         return 0
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 if __name__ == '__main__':

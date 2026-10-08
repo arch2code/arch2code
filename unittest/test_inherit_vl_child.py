@@ -24,6 +24,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -53,7 +54,10 @@ def copy_fixture(project):
 def toolchain_env():
     """The SystemC toolchain variables the arch2code makefiles require."""
     env = os.environ.copy()
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if env.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         if not env.get(var):
             raise RuntimeError(f"{var} is not set; the SystemC toolchain variables "
                                f"the arch2code makefiles require must be set to run "
@@ -172,7 +176,7 @@ def check_mixed_instance_orders(env):
                         print(f"  PASS ({name}): one registrar retains ordinary "
                               "variant solo")
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            remove_tree(tmp)
     return ok
 
 
@@ -285,11 +289,12 @@ def check_emitted(project):
     }
     for registration in inheritedView['verifRegistrations']:
         variant = registration['variant']
+        alias = f'using {registration["topModule"]}_dut_t = {registration["dutClass"]};'
         target = (
-            f'vliLeaf_hdl_sc_wrapper<{registration["dutClass"]}, '
+            f'vliLeaf_hdl_sc_wrapper<{registration["topModule"]}_dut_t, '
             f'{configs[variant]}>')
         key = f'"{variant}", "{registration["factoryProject"]}"'
-        if target in registrar and key in registrar:
+        if alias in registrar and target in registrar and key in registrar:
             print(f"  PASS: the aggregate trampoline registers '{variant}' as {target}")
         else:
             print(f"  FAIL: the aggregate trampoline has no '{variant}' registration "
@@ -453,7 +458,7 @@ def run_all_tests():
         # Runs last: it leaves the copy's RTL edited and its build stale.
         ok = check_rtl_edit_reverilates(project, rundir, env) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: one parameterized leaf type builds and runs at its own "

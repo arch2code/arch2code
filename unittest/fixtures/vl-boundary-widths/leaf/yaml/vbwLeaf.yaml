@@ -1,0 +1,72 @@
+# Reusable leaf IP whose ports carry parameterizable payloads. The integrator
+# project declares its own variants of fLeaf, which builds the owner-qualified
+# foreign wrapper tops. At P_W=1 the stream word ptd_st is one byte, pst_a is
+# 8 bits and pty_w is a 1-bit parameterizable type.
+include:
+  - vbwIf.yaml
+
+ipParameters:
+  constants:
+    P_W: {value: 5, maxValue: 12, desc: "Payload field width"}
+    P_N: {value: 16, maxValue: 64, desc: "Count whose log2 sizes the log2 types"}
+  types:
+    pty_w: {width: P_W, desc: "Width from a parameter"}
+
+types:
+  bv8_t: {width: 8, desc: "8 bits"}
+  bv32_t: {width: 32, desc: "32 bits"}
+  bv64_t: {width: 64, desc: "64 bits"}
+  ty_lit: {width: 7, desc: "Literal width 7"}
+  ty_one: {width: 1, desc: "One bit"}
+  pty_l2: {widthLog2: P_N, desc: "widthLog2 of a parameter"}
+  pty_l2m: {widthLog2minus1: P_N, desc: "widthLog2minus1 of a parameter"}
+
+structures:
+  addr_st: {a: {varType: bv32_t, desc: "Address"}}
+  data_st: {d: {varType: bv64_t, desc: "Data"}}
+  strb_st: {s: {varType: bv8_t, desc: "Strobe"}}
+  bit_st: {b: {varType: ty_one, desc: "One-bit sideband"}}
+  pst_a: {x: {varType: pty_w, desc: "Parameter-width field"}, y: {varType: ty_lit, desc: "Fixed field"}}
+  pst_b: {x: {varType: pty_l2, desc: "Log2 field"}}
+  ptd_st: {d: {varType: bv8_t, arraySize: P_W, desc: "Stream data, P_W bytes"}}
+
+interfaces:
+  fr:
+    interfaceType: axi_read
+    desc: "AXI read with a parameterizable payload and ID"
+    structures:
+      - {structureType: addr_t, structure: addr_st}
+      - {structureType: data_t, structure: pst_a}
+      - {structureType: id_t, structure: pty_w}
+  fs:
+    interfaceType: axi4_stream
+    desc: "AXI4-Stream whose byte strobes follow a parameterizable tdata"
+    structures:
+      - {structureType: tdata_t, structure: ptd_st}
+      - {structureType: tid_t, structure: bit_st}
+      - {structureType: tdest_t, structure: bit_st}
+  fh:
+    interfaceType: idth
+    desc: "hdlparam byte count over a parameterizable struct"
+    structures:
+      - {structureType: s_t, structure: pst_a}
+      - {structureType: ts_t, structure: pst_b}
+
+blocks:
+  fLeaf:
+    desc: "Reusable parameterized leaf"
+    params: [P_W, P_N]
+    hasMdl: true
+    hasVl: true
+    hasTb: false
+    hasRtl: true
+    clocks:
+      clk: {period: 10}
+    ports:
+      fr: {interface: fr, direction: dst}
+      fs: {interface: fs, direction: src}
+      fh: {interface: fh, direction: src}
+
+parameters:
+  fLeaf:
+    dflt: {P_W: 5, P_N: 16}

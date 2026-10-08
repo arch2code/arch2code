@@ -16,6 +16,7 @@ import tempfile
 from _addrctl_helpers import base_dir, test_dir
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'variant-two-integrators')
 LEAF_KEY = 'xviLeaf/../../../ipLeaf/yaml/xviLeaf.yaml'
@@ -54,7 +55,11 @@ GENERATED = shutil.ignore_patterns(
 
 def copy_fixture(prefix):
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(FIXTURE, work, dirs_exist_ok=True, ignore=GENERATED)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True, ignore=GENERATED)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -166,7 +171,7 @@ def test_collapse_drops_the_building_project():
         return True
     finally:
         close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_a_label_only_the_other_integrator_declared_reaches_this_build():
@@ -221,7 +226,7 @@ def test_a_label_only_the_other_integrator_declared_reaches_this_build():
         return True
     finally:
         close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_third_project_referencing_both_builds():
@@ -318,7 +323,7 @@ def test_third_project_referencing_both_builds():
         return True
     finally:
         close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_emitted_artifacts_carry_the_declaring_project_value():
@@ -354,7 +359,7 @@ def test_emitted_artifacts_carry_the_declaring_project_value():
                   f"carry xviTop's XVI_GAIN {TOP_GAIN}")
         return not problems
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_other_integrator_keeps_its_own_binding():
@@ -385,7 +390,7 @@ def test_other_integrator_keeps_its_own_binding():
                   f"Config all carry its own XVI_GAIN {MID_GAIN}")
         return not problems
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_each_build_emits_only_the_label_it_declared():
@@ -442,7 +447,7 @@ def test_each_build_emits_only_the_label_it_declared():
                   f"other's label")
         return not problems
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_each_build_runs_at_the_gain_it_declared():
@@ -506,7 +511,7 @@ def test_each_build_runs_at_the_gain_it_declared():
                   f"in the model and again with each leaf as Verilated RTL")
         return not problems
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

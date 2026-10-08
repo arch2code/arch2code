@@ -41,6 +41,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -60,11 +61,15 @@ def _project_yaml(name, files, top=None):
 def _write_tree(files):
     """Write {relative path: content} under a fresh work dir inside unittest/."""
     work = tempfile.mkdtemp(prefix='variant_binding_', dir=test_dir)
-    for rel, content in files.items():
-        path = os.path.join(work, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
-            f.write(content)
+    try:
+        for rel, content in files.items():
+            path = os.path.join(work, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                f.write(content)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -134,7 +139,7 @@ def _fast_descriptor_values(value):
         return descriptor['values']
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_enum_member_binding_resolves():
@@ -225,7 +230,7 @@ def test_container_sourced_checked_against_own_declaration():
             return False
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
     # Control: B's own declaration names A, which wrapB does not declare.
     work = _composed_scope('A')
@@ -240,7 +245,7 @@ def test_container_sourced_checked_against_own_declaration():
             print(f"  FAIL: rejection did not name uLeafB and wrapB\n{out[-3000:]}")
             return False
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
     print("  PASS")
     return True
 
@@ -288,7 +293,7 @@ def _spare_leaf_factory(active):
         return factory, pair
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_inactive_container_view_renders():
@@ -386,7 +391,7 @@ def _binds_directly(secondVariant):
         return direct
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_container_sourced_ends_compare_by_supplier():
@@ -481,7 +486,7 @@ def _generated_top_sv(value):
             return top, f"verilator --lint-only failed for MODE: {value}\n{out[-3000:]}"
         return top, None
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _generated_imports(top):
@@ -541,7 +546,7 @@ def test_pair_specific_follows_declaring_project():
             return False
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
     print("  PASS")
     return True
 

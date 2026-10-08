@@ -30,6 +30,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'empty-variant-no-params')
@@ -152,7 +153,7 @@ def run_all_tests():
         shutil.copytree(FIXTURE, boundary)
         ok = check_missing_arm(boundary) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: a variant on a params-less block is rejected at db")

@@ -65,6 +65,7 @@ base_dir = os.path.dirname(test_dir)
 if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
+from pysrc.intf_gen_utils import sc_hdl_member_names
 from templates.systemc.module_hdl_wrapper import SC_TIME_UNIT
 from _addrctl_helpers import (APB_PREAMBLE, render_leaf, render_plain_block,
                               render_router)
@@ -849,6 +850,10 @@ def _run_case(label, fn):
     return ok
 
 
+def _bfm(port):
+    return sc_hdl_member_names(port)[1]
+
+
 def _expect(text, needle, why, where):
     if needle not in text:
         raise AssertionError(f"{where} does not contain {needle!r}: {why}")
@@ -1503,9 +1508,9 @@ def check_bfm_binds_names_the_wrapper_declares(emitted):
     `clk` / `rst_n` - or any name taken from somewhere other than this block's
     own resolved sets - would not compile here."""
     text = emitted['verif/slowProd_hdl_sc_wrapper.h']
-    _expect(text, 'out_bfm.clk(clkSlow);',
+    _expect(text, _bfm('out') + '.clk(clkSlow);',
             "the block's only clock is clkSlow", 'slowProd SC wrapper')
-    _expect(text, 'out_bfm.rst_n(rstSlow_n);',
+    _expect(text, _bfm('out') + '.rst_n(rstSlow_n);',
             "the block's only reset is rstSlow_n", 'slowProd SC wrapper')
     # slowProd has both a BFM port and a reset, so its constructor joins
     # sec_bfm_ctor_init and sec_reset_ctor_init: a stray trailing comma on
@@ -1533,15 +1538,15 @@ def check_bfm_binds_its_own_connection_domain(emitted):
     in another domain. Nothing else in the toolchain reports that, which is why
     each is asserted on both ports and refuted on the wrong one."""
     text = emitted['verif/cons_hdl_sc_wrapper.h']
-    for bind in ('slowIn_bfm.clk(clkSlow);', 'fastIn_bfm.clk(clk);',
-                 'slowIn_bfm.rst_n(rstSlow_n);', 'fastIn_bfm.rst_n(rst_n);'):
+    for bind in (_bfm('slowIn') + '.clk(clkSlow);', _bfm('fastIn') + '.clk(clk);',
+                 _bfm('slowIn') + '.rst_n(rstSlow_n);', _bfm('fastIn') + '.rst_n(rst_n);'):
         _expect(text, bind, "each BFM takes its own connection's clock and the "
                             'reset released on that clock', 'cons SC wrapper')
-    _refute(text, 'slowIn_bfm.clk(clk);',
+    _refute(text, _bfm('slowIn') + '.clk(clk);',
             "slowIn's connection is in the clkSlow domain, so binding clk "
             "clocks that BFM from the wrong domain",
             'cons SC wrapper')
-    _refute(text, 'slowIn_bfm.rst_n(rst_n);',
+    _refute(text, _bfm('slowIn') + '.rst_n(rst_n);',
             "rst_n is released on a clk edge, so binding it resets slowIn's BFM "
             "from the wrong domain - and it is the block's FIRST reset, which is "
             "what a reset taken per block rather than per port would give",
@@ -1551,13 +1556,13 @@ def check_bfm_binds_its_own_connection_domain(emitted):
     # from anywhere but the port's domain - the block's last reset, or the reset of
     # a clock the block merely carries - is visible here and not on cons.
     fast = emitted['verif/fastProd_hdl_sc_wrapper.h']
-    _expect(fast, 'out_bfm.rst_n(rst_n);',
+    _expect(fast, _bfm('out') + '.rst_n(rst_n);',
             "out's connection is in the clk domain and rst_n is the reset "
             'declared on clk', 'fastProd SC wrapper')
-    _refute(fast, 'out_bfm.rst_n(rstSlow_n);',
+    _refute(fast, _bfm('out') + '.rst_n(rstSlow_n);',
             'rstSlow_n is released on clkSlow, which out does not run in',
             'fastProd SC wrapper')
-    _refute(fast, 'out_bfm.rst_n(rstPico_n);',
+    _refute(fast, _bfm('out') + '.rst_n(rstPico_n);',
             "rstPico_n is released on clkPico and is the block's LAST reset, so "
             'binding it is what a reset taken from the end of the set gives',
             'fastProd SC wrapper')

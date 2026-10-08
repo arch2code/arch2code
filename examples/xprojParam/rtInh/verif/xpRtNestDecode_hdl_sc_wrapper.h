@@ -30,8 +30,8 @@ public:
 
     sc_signal<bool> clk;
 
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uLeaf_bfm;
-    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uLeaf_bfm_inst;
+    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -43,41 +43,41 @@ public:
         blockBase("xpRtNestDecode_hdl_sc_wrapper", name(), bbMode),
         xpRtNestDecodeBase<Config>(name(), variant),
         clk("clk"),
-        apbReg_uLeaf_bfm("apbReg_uLeaf_bfm"),
-        apbReg_bfm("apbReg_bfm"),
+        apbReg_uLeaf_bfm_inst("apbReg_uLeaf_bfm_inst"),
+        apbReg_bfm_inst("apbReg_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
-        dut_hdl->apbReg_uLeaf_paddr(apbReg_uLeaf_hdl_if.paddr);
-        dut_hdl->apbReg_uLeaf_psel(apbReg_uLeaf_hdl_if.psel);
-        dut_hdl->apbReg_uLeaf_penable(apbReg_uLeaf_hdl_if.penable);
-        dut_hdl->apbReg_uLeaf_pwrite(apbReg_uLeaf_hdl_if.pwrite);
-        dut_hdl->apbReg_uLeaf_pwdata(apbReg_uLeaf_hdl_if.pwdata);
-        dut_hdl->apbReg_uLeaf_pready(apbReg_uLeaf_hdl_if.pready);
-        dut_hdl->apbReg_uLeaf_prdata(apbReg_uLeaf_hdl_if.prdata);
-        dut_hdl->apbReg_uLeaf_pslverr(apbReg_uLeaf_hdl_if.pslverr);
-        dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
-        dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
-        dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
-        dut_hdl->apbReg_pwrite(apbReg_hdl_if.pwrite);
-        dut_hdl->apbReg_pwdata(apbReg_hdl_if.pwdata);
-        dut_hdl->apbReg_pready(apbReg_hdl_if.pready);
-        dut_hdl->apbReg_prdata(apbReg_hdl_if.prdata);
-        dut_hdl->apbReg_pslverr(apbReg_hdl_if.pslverr);
+        dut_hdl->apbReg_uLeaf_paddr(apbReg_uLeaf_hdl_inst.paddr);
+        dut_hdl->apbReg_uLeaf_psel(apbReg_uLeaf_hdl_inst.psel);
+        dut_hdl->apbReg_uLeaf_penable(apbReg_uLeaf_hdl_inst.penable);
+        dut_hdl->apbReg_uLeaf_pwrite(apbReg_uLeaf_hdl_inst.pwrite);
+        dut_hdl->apbReg_uLeaf_pwdata(apbReg_uLeaf_hdl_inst.pwdata);
+        dut_hdl->apbReg_uLeaf_pready(apbReg_uLeaf_hdl_inst.pready);
+        dut_hdl->apbReg_uLeaf_prdata(apbReg_uLeaf_hdl_inst.prdata);
+        dut_hdl->apbReg_uLeaf_pslverr(apbReg_uLeaf_hdl_inst.pslverr);
+        dut_hdl->apbReg_paddr(apbReg_hdl_inst.paddr);
+        dut_hdl->apbReg_psel(apbReg_hdl_inst.psel);
+        dut_hdl->apbReg_penable(apbReg_hdl_inst.penable);
+        dut_hdl->apbReg_pwrite(apbReg_hdl_inst.pwrite);
+        dut_hdl->apbReg_pwdata(apbReg_hdl_inst.pwdata);
+        dut_hdl->apbReg_pready(apbReg_hdl_inst.pready);
+        dut_hdl->apbReg_prdata(apbReg_hdl_inst.prdata);
+        dut_hdl->apbReg_pslverr(apbReg_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apbReg_uLeaf_bfm.if_p(this->apbReg_uLeaf);
-        apbReg_uLeaf_bfm.hdl_if_p(apbReg_uLeaf_hdl_if);
-        apbReg_uLeaf_bfm.clk(clk);
-        apbReg_uLeaf_bfm.rst_n(rst_n);
+        apbReg_uLeaf_bfm_inst.if_p(this->apbReg_uLeaf);
+        apbReg_uLeaf_bfm_inst.hdl_if_p(apbReg_uLeaf_hdl_inst);
+        apbReg_uLeaf_bfm_inst.clk(clk);
+        apbReg_uLeaf_bfm_inst.rst_n(rst_n);
 
-        apbReg_bfm.if_p(this->apbReg);
-        apbReg_bfm.hdl_if_p(apbReg_hdl_if);
-        apbReg_bfm.clk(clk);
-        apbReg_bfm.rst_n(rst_n);
+        apbReg_bfm_inst.if_p(this->apbReg);
+        apbReg_bfm_inst.hdl_if_p(apbReg_hdl_inst);
+        apbReg_bfm_inst.clk(clk);
+        apbReg_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -97,8 +97,8 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uLeaf_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uLeaf_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

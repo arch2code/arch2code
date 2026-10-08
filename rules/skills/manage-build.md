@@ -23,7 +23,7 @@ description: Guide for building, simulating, creating implementation file scaffo
 *   `make db` builds the project database from the YAML. It validates the YAML without generating code.
 *   `make gen` regenerates every `GENERATED_CODE_BEGIN`/`GENERATED_CODE_END` region and keeps everything outside them.
 *   `make newmodule` creates the missing files that the `fileGeneration.fileMap` entries name, such as the block files in `model/` and `rtl/` and the testbench files in `tb/`. It never rewrites an existing file and never creates YAML.
-*   `make clean` removes the database, `.gen/` and `rundir/build/`. It leaves source files alone, generated regions included.
+*   `make clean` removes the database, `.gen/`, `rundir/build/` and `rundir/build_xrun/`, and the VCS and Xcelium analysis, snapshot and log files. It leaves source files alone, generated regions included.
 *   `make` in `rundir/` regenerates and builds the model binary, `rundir/build/run`.
 *   `make VL_DUT=1` in `rundir/` regenerates, verilates the RTL into `rundir/build/vl`, and builds the binary with it linked in.
 *   `make run` builds the binary when its sources changed and runs it. It does not regenerate, so after a YAML edit run `make` first. `make run VL_DUT=1` substitutes the RTL for `HDL_TOP_MODULE` only. Where a project has `run-vl`, use it to cover every RTL instance. See `verify-cosimulation`.
@@ -62,18 +62,75 @@ Run arch2code only through these targets. Two tools run directly: `arch2code.py 
 *   `A2C_CLANG` names the Clang for the whole build. Give one compiler path or name, such as `/opt/llvm/bin/clang++` or `clang++-20`, never a launcher plus a compiler. Verilator's `OBJCACHE` already adds ccache. The build ignores an exported `CXX`.
 *   The verilated objects use `A2C_CLANG` too. Under `USE_GCC` they use the compiler Verilator was configured with, because `verilated.mk` sets flags for that compiler.
 *   `VL_JOBS` (default 4) sets Verilator's threads and its C++ build jobs. Under `make -jN` the Verilator build shares the outer job pool instead. A bare `make -j` has no job pool, so `VL_JOBS` applies there too. `make -n` does not run the verilate step.
-*   A site can export `BOOST_LIBS` as the whole Boost link line, for example `-lboost_system -lboost_program_options -lboost_stacktrace_basic -L/site/lib`. `LD_BOOST` is then not needed.
+*   The default Boost link line is `-lboost_program_options -L$(LD_BOOST)`. A site can export `BOOST_LIBS` as the whole Boost link line instead, for example `-lboost_program_options -L/site/lib` for a shared Boost. `LD_BOOST` is then not needed.
 *   A site `EXTRA_LD_FLAGS` goes on the link line after the Boost and SystemC libraries and before the project's `EXTRA_LD_FLAGS +=` additions. A `-L` there cannot override the Boost search path, so set `BOOST_LIBS` to change Boost.
 *   Site values are make syntax and then pass through the shell, so write a literal `$` as `$$` inside shell quotes: `export EXTRA_LD_FLAGS="-Wl,-rpath,'\$\$ORIGIN/lib'"`.
 
 ## Synthesis file list
-`make synthf` in `rtl/` writes `.gen/synth.f`, one absolute path per line with no tool switches. It lists every package in the compile closure, child projects' packages included, in `rtl.f` order, then the RTL modules from the manifest. It leaves out the Verilator wrapper, `RTL_SRC_FILES` additions, and the directories passed through `VERILATOR_USER_OPTS`.
+`make synthf` in `rtl/` writes `.gen/synth.f`, one absolute path per line with no tool switches. It lists every package in the compile closure, child projects' packages included, in `rtl.f` order, then the RTL modules from the manifest. It leaves out the Verilator wrapper, `RTL_SRC_FILES` additions, the directories passed through `VERILATOR_USER_OPTS`, and the HDL hooks (`EXTRA_HDL_*`).
 
 The synthesis project adds the rest itself:
 *   `$(A2C_ROOT)/common/systemVerilog/flops.sv` and `asserts.svh`, ahead of the `synth.f` entries.
 *   The interface `.sv` files the design uses, from `$(A2C_ROOT)/interfaces/<protocol>/`.
 *   The memory models the design uses, from `$(A2C_ROOT)/common/systemVerilog/`: `memory_sp.sv`, `memory_sp_ext.sv`, `memory_dp.sv`, `memory_dp_2clk.sv` or `memory_dp_ext.sv`.
 *   In an A2C Pro tree, `pro/common/systemVerilog` as an include directory (for `fsmDefs.svh`), the library modules the design uses from it (`memArb.sv`, `vldAckArb.sv`, the FIFOs and the rest), and `pro/interfaces/lmmi/lmmi_if.sv`. `a2cPro.f` adds these for Verilator only.
+
+## User hooks
+*   The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`. Base and the a2cPro layer read them and never assign them, so a hook set on the make command line replaces only the project's value.
+*   A hooked command carries the builder's own arguments first, then those of a builder layer such as a2cPro (`A2C_LAYER_VERILATOR_OPTS`, `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS`, `A2C_LAYER_RULES_DIRS`, `A2C_LAYER_HDL_F_FILES` and `A2C_LAYER_VCS_LIB_SV_FILES`), then the project's hooks. A project flag can therefore override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` is the exception. It sits after the Boost, SystemC and layer include paths but before the Verilator and source-directory paths, so a project header directory is searched ahead of those.
+*   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library.
+*   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.
+*   `make help-hooks` lists each hook, the command it feeds, and its current value.
+*   Set `EXTRA_SC_GEN_FILES` and `EXTRA_SV_GEN_FILES` above the `include … a2c-common.mk` line, since `gen` expands them as it parses. The other hooks can go anywhere in `shared.mk`.
+*   The Verilator library build (`make VL_DUT=1`) runs a sub-make in `rundir/build/vl` that reads `shared.mk` and never the rundir `Makefile`. The verilate and archive hooks only take effect from `shared.mk` or the command line.
+*   The rundir `Makefile` that `make newmodule` scaffolds seeds `EXTRA_CPP_SRC`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS` with `+=`, so values from `shared.mk` survive. A rundir `Makefile` that assigns one of them, or `EXTRA_O3_CPP_SRC`, with `=` overwrites what `shared.mk` appended. Change such a line to `+=` before moving a value into `shared.mk`.
+
+| Hook | Tool command it feeds |
+| :--- | :--- |
+| `EXTRA_GEN_OPTS` | `arch2code.py`, every call in the make flow: the db build, `gen` (`--systemc`/`--systemVerilog` per file) and `newmodule` |
+| `EXTRA_SC_GEN_FILES` | Extra files for `arch2code.py --systemc --file` (`gen`) |
+| `EXTRA_SV_GEN_FILES` | Extra files for `arch2code.py --systemVerilog --file` (`gen`). An edit to one re-verilates every verilated top |
+| `EXTRA_VERILATOR_OPTS` | `verilator`, every call: `make lint` and the model wrapping of `make VL_DUT=1` |
+| `VERILATOR_USER_OPTS` | Older name for `EXTRA_VERILATOR_OPTS`, with the same effect. It goes after `A2C_LAYER_VERILATOR_OPTS` and just before `EXTRA_VERILATOR_OPTS` |
+| `EXTRA_LINT_OPTS` | `verilator --lint-only` (`make lint`) |
+| `EXTRA_VL_OPTS` | `verilator` model wrapping only: the runtime build (`vl_dummy`) and each verilated top |
+| `EXTRA_VL_CFLAGS` | C++ flags for Verilator-generated code, appended inside the single quoted `-CFLAGS '...'` argument of each model-wrapping verilate. Do not put single quotes in it |
+| `EXTRA_VL_LIB_OBJS` | `ar` script `ADDMOD` lines for `lib<project>vl_s_wrap.a`. Names objects a verilate already builds. The builder does not compile them |
+| `EXTRA_CXX_FLAGS` | C++ compile flags, after every builder flag |
+| `EXTRA_CPP_INCLUDES` | C++ include paths |
+| `EXTRA_CPP_SRC` | Extra C++ sources to compile |
+| `EXTRA_O3_CPP_SRC` | Extra C++ sources compiled at `-O3` |
+| `EXTRA_CPP_MODULE_SRC` | C++20 module interface units outside the project source dirs |
+| `EXTRA_PRJ_SRC_DIRS` | Extra project source directories (every `.cpp` and `.cppm` in each is compiled) |
+| `EXTRA_A2C_SRC_DIRS` | Extra builder-side source directories, such as the firmware BSP `$(A2C_ROOT)/common/fw/bsp` |
+| `EXTRA_LD_FLAGS` | Link flags for the simulation binary, after the builder's libraries, the Verilator library included. Under `USE_XCELIUM` each word goes to the xrun link as `-Wld,<word>` |
+| `EXTRA_HDL_FILES` | SystemVerilog/Verilog sources for `verilator` (lint and each per-top verilate), the `vlogan` RTL analysis and the `xrun` DUT library |
+| `EXTRA_HDL_F_FILES` | `-F` file lists, to the same three commands. Name every file in the list: `vlogan` ignores `-y` library dirs, which only Verilator and Xcelium resolve |
+| `EXTRA_HDL_INCDIRS` | `+incdir+` directories, to the same three commands |
+| `EXTRA_HDL_DEFINES` | `+define+` macros, `NAME` or `NAME=VAL`, to the same three commands |
+| `EXTRA_VLOGAN_OPTS` | `vlogan`, both the RTL analysis and each `-sc_model` shell (`USE_VCS`) |
+| `EXTRA_VCS_LIB_SV_FILES` | Design units `vlogan` analyses explicitly because it does not search `-y` dirs (`USE_VCS`) |
+| `EXTRA_VCS_OPTS` | `vcs` elaboration and link (`USE_VCS`) |
+| `EXTRA_XRUN_OPTS` | `xrun` snapshot build, outside the DUT library (`USE_XCELIUM`) |
+| `EXTRA_XRUN_LIB_OPTS` | `xrun` snapshot build, inside the DUT library after `a2c.f`, so its `-y` dirs use `a2c.f`'s `+libext+.sv` (`USE_XCELIUM`) |
+| `EXTRA_XRUN_R_OPTS` | `xrun -R`, each simulation, written into the `build_xrun/run_<topology>` script (`USE_XCELIUM`). Do not put single quotes in it |
+
+*   Give `EXTRA_HDL_*` paths as absolute paths, for example `$(REPO_ROOT)/vip/my_if.sv`. Lint, the Verilator sub-make, `vlogan` and `xrun` each run in a different directory.
+*   The files named in `EXTRA_HDL_FILES` and `EXTRA_HDL_F_FILES` are prerequisites of the verilate, `vlogan` and `xrun` steps, so editing one rebuilds. Verilator also tracks the files a `.f` list names, through its `-MMD` record. `vlogan` and `xrun` do not.
+*   HDL from outside arch2code, such as VIP, goes on the `EXTRA_HDL_*` hooks, and lint, Verilator, VCS and Xcelium all pick it up. Its C/C++ models go on `EXTRA_CPP_SRC`, `EXTRA_PRJ_SRC_DIRS`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS`. Options only one tool understands, and precompiled libraries (`-reflib`, `synopsys_sim.setup` and the like), go on that tool's hooks. Simulation plusargs go on `EXTRA_XRUN_R_OPTS`. The VCS flow has no run hook, because `simv` takes the test's own arguments.
+*   `EXTRA_VL_LIB_OBJS` paths are relative to `rundir/build/vl`, or absolute under `$(A2C_VL_BUILD_DIR)`. Each verilated top builds in its own `obj_dir/<top>`. The archive waits for every verilate before reading the objects, so `-j` builds are safe. Adding a path to an existing tree does not relink the archive by itself. Delete `rundir/build/vl/lib<project>vl_s_wrap.a` once, or run `make clean`.
+
+```make
+# A top verilated with --timing needs the Verilator timing runtime in the library.
+VERILATOR_USER_OPTS += --timing
+EXTRA_VL_LIB_OBJS   += $(A2C_VL_BUILD_DIR)/obj_dir/<top>_hdl_sv_wrapper/verilated_timing.o
+```
+
+## Simulator flows (VCS, Xcelium)
+*   Source the site setup script first. VCS needs `VCS_HOME`. Xcelium needs `XCELIUM_TOOLS`, `XRUN_GCC_VERS` and `LM_LICENSE_FILE`. Both need `A2C_CLANG` and the SystemC and Boost roots. `make help USE_VCS=1` and `make help USE_XCELIUM=1` list the flow variables. The simulator hooks are in the hook table above.
+*   Both simulators fix the SystemC/HDL topology when they elaborate the snapshot, so each DUT topology is its own binary, named `run_<inst>_<type>[_tandem]`, or `run_model` when no RTL instance is elaborated. `make USE_VCS=1 -j8 all` links `build/run_<topology>` for the topology that `VL_INST`, `VL_TYPE` and `VL_TANDEM` give (defaults `HDL_TOP_MODULE`, `verif`, `0`). `make USE_XCELIUM=1 -j8 all` builds the equivalent `build_xrun/run_<topology>` script. Pass `VL_DUT=` for the model-only snapshot.
+*   Run a snapshot with the same `--vlInst`, `--vlType` and `--vlTandem` it was built with. The dispatcher `dutRun.py <base binary> <args>` picks the matching snapshot from the arguments, so a regression keeps one run command.
+*   `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots` build `run_model` plus one snapshot per topology in `DUT_TOPOLOGIES` (`<inst>:<cfg>[,<cfg>]...`, where cfg is `verif|model[:tandem]`). Regression files pass that list on the build command line, one `DUT_TOPOLOGIES+=` entry per block. Do not define it in the project `rundir/Makefile`. See `run-regression-tests` for the regression files and `run-tandem` for tandem runs on a snapshot.
 
 ## Project verification targets
 Check the project's `rundir/Makefile` for its own targets, such as `regr` or `run-vl`.

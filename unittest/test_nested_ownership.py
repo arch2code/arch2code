@@ -44,6 +44,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen, qualifyModuleIdentity
 from pysrc.artifactPaths import expandNewModulePath
+from _tmp_helpers import remove_tree
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'nested-ownership')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -98,7 +99,7 @@ def test_error_child_project_via_include():
             f"expected guard diagnostic naming projectName and projectFiles:\n{diag}"
         print("PASS: project-file-via-include: guard fires")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _newmodule_no_token(work):
@@ -413,7 +414,7 @@ def run_all_tests():
         # tree (db file included) can be removed cleanly.
         if g.db is not None:
             g.db.close()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 if __name__ == '__main__':

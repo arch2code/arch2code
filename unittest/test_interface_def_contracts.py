@@ -27,6 +27,11 @@ no structure and therefore no width, so evaluating one is unusable no matter
 which interface binds what. Requiring the referenced parameter to be a required
 one removes the case entirely, statically.
 
+The parameter must also be a `struct` parameter. When its payload is
+parameterizable, the SystemC bridge spells the signal's width as the payload's
+`S<Config>::_byteWidth` (`sc_hdl_bridge_type` in pysrc/intf_gen_utils.py), and
+only a generated structure declares `_byteWidth`.
+
 Rule 3 - every modport lists every declared signal.
 
 The generator decides a blasted boundary port's direction by asking whether the
@@ -39,9 +44,11 @@ Generation succeeds, so nothing but this rule reports it.
 
 Rule 4 - an isEval hdlparam value has exactly one '.' separator.
 
-The generator reads an isEval `value:` as `key, data = value.split('.')`, so a
-value with any other number of separators aborts generation with a bare
-unpacking ValueError naming neither the interface nor its file.
+The generator evaluates an isEval `value:` with each struct parameter name bound
+to a receiver that measures that parameter's payload (`getIntfSignals` in
+pysrc/processYaml.py), so the value must call one method on one parameter. Any
+other shape aborts generation with a bare Python error naming neither the
+interface nor its file.
 
 Rule 5 - every parameter declares `datatype: struct` or `datatype: type`.
 
@@ -64,6 +71,15 @@ pysrc/intf_gen_utils.py). A required parameter is always bound by every
 declaring interface and so is never in that isNull state, so a `defaultWidth`
 on one is never read and misleads a reader into thinking it matters.
 
+Rule 7 - every signalType is bool, a parameter, an isEval hdlparam, or a type.
+
+The SV boundary port and the simulator boundary pin take a signal's width from
+its signalType (`sv_gen_modport_signal_blast` in pysrc/intf_gen_utils.py,
+`getVlTopBoundaryPins` in pysrc/processYaml.py). Any other name is resolved by
+`projectOpen.signalTypeWidth` as a type in the scope of the interface
+definition, then `_a2csystem`. A literal SV spelling such as 'bit [7:0]' names
+no type, so it carries no width.
+
 Interface definition files are discovered by walking the interface trees, so a
 newly authored interface is validated without anyone adding it to a list.
 """
@@ -84,6 +100,7 @@ if base_dir not in sys.path:
 
 from pysrc.processYaml import projectOpen
 import pysrc.yamlReadCache as yamlReadCache
+from _tmp_helpers import remove_tree
 
 
 # The shipped interface libraries. `pro` is a separate repository and is absent
@@ -158,6 +175,19 @@ BAD_HDLPARAM_ARCH_YAML = """interface_defs:
 
 """ + ARCH_YAML
 
+# A definition that breaks the hdlparam rule the other way: the isEval
+# hdlparam reads a required parameter, but a type-typed one, which has no
+# _byteWidth for the SystemC bridge to name.
+BAD_TYPE_HDLPARAM_ARCH_YAML = (BAD_HDLPARAM_ARCH_YAML
+    .replace('bad_hdlparam', 'bad_type_hdlparam')
+    .replace("p_a: {datatype: struct}\n      p_u: {datatype: struct, optional: true}",
+             "p_a: {datatype: struct}\n      p_t: {datatype: type}")
+    .replace("p_ustrb: {isEval: True, datatype: integer, value: 'p_u.to_bytes()'}",
+             "p_tstrb: {isEval: True, datatype: integer, value: 'p_t.to_bytes()'}")
+    .replace('sig_ustrb: p_ustrb', 'sig_t: p_t\n      sig_tstrb: p_tstrb')
+    .replace("outputs: ['valid', 'sig_a', 'sig_ustrb']", "outputs: ['valid', 'sig_a', 'sig_t', 'sig_tstrb']")
+    .replace("inputs: ['valid', 'sig_a', 'sig_ustrb']", "inputs: ['valid', 'sig_a', 'sig_t', 'sig_tstrb']"))
+
 # A definition that breaks the modport rule: sig_a is declared, but modport dst
 # lists it in neither group, so its direction comes from the generator's
 # output fallback instead of from the definition.
@@ -182,8 +212,8 @@ BAD_MODPORT_ARCH_YAML = """interface_defs:
 
 """ + ARCH_YAML
 
-# A definition that breaks the hdlparam value rule: the isEval value names no
-# expression to evaluate, so it carries no '.' for the generator to split on.
+# A definition that breaks the hdlparam value rule: the isEval value names a
+# parameter but calls no method on it, so it carries no '.'.
 BAD_HDLPARAM_VALUE_ARCH_YAML = """interface_defs:
   bad_hdlparam_value:
     parameters:
@@ -257,6 +287,29 @@ BAD_DEFAULT_WIDTH_ARCH_YAML = """interface_defs:
 
 """ + ARCH_YAML
 
+# A definition that breaks the signalType rule: sig_w is spelled as a literal SV
+# type, which names no type and so carries no width.
+BAD_SIGNAL_TYPE_ARCH_YAML = """interface_defs:
+  bad_signal_type:
+    parameters:
+      p_a: {datatype: struct}
+    signals:
+      valid: bool
+      sig_a: p_a
+      sig_w: 'bit [1:0]'
+    modports:
+      src:
+        inputs: []
+        outputs: ['valid', 'sig_a', 'sig_w']
+      dst:
+        inputs: ['valid', 'sig_a', 'sig_w']
+        outputs: []
+    sc_channel:
+      type: 'bad_signal_type'
+      multicycle_types: []
+
+""" + ARCH_YAML
+
 PROJECT_YAML = """projectName: {name}
 yamlFormat: 2
 topInstance: uTop
@@ -305,24 +358,28 @@ def discover_interface_defs():
 def build_database(archText, name):
     """Build a fixture database outside builder/base. Returns (db, tmpdir)."""
     tmpdir = tempfile.mkdtemp(prefix='intf_def_contract_')
-    projDir = os.path.join(tmpdir, 'proj')
-    os.makedirs(projDir)
-    with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
-        f.write(archText)
-    projectPath = os.path.join(projDir, f'{name}Project.yaml')
-    with open(projectPath, 'w') as f:
-        f.write(PROJECT_YAML.format(name=name))
-    dbPath = os.path.join(tmpdir, f'{name}.db')
-    env = os.environ.copy()
-    env['NO_COLOR'] = '1'
-    result = subprocess.run(
-        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
-         '--yaml', projectPath, '--db', dbPath],
-        capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
-    if result.returncode != 0:
-        raise RuntimeError(f"failed to build fixture database:\n"
-                           f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-    return dbPath, tmpdir
+    try:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(archText)
+        projectPath = os.path.join(projDir, f'{name}Project.yaml')
+        with open(projectPath, 'w') as f:
+            f.write(PROJECT_YAML.format(name=name))
+        dbPath = os.path.join(tmpdir, f'{name}.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to build fixture database:\n"
+                               f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+        return dbPath, tmpdir
+    except BaseException:
+        remove_tree(tmpdir)
+        raise
 
 
 def order_error(sourceFile, interfaceType, requiredParam, optionalParam):
@@ -388,10 +445,10 @@ def hdlparam_value_error(sourceFile, interfaceType, hdlparam, value, separators)
         f"{sourceFile}: interface_defs '{interfaceType}' hdlparam '{hdlparam}' "
         f"has isEval value '{value}', which has {separators} '.' separator(s). "
         f"An isEval value must be spelled '<struct parameter>.<expression>', "
-        f"with exactly one separator: the generator splits it on '.' into "
-        f"exactly those two parts, to pick the parameter to read and the "
-        f"expression to evaluate against it, so any other count aborts "
-        f"generation with a bare unpacking ValueError that names neither this "
+        f"with exactly one separator: the generator evaluates it with the "
+        f"parameter bound to a receiver that measures its payload, so it must "
+        f"call one method on one parameter, and any other shape aborts "
+        f"generation with a bare Python error that names neither this "
         f"interface nor this file. Fix the value of '{hdlparam}' in "
         f"{sourceFile}.")
 
@@ -410,6 +467,47 @@ def default_width_error(sourceFile, interfaceType, param, defaultWidth):
         f"every declaring interface, so it is never in that state and the "
         f"generator never reads its defaultWidth. Remove defaultWidth from "
         f"'{param}', or declare it optional, in {sourceFile}.")
+
+
+def signal_type_error(sourceFile, interfaceType, signal, signalType):
+    """The message an author sees. It has to be enough on its own.
+
+    It names the file to edit, the signal, its signalType, and where the
+    generator looks for that signal's width.
+    """
+    return (
+        f"{sourceFile}: interface_defs '{interfaceType}' signal '{signal}' has "
+        f"signalType '{signalType}', which is not bool, a declared parameter, "
+        f"an isEval hdlparam, or a type visible from the definition's file or "
+        f"the system files. The generator sizes the SV boundary port and the "
+        f"simulator boundary pin from that type's width, so a literal SV "
+        f"spelling such as 'bit [7:0]' carries no width. Declare a type "
+        f"with the width and name it as the signalType in {sourceFile}.")
+
+
+def check_signal_types(proj, sourceFiles):
+    """signalType errors for every interface definition in sourceFiles.
+
+    Names the width helpers do not cover are resolved through the generator's
+    own projectOpen.signalTypeWidth.
+    """
+    errors = []
+    for row in proj.data['interface_defs'].values():
+        interfaceType = row['interface_type']
+        if interfaceType not in sourceFiles:
+            continue
+        named = set(row['parameters'] or {})
+        named |= {h for h, info in (row['hdlparams'] or {}).items() if info['isEval']}
+        for signal, signalInfo in row['signals'].items():
+            signalType = signalInfo['signalType']
+            if signalType == 'bool' or signalType in named:
+                continue
+            try:
+                proj.signalTypeWidth(row, signalType)
+            except KeyError:
+                errors.append(signal_type_error(sourceFiles[interfaceType],
+                                                interfaceType, signal, signalType))
+    return errors
 
 
 def check_modport_coverage(interfaceDefs, sourceFiles):
@@ -441,8 +539,8 @@ def check_modport_coverage(interfaceDefs, sourceFiles):
 def check_hdlparam_values(interfaceDefs, sourceFiles):
     """isEval hdlparam value shape errors for every definition in sourceFiles.
 
-    Only an isEval value is split by the generator, so only an isEval value has
-    to carry the separator.
+    Only an isEval value is evaluated by the generator, so only an isEval value
+    has to carry the separator.
     """
     errors = []
     for row in interfaceDefs.values():
@@ -500,9 +598,14 @@ def check_hdlparam_parameters(interfaceDefs, sourceFiles):
             value = hdlparamInfo['value']
             referenced = value.split('.')[0]
             paramInfo = parameters.get(referenced)
-            if paramInfo is None or paramInfo['datatype'] != 'struct':
-                reason = (f"names '{referenced}', which is not a struct "
-                          f"parameter of that interface")
+            if paramInfo is None:
+                reason = (f"names '{referenced}', which is not a parameter of "
+                          f"that interface")
+            elif paramInfo['datatype'] != 'struct':
+                reason = (f"names '{referenced}', a '{paramInfo['datatype']}' "
+                          f"parameter; the SystemC bridge sizes the signal as "
+                          f"the payload's S<Config>::_byteWidth, which only a "
+                          f"struct declares")
             elif paramInfo['optional']:
                 reason = (f"names struct parameter '{referenced}', which is "
                           f"declared optional and so may be left unbound")
@@ -536,7 +639,8 @@ def check_parameter_order(interfaceDefs, sourceFiles):
     return errors
 
 
-def test_shipped_interface_defs(interfaceDefs, sourceFiles):
+def test_shipped_interface_defs(proj, sourceFiles):
+    interfaceDefs = proj.data['interface_defs']
     print("\n[library] every shipped interface definition is discovered and loaded")
     check(bool(sourceFiles), "interface definition files are discovered on disk")
 
@@ -578,7 +682,7 @@ def test_shipped_interface_defs(interfaceDefs, sourceFiles):
         print(f"  {error}")
     check(not errors,
           "no shipped interface has an isEval hdlparam value the generator "
-          "cannot split")
+          "cannot evaluate")
 
     print("\n[defaultWidth] defaultWidth other than 1 is declared only on an "
           "optional parameter")
@@ -588,6 +692,15 @@ def test_shipped_interface_defs(interfaceDefs, sourceFiles):
     check(not errors,
           "no shipped interface declares a non-default defaultWidth on a "
           "required parameter")
+
+    print("\n[signalType] every signalType is bool, a parameter, an isEval "
+          "hdlparam, or a type in scope")
+    errors = check_signal_types(proj, sourceFiles)
+    for error in errors:
+        print(f"  {error}")
+    check(not errors,
+          "every shipped interface signal names a width the generator can "
+          "resolve")
 
 
 def test_misdeclared_interface_is_reported():
@@ -615,7 +728,7 @@ def test_misdeclared_interface_is_reported():
         check("'p_opt'" in message,
               "the message names the optional parameter it must move ahead of")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_hdlparam_on_optional_is_reported():
@@ -645,7 +758,37 @@ def test_hdlparam_on_optional_is_reported():
         check("must always be bound" in message,
               "the message states why the parameter must be a required one")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
+
+
+def test_hdlparam_on_type_is_reported():
+    """The check fires, and its message stands on its own."""
+    print("\n[negative] an isEval hdlparam on a type parameter is reported")
+    try:
+        dbPath, tmpdir = build_database(BAD_TYPE_HDLPARAM_ARCH_YAML, 'badTypeHdlparam')
+    except RuntimeError as exc:
+        check(False, f"mis-declared fixture must build a database: {exc}")
+        return
+    try:
+        proj = projectOpen(dbPath)
+        archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
+        errors = check_hdlparam_parameters(proj.data['interface_defs'],
+                                           {'bad_type_hdlparam': archPath})
+        for error in errors:
+            print(f"  {error}")
+        if len(errors) != 1:
+            check(False, f"exactly one hdlparam error is reported, got {len(errors)}")
+            return
+        message = errors[0]
+        check(archPath in message, "the message names the file to edit")
+        check("'bad_type_hdlparam'" in message, "the message names the interface")
+        check("'p_tstrb'" in message, "the message names the hdlparam")
+        check("'p_t', a 'type' parameter" in message,
+              "the message names the type parameter it evaluates")
+        check("_byteWidth" in message,
+              "the message states why the parameter must be a struct")
+    finally:
+        remove_tree(tmpdir)
 
 
 def test_uncovered_signal_is_reported():
@@ -674,12 +817,12 @@ def test_uncovered_signal_is_reported():
         check("assignment backwards" in message,
               "the message states what the generator does with an uncovered signal")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_unsplittable_hdlparam_value_is_reported():
     """The check fires, and its message stands on its own."""
-    print("\n[negative] an isEval value the generator cannot split is reported")
+    print("\n[negative] an isEval value the generator cannot evaluate is reported")
     try:
         dbPath, tmpdir = build_database(BAD_HDLPARAM_VALUE_ARCH_YAML,
                                         'badHdlparamValue')
@@ -704,7 +847,7 @@ def test_unsplittable_hdlparam_value_is_reported():
         check("<struct parameter>.<expression>" in message,
               "the message states the shape an isEval value must have")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_unrecognised_parameter_datatype_is_reported():
@@ -744,7 +887,7 @@ def test_unrecognised_parameter_datatype_is_reported():
         check("allowed values" in message,
               "the message states datatype is constrained to an allowed set")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_default_width_on_required_is_reported():
@@ -776,7 +919,33 @@ def test_default_width_on_required_is_reported():
               "the message states why a required parameter's defaultWidth is "
               "dead data")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
+
+
+def test_untyped_signal_is_reported():
+    """The check fires, and its message stands on its own."""
+    print("\n[negative] a literal SV signalType is reported")
+    try:
+        dbPath, tmpdir = build_database(BAD_SIGNAL_TYPE_ARCH_YAML, 'badSignalType')
+    except RuntimeError as exc:
+        check(False, f"mis-declared fixture must build a database: {exc}")
+        return
+    try:
+        proj = projectOpen(dbPath)
+        archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
+        errors = check_signal_types(proj, {'bad_signal_type': archPath})
+        for error in errors:
+            print(f"  {error}")
+        if len(errors) != 1:
+            check(False, f"exactly one signalType error is reported, got {len(errors)}")
+            return
+        message = errors[0]
+        check(archPath in message, "the message names the file to edit")
+        check("'bad_signal_type'" in message, "the message names the interface")
+        check("'sig_w'" in message, "the message names the signal")
+        check("'bit [1:0]'" in message, "the message names the signalType")
+    finally:
+        remove_tree(tmpdir)
 
 
 def main():
@@ -791,16 +960,18 @@ def main():
         return 1
     try:
         proj = projectOpen(dbPath)
-        test_shipped_interface_defs(proj.data['interface_defs'], sourceFiles)
+        test_shipped_interface_defs(proj, sourceFiles)
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
     test_misdeclared_interface_is_reported()
     test_hdlparam_on_optional_is_reported()
+    test_hdlparam_on_type_is_reported()
     test_uncovered_signal_is_reported()
     test_unsplittable_hdlparam_value_is_reported()
     test_unrecognised_parameter_datatype_is_reported()
     test_default_width_on_required_is_reported()
+    test_untyped_signal_is_reported()
 
     print("\n" + "=" * 72)
     if FAILURES:

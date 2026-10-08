@@ -93,6 +93,7 @@ def main():
                     'PROJECTNAME = vljobs\n'
                     f'A2C_ROOT = {base_dir}\n'
                     f'A2C_VL_TOPS = {TOP}\n'
+                    f'A2C_VL_BUILD_DIR = {work}\n'
                     'include $(A2C_ROOT)/include/make/a2c-vl-wrap.mk\n')
         with open(os.path.join(work, 'outer.mk'), 'w') as f:
             f.write(f'obj_dir/{TOP}/V{TOP}__ALL.a:\n\t$(MAKE) -f vl.mk $@\n')

@@ -15,7 +15,8 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
-from test_file_prefix import edit, make, remove, run
+from test_file_prefix import edit, make, run
+from _tmp_helpers import remove_tree
 
 
 SOURCE = os.path.join(base_dir, 'examples', 'ip_test')
@@ -88,7 +89,7 @@ def main():
         print("ALL TESTS PASSED")
         return 0
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 if __name__ == '__main__':

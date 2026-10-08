@@ -90,7 +90,7 @@ module ip_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

@@ -80,10 +80,10 @@ def test_ip(proj):
     check('input bit [(IP_DATA_WIDTH + 1)-1:0] ipDataIf_data' in ip_data_sv['ports'],
           "ipDataIf SV payload uses symbolic active width")
     check_equal(ip_data_sc['hdl_if_decl'],
-                'push_ack_hdl_if<sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_hdl_if;',
+                'push_ack_hdl_if<sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_hdl_inst;',
                 "ipDataIf SystemC hdl_if uses Config-dependent _bitWidth")
     check_equal(ip_data_sc['bfm_decl'],
-                'push_ack_dst_bfm<ipDataSt<Config>, sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_bfm;',
+                'push_ack_dst_bfm<ipDataSt<Config>, sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_bfm_inst;',
                 "ipDataIf SystemC BFM uses Config-dependent bridge width")
 
     regs_sv = sv_mp(proj, ret, 'regs')
@@ -108,10 +108,10 @@ def test_src(proj):
     check('output bit [(OUT1_DATA_WIDTH + 1)-1:0] out1_data' in out1_sv['ports'],
           "out1 SV payload uses OUT1_DATA_WIDTH")
     check_equal(out0_sc['hdl_if_decl'],
-                'push_ack_hdl_if<sc_bv<srcOut0St<Config>::_bitWidth>> out0_hdl_if;',
+                'push_ack_hdl_if<sc_bv<srcOut0St<Config>::_bitWidth>> out0_hdl_inst;',
                 "out0 SystemC hdl_if uses Config-dependent _bitWidth")
     check_equal(out1_sc['hdl_if_decl'],
-                'push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out1_hdl_if;',
+                'push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out1_hdl_inst;',
                 "out1 SystemC hdl_if uses Config-dependent _bitWidth")
 
 

@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import twoClk_twoClkTable.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "twoClkTable_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "twoClkTable_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VtwoClkTable_hdl_sv_wrapper.h"
 #endif
@@ -33,7 +35,7 @@ class twoClkTable_hdl_sc_wrapper: public sc_module, public blockBase, public two
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     twoClkTable_hdl_sv_wrapper *dut_hdl;
 #else
     VtwoClkTable_hdl_sv_wrapper *dut_hdl;
@@ -42,7 +44,7 @@ public:
     sc_signal<bool> clk;
     sc_signal<bool> clkSlow;
 
-    apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm;
+    apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm_inst;
 
     SC_HAS_PROCESS (twoClkTable_hdl_sc_wrapper);
 
@@ -52,35 +54,35 @@ public:
         twoClkTableBase(name(), variant),
         clk("clk"),
         clkSlow("clkSlow"),
-        twoClkReg_bfm("twoClkReg_bfm"),
+        twoClkReg_bfm_inst("twoClkReg_bfm_inst"),
         rst_n("rst_n", true),
         rstSlow_n("rstSlow_n", true),
         clk_half_(sc_time(1, SC_NS) / 2),
         clkSlow_half_(sc_time(3, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new twoClkTable_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VtwoClkTable_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->twoClkReg_paddr(twoClkReg_hdl_if.paddr);
-        dut_hdl->twoClkReg_psel(twoClkReg_hdl_if.psel);
-        dut_hdl->twoClkReg_penable(twoClkReg_hdl_if.penable);
-        dut_hdl->twoClkReg_pwrite(twoClkReg_hdl_if.pwrite);
-        dut_hdl->twoClkReg_pwdata(twoClkReg_hdl_if.pwdata);
-        dut_hdl->twoClkReg_pready(twoClkReg_hdl_if.pready);
-        dut_hdl->twoClkReg_prdata(twoClkReg_hdl_if.prdata);
-        dut_hdl->twoClkReg_pslverr(twoClkReg_hdl_if.pslverr);
+        dut_hdl->twoClkReg_paddr(twoClkReg_hdl_inst.paddr);
+        dut_hdl->twoClkReg_psel(twoClkReg_hdl_inst.psel);
+        dut_hdl->twoClkReg_penable(twoClkReg_hdl_inst.penable);
+        dut_hdl->twoClkReg_pwrite(twoClkReg_hdl_inst.pwrite);
+        dut_hdl->twoClkReg_pwdata(twoClkReg_hdl_inst.pwdata);
+        dut_hdl->twoClkReg_pready(twoClkReg_hdl_inst.pready);
+        dut_hdl->twoClkReg_prdata(twoClkReg_hdl_inst.prdata);
+        dut_hdl->twoClkReg_pslverr(twoClkReg_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->clkSlow(clkSlow);
         dut_hdl->rst_n(rst_n);
         dut_hdl->rstSlow_n(rstSlow_n);
 
-        twoClkReg_bfm.if_p(this->twoClkReg);
-        twoClkReg_bfm.hdl_if_p(twoClkReg_hdl_if);
-        twoClkReg_bfm.clk(clk);
-        twoClkReg_bfm.rst_n(rst_n);
+        twoClkReg_bfm_inst.if_p(this->twoClkReg);
+        twoClkReg_bfm_inst.hdl_if_p(twoClkReg_hdl_inst);
+        twoClkReg_bfm_inst.clk(clk);
+        twoClkReg_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         clkSlow.write(true);
@@ -103,7 +105,7 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_signal<bool> rstSlow_n;

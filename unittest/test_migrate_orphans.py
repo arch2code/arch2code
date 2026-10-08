@@ -73,6 +73,7 @@ from pysrc.artifactPaths import (
     retiredSiblingPaths,
     getRetiredContextFiles,
 )
+from _tmp_helpers import remove_tree
 
 HIER_FIXTURE = os.path.join(test_dir, 'fixtures', 'hier-layout')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -779,7 +780,7 @@ def test_retired_context_sibling_hierarchical():
         check(any("consumer.cpp" in loc for loc in includeTodos),
               "hierarchical: the include site is reported")
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def test_retired_context_sibling_without_marker_reported():

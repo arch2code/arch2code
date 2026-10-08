@@ -345,13 +345,21 @@ def test_vl_registrar_emits_view_factory_project():
                 'verifRegistrations': [{
                     'variant': '',
                     'config': None,
+                    'topModule': 'transitLeaf_hdl_sv_wrapper',
                     'dutClass': 'VtransitLeaf_hdl_sv_wrapper',
                     'dutHeader': 'VtransitLeaf_hdl_sv_wrapper.h',
+                    'vcsDutClass': 'transitLeaf_hdl_sv_wrapper',
+                    'vcsDutHeader': 'transitLeaf_hdl_sv_wrapper.h',
+                    'xceliumDutClass': 'transitLeaf_hdl_sv_wrapper',
+                    'xceliumDutHeader': 'transitLeaf_hdl_sv_wrapper_xcelium.h',
                     'factoryProject': 'child',
                 }],
                 'verifConfigModules': [],
                 'configHeaderContexts': [],
             }
+
+        def getVlTopBoundaryPins(self, _data, _topModule):
+            return []
 
     data = {
         'blockName': 'transitLeaf',

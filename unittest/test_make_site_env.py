@@ -88,7 +88,7 @@ def main():
             print(f"FAIL: make db failed:\n{db.stdout}\n{db.stderr}")
             return 1
 
-        defaultBoost = (f"-lboost_system -lboost_program_options -lboost_stacktrace_basic "
+        defaultBoost = (f"-lboost_program_options "
                         f"-L{ldBoost} -L{base['SYSTEMC_LIBDIR']} -ldl -lrt -lsystemc -pthread")
         result, values = printVars(project, base)
         check(result.returncode == 0 and values.get('CXX') == 'clang++',
@@ -119,7 +119,7 @@ def main():
         check(result.returncode == 0,
               f"BOOST_LIBS set and LD_BOOST unset does not stop the build:\n{result.stderr.strip()}")
         check(ldFlags.startswith(f"{siteBoost} -L{base['SYSTEMC_LIBDIR']}")
-              and '-lboost_system' not in ldFlags,
+              and '-lboost_program_options' not in ldFlags,
               f"BOOST_LIBS replaces the default Boost libraries (got {ldFlags!r})")
 
         e = dict(base, BOOST_LIBS='')

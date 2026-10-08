@@ -60,3 +60,6 @@ compile_commands.json
 .cursorrules
 GEMINI.md
 .agents-setup.md5
+
+# test_vl_boundary_widths_build.py working copy, removed after each run
+unittest/vl_boundary_widths_*/

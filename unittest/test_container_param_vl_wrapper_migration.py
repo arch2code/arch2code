@@ -23,6 +23,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -216,7 +217,7 @@ def _run():
                   f"physical file with no phantom bare top")
         return ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def _run_container_sourced():
@@ -248,7 +249,7 @@ def _run_container_sourced():
                   f"no bare wrapper; the pair pass alone provides '{pairTop}'")
         return ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def run_all_tests():

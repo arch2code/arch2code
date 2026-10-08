@@ -5,14 +5,14 @@ An `hdlparams:` entry in an interface_defs entry supplies a signal width, and on
 the SystemC side a positional template argument for the Verilated bridge. There
 is no way to emit the signal without the width: a skipped entry would emit an
 illegal `sc_bv<0>` / `bit [-1:0]`, and would silently retype every later
-positional argument. Both render paths must therefore report what failed and
-stop, so the malformed file is never written.
+positional argument. Both render paths, and the signal classification they and
+the simulator boundary view share (`projectOpen.getIntfSignals`), must
+therefore report what failed and stop, so the malformed file is never written.
 
 The case covered here is an hdlparam whose `value:` names a parameter the
 interface declares `optional:` and the interface leaves unbound. The parameter
-is declared, so it is bound into the render helper's parameter map, but it
-carries no structure, and `get_struct_width` reports the structureKey it was
-handed resolving to nothing.
+is declared, so the hdlparam expression names it, but it carries no structure,
+so evaluating the expression reports the parameter as unbound.
 
 An hdlparam naming a token the interface does not declare at all is a defect in
 a developer-authored interface definition, and is checked statically over every
@@ -265,6 +265,16 @@ def main():
         raised, exit_code, output = render(intf_gen_utils.sc_gen_modport_signal_blast,
                                            proj, consumer, 'inOpt')
         check_diagnostic("SystemC blast", UNBOUND_SUBSTRINGS,
+                         raised, exit_code, output)
+
+        print("\n[view] hdlparam on an unbound optional, shared signal classification")
+        raised, exit_code, output = render(
+            lambda port, proj, block_data: proj.getIntfSignals(
+                block_data['interface_defs']['opt_stream'],
+                intf_gen_utils.get_intf_data(port['connection'], proj)['structures'],
+                port['direction']),
+            proj, consumer, 'inOpt')
+        check_diagnostic("signal classification", UNBOUND_SUBSTRINGS,
                          raised, exit_code, output)
 
         print("\n[exit] the accumulated errors fail the build")

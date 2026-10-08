@@ -17,7 +17,7 @@ module clkGen_hdl_sv_wrapper
         .rstRef_n(rstRef_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end
