@@ -18,6 +18,7 @@ import tempfile
 from _addrctl_helpers import base_dir, test_dir
 from pysrc import intf_gen_utils
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 SOURCE_ROOT = os.path.join(base_dir, 'examples', 'xprojParam')
@@ -46,30 +47,34 @@ def toolchain_env():
 
 def copy_fixture():
     work = tempfile.mkdtemp(prefix='container_param_xproj_vl_', dir=test_dir)
-    for name in PROJECTS:
-        src = os.path.join(SOURCE_ROOT, name)
-        dst = os.path.join(work, name)
-        shutil.copytree(
-            src, dst,
-            ignore=shutil.ignore_patterns(
-                'build', '.gen', 'base', 'registrar', 'verif',
-                '*.db', '*.db-*'))
-        for relpath in ('Makefile', 'rundir/Makefile', 'rtl/Makefile',
-                        'include/make/shared.mk'):
-            path = os.path.join(dst, relpath)
-            if not os.path.exists(path):
-                continue
-            with open(path) as f:
-                text = f.read()
-            lines = text.splitlines(keepends=True)
-            matches = [i for i, line in enumerate(lines)
-                       if line.startswith('REPO_ROOT = ')]
-            if len(matches) != 1:
-                raise AssertionError(
-                    f"{relpath} in {name} does not have one REPO_ROOT assignment")
-            lines[matches[0]] = f'REPO_ROOT = {dst}\n'
-            with open(path, 'w') as f:
-                f.write(''.join(lines))
+    try:
+        for name in PROJECTS:
+            src = os.path.join(SOURCE_ROOT, name)
+            dst = os.path.join(work, name)
+            shutil.copytree(
+                src, dst,
+                ignore=shutil.ignore_patterns(
+                    'build', '.gen', 'base', 'registrar', 'verif',
+                    '*.db', '*.db-*'))
+            for relpath in ('Makefile', 'rundir/Makefile', 'rtl/Makefile',
+                            'include/make/shared.mk'):
+                path = os.path.join(dst, relpath)
+                if not os.path.exists(path):
+                    continue
+                with open(path) as f:
+                    text = f.read()
+                lines = text.splitlines(keepends=True)
+                matches = [i for i, line in enumerate(lines)
+                           if line.startswith('REPO_ROOT = ')]
+                if len(matches) != 1:
+                    raise AssertionError(
+                        f"{relpath} in {name} does not have one REPO_ROOT assignment")
+                lines[matches[0]] = f'REPO_ROOT = {dst}\n'
+                with open(path, 'w') as f:
+                    f.write(''.join(lines))
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -315,14 +320,14 @@ def run_all_tests():
     env = toolchain_env()
     for name in os.listdir(test_dir):
         if name.startswith('container_param_xproj_vl_'):
-            shutil.rmtree(os.path.join(test_dir, name), ignore_errors=True)
+            remove_tree(os.path.join(test_dir, name))
     work = copy_fixture()
     try:
         top = generate(work, env)
         check_generated(top)
         run_selected(top, env)
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
     return 0
 
 

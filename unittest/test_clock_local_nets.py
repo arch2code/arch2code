@@ -42,6 +42,7 @@ if base_dir not in sys.path:
 if test_dir not in sys.path:
     sys.path.insert(0, test_dir)
 
+from pysrc.intf_gen_utils import sc_hdl_member_names
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -435,7 +436,7 @@ def check_connection_clock_resolves_against_a_local_net():
             raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
         with open(os.path.join(fixture, rel)) as f:
             text = f.read()
-        if 'in_bfm.clk(clkAlt);' not in text:
+        if sc_hdl_member_names('in')[1] + '.clk(clkAlt);' not in text:
             raise AssertionError(
                 f"consumer's own BFM does not bind clk to clkAlt, the block's "
                 f"own clock the connection's clock: (clkDiv) resolved to:\n{text}")

@@ -43,8 +43,8 @@ public:
 
     sc_signal<bool> clk;
 
-    push_ack_dst_bfm<tag_st, sc_bv<5>> tag0_bfm;
-    push_ack_dst_bfm<tag_st, sc_bv<5>> tag1_bfm;
+    push_ack_dst_bfm<tag_st, sc_bv<5>> tag0_bfm_inst;
+    push_ack_dst_bfm<tag_st, sc_bv<5>> tag1_bfm_inst;
 
     SC_HAS_PROCESS (consumer_hdl_sc_wrapper);
 
@@ -53,8 +53,8 @@ public:
         blockBase("consumer_hdl_sc_wrapper", name(), bbMode),
         consumerBase(name(), variant),
         clk("clk"),
-        tag0_bfm("tag0_bfm"),
-        tag1_bfm("tag1_bfm"),
+        tag0_bfm_inst("tag0_bfm_inst"),
+        tag1_bfm_inst("tag1_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
@@ -64,24 +64,24 @@ public:
         dut_hdl = new Vconsumer_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->tag0_push(tag0_hdl_if.push);
-        dut_hdl->tag0_data(tag0_hdl_if.data);
-        dut_hdl->tag0_ack(tag0_hdl_if.ack);
-        dut_hdl->tag1_push(tag1_hdl_if.push);
-        dut_hdl->tag1_data(tag1_hdl_if.data);
-        dut_hdl->tag1_ack(tag1_hdl_if.ack);
+        dut_hdl->tag0_push(tag0_hdl_inst.push);
+        dut_hdl->tag0_data(tag0_hdl_inst.data);
+        dut_hdl->tag0_ack(tag0_hdl_inst.ack);
+        dut_hdl->tag1_push(tag1_hdl_inst.push);
+        dut_hdl->tag1_data(tag1_hdl_inst.data);
+        dut_hdl->tag1_ack(tag1_hdl_inst.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        tag0_bfm.if_p(this->tag0);
-        tag0_bfm.hdl_if_p(tag0_hdl_if);
-        tag0_bfm.clk(clk);
-        tag0_bfm.rst_n(rst_n);
+        tag0_bfm_inst.if_p(this->tag0);
+        tag0_bfm_inst.hdl_if_p(tag0_hdl_inst);
+        tag0_bfm_inst.clk(clk);
+        tag0_bfm_inst.rst_n(rst_n);
 
-        tag1_bfm.if_p(this->tag1);
-        tag1_bfm.hdl_if_p(tag1_hdl_if);
-        tag1_bfm.clk(clk);
-        tag1_bfm.rst_n(rst_n);
+        tag1_bfm_inst.if_p(this->tag1);
+        tag1_bfm_inst.hdl_if_p(tag1_hdl_inst);
+        tag1_bfm_inst.clk(clk);
+        tag1_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -101,8 +101,8 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<5>> tag0_hdl_if;
-    push_ack_hdl_if<sc_bv<5>> tag1_hdl_if;
+    push_ack_hdl_if<sc_bv<5>> tag0_hdl_inst;
+    push_ack_hdl_if<sc_bv<5>> tag1_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

@@ -40,8 +40,8 @@ public:
 
     sc_signal<bool> clk;
 
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uWrap_bfm;
-    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> cpu_main_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uWrap_bfm_inst;
+    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> cpu_main_bfm_inst;
 
     SC_HAS_PROCESS (xpRtPrimeDecode_hdl_sc_wrapper);
 
@@ -50,8 +50,8 @@ public:
         blockBase("xpRtPrimeDecode_hdl_sc_wrapper", name(), bbMode),
         xpRtPrimeDecodeBase(name(), variant),
         clk("clk"),
-        apbReg_uWrap_bfm("apbReg_uWrap_bfm"),
-        cpu_main_bfm("cpu_main_bfm"),
+        apbReg_uWrap_bfm_inst("apbReg_uWrap_bfm_inst"),
+        cpu_main_bfm_inst("cpu_main_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
@@ -61,34 +61,34 @@ public:
         dut_hdl = new VxpRtPrimeDecode_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->apbReg_uWrap_paddr(apbReg_uWrap_hdl_if.paddr);
-        dut_hdl->apbReg_uWrap_psel(apbReg_uWrap_hdl_if.psel);
-        dut_hdl->apbReg_uWrap_penable(apbReg_uWrap_hdl_if.penable);
-        dut_hdl->apbReg_uWrap_pwrite(apbReg_uWrap_hdl_if.pwrite);
-        dut_hdl->apbReg_uWrap_pwdata(apbReg_uWrap_hdl_if.pwdata);
-        dut_hdl->apbReg_uWrap_pready(apbReg_uWrap_hdl_if.pready);
-        dut_hdl->apbReg_uWrap_prdata(apbReg_uWrap_hdl_if.prdata);
-        dut_hdl->apbReg_uWrap_pslverr(apbReg_uWrap_hdl_if.pslverr);
-        dut_hdl->cpu_main_paddr(cpu_main_hdl_if.paddr);
-        dut_hdl->cpu_main_psel(cpu_main_hdl_if.psel);
-        dut_hdl->cpu_main_penable(cpu_main_hdl_if.penable);
-        dut_hdl->cpu_main_pwrite(cpu_main_hdl_if.pwrite);
-        dut_hdl->cpu_main_pwdata(cpu_main_hdl_if.pwdata);
-        dut_hdl->cpu_main_pready(cpu_main_hdl_if.pready);
-        dut_hdl->cpu_main_prdata(cpu_main_hdl_if.prdata);
-        dut_hdl->cpu_main_pslverr(cpu_main_hdl_if.pslverr);
+        dut_hdl->apbReg_uWrap_paddr(apbReg_uWrap_hdl_inst.paddr);
+        dut_hdl->apbReg_uWrap_psel(apbReg_uWrap_hdl_inst.psel);
+        dut_hdl->apbReg_uWrap_penable(apbReg_uWrap_hdl_inst.penable);
+        dut_hdl->apbReg_uWrap_pwrite(apbReg_uWrap_hdl_inst.pwrite);
+        dut_hdl->apbReg_uWrap_pwdata(apbReg_uWrap_hdl_inst.pwdata);
+        dut_hdl->apbReg_uWrap_pready(apbReg_uWrap_hdl_inst.pready);
+        dut_hdl->apbReg_uWrap_prdata(apbReg_uWrap_hdl_inst.prdata);
+        dut_hdl->apbReg_uWrap_pslverr(apbReg_uWrap_hdl_inst.pslverr);
+        dut_hdl->cpu_main_paddr(cpu_main_hdl_inst.paddr);
+        dut_hdl->cpu_main_psel(cpu_main_hdl_inst.psel);
+        dut_hdl->cpu_main_penable(cpu_main_hdl_inst.penable);
+        dut_hdl->cpu_main_pwrite(cpu_main_hdl_inst.pwrite);
+        dut_hdl->cpu_main_pwdata(cpu_main_hdl_inst.pwdata);
+        dut_hdl->cpu_main_pready(cpu_main_hdl_inst.pready);
+        dut_hdl->cpu_main_prdata(cpu_main_hdl_inst.prdata);
+        dut_hdl->cpu_main_pslverr(cpu_main_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apbReg_uWrap_bfm.if_p(this->apbReg_uWrap);
-        apbReg_uWrap_bfm.hdl_if_p(apbReg_uWrap_hdl_if);
-        apbReg_uWrap_bfm.clk(clk);
-        apbReg_uWrap_bfm.rst_n(rst_n);
+        apbReg_uWrap_bfm_inst.if_p(this->apbReg_uWrap);
+        apbReg_uWrap_bfm_inst.hdl_if_p(apbReg_uWrap_hdl_inst);
+        apbReg_uWrap_bfm_inst.clk(clk);
+        apbReg_uWrap_bfm_inst.rst_n(rst_n);
 
-        cpu_main_bfm.if_p(this->cpu_main);
-        cpu_main_bfm.hdl_if_p(cpu_main_hdl_if);
-        cpu_main_bfm.clk(clk);
-        cpu_main_bfm.rst_n(rst_n);
+        cpu_main_bfm_inst.if_p(this->cpu_main);
+        cpu_main_bfm_inst.hdl_if_p(cpu_main_hdl_inst);
+        cpu_main_bfm_inst.clk(clk);
+        cpu_main_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -108,8 +108,8 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uWrap_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> cpu_main_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uWrap_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> cpu_main_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

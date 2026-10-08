@@ -33,6 +33,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate, projectOpen, qualifiedKeyContext
 from templates.systemVerilog import package
+from _tmp_helpers import remove_tree
 
 # projectCreate keeps its parse state in CLASS attributes, so two in-process
 # builds in one interpreter share it. Snapshotted at import time, before any
@@ -123,7 +124,7 @@ def _build_temp_project(ip_yaml_edit):
     except BaseException:
         # Fixture build failed after mkdtemp; drop the copied tree so a failing
         # run cannot leak an eval_sv_emit_* directory into the unittest dir.
-        shutil.rmtree(temp_root, ignore_errors=True)
+        remove_tree(temp_root)
         raise
 
 

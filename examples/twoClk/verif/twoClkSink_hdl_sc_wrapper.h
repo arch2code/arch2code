@@ -43,7 +43,7 @@ public:
 
     sc_signal<bool> clk;
 
-    push_ack_dst_bfm<twoClkDataSt, sc_bv<8>> in_bfm;
+    push_ack_dst_bfm<twoClkDataSt, sc_bv<8>> in_bfm_inst;
 
     SC_HAS_PROCESS (twoClkSink_hdl_sc_wrapper);
 
@@ -52,7 +52,7 @@ public:
         blockBase("twoClkSink_hdl_sc_wrapper", name(), bbMode),
         twoClkSinkBase(name(), variant),
         clk("clk"),
-        in_bfm("in_bfm"),
+        in_bfm_inst("in_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
@@ -62,16 +62,16 @@ public:
         dut_hdl = new VtwoClkSink_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->in_push(in_hdl_if.push);
-        dut_hdl->in_data(in_hdl_if.data);
-        dut_hdl->in_ack(in_hdl_if.ack);
+        dut_hdl->in_push(in_hdl_inst.push);
+        dut_hdl->in_data(in_hdl_inst.data);
+        dut_hdl->in_ack(in_hdl_inst.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        in_bfm.if_p(this->in);
-        in_bfm.hdl_if_p(in_hdl_if);
-        in_bfm.clk(clk);
-        in_bfm.rst_n(rst_n);
+        in_bfm_inst.if_p(this->in);
+        in_bfm_inst.hdl_if_p(in_hdl_inst);
+        in_bfm_inst.clk(clk);
+        in_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -91,7 +91,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<8>> in_hdl_if;
+    push_ack_hdl_if<sc_bv<8>> in_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

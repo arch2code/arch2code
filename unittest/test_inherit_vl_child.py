@@ -24,6 +24,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -175,7 +176,7 @@ def check_mixed_instance_orders(env):
                         print(f"  PASS ({name}): one registrar retains ordinary "
                               "variant solo")
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            remove_tree(tmp)
     return ok
 
 
@@ -457,7 +458,7 @@ def run_all_tests():
         # Runs last: it leaves the copy's RTL edited and its build stale.
         ok = check_rtl_edit_reverilates(project, rundir, env) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: one parameterized leaf type builds and runs at its own "

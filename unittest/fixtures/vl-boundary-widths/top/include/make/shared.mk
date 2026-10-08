@@ -12,12 +12,9 @@ HDL_TOP_MODULE = dutA
 A2C_PRJ_YAML = $(REPO_ROOT)/prj/yaml/vbwTopProject.yaml
 
 # The idt/idth test protocols' companions: SystemC headers on the include path,
-# SystemVerilog interfaces on each simulator's library search path. vlogan does
-# not search -y, so VCS compiles the interfaces as library files.
+# SystemVerilog interfaces in every HDL flow.
 EXTRA_A2C_SRC_DIRS = $(FIXTURE_ROOT)/interfaces/idt $(FIXTURE_ROOT)/interfaces/idth
-VERILATOR_USER_OPTS = -F $(FIXTURE_ROOT)/interfaces/vbw.f
-XRUN_USER_OPTS = -F $(FIXTURE_ROOT)/interfaces/vbw.f
-EXTRA_VCS_LIB_SV_FILES = $(FIXTURE_ROOT)/interfaces/idt/idt_if.sv $(FIXTURE_ROOT)/interfaces/idth/idth_if.sv
+EXTRA_HDL_FILES += $(FIXTURE_ROOT)/interfaces/idt/idt_if.sv $(FIXTURE_ROOT)/interfaces/idth/idth_if.sv
 
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk

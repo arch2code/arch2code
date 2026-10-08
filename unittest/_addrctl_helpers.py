@@ -167,10 +167,7 @@ def build_database(arch_yaml, top_instance='uTop',
 def cleanup(paths):
     for path in paths:
         if path and os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            os.unlink(path)
 
 
 def find_block(prj, simple_name):

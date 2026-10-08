@@ -21,15 +21,13 @@ ifdef VCS_DEBUG
 VCS_ELAB_OPTS += -kdb -debug_access
 VLOGAN_OPTS += +define+VCS_DEBUG
 endif
-VCS_OPTS += $(VCS_USER_OPTS)
-VLOGAN_OPTS += $(VLOGAN_USER_OPTS)
 
 # Design units a2c.f offers through -y search dirs. vcs does not consult those
 # at elaboration in the vlogan flow, so they are analyzed explicitly with the
 # design. a2c.f already names flops.sv and asserts.svh.
 VCS_LIB_SV_FILES ?= $(wildcard $(A2C_ROOT)/interfaces/*/*_if.sv) \
 	$(filter-out %/flops.sv,$(wildcard $(A2C_ROOT)/common/systemVerilog/*.sv))
-VCS_LIB_SV_FILES += $(EXTRA_VCS_LIB_SV_FILES)
+VCS_LIB_SV_FILES += $(A2C_LAYER_VCS_LIB_SV_FILES) $(EXTRA_VCS_LIB_SV_FILES)
 
 VCS_SV_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F)
 VCS_INCDIRS = $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS))
@@ -40,24 +38,26 @@ VCS_SC_MODEL_STAMP = $(VCS_STAMP_DIR)/sc_model.vlogan
 VCS_PORTMAPS = $(foreach t,$(A2C_VL_TOPS),$(A2C_VL_PORTMAP_$(t)))
 VCS_TOP_SV = $(foreach t,$(A2C_VL_TOPS),$(A2C_VL_SV_$(t)))
 
-# The analysis command's options, include dirs, and source lists are part of
-# the analysis; record them so a change re-analyzes even when no named file's
-# mtime moves (for instance a source list gaining a pre-existing file). Both
-# vlogan stages (RTL analysis below, and the per-top sc_model recipe) draw from
-# the same option and include-dir set, so one stamp covers both.
-VCS_ANALYSIS_OPTS = $(VLOGAN_OPTS) $(VCS_INCDIRS) $(A2C_SV_FILES) $(VCS_LIB_SV_FILES)
+# The RTL analysis arguments: builder options, the project's vlogan hook, then
+# the sources, with the HDL hooks between a2c.f and the project's rtl.f. They
+# are part of the analysis; record them so a change re-analyzes even when no
+# named file's mtime moves (for instance a source list gaining a pre-existing
+# file). They hold every -sc_model option and include dir too, so one stamp
+# covers both vlogan stages.
+VCS_ANALYSIS_OPTS = $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f $(A2C_HDL_ARGS) \
+	-F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(VCS_LIB_SV_FILES) $(VCS_INCDIRS)
 VCS_VLOGAN_STAMP = $(VCS_STAMP_DIR)/vlogan_opts
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_VLOGAN_STAMP) 2>/dev/null)" = "$(VCS_ANALYSIS_OPTS)" ] || printf '%s\n' "$(VCS_ANALYSIS_OPTS)" > $(VCS_VLOGAN_STAMP))
 
-$(VCS_RTL_STAMP): $(VCS_SV_DEPS) $(VCS_LIB_SV_FILES) $(VCS_VLOGAN_STAMP)
+$(VCS_RTL_STAMP): $(VCS_SV_DEPS) $(VCS_LIB_SV_FILES) $(A2C_HDL_DEPS) $(VCS_VLOGAN_STAMP)
 	mkdir -p $(@D)
-	cd $(VCS_RUNDIR) && $(VLOGAN) $(VLOGAN_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(VCS_LIB_SV_FILES) $(VCS_INCDIRS) -l vlogan_rtl.log
+	cd $(VCS_RUNDIR) && $(VLOGAN) $(VCS_ANALYSIS_OPTS) -l vlogan_rtl.log
 	touch $@
 
 # One shell per top. vlogan -sc_model takes a single source file and the runs
 # share AN.DB, so they are sequenced in one recipe.
 $(VCS_SC_MODEL_STAMP): $(VCS_RTL_STAMP) $(VCS_TOP_SV) $(VCS_PORTMAPS) $(VCS_VLOGAN_STAMP)
-	cd $(VCS_RUNDIR) && $(foreach t,$(A2C_VL_TOPS),$(VLOGAN) $(VLOGAN_OPTS) -sc_model $(t) -sc_portmap $(A2C_VL_PORTMAP_$(t)) $(VCS_INCDIRS) $(A2C_VL_SV_$(t)) -l vlogan_$(t).log &&) true
+	cd $(VCS_RUNDIR) && $(foreach t,$(A2C_VL_TOPS),$(VLOGAN) $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) -sc_model $(t) -sc_portmap $(A2C_VL_PORTMAP_$(t)) $(VCS_INCDIRS) $(A2C_VL_SV_$(t)) -l vlogan_$(t).log &&) true
 	touch $@
 
 # The port maps are outputs of the boundary generation step (a2c-common.mk).
@@ -73,7 +73,7 @@ VCS_LD_FLAGS = $(filter-out -pthread,$(LD_FLAGS))
 
 # The link command's options, elaboration arguments, and linker flags are part
 # of the snapshot: record them so a change relinks without recompiling.
-VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(VCS_LD_FLAGS) $(DUT_ELAB_ARGS)
+VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(EXTRA_VCS_OPTS) $(VCS_LD_FLAGS) $(DUT_ELAB_ARGS)
 VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/elab_args
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "$(VCS_LINK_OPTS)" ] || printf '%s\n' "$(VCS_LINK_OPTS)" > $(VCS_ELAB_STAMP))
 
@@ -87,11 +87,10 @@ $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "
 $(BIN_DIR)/$(BIN): $(VCS_LINK_DEPS) $(VCS_ELAB_STAMP)
 	mkdir -p $(@D)
 	cd $(VCS_RUNDIR) && for skel in csrc/sysc/*/sysc_skeleton.v; do [ -e "$$skel" ] && $(RM) -r "$${skel%/*}"; done; \
-		cd $(VCS_RUNDIR) && MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
+		cd $(VCS_RUNDIR) && MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) $(EXTRA_VCS_OPTS) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
 		|| { $(RM) -rf csrc AN.DB $(VCS_RTL_STAMP) $(VCS_SC_MODEL_STAMP); exit 1; }
 
 help::
-	@echo "  VCS_USER_OPTS / VLOGAN_USER_OPTS - extra options for the VCS flow (USE_VCS=1)"
 	@echo "  VCS_DEBUG=1                      - link with -kdb -debug_access and enable \$$fsdbDumpvars (+fsdbTrace)"
 	@echo "  VL_INST / VL_TYPE / VL_TANDEM=1  - DUT topology of the VCS snapshot build/run_<inst>_<type>[_tandem];"
 	@echo "                                     repeat the same --vlInst/--vlType/--vlTandem when running it"

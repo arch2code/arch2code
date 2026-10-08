@@ -100,6 +100,7 @@ if base_dir not in sys.path:
 
 from pysrc.processYaml import projectOpen
 import pysrc.yamlReadCache as yamlReadCache
+from _tmp_helpers import remove_tree
 
 
 # The shipped interface libraries. `pro` is a separate repository and is absent
@@ -357,24 +358,28 @@ def discover_interface_defs():
 def build_database(archText, name):
     """Build a fixture database outside builder/base. Returns (db, tmpdir)."""
     tmpdir = tempfile.mkdtemp(prefix='intf_def_contract_')
-    projDir = os.path.join(tmpdir, 'proj')
-    os.makedirs(projDir)
-    with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
-        f.write(archText)
-    projectPath = os.path.join(projDir, f'{name}Project.yaml')
-    with open(projectPath, 'w') as f:
-        f.write(PROJECT_YAML.format(name=name))
-    dbPath = os.path.join(tmpdir, f'{name}.db')
-    env = os.environ.copy()
-    env['NO_COLOR'] = '1'
-    result = subprocess.run(
-        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
-         '--yaml', projectPath, '--db', dbPath],
-        capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
-    if result.returncode != 0:
-        raise RuntimeError(f"failed to build fixture database:\n"
-                           f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-    return dbPath, tmpdir
+    try:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(archText)
+        projectPath = os.path.join(projDir, f'{name}Project.yaml')
+        with open(projectPath, 'w') as f:
+            f.write(PROJECT_YAML.format(name=name))
+        dbPath = os.path.join(tmpdir, f'{name}.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to build fixture database:\n"
+                               f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+        return dbPath, tmpdir
+    except BaseException:
+        remove_tree(tmpdir)
+        raise
 
 
 def order_error(sourceFile, interfaceType, requiredParam, optionalParam):
@@ -723,7 +728,7 @@ def test_misdeclared_interface_is_reported():
         check("'p_opt'" in message,
               "the message names the optional parameter it must move ahead of")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_hdlparam_on_optional_is_reported():
@@ -753,7 +758,7 @@ def test_hdlparam_on_optional_is_reported():
         check("must always be bound" in message,
               "the message states why the parameter must be a required one")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_hdlparam_on_type_is_reported():
@@ -783,7 +788,7 @@ def test_hdlparam_on_type_is_reported():
         check("_byteWidth" in message,
               "the message states why the parameter must be a struct")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_uncovered_signal_is_reported():
@@ -812,7 +817,7 @@ def test_uncovered_signal_is_reported():
         check("assignment backwards" in message,
               "the message states what the generator does with an uncovered signal")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_unsplittable_hdlparam_value_is_reported():
@@ -842,7 +847,7 @@ def test_unsplittable_hdlparam_value_is_reported():
         check("<struct parameter>.<expression>" in message,
               "the message states the shape an isEval value must have")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_unrecognised_parameter_datatype_is_reported():
@@ -882,7 +887,7 @@ def test_unrecognised_parameter_datatype_is_reported():
         check("allowed values" in message,
               "the message states datatype is constrained to an allowed set")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_default_width_on_required_is_reported():
@@ -914,7 +919,7 @@ def test_default_width_on_required_is_reported():
               "the message states why a required parameter's defaultWidth is "
               "dead data")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_untyped_signal_is_reported():
@@ -940,7 +945,7 @@ def test_untyped_signal_is_reported():
         check("'sig_w'" in message, "the message names the signal")
         check("'bit [1:0]'" in message, "the message names the signalType")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def main():
@@ -957,7 +962,7 @@ def main():
         proj = projectOpen(dbPath)
         test_shipped_interface_defs(proj, sourceFiles)
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
     test_misdeclared_interface_is_reported()
     test_hdlparam_on_optional_is_reported()

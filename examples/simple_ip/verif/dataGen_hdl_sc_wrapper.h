@@ -43,7 +43,7 @@ public:
 
     sc_signal<bool> clk;
 
-    push_ack_src_bfm<simpleData8St, sc_bv<9>> out_bfm;
+    push_ack_src_bfm<simpleData8St, sc_bv<9>> out_bfm_inst;
 
     SC_HAS_PROCESS (dataGen_hdl_sc_wrapper);
 
@@ -52,7 +52,7 @@ public:
         blockBase("dataGen_hdl_sc_wrapper", name(), bbMode),
         dataGenBase(name(), variant),
         clk("clk"),
-        out_bfm("out_bfm"),
+        out_bfm_inst("out_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
@@ -62,16 +62,16 @@ public:
         dut_hdl = new VdataGen_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->out_push(out_hdl_if.push);
-        dut_hdl->out_data(out_hdl_if.data);
-        dut_hdl->out_ack(out_hdl_if.ack);
+        dut_hdl->out_push(out_hdl_inst.push);
+        dut_hdl->out_data(out_hdl_inst.data);
+        dut_hdl->out_ack(out_hdl_inst.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        out_bfm.if_p(this->out);
-        out_bfm.hdl_if_p(out_hdl_if);
-        out_bfm.clk(clk);
-        out_bfm.rst_n(rst_n);
+        out_bfm_inst.if_p(this->out);
+        out_bfm_inst.hdl_if_p(out_hdl_inst);
+        out_bfm_inst.clk(clk);
+        out_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -91,7 +91,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<9>> out_hdl_if;
+    push_ack_hdl_if<sc_bv<9>> out_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

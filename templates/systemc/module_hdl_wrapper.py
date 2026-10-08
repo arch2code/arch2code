@@ -219,8 +219,8 @@ def render_sc(args, prj, data):
                 s_ = []
                 port_data = data['ports'][port_type][port]
                 intf_name = port_data['name']
-                bfm_name = intf_name + '_bfm'
-                hdl_intf_name = intf_name + '_hdl_if'
+                bfm_name = mp_sig[port]['bfm_inst_name']
+                hdl_intf_name = mp_sig[port]['hdl_inst_name']
                 s_.append(f'{bfm_name}.if_p(this->{intf_name});')
                 s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
                 s_.append(f'{bfm_name}.clk({port_data["domainClock"]});')

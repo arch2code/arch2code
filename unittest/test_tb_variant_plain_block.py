@@ -21,6 +21,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(base_dir, 'examples', 'helloWorld')
@@ -113,7 +114,7 @@ def test_stale_variant_rejected_then_cleared():
         else:
             print("  ok: gen passes again once --variant= is removed")
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
     if ok:
         print("  PASS")
     return ok

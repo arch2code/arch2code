@@ -22,8 +22,9 @@ import re
 import sys
 
 from test_file_prefix import (PROJECT_FILES, check_sv_names_and_run, copy_simple_ip,
-                              currentArtifactRows, edit, make, open_db, remove, run,
+                              currentArtifactRows, edit, make, open_db, run,
                               set_prefixes)
+from _tmp_helpers import remove_tree
 
 
 # ip's RTL blocks, each with a user-owned rtl/<block>.sv.
@@ -104,7 +105,7 @@ def check_child_rtl_prefix_and_name():
                   "ip_ip_impl, lists only existing SV files, and the Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_child_config_module_name():
@@ -132,7 +133,7 @@ def check_child_config_module_name():
                   "the Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def fw_rows(work):
@@ -179,7 +180,7 @@ def check_child_only_entry_kind_accepted():
                   "ip/fw/ipFw.h and the Verilated run passes")
         return ok
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def check_root_only_entry_kind_skips_child():
@@ -198,7 +199,7 @@ def check_root_only_entry_kind_skips_child():
         print("PASS: with includeFW in the root's fileMap only, ip has no firmware artifact")
         return True
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 def main():

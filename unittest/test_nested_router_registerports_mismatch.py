@@ -18,6 +18,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'nested-router-registerports-mismatch')
@@ -118,7 +119,7 @@ def run_all_tests():
         ok = run_positive(e, tmp) and ok
         return ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 if __name__ == '__main__':

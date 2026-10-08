@@ -47,6 +47,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'regs-container-variant')
@@ -173,7 +174,7 @@ def run_all_tests():
         ok = check_run(output)
         ok = check_emitted(project) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: the register handler takes the Config of the block whose "

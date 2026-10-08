@@ -47,7 +47,7 @@ public:
     sc_signal<bool> clk;
     sc_signal<bool> clkSlow;
 
-    apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm;
+    apb_dst_bfm<twoClkRegAddrSt, twoClkRegDataSt, sc_bv<32>, sc_bv<32>> twoClkReg_bfm_inst;
 
     SC_HAS_PROCESS (twoClk_hdl_sc_wrapper);
 
@@ -57,7 +57,7 @@ public:
         twoClkBase(name(), variant),
         clk("clk"),
         clkSlow("clkSlow"),
-        twoClkReg_bfm("twoClkReg_bfm"),
+        twoClkReg_bfm_inst("twoClkReg_bfm_inst"),
         rst_n("rst_n", true),
         rstSlow_n("rstSlow_n", true),
         clk_half_(sc_time(1, SC_NS) / 2),
@@ -69,23 +69,23 @@ public:
         dut_hdl = new VtwoClk_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->twoClkReg_paddr(twoClkReg_hdl_if.paddr);
-        dut_hdl->twoClkReg_psel(twoClkReg_hdl_if.psel);
-        dut_hdl->twoClkReg_penable(twoClkReg_hdl_if.penable);
-        dut_hdl->twoClkReg_pwrite(twoClkReg_hdl_if.pwrite);
-        dut_hdl->twoClkReg_pwdata(twoClkReg_hdl_if.pwdata);
-        dut_hdl->twoClkReg_pready(twoClkReg_hdl_if.pready);
-        dut_hdl->twoClkReg_prdata(twoClkReg_hdl_if.prdata);
-        dut_hdl->twoClkReg_pslverr(twoClkReg_hdl_if.pslverr);
+        dut_hdl->twoClkReg_paddr(twoClkReg_hdl_inst.paddr);
+        dut_hdl->twoClkReg_psel(twoClkReg_hdl_inst.psel);
+        dut_hdl->twoClkReg_penable(twoClkReg_hdl_inst.penable);
+        dut_hdl->twoClkReg_pwrite(twoClkReg_hdl_inst.pwrite);
+        dut_hdl->twoClkReg_pwdata(twoClkReg_hdl_inst.pwdata);
+        dut_hdl->twoClkReg_pready(twoClkReg_hdl_inst.pready);
+        dut_hdl->twoClkReg_prdata(twoClkReg_hdl_inst.prdata);
+        dut_hdl->twoClkReg_pslverr(twoClkReg_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->clkSlow(clkSlow);
         dut_hdl->rst_n(rst_n);
         dut_hdl->rstSlow_n(rstSlow_n);
 
-        twoClkReg_bfm.if_p(this->twoClkReg);
-        twoClkReg_bfm.hdl_if_p(twoClkReg_hdl_if);
-        twoClkReg_bfm.clk(clk);
-        twoClkReg_bfm.rst_n(rst_n);
+        twoClkReg_bfm_inst.if_p(this->twoClkReg);
+        twoClkReg_bfm_inst.hdl_if_p(twoClkReg_hdl_inst);
+        twoClkReg_bfm_inst.clk(clk);
+        twoClkReg_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         clkSlow.write(true);
@@ -108,7 +108,7 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> twoClkReg_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_signal<bool> rstSlow_n;
