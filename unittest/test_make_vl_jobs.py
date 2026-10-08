@@ -10,6 +10,10 @@ Drives one verilated-top rule of a2c-vl-wrap.mk from a scratch makefile, with a
 stand-in `verilator` on PATH that records its arguments and whether the
 jobserver named in MAKEFLAGS is open. Checks:
 - with a serial outer make, `-j 4` by default and `-j 8` with VL_JOBS=8;
+- the options stamp is the same for VL_JOBS=4 and VL_JOBS=16, so a job count
+  change does not re-verilate;
+- a project -j in EXTRA_VL_OPTS comes before the builder's, and Verilator
+  takes the first -j, so it wins;
 - with `make -j3`, the verilator process can reach the outer jobserver;
 - the configured CXX reaches verilator's sub-make as CXX and LINK, and under
   USE_GCC no compiler override is passed;
@@ -105,6 +109,20 @@ def main():
 
         result, argsLine, state = runVerilate(work, 'VL_JOBS=8')
         check(jobs(argsLine) == '8', f"VL_JOBS=8 reaches the verilator command line (verilator {argsLine!r})")
+
+        stamp = os.path.join(work, 'verilate_opts')
+        runVerilate(work, 'VL_JOBS=4')
+        stamp4 = open(stamp).read()
+        result, argsLine, state = runVerilate(work, 'VL_JOBS=16')
+        stamp16 = open(stamp).read()
+        check(stamp4 == stamp16 and jobs(argsLine) == '16',
+              f"VL_JOBS=16 reaches verilator without changing the options stamp "
+              f"(stamp changed: {stamp4 != stamp16}, verilator {argsLine!r})")
+
+        result, argsLine, state = runVerilate(work, 'VL_JOBS=8', 'EXTRA_VL_OPTS=-j 1')
+        check(jobs(argsLine) == '1',
+              f"EXTRA_VL_OPTS=-j 1 comes before the builder -j, and verilator takes the first -j "
+              f"(verilator {argsLine!r})")
 
         result, argsLine, state = runVerilate(work, '-j3')
         check(state == 'open',

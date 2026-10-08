@@ -3,7 +3,8 @@
 
 Works on a private copy of examples/simple_ip whose include/make/shared.mk
 appends one distinct value to every tool hook. Checks:
-- EXTRA_GEN_OPTS on the db build, every gen call and newmodule of the project;
+- EXTRA_GEN_OPTS on the db build, every gen call and newmodule of the project,
+  including the --vlBoundary call that gen makes under USE_VCS and USE_XCELIUM;
 - VERILATOR_USER_OPTS and EXTRA_VERILATOR_OPTS on lint and on every model
   verilate, EXTRA_LINT_OPTS on lint only, EXTRA_VL_OPTS on the verilates only;
 - the verilator hooks sit after the builder options and a builder layer's
@@ -278,6 +279,12 @@ def main():
             lacking = [' '.join(c) for c in calls if '--debug' not in c]
             if not calls or lacking:
                 failures.append(f"{target}: arch2code.py lacks EXTRA_GEN_OPTS: {lacking or 'no call'}")
+        for flow, args in (('USE_VCS=1', VCS_ARGS), ('USE_XCELIUM=1', XRUN_ARGS)):
+            boundary = [c for c in genCalls(dryRun(work, 'gen', *args)) if '--vlBoundary' in c]
+            lacking = [' '.join(c) for c in boundary if '--debug' not in c]
+            if not boundary or lacking:
+                failures.append(f"gen {flow}: arch2code.py --vlBoundary lacks EXTRA_GEN_OPTS: "
+                                f"{lacking or 'no call'}")
 
         a2cF = os.path.join(run(['git', '-C', work, 'rev-parse', '--show-toplevel']).stdout.strip(),
                             'common', 'systemVerilog', 'a2c.f')

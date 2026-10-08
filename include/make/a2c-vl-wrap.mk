@@ -15,7 +15,7 @@ endif
 
 # Verilate threads, and the --build job count when no outer jobserver exists.
 VL_JOBS ?= 4
-VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j $(VL_JOBS) -DVL_DUT -MMD
+VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -DVL_DUT -MMD
 # verilated.mk names the compiler Verilator was built with, and its flags suit
 # that compiler. A Clang build swaps in the project's Clang; USE_GCC keeps
 # Verilator's own.
@@ -29,7 +29,9 @@ VERILATOR_OPTS += --coverage
 endif
 
 # Builder options, a builder layer's, then the project's hooks. -CFLAGS is one
-# quoted argument.
+# quoted argument. The recipes add -j $(VL_JOBS) after the hooks. Verilator
+# takes the first -j, so a project -j wins. The options stamp leaves out the
+# job count, so a VL_JOBS change does not re-verilate.
 VL_VERILATE = verilator $(VERILATOR_OPTS) $(A2C_LAYER_VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
 
 # Compiler and flags for Verilator's own make, which builds the verilated model
@@ -114,7 +116,7 @@ VL_PLUS = $(if $(findstring n,$(firstword -$(MAKEFLAGS))),,+)
 # generated-source stamp prerequisite would keep this rule permanently out of date.
 obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 	mkdir -p obj_dir/vl_dummy
-	$(VL_PLUS)$(VL_VERILATE) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
+	$(VL_PLUS)$(VL_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
 
 # One verilate per recorded top into its own --Mdir: the explicit design unit
 # (--top), the recorded physical .sv, and the recorded include search path (so a
@@ -123,7 +125,7 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
 define vl_top_rule
 obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(A2C_HDL_DEPS) $(VL_OPTS_STAMP) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
-	$$(VL_PLUS)$(VL_TOP_VERILATE) --Mdir obj_dir/$(1) $(A2C_VL_SV_$(1)) -top $(1)
+	$$(VL_PLUS)$(VL_TOP_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/$(1) $(A2C_VL_SV_$(1)) -top $(1)
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 

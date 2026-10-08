@@ -230,7 +230,7 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 	@mkdir -p $(@D) && touch $@
 
 $(VL_BOUNDARY_STAMP): $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 #------------------------------------------------------------------------
@@ -327,7 +327,7 @@ help-hooks:
 	$(info EXTRA_HDL_F_FILES      -F lists for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_F_FILES))
 	$(info EXTRA_HDL_INCDIRS      +incdir+ for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_INCDIRS))
 	$(info EXTRA_HDL_DEFINES      +define+ for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_DEFINES))
-	$(info VERILATOR_USER_OPTS    alias of EXTRA_VERILATOR_OPTS: $(VERILATOR_USER_OPTS))
+	$(info VERILATOR_USER_OPTS    same effect as EXTRA_VERILATOR_OPTS: $(VERILATOR_USER_OPTS))
 	$(info EXTRA_LINT_OPTS        verilator lint: $(EXTRA_LINT_OPTS))
 	$(info EXTRA_VL_OPTS          verilator model wrapping: $(EXTRA_VL_OPTS))
 	$(info EXTRA_VL_CFLAGS        verilator model wrapping -CFLAGS: $(EXTRA_VL_CFLAGS))
@@ -339,7 +339,7 @@ help-hooks:
 	$(info EXTRA_CPP_MODULE_SRC   C++ module interface units: $(EXTRA_CPP_MODULE_SRC))
 	$(info EXTRA_PRJ_SRC_DIRS     C++ project source dirs: $(EXTRA_PRJ_SRC_DIRS))
 	$(info EXTRA_A2C_SRC_DIRS     C++ builder source dirs: $(EXTRA_A2C_SRC_DIRS))
-	$(info EXTRA_A2C_RULES_DIRS   rules and skills source dirs for agents-setup, cursor-setup: $(EXTRA_A2C_RULES_DIRS))
+	$(info EXTRA_A2C_RULES_DIRS   rules and skills source dirs for agents-setup, agent-dev-setup and their clean targets: $(EXTRA_A2C_RULES_DIRS))
 	$(info EXTRA_LD_FLAGS         C++ link, xrun snapshot link: $(EXTRA_LD_FLAGS))
 	$(info EXTRA_VLOGAN_OPTS      vlogan RTL analysis and -sc_model (USE_VCS): $(EXTRA_VLOGAN_OPTS))
 	$(info EXTRA_VCS_LIB_SV_FILES vlogan RTL analysis, library units (USE_VCS): $(EXTRA_VCS_LIB_SV_FILES))

@@ -81,17 +81,17 @@ The synthesis project adds the rest itself:
 *   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library.
 *   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.
 *   `make help-hooks` lists each hook, the command it feeds, and its current value.
-*   Set `EXTRA_SC_GEN_FILES` and `EXTRA_SV_GEN_FILES` above the `include … a2c-common.mk` line, since `gen` expands them as it parses. The other hooks can go anywhere in `shared.mk`.
+*   Set `EXTRA_SC_GEN_FILES`, `EXTRA_SV_GEN_FILES` and `EXTRA_A2C_RULES_DIRS` above the `include ... a2c-common.mk` line, because a2c-common.mk reads them as it parses. The other hooks can go anywhere in `shared.mk`.
 *   The Verilator library build (`make VL_DUT=1`) runs a sub-make in `rundir/build/vl` that reads `shared.mk` and never the rundir `Makefile`. The verilate and archive hooks only take effect from `shared.mk` or the command line.
 *   The rundir `Makefile` that `make newmodule` scaffolds seeds `EXTRA_CPP_SRC`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS` with `+=`, so values from `shared.mk` survive. A rundir `Makefile` that assigns one of them, or `EXTRA_O3_CPP_SRC`, with `=` overwrites what `shared.mk` appended. Change such a line to `+=` before moving a value into `shared.mk`.
 
 | Hook | Tool command it feeds |
 | :--- | :--- |
-| `EXTRA_GEN_OPTS` | `arch2code.py`, every call in the make flow: the db build, `gen` (`--systemc`/`--systemVerilog` per file) and `newmodule` |
+| `EXTRA_GEN_OPTS` | `arch2code.py`, every call in the make flow: the db build, `gen` (every per-file `--systemc`, `--systemc --python` and `--systemVerilog` call, and the VCS/Xcelium `--vlBoundary` call) and `newmodule` |
 | `EXTRA_SC_GEN_FILES` | Extra files for `arch2code.py --systemc --file` (`gen`) |
 | `EXTRA_SV_GEN_FILES` | Extra files for `arch2code.py --systemVerilog --file` (`gen`). An edit to one re-verilates every verilated top |
 | `EXTRA_VERILATOR_OPTS` | `verilator`, every call: `make lint` and the model wrapping of `make VL_DUT=1` |
-| `VERILATOR_USER_OPTS` | Older name for `EXTRA_VERILATOR_OPTS`, with the same effect. It goes after `A2C_LAYER_VERILATOR_OPTS` and just before `EXTRA_VERILATOR_OPTS` |
+| `VERILATOR_USER_OPTS` | Same effect as `EXTRA_VERILATOR_OPTS`. It goes after `A2C_LAYER_VERILATOR_OPTS` and just before `EXTRA_VERILATOR_OPTS` |
 | `EXTRA_LINT_OPTS` | `verilator --lint-only` (`make lint`) |
 | `EXTRA_VL_OPTS` | `verilator` model wrapping only: the runtime build (`vl_dummy`) and each verilated top |
 | `EXTRA_VL_CFLAGS` | C++ flags for Verilator-generated code, appended inside the single quoted `-CFLAGS '...'` argument of each model-wrapping verilate. Do not put single quotes in it |
