@@ -191,7 +191,7 @@ def test_no_library_type_ends_in_inst():
         check(inst_suffixed(library_type_names([tmpdir])),
               "a library header declaring class status_hdl_inst is reported")
     finally:
-        shutil.rmtree(tmpdir)
+        remove_tree(tmpdir)
 
 
 def test_blast_uses_member_names(proj, dut):

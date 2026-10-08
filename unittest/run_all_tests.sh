@@ -891,6 +891,12 @@ python3 test_fw_context_namespace.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: The Xcelium link reads BOOST_LIBS and keeps the LD_BOOST check"
+echo "------------------------------------------------------------------------"
+python3 test_xcelium_boost_libs.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: Unit tests for the langDomain migration phase (pysrc/migrateLangDomain.py)"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_langdomain.py || FAILED=1

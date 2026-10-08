@@ -14,10 +14,10 @@ endif
 ifndef PROJECT_RUNDIR
 $(error PROJECT_RUNDIR is not set - please set to the root of your project run directory)
 endif
-# SYSTEMC_INCLUDE/SYSTEMC_LIBDIR/BOOST_LIBS are the plain and VCS flows' own
-# SystemC and Boost link inputs. Xcelium compiles against its own SystemC
-# (XCELIUM_TOOLS, below) and links through XRUN_LD_LIBS instead of LD_FLAGS, so
-# it never reads any of the three; only its own USE_XCELIUM checks apply.
+# SYSTEMC_INCLUDE/SYSTEMC_LIBDIR are the plain and VCS flows' own SystemC
+# inputs. Xcelium compiles against its own SystemC (XCELIUM_TOOLS, below), so
+# it never reads them. Boost is common to all flows; Xcelium links it through
+# XRUN_LD_LIBS.
 ifndef USE_XCELIUM
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 <install directory>/include)
@@ -35,10 +35,8 @@ endif
 # the header-only backend, which needs only -ldl, so the default links
 # program_options alone.
 ifeq ($(strip $(BOOST_LIBS)),)
-ifndef USE_XCELIUM
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
-endif
 endif
 BOOST_LIBS = -lboost_program_options -L$(LD_BOOST)
 endif

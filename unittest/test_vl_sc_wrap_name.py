@@ -28,23 +28,27 @@ SC_WRAP_ENTRY = ('        vlScWrap: { name: "_sc_wrap", ext: {hdr: "h"}, cond: {
 
 def copy_ip_test():
     work = tempfile.mkdtemp(prefix='vl_sc_wrap_', dir=test_dir)
-    shutil.copytree(SOURCE, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
-        'build', '.gen', '*.db', '*.db-*', 'compile_commands.json'))
-    # Each Makefile names its project root from the git top level; point it at
-    # the copy instead.
-    for project in PROJECTS:
-        root = os.path.normpath(os.path.join(work, project))
-        for relpath in ('Makefile', 'rundir/Makefile', 'include/make/shared.mk'):
-            path = os.path.join(root, relpath)
-            if not os.path.exists(path):
-                continue
-            with open(path) as f:
-                lines = f.read().splitlines(keepends=True)
-            (hit,) = [i for i, line in enumerate(lines) if line.startswith('REPO_ROOT = ')]
-            lines[hit] = f'REPO_ROOT = {root}\n'
-            with open(path, 'w') as f:
-                f.write(''.join(lines))
-    return work
+    try:
+        shutil.copytree(SOURCE, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
+            'build', '.gen', '*.db', '*.db-*', 'compile_commands.json'))
+        # Each Makefile names its project root from the git top level; point it at
+        # the copy instead.
+        for project in PROJECTS:
+            root = os.path.normpath(os.path.join(work, project))
+            for relpath in ('Makefile', 'rundir/Makefile', 'include/make/shared.mk'):
+                path = os.path.join(root, relpath)
+                if not os.path.exists(path):
+                    continue
+                with open(path) as f:
+                    lines = f.read().splitlines(keepends=True)
+                (hit,) = [i for i, line in enumerate(lines) if line.startswith('REPO_ROOT = ')]
+                lines[hit] = f'REPO_ROOT = {root}\n'
+                with open(path, 'w') as f:
+                    f.write(''.join(lines))
+        return work
+    except BaseException:
+        remove_tree(work)
+        raise
 
 
 def main():

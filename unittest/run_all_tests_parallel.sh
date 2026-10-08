@@ -52,6 +52,7 @@ EXAMPLE_READERS=(
     test_filemap_name_overrides.py    # reads examples/simple_ip (copytree)
     test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
     test_make_user_hooks.py           # reads examples/simple_ip (copytree)
+    test_xcelium_boost_libs.py        # reads examples/simple_ip (copytree)
     test_sv_names_match_file_stem.py  # reads every examples/ tree
     test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
     test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)

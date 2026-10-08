@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -82,7 +83,7 @@ def test_axi_envelopes_pack_narrow_and_wide_payloads_bit_exactly():
         binary = build(build_dir, env)
         result = subprocess.run([binary], capture_output=True, text=True, timeout=300)
     finally:
-        shutil.rmtree(build_dir)
+        remove_tree(build_dir)
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, f"harness exited {result.returncode}:\n{output}"

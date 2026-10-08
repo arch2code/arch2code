@@ -33,6 +33,7 @@ if base_dir not in sys.path:
 
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
 from pysrc.memoryPortAccess import MEMORY_PORT_ACCESS, memoryRegisterPort
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -167,18 +168,22 @@ def _build(design):
     Returns (fixture_dir, db_path, completed_process).
     """
     fixture = tempfile.mkdtemp(prefix='memports_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT)
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(design)
-    db = os.path.join(fixture, 'memPorts.db')
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    return fixture, db, built
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT)
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(design)
+        db = os.path.join(fixture, 'memPorts.db')
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        return fixture, db, built
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _generate(design):
@@ -353,7 +358,7 @@ def _expect_rejected(design, needles):
             if needle not in output:
                 raise AssertionError(f"diagnostic does not mention {needle!r}:\n{output}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_regaccess_without_rw_port_rejected():
@@ -419,21 +424,21 @@ def main():
                 clock=clock: check_memory_instance(emitted, rel, memory, module, aRo, bWo,
                                                    binds, clock)))
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     swappedFixture, swapped = _generate(_design(rdWrOrder=('wr', 'rd')))
     try:
         ok.append(_run_case("ports: list order is the A/B assignment and nothing else",
                             lambda: check_ports_order_is_ab_assignment(emitted, swapped)))
     finally:
-        shutil.rmtree(swappedFixture)
+        remove_tree(swappedFixture)
 
     reorderedFixture, reordered = _generate(_design(reverseConnections=True))
     try:
         ok.append(_run_case("memoryConnections row order does not change the memory ports",
                             lambda: check_connection_order_does_not_change_memories(emitted, reordered)))
     finally:
-        shutil.rmtree(reorderedFixture)
+        remove_tree(reorderedFixture)
 
     ok.append(_run_case("regAccess on portRportW, which has no read/write port, is rejected",
                         run_regaccess_without_rw_port_rejected))

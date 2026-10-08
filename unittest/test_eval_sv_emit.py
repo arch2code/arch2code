@@ -282,7 +282,7 @@ def test_dependency_closure_orders_derived_constant_chain():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def test_type_using_eval_derived_constant_is_selected():
@@ -366,7 +366,7 @@ def test_struct_array_size_uses_eval_derived_localparam():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def test_foreign_param_closure_not_selected_for_block():
@@ -433,7 +433,7 @@ def test_foreign_param_closure_not_selected_for_block():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def run_all_tests():
