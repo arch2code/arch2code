@@ -44,6 +44,7 @@ import tempfile
 import yaml
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'vl-boundary-widths')
@@ -381,7 +382,7 @@ def run_all_tests():
                     print("  PASS")
                 results.append((name, not problems))
     finally:
-        shutil.rmtree(work)
+        remove_tree(work)
     print("\ntemporary copy removed")
     left = glob.glob(os.path.join(test_dir, f'{WORK_PREFIX}*'))
     if left:

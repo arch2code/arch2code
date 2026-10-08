@@ -67,6 +67,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -177,7 +178,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     try:
         result = build_and_run(build_dir, env, FIXTURE)
     finally:
-        shutil.rmtree(build_dir)
+        remove_tree(build_dir)
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, f"harness exited {result.returncode}:\n{output}"
@@ -200,7 +201,7 @@ def test_axi_thunkers_match_a_direct_connection():
     try:
         result = build_and_run(build_dir, env, AXI_FIXTURE)
     finally:
-        shutil.rmtree(build_dir)
+        remove_tree(build_dir)
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, f"harness exited {result.returncode}:\n{output}"

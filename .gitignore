@@ -31,6 +31,15 @@ tests/out/*
 # ignore regression output directories
 **/regr/**
 
+# VCS and Xcelium output in a project rundir. *.log and *.d already cover the
+# logs and the xcelium_<topology>.d snapshots.
+**/rundir/build_xrun/
+**/rundir/xrun*.history
+**/rundir/AN.DB/
+**/rundir/csrc/
+**/rundir/vc_hdrs.h
+**/rundir/ucli.key
+
 # database files
 *.db
 
