@@ -1,4 +1,9 @@
 
+types:
+  _extRegWriteT:
+    width: 2
+    desc: "External register write strobe, any set bit requests a write"
+
 interface_defs:
   external_reg : 
     parameters : 
@@ -6,7 +11,7 @@ interface_defs:
     signals: 
       wdata : data_t
       rdata : data_t
-      write : 'bit [1:0]'
+      write : _extRegWriteT
     modports :
       src : 
         inputs : ['rdata']

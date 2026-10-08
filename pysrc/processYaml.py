@@ -477,6 +477,30 @@ class intfEvalDSL:
     def to_bytes(self):
         return self.width // 8 + (1 if self.width % 8 != 0 else 0)
 
+class intfEvalPayload:
+    # to_bytes names the payload it measures, because that payload's width
+    # differs per top.
+
+    def __init__(self, binding):
+        self.binding = binding
+
+    def to_bytes(self):
+        return {'kind': 'bytes', 'binding': self.binding}
+
+class intfEvalUnbound:
+    # Receiver for an unbound optional parameter, which has no width to measure.
+
+    def __init__(self, intfDef, hdlparam, param):
+        self.intfDef = intfDef
+        self.hdlparam = hdlparam
+        self.param = param
+
+    def __getattr__(self, method):
+        printError(f"Interface '{self.intfDef['interface_type']}' hdlparam '{self.hdlparam}' evaluates "
+                   f"optional parameter '{self.param}', which is unbound and does not name a "
+                   f"structure, so it supplies no width.")
+        exit(warningAndErrorReport())
+
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
     data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
@@ -3558,70 +3582,111 @@ class projectOpen:
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
 
-    def hdlParamWidths(self, intfDef, structParams, structWidths):
-        # Integer widths of an interface's eval-derived hdlparams, keyed by
-        # hdlparam name. structWidths overrides a structure's stored width with
-        # a selected top's resolved width.
-        widths = dict()
-        for param, paramDef in (intfDef.get('hdlparams') or {}).items():
-            assert paramDef['datatype'] == 'integer'
-            if not paramDef['isEval']:
-                continue
-            key, expr = paramDef['value'].split('.')
-            if structParams[key]['isNull']:
-                printError(f"Interface '{intfDef['interface_type']}' hdlparam '{param}' evaluates "
-                           f"optional parameter '{key}', which is unbound and does not name a "
-                           f"structure, so it supplies no width.")
-                exit(warningAndErrorReport())
-            structKey = structParams[key]['structureKey']
-            width = structWidths.get(structKey, self.data['structures'][structKey]['width'])
-            data_obj = intfEvalDSL(width)
-            widths[param] = eval(f'data_obj.{expr}')
-            assert isinstance(widths[param], int)
-        return widths
+    def evalHdlParam(self, intfDef, hdlparam, receivers):
+        # An eval hdlparam's DSL expression, with each struct parameter name
+        # bound to the receiver the caller supplies for it.
+        return eval(intfDef['hdlparams'][hdlparam]['value'], {'__builtins__': {}, **receivers})
+
+    def getIntfSignals(self, intfDef, structures, modport):
+        """Per-signal classification of one interface's HDL boundary, in signal
+        declaration order, from the given modport's point of view.
+
+        Every row carries signal, signalType, direction ('input' | 'output'),
+        kind and vector. vector is True for a signal typed by an eval hdlparam,
+        by a bound parameterizable payload, or wider than one bit; such a pin
+        stays a bit vector at width 1. kind adds:
+            'fixed'    width: the integer width (bool, a type-named signal, an
+                       unbound optional payload at its defaultWidth, or an
+                       hdlparam over fixed payloads)
+            'payload'  binding: the bound payload typing the signal
+            'bytes'    binding: the parameterizable payload whose byte count
+                       sizes the signal
+        """
+        bindings = {binding['structureType']: binding
+                    for binding in self.getIntfParamBindings(intfDef, structures)}
+        hdlparams = intfDef['hdlparams'] or {}
+        inputs = intfDef['modports'][modport]['modportGroups'] \
+            .get('inputs', {}).get('groups', {}) or {}
+        rows = []
+        for signal, signalDef in intfDef['signals'].items():
+            signalType = signalDef['signalType']
+            row = {'signal': signal, 'signalType': signalType,
+                   'direction': 'input' if signal in inputs else 'output'}
+            if signalType in bindings and not bindings[signalType]['isNull']:
+                binding = bindings[signalType]
+                ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+                row.update(kind='payload', binding=binding,
+                           vector=bool(ref['isParameterizable']) or int(ref['width']) > 1)
+            elif signalType in bindings:
+                width = bindings[signalType]['defaultWidth']
+                row.update(kind='fixed', width=width, vector=width > 1)
+            elif signalType in hdlparams and hdlparams[signalType]['isEval']:
+                receivers = dict()
+                for param, binding in bindings.items():
+                    if binding['isNull']:
+                        receivers[param] = intfEvalUnbound(intfDef, signalType, param)
+                        continue
+                    ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+                    receivers[param] = intfEvalPayload(binding) if ref['isParameterizable'] \
+                        else intfEvalDSL(int(ref['width']))
+                measure = self.evalHdlParam(intfDef, signalType, receivers)
+                if isinstance(measure, int):
+                    row.update(kind='fixed', width=measure, vector=True)
+                else:
+                    row.update(measure, vector=True)
+            else:
+                width = 1 if signalType == 'bool' else self.signalTypeWidth(intfDef, signalType)
+                row.update(kind='fixed', width=width, vector=width > 1)
+            rows.append(row)
+        return rows
+
+    def signalTypeWidth(self, intfDef, signalType):
+        # Integer width of an interface signal whose signalType names a type,
+        # resolved in the interface definition's scope, then _a2csystem.
+        for qualification in self.yamlContext[intfDef['_context']]:
+            key = f"{signalType}/{qualification}"
+            if key in self.data['types']:
+                return self.datatypeRef('types', key)['width']
+        return self.datatypeRef('types', f"{signalType}/_a2csystem")['width']
 
     def getVlTopBoundaryPins(self, ret, topModule):
-        # Flattened pin list of the block's HDL verification wrapper with every
-        # width bound at the given top's parameter values: one pin per interface
-        # signal of each port, in port then signal order, then clk and rst_n.
+        # Pin list of the block's HDL verification wrapper with every width
+        # bound at the given top's parameter values: one pin per interface
+        # signal of each port, in port then signal order, then the block's
+        # clocks and resets in declaration order.
         import pysrc.intf_gen_utils as intf_gen_utils
         structWidths = self.vlTops[topModule]['structWidths']
         typeWidths = self.vlTops[topModule]['typeWidths']
+
+        def payloadWidth(binding):
+            ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+            if not ref['isParameterizable']:
+                return int(ref['width'])
+            if binding['kind'] == 'structures':
+                return structWidths[binding['structureKey']]
+            return typeWidths[binding['structureKey']]
+
         pins = list()
         for portType in ret['ports']:
             for portData in ret['ports'][portType].values():
                 intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
                 intfDef = ret['interface_defs'][intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)]
-                structParams = {binding['structureType']: binding
-                                for binding in self.getIntfParamBindings(intfDef, intfData['structures'])}
-                hdlWidths = self.hdlParamWidths(intfDef, structParams, structWidths)
-                inputs = intfDef['modports'][portData['direction']]['modportGroups'] \
-                    .get('inputs', {}).get('groups', {}) or {}
-                for signal, signalDef in intfDef['signals'].items():
-                    signalType = signalDef['signalType']
-                    pin = {'pin': f"{portData['name']}_{signal}",
-                           'direction': 'input' if signal in inputs else 'output',
-                           'structure': '', 'structureKey': '', 'width': 1}
-                    if signalType in structParams:
-                        binding = structParams[signalType]
-                        if binding['isNull']:
-                            # An unbound optional payload keeps its pin at defaultWidth.
-                            pin['width'] = binding['defaultWidth']
-                        else:
-                            ref = self.datatypeRef(binding['kind'], binding['structureKey'])
-                            pin['structure'] = binding['structure']
-                            if not ref['isParameterizable']:
-                                pin['width'] = int(ref['width'])
-                            elif binding['kind'] == 'structures':
-                                pin['structureKey'] = binding['structureKey']
-                                pin['width'] = structWidths[binding['structureKey']]
-                            else:
-                                pin['width'] = typeWidths[binding['structureKey']]
-                    elif signalType in hdlWidths:
-                        pin['width'] = hdlWidths[signalType]
-                    pins.append(pin)
-        pins.append({'pin': 'clk', 'direction': 'input', 'structure': '', 'structureKey': '', 'width': 1})
-        pins.append({'pin': 'rst_n', 'direction': 'input', 'structure': '', 'structureKey': '', 'width': 1})
+                for row in self.getIntfSignals(intfDef, intfData['structures'], portData['direction']):
+                    match row['kind']:
+                        case 'fixed':
+                            width = row['width']
+                        case 'payload':
+                            width = payloadWidth(row['binding'])
+                        case 'bytes':
+                            binding = row['binding']
+                            width = self.evalHdlParam(
+                                intfDef, row['signalType'],
+                                {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
+                    pins.append({'pin': f"{portData['name']}_{row['signal']}",
+                                 'direction': row['direction'], 'width': width,
+                                 'vector': row['vector']})
+        for name, direction in intf_gen_utils.clock_reset_ports(ret):
+            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False})
         return pins
 
     def extractContext(self, structs, consts):
@@ -8407,7 +8472,7 @@ class projectCreate:
                         owningBase = self.childProjectRaw[owner]['projectFileDir']
                         self.yamlDir = os.path.dirname(
                             os.path.relpath(os.path.abspath(yamlFile), owningBase))
-        if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
+        if yamlFile not in self.includeValid and contextFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
@@ -8440,7 +8505,7 @@ class projectCreate:
                     printError(f"Unknown section: {section} found in "
                                f"{self.diagnosticLocation(yamlFile, sectionLc)}")
                     exit(warningAndErrorReport())
-                if section in self.includeSections:
+                if section in self.includeSections and contextFile not in self.specialContexts:
                     self.includeValid[yamlFile]["valid"] = True
 
     # A row of a project-scoped section is parsed with the declaring projectName

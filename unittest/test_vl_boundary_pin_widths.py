@@ -18,7 +18,18 @@ getVlTopBoundaryPins() looks up a pin's width there.
 
 2. An interface's eval-derived hdlparam (AXI4-Stream tstrb_t/tkeep_t, a byte
    count computed from tdata_t) must track the SELECTED TOP's resolved
-   payload width, not the structure's nominal (default-value) width.
+   payload width, not the structure's nominal (default-value) width. At a
+   1-byte top it stays a vector pin, so Verilator, VCS and Xcelium all bind it
+   as sc_bv<1>, the type the hand-written BFM reads.
+
+A third cell covers a signal whose signalType names a type (external_reg
+`write`): its pin and SV wrapper port take the type's width rather than the
+1-bit default, and the system file declaring that type emits no per-context
+include or package.
+
+A fourth cell covers clock and reset pins: they follow the block's declared
+clocks then resets, with each one's direction, and a block declaring
+`resets: {}` has no reset pin.
 """
 
 import os
@@ -31,6 +42,7 @@ if base_dir not in sys.path:
 
 from _addrctl_helpers import build_database, cleanup, find_block  # noqa: E402
 from pysrc.processYaml import projectOpen  # noqa: E402
+import pysrc.intf_gen_utils as intf_gen_utils  # noqa: E402
 
 
 TRANSIT_ARCH = """
@@ -176,47 +188,210 @@ instances:
     top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
     uLeaf:  { container: top_tb, instanceType: leaf, instGroup: top, variant: wide }
     uChk:   { container: top_tb, instanceType: chk,  instGroup: top, variant: wide }
+    uLeafN: { container: top_tb, instanceType: leaf, instGroup: top, variant: narrow }
+    uChkN:  { container: top_tb, instanceType: chk,  instGroup: top, variant: narrow }
 
 connections:
     - { interface: axi4str, src: uLeaf, srcport: out, dst: uChk, dstport: in }
+    - { interface: axi4str, src: uLeafN, srcport: out, dst: uChkN, dstport: in, name: narrowLink }
 
 parameters:
     leaf:
         wide:
             WIDTH: 32
+        narrow:
+            WIDTH: 8
     chk:
         wide:
             WIDTH: 32
+        narrow:
+            WIDTH: 8
 """
 
 
 def test_axi4_stream_non_default_variant_strobe_width():
-    """tstrb_t/tkeep_t must track the selected top's resolved tdata_t width
-    (32 bits -> 4 bytes), not the structure's nominal default (8 bits -> 1
-    byte)."""
-    print("AXI4-Stream non-default variant: tstrb_t/tkeep_t width")
+    """tstrb_t/tkeep_t must track each top's resolved tdata_t width (32 bits ->
+    4 bytes at 'wide', 8 bits -> 1 byte at 'narrow'), and stay vector pins at
+    1 byte."""
+    print("AXI4-Stream per-variant tops: tstrb_t/tkeep_t width and vector")
     db_path, project_path, arch_paths = build_database(
         AXI4_STREAM_ARCH, top_instance='top_tb', project_name='vl_boundary_axi4s')
+    try:
+        prj = projectOpen(db_path)
+        leafKey, _ = find_block(prj, 'leaf')
+        blockData = prj.getBlockData(leafKey)
+        ok = True
+        for variant, tdataWidth, bytes_ in (('wide', 32, 4), ('narrow', 8, 1)):
+            leafTop = blockData['svWrapper']['variantTops'][variant]
+            pins = {p['pin']: p for p in prj.getVlTopBoundaryPins(blockData, leafTop)}
+            tdata = pins['out_tdata']
+            if (tdata['width'], tdata['vector']) != (tdataWidth, True):
+                print(f"FAIL: {leafTop} 'out_tdata' is {tdata}, expected width "
+                      f"{tdataWidth} (variant '{variant}') as a vector")
+                ok = False
+            for name in ('out_tstrb', 'out_tkeep'):
+                if (pins[name]['width'], pins[name]['vector']) != (bytes_, True):
+                    print(f"FAIL: {leafTop} '{name}' is {pins[name]}, expected "
+                          f"width {bytes_} ({tdataWidth}-bit tdata) as a vector")
+                    ok = False
+            for name in ('out_tvalid', 'out_tready', 'out_tlast', 'out_tid'):
+                if pins[name]['vector']:
+                    print(f"FAIL: {leafTop} '{name}' is {pins[name]}, expected a "
+                          f"scalar (bool signal or fixed 1-bit payload)")
+                    ok = False
+        if ok:
+            print("PASS")
+        return ok
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
+EXT_REG_ARCH = """
+types:
+    wordT: { width: 32, desc: "Register word" }
+
+structures:
+    wordSt:
+        w: { varType: wordT, desc: "Register word" }
+
+interfaces:
+    extIf:
+        desc: "External register interface"
+        interfaceType: external_reg
+        structures:
+            - { structure: wordSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "Root testbench container"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    leaf:
+        desc: "Leaf with an external register port"
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        clocks:
+            clk: { period: 10 }
+        ports:
+            ext: { interface: extIf, direction: dst }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+
+
+def test_type_named_signal_width():
+    """external_reg's `write` signal names the system type _extRegWriteT, so
+    its pin and its SV wrapper port are 2 bits wide, not the 1-bit default.
+    The system file that declares that type gets no per-context artifact."""
+    print("external_reg type-named signal: boundary pin and SV port width")
+    db_path, project_path, arch_paths = build_database(
+        EXT_REG_ARCH, top_instance='top_tb', project_name='vl_boundary_extreg')
     try:
         prj = projectOpen(db_path)
         leafKey, _ = find_block(prj, 'leaf')
         vltops = prj.config.getConfig('VLTOPS')
         leafTop = next(t for t, v in vltops.items() if v['blockKey'] == leafKey)
         blockData = prj.getBlockData(leafKey)
-        pins = prj.getVlTopBoundaryPins(blockData, leafTop)
-        tdata = next(p for p in pins if p['pin'] == 'out_tdata')
-        tstrb = next(p for p in pins if p['pin'] == 'out_tstrb')
-        tkeep = next(p for p in pins if p['pin'] == 'out_tkeep')
         ok = True
-        if tdata['width'] != 32:
-            print(f"FAIL: 'out_tdata' width is {tdata['width']}, expected 32 "
-                  f"(variant 'wide' binds WIDTH=32)")
+        pins = prj.getVlTopBoundaryPins(blockData, leafTop)
+        write = next(p for p in pins if p['pin'] == 'ext_write')
+        if write['width'] != 2:
+            print(f"FAIL: 'ext_write' width is {write['width']}, expected 2 "
+                  f"(signalType _extRegWriteT declares width 2)")
             ok = False
-        for pin in (tstrb, tkeep):
-            if pin['width'] != 4:
-                print(f"FAIL: '{pin['pin']}' width is {pin['width']}, expected "
-                      f"4 (32-bit tdata -> 4 bytes); the nominal WIDTH=8 "
-                      f"default would wrongly give 1")
+        # The SV wrapper template blasts each port through this helper.
+        svPorts = []
+        for portType in blockData['ports']:
+            for portData in blockData['ports'][portType].values():
+                svPorts += intf_gen_utils.sv_gen_modport_signal_blast(portData, prj, blockData)['ports']
+        if 'input bit [1:0] ext_write' not in svPorts:
+            print(f"FAIL: SV wrapper ports {svPorts} lack 'input bit [1:0] ext_write' "
+                  f"(signalType _extRegWriteT declares width 2)")
+            ok = False
+        systemContexts = set(prj.yamlContext['_a2csystem'])
+        systemDirs = {os.path.dirname(os.path.abspath(os.path.join(base_dir, c))) for c in systemContexts}
+        includeFiles = prj.config.getConfig('INCLUDEFILES')
+        for fileType, entries in includeFiles.items():
+            for context, entry in entries.items():
+                if context in systemContexts or os.path.dirname(os.path.abspath(entry['fileName'])) in systemDirs:
+                    print(f"FAIL: INCLUDEFILES[{fileType}] lists {entry['fileName']} for "
+                          f"system context {context}; system files get no per-context artifact")
+                    ok = False
+        nodeDirs = set(prj.config.getConfig('CONTEXTNODEDIR')) & systemContexts
+        if nodeDirs:
+            print(f"FAIL: CONTEXTNODEDIR has system contexts {sorted(nodeDirs)}")
+            ok = False
+        if ok:
+            print("PASS")
+        return ok
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
+CLOCK_ARCH = """
+blocks:
+    top_tb:
+        desc: "Root testbench container"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    gen:
+        desc: "Leaf with a supplied clock, a produced clock and a produced reset"
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        clocks:
+            clkIn:  { default: true, period: 10 }
+            clkOut: { direction: output }
+        resets:
+            rstIn_n:  { clock: clkIn }
+            rstOut_n: { clock: clkOut, direction: output }
+    bare:
+        desc: "Leaf with two clocks and no reset"
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        clocks:
+            clkA: { default: true, period: 10 }
+            clkB: { period: 20 }
+        resets: {}
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+"""
+
+
+def test_clock_reset_pins():
+    """A top's clock and reset pins are its block's declared clocks then
+    resets, in declaration order and with each one's direction."""
+    print("clock and reset pins follow the block's declarations")
+    db_path, project_path, arch_paths = build_database(
+        CLOCK_ARCH, top_instance='top_tb', project_name='vl_boundary_clocks')
+    try:
+        prj = projectOpen(db_path)
+        vltops = prj.config.getConfig('VLTOPS')
+        expected = {
+            'gen': [('clkIn', 'input'), ('clkOut', 'output'),
+                    ('rstIn_n', 'input'), ('rstOut_n', 'output')],
+            'bare': [('clkA', 'input'), ('clkB', 'input')],
+        }
+        ok = True
+        for block, pinRows in expected.items():
+            blockKey, _ = find_block(prj, block)
+            top = next(t for t, v in vltops.items() if v['blockKey'] == blockKey)
+            pins = prj.getVlTopBoundaryPins(prj.getBlockData(blockKey), top)
+            actual = [(p['pin'], p['direction'], p['width'], p['vector']) for p in pins]
+            want = [(pin, direction, 1, False) for pin, direction in pinRows]
+            if actual != want:
+                print(f"FAIL: {top} pins are {actual}, expected {want}")
                 ok = False
         if ok:
             print("PASS")
@@ -228,6 +403,8 @@ def test_axi4_stream_non_default_variant_strobe_width():
 def run_all_tests():
     ok = test_paramsless_transit_leaf_boundary_pins()
     ok = test_axi4_stream_non_default_variant_strobe_width() and ok
+    ok = test_type_named_signal_width() and ok
+    ok = test_clock_reset_pins() and ok
     return 0 if ok else 1
 
 

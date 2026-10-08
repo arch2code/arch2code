@@ -358,6 +358,9 @@ def test_vl_registrar_emits_view_factory_project():
                 'configHeaderContexts': [],
             }
 
+        def getVlTopBoundaryPins(self, _data, _topModule):
+            return []
+
     data = {
         'blockName': 'transitLeaf',
         'qualBlock': 'transitLeaf/ip.yaml',

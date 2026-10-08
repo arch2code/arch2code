@@ -1,0 +1,54 @@
+# Integrator project. Its closure includes the leaf IP's project, so fLeaf is
+# owned there and this build's fLeaf variants are foreign wrapper tops.
+
+yamlFormat: 2
+projectName: vbwTop
+
+topInstance: topTb
+
+# Testbench clocks: dutC2's second domain runs on clkB.
+clocks:
+    clk:
+        desc: "Main testbench clock"
+        default: true
+        period: 10
+        timeUnit: ns
+    clkB:
+        desc: "Second testbench clock"
+        period: 20
+        timeUnit: ns
+
+resets:
+    rst_n:
+        desc: "Main reset"
+        default: true
+        clock: clk
+    rstB_n:
+        desc: "Second-domain reset"
+        clock: clkB
+
+projectFiles:
+    - ../../yaml/vbwTop.yaml
+    - ../../../leaf/prj/yaml/vbwLeafProject.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

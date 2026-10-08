@@ -58,3 +58,6 @@ compile_commands.json
 .agents/
 .cursor/
 GEMINI.md
+
+# test_vl_boundary_widths_build.py working copy, removed after each run
+unittest/vl_boundary_widths_*/

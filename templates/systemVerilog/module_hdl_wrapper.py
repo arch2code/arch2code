@@ -104,9 +104,16 @@ def parameterized_decls(prj, data):
     typeDecls = [e for e in entries if e['declKind'] != 'constant']
     return constDecls, typeDecls
 
-def port_decl_block(prj, data, mp_sig):
-    # ANSI flattened port list shared by the canonical body and the variant
-    # trampoline.
+def sc_bv_pins(prj, data, top_module):
+    # Pins of a Verilated top that need Verilator's sc_bv marker: vector pins
+    # one bit wide at that top, which Verilator would otherwise bind as bool.
+    # --pins-bv 2 already binds the wider ones as sc_bv.
+    return {pin['pin'] for pin in prj.getVlTopBoundaryPins(data, top_module)
+            if pin['vector'] and pin['width'] == 1}
+
+def port_decl_block(prj, data, mp_sig, sc_bv):
+    # ANSI flattened port list shared by the canonical body and the Verilated
+    # tops; pins named in sc_bv carry the marker.
     s = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
@@ -115,7 +122,8 @@ def port_decl_block(prj, data, mp_sig):
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
             s += f'// {intf_type}.{intf_dir}\n'
-            s += ',\n'.join(mp_sig[port]['ports'])
+            s += ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
+                             for decl, name in zip(mp_sig[port]['ports'], mp_sig[port]['names']))
             s += ',\n'
             s += '\n'
     s += intf_gen_utils.sv_clock_reset_input_lines(data) + '\n'
@@ -184,7 +192,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += '\n#(\n'
     out += textwrap.indent(',\n'.join(param_list), ' '*4)
     out += '\n) (\n'
-    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig, set()), ' '*4)
     out += ');\n'
 
     # Module-local parameterizable type/struct declarations. C3.1 moved the
@@ -255,7 +263,7 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False, registration=None)
     out += '\n#(\n'
     out += textwrap.indent(',\n'.join(param_list), ' '*4)
     out += '\n)(\n'
-    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig, sc_bv_pins(prj, data, module_name)), ' '*4)
     out += ');\n'
 
     inst = f'{body_module} #(\n'
@@ -287,7 +295,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
     out += '\n(\n'
 
-    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig, sc_bv_pins(prj, data, module_name)), ' '*4)
     out += ');\n'
 
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)

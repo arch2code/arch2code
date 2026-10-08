@@ -835,6 +835,18 @@ python3 test_vl_registrar_factory_domain.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: Verilated-top boundary view pins, widths and vector classification"
+echo "------------------------------------------------------------------------"
+python3 test_vl_boundary_pin_widths.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: boundary files and Verilated pins agree for every fixture top"
+echo "------------------------------------------------------------------------"
+python3 test_vl_boundary_widths_build.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

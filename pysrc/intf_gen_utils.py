@@ -125,6 +125,20 @@ def sv_packed_bit_type(width_expr):
     except (TypeError, ValueError):
         return f"bit [({width_expr})-1:0]"
 
+def sv_signal_type(row, prj):
+    # Boundary port type of one classified interface signal (getIntfSignals).
+    # A vector keeps a packed range at width 1.
+    match row['kind']:
+        case 'fixed':
+            return f"bit [{row['width']-1}:0]" if row['vector'] else 'bit'
+        case 'payload':
+            binding = row['binding']
+            return sv_packed_bit_type(sv_boundary_width_expression(binding['kind'], binding['structureKey'], prj))
+        case 'bytes':
+            binding = row['binding']
+            width_expr = sv_boundary_width_expression(binding['kind'], binding['structureKey'], prj)
+            return f"bit [((({width_expr})+7)/8)-1:0]"
+
 def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out = {}
     connectionData = port_data.get('connection', {})
@@ -132,7 +146,6 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_type = get_intf_type(intf_data['interfaceType'], block_data)
     intf_name = port_data['name']
     intf_modp = port_data['direction']
-    intf_param = dict()
 
     interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
@@ -149,10 +162,6 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # declaration order, so each one is present here without this layer
     # re-deriving the set from the interface's declared structures.
     param_bindings = prj.getIntfParamBindings(intf_def, intf_data['structures'])
-    for binding in param_bindings:
-        intf_param[binding['structureType']] = binding
-
-    hdl_param = prj.hdlParamWidths(intf_def, intf_param, {})
 
     # Interface parameters declaration. Parameters are associated by name here,
     # so an unbound optional parameter is omitted: the interface's SystemVerilog
@@ -168,44 +177,23 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out['intf_modp'] = intf_modp
 
     # Blasted interface ports. 'ports' carries the full ANSI declarations;
-    # 'names' carries the bare flattened signal names, consumed by the variant
-    # trampoline when wiring the canonical body instance by name.
+    # 'names' carries the bare flattened signal names, parallel to 'ports'.
     out['ports'] = []
     out['names'] = []
-    for intf_sig in intf_def['signals']:
-        modp_signals = intf_def['modports'][intf_modp]['modportGroups']
-        # Safely get inputs and outputs lists
-        inputs = modp_signals.get('inputs', {}).get('groups', {}) or {}
-        port_dir = 'input' if intf_sig in inputs else 'output'
-        port_type = intf_def['signals'][intf_sig]['signalType']
-        port_name = f"{intf_name}_{intf_sig}"
-        if port_type in intf_param.keys():
-            binding = intf_param[port_type]
-            if binding['isNull']:
-                # An unbound optional payload names no structure, so it has no
-                # width to blast. The interface still declares the signal, at
-                # the width its parameter's defaultWidth names, so the
-                # flattened boundary port carries that same width.
-                port_type = sv_packed_bit_type(binding['defaultWidth'])
-            else:
-                width_expr = sv_boundary_width_expression(binding['kind'], binding['structureKey'], prj)
-                port_type = sv_packed_bit_type(width_expr)
-        elif port_type in hdl_param.keys():
-            w = hdl_param[port_type]
-            port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
-        elif port_type == 'bool':
-            port_type = 'bit'
-        out['ports'].append(f"{port_dir} {port_type} {port_name}")
+    rows = prj.getIntfSignals(intf_def, intf_data['structures'], intf_modp)
+    for row in rows:
+        port_name = f"{intf_name}_{row['signal']}"
+        decl = f"{row['direction']} {sv_signal_type(row, prj)} {port_name}"
+        out['ports'].append(decl)
         out['names'].append(port_name)
 
     # Assignment port <-> interface
     out['assign'] = []
-    for intf_sig in intf_def['signals']:
-        modp_signals = intf_def['modports'][intf_modp]['modportGroups']
-        # Safely get inputs and outputs lists
-        inputs = modp_signals.get('inputs', {}).get('groups', {}) or {}
-        assign_lhs = f"{intf_name}.{intf_sig}" if intf_sig in inputs else f"{intf_name}_{intf_sig}"
-        assign_rhs = f"{intf_name}_{intf_sig}" if intf_sig in inputs else f"{intf_name}.{intf_sig}"
+    for row in rows:
+        intf_sig = row['signal']
+        is_input = row['direction'] == 'input'
+        assign_lhs = f"{intf_name}.{intf_sig}" if is_input else f"{intf_name}_{intf_sig}"
+        assign_rhs = f"{intf_name}_{intf_sig}" if is_input else f"{intf_name}.{intf_sig}"
         out['assign'].append(f"assign #0 {assign_lhs} = {assign_rhs};")
 
     return out
@@ -441,22 +429,29 @@ def sc_payload_type_name(payload, prj, config_override=None):
         return f"{SC_NULL_PAYLOAD_TYPE}, {payload['defaultWidth']}"
     return sc_type_payload_name(payload, prj, config_override=config_override)
 
-def sc_hdl_bridge_type(struct_param, prj):
-    # An unbound optional payload names no structure, so it has no width to
-    # bridge. The interface still declares the signal it types, at the width
-    # its parameter's defaultWidth names, so the bridge carries that width.
-    if struct_param['isNull']:
-        w = struct_param['defaultWidth']
-        return 'bool' if w == 1 else f"sc_bv<{w}>"
-    ref = prj.datatypeRef(struct_param['kind'], struct_param['structureKey'])
-    if struct_param['kind'] == 'types':
-        w_expr = _type_width_expr_cpp(ref['row'], prj, BLOCK_CONFIG_PARAM)
-        return 'bool' if _is_one(w_expr) else f"sc_bv<{w_expr}>"
-    if ref['isParameterizable']:
-        struct_name = sc_struct_type_name(struct_param['structure'], struct_param['structureKey'], prj)
-        return f"sc_bv<{struct_name}::_bitWidth>"
-    w = ref['width']
-    return 'bool' if w == 1 else f"sc_bv<{w}>"
+def sc_hdl_bridge_type(row, prj):
+    # Verilated bridge type of one classified interface signal (getIntfSignals):
+    # bool for a scalar pin, otherwise an sc_bv sized like the SystemC payload.
+    if not row['vector']:
+        return 'bool'
+    match row['kind']:
+        case 'fixed':
+            return f"sc_bv<{row['width']}>"
+        case 'payload':
+            binding = row['binding']
+            ref = prj.datatypeRef(binding['kind'], binding['structureKey'])
+            if binding['kind'] == 'types':
+                return f"sc_bv<{_type_width_expr_cpp(ref['row'], prj, BLOCK_CONFIG_PARAM)}>"
+            if ref['isParameterizable']:
+                return f"sc_bv<{sc_struct_type_name(binding['structure'], binding['structureKey'], prj)}::_bitWidth>"
+            return f"sc_bv<{ref['width']}>"
+        case 'bytes':
+            binding = row['binding']
+            return f"sc_bv<{sc_struct_type_name(binding['structure'], binding['structureKey'], prj)}::_byteWidth>"
+
+def sc_boundary_pin_type(pin):
+    # SystemC value type of one HDL boundary pin row (getVlTopBoundaryPins).
+    return f"sc_bv<{pin['width']}>" if pin['vector'] else 'bool'
 
 def block_config_decl(is_parameterizable):
     return 'template<typename Config>' if is_parameterizable else ''
@@ -863,7 +858,6 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_type = get_intf_type(intf_data['interfaceType'], block_data)
     intf_name = port_data['name']
     intf_modp = port_data['direction']
-    intf_param = dict()
 
     interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
@@ -884,8 +878,6 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # declaration order, so each one is present here without this layer
     # re-deriving the set from the interface's declared structures.
     param_bindings = prj.getIntfParamBindings(intf_def, intf_data['structures'])
-    for binding in param_bindings:
-        intf_param[binding['structureType']] = binding
     payload_params = sc_payload_params(param_bindings)
     required_params, optional_params = sc_split_payload_params(payload_params)
 
@@ -926,13 +918,14 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # gap-filling unbound payload still occupies its slot at its parameter's
     # defaultWidth; the hdl_if declaration below trims its trailing unbound run
     # off optional_params, relying on the bridge template's own defaults there.
-    bridge_prefix = []
-    for binding in required_params:
-        bridge_prefix.append(sc_hdl_bridge_type(binding, prj))
-    for w in prj.hdlParamWidths(intf_def, intf_param, {}).values():
-        bridge_prefix.append('bool' if w == 1 else f"sc_bv<{w}>")
+    rows = prj.getIntfSignals(intf_def, intf_data['structures'], intf_modp)
+    signal_of = {row['signalType']: row for row in rows}
+    bridge_prefix = [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
+                     for binding in required_params]
+    bridge_prefix += [sc_hdl_bridge_type(signal_of[hdlparam], prj)
+                      for hdlparam in intf_def['hdlparams'] or {}]
 
-    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
                                        for binding in optional_params
                                        if binding['typesSignal']]
 
@@ -945,7 +938,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # parameter's defaultWidth, or a later payload argument would shift into
     # the wrong slot. The hdl_if declaration's bridge group is last, so it can
     # keep using the trimmed run instead.
-    bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+    bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
                                         for binding in param_bindings
                                         if binding['isOptional'] and binding['typesSignal']]
 
@@ -977,13 +970,11 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     # Assignment port <-> interface
     out['assign'] = []
-    for intf_sig in intf_def['signals']:
-        modp_signals = intf_def['modports'][intf_modp]['modportGroups']
-        # Safely get inputs and outputs lists
-        inputs = modp_signals.get('inputs', {}).get('groups', {}) or {}
-        outputs = modp_signals.get('outputs', {}).get('groups', {}) or {}
-        assign_lhs = f"{intf_name}.{intf_sig}" if intf_sig in inputs else f"{intf_name}_{intf_sig}"
-        assign_rhs = f"{intf_name}_{intf_sig}" if intf_sig in inputs else f"{intf_name}.{intf_sig}"
+    for row in rows:
+        intf_sig = row['signal']
+        is_input = row['direction'] == 'input'
+        assign_lhs = f"{intf_name}.{intf_sig}" if is_input else f"{intf_name}_{intf_sig}"
+        assign_rhs = f"{intf_name}_{intf_sig}" if is_input else f"{intf_name}.{intf_sig}"
         out['assign'].append(f"assign {assign_lhs} = {assign_rhs};")
 
     return out

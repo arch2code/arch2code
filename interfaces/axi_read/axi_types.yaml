@@ -1,0 +1,25 @@
+# AXI field types named by the axi_read and axi_write interface signals.
+# Equivalent to the same-named types in examples/*/arch/yaml/axiStd.yaml.
+
+types:
+  _axiLenT:
+    width: 8
+    desc: "Exact number of transfers in a burst."
+  _axiSizeT:
+    width: 3
+    desc: "Bytes in transfer encoded 0=1, 1=2, 2=4, 3=8, 4=16, 5=32, 6=64, 7=128"
+  _axiResponseT:
+    width: 2
+    desc: "Response type for the AXI protocol"
+    enum:
+      - {enumName: AXIRESP_OKAY,    desc: OKAY,   value: 0 }
+      - {enumName: AXIRESP_EXOKAY,  desc: EXOKAY, value: 1 }
+      - {enumName: AXIRESP_SLVERR,  desc: SLVERR, value: 2 }
+      - {enumName: AXIRESP_DECERR,  desc: DECERR, value: 3 }
+  _axiBurstT:
+    width: 2
+    desc: "The burst type and the size information determine how the address for each transfer within the burst is calculated"
+    enum:
+      - {enumName: AXIBURST_FIXED,  desc: FIXED,  value: 0 }
+      - {enumName: AXIBURST_INCR,   desc: INCR,   value: 1 }
+      - {enumName: AXIBURST_WRAP,   desc: WRAP,   value: 2 }

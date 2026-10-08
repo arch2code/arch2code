@@ -23,7 +23,6 @@ using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 #else
 using ip_variant0_hdl_sv_wrapper_dut_t = ip_variant0_hdl_sv_wrapper;
 #endif
-static_assert(ipDataSt<ipVariant0Config>::_bitWidth == 9, "ip_variant0_hdl_sv_wrapper: ipDataIf_data width differs from the generated boundary");
 struct _ip_vl_registrar {
     _ip_vl_registrar() {
         instanceFactory::registerBlock(

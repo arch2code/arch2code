@@ -23,10 +23,6 @@ using src_variantSrc0_hdl_sv_wrapper_dut_t = src_variantSrc0_hdl_sv_wrapper;
 #else
 using src_variantSrc0_hdl_sv_wrapper_dut_t = src_variantSrc0_hdl_sv_wrapper;
 #endif
-static_assert(srcOut0St<ip_test_srcVariantSrc0Config>::_bitWidth == 9, "src_variantSrc0_hdl_sv_wrapper: out0_data width differs from the generated boundary");
-static_assert(srcOut1St<ip_test_srcVariantSrc0Config>::_bitWidth == 71, "src_variantSrc0_hdl_sv_wrapper: out1_data width differs from the generated boundary");
-static_assert(srcOut0St<ip_test_srcVariantSrc0Config>::_bitWidth == 9, "src_variantSrc0_hdl_sv_wrapper: out2_data width differs from the generated boundary");
-static_assert(srcOut1St<ip_test_srcVariantSrc0Config>::_bitWidth == 71, "src_variantSrc0_hdl_sv_wrapper: out3_data width differs from the generated boundary");
 struct _src_vl_registrar {
     _src_vl_registrar() {
         instanceFactory::registerBlock(

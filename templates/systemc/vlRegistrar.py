@@ -66,18 +66,6 @@ def render(args, prj, data):
     for top in tops:
         out.append(f'using {top}_dut_t = {byTop[top]["xceliumDutClass"]};')
     out.append('#endif')
-    # The boundary files bind each payload pin to a width evaluated at database
-    # creation; the SC wrapper sizes the same pin from the Config's structure.
-    if sv['scWrapperConfigTemplated']:
-        for top in tops:
-            config = intf_gen_utils.cpp_config_expression_name(byTop[top]['config'])
-            for pin in prj.getVlTopBoundaryPins(data, top):
-                if not pin['structureKey']:
-                    continue
-                structType = intf_gen_utils.sc_struct_type_name(
-                    pin['structure'], pin['structureKey'], prj, config_override=config)
-                out.append(f'static_assert({structType}::_bitWidth == {pin["width"]}, '
-                           f'"{top}: {pin["pin"]} width differs from the generated boundary");')
     out.append(f'struct _{blockName}_vl_registrar {{')
     out.append(f'    _{blockName}_vl_registrar() {{')
 
