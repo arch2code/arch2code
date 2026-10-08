@@ -1,9 +1,0 @@
-include:
-    - ip.yaml
-
-parameters:
-    ip:
-        variant0:
-            IP_DATA_WIDTH: 8
-            IP_MEM_DEPTH: 16
-            IP_NONCONST_DEPTH: 24
