@@ -4,6 +4,7 @@
 
 #include "asyncEvent.h"
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -36,6 +37,11 @@ public:
 
     static std::shared_ptr<ThreadSafeEvent> getPeerClosedEvent(const std::string &name);
 
+    // True once notifyPeerClosed() has run. Check it before waiting on the
+    // peer-closed event, which keeps no state: a thread that reaches the wait
+    // after the notification would wait forever.
+    static bool isPeerClosed(const std::string &name);
+
     static void notifyPeerClosed(const std::string &name);
 
     static void shutdownByName(const std::string &name);
@@ -50,6 +56,9 @@ private:
         std::thread rx_thread;
         bool has_thread = false;
         std::shared_ptr<ThreadSafeEvent> peer_closed_event;
+        // shared_ptr, not a bare atomic<bool>, so SocketEntry stays movable for
+        // map[name] = std::move(ent) in registerInterface().
+        std::shared_ptr<std::atomic<bool>> peer_closed = std::make_shared<std::atomic<bool>>(false);
     };
 
     static std::map<std::string, SocketEntry> &getMap();

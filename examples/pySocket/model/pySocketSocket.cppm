@@ -214,8 +214,12 @@ void pySocketSocket::python2SystemCTestComplete(void)
     const std::string test_socket = "python2SystemCTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_req_ack(name()));
-    if (ev) {
+    // testController releases these six threads one at a time, so Python can
+    // close this socket before the thread gets here. The close notification is
+    // then already gone, and only isPeerClosed() still shows it.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test_req_ack(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
@@ -248,8 +252,10 @@ void pySocketSocket::systemC2PythonTestComplete(void)
     const std::string test_socket = "systemC2PythonTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test2Python_req_ack(name()));
-    if (ev) {
+    // isPeerClosed() first, as in python2SystemCTestComplete.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test2Python_req_ack(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
@@ -264,8 +270,10 @@ void pySocketSocket::pythonPushPopTestComplete(void)
     const std::string test_socket = "pythonPushPopTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_push_ack(name()));
-    if (ev) {
+    // isPeerClosed() first, as in python2SystemCTestComplete.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test_push_ack(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
@@ -280,8 +288,10 @@ void pySocketSocket::pythonNotifyTestComplete(void)
     const std::string test_socket = "pythonNotifyTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_notify_ack(name()));
-    if (ev) {
+    // isPeerClosed() first, as in python2SystemCTestComplete.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test_notify_ack(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
@@ -296,8 +306,10 @@ void pySocketSocket::pythonRdyVldTestComplete(void)
     const std::string test_socket = "pythonRdyVldTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_rdy_vld(name()));
-    if (ev) {
+    // isPeerClosed() first, as in python2SystemCTestComplete.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test_rdy_vld(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
@@ -312,8 +324,10 @@ void pySocketSocket::pythonAxi4StreamTestComplete(void)
     const std::string test_socket = "pythonAxi4StreamTest";
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
-    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_axi4_stream(name()));
-    if (ev) {
+    // isPeerClosed() first, as in python2SystemCTestComplete.
+    const std::string peer_ifc = pySocketSocketCatalog::name_test_axi4_stream(name());
+    auto ev = socketFactory::getPeerClosedEvent(peer_ifc);
+    while (ev && !socketFactory::isPeerClosed(peer_ifc)) {
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
