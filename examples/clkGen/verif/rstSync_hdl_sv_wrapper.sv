@@ -17,7 +17,7 @@ module rstSync_hdl_sv_wrapper
         .rstOut_n(rstOut_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

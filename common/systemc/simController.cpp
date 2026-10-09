@@ -89,12 +89,10 @@ bool simController::handleProgramOptions(po::variables_map &vm)
 bool simController::addProgramOptions(po::options_description &options)
 {
     options.add_options()
-#ifndef VCS
         ("vlInst", po::value<std::string>(&vlInst), "Primary Instance Hierarchy")
         ("vlType", po::value<std::string>(&vlType)->default_value("verif"), "Primary Instance object type")
         ("vlTandem", po::bool_switch(&vlTandem), "Primary instance in tandem mode")
         ("vlTrace", po::bool_switch(&vlTrace)->default_value(false), "Enable VCD trace dump")
-#endif
         ("delay", po::value<uint64_t>(&delayNSec), "Set delay in nsec for named instance or all")
         ("delayMode", po::value<std::string>(), "Set delay mode for named instance [fixedInit, randInit, randFull]")
         ("scTimeLimit", po::value<float>(&maxRuntimeUS)->default_value(0.0), "SystemC time limit (in microseconds)")

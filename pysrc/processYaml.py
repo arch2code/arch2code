@@ -467,6 +467,40 @@ SC_WRAPPER_CLASS_SUFFIX = '_hdl_sc_wrapper'
 # it is used by the generators to access the data
 # it additionaly provides some helper functions to make the generators easier to write
 # the database contents are stored in the data dict in manner similar to the schema
+class intfEvalDSL:
+    # Receiver of an interface hdlparam `eval` expression (`<struct param>.<method>`),
+    # evaluated against the width of the structure bound to that parameter.
+
+    def __init__(self, width):
+        self.width = width
+
+    def to_bytes(self):
+        return self.width // 8 + (1 if self.width % 8 != 0 else 0)
+
+class intfEvalPayload:
+    # to_bytes names the payload it measures, because that payload's width
+    # differs per top.
+
+    def __init__(self, binding):
+        self.binding = binding
+
+    def to_bytes(self):
+        return {'kind': 'bytes', 'binding': self.binding}
+
+class intfEvalUnbound:
+    # Receiver for an unbound optional parameter, which has no width to measure.
+
+    def __init__(self, intfDef, hdlparam, param):
+        self.intfDef = intfDef
+        self.hdlparam = hdlparam
+        self.param = param
+
+    def __getattr__(self, method):
+        printError(f"Interface '{self.intfDef['interface_type']}' hdlparam '{self.hdlparam}' evaluates "
+                   f"optional parameter '{self.param}', which is unbound and does not name a "
+                   f"structure, so it supplies no width.")
+        exit(warningAndErrorReport())
+
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
     data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
@@ -513,6 +547,7 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.vlTops = self.config.getConfig('VLTOPS')
         self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
@@ -1665,6 +1700,14 @@ class projectOpen:
             'dutHeader': f'V{bodyModule}.h',
             'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
             'variantDutHeaders': {v: f'V{t}.h' for v, t in variantTops.items()},
+            # VCS `vlogan -sc_model <top>` names the SystemC shell class and its
+            # header after the SV top itself.
+            'vcsDutHeader': f'{bodyModule}.h',
+            'variantVcsDutHeaders': {v: f'{t}.h' for v, t in variantTops.items()},
+            # Xcelium foreign-module shell: class named after the SV top, header
+            # <top>_xcelium.h (a2c-owned name; Xcelium generates nothing here).
+            'xceliumDutHeader': f'{bodyModule}_xcelium.h',
+            'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
         }
 
     def getBDConfigInfo(self, ret):
@@ -3539,6 +3582,117 @@ class projectOpen:
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
 
+    def evalHdlParam(self, intfDef, hdlparam, receivers):
+        # An eval hdlparam's DSL expression, with each struct parameter name
+        # bound to the receiver the caller supplies for it.
+        return eval(intfDef['hdlparams'][hdlparam]['value'], {'__builtins__': {}, **receivers})
+
+    def intfBindingClass(self, binding):
+        # getIntfSignals classification of a signal this payload binding types:
+        # the bound payload, or an unbound one at its defaultWidth.
+        if binding['isNull']:
+            width = binding['defaultWidth']
+            return {'kind': 'fixed', 'width': width, 'vector': width > 1}
+        ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+        return {'kind': 'payload', 'binding': binding,
+                'vector': bool(ref['isParameterizable']) or int(ref['width']) > 1}
+
+    def getIntfSignals(self, intfDef, structures, modport):
+        """Per-signal classification of one interface's HDL boundary, in signal
+        declaration order, from the given modport's point of view.
+
+        Every row carries signal, signalType, direction ('input' | 'output'),
+        kind and vector. vector is True for a signal typed by an eval hdlparam,
+        by a bound parameterizable payload, or wider than one bit; such a pin
+        stays a bit vector at width 1. kind adds:
+            'fixed'    width: the integer width (bool, a type-named signal, an
+                       unbound optional payload at its defaultWidth, or an
+                       hdlparam over fixed payloads)
+            'payload'  binding: the bound payload typing the signal
+            'bytes'    binding: the parameterizable payload whose byte count
+                       sizes the signal
+        """
+        bindings = {binding['structureType']: binding
+                    for binding in self.getIntfParamBindings(intfDef, structures)}
+        hdlparams = intfDef['hdlparams'] or {}
+        inputs = intfDef['modports'][modport]['modportGroups'] \
+            .get('inputs', {}).get('groups') or {}
+        rows = []
+        for signal, signalDef in intfDef['signals'].items():
+            signalType = signalDef['signalType']
+            row = {'signal': signal, 'signalType': signalType,
+                   'direction': 'input' if signal in inputs else 'output'}
+            if signalType in bindings:
+                row.update(self.intfBindingClass(bindings[signalType]))
+            elif signalType in hdlparams and hdlparams[signalType]['isEval']:
+                receivers = dict()
+                for param, binding in bindings.items():
+                    if binding['isNull']:
+                        receivers[param] = intfEvalUnbound(intfDef, signalType, param)
+                        continue
+                    ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+                    receivers[param] = intfEvalPayload(binding) if ref['isParameterizable'] \
+                        else intfEvalDSL(int(ref['width']))
+                measure = self.evalHdlParam(intfDef, signalType, receivers)
+                if isinstance(measure, int):
+                    row.update(kind='fixed', width=measure, vector=True)
+                else:
+                    row.update(measure, vector=True)
+            else:
+                width = 1 if signalType == 'bool' else self.signalTypeWidth(intfDef, signalType)
+                row.update(kind='fixed', width=width, vector=width > 1)
+            rows.append(row)
+        return rows
+
+    def signalTypeWidth(self, intfDef, signalType):
+        # Integer width of an interface signal whose signalType names a type,
+        # resolved in the interface definition's scope, then _a2csystem.
+        for qualification in self.yamlContext[intfDef['_context']]:
+            key = f"{signalType}/{qualification}"
+            if key in self.data['types']:
+                return self.datatypeRef('types', key)['width']
+        return self.datatypeRef('types', f"{signalType}/_a2csystem")['width']
+
+    def getVlTopBoundaryPins(self, ret, topModule):
+        # Pin list of the block's HDL verification wrapper with every width
+        # bound at the given top's parameter values: one pin per interface
+        # signal of each port, in port then signal order, then the block's
+        # clocks and resets in declaration order.
+        import pysrc.intf_gen_utils as intf_gen_utils
+        structWidths = self.vlTops[topModule]['structWidths']
+        typeWidths = self.vlTops[topModule]['typeWidths']
+
+        def payloadWidth(binding):
+            ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+            if not ref['isParameterizable']:
+                return int(ref['width'])
+            if binding['kind'] == 'structures':
+                return structWidths[binding['structureKey']]
+            return typeWidths[binding['structureKey']]
+
+        pins = list()
+        for portType in ret['ports']:
+            for portData in ret['ports'][portType].values():
+                intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
+                intfDef = ret['interface_defs'][intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)]
+                for row in self.getIntfSignals(intfDef, intfData['structures'], portData['direction']):
+                    match row['kind']:
+                        case 'fixed':
+                            width = row['width']
+                        case 'payload':
+                            width = payloadWidth(row['binding'])
+                        case 'bytes':
+                            binding = row['binding']
+                            width = self.evalHdlParam(
+                                intfDef, row['signalType'],
+                                {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
+                    pins.append({'pin': f"{portData['name']}_{row['signal']}",
+                                 'direction': row['direction'], 'width': width,
+                                 'vector': row['vector']})
+        for name, direction in intf_gen_utils.clock_reset_ports(ret):
+            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False})
+        return pins
+
     def extractContext(self, structs, consts):
         ret = dict()
         todo = structs
@@ -4149,7 +4303,8 @@ class projectCreate:
         # `.context` would be stale / wrong outside a processSingleFile frame.
         self._parserResolver = None
         # Parsed eval IR nodes by (yamlFile, constant name), populated when an
-        # eval constant is parsed in processSimple and consumed by _constants.
+        # eval constant is parsed in processSimple. Read by _constants,
+        # deriveParameterizedDeclSets and ValueResolver override evaluation.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
         # Blocks whose resets: was authored as an explicitly empty {} or [],
@@ -4793,6 +4948,10 @@ class projectCreate:
                                 'topModule': topModule,
                                 'dutClass': f'V{topModule}',
                                 'dutHeader': f'V{topModule}.h',
+                                'vcsDutClass': topModule,
+                                'vcsDutHeader': f'{topModule}.h',
+                                'xceliumDutClass': topModule,
+                                'xceliumDutHeader': f'{topModule}_xcelium.h',
                             }, parent['block'], child['block'])
         for pair in pairs.values():
             pair['modelRegistrations'].sort(key=lambda entry: entry['variant'])
@@ -4818,6 +4977,76 @@ class projectCreate:
                 topOwners[top] = current
         self.config.setConfig('REGISTRARPAIRS', pairs, bin=True)
         self.config.setConfig('PAIRFACTORYPROJECTS', factoryProjects, bin=True)
+        self.calcVlTops(pairs, blocks, descriptors, paramsByBlock, foreignHeaders)
+
+    def calcVlTops(self, pairs, blocks, descriptors, paramsByBlock, foreignHeaders):
+        # Every HDL verification-wrapper top with the widths of its block's
+        # module-local parameterizable structures evaluated at that top's
+        # parameter values. The simulator boundary files (VCS port map, Xcelium
+        # foreign-module shell) need integer pin widths, which only the create-time
+        # resolver can produce; the read-only view pairs them with the pin list.
+        # The top set mirrors artifactPaths.artifactRows: pair registrations,
+        # the bare per-label tops, the owner-qualified foreign tops, and the
+        # single top of a block without params, named as SVWRAPPERNAMES names them.
+        vlTops = dict()
+        project = self.config.getConfig('PROJECTNAME')
+
+        def record(topModule, blockKey, values):
+            if topModule in vlTops:
+                return
+            # The resolver overrides constants by qualified key; registrations
+            # and descriptors carry values by the block's parameter name.
+            bindings = {row['paramSourceKey']: values[row['param']]
+                        for row in paramsByBlock.get(blockKey, [])}
+            resolver = ValueResolver(self, values=bindings, context=blocks[blockKey]['_context'])
+            g.cur.execute("SELECT declKind, declKey FROM blockParameterizedDecls "
+                          "WHERE blockKey = ? AND declKind IN ('structure', 'type') ORDER BY orderIndex",
+                          (blockKey,))
+            declKeys = {'structures': set(), 'types': set()}
+            for row in g.cur.fetchall():
+                declKeys['types' if row['declKind'] == 'type' else 'structures'].add(row['declKey'])
+            # getVlTopBoundaryPins sizes a pin for every declared port, so the
+            # widths also cover parameterizable payloads a port carries that
+            # the block does not declare itself.
+            for portRow in blocks[blockKey].get('ports', {}).values():
+                for structRow in self.flatData['interfaces'][portRow['interfaceKey']].get('structures', {}).values():
+                    kind = structRow['structureKind']
+                    if self.flatData[kind][structRow['structureKey']]['isParameterizable']:
+                        declKeys[kind].add(structRow['structureKey'])
+            vlTops[topModule] = {
+                'blockKey': blockKey,
+                'structWidths': {key: resolver.structureWidth(key) for key in declKeys['structures']},
+                'typeWidths': {key: resolver.typeWidth(key) for key in declKeys['types']},
+            }
+
+        def ownValues(blockKey, descriptor):
+            return {row['param']: descriptor['values'][row['param']]
+                    for row in paramsByBlock[blockKey]}
+
+        for pair in pairs.values():
+            for registration in pair['verifRegistrations']:
+                record(registration['topModule'], pair['childKey'], registration['values'])
+        for blockKey, block in blocks.items():
+            if not block['hasVl']:
+                continue
+            if not paramsByBlock.get(blockKey):
+                record(self.svWrapperNames[blockKey]['bodyModule'], blockKey, {})
+                continue
+            standalone = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            for variant, descriptor in standalone.items():
+                record(self.svWrapperNames[blockKey]['variantTops'][variant], blockKey,
+                       ownValues(blockKey, descriptor))
+            foreign = foreignHeaders.get((project, blockKey))
+            if foreign is None:
+                continue
+            for sourceBlock in self.variantSourceBlocks[blockKey]:
+                for descriptor in descriptors[sourceBlock]:
+                    if descriptor['declaringProject'] == project \
+                            and descriptor['variant'] in foreign['vlVariants']:
+                        record(self.svWrapperNames[blockKey]['foreignVariantTops'][project][
+                                   descriptor['variant']],
+                               blockKey, ownValues(blockKey, descriptor))
+        self.config.setConfig('VLTOPS', vlTops, bin=True)
 
     def declaredVariantLabels(self):
         # Per block, the variant labels the block itself declares, in the order
@@ -8243,7 +8472,7 @@ class projectCreate:
                         owningBase = self.childProjectRaw[owner]['projectFileDir']
                         self.yamlDir = os.path.dirname(
                             os.path.relpath(os.path.abspath(yamlFile), owningBase))
-        if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
+        if yamlFile not in self.includeValid and contextFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
@@ -8276,7 +8505,7 @@ class projectCreate:
                     printError(f"Unknown section: {section} found in "
                                f"{self.diagnosticLocation(yamlFile, sectionLc)}")
                     exit(warningAndErrorReport())
-                if section in self.includeSections:
+                if section in self.includeSections and contextFile not in self.specialContexts:
                     self.includeValid[yamlFile]["valid"] = True
 
     # A row of a project-scoped section is parsed with the declaring projectName

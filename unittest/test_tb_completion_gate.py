@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -118,7 +119,7 @@ def run_probe():
                 states[name.strip()] = value.strip()
         return states
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def test_completion_requires_seeded_tests():

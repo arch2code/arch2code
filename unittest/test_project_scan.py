@@ -46,6 +46,7 @@ import pysrc.arch2codeGlobals as g
 from pysrc.projectScan import ProjectScanner
 from pysrc.processYaml import projectOpen
 import pysrc.yamlReadCache as yamlReadCache
+from _tmp_helpers import remove_tree
 
 MULTI_COPY = os.path.join(test_dir, 'fixtures', 'multi-copy')
 NESTED = os.path.join(test_dir, 'fixtures', 'nested-ownership')
@@ -174,7 +175,7 @@ def test_multi_copy_reconcile():
         print("PASS: multi-copy reconcile (logical key, group, master, "
               "ownership reattribution, member alias, no divergence)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_divergence_detected():
@@ -215,7 +216,7 @@ def test_divergence_detected():
             "untouched copies should still agree"
         print("PASS: divergence detected (differing content hashes for one logical key)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _scan_with_edit(prefix, sub, appended):
@@ -236,7 +237,7 @@ def _scan_with_edit(prefix, sub, appended):
             ProjectScanner(proj).scan()
         return captured.getvalue()
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_divergence_warning_excludes_master():
@@ -298,7 +299,7 @@ def test_mistargeted_override_diagnostic():
             f"diagnostic did not name projectName and target: {msg}"
         print("PASS: mis-targeted override raises a clear diagnostic")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_single_copy_parity():
@@ -347,7 +348,7 @@ def test_single_copy_parity():
         if g.db is not None:
             g.db.close()
             g.db = None
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_bare_basename_include_key_parity():
@@ -401,7 +402,7 @@ def test_bare_basename_include_key_parity():
         if g.db is not None:
             g.db.close()
             g.db = None
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_cross_branch_override_master_discovered():
@@ -453,7 +454,7 @@ def test_cross_branch_override_master_discovered():
         print("PASS: cross-branch override master discovered (global-effective "
               "master scanned, copies aliased, no KeyError)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_conflicting_sibling_overrides_fail_loud():
@@ -474,7 +475,7 @@ def test_conflicting_sibling_overrides_fail_loud():
         print("PASS: conflicting sibling overrides fail loud (clear conflict "
               "diagnostic, no silent first-win)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_two_declarers_longest_path_ownership():
@@ -573,7 +574,7 @@ def test_ownership_tie_resolved_by_direct_listing():
         print("PASS: ownership tie resolved (direct projectFiles: listing "
               "gives the file one owner outright)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_ownership_direct_listing_conflict_fails_loud():
@@ -607,7 +608,7 @@ def test_ownership_direct_listing_conflict_fails_loud():
         print("PASS: direct-listing conflict fails loud (names the "
               "file and both providers)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_ownership_cycle_fails_loud():
@@ -645,7 +646,7 @@ def test_ownership_cycle_fails_loud():
         print("PASS: projectFiles: reference cycle fails loud (names "
               "both provider files)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_ip_test_composed_scan():
@@ -732,7 +733,7 @@ def test_master_edge_ranking_cycle_fails_loud():
         print("PASS: master-edge ranking cycle fails loud (names "
               "'cycle', does not hang)")
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

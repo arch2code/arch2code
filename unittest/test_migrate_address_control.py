@@ -32,6 +32,7 @@ from pysrc.migrateAddressControl import (
     POLICY_MOVE, POINTER_REMOVE, POSTPROCESS,
     TODO_INTERFACE_SCOPE, TODO_LEAF_REGISTER_PORTS, TODO_ROUTER_RESOLUTION,
 )
+from _tmp_helpers import remove_tree
 
 
 # A legacy project whose top group resolves to a router (apbDecode), carries a
@@ -201,13 +202,17 @@ _MIXED_COMMENT_PROJECT = (
 
 def _makeProject(project, top, addr):
     d = tempfile.mkdtemp()
-    with open(os.path.join(d, "project.yaml"), "w") as fh:
-        fh.write(project)
-    with open(os.path.join(d, "top.yaml"), "w") as fh:
-        fh.write(top)
-    with open(os.path.join(d, "addressControl.yaml"), "w") as fh:
-        fh.write(addr)
-    return d
+    try:
+        with open(os.path.join(d, "project.yaml"), "w") as fh:
+            fh.write(project)
+        with open(os.path.join(d, "top.yaml"), "w") as fh:
+            fh.write(top)
+        with open(os.path.join(d, "addressControl.yaml"), "w") as fh:
+            fh.write(addr)
+        return d
+    except BaseException:
+        remove_tree(d)
+        raise
 
 
 def _kinds(items):
@@ -292,7 +297,7 @@ def test_dirty_applied_edits():
         assert not _find(report.applied, DELETE_DEFERRED), \
             "DELETE_DEFERRED reported though the file was deleted this run"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -316,7 +321,7 @@ def test_clean_finalizes():
         topOut = open(os.path.join(d, "top.yaml")).read()
         assert "addressBlock:" in topOut and "addressGroup: top" in topOut
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -338,7 +343,7 @@ def test_dry_run_changes_nothing():
         for name, text in before.items():
             assert open(os.path.join(d, name)).read() == text, f"{name} changed in dry-run"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -355,7 +360,7 @@ def test_idempotent_after_migration():
         assert report.clean
         assert open(os.path.join(d, "project.yaml")).read() == snapshot
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -393,7 +398,7 @@ def test_unresolved_router_reports_manual():
         assert _find(report.applied, DELETE_DEFERRED), \
             "unresolved router did not report the kept file"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -424,7 +429,7 @@ def test_commented_first_entry_no_orphan():
         assert any("removed postProcess: override" in i.message for i in pp), \
             [i.message for i in pp]
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -451,7 +456,7 @@ def test_mixed_keep_with_interleaved_comment():
         assert any("kept project-specific" in i.message for i in pp), \
             [i.message for i in pp]
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -489,7 +494,7 @@ def test_leaf_todo_removes_pointer_and_file_together():
         assert not os.path.exists(os.path.join(d, "addressControl.yaml"))
         assert "addressControl:" not in open(os.path.join(d, "project.yaml")).read()
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -529,7 +534,7 @@ def test_config_subdir_pointer_not_stranded():
         assert not second.written and not second.deletedAddressControl
         assert not os.path.exists(addrPath), "config/ file resurrected or stranded"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -591,7 +596,7 @@ def test_retry_after_failed_delete_no_duplicate_addressblock():
             "pointer not removed on the successful retry"
     finally:
         mac.os.remove = realRemove
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -633,7 +638,7 @@ def test_advisory_outlives_the_one_shot_todo():
         assert not routedLeafRegisterPortsAdvisory(projectYaml), \
             "a leaf that declares registerPorts: must not be reported"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
 
 
 _TESTS = [

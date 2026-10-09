@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import clkGen_clkConsumer.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "clkConsumer_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "clkConsumer_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VclkConsumer_hdl_sv_wrapper.h"
 #endif
@@ -30,7 +32,7 @@ class clkConsumer_hdl_sc_wrapper: public sc_module, public blockBase, public clk
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     clkConsumer_hdl_sv_wrapper *dut_hdl;
 #else
     VclkConsumer_hdl_sv_wrapper *dut_hdl;
@@ -50,7 +52,7 @@ public:
         rst_n("rst_n", true),
         clk_half_(sc_time(40, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new clkConsumer_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VclkConsumer_hdl_sv_wrapper("dut_hdl");

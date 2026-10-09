@@ -1,0 +1,56 @@
+# Test-only protocols. idt carries required and optional struct, type and
+# typeStruct parameters; idth adds an eval hdlparam (byte count of s_t). Their
+# SystemC and SystemVerilog companions live in the fixture's interfaces/ dir.
+
+interface_defs:
+  idt :
+    parameters :
+      s_t  : { datatype : struct }
+      ty_t : { datatype : type }
+      ts_t : { datatype : typeStruct }
+      o1_t : { datatype : struct, optional : true, defaultWidth : 2 }
+      o2_t : { datatype : type, optional : true, defaultWidth : 3 }
+      o3_t : { datatype : typeStruct, optional : true, defaultWidth : 5 }
+    signals:
+      vld : bool
+      s : s_t
+      ty : ty_t
+      ts : ts_t
+      o1 : o1_t
+      o2 : o2_t
+      o3 : o3_t
+      rdy : bool
+    modports :
+      src :
+        inputs : ['rdy']
+        outputs: ['vld', 's', 'ty', 'ts', 'o1', 'o2', 'o3']
+      dst :
+        inputs : ['vld', 's', 'ty', 'ts', 'o1', 'o2', 'o3']
+        outputs: ['rdy']
+    sc_channel :
+      type : 'idt'
+      multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
+  idth :
+    parameters :
+      s_t  : { datatype : struct }
+      ts_t : { datatype : typeStruct }
+      o2_t : { datatype : type, optional : true, defaultWidth : 3 }
+    hdlparams :
+      sb_t : { isEval : True, datatype : integer, value : 's_t.to_bytes()' }
+    signals:
+      vld : bool
+      s : s_t
+      sb : sb_t
+      ts : ts_t
+      o2 : o2_t
+      rdy : bool
+    modports :
+      src :
+        inputs : ['rdy']
+        outputs: ['vld', 's', 'sb', 'ts', 'o2']
+      dst :
+        inputs : ['vld', 's', 'sb', 'ts', 'o2']
+        outputs: ['rdy']
+    sc_channel :
+      type : 'idth'
+      multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']

@@ -510,11 +510,11 @@ def test_optional_tail_split_by_consumers(proj, consumer):
                 'tail_opt_channel<awAddrSt, awDataSt, userSt> inTailBound;',
                 "the channel emits the declared payload order")
     check_equal(bound['hdl_if_decl'],
-                'tail_opt_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<8>> inTailBound_hdl_if;',
+                'tail_opt_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<8>> inTailBound_hdl_inst;',
                 "the bridge types follow the same declared order")
     check_equal(bound['bfm_decl'],
                 'tail_opt_dst_bfm<awAddrSt, awDataSt, sc_bv<32>, sc_bv<32>, '
-                'sc_bv<8>, userSt> inTailBound_bfm;',
+                'sc_bv<8>, userSt> inTailBound_bfm_inst;',
                 "the BFM emits required payloads, the bridge group, then the "
                 "optional tail")
 
@@ -536,7 +536,7 @@ def test_optional_tail_split_by_consumers(proj, consumer):
                 "an unbound optional tail is dropped from the channel too")
     check_equal(unbound['bfm_decl'],
                 'tail_opt_dst_bfm<awAddrSt, awDataSt, sc_bv<32>, sc_bv<32>, '
-                'bool> inTailUnbound_bfm;',
+                'bool> inTailUnbound_bfm_inst;',
                 "an unbound optional tail still occupies its bridge slot in "
                 "the BFM")
     check(intf_gen_utils.SC_NULL_PAYLOAD_TYPE not in unbound['port_decl'],
@@ -577,13 +577,13 @@ def test_gap_filled_with_sentinel(proj, consumer):
     check_equal(
         sc['hdl_if_decl'],
         'axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>, bool, bool, '
-        'sc_bv<8>> inAwGap_hdl_if;',
+        'sc_bv<8>> inAwGap_hdl_inst;',
         "awGap bridge carries a placeholder bit per gap and buser_t's width")
     check_equal(
         sc['bfm_decl'],
         'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, sc_bv<32>, '
         'sc_bv<4>, bool, bool, sc_bv<8>, sc_bv<4>, std::monostate, '
-        'std::monostate, userSt> inAwGap_bfm;',
+        'std::monostate, userSt> inAwGap_bfm_inst;',
         "awGap BFM fills the gaps after the Verilated bridge group")
 
     # Both AXI4 USER sidebands of a read interface reach the HDL boundary the
@@ -619,7 +619,7 @@ def test_trailing_optional_omitted(proj, consumer):
     check_equal(sc['bfm_decl'],
                 'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, '
                 'sc_bv<32>, sc_bv<4>, bool, bool, bool, sc_bv<4>> '
-                'inAwNone_bfm;',
+                'inAwNone_bfm_inst;',
                 "awNone BFM carries a placeholder for each unbound sideband "
                 "bridge")
     check(intf_gen_utils.SC_NULL_PAYLOAD_TYPE not in sc['port_decl'],
@@ -631,7 +631,7 @@ def test_trailing_optional_omitted(proj, consumer):
                 "streamPlain SystemC port omits the trailing tuser_t")
     check_equal(stream['hdl_if_decl'],
                 'axi4_stream_hdl_if<sc_bv<32>, sc_bv<4>, sc_bv<4>, sc_bv<4>, '
-                'sc_bv<4>> inStreamPlain_hdl_if;',
+                'sc_bv<4>> inStreamPlain_hdl_inst;',
                 "streamPlain bridge omits the trailing tuser_t bridge type")
 
 
@@ -659,7 +659,7 @@ def test_head_bound_keeps_bfm_bridge_group_whole(proj, consumer):
     check_equal(sc['bfm_decl'],
                 'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, '
                 'sc_bv<32>, sc_bv<4>, sc_bv<8>, bool, bool, sc_bv<4>, '
-                'userSt> inAwHead_bfm;',
+                'userSt> inAwHead_bfm_inst;',
                 "awHead BFM carries the complete bridge group before the "
                 "payload, placeholders and all")
 
@@ -690,7 +690,7 @@ def test_unbound_optional_signal_blast(proj, consumer):
     # The SystemC bridge takes the same decision for the same signal.
     check_equal(sc_mp(proj, consumer, 'inStreamUser')['hdl_if_decl'],
                 'axi4_stream_hdl_if<sc_bv<32>, sc_bv<4>, sc_bv<4>, sc_bv<4>, '
-                'sc_bv<4>, sc_bv<8>> inStreamUser_hdl_if;',
+                'sc_bv<4>, sc_bv<8>> inStreamUser_hdl_inst;',
                 "bound tuser_t contributes its width to the Verilated bridge")
 
 
@@ -707,7 +707,7 @@ def test_optional_tail_after_hdlparam_group(proj, consumer):
     check_equal(
         sc['bfm_decl'],
         'axi4_stream_dst_bfm<awDataSt, idSt, idSt, sc_bv<32>, sc_bv<4>, '
-        'sc_bv<4>, sc_bv<4>, sc_bv<4>, sc_bv<8>, userSt> inStreamUser_bfm;',
+        'sc_bv<4>, sc_bv<4>, sc_bv<4>, sc_bv<8>, userSt> inStreamUser_bfm_inst;',
         "streamUser BFM emits userSt after both hdlparam bridge types")
 
     args = template_args(sc['bfm_decl'])
@@ -808,7 +808,7 @@ def test_default_width_four_optional(proj, consumer):
                 "and from the channel")
     check_equal(sc['bfm_decl'],
                 'width4_opt_dst_bfm<awAddrSt, sc_bv<32>, sc_bv<4>> '
-                'inW4Unbound_bfm;',
+                'inW4Unbound_bfm_inst;',
                 "the BFM bridge group carries defaultWidth's sc_bv<4>, not the "
                 "width-1 placeholder")
 
@@ -838,7 +838,7 @@ def test_type_datatype_optional_payload(proj, consumer):
                 'type_opt_channel<awAddrSt, idType9, 9> inTypeBound;',
                 "the channel spells the same two arguments")
     check_equal(bound['hdl_if_decl'],
-                'type_opt_hdl_if<sc_bv<32>, sc_bv<9>> inTypeBound_hdl_if;',
+                'type_opt_hdl_if<sc_bv<32>, sc_bv<9>> inTypeBound_hdl_inst;',
                 "the bridge carries the type's own width")
 
     unbound = sc_mp(proj, consumer, 'inTypeUnbound')
@@ -849,7 +849,7 @@ def test_type_datatype_optional_payload(proj, consumer):
                 'type_opt_channel<awAddrSt> inTypeUnbound;',
                 "and from the channel")
     check_equal(unbound['bfm_decl'],
-                'type_opt_dst_bfm<awAddrSt, sc_bv<32>, sc_bv<4>> inTypeUnbound_bfm;',
+                'type_opt_dst_bfm<awAddrSt, sc_bv<32>, sc_bv<4>> inTypeUnbound_bfm_inst;',
                 "the BFM bridge group still carries the parameter's defaultWidth: 4")
 
     sv_bound = sv_mp(proj, consumer, 'inTypeBound')

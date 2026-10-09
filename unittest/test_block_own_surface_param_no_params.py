@@ -91,10 +91,7 @@ def _run_arch2code(project_path, db_path):
 def _cleanup(paths):
     for p in paths:
         if p and os.path.exists(p):
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
+            os.unlink(p)
 
 
 def _find_block(prj, simple_name):

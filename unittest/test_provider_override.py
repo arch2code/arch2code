@@ -31,6 +31,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'provider-override')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -136,7 +137,7 @@ def run_all_tests():
     finally:
         if g.db is not None:
             g.db.close()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 if __name__ == '__main__':

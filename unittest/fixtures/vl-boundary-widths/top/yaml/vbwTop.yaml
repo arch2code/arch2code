@@ -1,0 +1,271 @@
+# Integrator design covering every HDL wrapper top shape: a no-param single top
+# (dutA), standalone per-variant tops (dutP), pair-registration tops of an
+# inheriting child (dutQ inside wrapQ), and foreign owner-qualified tops of the
+# leaf IP (fLeaf at vA/vB/vC). Variants v0/vA, v1/vB and v2/vC size pst_a to
+# 12, 19 and 8 bits (2, 3 and 1 bytes) and the stream word ptd_st to 5, 12 and
+# 1 bytes. dutC2 has two clock domains, dutOut produces a clock and a reset,
+# and dutNoRst declares no reset.
+include:
+  - ../../leaf/yaml/vbwLeaf.yaml
+
+constants:
+  K_W: {value: 6, desc: "Named width"}
+  K_N: {value: 32, desc: "log2 source"}
+
+types:
+  ty_c6: {width: K_W, desc: "Width from a constant (6)"}
+  ty_log2m1: {widthLog2minus1: K_N, desc: "widthLog2minus1 of 32 = 5"}
+  ty_log2lit: {widthLog2: 16, desc: "widthLog2 of 16 = 5"}
+  ty_wide: {width: 70, desc: "70 bits"}
+
+structures:
+  st_a: {x: {varType: ty_lit, desc: "x"}, y: {varType: ty_c6, desc: "y"}}
+  st_b: {x: {varType: ty_wide, desc: "x"}}
+
+interfaces:
+  axr_gap:
+    interfaceType: axi_read
+    desc: "aruser and id bound, ruser left as a gap between them"
+    structures:
+      - {structureType: addr_t, structure: addr_st}
+      - {structureType: data_t, structure: data_st}
+      - {structureType: aruser_t, structure: st_a}
+      - {structureType: id_t, structure: ty_lit}
+  axw_unb:
+    interfaceType: axi_write
+    desc: "Every optional parameter unbound"
+    structures:
+      - {structureType: addr_t, structure: addr_st}
+      - {structureType: data_t, structure: data_st}
+      - {structureType: strb_t, structure: strb_st}
+  ext:
+    interfaceType: external_reg
+    desc: "External register with a literal-typed write strobe"
+    structures:
+      - {structureType: data_t, structure: st_a}
+  i3:
+    interfaceType: idt
+    desc: "typeStruct bound to a type, o2 left as a gap"
+    structures:
+      - {structureType: s_t, structure: st_a}
+      - {structureType: ty_t, structure: ty_log2m1}
+      - {structureType: ts_t, structure: ty_one}
+      - {structureType: o1_t, structure: st_a}
+      - {structureType: o3_t, structure: ty_log2lit}
+  i4:
+    interfaceType: idt
+    desc: "typeStruct bound to a structure, o1 and o2 left as gaps"
+    structures:
+      - {structureType: s_t, structure: st_a}
+      - {structureType: ty_t, structure: ty_lit}
+      - {structureType: ts_t, structure: st_b}
+      - {structureType: o3_t, structure: st_b}
+  axs:
+    interfaceType: axi4_stream
+    desc: "AXI4-Stream over a fixed 64-bit tdata"
+    structures:
+      - {structureType: tdata_t, structure: data_st}
+      - {structureType: tid_t, structure: bit_st}
+      - {structureType: tdest_t, structure: bit_st}
+  axs1:
+    interfaceType: axi4_stream
+    desc: "AXI4-Stream over a fixed one-byte tdata"
+    structures:
+      - {structureType: tdata_t, structure: strb_st}
+      - {structureType: tid_t, structure: bit_st}
+      - {structureType: tdest_t, structure: bit_st}
+  ih2:
+    interfaceType: idth
+    desc: "hdlparam byte count that stays one byte at every variant"
+    structures:
+      - {structureType: s_t, structure: pst_b}
+      - {structureType: ts_t, structure: pty_w}
+      - {structureType: o2_t, structure: pty_l2}
+  ip:
+    interfaceType: idt
+    desc: "Parameterizable type and typeStruct, o1 left as a gap"
+    structures:
+      - {structureType: s_t, structure: pst_a}
+      - {structureType: ty_t, structure: pty_l2}
+      - {structureType: ts_t, structure: pty_l2m}
+      - {structureType: o2_t, structure: pty_w}
+  ip2:
+    interfaceType: idt
+    desc: "typeStruct bound to a parameterizable structure"
+    structures:
+      - {structureType: s_t, structure: pst_b}
+      - {structureType: ty_t, structure: pty_w}
+      - {structureType: ts_t, structure: pst_a}
+  axw_p:
+    interfaceType: axi_write
+    desc: "AXI write with a parameterizable payload and ID"
+    structures:
+      - {structureType: addr_t, structure: addr_st}
+      - {structureType: data_t, structure: pst_b}
+      - {structureType: strb_t, structure: strb_st}
+      - {structureType: id_t, structure: pty_l2}
+
+blocks:
+  topTb:
+    desc: "Root"
+    hasMdl: false
+    hasVl: false
+    hasTb: false
+    hasRtl: false
+    clocks:
+      clk: {default: true}
+      clkB: {}
+    resets:
+      rst_n: {clock: clk}
+      rstB_n: {clock: clkB}
+  vbwTop:
+    desc: "Integrator top"
+    hasMdl: true
+    hasVl: false
+    hasTb: true
+    hasRtl: false
+    clocks:
+      clk: {default: true, period: 10}
+      clkB: {period: 20}
+    resets:
+      rst_n: {clock: clk}
+      rstB_n: {clock: clkB}
+  dutA: {desc: "No-param DUT", hasVl: true, hasRtl: true, hasMdl: true, clocks: {clk: {period: 10}}}
+  pA: {desc: "Peer of dutA", hasRtl: false, hasMdl: true}
+  dutP: {desc: "Parameterized DUT", params: [P_W, P_N], hasVl: true, hasRtl: true, hasMdl: true, clocks: {clk: {period: 10}}}
+  pP: {desc: "Peer of dutP", params: [P_W, P_N], hasRtl: false, hasMdl: true}
+  wrapQ: {desc: "Container whose children inherit its Config", params: [P_W, P_N], hasRtl: false, hasMdl: true}
+  dutQ: {desc: "Inheriting DUT", params: [P_W, P_N], hasVl: true, hasRtl: true, hasMdl: true, clocks: {clk: {period: 10}}}
+  pQ: {desc: "Inheriting peer", params: [P_W, P_N], hasRtl: false, hasMdl: true}
+  dutC2:
+    desc: "DUT with two clock domains, its ports on the default one"
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    clocks:
+      clkA: {default: true, period: 10}
+      clkB2: {period: 20}
+    resets:
+      rstA_n: {clock: clkA}
+      rstB2_n: {clock: clkB2}
+  dutOut:
+    desc: "DUT producing a clock and a reset"
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    clocks:
+      clkIn: {default: true, period: 10}
+      clkOut: {direction: output}
+    resets:
+      rstIn_n: {clock: clkIn}
+      rstOut_n: {clock: clkOut, direction: output}
+  dutNoRst:
+    desc: "DUT with no reset, so no ports"
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    clocks:
+      clk: {period: 10}
+    resets: {}
+  fDrv:
+    desc: "Driver of the leaf IP"
+    params: [P_W, P_N]
+    hasMdl: true
+    hasRtl: false
+    ports:
+      fr: {interface: fr, direction: src}
+      fs: {interface: fs, direction: dst}
+      fh: {interface: fh, direction: dst}
+
+instances:
+  topTb:    {container: topTb, instanceType: topTb, instGroup: top}
+  uTop:     {container: topTb, instanceType: vbwTop, instGroup: top}
+  uDutA:    {container: vbwTop, instanceType: dutA, instGroup: top}
+  uDutC2:   {container: vbwTop, instanceType: dutC2, instGroup: top,
+             clocks: {clkA: clk, clkB2: clkB}, resets: {rstA_n: rst_n, rstB2_n: rstB_n}}
+  uDutOut:  {container: vbwTop, instanceType: dutOut, instGroup: top,
+             clocks: {clkIn: clk, clkOut: ~}, resets: {rstIn_n: rst_n, rstOut_n: ~}}
+  uDutNoRst: {container: vbwTop, instanceType: dutNoRst, instGroup: top}
+  uPA:      {container: vbwTop, instanceType: pA, instGroup: top}
+  uDutP0:   {container: vbwTop, instanceType: dutP, instGroup: top, variant: v0}
+  uPP0:     {container: vbwTop, instanceType: pP, instGroup: top, variant: v0}
+  uDutP1:   {container: vbwTop, instanceType: dutP, instGroup: top, variant: v1}
+  uPP1:     {container: vbwTop, instanceType: pP, instGroup: top, variant: v1}
+  uWrapQ0:  {container: vbwTop, instanceType: wrapQ, instGroup: top, variant: v0}
+  uWrapQ1:  {container: vbwTop, instanceType: wrapQ, instGroup: top, variant: v1}
+  uDutQ:    {container: wrapQ, instanceType: dutQ, instGroup: top, inheritContainerParam: true}
+  uPQ:      {container: wrapQ, instanceType: pQ, instGroup: top, inheritContainerParam: true}
+  uLeafA:   {container: vbwTop, instanceType: fLeaf, instGroup: top, variant: vA}
+  uDrvA:    {container: vbwTop, instanceType: fDrv, instGroup: top, variant: vA}
+  uLeafB:   {container: vbwTop, instanceType: fLeaf, instGroup: top, variant: vB}
+  uDrvB:    {container: vbwTop, instanceType: fDrv, instGroup: top, variant: vB}
+  uDutP2:   {container: vbwTop, instanceType: dutP, instGroup: top, variant: v2}
+  uPP2:     {container: vbwTop, instanceType: pP, instGroup: top, variant: v2}
+  uWrapQ2:  {container: vbwTop, instanceType: wrapQ, instGroup: top, variant: v2}
+  uLeafC:   {container: vbwTop, instanceType: fLeaf, instGroup: top, variant: vC}
+  uDrvC:    {container: vbwTop, instanceType: fDrv, instGroup: top, variant: vC}
+
+connections:
+  - {src: uPA, dst: uDutA, interface: axr_gap}
+  - {src: uDutA, dst: uPA, interface: axw_unb}
+  - {src: uDutA, dst: uPA, interface: ext}
+  - {src: uPA, dst: uDutA, interface: i3}
+  - {src: uDutA, dst: uPA, interface: i4}
+  - {src: uPA, dst: uDutA, interface: axs}
+  - {src: uDutC2, dst: uPA, interface: axs1}
+  - {src: uPP0, dst: uDutP0, interface: fr}
+  - {src: uDutP0, dst: uPP0, interface: fs}
+  - {src: uDutP0, dst: uPP0, interface: fh}
+  - {src: uPP0, dst: uDutP0, interface: ih2}
+  - {src: uPP0, dst: uDutP0, interface: ip}
+  - {src: uDutP0, dst: uPP0, interface: ip2}
+  - {src: uDutP0, dst: uPP0, interface: axw_p}
+  - {src: uPP1, dst: uDutP1, interface: fr}
+  - {src: uDutP1, dst: uPP1, interface: fs}
+  - {src: uDutP1, dst: uPP1, interface: fh}
+  - {src: uPP1, dst: uDutP1, interface: ih2}
+  - {src: uPP1, dst: uDutP1, interface: ip}
+  - {src: uDutP1, dst: uPP1, interface: ip2}
+  - {src: uDutP1, dst: uPP1, interface: axw_p}
+  - {src: uPP2, dst: uDutP2, interface: fr}
+  - {src: uDutP2, dst: uPP2, interface: fs}
+  - {src: uDutP2, dst: uPP2, interface: fh}
+  - {src: uPP2, dst: uDutP2, interface: ih2}
+  - {src: uPP2, dst: uDutP2, interface: ip}
+  - {src: uDutP2, dst: uPP2, interface: ip2}
+  - {src: uDutP2, dst: uPP2, interface: axw_p}
+  - {src: uDutQ, dst: uPQ, interface: fs}
+  - {src: uDutQ, dst: uPQ, interface: fh}
+  - {src: uPQ, dst: uDutQ, interface: ip}
+  - {src: uDutQ, dst: uPQ, interface: axw_p}
+  - {src: uDrvA, srcport: fr, dst: uLeafA, dstport: fr, interface: fr, name: frA}
+  - {src: uLeafA, srcport: fs, dst: uDrvA, dstport: fs, interface: fs, name: fsA}
+  - {src: uLeafA, srcport: fh, dst: uDrvA, dstport: fh, interface: fh, name: fhA}
+  - {src: uDrvB, srcport: fr, dst: uLeafB, dstport: fr, interface: fr, name: frB}
+  - {src: uLeafB, srcport: fs, dst: uDrvB, dstport: fs, interface: fs, name: fsB}
+  - {src: uLeafB, srcport: fh, dst: uDrvB, dstport: fh, interface: fh, name: fhB}
+  - {src: uDrvC, srcport: fr, dst: uLeafC, dstport: fr, interface: fr, name: frC}
+  - {src: uLeafC, srcport: fs, dst: uDrvC, dstport: fs, interface: fs, name: fsC}
+  - {src: uLeafC, srcport: fh, dst: uDrvC, dstport: fh, interface: fh, name: fhC}
+
+parameters:
+  dutP:
+    v0: {P_W: 5, P_N: 16}
+    v1: {P_W: 12, P_N: 40}
+    v2: {P_W: 1, P_N: 4}
+  pP:
+    v0: {P_W: 5, P_N: 16}
+    v1: {P_W: 12, P_N: 40}
+    v2: {P_W: 1, P_N: 4}
+  wrapQ:
+    v0: {P_W: 5, P_N: 16}
+    v1: {P_W: 12, P_N: 40}
+    v2: {P_W: 1, P_N: 4}
+  fLeaf:
+    vA: {P_W: 5, P_N: 16}
+    vB: {P_W: 12, P_N: 40}
+    vC: {P_W: 1, P_N: 4}
+  fDrv:
+    vA: {P_W: 5, P_N: 16}
+    vB: {P_W: 12, P_N: 40}
+    vC: {P_W: 1, P_N: 4}

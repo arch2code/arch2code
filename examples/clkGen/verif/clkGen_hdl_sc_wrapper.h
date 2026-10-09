@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import clkGen.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "clkGen_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "clkGen_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VclkGen_hdl_sv_wrapper.h"
 #endif
@@ -30,7 +32,7 @@ class clkGen_hdl_sc_wrapper: public sc_module, public blockBase, public clkGenBa
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     clkGen_hdl_sv_wrapper *dut_hdl;
 #else
     VclkGen_hdl_sv_wrapper *dut_hdl;
@@ -52,7 +54,7 @@ public:
         rstRef_n("rstRef_n", true),
         clkRef_half_(sc_time(10, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new clkGen_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VclkGen_hdl_sv_wrapper("dut_hdl");

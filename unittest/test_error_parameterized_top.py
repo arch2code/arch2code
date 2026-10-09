@@ -27,6 +27,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'parameterized-top')
@@ -135,7 +136,7 @@ def run_all_tests():
         shutil.copytree(FIXTURE, accept)
         ok = check_accepted(accept) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: a parameterized top instance is rejected at db")

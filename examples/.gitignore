@@ -36,6 +36,15 @@
 **/regr/
 **/out/
 
+# --- VCS and Xcelium flows (USE_VCS / USE_XCELIUM): analysis, snapshots, run scripts ---
+**/build_xrun/
+**/xcelium*.d/
+**/xrun*.history
+**/AN.DB/
+**/csrc/
+**/vc_hdrs.h
+**/ucli.key
+
 # --- Caches ---
 **/.cache/
 **/__pycache__/
