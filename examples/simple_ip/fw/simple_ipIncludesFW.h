@@ -63,7 +63,7 @@ struct simpleData8St {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, simpleData8St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint16_t)marker << (8 & 15);
     }

@@ -875,6 +875,18 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - The SystemC `hwMemoryPort::cpu_write` does a read-modify-write of the whole row on every 32-bit word (`common/systemc/hwMemory.h:258-275`), and `hwMemory::cpu_write` updates the row in place per word (`:81-92`). A tandem comparison or a model-side observer can therefore see a partly written row between the word writes.
 - Source: found while updating `rules/skills/design-register-decode.md` during the plans cleanup. Grade: confirmed by reading.
 
+### K140. The round-trip helper fills only `_byteWidth` of a Config struct's packed word
+
+- `_roundTripHelperLines` (`templates/systemc/structures.py:1588`) emits `memset(&packed, pattern, T::_byteWidth)` on a `T::_packedSt`. For a parameterizable struct narrower than 64 bits the packed form is a whole `uint64_t`, so the bytes above `_byteWidth` stay uninitialised. `unpack()` masks each field, and `packed` is never compared after `b.pack(packed)`, so the check still holds, but the helper does not exercise what it claims for those structs.
+- The same helper declares `uint64_t test` and fills it with the pattern; nothing reads it.
+- Source: found on branch 155 while fixing the `pack()` memset width (the same `_byteWidth` sizing mismatch, which left garbage in `pRegSt_v<12>::pack()` and failed CI nondeterministically). Grade: confirmed by reading.
+
+### K141. An aligned nested struct above bit 64 packs into the wrong word
+
+- `fw_pack_oneNamedStruct` (`templates/systemc/structures.py:1436`) gives a sub-struct of 64 bits or fewer that starts on a word boundary the destination `_ret` with no word index. In a fixed-width parent wider than 64 bits, `typedef uint64_t _packedSt[2]`, a 32-bit sub-struct at bit 64 is emitted as `hi.pack(*(subSt::_packedSt*)&_ret);`, which overwrites the low bits of word 0 and leaves word 1 zero.
+- No example declares this layout; every aligned nested pack in the examples sits at position 0, so the round-trip tests do not reach it. Found by rendering the function in memory with position 64 in a 128-bit parent; not compiled or run.
+- Source: reviewer finding on the branch 155 `pack()` memset fix. Grade: plausible, confirmed by rendering only.
+
 ## Feature requests
 
 These stay off branch 155 (decision D12).

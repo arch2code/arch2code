@@ -78,7 +78,7 @@ struct bndEqSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bndEqSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint16_t)tag << (8 & 15);
     }
@@ -145,7 +145,7 @@ struct bndOrderSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bndOrderSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = second;
         _ret |= (uint16_t)first << (8 & 15);
     }
@@ -208,7 +208,7 @@ struct bndSignSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bndSignSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -275,7 +275,7 @@ struct bndNestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bndNestSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint64_t)tail << (8 & 63);
         _ret |= (uint64_t)flag << (16 & 63);

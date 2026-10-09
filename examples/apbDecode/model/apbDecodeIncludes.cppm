@@ -96,7 +96,7 @@ struct aRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -167,7 +167,7 @@ struct un0BRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, un0BRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = fb;
         _ret |= (uint32_t)fa << (16 & 31);
     }
@@ -253,7 +253,7 @@ struct un0ARegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, un0ARegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = fc;
         _ret |= (uint64_t)fb << (8 & 63);
         _ret |= (uint64_t)fa << (40 & 63);
@@ -349,7 +349,7 @@ struct un0ExtRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, un0ExtRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = fc;
         _ret |= (uint32_t)fb << (8 & 31);
         _ret |= (uint32_t)fa << (24 & 31);
@@ -437,7 +437,7 @@ struct aSizeRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aSizeRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = index;
     }
     inline void unpack(const _packedSt &_src)
@@ -505,7 +505,7 @@ struct apbAddrSt {
     inline apbAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -562,7 +562,7 @@ struct apbDataSt {
     inline void _setData(apbDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -617,7 +617,7 @@ struct aMemAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aMemAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -672,7 +672,7 @@ struct aMemSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aMemSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -727,7 +727,7 @@ struct bMemAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bMemAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -786,7 +786,7 @@ struct bMemSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bMemSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<3; i++) {
             pack_bits((uint64_t *)&_ret, _pos, data[i], 32);

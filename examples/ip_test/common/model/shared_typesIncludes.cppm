@@ -70,7 +70,7 @@ struct apbAddrSt {
     inline apbAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -127,7 +127,7 @@ struct apbDataSt {
     inline void _setData(apbDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

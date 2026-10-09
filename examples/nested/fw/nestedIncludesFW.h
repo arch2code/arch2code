@@ -104,7 +104,7 @@ struct test_st {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -127,7 +127,7 @@ struct bigSt {
     typedef uint64_t _packedSt[2];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bigSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, BIG_WIDTH);
     }
     inline void unpack(const _packedSt &_src)
@@ -153,7 +153,7 @@ struct testDataSt {
     typedef uint64_t _packedSt[2];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 128);
     }
     inline void unpack(const _packedSt &_src)
@@ -179,7 +179,7 @@ struct testDataHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)
@@ -202,7 +202,7 @@ struct lengthHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, lengthHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = length;
     }
     inline void unpack(const _packedSt &_src)
@@ -225,7 +225,7 @@ struct cmdidHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cmdidHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)

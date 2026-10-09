@@ -54,7 +54,7 @@ struct axiAddrSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = addr;
     }
     inline void unpack(const _packedSt &_src)
@@ -77,7 +77,7 @@ struct axiDataSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -100,7 +100,7 @@ struct axiStrobeSt {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiStrobeSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = strobe;
     }
     inline void unpack(const _packedSt &_src)

@@ -74,7 +74,7 @@ struct axiAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = addr;
     }
     inline void unpack(const _packedSt &_src)
@@ -129,7 +129,7 @@ struct axiDataSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -184,7 +184,7 @@ struct axiStrobeSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiStrobeSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = strobe;
     }
     inline void unpack(const _packedSt &_src)

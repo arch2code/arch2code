@@ -78,7 +78,7 @@ struct leafEqSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, leafEqSt_v<LEAF_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, LEAF_PIXEL_WIDTH);
         _pos += LEAF_PIXEL_WIDTH;
@@ -156,7 +156,7 @@ struct leafOrderSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, leafOrderSt_v<LEAF_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, second, LEAF_PIXEL_WIDTH);
         _pos += LEAF_PIXEL_WIDTH;
@@ -230,7 +230,7 @@ struct leafSignSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, leafSignSt_v<LEAF_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))), LEAF_PIXEL_WIDTH);
         _pos += LEAF_PIXEL_WIDTH;
@@ -313,7 +313,7 @@ struct leafNestSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, leafNestSt_v<LEAF_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, LEAF_PIXEL_WIDTH);
         _pos += LEAF_PIXEL_WIDTH;

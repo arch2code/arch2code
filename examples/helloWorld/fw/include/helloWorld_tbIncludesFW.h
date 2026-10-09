@@ -50,7 +50,7 @@ struct test_st {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -73,7 +73,7 @@ struct test_no_tracker_st {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_no_tracker_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -96,7 +96,7 @@ struct data_st {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = b;
     }
     inline void unpack(const _packedSt &_src)

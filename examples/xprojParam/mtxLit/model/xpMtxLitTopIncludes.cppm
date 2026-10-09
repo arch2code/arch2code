@@ -79,7 +79,7 @@ struct mlChSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, mlChSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = mark;
         _ret |= (uint32_t)data << (8 & 31);
         _ret |= (uint32_t)tag << (20 & 31);

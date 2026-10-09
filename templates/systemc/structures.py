@@ -1332,9 +1332,7 @@ def fw_pack_setup(args, vars, indent, prj):
     fw_pack_vars = dict()
     useConfig = vars['isParameterizable']
     bitwidth = vars['maxBitwidth'] if useConfig else vars['width']
-    structName = (valueKeyedTypeRef('structure', vars['structureKey'], vars['structure'], prj)
-                 if useConfig else vars['structure'])
-    out.append(f"{indent}memset(&_ret, 0, {structName}::_byteWidth);")
+    out.append(f"{indent}memset(&_ret, 0, sizeof(_ret));")
     retType, rowType, baseSize = convertToType(bitwidth)
     if useConfig:
         rowType = 'uint64_t'

@@ -5,8 +5,10 @@ each field where pack() puts it. The first YAML field is the MSB, so in
 un0RegSt (the shape of apbDecode's `un0ARegSt`) fa/fb/fc sit at shifts 40, 8
 and 0, and a parameterizable struct's shifts are spelled in its parameters.
 
-The runtime case compiles these structs with -Werror=shift-count-overflow and
--Werror=shift-op-parentheses, then runs them:
+The runtime case compiles these structs with -Werror=shift-count-overflow,
+-Werror=shift-op-parentheses and -ftrivial-auto-var-init=pattern. The last
+fills each uninitialised local with a byte pattern, so a pack() that leaves
+part of its output unwritten fails on every run. The cases:
   - twoRegSt, fa=0xAA fb=0xBB: pack() == 0xAABB == _getValue(), and
     _setValue(pack()) gives back fa and fb;
   - outerRegSt, a nested register struct that is not the last field:
@@ -378,7 +380,7 @@ def test_accessors_agree_with_pack_at_runtime():
         exe = os.path.join(tmp, 'accessors')
         built = subprocess.run(
             ['clang++', '-std=c++20', '-Werror=shift-op-parentheses',
-             '-Werror=shift-count-overflow',
+             '-Werror=shift-count-overflow', '-ftrivial-auto-var-init=pattern',
              f"-I{os.path.join(base_dir, 'common', 'systemc')}", src,
              os.path.join(base_dir, 'common', 'systemc', 'bitTwiddling.cpp'), '-o', exe],
             capture_output=True, text=True)

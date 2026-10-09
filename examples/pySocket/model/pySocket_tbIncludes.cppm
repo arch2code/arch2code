@@ -89,7 +89,7 @@ struct message_header_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, message_header_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tag;
         _ret |= (uint64_t)ID << (16 & 63);
         _ret |= (uint64_t)length << (32 & 63);
@@ -163,7 +163,7 @@ struct p2s_message_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, p2s_message_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = param1;
         _ret |= (uint64_t)param2 << (32 & 63);
     }
@@ -226,7 +226,7 @@ struct p2s_response_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, p2s_response_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = response;
     }
     inline void unpack(const _packedSt &_src)
@@ -281,7 +281,7 @@ struct axis_tid_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axis_tid_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = id;
     }
     inline void unpack(const _packedSt &_src)
@@ -336,7 +336,7 @@ struct axis_tdest_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axis_tdest_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = id;
     }
     inline void unpack(const _packedSt &_src)

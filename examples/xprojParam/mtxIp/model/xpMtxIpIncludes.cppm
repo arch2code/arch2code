@@ -81,7 +81,7 @@ struct miSrcLitSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miSrcLitSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = mark;
         _ret |= (uint32_t)data << (8 & 31);
         _ret |= (uint32_t)tag << (20 & 31);
@@ -160,7 +160,7 @@ struct miSrcParSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miSrcParSt_v<MI_SRC_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -251,7 +251,7 @@ struct miDstLitSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miDstLitSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = mark;
         _ret |= (uint32_t)data << (8 & 31);
         _ret |= (uint32_t)tag << (20 & 31);
@@ -330,7 +330,7 @@ struct miDstParSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miDstParSt_v<MI_DST_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;

@@ -78,7 +78,7 @@ struct wrapEqSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapEqSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
         _pos += WRAP_PIXEL_WIDTH;
@@ -156,7 +156,7 @@ struct wrapOrderSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, second, 8);
         _pos += 8;
@@ -230,7 +230,7 @@ struct wrapSignSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapSignSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
         _pos += WRAP_PIXEL_WIDTH;
@@ -296,7 +296,7 @@ struct wrapNestHdrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapNestHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = flag;
         _ret |= (uint64_t)word << (8 & 63);
     }
@@ -368,7 +368,7 @@ struct wrapNestSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapNestSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
         _pos += WRAP_PIXEL_WIDTH;

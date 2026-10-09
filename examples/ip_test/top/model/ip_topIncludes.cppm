@@ -97,7 +97,7 @@ struct srcOut0BoundarySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, srcOut0BoundarySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint16_t)marker << (8 & 15);
     }
@@ -167,7 +167,7 @@ struct srcOut1BoundarySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, srcOut1BoundarySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 70);
         _ret[ 1 ] |= ((uint64_t)marker << (70 & 63));
     }

@@ -74,7 +74,7 @@ struct flVideoSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, flVideoSt_v<FL_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, FL_PIXEL_WIDTH);
         _pos += FL_PIXEL_WIDTH;

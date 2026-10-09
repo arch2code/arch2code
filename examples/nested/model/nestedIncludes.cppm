@@ -123,7 +123,7 @@ struct test_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -181,7 +181,7 @@ struct bigSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bigSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, BIG_WIDTH);
     }
     inline void unpack(const _packedSt &_src)
@@ -244,7 +244,7 @@ struct testDataSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 128);
     }
     inline void unpack(const _packedSt &_src)
@@ -304,7 +304,7 @@ struct testDataHdrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)
@@ -359,7 +359,7 @@ struct lengthHdrSt {
     inline uint64_t getStructValue(void) const { return( length );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, lengthHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = length;
     }
     inline void unpack(const _packedSt &_src)
@@ -414,7 +414,7 @@ struct cmdidHdrSt {
     inline uint64_t getStructValue(void) const { return( cmdid );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cmdidHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)
