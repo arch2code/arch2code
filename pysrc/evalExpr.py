@@ -3,7 +3,7 @@
 This module owns the tokenizer, the in-house precedence-climbing (Pratt)
 parser, and the IR node classes for the integer SystemVerilog
 constant-expression subset described in
-`builder/base/plan-eval-symbolic-emission.md`.
+`specs/spec-eval-expressions.md`.
 
 The grammar covers SystemVerilog integer literals (unsized decimal and
 SV based literals such as `8'hFF`, `'hFF`, `'b1010`, `12'd9`), arithmetic

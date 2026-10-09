@@ -223,9 +223,9 @@ around it.
   connection's is the source port name**, and the two share one namespace with a
   connectSingle/connectDouble type check. Hence `midIn` / `midOut` rather than
   `in` / `out`.
-- **The testbench External omits `configModules`** (plan-parameter-sharing
-  B3). For this family the wrapper is load-bearing anyway, since it owns the
-  customer's `CUST_ALGO`, so it is not a B3 workaround here.
+- **The wrapper owns the customer's `CUST_ALGO`**, so it is load-bearing. It is
+  not a workaround for the testbench External, which now imports the Config
+  modules it needs.
 - **The External must be retargeted at the `_tb` container**
   (`--block=xpDpTop_tb --excludeInst=u_xpDpTop`), so it holds the DUT's siblings
   — here none — rather than the DUT's own children. Left at the scaffold seed

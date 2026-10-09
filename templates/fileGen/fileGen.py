@@ -254,7 +254,7 @@ def blockRegsModule_cppm(args, prj, data):
 
 # Per-block trampoline registrar module interface unit. The whole module
 # (global module fragment #includes, `export module
-# <project>.<parent>.<child>.registrar;`, the private `import <child>.block;`,
+# <project>.<child>.registrar;`, the private `import <child>.block;`,
 # and the anonymous-namespace trampoline static) is emitted by
 # templates/systemc/blockRegistrar.py into the single generated region, mirroring
 # how blockModule_cppm delegates its module body. The trampoline owns project-

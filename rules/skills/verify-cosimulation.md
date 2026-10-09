@@ -25,6 +25,14 @@ Co-simulation runs the RTL of one block instance, verilated, in place of its Sys
 
 You never instantiate the wrapper yourself. The testbench keeps building the model hierarchy, and the instance factory swaps in the wrapper at run time.
 
+## Tops, widths and ownership
+*   Every Verilated top is its own verilated model, and one `.sv` can hold several. A child that takes its parameters from its container (`inheritContainerParam`, or a variant bound to container parameters) gets one top per parent and parent variant, named `p<n>_<parent>_c<m>_<child>_<variant>_hdl_sv_wrapper`. It sits in the child's per-variant `.sv`, for example `examples/xprojParam/rtInh/verif/xpRtLeaf_use_hdl_sv_wrapper.sv`.
+*   Each top binds its parameter values as literals, so its pins have fixed widths. The SystemC wrapper sizes each pin from the Config registered with that top, so the two sides agree. A vector pin stays `sc_bv` at width 1; the generator marks it `/*verilator sc_bv*/` so Verilator does not bind it as `bool`.
+*   The project that owns the block generates its `.svh` body, its SC wrapper, and the tops for the variants it declares. A project that declares another variant of a reused block generates that top and its Config in its own tree. The reused project's files do not change.
+*   `make db` records every top in `.gen/build.mk`. `A2C_VL_TOPS` lists the tops, `A2C_VL_SV_<top>` names each top's file, and `A2C_VL_TOP_<block>` names the top `make lint` uses for `HDL_TOP_MODULE`. Each top verilates into its own `rundir/build/vl/obj_dir/<top>`.
+
+The full rules are in `builder/base/specs/spec-verilated-wrappers.md`.
+
 ## Build and run
 From `rundir/`:
 
@@ -49,4 +57,5 @@ Tandem runs the RTL and the model side by side on the same stimulus and compares
 
 ## Troubleshooting
 *   **`Attempted to create an instance <name> of an unregistered block type <block>_verif`.** Rebuild with `make VL_DUT=1`, because a plain `make` binary has no verilated wrappers. If that fails too, check `hasVl: true` on the block, then rerun `make newmodule` and `make gen` so the VlRegistrar exists.
+*   **`HDL_TOP_MODULE '<block>' has no Verilator wrapper in the build manifest`** from `make lint`. Set `hasVl: true` on the top block or on one of its direct children, or set `TOP_HDL_SV_WRAPPER_NAME` to the top to lint.
 *   **Port type mismatch.** The RTL port types must match the SystemC interface types the YAML declares.

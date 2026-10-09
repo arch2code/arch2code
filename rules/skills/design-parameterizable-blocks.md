@@ -43,6 +43,8 @@ Rules:
 *   A derived constant takes its `maxValue` from its `eval`, and `make db` rejects one written by hand.
 *   A type whose width names a parameterizable constant derives its bound and needs no `maxBitwidth`. With `width:` the bound is the constant's `maxValue`. With `widthLog2:` it is the bit length of `maxValue`, and with `widthLog2minus1:` the bit length of `maxValue - 1`.
 
+A derived constant is generated as an expression over the block's parameters, so each variant computes its own value. SystemVerilog declares it as a `localparam` inside the modules of each block whose `params:` include every root parameter it uses, and the context package leaves it out. C++ declares it as a `static constexpr auto` in the block's Base class, written with `Config::<param>`, and expands it inline everywhere else; a `Config` struct carries only root parameters. A firmware header has no variants, so it emits a flat constant computed from the root parameters' default values. See `builder/base/specs/spec-eval-expressions.md`, section 6.
+
 ## Parameterized structures
 
 Structures become parameterizable when they reference parameterizable types, sub-structures, or array sizes. Write the structure as usual. The generator derives its metadata.

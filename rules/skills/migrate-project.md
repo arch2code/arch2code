@@ -653,8 +653,10 @@ In-tree nesting requires a hierarchical parent. A functional parent may compose
 children only as external siblings. A child project file is referenced through
 `projectFiles:`, never `include:`; `make db` rejects the latter.
 
-The deepest project file whose `projectFiles:`/`include:` closure reaches a file
-owns it, whatever directory it sits in, so relocation never changes ownership.
+A file belongs to the project that lists it directly in `projectFiles:`, and
+otherwise to the project that reaches it at the greatest depth from the root.
+Its directory plays no part, so relocation never changes ownership. See
+`builder/base/specs/spec-project-composition.md` §4.
 
 ### What it moves
 

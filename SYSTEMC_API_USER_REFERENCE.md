@@ -1395,18 +1395,27 @@ _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
 **Purpose:** Factory for creating module instances dynamically.
 
 **Framework APIs:**
-- `createInstance(hierarchy, instanceName, blockType, variant, projectName)` - Create module instance
+- `registerBlock(blockType, factory, variant, projectName)` - Register a constructor under the key `(blockType, variant, projectName)`. `blockType` is `<block>_model`, `<block>_verif`, `<block>_socket` or `<block>_tandem`. The first registration under a key wins; a later one is ignored.
+- `createInstance(hierarchy, instanceName, blockType, variant, projectName)` - Create a module instance from the registration under that key, falling back to the empty variant.
+- `createInstance<Impl>(hierarchy, instanceName, blockType, variant, projectName)` - Same lookup, but when the exact key has no registration and the request is for the model, construct `Impl`. Generated code uses this form for a child whose Config comes from its container.
+- `createInstance(hierarchy, instanceName, blockType, variant, projectName, containerSuppliedFactory)` - The non-template form behind `createInstance<Impl>`. The factory answers model requests only.
 
-**Where Used:** Generated constructors for hierarchical designs
+The fifth argument is a factory domain, not always a bare project name. At a site whose child declares its own `params:` (every variant site) it is the dotted registration key `<owner>.<parentModule>.<childModule>`. For any other child it is the child's owning project.
+
+**Where Used:** Generated constructors, testbenches and registrar files
 
 **Example (generated code):**
 ```cpp
 uBlockD(std::dynamic_pointer_cast<blockDBase>(
     instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")
 ))
+uLeafA(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(
+    instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafA", "xpInhLeaf", variant,
+        "xpInhVar.xpInhVar_xpInhCont.xpInhVar_xpInhLeaf")
+))
 ```
 
-**User Access:** Instances created automatically, users just use them
+**User Access:** Instances created automatically, users just use them. The key, lookup order and registrar files are specified in `specs/spec-block-registration.md`.
 
 ### 6.6 hwRegister/hwMemory Constructors (Framework)
 

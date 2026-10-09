@@ -19,7 +19,7 @@ Write the RTL a routed leaf needs behind its registers. The generator writes the
 
 ### 1. What is generated
 *   **Router.** The `addressBlock:` block's RTL comes from the `apbDecodeModule` template. The module is named after the router block.
-*   **Register handler.** Each routed leaf gets a handler instance in its generated region. The handler module is named `<block>` plus the suffix in `project.yaml` `fileGeneration: regBlockNaming: blockSuffix`. The default is `_regs`, and the examples set `Regs` (`blockARegs`). Every access completes without PSLVERR.
+*   **Register handler.** Each routed leaf gets a handler instance in its generated region. The handler module is named `<block>` plus the suffix in `project.yaml` `fileGeneration: regBlockNaming: blockSuffix`. The default is `_regs`, and the examples set `Regs` (`blockARegs`). Every access completes without PSLVERR. The handler takes the leaf's `params:` and inherits the leaf instance's variant, so a parameterized leaf's handler module carries the same parameters as the leaf.
 *   **Register ports.** The generated region declares one interface instance per register and binds it to the handler. Your RTL uses these instances by register name.
 
 | `regType` | Interface instance | Your RTL |

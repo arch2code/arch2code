@@ -17,7 +17,7 @@ A block model is one C++20 module file, `model/<block>.cppm`. Its ports are decl
 
 The generated regions, in order:
 *   `moduleScaffold --section=blockModuleHeader` is the global module fragment, `module;` and the generated `#include`s.
-*   `moduleExport` holds `export module <module>.block;`, `import <module>.base;` and an import of each context module the block's ports and members use.
+*   `moduleExport` holds `export module <module>.block;` and every import: `import <module>.base;`, the block's own Config module when it declares `params:`, each child's `.base` module and any child Config module the class names, and each context module the block's ports and members use. It holds no `using namespace` line, so the slot after it stays open for imports.
 *   `classDecl` holds a `using namespace <context>_ns;` for each imported context, the class head, the generated register and memory members, and the constructor declaration.
 *   `constructor --section=init` is the initializer list.
 *   `constructor --section=body` opens the constructor body. In a block with children it binds the child instances. In a leaf block with firmware-accessible registers or memories it registers them and starts the register handler thread.

@@ -1,11 +1,9 @@
 # Requirement specification: clocks and resets
 
-- **Status:** Normative.
 - **Scope:** functional requirements and YAML specification. The clock and
   reset model is built by `pysrc/clockTree.py`; the co-simulation wrapper's
   clock generation and end-of-run report are in
   `templates/systemc/module_hdl_wrapper.py`.
-- **Source:** issue #129.
 - **Audience:** designers authoring arch2code YAML, and IP integrators
   composing projects.
 
@@ -634,8 +632,8 @@ Rules:
   enables the clock (R23). A programmable divider whose ratio resets to
   "disabled" produces no edges, so the synchroniser in its domain never
   releases and every consumer sits in reset; a simulation of such a design
-  ends with no activity and, without the end-of-run report of §4.8, no
-  diagnostic.
+  ends with no activity and no diagnostic, unless the dead clock or its
+  domain's reset is an `output` of a wrapped `hasVl` block (§4.8).
 - **Supply graph.** At every instance of a block, for each `output` of the
   block that no child of the block drives, an edge runs from the resolved net
   of each of the block's `input` clocks and resets, asynchronous reset inputs

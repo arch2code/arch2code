@@ -336,7 +336,7 @@ constants:
 1. **Naming Convention**: Use UPPER_CASE_WITH_UNDERSCORES
 2. **Value or Eval**: Must specify either `value` OR `eval`, not both
 3. **Description**: Required for documentation
-4. **SystemVerilog Expressions**: `eval` is a SystemVerilog constant expression. It accepts SV integer literals (`255`, `8'hFF`, `'b1010`), `+ - * / %`, `& | ^ ~`, `<< >>`, comparisons, `?:`, `$clog2(...)`, `$NAME` and parentheses. `/` is integer division and truncates toward zero
+4. **SystemVerilog Expressions**: `eval` is a SystemVerilog constant expression. It accepts SV integer literals (`255`, `8'hFF`, `'b1010`), `+ - * / %`, `& | ^ ~`, `<< >>`, comparisons, `?:`, `$clog2(...)`, `$NAME` and parentheses. `/` is integer division and truncates toward zero. Full grammar and semantics: `builder/base/specs/spec-eval-expressions.md`
 5. **References**: Use `$CONSTANT_NAME` to reference other constants
 6. **Rejected Syntax**: `make db` rejects anything outside this grammar, including `**` and C-style `0x` literals. Write hex as `'h`
 7. **Parameterizable Maximums**: Use `maxValue` for constants whose value can vary per instance or variant
@@ -3482,9 +3482,9 @@ Avoid using these as identifiers:
 |-----------|---------|
 | `.yaml` | Architecture definition files |
 | `.sv` | SystemVerilog files |
-| `.cppm` | C++20 module interface units (SystemC models, base classes, includes, testbenches) |
+| `.cppm` | C++20 module interface units (SystemC models, base classes, includes, socket shells, testbench top and External, registrars, Config modules) |
 | `.h` | C/C++/SystemC header files (channels, Verilator wrappers, firmware headers) |
-| `.cpp` | C++/SystemC source files (testbench Config, registrars, firmware sources) |
+| `.cpp` | C++/SystemC source files (testbench Config, Verilated-wrapper registrars, firmware sources) |
 | `.db` | Arch2code database (generated) |
 | `.f` | File list for simulation |
 

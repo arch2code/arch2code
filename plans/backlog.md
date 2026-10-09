@@ -790,6 +790,54 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - Declined. Kept so it is not re-filed.
 - Source: `plan-testbench-module-conversion.md:1199-1203`. Grade: deferred.
 
+### K126. A unary operator over a parenthesized conditional loses its parentheses
+
+- `evalExpr.unparse` (`pysrc/evalExpr.py:461-465`) and `emissionUtils._emitNode` (`pysrc/emissionUtils.py:53-57`) wrap a unary operand only when it is a `Bin`. A `Cond` operand comes out bare.
+- Reproduced: `unparse(parse('-($A ? 1 : 2)'))` gives `-${A/ctx} ? 1 : 2`, which re-parses as `(-A) ? 1 : 2`. With `A = 0` the original evaluates to -2 and the re-parsed tree to 2. The value `make db` stores is right; `evalCanonical` and the SV and C++ emitted from it compute something else.
+- Fix: wrap a `Cond` operand in both places.
+- Source: found while writing `specs/spec-eval-expressions.md`. Grade: confirmed (reproduced).
+
+### K127. `$clog2` is wrong for large arguments
+
+- `arch2codeHelper.clog2` is `math.ceil(math.log2(x))` (`pysrc/arch2codeHelper.py:9-10`), and `evalExpr.evaluate` uses it for `$clog2`. The float log rounds `2**n + 1` down to `n` for every `n >= 49`.
+- Reproduced: `evaluate(parse('$clog2(562949953421313)'))` (`2**49 + 1`) returns 49; the answer is 50, `(x - 1).bit_length()`.
+- Source: found while writing `specs/spec-eval-expressions.md`. Grade: confirmed (reproduced).
+
+### K128. A row with both `value:` and `eval:` silently drops the `eval:`
+
+- `processSimple` takes the named field whenever it is present and never reads `eval` (`pysrc/processYaml.py:8861-8866`). The unknown-field check exempts `eval` (`:8681`), so nothing reports it.
+- `ARCH2CODE_AI_RULES.md`, Constants rule 2, says "either `value` OR `eval`, not both". Nothing enforces it.
+- Source: found while writing `specs/spec-eval-expressions.md`. Grade: confirmed by reading.
+
+### K129. A derived `maxValue` is not an upper bound when the expression can shrink
+
+- `_constants` derives a parameterizable constant's `maxValue` by evaluating its `eval` with every parameterizable referent at its own `maxValue` (`pysrc/processYaml.py:9097-9101`, `valueResolver.maxValue`). For `$A - $B` or `$A / $B` a variant with a smaller `B` gives a larger value than that.
+- Only the default value is checked against the derived bound (`:9126-9128`). A per-variant value above it is not, so anything sized from `maxValue` can be too small.
+- Source: found while writing `specs/spec-eval-expressions.md`. Grade: plausible; the derivation is confirmed by reading, no fixture exercises a shrinking expression.
+
+### K130. Two parents of one child in different directories get two registrars with one module name
+
+- `artifactPaths.artifactRows` emits a registrar row per `(assembler, child)` pair in `REGISTRARPAIRS`, anchored at the assembler's directory (`pysrc/artifactPaths.py:173-192`). The template names the module per owning project and child only, `<project>.<child>.registrar` (`templates/systemc/blockRegistrar.py:42`, `intf_gen_utils.cpp_child_registrar_module_name`).
+- Two assemblers of one child in different node directories of one project would therefore get two files with the same content declaring the same module. Not tested.
+- Source: found while writing `specs/spec-block-registration.md`. Grade: plausible.
+
+### K131. The `-Wl,-u <anchor>` advice has no anchor to name
+
+- `common/systemc/instanceFactory.h:12-23` tells a project packaging blocks into a static archive to use `-Wl,--whole-archive` or `-Wl,-u <anchor>`. Generated code offers no usable anchor: the retain-marked statics sit in anonymous namespaces, and `register_<Class>_variants()` is attached to its named module (`templates/systemc/constructor.py:461-468`), so it has no stable plain symbol.
+- Fix: drop the `-Wl,-u` advice, or emit a documented extern anchor per block.
+- Source: found while writing `specs/spec-block-registration.md`. Grade: confirmed by reading.
+
+### K132. `intf_gen_utils.cpp_registrar_module_name` has no caller
+
+- `pysrc/intf_gen_utils.py:568-573` spells the three-part `<project>.<parent>.<child>.registrar`. The registrar template uses `cpp_child_registrar_module_name` (`templates/systemc/blockRegistrar.py:42`), and nothing calls the three-part form.
+- Fix: delete it.
+- Source: found while writing `specs/spec-cpp-module-layout.md`. Grade: confirmed.
+
+### K133. `A2C_VL_TOP_<block>` misses a DUT child whose top is not a block-mode row
+
+- `createBuildManifest` fills `dutTops` from `mode: block` rows only (`config/createBuildManifest.py:343-344`). A direct child of the top that runs at a foreign label or a container-sourced variant has its top on a registrar-mode row, so it gets no `A2C_VL_TOP_<block>` entry and `make lint` cannot resolve it through `HDL_TOP_MODULE`.
+- Source: found while writing `specs/spec-verilated-wrappers.md`. Grade: confirmed by reading; no fixture exercises it.
+
 ## Feature requests
 
 These stay off branch 155 (decision D12).

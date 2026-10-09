@@ -42,15 +42,13 @@ public:
     instanceFactory();
     static constexpr const char* testBenchStr = "tb";
     static constexpr const char* testBenchQualStr = "tb.";
-    // projectName is the assembling project's, so the same (blockType, variant)
-    // reused by two distinct assembler projects lands under distinct keys.
+    // projectName is a factory domain: a project name, or <owner>.<parentModule>.<childModule> for a pair.
     static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant, std::string projectName);
     // allow top level to create mappings from instance names to block types prior to enumeration of model
     static void registerInstance(std::string instance, std::string blockType);
     static std::shared_ptr< blockBase> getInstance(std::string qualifiedName);
     static std::shared_ptr< blockBase > createTestBench(const char * testBench, const char * projectName);
-    // projectName-qualified lookup: the lookup projectName must match the
-    // projectName used at registerBlock time (both emitted by the same project).
+    // projectName is the factory domain the registration used; the lookup never crosses domains.
     //
     // containerSuppliedFactory is the constructor a CONTAINER supplies for a
     // child whose Config is a function of the container's own Config. Such a

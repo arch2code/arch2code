@@ -74,7 +74,7 @@ Both stages are classes in `pysrc/processYaml.py`, dispatched from
 `arch2code.py`: supplying `--yaml` and `--db` runs `projectCreate`; supplying
 `--db` (with `--readonly`) runs `projectOpen`, after which independent post-open
 dispatch branches may run: `--systemc`,
-`--systemVerilogGenerator`, `--docgen`, `--newmodule`, `--diagram`,
+`--systemVerilogGenerator`, `--docgen`, `--newmodule`, `--vlBoundary`, `--diagram`,
 `--drawStructure`, `--flows`, `--instancesWithBlockType`, `--blockContexts`. These are a sequence of
 independent `if`s, not a mutually exclusive mode selection, so several can run in
 one invocation. (`--newproject` is *not* one of them: it dispatches before any
@@ -206,6 +206,9 @@ Grouped by role:
   `registerPorts:`, an optional `addressBlock:` router declaration, and three
   columns filled by post-processing: `isParameterizable`, `defaultConfig`,
   `configContext`.
+  How `registerPorts:` and `addressBlock:` become the register-bus decode (router
+  index, handler synthesis, address allocation and the decode views) is specified
+  in `specs/spec-register-bus-distribution.md`.
 - `instances` — occurrences of a block inside a container block. Carry the
   selected `variant` and the container-inheritance flag
   `inheritContainerParam`.
@@ -886,6 +889,36 @@ the documented seam for the user-hosted files carrying generated regions that no
 fileMap entry expresses. The rule is fileMap first, seam only for what falls
 outside it. `examples/mixed` and its encoder units are the seam's only user in
 base or pro.
+
+Verilated tops are explicit records, never derived from file names:
+`A2C_VL_TOPS` lists every top's design-unit name (from `SVWRAPPERNAMES` or the
+registrar pair), `A2C_VL_SV_<top>` names the physical `.sv` holding it,
+`A2C_VL_PORTMAP_<top>` its VCS port map, and `A2C_VL_TOP_<block>` the DUT top
+that `make lint` resolves through `HDL_TOP_MODULE`. Each top verilates into its
+own `--Mdir`. A separate generator mode, `arch2code.py --vlBoundary`
+(`pysrc/vlBoundaryGen.py`), reads the manifest and the per-top widths in
+`VLTOPS` and writes `.gen/vl/<top>.portmap` and `.gen/vl/<top>_xcelium.h`
+whole, with no user region. `make gen` runs it only for the VCS and Xcelium
+flows. See `specs/spec-verilated-wrappers.md` and
+`specs/SIMULATOR_INTEGRATION.md`.
+
+### Runtime registration and the registrar segment
+
+A generated parent constructs each child through `instanceFactory::createInstance`
+with a string key `(blockType, variant, projectName)` and never names the child's
+class. Registrations reach the factory three ways: a retain-marked static in a
+non-templated block's own module unit and in the testbench, a per-child
+`<child>Registrar.cppm` for blocks that declare their own `params:`, and a
+`<child>VlRegistrar.cpp` for `hasVl` blocks, compiled empty outside an HDL DUT build.
+The registrar files are `mode: registrar` fileMap entries in the `registrar` segment.
+Each one aggregates the owning project's pairs for one child, is anchored at the
+assembler, and is stamped `--parent=<assembler>` so the ownership gate assigns it to
+the assembler's project. The key's `projectName` is a factory domain: a bare project
+name, or `<owner>.<parentModule>.<childModule>` for a child with its own params, which
+keeps two parents of one child apart. `projectCreate` persists the pair records
+(`REGISTRARPAIRS`, `PAIRFACTORYPROJECTS`), and `getRegistrarConfigView` is the view the
+registrar templates read. Lookup order, container-typed children, Config identity and
+the archive link requirement are specified in `specs/spec-block-registration.md`.
 
 ### Migration
 

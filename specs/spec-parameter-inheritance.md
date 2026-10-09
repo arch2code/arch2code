@@ -65,16 +65,17 @@ Value.
    the template argument of `instanceFactory::createInstance` and forwards its own runtime
    variant label in place of a child label. The registry key is (child block, that forwarded
    label, the pair-qualified domain). An exact match, which is how a Verilated or tandem
-   replacement registered per container variant is found, wins; otherwise the class named at
-   the site is constructed. A child that names no variant therefore has an identity at the
-   factory: its container's.
+   replacement registered per container variant is found, wins. Otherwise, when the model is
+   requested, the class named at the site is constructed. A Verilated or tandem request with
+   no exact match falls back to the label-less registration or fails. A child that names no
+   variant therefore has an identity at the factory: its container's.
 5. A variant is owned by the project that declares it. Its identity is (block, variant,
    declaring project), its name carries the project, and the declaring project emits it without
    touching another project's artefacts. Artefacts named by label alone, the bare
    `<block>_<label>` HDL wrapper and registration and the block's standalone-variant map, hold
-   the block owner's declarations only. A non-owner declaration is served by its
-   project-qualified top and Config, so one label declared by two projects in one build is not
-   a conflict.
+   the block owner's declarations only, excluding labels whose values come from a container.
+   A non-owner declaration is served by its project-qualified top and Config, so one label
+   declared by two projects in one build is not a conflict.
 6. Any project may declare a variant of any block visible to it, whether or not it owns the
    block, including a definitions-only project. "Owns the block" means the project owning the
    block's declaring file, not the file holding its `ipParameters`; a declaration by the block's
@@ -112,8 +113,11 @@ owner is decided in this order:
   share. An edge to a copy of a project counts as an edge to that project's override-selected
   master as well.
 - A tie that survives is an error naming the file and the tied projects; the author resolves it
-  by listing the file in the owner's `projectFiles:`. A cycle of `projectFiles:` or `include:`
-  references is an error.
+  by listing the file in the owner's `projectFiles:`. A project that reaches itself through
+  `projectFiles:` or `include:` references, directly or through an override-selected master,
+  is an error.
+- A project reached only through a `projectOverrides:` selection ranks below every project
+  reached by reference.
 
 Directory layout plays no part.
 
@@ -413,7 +417,7 @@ Config, not re-emitted.
 
 Two variants that resolve to identical numbers still get two distinct Configs. Their
 payloads are one C++ type, because payload types are keyed on parameter values ("Payload types
-at a junction" under the rules), so the two ends bind directly with no adapter.
+at a junction" under the rules), so where both ends carry literal values they bind directly with no adapter.
 
 ### 3.2 The SystemVerilog
 
@@ -476,7 +480,7 @@ and reject and what each message says.
   inheriting a given parameter and some fixing it.
 - One variant may be instantiated under different containers. It means the same thing at
   every site, "take my container's `MID_ALGO`", and each site is checked separately.
-- The container's parameter and the child's may be backed by different constants, in
+- With `containerParam:`, the container's parameter and the child's may be backed by different constants, in
   different projects. They need not be the same declaration.
 
 ### What is not allowed
@@ -540,9 +544,8 @@ and reject and what each message says.
   parameterizable structure and a block without `params:` declares none locally, so the
   container's module would instantiate the channel with a type that exists nowhere. A
   model-only container keeps the transit shape. This is an emitter gap held as a rejection, not
-  a rule of the design: rule 4 makes the shape legal, and a resolved-literal local typedef in the
-  container module would lift it. The message names the container, the channel,
-  the interface, both ends and the file, and offers three fixes: declare `params:` on the
+  a rule of the design: rule 4 makes the shape legal. The message names the container, the
+  channel, the interface, both ends and the file, and offers three fixes: declare `params:` on the
   container and inherit or bind the children, make the structure fixed-width, or set
   `hasRtl: false`.
 - **A `registerPorts:` key that differs from the nested router's `upstreamPort`.** The
