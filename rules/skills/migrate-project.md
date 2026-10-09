@@ -100,9 +100,14 @@ The target runs eight steps:
 ### Text phases (step 1)
 
 - **Eval (Phase A).** Rewrites Python-syntax `eval` strings into the SV subset,
-  for example `($X-1).bit_length()` to `$clog2($X)`. A real-valued eval such
-  as `$DWORD / 2.0` is reported as `NEEDS_MANUAL`. Replace it with a literal
-  `value:`.
+  for example `($X-1).bit_length()` to `$clog2($X)` and a C-style literal such
+  as `0x10` to `'h10`. An eval already in the SV subset is left alone, so the
+  phase is idempotent. Three forms are reported as `NEEDS_MANUAL` and left
+  untouched. A real-valued eval such as `$DWORD / 2.0`: replace it with a
+  literal `value:`. Floor division `//`, because it floors where SV `/`
+  truncates: rewrite it by hand, for example the ceiling idiom `-(-a//b)` as
+  `(a + b - 1) / b`. Power `**`: rewrite it without the operator, for example
+  `1 << $N` for `2**$N`.
 - **Address control (Phase B).** Converts `addressControl.yaml` to per-block
   `addressBlock:` routers and the `project.yaml` policy sections.
   `address-migration.md` covers it, including its traps.
@@ -204,7 +209,7 @@ says which failures halt.
 | `TODO_INTERFACE_SCOPE` | address phase | A router's file does not see the register-bus interface. Raised once, on the run that writes the router's `addressBlock:`. | `address-migration.md`, Step 2 |
 | `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs a `registerPorts:` decision. Raised on every run while the legacy table exists. The run that deletes the table raises it for the last time. | `address-migration.md`, the `registerPorts:` note |
 | `TODO_UNMIGRATED_SUBPROJECT` | composed-build check | A child named in `projectFiles:` is not stamped. Blocks this project's stamp. | Run `make migrate` in the child's `rundir/`, which the message names, then re-run here (Section 1, "Composed builds"). |
-| eval `NEEDS_MANUAL` | eval phase | A real-valued eval has no SV-subset form. | Replace the `eval:` with a literal `value:`. |
+| eval `NEEDS_MANUAL` | eval phase | A real-valued eval, floor division `//` or power `**` has no automatic SV-subset form. | Real-valued: replace the `eval:` with a literal `value:`. `//` and `**`: rewrite by hand (Section 1, "Eval (Phase A)"). |
 | `TODO_LANGDOMAIN` | langDomain phase | A fileMap entry the phase cannot edit safely. | Add `langDomain:` by hand, using the rule in Section 1. |
 | `TODO_USER_IMPORT` | includes phase | User code `#include`s a migrated context header. | Section 4 |
 | `TODO_MODULE_IMPORT` | module-header phase | An `import` sits in the GMF zone before `export module`, where it is illegal. Never moved by the tool. | Section 4a |

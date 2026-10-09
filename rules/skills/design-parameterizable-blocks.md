@@ -59,7 +59,7 @@ For parameterizable structures, address allocation and generated packed forms us
 
 ## Block declaration
 
-A parameterizable block names its parameters with `params:`. Prefer explicit `ports:` so the block's reusable YAML declares its external contract.
+A parameterizable block names its parameters with `params:`. A reusable-IP boundary block, such as `ip` below, also declares `ports:` so its reusable YAML carries its external contract. A self-contained block declares no `ports:` (Core rule 5).
 
 ```yaml
 blocks:

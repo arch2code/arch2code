@@ -19,9 +19,9 @@ Co-simulation runs the RTL of one block instance, verilated, in place of its Sys
 2.  Run `make newmodule`, then `make gen`. `make newmodule` creates these files, and `make gen` fills them:
     *   `<block>_hdl_sv_wrapper.sv`, the SystemVerilog top Verilator compiles. A block with its own `params:` instead gets one `<block>_<variant>_hdl_sv_wrapper.sv` per variant, plus a shared `<block>_hdl_sv_wrapper.svh` body. A variant that another project declares for the block gets `<project>_<block>_<variant>_hdl_sv_wrapper.sv` in that project's `vl_wrap` directory, for example `examples/ip_test/bridge/verif/ipBridge_ip_variant1_hdl_sv_wrapper.sv`.
     *   `<block>_hdl_sc_wrapper.h`, the SystemC class around the verilated model. Its `end_ctor_init()` body is yours.
-    *   `<block>VlRegistrar.cpp`, which registers the wrapper with the instance factory as `<block>_verif`.
+    *   `<block>VlRegistrar.cpp`, which registers the wrapper with the instance factory as `<block>_verif`. Every project that assembles the block gets its own copy in its `registrar` directory, so a composing parent carries one for each `hasVl` block of its children, for example `examples/simple_ip/registrar/ipVlRegistrar.cpp`.
 
-    The wrappers go in the `vl_wrap` directory and the registrar in the `registrar` directory of the project's `dirs:` layout, for example `verif/vl_wrap/` and `registrar/`.
+    The wrappers go in the `vl_wrap` directory of the project's layout: `verif/vl_wrap/` in the functional layout, `<node>/verif/` in the hierarchical layout.
 
 You never instantiate the wrapper yourself. The testbench keeps building the model hierarchy, and the instance factory swaps in the wrapper at run time.
 

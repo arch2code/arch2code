@@ -229,7 +229,8 @@ modports:
 #### `eval`
 - **Purpose**: Computed value from expression or direct field
 - **Source**: Either named field if present, or 'eval' field with expression
-- **Supports**: Variable substitution with $XXX syntax
+- **Supports**: An integer SystemVerilog constant expression with `$NAME` references (grammar in `ARCH2CODE_AI_RULES.md`, Constants rule 4), parsed by `pysrc/evalExpr.py`. Each `$NAME` resolves in the row's own file scope; an unresolved name, a real literal or out-of-grammar syntax is an error.
+- **Persists**: The evaluated integer in the named field and, where the section's schema declares it, the qualified canonical expression in `evalCanonical`, which `pysrc/emissionUtils.py::emitExpr` translates per target language.
 
 ### Special Types
 

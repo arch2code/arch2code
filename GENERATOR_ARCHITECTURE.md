@@ -389,8 +389,13 @@ the discovery closure**, never inferred from disk location.
   sentinel set `projectName` + `dirs` + `fileGeneration`, *and* it arrived via the
   `projectFiles:` slot.
 - The scan-all pre-pass assigns ownership: the root closure belongs to the root
-  project, and for a file reachable through several providers **the deepest
-  closure wins, equal depth broken lexically on the provider path.**
+  project. A file listed directly in a provider's `projectFiles:` belongs to that
+  provider; two providers listing the same file directly is an error. Any other
+  file reachable through several providers goes to the provider with the
+  **longest path from the root** over the provider graph, and a dependency on a
+  symlinked copy of a project also ranks that project's override-selected master.
+  A file still tied at that depth is rejected at scan time, naming the file and
+  the tied providers; a `projectFiles:`/`include:` reference cycle is rejected.
 - `projectCreate` then records the result as `contextOwningProject`, persisted as
   `CONTEXTOWNINGPROJECT`. A design context absent from the scan closure is a hard
   error and does not default to the root.
@@ -498,13 +503,15 @@ Config headers `(owningProject, child)`, the SystemC instance factory
 `Key{blockType, variant, projectName}`, and per-variant Config semantic identity
 `(projectName, block, variant)`.
 
-### The reference-depth trap
+### Ownership ties
 
-Because ownership is "deepest provider closure wins, lexical tiebreak", an
-assembler **must not** list a sub-project at the same closure depth as another
-sub-project that includes it. Doing so attributes the shared context to whichever
-provider sorts last, which **renames its generated module** and makes the build
-unresolvable.
+Because ownership ranks providers by their longest path from the root, an
+assembler may list a sub-project directly even when another sub-project also
+includes it: the dependee still ranks below the project that depends on it, so
+the shared context keeps one owner. Two providers that reach a file at the same
+depth, neither depending on the other, have no single owner. The scan rejects
+that case; listing the file directly in the owning project's `projectFiles:`
+resolves it.
 
 ---
 
@@ -532,10 +539,6 @@ Parameterizability then propagates transitively: a type whose width names a
 parameterizable constant becomes parameterizable, and so on through structures,
 interfaces, registers, memories, and connections. The affected schema sections
 carry an `isParameterizable` column as a result.
-
-`ipParameters:` is invalid in a shared include file, meaning one that another
-file includes and that declares no `blocks:`, because "parameter bounds are tied
-to the IP root". A declaration therefore lives in a file that declares blocks.
 
 **Naming.** A block opts in by naming the constants it consumes:
 
@@ -580,8 +583,12 @@ parameters:
   (`validateVariantParameterCompleteness`, a per-row `post` hook resolving the
   block in the row's own scope).
 - **Emission is N+1.** The generator emits one baseline
-  `<stem>DefaultConfig` plus one `<block><Variant>Config` per declared variant.
-  Variants with identical values still receive distinct variant-named structs.
+  `<project>_<block>DefaultConfig` plus one `<project>_<block><Variant>Config`
+  per declared variant, where `<project>` is the declaring project and is
+  omitted when the block name already leads with it. Variants with identical
+  values still receive distinct variant-named structs. A variant the block's
+  owner labels `default` is the block's default Config, and no synthetic
+  default is persisted beside it.
 - A binding is **either** a literal `value` **or** container-sourced
   (`containerParam:`), never both; the singular shorthand `<param>: <scalar>`
   routes to `value`.
@@ -698,8 +705,9 @@ The same parameterized block becomes:
   instantiating a child must name the child's per-variant Config, because the
   container's `dynamic_pointer_cast<childBase<childConfig>>` returns `nullptr`
   otherwise — the container translation unit is deliberately **not** config-free.
-  Eval-derived constants are emitted **symbolically**, not frozen to literals, so
-  `WIDTH_X2 = WIDTH * 2` recomputes inside each struct from that struct's own
+  Eval-derived constants are emitted **symbolically** in the block's Base class,
+  not frozen to literals and not copied into each Config struct, so
+  `WIDTH_X2 = Config::WIDTH * 2` recomputes from the selected Config's own
   `WIDTH` — which is what makes deferring per-variant eval re-resolution sound.
 - **SystemVerilog** — a parameterized module. Because SV cannot parameterize a
   package, every parameterizable constant, type, enum, and structure moves **out
@@ -839,8 +847,10 @@ Three distinct write disciplines:
 So: **`make gen` does not create files; `make newmodule` does not fill them.**
 
 File classes are keyed on **segment role**, not literal directory (so the rule is
-identical in both layouts). Migration derives wholesale-clean eligibility from
-the frozen legacy map, where the wholesale-clean set is `{base}`:
+identical in both layouts). The format migration's orphan sweep derives
+wholesale-clean eligibility from the frozen legacy map, where the
+wholesale-clean set is `{base}`; the layout migration also clears `registrar`
+by directory, so its set is `{base, registrar}`:
 
 1. **GENERATED-deletable** — `base`, `registrar`, `fwInc`.
 2. **MIXED** — `vl_wrap`. Its files are generated, but the SC wrapper header

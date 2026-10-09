@@ -202,9 +202,12 @@ The thunkers (`<protocol>_port_thunker<UpT, DownT>` per
 `builder/base/interfaces/<protocol>/`) bridge between two struct types
 that share the same **active packed-form bit layout** using:
 
-* `copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)`
-  — packed → packed across struct types. The implementation lives in
-  `common/systemc/bitTwiddling.h`.
+* `copyPayload<DirectData>(To& out, const From& in)` — payload → payload
+  across struct types, in `common/systemc/bitTwiddling.h`. Identical types are
+  assigned; `DirectData = true` (the generator's verdict that both
+  declarations emit identical member storage) is a `std::bit_cast`; otherwise
+  the payload goes through its packed form with
+  `copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)`.
 
 Thunkers exist because "same bits" is not the same thing as "same C++ type."
 Two structures can be layout-compatible at the hardware boundary while being
@@ -224,13 +227,13 @@ structure is declared on its root-parameter values (`ipDataSt_v<8>`) and
 name one type and bind without a thunker; unequal values on one interface are
 rejected at `make db`.
 
-The thunker therefore does not cast one struct to the other and does not assign
-one channel payload type directly. It asks the upstream struct to produce its
-active packed representation, copies exactly the downstream active bit count
-into the downstream packed representation, and asks the downstream struct to
-unpack those bits into its own C++ storage shape.
+Unless the storage is identical, the thunker therefore does not cast one struct
+to the other and does not assign one channel payload type directly. It asks the
+upstream struct to produce its active packed representation, copies exactly the
+downstream active bit count into the downstream packed representation, and asks
+the downstream struct to unpack those bits into its own C++ storage shape.
 
-The Stage 6.2 compatibility check is the gate that makes this safe: it proves
+The packed-form compatibility check in `validatePorts` is the gate that makes this safe: it proves
 that, for the bound variant, the source and destination structures describe the
 same sequence of packed field widths. The C++ type system still sees
 incompatible types; the thunker is the explicit representation conversion.
@@ -414,7 +417,7 @@ calling either primitive; the contract is the same.
 
 ---
 
-## `copy_packed_bits` — thunker bridge
+## `copy_packed_bits` — packed arm of `copyPayload`
 
 ### Contract
 
@@ -426,7 +429,8 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits);
 Copies `bits` bits of bit-accurate payload from `in` to `out`, where the
 two operand types are the `_packedSt` of two different struct types that
 share the same active packed-form layout for the bound variant (verified at
-YAML-processing time by the Stage 6.2 packed-form compatibility check).
+YAML-processing time by the packed-form compatibility check in
+`validatePorts`).
 
 `copy_packed_bits` **always clears its destination first** (the
 implementation zeros every word of `out` before copying). This is the
@@ -435,31 +439,24 @@ takes responsibility for; the caller does not need to pre-clear `out`.
 
 ### Intent
 
-The thunker's forwarding loop is:
+The packed arm of `copyPayload`, which each thunker calls once per
+transferred payload, is:
 
 ```cpp
-while (true) {
-    UpT   inVal;            // stack, uninitialised — modelling HW
-    DownT outVal;           // stack, uninitialised
-    typename UpT::_packedSt inPacked;
-    typename DownT::_packedSt outPacked;
-
-    up->pushReceive(inVal);              // populate inVal
-    inVal.pack(inPacked);                // pack() pre-clears inPacked
-    copy_packed_bits(outPacked, inPacked, DownT::_bitWidth);
-                                         // copy_packed_bits pre-clears outPacked
-    outVal.unpack(outPacked);            // unpack() pre-clears each field
-    m_chDown.push(outVal, (uint64_t)-1);
-    up->ack();
-}
+typename From::_packedSt inPacked;     // stack, uninitialised — modelling HW
+typename To::_packedSt outPacked;      // stack, uninitialised
+in.pack( inPacked );                   // pack() pre-clears inPacked
+copy_packed_bits( outPacked, inPacked, To::_bitWidth );
+                                       // copy_packed_bits pre-clears outPacked
+out.unpack( outPacked );               // unpack() pre-clears each field
 ```
 
-`UpT::_packedSt` and `DownT::_packedSt` may not be the same C++ type. In the
+`From::_packedSt` and `To::_packedSt` may not be the same C++ type. In the
 common parameterized-to-fixed case, the upstream templated structure's
 `_packedSt` is selected from its maximum possible width, while the downstream
 fixed structure's `_packedSt` is selected from its one concrete width. The
 active payload can still be identical for the chosen variant. The thunker
-bridges that case by copying only `DownT::_bitWidth` active bits from one
+bridges that case by copying only `To::_bitWidth` active bits from one
 packed storage shape to the other.
 
 Each stage owns the cleanliness of its own output:
@@ -568,10 +565,9 @@ representation rules belong here:
 * **Codegen that emits the primitives:** `templates/systemc/structures.py`
   (search for `pack_bits` / `unpack_bits`)
 * **Per-protocol thunker headers:** `builder/base/interfaces/<protocol>/<protocol>_port_thunker.h`
-* **`copy_packed_bits` template:** `common/systemc/bitTwiddling.h`
+* **`copyPayload` and `copy_packed_bits` templates:** `common/systemc/bitTwiddling.h`
 * **Canary template:** `templates/systemc/structures.py`, search for
   `testStructsCPP`
 * **Compatibility check that gates cross-interface thunker emission:**
-  `pysrc/processYaml.py::validatePorts` (Stage 6.2 of
-  `plan-variant-config-unification.md`)
+  `pysrc/processYaml.py::validatePorts`
 * **Why the design exists:** this document.
