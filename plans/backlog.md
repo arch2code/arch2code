@@ -55,7 +55,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 ### K10. `clockgen-link-loss` fixture has no `A2C_ROOT`
 
-- `unittest/fixtures/clockgen-link-loss/shared.mk` does not set `A2C_ROOT`. It is not yet known whether the test harness supplies it.
+- `unittest/fixtures/clockgen-link-loss/include/make/shared.mk` uses `A2C_ROOT` (`:5-6`) and does not set it. It is not yet known whether the test harness supplies it.
 - Source: found on branch 155.
 
 ### K11. Stale tracked outputs in two fixtures
@@ -84,29 +84,16 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - A parameter binding can resolve a width to 0 for one variant, and `projectCreate` does not catch it. A check needs a marker saying which parameters are widths, and none exists. The `widthLog2` types accept 0 on purpose.
 - Decision (branch 155, D10): leave it until a real design hits it.
 
-### K16. External registers wider than 64 bits have no working RTL (resolved)
-
-- `external_reg_if.write` is 2 bits wide, so the per-word strobe `{1<<n}` truncates for word 2 and above.
-- `templates/systemVerilog/moduleRegs.py:87-93` means to reject such registers, but the flag name is misspelt (`unsup_` vs `unsupp_`), so it only prints an error and generation continues.
-- Source: found on branch 155 during the D1 wide-register work.
-- Resolved by decision D1b: an `ext` register may be no wider than the 32-bit register bus. `projectCreate` (`_post_registers` in `pysrc/processYaml.py`) rejects a wider one at `make db`, naming the register, block, file, width and limit, and the dead template check is removed. Test: `unittest/test_error_ext_register_width.py`.
-
-### K17. Model external-register commands carry no word strobe (moot)
-
-- After D1, the model's `hwRegisterIf` issues one `reg_write_cmd` per word. The command has no field naming the word written, while RTL engine code can use `write[n]`.
-- Source: found on branch 155 during the D1 wide-register work.
-- Moot after D1b: an `ext` register is one word, so there is one command and one strobe bit per write, and `hwRegisterIf` is back to one command per register write.
-
 ### K18. Two example runs fail, cause not yet confirmed
 
 - `examples/ip_test` regression: `bridge_driver` fails at elaboration with `Unknown instance ip_top.uBridgeDriver`. That instance is declared only in the bridge project (`bridge/yaml/bridgeStdTop.yaml:60`), but `rundir/regr_ip_test.json:36` uses it under `ip_top`.
 - `examples/simple_ip/ip` `run-vl`: `Attempted to create an instance ip of an unregistered block type ip_verif`.
-- Neither failure has yet been checked against a tree from before branch 155.
+- The `simple_ip` failure has a known cause: `examples/simple_ip/ip/rundir/Makefile` invokes `run-vl-dut` without `VL_DUT=1`, so the aggregate `run-vl` rebuilds a non-verilated binary; the same tree passes with the flag supplied. The makefile is a project-owned scaffold-once file. The `ip_test` failure is not yet checked against a tree from before branch 155.
 - Source: found on branch 155 while checking the D2 decoder change.
 
 ### K19. The external register interface still has a 2-bit `write`
 
-- After D1b, an `ext` register is one 32-bit word, but `external_reg_if.yaml` (`write: 'bit [1:0]'`), `external_reg_if.sv` and `external_reg_hdl_if` (`sc_bv<2>`) still size `write` for two words. The `ext` write arm in `moduleRegs.py` can now only drive bit 0.
+- After D1b, an `ext` register is one 32-bit word, but `interfaces/external_reg/external_reg_if.yaml` (`write: _extRegWriteT`, a type of `width: 2`, `:2-4`, `:14`), `external_reg_if.sv` and `external_reg_hdl_if` (`sc_bv<2>`) still size `write` for two words. The `ext` write arm in `moduleRegs.py` can now only drive bit 0.
 - Narrowing `write` to 1 bit is an interface change, so it waits for a decision.
 - Source: found on branch 155 during D1b.
 
@@ -116,17 +103,6 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - A narrower `data_t` gives an out-of-range `pwdata` part-select in the generated RTL for any register wider than it.
 - Fix: reject at `make db` an `addressBus` interface whose `data_t` is not 32 bits.
 - Source: found on branch 155 during the D1b review.
-
-### K21. `rtl-registers.md` names the wrong external register ports
-
-- `rules/skills/rtl-registers.md:33` lists `<regName>_wr` and `_wdata`. The real interface is `external_reg_if`, with `write`, `wdata` and `rdata`.
-- Source: found on branch 155 during the D1b review. This predates it.
-
-### K22. `test_file_prefix.py` cleanup fails on NFS
-
-- `check_main_migrate_without_prefix` prints PASS, then `shutil.rmtree` fails on an NFS `.nfs*` placeholder file. The check returns `FileNotFoundError` instead of True and leaves a `unittest/file_prefix_main_*` directory behind. It happened on two separate runs.
-- Possible fix: put the temp directory outside the NFS tree, or retry `rmtree` once. The cause of the open file handle is not yet known.
-- Source: found on branch 155 during D6b.
 
 ### K23. A fatal error count can collide with migrate exit codes
 
@@ -173,13 +149,6 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - Run alone under the D4c prototype, `test_mem_hier_cpu_read` fails, because it reads what blockD's write test stored. The value read changed between runs, which suggests the model memory returns uninitialised data. Not yet confirmed.
 - Source: found on branch 155 during the D4c prototype.
 
-### K30. Parameterized registers decode the nominal width, not the worst case
-
-- `templates/systemVerilog/moduleRegs.py:43`, `:49` build segments from `get_struct_width` (the nominal `width`), while `calcAddresses` reserves `maxBitwidth`. The model registers the nominal `bytes` (`templates/systemc/constructor.py:335`). For `ipCfg` in `examples/simple_ip` the nominal width is 73 bits and the reserved width is 131 bits, so words 0x30C and 0x310 are reserved but decoded by neither side. For a variant wider than nominal, the extra bits have no flops. The comments at `moduleRegs.py:490-493` and `:651` ("worst-case word") are wrong.
-- Possible fix: build segments from `maxBitwidth` and register `maxBytes` in the model.
-- Source: found on branch 155 during the D2b scope review. No example uses a wider variant.
-- Fixed on branch 155 by user decision on 2026-10-05, together with K34. `worstCaseBitwidth` and `rowFootprintBytes` in `pysrc/processYaml.py` compute the footprint once. The address map, the RTL handler (`worstBitwidth`) and the model (`maxBytes`) all read it. In the RTL and in the model, words of an `rw` or `ro` register above the bound variant's width read 0 and drop writes. Test: `unittest/test_regs_param_width_footprint.py`.
-
 ### K31. Unaligned register access differs between model and RTL
 
 - `addressMap::contains` (`common/systemc/addressMap.h:104`) matches per byte, while the RTL arms match exact words. A read at REG+1 returns register bits in the model and `32'hBADD_C0DE` in the RTL. They also disagreed before branch 155 (RTL returned 0). APB masters normally align.
@@ -196,21 +165,6 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - `common/systemc/testController.h` defines `ADD_TEST` in every translation unit that includes it. A user project with its own `ADD_TEST` macro or identifier gets a redefinition. No in-tree code is affected.
 - Source: found on branch 155 during the D4c review. The user chose the macro form in D4c.
 
-### K34. Parameterizable-width memories use a different row stride in the model and the RTL
-
-- There are three strides, not two. The address map sizes rows from `maxBitwidth` (`processYaml.py:5842`). The RTL handler sizes them from the nominal `width` (`moduleRegs.py:72-75` via `intf_gen_utils.get_struct_width`), which matches the worst case in simple_ip only by rounding: 3 words and 4 words both give 16-byte rows. With a nominal width of 32 and a `maxBitwidth` of 128, the RTL would use 4-byte rows against a 16-byte map stride. The model registers and indexes rows at the variant's own width (`nextPowerOf2min4(_byteWidth)`, `common/systemc/hwMemory.h:77-101`, `addressMap.h:51-56`).
-- Example: `examples/simple_ip` `uIp`, variant0. The model claims block offsets 0x00-0x3F at 4 bytes a row. The RTL claims 0x00-0xFF at 16 bytes a row. A read at 0x40 returns `BADD_C0DE` in the model and row 4 in the RTL. A write at 0x10 lands in model row 4 and RTL row 1.
-- Possible fix: compute the row footprint once from the worst-case width. Have the RTL handler and the model's `hwMemory` both read it, at the stride the address map allocates. This is the memory counterpart of K30, which has the same nominal-width cause.
-- Source: found on branch 155 during the D2c review.
-- Fixed on branch 155 with option A, by user decision on 2026-10-05: one worst-case row stride for every variant. `rowBytes` comes from `rowFootprintBytes`. The RTL row width, the model's `hwMemory`/`hwMemoryPort` `ROW_BYTES` template argument and the `addMemory` size all read it. Bytes of a row above the variant's width read 0 and drop writes. A `static_assert` rejects a `ROW_BYTES` smaller than the default or not a power of two. Test: `unittest/test_regs_param_width_footprint.py`, which covers the flat leaf model and the reg-handler model. Not changed: the RTL writes a memory row when the variant's top word is written, and the model writes each word into the row at once.
-
-### K35. A memory with a fixed address type wider than its depth indexes past its RAM
-
-- `moduleRegs.py` slices the row index as `<addrSt>'(apb_addr[31:2])`, relative to address 0, not to the memory's base. When the address type is wider than the depth needs, base bits reach the index. `ipFixedMem` in `examples/simple_ip` (8-bit address, 16 rows, base 0x200) drives index 0x80 for row 0 (`ipRegs.sv:155`, `ip.sv:89`, `memory_dp.sv:61-63`).
-- Verilator wraps the index, so the examples pass. A 4-state simulator follows the LRM and drops the write and reads X. Rows past the depth already read `BADD_C0DE` after D2c.
-- Source: found on branch 155 during the D2c review.
-- Fixed on branch 155 by user decision on 2026-10-05. The row index and the in-row word select now count from the memory's base (`(apb_addr - REG_X)`), as the model does. The word select had the same defect for a base not aligned to the row footprint, which an integer `alignment:` produces. Tests: `unittest/test_regs_rtl_mem_index.py`, `unittest/test_regs_rtl_mem_word_select.py`.
-
 ### K36. A router with no upstream feed crashes the decoder templates
 
 - A router block with no authored register-bus connection or boundary connectionMap into it passes `make db`. Then `templates/systemVerilog/apbDecodeModule.py` and `templates/systemc/constructor.py` both raise UnboundLocalError, because each scans connection rows for the parent port. The view's `addressDecode['registerBusPort']` cannot replace that scan, because for a router it holds the interface name (`apbReg`), not the port name (`cpu_main` in examples/mixed).
@@ -221,12 +175,6 @@ Known defects and feature requests that are not scheduled. Each entry says what 
   - both templates read that field.
 - Cost: about 18 `test_addrctl_*` fixtures and 8 other success-path fixtures and controls author feedless routers, and each needs a feed. A shared CPU block in `unittest/_addrctl_helpers.py` keeps that change mechanical.
 - Source: found on branch 155 in the D2 router review. Deferred from branch 155 by user decision on 2026-10-05.
-
-### K37. Unit tests leave temporary project directories in `unittest/`
-
-- `test_inherit_vl_child.py`, `test_regs_handler_container_config.py` and the tests that create `inherit_order_*` and `param_scope_shared_*` leave one directory per run under `unittest/`. The tree holds about 30 of each, the oldest from 2026-09-29, before branch 155. Git does not report them.
-- Possible fix: create them under the system temp dir, or remove them in a `finally`.
-- Source: found on branch 155 during the final verification run.
 
 ### K38. Integer `alignment:` has no lower bound
 
@@ -387,7 +335,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 ### K55. The `valueType` errors for constants advise Python `//`, which `eval` rejects
 
-- When a `uint` or `int` constant holds a float, the errors at `pysrc/processYaml.py:8802` and `:8809` (in `_constants`) and at `:1262` (in `projectOpen.getContextData`) tell the user "Use // for integer division".
+- When a `uint` or `int` constant holds a float, the errors at `pysrc/processYaml.py:9031` and `:9038` (in `_constants`) and at `:1297` (in `projectOpen.getContextData`) tell the user "Use // for integer division".
 - `eval` is SystemVerilog syntax (`pysrc/evalExpr.py`, module docstring). `/` truncates toward zero (`_truncDiv`, `:524`), and `//` fails to parse: `parse('7//2')` raises `EvalParseError: unexpected token '/'`. Real literals are rejected at parse time, and a `$symbol` that resolves to a float is rejected in `pysrc/valueResolver.py` (`_toInt`), so an `eval` expression cannot produce a float.
 - A float reaches these checks only through a literal `value:`, such as `value: 1.5` on a `uint` constant. The message then blames `eval` and recommends syntax that the parser rejects.
 - Possible fix: name the literal `value:` as the cause, and recommend `valueType: real` or an integer literal.
@@ -403,10 +351,10 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 ### K57. The "Primary instance not found" branch in `main.cpp` is dead
 
-- `common/scmain/main.cpp:343-345` calls `errorCode::fail("Primary instance not found")` and jumps to `exit_goto` when `instanceFactory::getInstance(vlInst)` returns null. `getInstance` (`common/systemc/instanceFactory.cpp:26-38`) asserts `Unknown instance <path> Check your command line option ...` (`:35`) before it returns null.
-- That assert does not return. `main.cpp:343` runs during elaboration, before the first `sc_start` (`:353`). `q_assert_body` returns only once simulation has stopped or ended (`common/systemc/q_assert.cpp:60-62`). Otherwise it reaches `sc_assert(false)` (`:63`), a SystemC fatal report whose default action aborts the process, as the comment at `:58-59` says. A bad `--vlInst` therefore aborts inside `getInstance`, and `main.cpp:344-345` never runs.
+- `common/scmain/main.cpp:335-337` calls `errorCode::fail("Primary instance not found")` and jumps to `exit_goto` when `instanceFactory::getInstance(vlInst)` returns null. `getInstance` (`common/systemc/instanceFactory.cpp:26-38`) asserts `Unknown instance <path> Check your command line option ...` (`:35`) before it returns null.
+- That assert does not return. `main.cpp:335` runs during elaboration, before the first `sc_start` (`:345`). `q_assert_body` returns only once simulation has stopped or ended (`common/systemc/q_assert.cpp:60-62`). Otherwise it reaches `sc_assert(false)` (`:63`), a SystemC fatal report whose default action aborts the process, as the comment at `:58-59` says. A bad `--vlInst` therefore aborts inside `getInstance`, and `main.cpp:336-337` never runs.
 - From reading the code. Not run.
-- Possible fix: needs a decision on whether a bad `--vlInst` aborts or exits cleanly. Either delete the dead `errorCode::fail` and `goto`, or look the instance up without the assert and report through `exitMsg`, as the testbench path does (`:348-350`).
+- Possible fix: needs a decision on whether a bad `--vlInst` aborts or exits cleanly. Either delete the dead `errorCode::fail` and `goto`, or look the instance up without the assert and report through `exitMsg`, as the testbench path does (`:339-343`).
 - Source: found on branch 155 during the skill review (2026-10-07).
 
 ### K58. `twoClkSlowTick.sv` imports `twoClk_package` by hand
@@ -472,7 +420,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 ### K65. The `newmodule` comment says the compdb refresh fails on an unfilled scaffold
 
-- `include/make/a2c-common.mk:259-260` says the compdb parse fails on `.cppm` scaffolds that `make gen` has not filled. `pysrc/gen_cpp_module_map.py:52-65` skips a `.cppm` with no `export module` declaration and prints a warning.
+- `include/make/a2c-common.mk:295-296` says the compdb parse fails on `.cppm` scaffolds that `make gen` has not filled. `pysrc/gen_cpp_module_map.py:52-65` skips a `.cppm` with no `export module` declaration and prints a warning.
 - From reading the code. Not run.
 - Possible fix: correct the comment.
 - Source: found on branch 155 during the skill review (2026-10-07).
@@ -569,6 +517,279 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - Possible fix: confirm no project uses it, then delete `blockBase_src`, its dispatch case and the `baseConstructor` template mapping (`config/project.yaml:26`) if nothing else uses that template.
 - Source: history sweep of the skills (2026-10-07).
 
+### K76. Ruling needed: where a composed build anchors a declaring project's wrapper and Config files
+
+- In `unittest/fixtures/variant-two-integrators`, `top/.gen/build.mk` names `ipLeaf/verif/xviMid_xviLeaf_v0_hdl_sv_wrapper.sv`, the `vMid` wrapper and `ipLeaf/registrar/xviMid_xviLeafVariantConfig.cppm`. `xviMid`'s own `make newmodule` scaffolds them under `mid/`. `make -C top/rundir all VL_DUT=1` exits 2 with "Cannot find file containing module".
+- Cause: `calcConfigModules` walks only the reachable instances. `xviTop` lists `xviMidProject.yaml` in `projectFiles:` without instantiating `xviMid`, so the `(xviMid, xviLeaf)` lookup misses and falls back to the child's directory, `parentKeys.get((declaringProject, childKey), childKey)` (`pysrc/processYaml.py:6805`).
+- Options: anchor over every instance whose container context the declaring project owns and delete the fallback (proposed), or keep today's behaviour. Open with it: should a composed manifest compile and verilate a declaring project's Config module and tops when nothing reachable uses them?
+- Source: `plan-116-review-feedback.md:1622-1682` (measured 2026-09-14). Grade: ruling needed; the defect is confirmed.
+
+### K77. Ruling needed: one stamp or two for child-variant wrappers
+
+- `vlSvWrap` (block mode, child's directory, bare stamp) and `vlSvWrapPair` (registrar mode, assembler's directory, `--mode=pair`) both spell the stem `<child>_<variant>`. In a flat single-project layout they name one path, so `--overwrite` lets the registrar pass re-stamp a standalone variant's wrapper to `--mode=pair`, and its ordinary top disappears.
+- Options: (A) one bare stamp, retire `vlSvWrapPair` and route the cross-project pair through `vlSvWrapForeign` (recommended); (B) owner-qualify `vlSvWrapPair` and drop the concrete arms from the bare renderer, with a migrate phase; (C) dedupe by path in `artifactRows` and refuse an `--overwrite` that changes the stamp mode.
+- Blocked on K76, since (A) and (B) anchor through the same `parentKey`.
+- Source: `plan-parameter-sharing.md:1725-1758`. Grade: ruling needed.
+
+### K78. Ruling needed: which blocks the Verilated-top filter applies to
+
+- `plan-file-granular-compile-set.md` §3.3 proposes recording as Verilated tops only the variants a reachable instance selects. It needs a policy: (a) filter foreign-owned blocks only (recommended, no IP standalone build changes), or (b) filter every block, which stops an IP Verilating labels its own harness never instantiates.
+- Source: `plan-file-granular-compile-set.md` §3.3 (formerly `file-granular-compile-set-plan.md`; the plan is kept). Grade: ruling needed.
+
+### K79. Ruling needed: how the tandem status-port tee compares
+
+- The plan proposes a settled-change comparison, a hard failure, and a window keyed off `--delay`, plus an event-loss fix, written fixture-first. The architect holds it.
+- Source: `builder/pro/plans/bug-status-port-tandem-compare.md` (moved from base `plans/`; the plan is kept). Grade: ruling needed.
+
+### K80. Ruling needed: whether to split `processYaml.py`
+
+- The plan was never executed. Its inventory counted 6,564 lines; the file now has about 11,000. The assessment recommends deleting the plan and redoing the inventory if the split is revived.
+- Source: `plan-split-processyaml.md`. Grade: ruling needed.
+
+### K81. Ruling needed: rename `ip_test`'s `ipStd` address group to `top`
+
+- Two groups with one name would give the addressGroup qualification defect template and runtime coverage in the example corpus. It changes a shared fixture other tests read, so it waits for the user.
+- Source: `plan-addressgroup-qualification.md` §8. Grade: ruling needed.
+
+### K82. Ruling needed: default name of the router's register ports
+
+- `addressBlock.upstreamPort` and `registerDecoderPort` default to `apbReg`, the legacy generated port name. The alternative derives the name from the router block (for example `<routerBlock>Reg`), so a renamed router does not keep the legacy name. Nobody ruled; the code uses `apbReg`.
+- Source: `plan-address-control-refactor.md:1052-1058`. Grade: ruling needed.
+
+### K83. Ruling needed: the deferred testbench terminator follow-ups
+
+- W1: should a scaffolded External always vote? Doing so needs a "skip" outcome, because a configuration with no checker would otherwise report a pass.
+- W3: a unit test that every example's terminator survives DUT replacement. About seven examples fail it today (`simple`, `axiDemo`, `helloWorld`, `mixed`, `nested`, `xif`, `bridgeStdTop`), so it needs a waiver mechanism.
+- Whether to enforce that a voter must register.
+- Source: `plan-tb-external-terminator.md` §4-6, deferred by the user on 2026-09-08. Grade: ruling needed.
+
+### K84. Multi-word signed types get no sign extension
+
+- `get_sign_extension_code` is called only from the single-word arms of `templates/systemc/structures.py` (`:826`, `:1026`, `:1275`). The multi-word arm at `:1005-1020` has no call, so a signed type with `maxBitwidth > 64` unpacks without sign extension. No type in the tree is that wide.
+- Source: `bugs-116.md:329-338`. Grade: confirmed.
+
+### K85. A reused router-containing ancestor leaves later occurrences unconnected
+
+- `_findRouterParent` (`config/postParseRegisterPorts.py:156`) returns the first match, and the single-router rule counts instance declarations, not hierarchy occurrences. A second occurrence of an ancestor that contains a router gets no connection. Also present on `origin/main`.
+- Source: `bugs-clock-reset-pr-review.md:63-65` (R6). Grade: confirmed.
+
+### K86. Register-bus dispatch loses the qualified interface identity
+
+- The router-to-leaf dispatch discards the router interface's file context and emits its simple name in the instance's file (`config/postParseRegisterPorts.py`). The register-bus view selects interfaces by simple name (`getBDAddressBus`, see K93). `_checkInferredInterfaceScope` (`:308`) does not cover this dispatch row. Also present on `origin/main`.
+- Source: `bugs-clock-reset-pr-review.md:59-62` (R5). Grade: confirmed.
+
+### K87. `checkInterfacePair` compares the bare `interfaceType`
+
+- `checkInterfacePair` (`pysrc/processYaml.py:7946`) compares `interfaceType` (`:7982-7983`), not the qualified `interfaceTypeKey`, so two projects' same-named protocol definitions pass as one. `maxTransferSize` and `multiCycleMode` are never compared, though the plan classed both as strict.
+- Source: `plan-interface-compatibility.md:348-360`. Grade: confirmed.
+
+### K88. `validatePorts` runs after build artefacts are written
+
+- `projectCreate` calls `runCreateArtifacts()` (`pysrc/processYaml.py:4559`) before `validatePorts()` (`:4561`), so an interface compatibility failure aborts after the artefacts are on disk. The check does not depend on them.
+- Possible fix: run `validatePorts` first.
+- Source: `plan-interface-compatibility.md:538`. Grade: confirmed.
+
+### K89. `connectionMap` thunker members collide by name
+
+- `_thunker_member_name` (`pysrc/intf_gen_utils.py:1203-1210`) names a `connectionMap` thunker `thunker_<instance>` with no map, port or interface part. Two maps into one child instance emit two C++ members with one name. The peer-to-peer arm adds the channel name.
+- Source: `plan-interface-compatibility.md` §5.8 (:684). Grade: confirmed.
+
+### K90. A hand-written `isParameterizable: true` on a plain constant is accepted
+
+- `config/schema.yaml:76` accepts `isParameterizable:` on a constant. Nothing in `pysrc/processYaml.py` rejects it on a constant with no `eval` and no backing parameter.
+- Source: `plan-param-constant-collision.md:1487`. Grade: confirmed.
+
+### K91. `common/systemVerilog/a2c.f` works only from its own directory
+
+- `plan-parameter-sharing.md:2660` records `make lint` as unusable tree-wide because Verilator 5.038 rejects `+incdir+` in `a2c.f`. That cause did not reproduce on 2026-10-09: Verilator 5.038 accepts the file when run from `common/systemVerilog`. Run from elsewhere, it fails with "Cannot find file containing module: 'flops.sv'", because the `-y` and `+incdir+` paths are relative to the working directory.
+- K28 holds the other `make lint` failures. Whether `a2c-rtl.mk` reaches this one was not checked.
+- Source: `plan-parameter-sharing.md:2660`. Grade: plausible; the plan's stated cause is wrong.
+
+### K92. A child project's `instanceGroups:` and `addressObjects:` are ignored
+
+- `loadProjectAddressPolicy` (`pysrc/processYaml.py:7526`) reads only the root `project.yaml`. A composed child's address policy is dropped with no message. Related to K44.
+- Source: `plan-addressgroup-qualification.md` §7 (R7). Grade: confirmed.
+
+### K93. `getBDAddressBus` matches the register-bus interface by global name
+
+- `getBDAddressBus` (`pysrc/processYaml.py:3438`) scans `self.data['interfaces']` across every context for a matching `interface` name (`:3447`), so two composed projects that declare one register-bus interface name collide. The same line reads the contracted `interface` field with `.get`.
+- Source: `plan-addressgroup-qualification.md` §7 (R6). Grade: confirmed.
+
+### K94. Dead `blk_name` parameter in `module_hdl_wrapper.py`
+
+- `dut_instantiation` (`templates/systemVerilog/module_hdl_wrapper.py:148`) takes `blk_name` and never reads it.
+- Source: `plan-116-review-feedback.md:1432`. Grade: confirmed.
+
+### K95. Follow-ups left by the clock and reset review
+
+- `projectOpen.data` is a class-level mutable dict (`pysrc/processYaml.py:529`), shared by every instance.
+- `_bindTopInstance` (`pysrc/clockTree.py:1937`) duplicates the ordinary bind path.
+- clockTree diagnostics print the internal connection key for unnamed connections, while the container checks in processYaml print a readable label.
+- The zero-primary-router branch (`config/postParseRegisterPorts.py:212-221`) is unreachable from YAML, since it needs a containment cycle. A user `postProcess:` script ordered first could still reach it.
+- The model `cpu_read` of a memory issues a port read and returns bits beyond the row width (`common/systemc/hwMemory.h`); the RTL answers zero without a request.
+- `examples/mixed/rtl/blockD.sv:21`: the `blockBTableSP` port is undriven.
+- #152: testController stalls when a test is not registered. `examples/mixed/tb/mixed/mixedConfig.cpp:47-51` removes the blockD tests.
+- Source: `bugs-clock-reset-pr-review.md:103-113`. Grade: confirmed.
+
+### K96. Contracted-field `.get()` leftovers in the SystemC templates
+
+- `templates/systemc/baseClassDecl.py:320` reads `intf_data.get('maxTransferSize', 0)`. The field is contracted and the schema default is the string `"0"`, so the fallback has the wrong type too.
+- `templates/systemc/structures.py:238` keeps a `.get('enum', False)` fallback for the `generator: datapath` plus `subStruct:` shape. That shape needs a `projectCreate` rule. On it, the datapath pack/unpack path truncates the pointer, and `structures.py:139` raises `KeyError: ''`.
+- Source: `plan-testbench-module-conversion.md:2654`; `plan-interface-compatibility.md` §9.3b and its open-items list. Grade: confirmed.
+
+### K97. Templated `prt()` takes hex widths from YAML, not the active Config
+
+- `printOneVar` (`templates/systemc/structures.py:231-236`) sizes the hex field from the YAML `bitwidth`. A 70-bit and an 8-bit variant of one templated structure print alike.
+- Source: `plan-variant-config-unification.md:1293`. Grade: confirmed.
+
+### K98. Pro `lmmi` arbitration work is stranded on the #134 branch
+
+- Commit `fa00ba7` ("#134 lmmi interface") is on `origin/feature/134-add-arbitration-features-to-all-interfaces` in builder/pro, and is in neither the builder HEAD nor `origin/main`.
+- The `axi_read`/`axi_write` src-modport binding of `setExternalEvent` (plan §2.2) was never built.
+- Source: `plan-134-arbitration-all-interfaces.md` §2.2. Grade: confirmed.
+
+### K99. Stale force-link comment and an obsolete TODO
+
+- `templates/systemc/classDecl.py:111-114` says non-templated blocks carry an active force-link function in `<block>Base.h`. The mechanism is retired and the base is a `.cppm`.
+- `templates/systemc/structures.py:143`: `# TODO: handle variable size parameters`. The wrapper path already handles parameterizable widths.
+- Source: `design-parameterized-types.md:610`. Grade: confirmed.
+
+### K100. The end-of-test check reads two atomics separately
+
+- `evaluateEndOfTest` (`common/systemc/endOfTest.cppm:78`) tests `voteCast && endOfTestCounter >= voters`. Each is atomic (`:88`, `:92`), but SystemC and host threads both reach the check, so the pair is not read as one.
+- Source: `bugs-116.md` (end-of-test fix, :66-90). Grade: plausible.
+
+### K101. A `connectionMap` with a parameterizable parent interface gives the child the container's Config context
+
+- `calcBlockConfigInfo` step 3 adds the map's interface as the mapped child's own surface, so the child's `configContext` becomes the container's file. The result is a wrong Config, not a diagnostic. The plan's fixture works around it.
+- Source: `plan-interface-compatibility.md` §5.8. Grade: plausible.
+
+### K102. Per-file `connectionsends` collapses ends, so endpoint validation skips them
+
+- `connectionsends` rows are keyed by `portId`, which `config/schema.yaml` composes from `instanceType` and `portName`, and `_process_connections` stores them in a per-file dict. Two connections in one file that reuse a block type on the same port name collapse to one entry, so `_validateParameterizedConnectionEndpoints` never sees the lost end.
+- Source: `plan-interface-compatibility.md:191`. Grade: plausible.
+
+### K103. A bare-name `variantValueBindings` entry could reach another project's constant
+
+- `variantValueBindings` inserts the bare parameter name into the resolver's `values` dict, so a binding could resolve a same-named constant from another project.
+- Source: `plan-interface-compatibility.md:546`. Grade: plausible.
+
+### K104. Four copies of the storage-bucket table, one diverged
+
+- The C++ storage-bucket table exists in four places, and one copy already differs. One pinning test holds it today. The single-source route through `getContextData()` was not taken.
+- Source: `plan-interface-compatibility.md` §9.2, :1441. Grade: plausible.
+
+### K105. A `Reserved` field wider than 64 bits is emitted as a scalar
+
+- `pysrc/systemcGen.py` picks the bucket's `unsignedType` and ignores its `arrayElementSize`, so a `Reserved` padding field wider than 64 bits gets a container that cannot hold it. No example has one.
+- Source: `plan-interface-compatibility.md:1218`, :1440. Grade: plausible.
+
+### K106. `raw_channel` uses one event for both handshake directions
+
+- `raw_channel` drives both handshake directions off one `sc_event`, and `write()` waits on the event it notifies. When a consumer is already parked, the writer's own notification also releases the writer, and the next `write()` can overwrite a value nobody read.
+- Source: `plan-interface-compatibility.md:334`. Grade: plausible.
+
+### K107. The `status` and `external_reg` thunkers cannot pass `default_value` to their child channel
+
+- Both protocols declare `set_initial_value: true` and their channel constructors take an initial value, but the thunker has no way to forward it.
+- Source: `plan-interface-compatibility.md:336`. Grade: plausible.
+
+### K108. `calcForeignConfigHeaders` can collide on a bare block name
+
+- It keys headers on `(projectName, blockKey)` but builds the file name from the bare block name. Two blocks with one name, owned by two projects and given variants by one declaring project, produce two entries with one file name.
+- Source: `plan-parameter-sharing.md:2662`. Grade: plausible.
+
+### K109. `make gen` exits 0 when the db build failed
+
+- With `.gen/` absent after a failed db build, `make gen` reports success.
+- Source: `plan-parameter-sharing.md:2656`. Grade: plausible.
+
+### K110. Four spellings of "this block has its own params"
+
+- `hasOwnParams` on the view, `params_by_block` in `calcBlockConfigInfo`, `blockInfo['params']` in the templates, and the raw `blocksparams` rows. A naming cleanup, not a correctness item.
+- Source: `plan-parameter-sharing.md:2658`. Grade: plausible.
+
+### K111. Project-scope parse residuals
+
+- `connections` and `ipParameters` dispatch to their own `_process_<section>` before the shape check, so a null `connections:` body raises `TypeError` and `ipParameters: <scalar>` raises `AttributeError`.
+- A user field named `lc` (`clocks: { clkA: { lc: 5 } }`) raises `AttributeError` in `processSimple`.
+- A project named `_global` would collide with `specialContexts`; the `projectName` checks screen only against `yamlAllFiles`.
+- Source: `plan-project-scope.md` §13. Grade: plausible.
+
+### K112. One parameter-sharing done criterion was never re-checked
+
+- The done criterion at `plan-parameter-sharing.md:2677` is marked NOT MET for direct instantiation (`uLeafX`, a third project instantiating a block at a variant an intermediate project declared). Step 12b probably resolved it. Nobody re-ran it.
+- Source: `plan-parameter-sharing.md:2677`. Grade: plausible.
+
+### K113. Clock alias and reset cost are unverified on real flows
+
+- Whether a `wire clk = <clock>` alias survives ASIC clock-tree synthesis and SDC. No ASIC flow or SDC generation exists here.
+- The FPGA area cost of enabling reset.
+- Source: `plan-multi-clock-reset.md` §11. Grade: plausible.
+
+### K114. Missing test: bare register block decode overflow (E4.2)
+
+- `unittest/test_error_reg_block_decode_overflow.py` was planned for a bare register block whose decoded span exceeds the parent's per-child window, and was never written.
+- Source: `plan-address-control-refactor.md:1271`; `plan-address-control-test-coverage.md:410`. Grade: confirmed.
+
+### K115. Missing test: `inheritContainerParam` across projects
+
+- Precondition (e), container and child from different projects, is stated only in the `unittest/test_inherit_container_param.py:35-40` docstring. The cross-project negative fixture was deferred.
+- Source: `plan-parameterizable-config-template.md:799`. Grade: confirmed.
+
+### K116. Missing test: unqualified width reference with an invisible backing constant
+
+- The step 1 coverage fixture: an unqualified width reference whose backing constant is not visible from the interface's declaring context.
+- Source: `plan-parameter-sharing.md:20` (§6 step 1). Grade: confirmed.
+
+### K117. Missing test: generator emission of the six newer thunker headers
+
+- No fixture makes the generator emit the six protocol thunker headers added for interface compatibility.
+- Source: `plan-interface-compatibility.md:243`. Grade: confirmed.
+
+### K118. Missing test: address control with two physical copies of one project
+
+- Two copies of one logical project map to one qualified address-group key. Believed correct and untested. `unittest/fixtures/multi-copy` has no address control.
+- Source: `plan-addressgroup-qualification.md` §7 (R5). Grade: confirmed.
+
+### K119. Missing measurements: SV wildcard imports and payload copy cost
+
+- Generated SV wildcard-imports several project-qualified packages into one scope. The plan reasons it is benign and never measured it on Verilator.
+- Pack/unpack cost against direct copy is unmeasured, and the field-wise assignment adapter alternative is undecided.
+- Source: `plan-addressgroup-qualification.md` §7 (R4); `plan-interface-compatibility.md:996`. Grade: confirmed.
+
+### K120. Missing test: `newProject` fixtures and a `new-project` pipeline target
+
+- Source: `plan-new-project-onboarding.md` §8. Grade: confirmed.
+
+### K121. Missing evaluation: Arm B of the `design-register-decode` skill
+
+- The agent evaluation of `design-register-decode` as the sole guidance, over H1-H8, was never run.
+- Source: `firmware_decode_skill_fix_plan.md:235`. Grade: confirmed.
+
+### K122. Missing test: `isp_lut` LUT arithmetic is never compared against a reference
+
+- In `/work/ws/isp`, every value-checking run uses `--lut_cfg 0` (bypass), and the two runs that enable the LUT assert nothing. Sign extension, `frac * slope`, the shift, accumulator truncation, offset and saturation are unverified. The fix belongs in that repository, not in the builder.
+- Source: `bugs-116.md:394-493` (BUG 13). Grade: confirmed.
+
+### K123. Same-basename headers shadow each other across composed projects
+
+- On the flat `-I` path, two composed projects' headers with one basename shadow each other. The layout B6 child-owned residual headers would need a project-qualified subpath.
+- Deferred, design-only.
+- Source: `plan-ip-project-composition.md:939` (C2.5). Grade: deferred.
+
+### K124. A Config cannot be composed from two projects' parameter namespaces
+
+- A block's Config draws from one `configContext`.
+- Deferred, design-only.
+- Source: `plan-interface-compatibility.md` §5.4 (G5.4); `plan-parameter-sharing.md`. Grade: deferred.
+
+### K125. `TODO_USER_INCLUDE` does not fire for a residual testbench header include
+
+- A residual `#include "<blk>Testbench.h"` is no longer reported. The plan declined the gap and says widening the sweep's include scan, the fix K63 proposes for the block-port case, is wrong for the testbench case.
+- Declined. Kept so it is not re-filed.
+- Source: `plan-testbench-module-conversion.md:1199-1203`. Grade: deferred.
+
 ## Feature requests
 
 These stay off branch 155 (decision D12).
@@ -593,3 +814,82 @@ These stay off branch 155 (decision D12).
 - Raw is not transactional: the RTL side is a wire sampled every clock, and the model side is a hand-off that blocks until read. A one-to-one tee therefore cannot pair the two streams. Raw tandem is not recommended.
 - Idea: let a raw tee take an injected function (a lambda) that supplies the transaction logic, deciding which samples form a transaction to compare. The interface stays clocked.
 - Decision (branch 155, D5): no change now.
+
+### F5. Authored `namespace:` and import semantics, and an IP packaging manifest
+
+- Deferred, design-only. Names are qualified by `projectName` today, and C++ modules and SV packages carry the scoping. No authored `namespace:` field exists.
+- Source: `plan-ip-namespaces-and-parameterization.md`. Grade: deferred.
+
+### F6. A `projectName`-qualified include
+
+- Deferred, design-only. An explicit `projectName:` on an `include:` would let a project reach another project's file without a vendored copy. Symlinks stand in for it today.
+- Source: `plan-projectoverride-file-ownership.md:113`, :636. Grade: deferred.
+
+### F7. Whole-variant inheritance form (D7)
+
+- Deferred, design-only. Not built and not specified. Only the per-parameter `containerParam:` form exists. Re-decide before any work.
+- Source: `plan-parameter-sharing.md:226-229`. Grade: deferred.
+
+### F8. One `projectOpen` view for wrapper ownership (Gap 4)
+
+- Deferred, design-only. Hardening of the cross-level wrapper work.
+- Source: `plan-cross-level-variant-wrappers.md:21`, :378. Grade: deferred.
+
+### F9. Registration packaging and portability
+
+- Deferred, design-only:
+  - uniform registrar ownership of non-templated children (Q7);
+  - selective export of the block class, considered and not adopted;
+  - archive packaging (Q5) and MSVC or minimum gcc support for `[[gnu::used, gnu::retain]]` (Q6).
+- Source: `plan-block-registration.md`; `research-block-registration-options.md`; `plan-registration-encapsulation-cleanup.md:589-597`. Grade: deferred.
+
+### F10. File-ownership follow-ups
+
+- Deferred, design-only:
+  - a W4 clean-start recovery target that deletes everything purely generated and regenerates;
+  - a validator assertion that the `base`, `registrar` and `fwInc` segments hold no user content;
+  - whether one frozen legacy map covers every legacy format;
+  - whether the pro overlay must be conditional.
+- Source: `plan-file-ownership-classification.md`. Grade: deferred.
+
+### F11. New-project onboarding questions
+
+- Deferred, design-only. The six open questions: a richer demo, non-interactive flags, `--newproject` adding a sub-project, the RTL question, a firmware stub, and a make-shaped entry point.
+- Source: `plan-new-project-onboarding.md` §9. Grade: deferred.
+
+### F12. `make db` lint for a node named like the project root (ip_test D5)
+
+- Deferred, design-only. The convention is documented; the lint that rejects a node name equal to the project-root basename was not built.
+- Source: `plan-ip_test-dir-cleanup.md:33`, :263. Grade: deferred.
+
+### F13. Deferred generator options
+
+- Deferred, design-only:
+  - fully numeric trampoline port widths (`plan-canonical-verilated-wrappers.md:569`);
+  - non-module mode in `constructor.py` and `blockRegs.py`, left as it is (`plan-sv-naming-refactor.md:129`);
+  - the `'model'` emission flavour that `structures.py` selects when `--mode` is absent (`plan-testbench-module-conversion.md:2374-2379`);
+  - a third `kind` that separates `import` from `using namespace` at the producer (`plan-testbench-module-conversion.md:1847-1849`);
+  - whether render-helper `assert`s become `printError` (`plan-testbench-module-conversion.md:2862`);
+  - the address-control converter not deleting a legacy `addressControl.yaml` when only advisory TODOs remain (`plan-yaml-migration.md:311`);
+  - a compile-time `reinterpret_cast` bind (T5) and type-erased channels (T6, T7) (`research-multi-config-bindings.md:736`, :760);
+  - Verilating one top several times with parameter overrides (`plan-canonical-verilated-wrappers.md:156`).
+- Source: the plan files named per item. Grade: deferred.
+
+### F14. Testbench use cases with no decision
+
+- Deferred, design-only:
+  - one testbench across several compiled variants;
+  - parameter sweeps and randomised parameters;
+  - runtime controls in `testBenchConfigFactory`;
+  - `make newmodule` scaffolding `--excludeInst` for `_tb` wrappers.
+- Source: `research-variant-aware-testbench-use-cases.md`; `plan-step-11-variant-aware-testbenches.md`. Grade: deferred.
+
+### F15. Rejected alternatives
+
+- Deferred, design-only. Recorded so they are not proposed again:
+  - a `useDefault: true` flag (`plan-parameterizable-config-template.md`);
+  - a per-site merged Config struct, and renaming block params (Q3) (`plan-parameter-sharing.md:390`);
+  - auto-rewriting Python `//` in `eval` (`plan-eval-symbolic-emission.md`);
+  - a WARNING for 9A (`plan-116-review-feedback.md`);
+  - detecting conflicting registrations. `emplace` first-wins is intentional (`plan-reusable-ip-registrar.md:952`).
+- Source: the plan files named per item. Grade: deferred.
