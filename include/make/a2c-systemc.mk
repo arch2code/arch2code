@@ -231,7 +231,7 @@ BIN = run_$(DUT_TOPOLOGY)
 DUT_TESTBENCH ?= $(HDL_TOP_MODULE)
 DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $(VL_TYPE)) $(if $(filter 1,$(VL_TANDEM)),--vlTandem)
 # Regression snapshots, one entry per block: <inst>:<type>[:tandem][,<type>[:tandem]]...
-# e.g. debayer:verif,verif:tandem,model:tandem. Regression files pass one
+# e.g. top:verif,verif:tandem,model:tandem. Regression files pass one
 # DUT_TOPOLOGIES+=<entry> per block on the build command line. Every test that
 # instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
 DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
