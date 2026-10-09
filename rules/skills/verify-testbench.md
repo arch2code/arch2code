@@ -38,6 +38,17 @@ The External is either the DUT's inverse alone or a test container's other insta
 
 The Testbench and Config keep `--block=<dut>`. For every marker option, see the "Code Generation Markers" section of `ARCH2CODE_AI_RULES.md`.
 
+A boundary connection whose DUT port and External-side port carry different payload types is bound through a generated `<protocol>_port_thunker` member of the External. You write nothing for it.
+
+## DUT variant selection
+A DUT that declares its own `params:` is built at one declared variant, chosen at `make gen` by `--variant=<name>` on the `GENERATED_CODE_PARAM` lines.
+
+*   `make newmodule` seeds the first declared variant on all three lines, the External's included. Keep the three the same: each file selects its own Config from its own line.
+*   To test another variant, change the label on all three lines and rerun `make gen`. There is one testbench per block, so testing two variants means two builds.
+*   The selection also picks the DUT's factory variant, so `--vlInst <dut>` runs that variant's Verilated top.
+*   `make gen` stops when the label names no variant of the DUT, when the line has no `--variant=` and the DUT has no unlabelled default, and when the DUT declares no `params:` but the line carries `--variant=`. Each message lists the available variants.
+*   `make db` rejects `hasTb: true` on a block that declares no variant of its own because every instance inherits its container's Config. Declare a variant on the block for its testbench.
+
 ## Where to add your own `#include` or `import`
 `<dut>External.cppm` and `<dut>Testbench.cppm` are C++20 module interface units with two user slots. Pick the slot by what the content must attach to. The wrong slot fails at link time, or gives a null `dynamic_pointer_cast` at run time.
 
@@ -102,7 +113,9 @@ These stop the run with exit status 2 and print what was expected:
 
 ## Ending a run and reporting failures
 *   The framework owns simulation control. `sc_main` calls `sc_start`, and the run stops once every end-of-test voter has voted. Never call `sc_start` or `sc_stop` from a testbench.
-*   A framework watchdog fails a run that has no end-of-test voter and no `--scTimeLimit`, and a run that stops making progress once the watchdog is enabled.
+*   A framework watchdog fails a run that has no end-of-test voter and no `--scTimeLimit`, and a run that stops making progress once the watchdog is enabled. The first prints `no end-of-test voter after <n> ms of wall clock` and stops with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. The second prints `no design progress in <n> ms of wall clock` and stops with `Simulation stuck Watchdog timeout`.
+*   End a run by voting, never with `endOfTestState::GetInstance().forceEndOfTest()`. That call is what `Q_ASSERT` uses on failure: it latches end-of-test without a vote and without notifying the External's `eotThread`, so the run stops later, when the watchdog polls, and `final()` still checks the tests.
+*   Under co-simulation, `--vlInst <dut>` replaces the DUT's model with its RTL, and a voter inside the DUT's model goes with it. Put the voter in a block the External instantiates, such as a sink BFM beside the DUT. In `examples/axi4sDemo`, the sink driver `axi4s_s_drv` holds the voter, so the same testbench ends with or without `--vlInst`.
 *   Report a check failure with `errorCode::fail(msg)`. It records the failure and sets the exit status, and the run continues. There is no `logError`. `Q_ASSERT` stops the run instead; see `debug`.
 
 ```cpp

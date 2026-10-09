@@ -44,6 +44,10 @@ Generated files sit beside the YAML of each node. A node is the parent of the di
 
 Put each node's YAML directly in its `yaml/` directory. A file at `yaml/isp/isp.yaml` has node `yaml/`, so it would generate into `yaml/rtl/`. To add a subsystem, create `<subsystem>/yaml/<file>.yaml`.
 
+A child project's root directory is already a node. Put its top design file in `<child>/yaml/`, not in a node folder named after the child, which would give paths such as `ip/ip/rtl/`.
+
+`examples/simple_ip` is the template for a single project at the root with child projects: its own design is in `yaml/simple_ip.yaml`, generated into `model/`, `rtl/` and so on at the root, and the reused `ip` and `common` projects sit in `ip/` and `common/`, each with its own `prj/`, `yaml/` and `rundir/`.
+
 ### Functional
 
 Each generated segment has one root under the project root, set by `dirs:` (`$root/model`, `$root/rtl`, `$root/base`, `$root/tb`, `$root/verif/vl_wrap`, `$root/fw/include`, `$root/registrar`). Inside each, files mirror the YAML file's directory relative to the project file. With the project file in `arch/yaml/`, a block in `arch/yaml/ip/ip.yaml` generates into `model/ip/`, `rtl/ip/`, `base/ip/` and `verif/vl_wrap/ip/`. Keep the project file at the top of the YAML tree.
@@ -69,7 +73,7 @@ The default placement is almost always right, so do not add an override to repro
 | `projectFiles:` | The entry design files. See `design-yaml-includes.md`. |
 | `topInstance` | Required when the project declares instances. A definitions-only project omits it. |
 | `fileGeneration:` | `layout`, `fileCopyrightStatement`, and any `fileMap` entries the project adds. |
-| `svFilePrefix`, `scFilePrefix`, `fwFilePrefix` | Optional filename prefixes. |
+| `svFilePrefix`, `scFilePrefix`, `fwFilePrefix` | Optional filename prefixes, one per language. An SV module or package is named like its file, so `svFilePrefix` renames those too. `make migrate` moves files when a prefix is first set. To change a prefix that is already set, rename the files by hand first. |
 | `instanceGroups:`, `addressObjects:` | Address policy. See `manage-address-space.md`. |
 | `clocks:`, `resets:` | The testbench. See below. |
 
@@ -119,6 +123,7 @@ The project file's `clocks:` and `resets:` declare the testbench. They bind the 
 A project that omits `clocks:` gets one testbench clock, `clk`, with `period` 1 ns. One that omits `resets:` gets one reset, `rst_n`, on the default clock.
 
 *   `clocks.<name>`: `desc` (required), `default` (exactly one `true`, implied with one entry), `period` (positive integer, default `1`; an odd value in `ps` is rejected) and `timeUnit` (`ps`, `ns` or `us`, default `ns`).
+*   In a Verilated run in pySocket lockstep, each clock's half period must be a whole number of 0.5 ns steps, so every period must be a whole number of nanoseconds. The run stops when lockstep starts on a clock that breaks this. Set `PYSOCKET_LOCKSTEP=0` to run such a clock free-running.
 *   `resets.<name>`: `desc` (required), `default` (exactly one `true`, implied with one entry), `clock` (default: the default clock) and `releaseCycles` (positive integer, default `3`, the reset's own clock edges before release).
 *   The default reset belongs to the default clock. A clock and a reset may not share a name. Every reset is active-low.
 

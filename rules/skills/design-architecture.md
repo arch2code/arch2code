@@ -25,7 +25,8 @@ Define hardware architecture in arch2code YAML: blocks, instances, interfaces, c
 | `hasMdl` | Generate a SystemC model. | `true` |
 | `hasVl` | Generate a Verilator wrapper. | `false` |
 | `hasTb` | Generate a testbench. | `false` |
-| `ports` | Explicit ports keyed by name: `{interface, direction, clock}`. `direction` is `src` or `dst`. | inferred from connections |
+| `hasSkt` | Generate a Python-socket shell, `<block>Socket.cppm`, and its socket catalog. A parameterizable block with `hasSkt` also needs `hasMdl`. An AXI socket carries a `data_t` of at most 16 bytes, checked at compile time. | `false` |
+| `ports` | Explicit ports keyed by name: `{interface, direction, clock}`. `direction` is `src` or `dst`. A port whose interface differs from the connection's is adapted; see "Cross-parameter connections" in `design-parameterizable-blocks.md`. | inferred from connections |
 | `clocks`, `resets` | The block's clock and reset ports. See [Clocks and resets](#7-clocks-and-resets). | one input `clk`, and `rst_n` on it |
 | `addressBlock` | Makes the block a register-bus router. | |
 | `registerPorts` | The block's own register-bus port. | |
@@ -123,7 +124,7 @@ A connection map joins a port of `block` to a port of one of its child instances
 
 To reach a child port named `in_data` while keeping the parent's port named after the interface, set `instancePort: in_data`. `port: in_data` would rename the parent's port instead.
 
-Bind the parent port where the block is instantiated, with a connection or an outer connection map whose port name matches `port` (else `name`, else the interface name). `make db` rejects a connection map whose parent port nothing binds, and any connection map on the topInstance's block.
+Bind the parent port where the block is instantiated, with a connection or an outer connection map whose direction matches and whose port name matches `port` (else `name`, else the interface name). The interface may differ, as in an adapted bind. `make db` rejects a connection map whose parent port nothing binds, and any connection map on the topInstance's block.
 
 ```yaml
 instances:

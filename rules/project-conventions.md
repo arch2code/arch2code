@@ -12,7 +12,7 @@ alwaysApply: false
 
 ## Critical constraints
 1.  **Command execution**:
-    -   NEVER run `python arch2code.py` directly.
+    -   NEVER run `python arch2code.py` directly. The one exception is `arch2code.py --newproject`, which creates a project before any makefile exists.
     -   ALWAYS use the `make` targets in `manage-build` (`db`, `gen`, `newmodule`, `clean`, `run`, `lint`). It says which directory each runs in.
 2.  **File creation**:
     -   Before creating any implementation file (`.sv`, `.cppm`, `.cpp`, `.h`) or enabling a missing generated artifact with `hasRtl`, `hasMdl`, `hasVl`, or `hasTb`, load the `manage-build` skill.

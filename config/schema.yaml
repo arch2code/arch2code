@@ -865,8 +865,9 @@ encoders:
     encodingValue: optional(0) # filled out by custom handler, value detected by encoder
 
 # projectScope: authored in the project file, not design YAML, and stored in a
-# bucket keyed by the declaring projectName. Design YAML references these with
-# _validate scope: project, which resolves in the referring row's own project.
+# bucket keyed by the declaring projectName. A reset's clock: resolves in its own
+# project (_validate scope: project). Design YAML names these only in the top
+# instance's clocks:/resets: map, which clockTree.build() checks.
 clocks:
   _attribs: [flat, projectScope, post(resolveClockPeriod)]
   clock: key

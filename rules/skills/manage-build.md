@@ -24,6 +24,7 @@ description: Guide for building, simulating, creating implementation file scaffo
 *   `make gen` regenerates every `GENERATED_CODE_BEGIN`/`GENERATED_CODE_END` region and keeps everything outside them.
 *   `make newmodule` creates the missing files that the `fileGeneration.fileMap` entries name, such as the block files in `model/` and `rtl/` and the testbench files in `tb/`. It never rewrites an existing file and never creates YAML.
 *   `make clean` removes the database, `.gen/`, `rundir/build/` and `rundir/build_xrun/`, and the VCS and Xcelium analysis, snapshot and log files. It leaves source files alone, generated regions included.
+*   Run `make clean` and `make gen` as two commands. In one `make -j clean gen` the two goals are not ordered, so `clean` can delete the database while `gen` reads it.
 *   `make` in `rundir/` regenerates and builds the model binary, `rundir/build/run`.
 *   `make VL_DUT=1` in `rundir/` regenerates, verilates the RTL into `rundir/build/vl`, and builds the binary with it linked in.
 *   `make run` builds the binary when its sources changed and runs it. It does not regenerate, so after a YAML edit run `make` first. `make run VL_DUT=1` substitutes the RTL for `HDL_TOP_MODULE` only. Where a project has `run-vl`, use it to cover every RTL instance. See `verify-cosimulation`.

@@ -119,6 +119,7 @@ Firmware writes a register wider than 32 bits one word at a time (`+0` holds bit
 ## 4. Threads
 *   A thread is a `while (true)` loop registered with `SC_THREAD` in the constructor body.
 *   A loop that blocks in a port call (`read()`, `receiveAddr()`, `request()`) needs no explicit `wait()`. A loop of only non-blocking calls spins, so give it a `wait()`.
+*   A model has no clock or reset ports, and its threads never wait on a block clock. Block clocks and resets exist only in the RTL. An `output` clock or reset has no model counterpart, and co-simulation compares data ports only. See `builder/base/specs/spec-clock-reset-requirements.md` §4.11.
 
 ## 5. Logging and errors
 *   Log with `log_.logPrint`, and format with `std::format`. Pass a lambda when the formatting is costly, so it runs only when the level prints.

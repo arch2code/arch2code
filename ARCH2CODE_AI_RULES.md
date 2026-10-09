@@ -192,6 +192,7 @@ The project file is the entry point that orchestrates all architecture files.
 - `addressObjects`: Register and memory packing policy. A project with any register or `regAccess` memory needs it. See `manage-address-space.md`
 - `templates`: Custom template mappings (overrides defaults from builder/base/config/project.yaml)
 - `fileGeneration`: File generation template configuration
+- `svFilePrefix`, `scFilePrefix`, `fwFilePrefix`: Filename prefixes for the project's SV, SystemC and firmware files. See `setup-project.md`
 
 #### Complete Example
 

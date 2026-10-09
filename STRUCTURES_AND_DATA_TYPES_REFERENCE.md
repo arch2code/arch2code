@@ -42,6 +42,10 @@ In generated SystemVerilog packages, arch2code emits:
 * enums as typed SystemVerilog enums;
 * structures as `typedef struct packed`.
 
+Parameterizable constants, types, enums and structures are not in the package.
+SystemVerilog cannot parameterize a package, so each module whose block declares
+the parameters declares them locally from its own module parameters.
+
 A SystemVerilog packed struct is already a hardware-accurate representation:
 each field occupies exactly its declared number of bits, with no C-style
 padding. The first field declared in the packed struct occupies the most
@@ -84,6 +88,9 @@ layout still matches the SystemVerilog packed struct. In the `ipDataSt` example
 above, generated SystemC packs `data` at bit 0 and `marker` after it, yielding
 the same bit layout as the SystemVerilog packed struct where YAML's first field
 is the MSB.
+
+A templated structure's `prt()` pads each field's hex digits to the field's
+width at the declared constant values, not at the active Config's values.
 
 This distinction is important:
 

@@ -46,6 +46,8 @@ The definition names the protocol. It does not generate the implementation. The 
 | `myproto_port_socket.h` | interface key | socket shell, needed only when the definition has `socket:` |
 | `myproto_port_tee.h` | interface key | Pro tandem tee, in `builder/pro/common/systemc/` |
 
+The generator spells a thunker as `<type>_port_thunker<up required payloads, down required payloads, one bool per required payload, up optional payloads, down optional payloads>`, each group in declaration order. Declare one `bool` per required parameter, defaulted to `false`, in that position, and pass it to `copyPayload<Flag>` at every copy site of that payload. `true` means the two sides emit identical member storage, so the payload is copied whole. `interfaces/rdy_vld/rdy_vld_port_thunker.h` is the smallest example. A protocol with no parameters, such as `notify_ack`, needs no thunker.
+
 Every shipped definition sets `sc_channel.type` equal to its key. Keep them equal. A definition that points `sc_channel.type` at another protocol mixes two sets of names.
 
 ## Declaration rules

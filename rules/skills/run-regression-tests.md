@@ -138,6 +138,10 @@ regr/<session.name>.<user>.<date-time>.<pid>/test-reports/junit.xml
 
 With `lrp` set to 1 or above, some of those logs are deleted or gzipped; see `session.lrp` above.
 
+`<date-time>` is `%Y-%d-%m-%H%M%S`, year then day then month, so session directories do not sort by date. Find the latest session by modification time, for example `ls -td regr/*/ | head -1`.
+
+A test that fails in elaboration, in under a second, with `Error: (E549) uncaught exception: Resource temporarily unavailable` hit a host process or thread limit while many runs started at once. It is not a design failure. Report it and rerun the failed tests.
+
 ## Constraints
 *   Never hand-edit generated regions to make a regression pass. Fix the YAML, model, RTL, templates or testbench, then regenerate and rebuild.
 *   Do not add fallback logic to tests or rules that hides failures.

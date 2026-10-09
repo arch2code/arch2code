@@ -1447,6 +1447,37 @@ blockBTable1.bindPort(blockBTable1_port1);
 
 **User Access:** Use direct access APIs (Section 3)
 
+### 6.7 endOfTest and endOfTestState (Framework and User)
+
+**Purpose:** Decide when a run ends. Every consumer imports the C++20 module `a2c.endOfTest`, which holds one shared state for the whole run. Never `#include` it.
+
+**APIs:**
+- `endOfTest(bool registerVoter)` - A voter. Pass `true` to register it at construction.
+- `endOfTest::registerVoter()` - Register later.
+- `endOfTest::setEndOfTest(bool isEnd)` - Cast or withdraw this voter's vote. Only a change of state is counted.
+- `endOfTest::isEndOfTest()` - True once end-of-test has latched.
+- `endOfTestState::GetInstance()` - The shared state. `isEndOfTest()`, `registeredVoters()`, and `eotEvent`, which is notified when the last registered voter votes, after framework startup.
+- `endOfTestState::forceEndOfTest()` - Latches end-of-test without a vote and without notifying `eotEvent`. `Q_ASSERT` uses it on failure. A testbench votes instead.
+
+**Where Used:** The generated External's `eotThread` waits on `eotEvent` and stops the simulation. The watchdog fails a run with no registered voter and no `--scTimeLimit`.
+
+**User Access:** One voter thread per testbench. See `verify-testbench`, "Ending a run and reporting failures" and "Test sequencing with `testController`".
+
+### 6.8 testController (User)
+
+**Purpose:** Run named tests in a fixed order. `#include "testController.h"`; the singleton is `testController::GetInstance()`.
+
+**APIs:**
+- `set_test_names(std::list<std::string>)` - The tests, in run order. Call once, before any `ADD_TEST`.
+- `ADD_TEST(fn)` / `add_test(name, body)` - Run a member function, or a callable, as the named test in its turn.
+- `register_test_name(name)`, `wait_test(name, delay)`, `test_complete(name)` - The thread-based form.
+- `wait_test_complete(name)`, `wait_all_tests_complete()` - Block until one test, or all, complete.
+- `are_all_tests_complete()` - True once every listed test has completed. False when no test was listed.
+
+**Where Used:** The scaffolded `<dut>Config.cpp` seeds `set_test_names` and asserts `are_all_tests_complete()` in `final()`.
+
+**User Access:** See `verify-testbench`, "Test sequencing with `testController`".
+
 ### Framework Summary
 
 | Component | Purpose | User Action |
@@ -1457,6 +1488,8 @@ blockBTable1.bindPort(blockBTable1_port1);
 | addressMap | Register/memory map | Use direct access |
 | instanceFactory | Module creation | Use created instances |
 | hwRegister/hwMemory | Hardware objects | Use access APIs |
+| endOfTest | End-of-test voting | One voter per testbench |
+| testController | Test sequencing | List and register tests |
 
 **Key Principle:** Framework APIs are called in generated code. Users interact with the system through high-level APIs documented in Sections 2-5.
 
@@ -2108,6 +2141,8 @@ void myModule::processData(uint32_t index) {
     // ...
 }
 ```
+
+`Q_ASSERT` passes `name()` as its context, so it compiles only inside an `sc_module` member. Firmware code is not an `sc_module`; use `Q_ASSERT_CTX(cond, ctx, msg)` there and pass the context string, as `examples/simple_ip/fw/src/fwModelMain.cpp` does.
 
 ### 9.5 Performance
 

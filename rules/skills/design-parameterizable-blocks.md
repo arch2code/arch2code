@@ -93,6 +93,19 @@ parameters:
       IP_MEM_DEPTH: 8
 ```
 
+Each binding takes one of these forms:
+
+| Written as | Meaning |
+| :-- | :-- |
+| `PARAM: 5` | the literal 5 |
+| `PARAM: OTHER_CONST` | the value of a constant visible in scope |
+| `PARAM: { value: 5 }` | the literal 5, long form |
+| `PARAM: { containerParam: OTHER }` | the containing block's parameter `OTHER` |
+
+`make db` rejects `PARAM: {}`, which binds nothing, and a binding that gives both `value:` and `containerParam:`.
+
+A project declares each variant of a block once. `make db` rejects a second declaration of the same `(block, variant)` in another file of the same project, even where no single file sees both.
+
 Instances select variants with `variant:`.
 
 ```yaml
@@ -102,6 +115,8 @@ instances:
 ```
 
 Every variant must bind all of the block's declared `params:`. An omitted parameter has no default. A variant that binds nothing is rejected, whether or not the block declares `params:`.
+
+When a block takes its Config from more than one source, itself and a container whose Config it inherits, a label declared by two of those sources is rejected, because it would name two Configs of the block.
 
 A named variant resolves through the file holding the instance row, the files it includes, and the files those include. Exactly one of those files must declare the label. `make db` rejects zero visible declarations or more than one. The error names every declaring file it can see, or the files that declare the label out of scope. For a block that declares no `params:`, it names the block instead. Two projects may each declare the same label for a block they both reach. Each is a separate declaration, and a consumer resolves to the one its own scope reaches.
 
@@ -125,13 +140,13 @@ instances:
 
 ## Emitted Config
 
-A block that declares `params:` emits a `<project>_<block>DefaultConfig`, plus one `<project>_<block><Variant>Config` per variant. Nothing folds common values across them. `<Variant>` is the variant label with its first letter capitalized. A block named `<project>` or `<project>_...` takes no extra prefix in its Config names or Config file. In `examples/ip_test`, block `ip` of project `ip` emits `ipDefaultConfig` and `ipVariant0Config`. In `examples/xprojParam/inhLayout`, project `xpInhLayout`, variant `use` of `xpInhWrap` gives `xpInhLayout_xpInhWrapUseConfig`.
+A block that declares `params:` emits a `<project>_<block>DefaultConfig`, plus one `<project>_<block><Variant>Config` per variant. A variant named `default` that the block's owner declares is the default Config, so the block then emits one Config per variant and no extra default. Nothing folds common values across them. `<Variant>` is the variant label with its first letter capitalized. A block named `<project>` or `<project>_...` takes no extra prefix in its Config names or Config file. In `examples/ip_test`, block `ip` of project `ip` emits `ipDefaultConfig` and `ipVariant0Config`. In `examples/xprojParam/inhLayout`, project `xpInhLayout`, variant `use` of `xpInhWrap` gives `xpInhLayout_xpInhWrapUseConfig`.
 
-`<project>` is the declaring project. For the default, and for any variant a block declares itself, that project is the block's own owner. For a variant another project declares of a reused block, `<project>` is that other project instead.
+`<project>` is the declaring project. For the default, and for any variant a block declares itself, that project is the block's own owner. For a variant another project declares of a reused block, `<project>` is that other project instead. The block's owner is the project that owns the file declaring the block, not the file declaring its `ipParameters`.
 
 A project writes every Config it declares for one block, its own block or a reused one, into one module file under its `registrar/` directory, `<project>_<block>VariantConfig.cppm`. No other project's files carry that Config, and it has no unqualified spelling.
 
-The block's model class `<block>` is a `template<typename Config>` class derived from `<block>Base<Config>`, as `examples/ip_test`'s `ip` shows. An instance's `variant:` selects which `<project>_<block><Variant>Config` binds it. An `inheritContainerParam: true` instance binds its container's Config instead.
+The block's model class `<block>` is a `template<typename Config>` class derived from `<block>Base<Config>`, as `examples/ip_test`'s `ip` shows. An instance's `variant:` selects which `<project>_<block><Variant>Config` binds it. An `inheritContainerParam: true` instance binds its container's Config instead. A block's own testbench selects its DUT Config with `--variant=` (`verify-testbench`, "DUT variant selection").
 
 ## Container-sourced parameters (`containerParam`, `inheritContainerParam`)
 
@@ -160,6 +175,8 @@ parameters:
 The child's parameter and the container's do not need to share a name. Here the leaf's `CP_WIDTH` is sourced from the container's `CP_BUS_W`. They do not need to belong to the same project either. The container's parameter and the child's can be backed by different constants in different projects.
 
 The generator checks only `maxValue`. The container's parameter may not accept a value larger than the child's, and the diagnostic names both constants and both bounds.
+
+Inheritance is single level. `containerParam:` names a parameter of the immediate container. Naming one that only a block further up declares is rejected, and the message names that block. Declare the parameter on each level in between and source it level by level.
 
 `inheritContainerParam: true` applies the same mechanism to every parameter at once, with the same names, the same project and no variant named.
 
@@ -283,3 +300,4 @@ Common errors:
 *   Forgetting to list a parameter in the block's `params:`.
 *   Binding a variant value that exceeds the backing constant's `maxValue`.
 *   Cross-parameter connections whose payload fields do not match exactly.
+*   `Parameterized interface '…' … which is not parameterized` (or `does not declare the required parameter(s)`). An endpoint block of a parameterized connection must declare every parameter the payload uses, because its module sizes the payload. Add the parameters to its `params:`, or declare the port with a different interface in `ports:` so an adapter is generated.

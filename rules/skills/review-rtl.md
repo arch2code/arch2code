@@ -34,6 +34,7 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 *   **FSMs.** The state is a flop macro. Either the plain `case` form or the A2C Pro `fsmDefs.svh` macros with the enum named `statesT` passes. Several FSMs in one module are each scoped with `if (1) begin: gen_<fsm> ... end: gen_<fsm>`.
 *   **Naming.** Do not flag names generated from YAML: modules, ports, instances, YAML types and constants. Hand-written names follow `rtl-core.md` and stay consistent within the module. Report naming as WARN.
 *   **Types.** Declare with `logic`, never `reg`. Prefer the generated package types to raw `logic [N:0]`. A local typedef is fine for an internal value with no package counterpart, such as an accumulator width derived from a `localparam`.
+*   **Parameterized types.** The generated region declares a parameterized block's parameterizable types inside the module, not in the package. Do not flag them as missing from the package or as local typedefs.
 *   **Package imports.** FAIL any hand-written package import in a module. A package the generated region does not import comes through `--importPackages` on the `GENERATED_CODE_PARAM` line (`rtl-core.md`). Packages are per context, not per block, so `<block>_package` does not exist.
 *   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
 *   **Module end.** The module ends with `endmodule: <module_name>`.
