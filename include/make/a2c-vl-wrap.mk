@@ -28,11 +28,11 @@ ifdef VL_COV
 VERILATOR_OPTS += --coverage
 endif
 
-# Builder options, a builder layer's, then the project's hooks. -CFLAGS is one
-# quoted argument. The recipes add -j $(VL_JOBS) after the hooks. Verilator
-# takes the first -j, so a project -j wins. The options stamp leaves out the
-# job count, so a VL_JOBS change does not re-verilate.
-VL_VERILATE = verilator $(VERILATOR_OPTS) $(A2C_LAYER_VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
+# Builder options, then the project's hooks. -CFLAGS is one quoted argument.
+# The recipes add -j $(VL_JOBS) after the hooks. Verilator takes the first -j,
+# so a project -j wins. The options stamps leave out the job count, so a
+# VL_JOBS change does not re-verilate.
+VL_VERILATE = verilator $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
 
 # Compiler and flags for Verilator's own make, which builds the verilated model
 # and runtime with the compiler Verilator was configured with unless overridden.
@@ -55,6 +55,11 @@ VL_TOP_VERILATE = $(VL_VERILATE) -F $(A2C_ROOT)/common/systemVerilog/a2c.f $(A2C
 	-F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS))
 VL_OPTS_STAMP = $(A2C_VL_BUILD_DIR)/verilate_opts
 $(shell mkdir -p $(A2C_VL_BUILD_DIR); [ "$$(cat $(VL_OPTS_STAMP) 2>/dev/null)" = "$(VL_TOP_VERILATE)" ] || printf '%s\n' "$(VL_TOP_VERILATE)" > $(VL_OPTS_STAMP))
+
+# The runtime objects depend on the compiler and option hooks only, so they get
+# their own record of the bare verilate command.
+VL_RUNTIME_OPTS_STAMP = $(A2C_VL_BUILD_DIR)/verilate_runtime_opts
+$(shell [ "$$(cat $(VL_RUNTIME_OPTS_STAMP) 2>/dev/null)" = "$(VL_VERILATE)" ] || printf '%s\n' "$(VL_VERILATE)" > $(VL_RUNTIME_OPTS_STAMP))
 
 # Design SV inputs of a verilate run: the manifest's DB-derived set plus the
 # user-hosted generated-region SV the manifest never lists, the same seam
@@ -112,20 +117,24 @@ VL_PLUS = $(if $(findstring n,$(firstword -$(MAKEFLAGS))),,+)
 
 # Compile the verilator common runtime objects (verilated.o, verilated_dpi.o,
 # verilated_vcd_c.o, verilated_threads.o) into their own Mdir. Framework sources
-# only: verilator leaves the target untouched when nothing changed, so a
-# generated-source stamp prerequisite would keep this rule permanently out of date.
-obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(call vl_dep_prereqs,vl_dummy)
+# and the option record only: a generated-source prerequisite would rerun this
+# on every design edit. The touch marks the target current when verilator finds
+# nothing to rebuild.
+obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(VL_RUNTIME_OPTS_STAMP) $(call vl_dep_prereqs,vl_dummy)
 	mkdir -p obj_dir/vl_dummy
 	$(VL_PLUS)$(VL_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
+	touch $@
 
 # One verilate per recorded top into its own --Mdir: the explicit design unit
 # (--top), the recorded physical .sv, and the recorded include search path (so a
 # trampoline finds the `include`d canonical `_hdl_sv_wrapper.svh` body wherever
-# it lives, including a reused child's own vl_wrap dir).
+# it lives, including a reused child's own vl_wrap dir). The touch marks the
+# archive current when verilator finds nothing to rebuild.
 define vl_top_rule
 obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(A2C_HDL_DEPS) $(VL_OPTS_STAMP) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
 	$$(VL_PLUS)$(VL_TOP_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/$(1) $(A2C_VL_SV_$(1)) -top $(1)
+	touch $$@
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 

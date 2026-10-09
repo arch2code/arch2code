@@ -923,7 +923,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out['bfm_inst_name'] = bfm_name
 
     # Verilated bridge types, positional: one per required struct parameter,
-    # then one per hdlparam, then the optional tail. A dropped entry here
+    # then one per isEval hdlparam, then the optional tail. A dropped entry here
     # silently retypes every later argument, so no loop may skip.
     #
     # An optional payload contributes a bridge type only when it types an
@@ -934,12 +934,13 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # off optional_params, relying on the bridge template's own defaults there.
     rows = prj.getIntfSignals(intf_def, intf_data['structures'], intf_modp)
     signal_of = {row['signalType']: row for row in rows}
-    bridge_prefix = [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
+    bridge_prefix = [sc_hdl_bridge_type(prj.intfBindingClass(binding), prj)
                      for binding in required_params]
     bridge_prefix += [sc_hdl_bridge_type(signal_of[hdlparam], prj)
-                      for hdlparam in intf_def['hdlparams'] or {}]
+                      for hdlparam, hdlDef in (intf_def['hdlparams'] or {}).items()
+                      if hdlDef['isEval']]
 
-    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
+    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(prj.intfBindingClass(binding), prj)
                                        for binding in optional_params
                                        if binding['typesSignal']]
 
@@ -952,7 +953,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # parameter's defaultWidth, or a later payload argument would shift into
     # the wrong slot. The hdl_if declaration's bridge group is last, so it can
     # keep using the trimmed run instead.
-    bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(signal_of[binding['structureType']], prj)
+    bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(prj.intfBindingClass(binding), prj)
                                         for binding in param_bindings
                                         if binding['isOptional'] and binding['typesSignal']]
 

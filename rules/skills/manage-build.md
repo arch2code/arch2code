@@ -77,7 +77,11 @@ The synthesis project adds the rest itself:
 
 ## User hooks
 *   The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`. Base and the a2cPro layer read them and never assign them, so a hook set on the make command line replaces only the project's value.
-*   A hooked command carries the builder's own arguments first, then those of a builder layer such as a2cPro (`A2C_LAYER_VERILATOR_OPTS`, `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS`, `A2C_LAYER_RULES_DIRS`, `A2C_LAYER_HDL_F_FILES` and `A2C_LAYER_VCS_LIB_SV_FILES`), then the project's hooks. A project flag can therefore override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` is the exception. It sits after the Boost, SystemC and layer include paths but before the Verilator and source-directory paths, so a project header directory is searched ahead of those.
+*   A builder layer such as a2cPro adds its arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS`, `A2C_LAYER_RULES_DIRS`, `A2C_LAYER_HDL_F_FILES` and `A2C_LAYER_VCS_LIB_SV_FILES`. Most of these go after the builder's own arguments and before the project's hooks. Three go in earlier:
+    *   `A2C_LAYER_CXX_FLAGS` follows the builder's base compile flags but precedes its C++ module, include-path, simulator and `VL_DUT=1` flags.
+    *   `A2C_LAYER_LD_FLAGS` precedes the Verilator library flags.
+    *   `A2C_LAYER_CPP_INCLUDES` follows the Boost and SystemC include paths but precedes the builder's Verilator, simulator and source-directory paths, so a layer header directory is searched ahead of those.
+*   `EXTRA_CXX_FLAGS` and `EXTRA_LD_FLAGS` come after every builder flag, so a project flag can override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` follows `A2C_LAYER_CPP_INCLUDES` directly, ahead of the same builder paths.
 *   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library.
 *   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.
 *   `make help-hooks` lists each hook, the command it feeds, and its current value.
@@ -91,7 +95,7 @@ The synthesis project adds the rest itself:
 | `EXTRA_SC_GEN_FILES` | Extra files for `arch2code.py --systemc --file` (`gen`) |
 | `EXTRA_SV_GEN_FILES` | Extra files for `arch2code.py --systemVerilog --file` (`gen`). An edit to one re-verilates every verilated top |
 | `EXTRA_VERILATOR_OPTS` | `verilator`, every call: `make lint` and the model wrapping of `make VL_DUT=1` |
-| `VERILATOR_USER_OPTS` | Same effect as `EXTRA_VERILATOR_OPTS`. It goes after `A2C_LAYER_VERILATOR_OPTS` and just before `EXTRA_VERILATOR_OPTS` |
+| `VERILATOR_USER_OPTS` | Same effect as `EXTRA_VERILATOR_OPTS`. It goes after the builder's options and just before `EXTRA_VERILATOR_OPTS` |
 | `EXTRA_LINT_OPTS` | `verilator --lint-only` (`make lint`) |
 | `EXTRA_VL_OPTS` | `verilator` model wrapping only: the runtime build (`vl_dummy`) and each verilated top |
 | `EXTRA_VL_CFLAGS` | C++ flags for Verilator-generated code, appended inside the single quoted `-CFLAGS '...'` argument of each model-wrapping verilate. Do not put single quotes in it |
@@ -123,12 +127,17 @@ The synthesis project adds the rest itself:
 
 ```make
 # A top verilated with --timing needs the Verilator timing runtime in the library.
-VERILATOR_USER_OPTS += --timing
-EXTRA_VL_LIB_OBJS   += $(A2C_VL_BUILD_DIR)/obj_dir/<top>_hdl_sv_wrapper/verilated_timing.o
+EXTRA_VL_OPTS     += --timing
+EXTRA_VL_LIB_OBJS += $(A2C_VL_BUILD_DIR)/obj_dir/<top>_hdl_sv_wrapper/verilated_timing.o
 ```
 
 ## Simulator flows (VCS, Xcelium)
-*   Source the site setup script first. VCS needs `VCS_HOME`. Xcelium needs `XCELIUM_TOOLS`, `XRUN_GCC_VERS` and `LM_LICENSE_FILE`. Both need `A2C_CLANG` and the SystemC and Boost roots. `make help USE_VCS=1` and `make help USE_XCELIUM=1` list the flow variables. The simulator hooks are in the hook table above.
+*   Set the flow's environment before `make`. The builder checks these:
+    *   Every flow: `BOOST_INCLUDE`, and `LD_BOOST` when `BOOST_LIBS` is empty.
+    *   The Verilator and `USE_VCS` builds: `SYSTEMC_INCLUDE` and `SYSTEMC_LIBDIR`.
+    *   `USE_VCS`: `VCS_HOME`. `SYSTEMC_LIBDIR` must name the SystemC that VCS ships or was built against, because the `vcs` link takes `-lsystemc` from it alongside `-sysc=234`.
+    *   `USE_XCELIUM`: `XCELIUM_TOOLS` and `XRUN_GCC_VERS`. The SystemC headers come from `XCELIUM_TOOLS`, so the build does not read `SYSTEMC_*`. The run script exports `LM_LICENSE_FILE` when it is set at build time.
+*   A builder layer can require more. `make help USE_VCS=1` and `make help USE_XCELIUM=1` list the flow variables. The simulator hooks are in the hook table above.
 *   Both simulators fix the SystemC/HDL topology when they elaborate the snapshot, so each DUT topology is its own binary, named `run_<inst>_<type>[_tandem]`, or `run_model` when no RTL instance is elaborated. `make USE_VCS=1 -j8 all` links `build/run_<topology>` for the topology that `VL_INST`, `VL_TYPE` and `VL_TANDEM` give (defaults `HDL_TOP_MODULE`, `verif`, `0`). `make USE_XCELIUM=1 -j8 all` builds the equivalent `build_xrun/run_<topology>` script. Pass `VL_DUT=` for the model-only snapshot.
 *   Run a snapshot with the same `--vlInst`, `--vlType` and `--vlTandem` it was built with. The dispatcher `dutRun.py <base binary> <args>` picks the matching snapshot from the arguments, so a regression keeps one run command.
 *   `make USE_VCS=1 vcs_snapshots` and `make USE_XCELIUM=1 xrun_snapshots` build `run_model` plus one snapshot per topology in `DUT_TOPOLOGIES` (`<inst>:<cfg>[,<cfg>]...`, where cfg is `verif|model[:tandem]`). Regression files pass that list on the build command line, one `DUT_TOPOLOGIES+=` entry per block. Do not define it in the project `rundir/Makefile`. See `run-regression-tests` for the regression files and `run-tandem` for tandem runs on a snapshot.

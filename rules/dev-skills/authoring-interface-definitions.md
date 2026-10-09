@@ -63,5 +63,6 @@ python3 builder/base/unittest/test_interface_def_contracts.py
 5. **Every parameter declares `datatype:` as `struct`, `type` or `typeStruct`.** Any other value fails the schema check.
 6. **Only an optional parameter sets `defaultWidth:` other than 1.** A required parameter is always bound, so the generator never reads its `defaultWidth`, and the value misleads the reader.
 7. **Every signal type resolves to a width.** A signal's type must be `bool`, a parameter, an `isEval` hdlparam, or a type in scope. The SV boundary port and the simulator boundary pin both take their width from it, so a literal SV spelling such as `bit [7:0]` leaves the pin with no width.
+8. **Every `isEval` hdlparam types at least one signal.** The Verilated bridge takes one type per `isEval` hdlparam and reads it from a signal of that type. An `isEval` hdlparam that types no signal stops generation with a bare `KeyError` that names neither the interface nor its file.
 
-The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4, 6 and 7 by hand.
+The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 8 by hand.

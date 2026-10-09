@@ -1,5 +1,14 @@
 # Review of build and HDL boundary changes
 
+Status: RESOLVED.
+
+- Transit structures: `calcVlTops()` also sizes the parameterizable payloads every declared port carries; `test_vl_boundary_pin_widths.py` covers a params-less transit leaf.
+- Eval-derived pins: `getVlTopBoundaryPins()` evaluates hdlparams against the top's resolved payload width; `test_vl_boundary_pin_widths.py` covers a non-default AXI4-Stream variant.
+- Topology names: `DUT_TOPOLOGY` and `dutRun.py` keep the dots of `--vlInst`, so distinct paths name distinct snapshots.
+- Stale snapshots: the vlogan, per-binary vcs link, xrun snapshot and xrun run-script stamps record their full command inputs, `XRUN_LD_LIBS` and the HDL command included.
+- Xcelium SystemC settings: the `SYSTEMC_*` checks are skipped under `USE_XCELIUM`. The `LD_BOOST` check stays, because the xrun link takes the default `BOOST_LIBS` from it (`test_xcelium_boost_libs.py`).
+- The stray SQLite journal file is no longer in the working tree.
+
 ## Scope
 
 Static review of the VCS/Xcelium build integration and generated HDL boundary

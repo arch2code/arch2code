@@ -30,6 +30,10 @@ include or package.
 A fourth cell covers clock and reset pins: they follow the block's declared
 clocks then resets, with each one's direction, and a block declaring
 `resets: {}` has no reset pin.
+
+A fifth cell covers a payload typed by eval constants derived from a
+parameter: at a non-default variant the VCS port map and Xcelium shell take
+the width the variant's RTL computes, through a chain of eval constants.
 """
 
 import os
@@ -43,6 +47,7 @@ if base_dir not in sys.path:
 from _addrctl_helpers import build_database, cleanup, find_block  # noqa: E402
 from pysrc.processYaml import projectOpen  # noqa: E402
 import pysrc.intf_gen_utils as intf_gen_utils  # noqa: E402
+import pysrc.vlBoundaryGen as vlBoundaryGen  # noqa: E402
 
 
 TRANSIT_ARCH = """
@@ -400,11 +405,96 @@ def test_clock_reset_pins():
         cleanup([project_path, db_path] + arch_paths)
 
 
+EVAL_DERIVED_ARCH = """
+ipParameters:
+    constants:
+        WIDTH: { value: 8, maxValue: 32, desc: "Base width" }
+
+constants:
+    DOUBLE_WIDTH: { eval: "$WIDTH * 2", desc: "Derived payload width" }
+    TAG_WIDTH: { eval: "$DOUBLE_WIDTH / 4", desc: "Derived from a derived width" }
+
+types:
+    dataT: { width: DOUBLE_WIDTH, desc: "Derived width type" }
+    tagT: { width: TAG_WIDTH, desc: "Twice-derived width type" }
+
+structures:
+    dataSt:
+        value: { varType: dataT, desc: "Payload" }
+        tag: { varType: tagT, desc: "Tag" }
+
+interfaces:
+    dataIf:
+        interfaceType: push_ack
+        desc: "Data"
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "Root testbench container"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    leaf:
+        desc: "Parameterized leaf"
+        params: [WIDTH]
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        clocks:
+            clk: { period: 10 }
+        ports:
+            out: { interface: dataIf, direction: src }
+
+instances:
+    top_tb: { container: top_tb, instanceType: top_tb, instGroup: top }
+
+parameters:
+    leaf:
+        wide: { WIDTH: 16 }
+"""
+
+
+def test_eval_derived_width_at_variant():
+    """At variant 'wide' (WIDTH=16) the payload is DOUBLE_WIDTH=32 plus
+    TAG_WIDTH=8 bits, as the RTL computes it, in the pin, the VCS port map and
+    the Xcelium shell, not the default-valued 16 plus 4."""
+    print("eval-derived payload width at a non-default variant")
+    db_path, project_path, arch_paths = build_database(
+        EVAL_DERIVED_ARCH, top_instance='top_tb', project_name='vl_boundary_eval')
+    try:
+        prj = projectOpen(db_path)
+        leafKey, _ = find_block(prj, 'leaf')
+        blockData = prj.getBlockData(leafKey)
+        top = blockData['svWrapper']['variantTops']['wide']
+        pins = prj.getVlTopBoundaryPins(blockData, top)
+        ok = True
+        portmapLine = 'out_data 40 bitvector sc_bv'
+        if portmapLine not in vlBoundaryGen.portmap(top, pins).splitlines():
+            print(f"FAIL: {top} port map lacks '{portmapLine}':\n"
+                  f"{vlBoundaryGen.portmap(top, pins)}")
+            ok = False
+        shellLine = '    sc_out<sc_bv<40>> out_data;'
+        if shellLine not in vlBoundaryGen.xceliumShell(top, pins).splitlines():
+            print(f"FAIL: {top} Xcelium shell lacks '{shellLine.strip()}':\n"
+                  f"{vlBoundaryGen.xceliumShell(top, pins)}")
+            ok = False
+        if ok:
+            print("PASS")
+        return ok
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
 def run_all_tests():
     ok = test_paramsless_transit_leaf_boundary_pins()
     ok = test_axi4_stream_non_default_variant_strobe_width() and ok
     ok = test_type_named_signal_width() and ok
     ok = test_clock_reset_pins() and ok
+    ok = test_eval_derived_width_at_variant() and ok
     return 0 if ok else 1
 
 

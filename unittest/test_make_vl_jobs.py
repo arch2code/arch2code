@@ -10,6 +10,8 @@ Drives one verilated-top rule of a2c-vl-wrap.mk from a scratch makefile, with a
 stand-in `verilator` on PATH that records its arguments and whether the
 jobserver named in MAKEFLAGS is open. Checks:
 - with a serial outer make, `-j 4` by default and `-j 8` with VL_JOBS=8;
+- the recipe marks the archive current, so a repeat call with the same
+  options does not re-verilate;
 - the options stamp is the same for VL_JOBS=4 and VL_JOBS=16, so a job count
   change does not re-verilate;
 - a project -j in EXTRA_VL_OPTS comes before the builder's, and Verilator
@@ -56,11 +58,16 @@ esac
 TOP = 'top'
 
 
-def runVerilate(work, *args, makefile='vl.mk'):
-    # Returns (returncode, recorded ARGS line, recorded JOBSERVER state).
+def runVerilate(work, *args, makefile='vl.mk', fresh=True):
+    # Returns (returncode, recorded ARGS line, recorded JOBSERVER state). The
+    # recipe touches the archive, so a fresh call removes it to make the
+    # verilate run again.
     log = os.path.join(work, 'verilator.log')
     if os.path.exists(log):
         os.remove(log)
+    archive = os.path.join(work, 'obj_dir', TOP, f'V{TOP}__ALL.a')
+    if fresh and os.path.exists(archive):
+        os.remove(archive)
     e = dict(os.environ, NO_COLOR='1', PATH=os.path.join(work, 'bin') + os.pathsep + os.environ['PATH'])
     e.pop('MAKEFLAGS', None)
     result = subprocess.run(['make', '-C', work, '--no-print-directory', '-f', makefile, *args,
@@ -106,6 +113,11 @@ def main():
 
         result, argsLine, state = runVerilate(work)
         check(jobs(argsLine) == '4', f"serial make passes -j 4 by default (verilator {argsLine!r})")
+
+        result, argsLine, state = runVerilate(work, fresh=False)
+        check(result.returncode == 0 and not argsLine,
+              f"a repeat call with the archive present and the options unchanged does not "
+              f"re-verilate (verilator ran with {argsLine!r})")
 
         result, argsLine, state = runVerilate(work, 'VL_JOBS=8')
         check(jobs(argsLine) == '8', f"VL_JOBS=8 reaches the verilator command line (verilator {argsLine!r})")

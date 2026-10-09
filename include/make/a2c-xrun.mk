@@ -69,8 +69,8 @@ $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 	mkdir -p $(@D)
 	printf '%s\n' '#!/bin/sh' \
 		$(if $(LM_LICENSE_FILE),'export LM_LICENSE_FILE="$(LM_LICENSE_FILE)"') \
-		'args=""; for a in "$$@"; do args="$$args +systemc_args+$$a"; done' \
-		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $$args' > $@
+		'for a; do set -- "$$@" "+systemc_args+$$a"; shift; done' \
+		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) "$$@"' > $@
 	chmod +x $@
 
 help::

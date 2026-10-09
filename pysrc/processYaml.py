@@ -3602,6 +3602,16 @@ class projectOpen:
         # bound to the receiver the caller supplies for it.
         return eval(intfDef['hdlparams'][hdlparam]['value'], {'__builtins__': {}, **receivers})
 
+    def intfBindingClass(self, binding):
+        # getIntfSignals classification of a signal this payload binding types:
+        # the bound payload, or an unbound one at its defaultWidth.
+        if binding['isNull']:
+            width = binding['defaultWidth']
+            return {'kind': 'fixed', 'width': width, 'vector': width > 1}
+        ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+        return {'kind': 'payload', 'binding': binding,
+                'vector': bool(ref['isParameterizable']) or int(ref['width']) > 1}
+
     def getIntfSignals(self, intfDef, structures, modport):
         """Per-signal classification of one interface's HDL boundary, in signal
         declaration order, from the given modport's point of view.
@@ -3621,20 +3631,14 @@ class projectOpen:
                     for binding in self.getIntfParamBindings(intfDef, structures)}
         hdlparams = intfDef['hdlparams'] or {}
         inputs = intfDef['modports'][modport]['modportGroups'] \
-            .get('inputs', {}).get('groups', {}) or {}
+            .get('inputs', {}).get('groups') or {}
         rows = []
         for signal, signalDef in intfDef['signals'].items():
             signalType = signalDef['signalType']
             row = {'signal': signal, 'signalType': signalType,
                    'direction': 'input' if signal in inputs else 'output'}
-            if signalType in bindings and not bindings[signalType]['isNull']:
-                binding = bindings[signalType]
-                ref = self.datatypeRef(binding['kind'], binding['structureKey'])
-                row.update(kind='payload', binding=binding,
-                           vector=bool(ref['isParameterizable']) or int(ref['width']) > 1)
-            elif signalType in bindings:
-                width = bindings[signalType]['defaultWidth']
-                row.update(kind='fixed', width=width, vector=width > 1)
+            if signalType in bindings:
+                row.update(self.intfBindingClass(bindings[signalType]))
             elif signalType in hdlparams and hdlparams[signalType]['isEval']:
                 receivers = dict()
                 for param, binding in bindings.items():
@@ -4314,7 +4318,8 @@ class projectCreate:
         # `.context` would be stale / wrong outside a processSingleFile frame.
         self._parserResolver = None
         # Parsed eval IR nodes by (yamlFile, constant name), populated when an
-        # eval constant is parsed in processSimple and consumed by _constants.
+        # eval constant is parsed in processSimple. Read by _constants,
+        # deriveParameterizedDeclSets and ValueResolver override evaluation.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
         # Blocks whose resets: was authored as an explicitly empty {} or [],
@@ -5019,16 +5024,11 @@ class projectCreate:
             declKeys = {'structures': set(), 'types': set()}
             for row in g.cur.fetchall():
                 declKeys['types' if row['declKind'] == 'type' else 'structures'].add(row['declKey'])
-            # A block's own port can carry a parameterizable payload type or structure
-            # it neither owns nor locally declares: an uninstantiated block
-            # (no design connection ever ties an instance to it, so
-            # calcBlockConfigInfo never flags it isParameterizable) still
-            # renders a wrapper boundary pin for each declared port, sized at
-            # the structure's default value. getVlTopBoundaryPins walks every
-            # declared port regardless of ownership, so the widths must
-            # cover the same set.
-            for portRow in (blocks[blockKey].get('ports') or {}).values():
-                for structRow in (self.flatData['interfaces'][portRow['interfaceKey']].get('structures') or {}).values():
+            # getVlTopBoundaryPins sizes a pin for every declared port, so the
+            # widths also cover parameterizable payloads a port carries that
+            # the block does not declare itself.
+            for portRow in blocks[blockKey].get('ports', {}).values():
+                for structRow in self.flatData['interfaces'][portRow['interfaceKey']].get('structures', {}).values():
                     kind = structRow['structureKind']
                     if self.flatData[kind][structRow['structureKey']]['isParameterizable']:
                         declKeys[kind].add(structRow['structureKey'])
