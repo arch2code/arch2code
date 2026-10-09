@@ -39,7 +39,7 @@ several sub-project namespaces export the same payload spelling. The prefixed
 
 The upstream project's own block consumes `PIXEL_WIDTH`, because that block is
 what these chains configure; nothing in the generator requires it. Rule 1
-(design-parameter-inheritance.md) lets a declaration go unconsumed by its own
+(../../specs/spec-parameter-inheritance.md) lets a declaration go unconsumed by its own
 file, so an upstream project may publish a parameter purely for downstream
 projects to `include:`; see `cstShared` under the shared-constant family.
 
@@ -644,7 +644,7 @@ block that binds it?
 `CS_PIXEL_WIDTH: {value: 12, maxValue: 32}` in `ipParameters`, consumes it in
 its own `xpCstDut` block's `params:`, and binds its own default variant as
 `CS_PIXEL_WIDTH: CS_PIXEL_WIDTH`, the symbolic form, so the default value is
-stated once. Rule 1 (design-parameter-inheritance.md) does not require this
+stated once. Rule 1 (../../specs/spec-parameter-inheritance.md) does not require this
 same-file consumer: a declaration needs no consumer of its own, so a
 definitions-only file may declare one purely for downstream files to
 `include:`; see `cstShared` below.
@@ -718,7 +718,7 @@ the field `value: const` (`config/schema.yaml:~326`), which resolves any
 constant or enum visible in the binding row's own include scope; nothing
 restricts it to parameterizable ones. `CS_USE_WIDTH` is a plain constant here
 because it plays the peer-value-sharing role this design assigns a plain
-constant (design-parameter-inheritance.md §1): the assembler states a number
+constant (../../specs/spec-parameter-inheritance.md §1): the assembler states a number
 once and every binding names it, with no block treating it as a parameter of
 its own.
 

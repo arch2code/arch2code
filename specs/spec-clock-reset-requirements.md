@@ -1,9 +1,10 @@
 # Requirement specification: clocks and resets
 
 - **Status:** Normative.
-- **Scope:** functional requirements and YAML specification. Implementation
-  is recorded separately in
-  [`plan-clock-container-model.md`](./plan-clock-container-model.md).
+- **Scope:** functional requirements and YAML specification. The clock and
+  reset model is built by `pysrc/clockTree.py`; the co-simulation wrapper's
+  clock generation and end-of-run report are in
+  `templates/systemc/module_hdl_wrapper.py`.
 - **Source:** issue #129.
 - **Audience:** designers authoring arch2code YAML, and IP integrators
   composing projects.
@@ -151,7 +152,7 @@ resets:
 | key | both | The testbench net name. It is bound to an `input` clock or reset of the top block by name match or default fallback (§4.8). |
 | `desc` | both | Required description. |
 | `default` | both | Exactly one clock and exactly one reset carries `true`; implied when the section has exactly one entry. Used for the default fallback of a top block that declares nothing. |
-| `period`, `timeUnit` | clocks | The period at which the testbench generates the clock. Optional, default 1 ns. |
+| `period`, `timeUnit` | clocks | The period at which the testbench generates the clock. Optional, default 1 ns. A `period` in `ps` must be even (§4.2). |
 | `clock` | resets | The testbench clock this reset belongs to. Unstated means the default clock. |
 | `releaseCycles` | resets | Cycles of `clock` after which the testbench releases the reset. Default 3. |
 
@@ -207,6 +208,17 @@ blocks:
 | `clock` | resets | The block clock this reset belongs to. Unstated means the block default clock. An `input` reset names an `input` clock. An `output` reset names either: a synchroniser's output reset belongs to its input clock, a PLL wrapper's output reset to its output clock. Not permitted together with `async`. |
 | `async` | resets | `true` marks an asynchronous reset input: one the block does not sample in any of its clocks, as a synchroniser or PLL wrapper takes in. It belongs to no domain of the block, so the clock-membership part of V1 and the rule V6 do not apply to it, and it may be bound to any container reset. Only an `input` reset may be `async`. |
 | `period`, `timeUnit` | clocks | Optional, `input` only (V18). The period a **standalone** simulation of this block uses for the clock when the design does not determine one (§4.8). Never used in an assembled design. |
+
+Period rules, for a `period` in a project file or on a block clock:
+
+- The simulation clock toggles every half period at a 1 ps time resolution,
+  so a `period` of an odd number of picoseconds is rejected at `make db`.
+  A period in `ns` or `us` is always even in picoseconds.
+- Under gated lockstep co-simulation a clock toggles on a 0.5 ns step, so its
+  half period must be a whole multiple of the step, which makes its period a
+  whole multiple of 1 ns. The generated co-simulation wrapper checks this at
+  run time on entry to gated mode and stops with a fatal error otherwise.
+  Free-running clocks are unaffected.
 
 Rules:
 
@@ -529,11 +541,10 @@ Rules:
   may not share its net with any other entry of the same instance, input or
   output (V5).
 - One instance may have both maps, either, or neither.
-- The `count:` field on an instance applies the same map to every element, so
-  all elements share one set of clocks and resets. Per-element clocks, such as
-  one clock per lane, require unrolled instances. An instance with `count`
-  greater than one may bind no `output` entry to a net, since every element
-  would drive it (V12); its outputs are `~`.
+- An instance's `count` is 1. Any other value is rejected at `make db`
+  (`_post_validateInstanceParameterBinding`, V12), so every instance has
+  exactly one set of clock and reset bindings. Per-element clocks, such as one
+  clock per lane, use separately declared instances.
 
 ### 4.5 Output clocks, output resets, and suppliers
 
@@ -721,9 +732,9 @@ Rules:
 - The block of the instance named by `topInstance:` is bound to the testbench
   clocks and resets of the project file by the instance rules of §4.4: an
   `input` by name match, `clk` and `rst_n` by default fallback, an `output`
-  observed. The top instance has `count` 1. The top block's `input` clocks and
-  resets are the design's **primary** clocks and resets; every testbench entry
-  binds one of them (V10), every top input reset belongs to a top input clock
+  observed. The top instance, like every instance, has `count` 1 (V12). The
+  top block's `input` clocks and resets are the design's **primary** clocks
+  and resets; every testbench entry binds one of them (V10), every top input reset belongs to a top input clock
   (V9), and a top input reset bound to testbench reset R, whose block clock is
   bound to testbench clock C, requires R to belong to C (V6).
 - The simulation environment generates each testbench clock at its `period`
@@ -743,12 +754,12 @@ Rules:
 - Testbench resets on different clocks release independently, each after its
   own `releaseCycles`. No inter-domain release ordering exists unless the
   design builds it with suppliers.
-- **End-of-run report.** The environment reports, at the end of an assembled
-  simulation, every supplied clock that produced no edge and every supplied
-  reset, and every exported output reset of the design top, that never
+- **End-of-run report.** The co-simulation wrapper of a `hasVl` block warns,
+  at the end of the run, for every `output` clock of the wrapped block that
+  produced no edge and every `output` reset of the wrapped block that never
   released. These are the symptoms of a supplier that does not run from reset
-  (§4.5, R23) and of a broken supply chain, and they otherwise end a run with
-  no activity and no diagnostic.
+  (§4.5, R23). Supplied clocks and resets inside the design, and runs without
+  a co-simulation wrapper, are not covered.
 - **A block simulated alone** is its own top: every `input` clock and reset it
   declares is generated. This applies to a block for which a co-simulation
   wrapper is generated, that is, one with `hasVl`. A `hasTb` block's testbench
@@ -857,7 +868,8 @@ the SystemC model and the RTL (R26).
 
 Each requirement is testable from authored YAML and the emitted design alone,
 except R17, R21 and R22, which the specification does not check, and R23,
-whose violation the end-of-run report covers (§4.8). The V items are
+whose violation the end-of-run report covers for the output clocks and resets
+of a wrapped `hasVl` block (§4.8). The V items are
 build-time diagnostics; a requirement that describes the emitted design or
 the binding the generator performs is verified by generation tests against
 the emitted design rather than by a diagnostic.
@@ -866,8 +878,9 @@ the emitted design rather than by a diagnostic.
 
 - **R1.** A project file declares the testbench clocks in `clocks:` and the
   testbench resets in `resets:`, each reset belonging to one clock. A clock's
-  `period` is optional, default 1 ns. Omitting either section yields `clk`, or
-  `rst_n` on the default clock.
+  `period` is optional, default 1 ns. A `period` in `ps` is even, and under
+  gated lockstep a whole multiple of 1 ns (§4.2). Omitting either section
+  yields `clk`, or `rst_n` on the default clock.
 - **R2.** Exactly one testbench clock and one testbench reset is the default,
   and the default reset belongs to the default clock (V23).
 - **R3.** Every testbench clock and reset binds an `input` of the top block by
@@ -940,7 +953,9 @@ the emitted design rather than by a diagnostic.
   the port's block clock and the instance's map. A connection whose two ends
   derive to different container clocks is a clock domain crossing.
 - **R17.** A crossing is the designer's responsibility. The tool neither
-  rejects nor synthesises one. It is not reported (Q2).
+  rejects nor synthesises one. It is not reported (Q2). No clock domain
+  crossing primitive library is shipped; synchronisers and crossing FIFOs are
+  the designer's own blocks.
 - **R18.** Each block module carries exactly its declared clocks and resets as
   ports, in declaration order, clocks before resets; an undeclared block
   carries `clk` and `rst_n`. A container's module additionally carries one
@@ -995,9 +1010,10 @@ the emitted design rather than by a diagnostic.
   selected for the build (§4.9). Not checked.
 - **R23.** A supplied clock's supplier produces the clock from reset release
   onward at a defined reset-default rate, or the project documents that the
-  domain is held in reset until firmware enables the clock. The simulation
-  environment reports at end of run every supplied clock that produced no edge
-  and every supplied or exported reset that never released (§4.8).
+  domain is held in reset until firmware enables the clock. The co-simulation
+  wrapper of a `hasVl` block reports at end of run every `output` clock of the
+  wrapped block that produced no edge and every `output` reset of it that never
+  released (§4.8).
 - **R24.** A block simulated alone generates its declared `input` clocks and
   resets, each with the attributes of its own declaration when present, else
   of the testbench clock or reset it resolves to in the design (§4.8).
@@ -1082,8 +1098,9 @@ line of the offending entry.
   the container clock its own block clock is bound to, so it satisfies V6 by
   construction; a container clock with no selected reset makes the fallback an
   error naming that clock.
-- **V12.** An instance with `count` greater than one binds every `output` entry
-  to `~`.
+- **V12.** An instance's `count` is 1; any other value is an error
+  (`_post_validateInstanceParameterBinding` in `pysrc/processYaml.py`, tested
+  by `unittest/test_error_instance_count.py`).
 - **V13.** A connection `clock:` used to derive a top-down port's domain
   names a container clock that exactly one `input` block clock of the instance
   resolves to, by map, name match or fallback. Two on the same net leave the

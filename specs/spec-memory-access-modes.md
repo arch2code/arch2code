@@ -1,7 +1,5 @@
 # Memory port access modes and clocks
 
-Status: draft for review
-
 ## Summary
 
 A memory's ports, the access firmware has to it, and the clocks its ports run
@@ -40,9 +38,10 @@ to FPGA block RAM.
 | `portRportRW` | read-only | read/write |
 | `portRWportW` | read/write | write-only |
 | `portRportW` | read-only | write-only |
+| `register` | read/write | none |
 
-`dualPort` is the default. A read-only port has no write path in the RTL, and
-writes presented to it are ignored. A write-only port has no read path, and its
+`register` behaves as `singlePort`. `dualPort` is the default. A read-only port
+has no write path in the RTL, and writes presented to it are ignored. A write-only port has no read path, and its
 read data is always zero. Every type applies to `local: true` memories as well.
 
 ### `regAccess`
@@ -59,7 +58,8 @@ read data is always zero. Every type applies to `local: true` memories as well.
 
 `clock:` names the owning block's clock that the memory runs on, and defaults
 to the block's default clock. It sets the clock of every block-side port. A
-memory has no reset, because the array is never reset.
+memory has no reset, because the array is never reset, and a `reset:` field on
+a memory is an error.
 
 ## Register port selection
 
@@ -81,7 +81,7 @@ The block-side port is whichever port the register handler does not take.
 | `portRportRW` | B | A | B |
 | `portRWportW` | A | A | B |
 | `portRportW` | error | A | B |
-| `singlePort` | the port | the port | the port |
+| `singlePort`, `register` | the port | the port | the port |
 
 Two cases do most of the work.
 
@@ -129,8 +129,8 @@ one clock, and every mode is allowed.
 - The register port runs on the owning block's register clock.
 - The block-side port runs on the memory's `clock:`.
 - With no `regAccess`, both ports run on the memory's `clock:`.
-- A `singlePort` memory and a `local: true` memory have one clock. With
-  `regAccess` set, the memory's `clock:` must be the register clock.
+- A `singlePort` or `register` memory and a `local: true` memory have one
+  clock. With `regAccess` set, the memory's `clock:` must be the register clock.
 
 Clocks compare by block clock name. Two block clocks count as different even
 if one instance binds both to the same net, because the block's RTL has to work
@@ -162,10 +162,13 @@ error.
 
 | Access | RTL | Model |
 | :--- | :--- | :--- |
-| Firmware write to an `ro` memory | The transfer completes with no `pslverr`, and the memory is unchanged. | The write is dropped, and the model logs a warning naming the memory and the address. |
-| Firmware read of a `wo` memory | The transfer completes with no `pslverr` and returns zero. The handler does not read the memory. | Returns zero, and the model logs a warning naming the memory and the address. |
+| Firmware write to an `ro` memory | The transfer completes with no `pslverr`, and the memory is unchanged. | The write is dropped, and the model logs a message at `LOG_ALWAYS` naming the memory and the offset. |
+| Firmware read of a `wo` memory | The transfer completes with no `pslverr` and returns zero. The handler does not read the memory. | Returns zero, and the model logs a message at `LOG_ALWAYS` naming the memory and the offset. |
 
 RTL simulation prints nothing for these accesses.
+
+Firmware headers and generated documentation show that a memory is
+firmware-accessible, but not its access mode.
 
 ## Generated RTL
 
@@ -174,7 +177,7 @@ The generator picks the module from the clocks of the two ports.
 - Both ports on one clock: `memory_dp`, connecting `.clk`.
 - Ports on two clocks: `memory_dp_2clk`, connecting `.clkA` and `.clkB`.
 - A `local: true` dual-port memory: `memory_dp_ext`, which has one clock.
-- A single-port memory: `memory_sp` or `memory_sp_ext`.
+- A `singlePort` or `register` memory: `memory_sp` or `memory_sp_ext`.
 
 The module, port and parameter names match the uvc_rd memory library, so test
 benches and bind files written against it work unchanged.
@@ -217,7 +220,9 @@ The modules meet these requirements.
 - `memory_dp_2clk` gives each port its own `always` block on its own clock. In
   2RW and RW+WO it reports `$info` at elaboration, saying the mode is for
   simulation or an ASIC memory macro. The report must not fail a Verilator
-  build, because simulation is a supported use of the mode.
+  build, because simulation is a supported use of the mode. When both ports
+  write the same address on coincident edges, the two `always` blocks leave
+  the surviving write undefined by the RTL.
 - No module carries a RAM style attribute. The synthesis flow chooses the RAM
   style.
 
@@ -283,8 +288,9 @@ memory_dp #(.DEPTH(ENTRIES_PER_LINE), .data_t(bayer_pixels_per_clock_t), .PORTA_
 - `regAccess` is not one of `true`, `false`, `rw`, `ro`, `wo`.
 - No port of the memory supports the `regAccess` mode, for example
   `portRportW` with `regAccess: rw`.
-- A `singlePort` or `local: true` memory has `regAccess` and a `clock:` other
-  than the register clock. The diagnostic names both clocks.
+- A memory sets `reset:`. A memory has no reset state.
+- A `singlePort`, `register` or `local: true` memory has `regAccess` and a
+  `clock:` other than the register clock. The diagnostic names both clocks.
 - A dual-port memory with `regAccess` lists two ports in `ports:`. The memory
   has two ports in total and the register handler takes one, so only one is
   left for the block.
