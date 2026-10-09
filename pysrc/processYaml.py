@@ -26,7 +26,7 @@ from pysrc.memoryPortAccess import memoryRegisterPort
 # Current user-YAML authoring format. A migrated project carries a single
 # top-level `yamlFormat:` field in its project.yaml equal to this value; its
 # absence marks a pre-migration (legacy) project that projectCreate refuses to
-# build. See plan-yaml-migration.md.
+# build until `make migrate` (migrate-project skill) brings it current.
 CURRENT_YAML_FORMAT = 2
 
 # Bytes the register bus moves per access. The model's cpu_write is 32 bits wide

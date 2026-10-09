@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Hierarchical layout structural golden (plan-decomp-functional-layout.md
-T1.5/T1.6).
+"""Hierarchical layout structural golden.
 
 The green-field fixture under fixtures/hier-layout/ declares
 fileGeneration.layout: hierarchical with two decomposition nodes (core, leaf).

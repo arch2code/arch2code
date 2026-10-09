@@ -1,7 +1,6 @@
 yamlFormat: 2
 
-# Green-field hierarchical-layout fixture (plan-decomp-functional-layout.md
-# T1.5). Proves the decomposition-outer inversion: each block's functional
+# Green-field hierarchical-layout fixture. Proves the decomposition-outer inversion: each block's functional
 # segments (base/model/rtl/tb/fw) are generated beside its yaml/ dir, under the
 # node directory, rather than under shared $root/<segment> roots. The project
 # file lives in the prj/ container; authored block YAML lives in each node's

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in functional -> hierarchical layout migration
-(plan-decomp-functional-layout.md "Phase 4 - L4", T4.1-T4.4).
+"""Opt-in functional -> hierarchical layout migration.
 
 migrateLayout classifies a project into one of three layout states without
 opening the database (text-only, like the other migration phases), computes the
