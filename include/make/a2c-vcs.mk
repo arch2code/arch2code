@@ -72,9 +72,10 @@ endif
 VCS_LD_FLAGS = $(filter-out -pthread,$(LD_FLAGS))
 
 # The link command's options, elaboration arguments, and linker flags are part
-# of the snapshot: record them so a change relinks without recompiling.
+# of the snapshot: record them per binary so a change relinks without
+# recompiling and the topologies do not overwrite each other's record.
 VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(EXTRA_VCS_OPTS) $(VCS_LD_FLAGS) $(DUT_ELAB_ARGS)
-VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/elab_args
+VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/$(BIN).elab_args
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "$(VCS_LINK_OPTS)" ] || printf '%s\n' "$(VCS_LINK_OPTS)" > $(VCS_ELAB_STAMP))
 
 # VCS reuses the per-binary topology (csrc/sysc/<binary>/sysc_skeleton.v) it
@@ -86,8 +87,8 @@ $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "
 # are cleared from its environment before invoking vcs.
 $(BIN_DIR)/$(BIN): $(VCS_LINK_DEPS) $(VCS_ELAB_STAMP)
 	mkdir -p $(@D)
-	cd $(VCS_RUNDIR) && for skel in csrc/sysc/*/sysc_skeleton.v; do [ -e "$$skel" ] && $(RM) -r "$${skel%/*}"; done; \
-		cd $(VCS_RUNDIR) && MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) $(EXTRA_VCS_OPTS) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
+	cd $(VCS_RUNDIR) || exit 1; for skel in csrc/sysc/*/sysc_skeleton.v; do [ -e "$$skel" ] && $(RM) -r "$${skel%/*}"; done; \
+		MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) $(EXTRA_VCS_OPTS) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
 		|| { $(RM) -rf csrc AN.DB $(VCS_RTL_STAMP) $(VCS_SC_MODEL_STAMP); exit 1; }
 
 help::

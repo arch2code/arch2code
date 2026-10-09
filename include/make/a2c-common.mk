@@ -193,7 +193,7 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 	@mkdir -p $(@D) && touch $@
 
 $(VL_BOUNDARY_STAMP): $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 #------------------------------------------------------------------------
@@ -252,7 +252,7 @@ newmodule: $(A2C_SQLDB_FILE)
 clean::
 	rm -rf $(GEN_BUILD_DIR) $(DEFAULT_BIN_DIR) $(XRUN_BIN_DIR)
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
-	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(BIN_DIR)/run*.daidir $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
+	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
 	rm -rf $(XRUN_RUNDIR)/xcelium*.d $(XRUN_RUNDIR)/xrun*.log $(XRUN_RUNDIR)/xrun*.history
 
 

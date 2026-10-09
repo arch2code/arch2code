@@ -3,16 +3,17 @@
 
 Works on a private copy of examples/simple_ip whose include/make/shared.mk
 appends one distinct value to every tool hook. Checks:
-- EXTRA_GEN_OPTS on the db build, every gen call and newmodule of the project;
+- EXTRA_GEN_OPTS on the db build, every gen call (including the USE_VCS=1
+  boundary generation) and newmodule of the project;
 - VERILATOR_USER_OPTS and EXTRA_VERILATOR_OPTS on lint and on every model
   verilate, EXTRA_LINT_OPTS on lint only, EXTRA_VL_OPTS on the verilates only;
-- the verilator hooks sit after the builder options and a builder layer's
-  A2C_LAYER_VERILATOR_OPTS, in the order VERILATOR_USER_OPTS,
-  EXTRA_VERILATOR_OPTS, then EXTRA_LINT_OPTS or EXTRA_VL_OPTS;
+- the verilator hooks sit after the builder options, in the order
+  VERILATOR_USER_OPTS, EXTRA_VERILATOR_OPTS, then EXTRA_LINT_OPTS or
+  EXTRA_VL_OPTS;
 - EXTRA_CXX_FLAGS sits after every builder C++ flag, including the
   A2C_LAYER_CXX_FLAGS and the VL_DUT=1 additions;
 - a command-line VERILATOR_USER_OPTS or EXTRA_CXX_FLAGS replaces the project's
-  value but keeps the layer's;
+  value, and a command-line EXTRA_CXX_FLAGS keeps the layer's;
 - EXTRA_VL_CFLAGS inside the single quoted -CFLAGS argument of each verilate;
 - EXTRA_VL_LIB_OBJS, named under $(A2C_VL_BUILD_DIR), added to the archive and
   ordered after every verilate, in the verilation sub-make that reads only
@@ -37,7 +38,9 @@ appends one distinct value to every tool hook. Checks:
   builder makefiles read.
 
 The simulator dry runs pass placeholder VCS_HOME, XCELIUM_TOOLS and
-XRUN_GCC_VERS, so they need neither tool.
+XRUN_GCC_VERS, so they need neither tool. USE_GCC is dropped from the
+environment, so the compile commands are clang++ whatever the caller's shell
+selects.
 """
 
 import glob
@@ -78,7 +81,6 @@ BOTH = {'-DHOOK_USER', '-DHOOK_VERILATOR'}
 CPP_INCLUDE = '-I/hook/include'
 # What a builder layer (a2cPro) adds; the test plays that layer from shared.mk.
 LAYER_VALUES = {
-    'A2C_LAYER_VERILATOR_OPTS': '-DHOOK_LAYER',
     'A2C_LAYER_CXX_FLAGS': '-DHOOK_LAYER_CXX',
     'A2C_LAYER_LD_FLAGS': '-lhook_layer_ld',
 }
@@ -93,14 +95,13 @@ CXX_HOOK = '-DHOOK_CXX'
 # Command-line overrides of hooks the project also sets.
 CMDLINE = ['VERILATOR_USER_OPTS=-DHOOK_CMDLINE', 'EXTRA_CXX_FLAGS=-DHOOK_CXX_CMDLINE']
 # The last builder option of each verilator command, then the hooks in order.
-LINT_ORDER = ['--no-timing', '--lint-only', '-DHOOK_LAYER', '-DHOOK_USER', '-DHOOK_VERILATOR',
-              '-DHOOK_LINT']
-VL_ORDER = ['--no-timing', '-MMD', '-DHOOK_LAYER', '-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_VL']
+LINT_ORDER = ['--no-timing', '--lint-only', '-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_LINT']
+VL_ORDER = ['--no-timing', '-MMD', '-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_VL']
 # Builder C++ flags the VL_DUT=1 build appends late, then the project's hook.
 CXX_ORDER = ['-DHOOK_LAYER_CXX', '-DVERILATOR', '-Wno-sign-compare', CXX_HOOK]
 LD_FLAG = '-lhook_ld'
 LAYER_LD_FLAG = '-lhook_layer_ld'
-VERILATOR_HOOKS = {'-DHOOK_LAYER', '-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_LINT', '-DHOOK_VL'}
+VERILATOR_HOOKS = {'-DHOOK_USER', '-DHOOK_VERILATOR', '-DHOOK_LINT', '-DHOOK_VL'}
 VCS_HOOKS = {'-DHOOK_VLOGAN', '-DHOOK_VCS'}
 XRUN_HOOKS = {'-DHOOK_XRUN', '-DHOOK_XLIB', '+hook_r'}
 
@@ -241,6 +242,8 @@ def cxxCommands(output, binary):
 
 
 def main():
+    # The C++ checks expect the default clang++ toolchain.
+    os.environ.pop('USE_GCC', None)
     work = copy_simple_ip()
     try:
         hookSrc = os.path.join(work, 'hookSrc', 'hook.cpp')
@@ -278,6 +281,11 @@ def main():
             lacking = [' '.join(c) for c in calls if '--debug' not in c]
             if not calls or lacking:
                 failures.append(f"{target}: arch2code.py lacks EXTRA_GEN_OPTS: {lacking or 'no call'}")
+        # The simulator flows add the per-top boundary generation to gen.
+        boundary = [c for c in genCalls(dryRun(work, 'gen', *VCS_ARGS)) if '--vlBoundary' in c]
+        if len(boundary) != 1 or '--debug' not in boundary[0]:
+            failures.append(f"gen under USE_VCS: arch2code.py --vlBoundary lacks EXTRA_GEN_OPTS: "
+                            f"{[' '.join(c) for c in boundary] or 'no call'}")
 
         a2cF = os.path.join(run(['git', '-C', work, 'rev-parse', '--show-toplevel']).stdout.strip(),
                             'common', 'systemVerilog', 'a2c.f')
@@ -380,7 +388,7 @@ def main():
                                                                   'vcs', 'vlogan_opts')))
         failures += checkStamp('vlogan', os.path.join(vcsStampDir, 'vlogan_opts'),
                                ['-DHOOK_VLOGAN', *hdl, layerLib, lib])
-        failures += checkStamp('vcs link', os.path.join(vcsStampDir, 'elab_args'),
+        failures += checkStamp('vcs link', os.path.join(vcsStampDir, 'run_simple_ip_verif.elab_args'),
                                ['-DHOOK_VCS', LAYER_LD_FLAG, LD_FLAG])
         rtlStamp = os.path.join(vcsStampDir, 'rtl.vlogan')
         vcsDatabase = run(['make', '-C', rundir, '-pq', *VCS_ARGS, rtlStamp]).stdout

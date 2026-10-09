@@ -1,4 +1,5 @@
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
+import pysrc.evalExpr as evalExpr
 
 
 class ValueResolver:
@@ -143,6 +144,15 @@ class ValueResolver:
                 return self._toInt(self.values[key], f"override '{key}'")
 
         row = self.lookupNamedRow(key, label)
+        if self.values and row['isParameterizable'] and row['evalCanonical']:
+            # An eval constant's stored value is evaluated at defaults, so
+            # re-evaluate it with the overrides applied to its symbols.
+            node = self.project._evalNodes[(row['_context'], row['constant'])]
+            try:
+                return evalExpr.evaluate(
+                    node, resolve=lambda k: self._resolveActiveValue(k, context, label))
+            except evalExpr.EvalEvalError as e:
+                return self._fail(f"{label} '{key}' evaluation failed: {e}")
         return self._toInt(row['value'], f"{label} '{key}'")
 
     def _resolveMaxValue(self, key, label):

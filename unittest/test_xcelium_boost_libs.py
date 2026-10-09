@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """The Xcelium link reads BOOST_LIBS, so USE_XCELIUM=1 keeps the LD_BOOST check.
 
-Dry runs in a private copy of examples/simple_ip, with LD_BOOST and BOOST_LIBS
-taken from the test alone, never from the caller's shell:
+Dry runs in a private copy of examples/simple_ip, with every variable the
+parse checks taken from the test alone, never from the caller's shell:
 - neither set: make stops with "LD_BOOST is not set";
 - BOOST_LIBS set, LD_BOOST unset: no error, and XRUN_LD_LIBS carries the
   caller's BOOST_LIBS;
 - LD_BOOST set, BOOST_LIBS unset: XRUN_LD_LIBS carries the default Boost link
   inputs, -L joined to LD_BOOST.
 
-The dry runs pass placeholder XCELIUM_TOOLS and XRUN_GCC_VERS, so they need
-no Xcelium install.
+The dry runs pass placeholder XCELIUM_TOOLS, XRUN_GCC_VERS and BOOST_INCLUDE,
+so they need no Xcelium install.
 """
 
 import os
@@ -28,8 +28,9 @@ PRINT_LIBS = 'pxl: ; @echo "XRUN_LD_LIBS=[$(XRUN_LD_LIBS)]"'
 def dryRun(rundir, boost):
     e = os.environ.copy()
     e['NO_COLOR'] = '1'
-    e.pop('LD_BOOST', None)
-    e.pop('BOOST_LIBS', None)
+    e['BOOST_INCLUDE'] = '/hook/boost/include'
+    for name in ('LD_BOOST', 'BOOST_LIBS', 'USE_VCS'):
+        e.pop(name, None)
     e.update(boost)
     return subprocess.run(['make', '-C', rundir, '--no-print-directory', '-n', *XRUN_ARGS,
                            '--eval', PRINT_LIBS, 'pxl'],

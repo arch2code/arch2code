@@ -1,5 +1,6 @@
 # AXI field types named by the axi_read and axi_write interface signals.
-# Equivalent to the same-named types in examples/*/arch/yaml/axiStd.yaml.
+# Equivalent to the same-named types in arch/yaml/axiStd.yaml of the axiDemo,
+# axiSocketMaster and axiSocketSlave examples.
 
 types:
   _axiLenT:

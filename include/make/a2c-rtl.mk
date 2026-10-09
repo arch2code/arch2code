@@ -48,7 +48,7 @@ RTL_SRC_FILES += $(TOP_HDL_SV_WRAPPER_FILE)
 all : lint
 
 lint: gen $(RTL_DOT_F_FILE)
-	verilator  $(VERILATOR_OPTS) $(A2C_LAYER_VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_LINT_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f $(A2C_HDL_ARGS) -f $(RTL_DOT_F_FILE) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(RTL_SRC_FILES)
+	verilator  $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_LINT_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f $(A2C_HDL_ARGS) -f $(RTL_DOT_F_FILE) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(RTL_SRC_FILES)
 
 help::
 	@echo "  all     	- Run all lint checks"

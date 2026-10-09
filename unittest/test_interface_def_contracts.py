@@ -80,10 +80,19 @@ its signalType (`sv_gen_modport_signal_blast` in pysrc/intf_gen_utils.py,
 definition, then `_a2csystem`. A literal SV spelling such as 'bit [7:0]' names
 no type, so it carries no width.
 
+Rule 8 - every isEval hdlparam types at least one signal.
+
+The Verilated bridge takes one positional type per isEval hdlparam, and the
+generator reads that type from the signal the hdlparam types
+(`sc_gen_modport_signal_blast` in pysrc/intf_gen_utils.py). An isEval hdlparam
+no signal names has no such row, so generation stops with a bare KeyError that
+names neither the interface nor its file.
+
 Interface definition files are discovered by walking the interface trees, so a
 newly authored interface is validated without anyone adding it to a list.
 """
 
+import inspect
 import os
 import shutil
 import subprocess
@@ -101,6 +110,7 @@ if base_dir not in sys.path:
 from pysrc.processYaml import projectOpen
 import pysrc.yamlReadCache as yamlReadCache
 from _tmp_helpers import remove_tree
+from test_boundary_signals import BYTE_MASK_ARCH
 
 
 # The shipped interface libraries. `pro` is a separate repository and is absent
@@ -310,6 +320,31 @@ BAD_SIGNAL_TYPE_ARCH_YAML = """interface_defs:
 
 """ + ARCH_YAML
 
+# A definition that breaks the hdlparam usage rule: p_astrb is an isEval
+# hdlparam, but no signal names it as its signalType.
+BAD_UNUSED_HDLPARAM_ARCH_YAML = """interface_defs:
+  bad_unused_hdlparam:
+    parameters:
+      p_a: {datatype: struct}
+    hdlparams:
+      p_astrb: {isEval: True, datatype: integer, value: 'p_a.to_bytes()'}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a']
+      dst:
+        inputs: ['valid', 'sig_a']
+        outputs: ['ready']
+    sc_channel:
+      type: 'bad_unused_hdlparam'
+      multicycle_types: []
+
+""" + ARCH_YAML
+
 PROJECT_YAML = """projectName: {name}
 yamlFormat: 2
 topInstance: uTop
@@ -483,6 +518,35 @@ def signal_type_error(sourceFile, interfaceType, signal, signalType):
         f"simulator boundary pin from that type's width, so a literal SV "
         f"spelling such as 'bit [7:0]' carries no width. Declare a type "
         f"with the width and name it as the signalType in {sourceFile}.")
+
+
+def unused_hdlparam_error(sourceFile, interfaceType, hdlparam):
+    """The message an author sees. It has to be enough on its own.
+
+    It names the file to edit, the hdlparam, and why the generator needs a
+    signal typed by it.
+    """
+    return (
+        f"{sourceFile}: interface_defs '{interfaceType}' isEval hdlparam "
+        f"'{hdlparam}' types no signal. The Verilated bridge takes one type per "
+        f"isEval hdlparam and reads it from the signal that hdlparam types, so "
+        f"generation stops with a bare KeyError. Name '{hdlparam}' as the "
+        f"signalType of the signal it sizes, or remove it, in {sourceFile}.")
+
+
+def check_hdlparam_usage(interfaceDefs, sourceFiles):
+    """Unused isEval hdlparam errors for every definition in sourceFiles."""
+    errors = []
+    for row in interfaceDefs.values():
+        interfaceType = row['interface_type']
+        if interfaceType not in sourceFiles:
+            continue
+        typed = {signalInfo['signalType'] for signalInfo in row['signals'].values()}
+        for hdlparam, hdlparamInfo in (row['hdlparams'] or {}).items():
+            if hdlparamInfo['isEval'] and hdlparam not in typed:
+                errors.append(unused_hdlparam_error(sourceFiles[interfaceType],
+                                                    interfaceType, hdlparam))
+    return errors
 
 
 def check_signal_types(proj, sourceFiles):
@@ -701,6 +765,13 @@ def test_shipped_interface_defs(proj, sourceFiles):
     check(not errors,
           "every shipped interface signal names a width the generator can "
           "resolve")
+
+    print("\n[hdlparam] every isEval hdlparam types at least one signal")
+    errors = check_hdlparam_usage(interfaceDefs, sourceFiles)
+    for error in errors:
+        print(f"  {error}")
+    check(not errors,
+          "every shipped isEval hdlparam types a signal of its interface")
 
 
 def test_misdeclared_interface_is_reported():
@@ -948,6 +1019,60 @@ def test_untyped_signal_is_reported():
         remove_tree(tmpdir)
 
 
+def test_unused_hdlparam_is_reported():
+    """The check fires, and its message stands on its own."""
+    print("\n[negative] an isEval hdlparam that types no signal is reported")
+    try:
+        dbPath, tmpdir = build_database(BAD_UNUSED_HDLPARAM_ARCH_YAML,
+                                        'badUnusedHdlparam')
+    except RuntimeError as exc:
+        check(False, f"mis-declared fixture must build a database: {exc}")
+        return
+    try:
+        proj = projectOpen(dbPath)
+        archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
+        errors = check_hdlparam_usage(proj.data['interface_defs'],
+                                      {'bad_unused_hdlparam': archPath})
+        for error in errors:
+            print(f"  {error}")
+        if len(errors) != 1:
+            check(False, f"exactly one hdlparam usage error is reported, got {len(errors)}")
+            return
+        message = errors[0]
+        check(archPath in message, "the message names the file to edit")
+        check("'bad_unused_hdlparam'" in message, "the message names the interface")
+        check("'p_astrb'" in message, "the message names the hdlparam")
+        check("types no signal" in message, "the message states the violation")
+    finally:
+        remove_tree(tmpdir)
+
+
+def test_unsignalled_parameter_is_accepted():
+    """A required parameter typing no signal breaks no rule."""
+    print("\n[positive] a required parameter that only an hdlparam measures is accepted")
+    try:
+        dbPath, tmpdir = build_database(BYTE_MASK_ARCH, 'unsignalledParam')
+    except RuntimeError as exc:
+        check(False, f"fixture must build a database: {exc}")
+        return
+    try:
+        proj = projectOpen(dbPath)
+        interfaceDefs = proj.data['interface_defs']
+        sourceFiles = {'byte_mask': os.path.join(tmpdir, 'proj', 'arch.yaml')}
+        available = {'proj': proj, 'interfaceDefs': interfaceDefs, 'sourceFiles': sourceFiles}
+        # Every module-level check_* rule, so a new rule is covered unlisted.
+        rules = [fn for name, fn in globals().items() if name.startswith('check_')]
+        errors = []
+        for rule in rules:
+            errors += rule(**{arg: available[arg]
+                              for arg in inspect.signature(rule).parameters})
+        for error in errors:
+            print(f"  {error}")
+        check(not errors, "byte_mask satisfies every interface definition rule")
+    finally:
+        remove_tree(tmpdir)
+
+
 def main():
     print("=" * 72)
     print("TESTING INTERFACE DEFINITION DATA CONTRACTS")
@@ -972,6 +1097,8 @@ def main():
     test_unrecognised_parameter_datatype_is_reported()
     test_default_width_on_required_is_reported()
     test_untyped_signal_is_reported()
+    test_unused_hdlparam_is_reported()
+    test_unsignalled_parameter_is_accepted()
 
     print("\n" + "=" * 72)
     if FAILURES:
