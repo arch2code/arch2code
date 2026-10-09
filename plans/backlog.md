@@ -867,7 +867,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 - The `if data['variants']` branch in `templates/systemc/constructor.py:441` runs only for a block without its own `params:`, and `make db` rejects a variant on such a block (`pysrc/processYaml.py:10508-10514`). The branch never runs.
 - Fix: delete it and keep the single empty-variant registration.
-- Source: found while reviewing `specs/spec-project-composition.md`. Grade: confirmed by reading.
+- Source: found while reviewing `specs/spec-block-registration.md`. Grade: confirmed by reading.
 
 ### K139. Multi-word `regAccess` memory writes differ between RTL and model
 
