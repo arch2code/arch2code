@@ -72,7 +72,7 @@ A missing snapshot exits with `dutRun: no snapshot <binary> for arguments ...`. 
 
 ### 1.5 Generated boundary files
 
-The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<variant>]_hdl_sv_wrapper`). Its pins are flat `bit` and `bit [N-1:0]` ports. Its widths are parameter expressions, which neither `vlogan -sc_model` nor a hand-written foreign module can size. So the generator evaluates them.
+The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<variant>]_hdl_sv_wrapper`). Owner-qualified foreign tops (`<stub>_<label>_hdl_sv_wrapper`) and pair tops (`p<n>_<parentSv>_c<m>_<childSv>_<label>_hdl_sv_wrapper`) are tops too (`specs/spec-verilated-wrappers.md` §2). A top's pins are flat `bit` and `bit [N-1:0]` ports. Each top binds literal parameter values, so its widths are fixed, but they are written as parameter expressions (`specs/spec-verilated-wrappers.md` §5), which neither `vlogan -sc_model` nor a hand-written foreign module can size. So the generator evaluates them.
 
 - `make db` evaluates the width of every parameterizable structure and type at each top's parameter values and stores them in the database.
 - `make gen` runs `arch2code.py --vlBoundary` only when `USE_VCS` or `USE_XCELIUM` is set and the manifest lists HDL tops (`A2C_VL_TOPS`). It writes two whole files per top under `.gen/vl/`, with no user region:

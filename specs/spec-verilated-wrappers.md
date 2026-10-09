@@ -27,7 +27,7 @@ with build targets in `manage-build`.
 | `hasVl` | block row | Selects every wrapper fileMap entry (`cond: {hasVl: true}` or `condAnd: {hasVl: true}`). |
 | `hasOwnParams` | the block declares `params:` (`artifactPaths.blockCondRow`) | Selects the body/top split, the foreign and pair tops, and a Config-templated SC wrapper. |
 | `hasRtl` | block row | Not a condition of any wrapper entry. The wrapper instantiates the block's RTL module (`blockSvModuleName`), so a `hasVl` block needs RTL to verilate. |
-| Standalone variants | `variantSelection.standaloneVariantDescriptors` | The labels the block's owner declares, excluding container-sourced labels. One bare top each. |
+| Standalone variants | `variantSelection.standaloneVariantDescriptors` | Labels declared by the block, or by a container it inherits from through `inheritContainerParam` (`VARIANTSOURCEBLOCKS`), excluding foreign and container-sourced labels. One bare top each. |
 | Foreign variants | `FOREIGNCONFIGHEADERS` (`projectCreate.calcForeignConfigHeaders`) | Labels a project other than the owner declares for the block, excluding container-sourced labels (`vlVariants`). One owner-qualified top each. |
 | Pair registrations | `REGISTRARPAIRS[(parent, child)]['verifRegistrations']` | One concrete Config per parent-child pair and label. Pair-specific rows (container-sourced or `inheritContainerParam`) each get a pair-qualified top. |
 
@@ -40,7 +40,8 @@ a file name.
 ## 2. File set and naming
 
 All entries live in `config/project.yaml` `fileGeneration.fileMap`. `<pfx>` is
-the owning project's `svFilePrefix` (empty by default). Wrapper files go in the
+the owning project's `svFilePrefix` (empty by default), and `<scpfx>` its
+`scFilePrefix`. Wrapper files go in the
 `vl_wrap` segment: `$root/verif/vl_wrap` in the functional layout, `<node>/verif`
 in the hierarchical layout. Registrars go in the `registrar` segment.
 
@@ -50,7 +51,7 @@ in the hierarchical layout. Registrars go in the `registrar` segment.
 | `vlSvWrapBody` | block | `hasOwnParams` and `hasVl` | `<block>_hdl_sv_wrapper.svh` | `<pfx><block>_hdl_sv_wrapper` (body, never a top) |
 | `vlSvWrapForeign` | registrar, per foreign label | `hasOwnParams` and `hasVl` | `<stub>_<label>_hdl_sv_wrapper.sv` in the declaring project | `<pfx><stub>_<label>_hdl_sv_wrapper` |
 | `vlSvWrapPair` | registrar, per pair-specific registration | `hasOwnParams` and `hasVl` | `<child>_<label>_hdl_sv_wrapper.sv` in the pair owner's tree | `p<n>_<parentSv>_c<m>_<childSv>_<label>_hdl_sv_wrapper` |
-| `vlScWrap` | block | `hasVl` | `<block>_hdl_sc_wrapper.h` | `<block>_hdl_sc_wrapper` |
+| `vlScWrap` | block | `hasVl` | `<scpfx><block>_hdl_sc_wrapper.h` | `<block>_hdl_sc_wrapper` (the class takes no prefix) |
 | `blockVlRegistrar` | registrar, per assembler and child | `hasVl` | `<child>VlRegistrar.cpp` | anonymous-namespace registration static |
 
 - `<stub>` is `processYaml.qualifyModuleIdentity(<block>, <declaringProject>)`:
@@ -70,6 +71,12 @@ in the hierarchical layout. Registrars go in the `registrar` segment.
   (`templates/systemVerilog/module_hdl_wrapper.py::render_sv`).
 - A parameterized block whose labels are all container-sourced has no bare
   top. Its pair tops are its only tops.
+- The foreign and pair `.sv` scaffolds carry their own include guards, and the
+  pair scaffold stamps `--mode=pair` (`fileGen.vlSvWrapForeign_sv`,
+  `fileGen.vlSvWrapPair_sv`).
+- `make newmodule` deletes a stale `vl_wrap` file that no row names only when
+  its text outside the generated regions is what the scaffold writes; an edited
+  one is kept with a warning (`newModule.cleanup_stale_vl_wrap_files`).
 - `<child>VlRegistrar.cpp` exists once per (assembling project, child). A
   composing parent therefore carries its own copy for each `hasVl` child it
   instantiates, beside the child's own copy: `examples/simple_ip/registrar/ipVlRegistrar.cpp`
@@ -102,11 +109,13 @@ concrete Config and registers nothing.
 - It imports the Config modules the container imports, so the container's
   `dynamic_pointer_cast` sees the same type.
 - Each registration constructs `<child>_hdl_sc_wrapper<<top>_dut_t, <Config>>`
-  under the factory key (`<child>_verif`, label, factory project). The factory
-  project is the pair's domain `<owner>.<parentModule>.<childModule>` when the
-  child has own params, else the child's owning project. A registration that
-  is not pair-specific is also registered under the child's owning project, so
-  a standalone testbench finds it.
+  when `scWrapperConfigTemplated` holds, otherwise the plain
+  `<child>_hdl_sc_wrapper`, under the factory key (`<child>_verif`, label,
+  factory domain). The factory domain is the pair domain
+  `<owner>.<parentModule>.<childModule>` when the child has own params, else the
+  child-owner domain (the child's owning project). A registration that is not
+  pair-specific is also registered in the child-owner domain, so a standalone
+  testbench finds it.
 
 ## 3. Canonical body
 
@@ -169,7 +178,8 @@ SV spelling is `intf_gen_utils.sv_signal_type`. SystemC bridge spelling is
 
 - A named signal type resolves as a database type, in the interface
   definition's scope and then `_a2csystem` (`projectOpen.signalTypeWidth`).
-- An `isEval` hdlparam is evaluated at `make db`. Over fixed payloads it gives
+- An `isEval` hdlparam is evaluated when the wrapper and boundary files are
+  generated, from the widths `make db` stored in `VLTOPS`. Over fixed payloads it gives
   an integer. Over a parameterizable payload it names that payload, and the
   pin is sized by the payload's byte count at each top
   (`processYaml.intfEvalPayload`). Evaluating an unbound optional parameter is
@@ -198,12 +208,15 @@ carries it, and the body carries none.
 | `<child>VlRegistrar.cpp` | the project that owns the assembling parent |
 
 - A foreign top is placed under the declaring project's lowest-sorted
-  container of the child (`entry['parentKey']`), in that project's layout.
+  reachable container of the child (`entry['parentKey']`), in that project's
+  layout. When the declaring project reaches no container of the child,
+  `parentKey` falls back to the child, and the foreign top lands in the child
+  owner's tree.
   Any build that reaches the declaration in scope uses that top: in
   `examples/ip_test`, root `ip_top.uIp1` and `ipBridge.uBridgeIp1` both run on
   `ipBridge_ip_variant1_hdl_sv_wrapper`.
-- Bare tops and `standaloneVariants` hold only the owner's own,
-  non-container-sourced labels. A label declared elsewhere never adds a bare
+- Bare tops and `standaloneVariants` hold only non-foreign, non-container-sourced
+  labels of the block or of a container it inherits from. A label declared elsewhere never adds a bare
   top or a file to the owner's tree, so the reused project stays unchanged
   when a composing build generates.
 - A build regenerates only the wrapper files it owns. Child-owned tops are
@@ -222,7 +235,7 @@ carries it, and the body carries none.
 | `A2C_VL_TOPS` | Every Verilated top name: one per `.sv` wrapper row of a `vl` build-group segment, block and registrar mode, any owner. |
 | `A2C_VL_SV_<top>` | The physical `.sv` holding that top. Two tops can name one file. |
 | `A2C_VL_PORTMAP_<top>` | `.gen/vl/<top>.portmap`. |
-| `A2C_VL_TOP_<block>` | The DUT top for that block name: the bare top at its instance's label. It is written for the top block when `hasVl` and for each direct child with `hasVl`. |
+| `A2C_VL_TOP_<block>` | The DUT top for that block name: the bare top at its instance's label. Considered for the top block when `hasVl` and for each direct child with `hasVl`, and written only when a block-mode row matches the instance's label. A direct child at a foreign label (a registrar-mode top) gets no entry, so `make lint` on it fails. The map is keyed by block, so two instances of one block resolve to the last one's label. |
 | `A2C_VL_WRAP_DIRS` | Every `vl_wrap` directory, used as `+incdir` and `-I`. |
 | `A2C_VL_REGISTRAR_SRC` | The compiled `VlRegistrar.cpp` files. |
 | `A2C_CPP_EXCLUDE_FILES` | Registrar TUs recorded but not compiled (section 6). |
@@ -246,8 +259,15 @@ file name with `$(notdir)` or a pattern.
 `arch2code.py --vlBoundary` (`pysrc/vlBoundaryGen.py::vlBoundaryGen`) writes
 `.gen/vl/<top>.portmap` and `.gen/vl/<top>_xcelium.h` for every manifest top,
 from `getVlTopBoundaryPins`. `make gen` runs it only under `USE_VCS` or
-`USE_XCELIUM` when `A2C_VL_TOPS` is non-empty. File formats and the simulator
-flows are in `specs/SIMULATOR_INTEGRATION.md` §1.5.
+`USE_XCELIUM` when `A2C_VL_TOPS` is non-empty. Under `SKIP_GEN` the boundary
+files still rebuild, because the VCS port maps (`include/make/a2c-vcs.mk`) and
+the registrar objects of the Xcelium flow (`include/make/a2c-xrun.mk`) depend on
+`VL_BOUNDARY_STAMP`. File formats and the simulator flows are in
+`specs/SIMULATOR_INTEGRATION.md` §1.5.
+
+A top re-verilates when any of its SV inputs changes: the files listed in
+`A2C_SV_DEP_FILES`, the files Verilator's `-MMD` record names, and the verilate
+command line recorded in `VL_OPTS_STAMP` (`include/make/a2c-vl-wrap.mk`).
 
 ## 8. Selecting a Verilated instance
 
@@ -256,7 +276,8 @@ flows are in `specs/SIMULATOR_INTEGRATION.md` §1.5.
   that instance, the factory looks up `<block>_verif` under the container's
   factory key and builds the registered wrapper. The instance and its subtree
   run as RTL. A path that matches no instance fails with `Unknown instance`.
-- `make run VL_DUT=1` passes `--vlInst $(HDL_TOP_MODULE)`. Projects add
+- `make run VL_DUT=1` passes `--vlInst $(HDL_TOP_MODULE)`; the rule comes from
+  the create-once rundir `Makefile` (`templates/fileGen/scaffold.py`). Projects add
   targets for other instances, such as `run-vl-ip1` and `run-vl-uBridgeIp1` in
   `examples/ip_test/rundir/Makefile`.
 - `make lint` (`include/make/a2c-rtl.mk`) lints the top named by
@@ -276,5 +297,5 @@ flows are in `specs/SIMULATOR_INTEGRATION.md` §1.5.
 | `examples/simple_ip` | A composing parent's registrar copy for a reused child's bare top |
 | `examples/hierVlDemo` | Hierarchical layout with a single non-parameterized top |
 | `examples/pySocket` | Two `A2C_VL_TOP_<block>` entries, functional layout (`verif/vl_wrap/`) |
-| `examples/xprojParam/rtInh`, and `examples/inhTandem` in A2C Pro | Pair tops sharing a file with the bare top |
+| `examples/xprojParam/rtInh`, `builder/pro/examples/inhTandem` | Pair tops sharing a file with the bare top |
 | `unittest/fixtures/vl-boundary-widths` | Every top shape and signal form (`test_vl_boundary_widths_build.py`) |

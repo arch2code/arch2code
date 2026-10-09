@@ -30,8 +30,8 @@ taught by `rules/skills/systemc-core.md` (block files), `rules/skills/verify-tes
 | `testBench` | `tb/<block>/<block>Testbench.cppm` | module unit | Imports the External; imported by a `Config.cpp` that names the top. |
 | `tbConfig` | `tb/<block>/<block>Config.cpp` | translation unit | User code in it interleaves `#include` and `import`, which only a plain TU allows. Nothing imports it. |
 | `blockVlRegistrar` | `registrar/<child>VlRegistrar.cpp` | translation unit | Includes the simulator-generated DUT headers, chosen per simulator by the preprocessor. |
-| `vlScWrap` | `<vl_wrap>/<block>_hdl_sc_wrapper.h` | header | The Verilator boundary: included next to the textual Verilated model headers by the VlRegistrar TUs. |
-| `socketCatalog` | `base/<block>SocketCatalog.h` | header | Shared C++/Python name catalog. |
+| `vlScWrap` | `<vl_wrap>/<block>_hdl_sc_wrapper.h` | header | The Verilator boundary: included next to the textual Verilated model headers by the VlRegistrar TUs. It carries `import <B>.base;`, so only a plain TU can include it. |
+| `socketCatalog` | `base/<block>SocketCatalog.h` and `.py` | header + Python | Shared C++/Python name catalog. |
 | `includeFW` (opt-in) | `<context>IncludesFW.h` / `.cpp` | header + TU | Firmware must build with C toolchains; it is never a module. The entry is commented out in the base fileMap and a project declares it. |
 | `tandem` (builder/pro) | `base/<block>Tandem.h` / `.cpp` | header + TU | Self-contained: only its own `.cpp` includes its header. |
 
@@ -73,8 +73,9 @@ the file stem (`<stub>VariantConfig.cppm`) and the struct stem (`<stub>Config`,
 `<stub><Variant>Config`, `processYaml.configStructName`). A project that declares variants of
 another project's block gets its own Config module for that block.
 
-The registrar module is one per (owning project, child). The parent-specific factory domains
-(`<owner>.<parent B>.<child B>`) are registration keys inside it, not module names.
+The registrar module is one per (owning project, child). The pair domains
+(`<owner>.<parent B>.<child B>`) are factory domains of the registrations inside it, not module
+names.
 
 Examples from the tree:
 
@@ -307,16 +308,16 @@ sits in an anonymous namespace; it only runs its static initialiser.
 [tbConfig --section=registration]    register_<block>Config() and its A2C_REGISTRATION_RETAIN static
 ```
 
-- `prerequisites` exists for the user-owned bodies, not the generated lines: `final()` reads
-  `endOfTestState`, and user code names the DUT's Config types. Both imports are therefore
-  generated, and the region carries no other content.
+- The two imports exist for the user-owned bodies: `final()` reads `endOfTestState`, and user
+  code names the DUT's Config types. The includes (`<string>`, `instanceFactory.h`,
+  `testBenchConfigFactory.h`) serve the generated class and registration.
 - `createTbTop()` returns `instanceFactory::createInstance("", "tb", "<block>Testbench", "",
   "<project>")`. The project name in the factory key is emitted on every `make gen`, so it always
   matches the Testbench registration.
 - `registration` follows the class, so `is_default_testbench_v` sees the complete type,
   including a user-supplied `isDefaultTestBench` marker. `A2C_REGISTRATION_RETAIN`
-  (`common/systemc/instanceFactory.h`) keeps the static alive under direct `.o` linking; a
-  static archive still needs whole-archive linking.
+  (`common/systemc/instanceFactory.h`) protects the static only against dead-code elimination
+  and `--gc-sections`; a static archive still needs whole-archive linking.
 
 ## 9. Where the user-facing rules live
 

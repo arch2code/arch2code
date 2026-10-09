@@ -64,18 +64,22 @@ Value.
    type is a function of the container's Config, so the container names the concrete class as
    the template argument of `instanceFactory::createInstance` and forwards its own runtime
    variant label in place of a child label. The registry key is (child block, that forwarded
-   label, the pair-qualified domain). An exact match, which is how a Verilated or tandem
+   label, the pair domain). An exact match, which is how a Verilated or tandem
    replacement registered per container variant is found, wins. Otherwise, when the model is
    requested, the class named at the site is constructed. A Verilated or tandem request with
    no exact match falls back to the label-less registration or fails. A child that names no
    variant therefore has an identity at the factory: its container's.
 5. A variant is owned by the project that declares it. Its identity is (block, variant,
-   declaring project), its name carries the project, and the declaring project emits it without
-   touching another project's artefacts. Artefacts named by label alone, the bare
-   `<block>_<label>` HDL wrapper and registration and the block's standalone-variant map, hold
-   the block owner's declarations only, excluding labels whose values come from a container.
-   A non-owner declaration is served by its project-qualified top and Config, so one label
-   declared by two projects in one build is not a conflict.
+   declaring project), its name carries the project (dropped when the block name already leads
+   with it), and the declaring project emits it without touching another project's artefacts.
+   The bare `<block>_<label>` HDL wrapper and the block's standalone-variant map hold the block
+   owner's declarations only, excluding labels whose values come from a container. A non-owner
+   declaration is served by its project-qualified top and Config, so one label declared by two
+   projects in one build is not a conflict. The factory registration in the child-owner
+   domain, whose key names no declaring project, is per assembling project: each assembler
+   registers there every label it instantiates, including one another project declares, and
+   when two assemblers in one build bind one label to different Configs the first registration
+   to run wins (`specs/spec-block-registration.md` §5).
 6. Any project may declare a variant of any block visible to it, whether or not it owns the
    block, including a definitions-only project. "Owns the block" means the project owning the
    block's declaring file, not the file holding its `ipParameters`; a declaration by the block's
@@ -336,7 +340,8 @@ mapping form.
 ### 3.1 The C++ Config structs
 
 Each declared variant of a block, and the block's default, produces one `Config` whose members
-are that block's parameters. Its name carries the project that declares it (rule 5). It takes one of two forms,
+are that block's parameters. Its name carries the project that declares it (rule 5), except
+that a block name already leading with that project is not prefixed again. It takes one of two forms,
 and the variant's own bindings decide which:
 
 - **Every parameter bound to a value** produces a plain struct of resolved numbers.
@@ -348,12 +353,12 @@ The leaf IP's own project emits its default and its `dflt` variant. Both bind ev
 parameter, so both are plain structs:
 
 ```cpp
-struct xpDpLeaf_xpDpLeafDefaultConfig {
+struct xpDpLeafDefaultConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 
-struct xpDpLeaf_xpDpLeafDfltConfig {
+struct xpDpLeafDfltConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
@@ -472,7 +477,8 @@ and reject and what each message says.
 - A parameter inside a variant may be bound to a value, or sourced from a parameter of the
   block that contains the instance.
 - A block's owner may declare a variant labelled `default`. It is then the block's default
-  Config, spelled `<project>_<block>DefaultConfig`, and no separate default is emitted for that
+  Config, spelled `<project>_<block>DefaultConfig` (`<block>DefaultConfig` when the block name
+  leads with the project), and no separate default is emitted for that
   block; its bound values are what the default carries.
 - The child's parameter and the container's parameter need not share a name.
   `DP_ALGO: { containerParam: MID_ALGO }` is an ordinary shape, not a workaround.
