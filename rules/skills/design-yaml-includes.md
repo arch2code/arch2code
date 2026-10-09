@@ -79,7 +79,7 @@ Code in `ip_top`'s blocks then uses module `common_shared_types` and namespace `
 
 *   One physical file provides each `projectName`. Two paths that open the same `projectName`, such as a vendored symlink and the real tree, stop `make db` until an ancestor project file selects one with `projectOverrides: { <projectName>: <path to its project file> }`. The highest ancestor's choice wins, so each level keeps the overrides its own standalone build needs.
 *   A file belongs to the project that lists it directly in `projectFiles:`. Otherwise it belongs to the project that reaches it at the greatest depth from the root. When two projects reach it at the same depth, `make db` names the file and both projects. List the file in the owner's `projectFiles:`.
-*   Only the root project's `topInstance` is built. A child's own testbench top, its `cpu` and its connections are parsed, but they get no address, no router slot, no `rtl.f` entry and no compiled RTL.
+*   Only the root project's `topInstance` is built. A child's own testbench top, its `cpu` and its connections are parsed and addressed, but not placed: they get no router slot, no `rtl.f` entry and no compiled RTL.
 *   Generate each child before its parent. A parent compiles child files but never regenerates them. Migrate bottom-up: run `make migrate` in each child's `rundir/` first, again after every builder update, then in the parent.
 
 The rules are in `builder/base/specs/spec-project-composition.md`.

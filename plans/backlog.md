@@ -875,12 +875,6 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - The SystemC `hwMemoryPort::cpu_write` does a read-modify-write of the whole row on every 32-bit word (`common/systemc/hwMemory.h:258-275`), and `hwMemory::cpu_write` updates the row in place per word (`:81-92`). A tandem comparison or a model-side observer can therefore see a partly written row between the word writes.
 - Source: found while updating `rules/skills/design-register-decode.md` during the plans cleanup. Grade: confirmed by reading.
 
-### K139. Multi-word memory row writes differ between RTL and model
-
-- The RTL handler stages the lower words of a `regAccess` memory row and writes the whole row when firmware writes the highest word (`rules/skills/rtl-registers.md` section 7). The SystemC `hwMemoryPort::cpu_write` in `common/systemc/hwMemory.h` does a read-modify-write of each 32-bit word as it arrives.
-- A tandem comparison or a model-side observer can see a partly written row between the word writes; the RTL never exposes one.
-- Source: found while updating `rules/skills/design-register-decode.md` during the plans cleanup. Grade: confirmed by reading.
-
 ## Feature requests
 
 These stay off branch 155 (decision D12).

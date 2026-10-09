@@ -537,7 +537,7 @@ files.
 
 Crucially, ownership is not merely a skip flag. It is an **identity axis inside
 composite keys**: address groups are keyed `(owningProject, group)`, foreign
-Config headers `(owningProject, child)`, the SystemC instance factory
+Config headers `(declaringProject, child)`, the SystemC instance factory
 `Key{blockType, variant, projectName}`, and per-variant Config semantic identity
 `(projectName, block, variant)`.
 
@@ -653,10 +653,11 @@ compatibility gate compares.
 `pysrc/evalPyToSv.py` is **one-time migration tooling**, not part of emission: it
 rewrites legacy Python `eval:` strings in YAML into the SV subset, using Python's
 own `ast` as the front end and applying targeted text spans so untouched text
-stays byte-identical. It refuses two cases rather than guessing:
-`real`-typed evals, and `//` floor division (which floors toward −∞ where SV `/`
-truncates toward zero, so a blind rewrite would silently corrupt the ceiling
-idiom `-(-a//b)`).
+stays byte-identical. It reports `NEEDS_MANUAL` rather than guessing for four
+cases: real-valued evals; `//` floor division (which floors toward −∞ where SV
+`/` truncates toward zero, so a blind rewrite would silently corrupt the ceiling
+idiom `-(-a//b)`); `**`; and any other construct outside the subset, such as
+`and`/`or`, `x if c else y`, or a call or attribute other than `.bit_length()`.
 
 ### The two container-inheritance mechanisms
 

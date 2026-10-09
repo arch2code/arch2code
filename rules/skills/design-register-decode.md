@@ -345,7 +345,9 @@ gives the fix for each error.
 
 ## 7. Unmapped and out-of-range accesses
 
-Every access completes with PSLVERR low. The value depends on who answers:
+Generated handlers and the router's unmapped response tie PSLVERR low. A
+hand-written leaf behind `registerPorts:` can raise it, and the router forwards
+it upstream. The read value depends on who answers:
 
 *   **An address space no instance fills.** The router answers. Reads return
     `32'hBADD_C0DE` and writes are dropped.
