@@ -30,7 +30,7 @@ public:
     // GENERATED_CODE_END
     // block implementation members
 
-    void checkForwardedReg(void);
+    void test_reg_cpu_rwg(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -55,15 +55,12 @@ blockGLeaf::blockGLeaf(sc_module_name blockName, const char * variant, blockBase
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    SC_THREAD(checkForwardedReg);
+    ADD_TEST(test_reg_cpu_rwg);
 };
 
-void blockGLeaf::checkForwardedReg(void)
+void blockGLeaf::test_reg_cpu_rwg(void)
 {
-    testController &controller = testController::GetInstance();
-    std::string test_rwg = "test_reg_cpu_rwg";
-    controller.register_test_name(test_rwg);
-    controller.wait_test(test_rwg, sc_core::sc_time(1, sc_core::SC_NS));
+    wait(1, SC_NS);
 
     // Block until the parameterized reg-handler forwards rwG over its status
     // channel: proves the whole path APB -> hwRegisterIf handler -> status_out ->
@@ -79,7 +76,5 @@ void blockGLeaf::checkForwardedReg(void)
                                   static_cast<uint32_t>(packed)), LOG_ALWAYS);
         errorCode::fail("blockGLeaf did not receive forwarded rwG value");
     }
-
-    controller.test_complete(test_rwg);
 }
 

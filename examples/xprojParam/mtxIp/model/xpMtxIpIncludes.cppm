@@ -81,7 +81,7 @@ struct miSrcLitSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miSrcLitSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = mark;
         _ret |= (uint32_t)data << (8 & 31);
         _ret |= (uint32_t)tag << (20 & 31);
@@ -160,7 +160,7 @@ struct miSrcParSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miSrcParSt_v<MI_SRC_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -172,11 +172,11 @@ struct miSrcParSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (miMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (miMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (miSrcPixelT_v<MI_SRC_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (MI_SRC_WIDTH)) - 1));
+        data = (miSrcPixelT_v<MI_SRC_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (MI_SRC_WIDTH))));
         _pos += MI_SRC_WIDTH;
-        tag = (miTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (miTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<miSrcParSt_v<MI_SRC_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -251,7 +251,7 @@ struct miDstLitSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miDstLitSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = mark;
         _ret |= (uint32_t)data << (8 & 31);
         _ret |= (uint32_t)tag << (20 & 31);
@@ -330,7 +330,7 @@ struct miDstParSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miDstParSt_v<MI_DST_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -342,11 +342,11 @@ struct miDstParSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (miMarkT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (miMarkT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (miDstPixelT_v<MI_DST_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (MI_DST_WIDTH)) - 1));
+        data = (miDstPixelT_v<MI_DST_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (MI_DST_WIDTH))));
         _pos += MI_DST_WIDTH;
-        tag = (miTagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (miTagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<miDstParSt_v<MI_DST_WIDTH>::_bitWidth> sc_pack(void) const
     {

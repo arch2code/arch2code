@@ -36,15 +36,21 @@ typedef struct packed {
 } aRegSt;
 
 typedef struct packed {
-    u8T fa; //[7:0] - byte 0-2
-    u16T fb; //[23:8] - byte 3-4
+    u8T fa; //[23:16] - byte 2
+    u16T fb; //[15:0] - bytes 0-1
 } un0BRegSt;
 
 typedef struct packed {
-    u8T fa; //[7:0] - byte 0-3
-    u32T fb; //[39:8] - byte 4-7
-    u8T fc; //[47:40] - byte 8-11
+    u8T fa; //[47:40] - byte 5
+    u32T fb; //[39:8] - bytes 1-4
+    u8T fc; //[7:0] - byte 0
 } un0ARegSt;
+
+typedef struct packed {
+    u8T fa; //[31:24] - byte 3
+    u16T fb; //[23:8] - bytes 1-2
+    u8T fc; //[7:0] - byte 0
+} un0ExtRegSt;
 
 typedef struct packed {
     aSizeT index; //

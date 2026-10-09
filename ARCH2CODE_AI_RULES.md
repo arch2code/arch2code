@@ -1,6 +1,5 @@
 # Arch2Code AI Agent Rules and Guidelines
 
-**Version:** 1.0  
 **Purpose:** Enable AI agents to assist users in creating YAML architecture files and implementing SystemVerilog/SystemC modules using the arch2code toolchain.
 
 **Documentation References:**
@@ -36,7 +35,7 @@
 **ALWAYS use make targets for code generation:**
 - ✅ `make gen` - Generate code from YAML
 - ✅ `make db` - Update project database
-- ✅ `make newmodule` - Create new module
+- ✅ `make newmodule` - Create missing implementation files (never YAML)
 - ✅ `make clean` - Clean generated files
 - ✅ `make help` - View all available targets
 
@@ -53,17 +52,15 @@ The make targets ensure proper environment setup, dependency management, and pro
 
 ```
 project_root/
-├── arch/
-│   └── yaml/
-│       ├── project.yaml          # Main project configuration
-│       ├── config/
-│       │   └── addressControl.yaml
-│       └── module/
-│           └── module.yaml       # Module architecture
-├── model/                        # SystemC implementation
-├── rtl/                          # SystemVerilog implementation
+├── prj/yaml/my_chipProject.yaml  # Project file
+├── yaml/my_chip.yaml             # Design YAML of the root node
+├── model/ rtl/ base/ tb/ verif/ fw/ registrar/   # Generated beside the node's YAML
+├── include/make/
+├── rundir/Makefile
 └── Makefile
 ```
+
+`arch2code.py --newproject` writes this hierarchical layout. A project file that sets no `fileGeneration.layout` gets the functional layout instead. See "Directory Structure Mapping" below and `setup-project.md`.
 
 ### Essential YAML Elements
 
@@ -71,7 +68,7 @@ project_root/
 # Constants
 constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size in words"}
-  ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
+  ADDR_WIDTH: {eval: '$clog2($BUFFER_SIZE)', desc: "Address width"}
 
 # Types
 types:
@@ -183,24 +180,24 @@ graph LR
 The project file is the entry point that orchestrates all architecture files.
 
 **Required Fields:**
+- `yamlFormat: 2`: `arch2code.py --newproject` writes it. If `make db` stops and asks for it, follow `migrate-project.md`.
 - `projectName`: Unique identifier for the project
 - `projectFiles`: List of architecture YAML files to include
-- `topInstance`: Name of the top-level instance (root of hierarchy)
-- `dirs`: Directory structure mapping
+- `topInstance`: Name of the top-level instance (root of hierarchy). A definitions-only project omits it
+- `dirs`: Directory structure mapping. Only `root` is required. The other segments come from the base config
 
 **Optional Fields:**
 - `dbSchema`: Custom schema file path
-- `addressControl`: Legacy address control configuration file
-- `instanceGroups`: Project-level ID enumeration groups; preferred over
-  legacy `addressControl.yaml` `InstanceGroups` for new work
-- `addressObjects`: Project-level register and memory packing policy;
-  preferred over legacy `addressControl.yaml` `AddressObjects` for new work
+- `instanceGroups`: Declares the names an instance's `instGroup:` may use
+- `addressObjects`: Register and memory packing policy. A project with any register or `regAccess` memory needs it. See `manage-address-space.md`
 - `templates`: Custom template mappings (overrides defaults from builder/base/config/project.yaml)
 - `fileGeneration`: File generation template configuration
+- `svFilePrefix`, `scFilePrefix`, `fwFilePrefix`: Filename prefixes for the project's SV, SystemC and firmware files. See `setup-project.md`
 
 #### Complete Example
 
 ```yaml
+yamlFormat: 2
 projectName: my_design
 
 projectFiles:
@@ -209,24 +206,15 @@ projectFiles:
   - subsystem_b/subsystem_b.yaml
 
 dbSchema: config/schema.yaml  # Optional custom schema
-addressControl: config/addressControl.yaml  # Optional legacy address control
 
 topInstance: top_tb
 
 dirs:
-  root: ../..                      # Required: project root
-  base: $root/base                 # Base classes
-  model: $root/model               # SystemC models
-  rtl: $root/rtl                   # SystemVerilog RTL
-  vl_wrap: $root/verif/vl_wrap     # Verilator wrappers
-  tb: $root/tb                     # Testbenches
-  fwInc: $root/fw/include          # Firmware includes (if needed)
+  root: ../..                      # Required: project root. Other segments come from the base config
 
-# Preferred project-level address-policy sections
+# Project-level address-policy sections
 instanceGroups:
-  all_instances:
-    varType: global_inst_id_t
-    enumPrefix: GID_
+  all_instances: {}
 
 addressObjects:
   memories:
@@ -241,7 +229,7 @@ addressObjects:
 # fileGeneration:
 #   fileMap:
 #     includeFW: {name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, langDomain: fw, desc: "FW includes"}
-#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, langDomain: sc, desc: "Address defines"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: fwInc, langDomain: fw, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
@@ -252,30 +240,26 @@ addressObjects:
 - `$a2c` is automatically defined and points to the arch2code installation directory
 - **File generation defaults are inherited** from `builder/base/config/project.yaml` - no need to define fileMap unless customizing
 - Add `fileGeneration.fileMap.includeFW` only if your project needs firmware header files, and `fileGeneration.fileMap.regAddresses` only if it needs per-product address defines. Both ship commented out in `builder/base/config/project.yaml`
-- Prefer `project.yaml` `instanceGroups:` and `addressObjects:` for new
-  address-policy rows. Legacy `addressControl.yaml` rows are still accepted;
-  this path is expected to be deprecated, and if both spellings exist, they
-  must match exactly.
 
 ### Architecture Files
 
-Architecture files contain the actual design definitions. They can be organized hierarchically.
+Architecture files contain the actual design definitions. They can be split across several files.
 
 #### File Organization Strategies
+
+Both trees below use the functional layout, with every YAML file under `arch/yaml/`. In the hierarchical layout each node keeps its YAML in `<node>/yaml/` instead (`setup-project.md`).
 
 **Strategy 1: Monolithic (Simple Projects)**
 ```
 arch/yaml/
 ├── project.yaml
-├── config/                    # Optional legacy address-control files
 └── design.yaml  # All architecture in one file
 ```
 
-**Strategy 2: Hierarchical (Recommended for Large Projects)**
+**Strategy 2: Multi-file (Recommended for Large Projects)**
 ```
 arch/yaml/
 ├── project.yaml
-├── config/                    # Optional legacy address-control files
 ├── shared_types.yaml        # Common types shared across modules
 ├── top_level.yaml           # Top-level connections
 ├── subsystem_a/
@@ -311,14 +295,19 @@ structures:
 **AI Agent Guidance:**
 - Use relative paths in `include` statements
 - Paths are resolved relative to the including file's location
-- Avoid circular includes
+- Each YAML file is its own context, and `include:` only makes names visible. Nothing is inlined
+- A file sees itself, the files it includes, and the files those include. Nothing deeper is visible, so list every file whose names you use rather than relying on a chain
+- The order of the `include:` list does not matter. Inside one file, declare a name in an earlier section than its use
+- `projectFiles:` lists the entry files and adds no visibility. A child project opens only through the parent's `projectFiles:`. Naming a project file in `include:` stops `make db`
+- A circular include stops `make db`
 - Place shared types in dedicated files for reusability
+- See `design-yaml-includes.md` for the module and package names each file generates
 
 ---
 
 ## Low-Level Architecture Elements
 
-**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:` (and `registerConnections:` when used). Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks below may stay expanded so every key is easy to scan.
+**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:` (and `registerConnections:` when used). Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches the examples under `builder/base/examples/`. Field-catalog Syntax blocks below may stay expanded so every key is easy to scan.
 
 All types, consts, structs should be managed in the yaml, not in the user code
 
@@ -348,14 +337,14 @@ constants:
 1. **Naming Convention**: Use UPPER_CASE_WITH_UNDERSCORES
 2. **Value or Eval**: Must specify either `value` OR `eval`, not both
 3. **Description**: Required for documentation
-4. **Math Expressions**: Supports `+`, `-`, `*`, `/`, parentheses
+4. **SystemVerilog Expressions**: `eval` is a SystemVerilog constant expression. It accepts SV integer literals (`255`, `8'hFF`, `'b1010`), `+ - * / %`, `& | ^ ~`, `<< >>`, comparisons, `?:`, `$clog2(...)`, `$NAME` and parentheses. `/` is integer division and truncates toward zero. Full grammar and semantics: `builder/base/specs/spec-eval-expressions.md`
 5. **References**: Use `$CONSTANT_NAME` to reference other constants
-6. **Python Expressions**: Eval is based on std Python methods like `.bit_length()`
+6. **Rejected Syntax**: `make db` rejects anything outside this grammar, including `**` and C-style `0x` literals. Write hex as `'h`
 7. **Parameterizable Maximums**: Use `maxValue` for constants whose value can vary per instance or variant
    - `maxValue` must be a positive integer and must be greater than or equal to the nominal `value`
-   - A constant declared under `ipParameters.constants` is parameterizable and must provide `maxValue` unless it is derived from another parameterizable constant
-   - A regular constant can also be marked parameterizable with `isParameterizable: true` or by providing a non-zero `maxValue`
-   - For `eval` constants that reference parameterizable constants, arch2code auto-derives `maxValue`; do **not** hand-write `maxValue` on those derived constants
+   - Declare a parameterizable constant under `ipParameters.constants`. It must provide `maxValue` unless it is derived from another parameterizable constant
+   - `maxValue` or `isParameterizable: true` on a regular constant also makes it parameterizable, so leave both off regular constants
+   - For `eval` constants that reference parameterizable constants, arch2code auto-derives `maxValue`, and `make db` rejects one written by hand
 
 #### Examples
 
@@ -365,24 +354,20 @@ constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size in words"}
   
   # Calculated from another constant
-  BUFFER_ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width for buffer"}
+  BUFFER_ADDR_WIDTH: {eval: '$clog2($BUFFER_SIZE)', desc: "Address width for buffer"}
   
   # Arithmetic expressions
   TOTAL_SIZE: {eval: '$BUFFER_SIZE * 2', desc: "Double buffer size"}
   
   # Complex expression
   FIFO_DEPTH: {eval: '($BUFFER_SIZE + 15) / 16', desc: "FIFO depth in 16-word blocks"}
-
-  # Direct parameterizable constant
-  DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
-
-  # Derived parameterizable constant; maxValue is auto-derived as 32
-  DATA_WIDTH_X2: {eval: '$DATA_WIDTH * 2', desc: "Double data width"}
 ```
+
+Parameterizable constants belong under `ipParameters:`. See "Parameterizable IP Parameters" below.
 
 **AI Agent Guidance:**
 - When a user asks for a configurable size, create a constant
-- Use `.bit_length()` to calculate address widths: `(SIZE-1).bit_length()`
+- Use `$clog2(SIZE)` to calculate the address width that indexes `SIZE` entries
 - For power-of-2 checks or calculations, constants are essential
 - Always add clear descriptions for maintainability
 
@@ -397,7 +382,6 @@ types:
   type_name:
     width: <number_or_constant>          # Required if no enum; auto-calculated if enum provided
     # OR widthLog2 / widthLog2minus1
-    maxBitwidth: <worst_case_bit_width>  # Required for direct parameterizable types
     desc: "<description>"                # Required
     enum:                                # Optional
       - {enumName: <NAME>, value: <number>, desc: "<description>"}
@@ -407,7 +391,7 @@ types:
 
 1. **Naming Convention**: Use snake_case ending with `_t` (e.g., `byte_t`, `status_t`)
 2. **Width**: 
-   - **Required** for non-enum types (error if omitted)
+   - Every non-enum type needs one of `width`, `widthLog2` or `widthLog2minus1` (error if all are omitted)
    - **Auto-calculated** for enum types (calculated from largest enum value)
    - Can be a number or reference a constant name directly
    - `widthLog2` stores the bit width needed for values up to the referenced size
@@ -416,9 +400,9 @@ types:
 4. **Enum Naming**: Use UPPER_CASE for enumeration names
 5. **Description**: Required for all types and enum values
 6. **Parameterizable Maximums**:
-   - Use `maxBitwidth` when a type has a literal width but can vary by instance
    - If the type width references a parameterizable constant, arch2code auto-derives `maxBitwidth`
-   - A type declared under `ipParameters.types`, or with `isParameterizable: true`, must have either an explicit `maxBitwidth` or a width expression that references a parameterizable constant
+   - A type declared under `ipParameters.types` with a literal width must have an explicit `maxBitwidth`
+   - `maxBitwidth` or `isParameterizable: true` makes a type parameterizable, so leave both off regular types
    - `maxBitwidth` must be greater than or equal to the resolved nominal width
 
 #### Examples
@@ -440,15 +424,10 @@ types:
     desc: "Main datapath width"
 
   # Type whose nominal and maximum width come from a parameterizable constant
+  # (IP_DATA_WIDTH is declared under ipParameters)
   ip_data_t:
-    width: DATA_WIDTH
+    width: IP_DATA_WIDTH
     desc: "Per-instance data word"
-
-  # Direct parameterizable type with literal nominal width
-  ip_literal_t:
-    width: 8
-    maxBitwidth: 16
-    desc: "Literal-width type with larger worst-case width"
   
   # Type with enumeration
   opcode_t:
@@ -470,7 +449,7 @@ types:
 
 **AI Agent Guidance:**
 - For FSM states or command opcodes, always use enumerations
-- **Width is mandatory** for non-enum types - omitting it will cause an error
+- **Every non-enum type needs one of `width`, `widthLog2` or `widthLog2minus1`**. Omitting all three is an error
 - For enum types, width is auto-calculated from the largest enum value (can be omitted)
 - Enum values can be non-contiguous (e.g., 0x00, 0x01, 0xFF)
 - All types should be defined in the YAML, not in the code
@@ -556,7 +535,7 @@ structures:
 
 ### Parameterizable IP Parameters
 
-Use `ipParameters` in an IP block's own YAML file when constants or types can vary per instance/variant. The section delegates to the existing `constants` and `types` schemas, then marks those entries as parameterizable.
+Use `ipParameters` when constants or types can vary per instance/variant. Declare `ipParameters` in the block's own file or in a file it sees through `include:`. Its entries take the same fields as `constants:` and `types:`, and arch2code marks them parameterizable.
 
 ```yaml
 ipParameters:
@@ -579,31 +558,29 @@ ipParameters:
 #### Rules
 
 1. `ipParameters` may contain `constants`, `types`, or `_mapto` aliases such as `enums`.
-2. `ipParameters` belongs in the IP-root YAML file that declares the block, not in a shared include file that only defines common constants/types/structures.
+2. `ipParameters` may sit in any file the block's file sees through `include:`: the block's own file, or a definitions-only file that several IPs include. A file with no regular `constants:`, `types:`, `enums:` or `structures:` entry gets no context module, so its `ipParameters:` types get no model declaration. Give such a file at least one regular entry (`design-parameterizable-blocks.md`).
 3. Direct parameterizable constants require `maxValue`; direct parameterizable types require `maxBitwidth`.
 4. Derived constants/types inherit parameterizability when they reference parameterizable constants.
 5. `blocks.<block>.params` lists the names that can be bound per variant under the top-level `parameters:` section.
-6. A `params` entry can be backed by an `ipParameters` constant, or it can be a pure block parameter with values supplied only in `parameters:`.
+6. Each `params` entry must resolve to exactly one visible parameterizable constant declared without `eval`, normally under `ipParameters:`. `make db` rejects a name with no backing constant.
 
 ```yaml
 blocks:
   ip:
     desc: "Parameterized IP"
-    params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+    params: [IP_DATA_WIDTH, IP_MEM_DEPTH]
 
 parameters:
   ip:
     variant0:
       IP_DATA_WIDTH: 8
       IP_MEM_DEPTH: 16
-      IP_NONCONST_DEPTH: 24
     variant1:
       IP_DATA_WIDTH: 12
       IP_MEM_DEPTH: 8
-      IP_NONCONST_DEPTH: 12
 ```
 
-`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants. A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
+If `IP_MEM_DEPTH` is used as memory `wordLines`, the address map reserves the backing constant's `maxValue` (32) in every variant, not the largest variant binding. `make db` rejects a variant that binds a parameter above its `maxValue`. A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file. An instance's `variant:` resolves through the file holding the instance row, the files it includes, and the files those include, and exactly one of them must declare that label.
 
 ---
 
@@ -615,16 +592,16 @@ Interfaces define the communication protocol and data structures between block i
 
 ### Available Interface Types
 
-Based on `builder/interfaces/` directory:
+Based on the `builder/base/interfaces/` directory (`lmmi` is in `builder/pro/interfaces/` and needs A2C Pro):
 
 | Interface Type | Protocol | Use Case |
 |---------------|----------|----------|
 | `rdy_vld` | Ready-valid handshaking | Streaming data, backpressure support |
 | `req_ack` | Request-acknowledge bidirectional | Command-response protocols |
-| `push_ack` | Valid-acknowledge (push) | FIFO writes, one-way flow control |
-| `pop_ack` | Ready-acknowledge (pop) | FIFO reads, consumer-driven |
+| `push_ack` | Push-acknowledge | FIFO writes, one-way flow control |
+| `pop_ack` | Pop-acknowledge | FIFO reads, consumer-driven |
 | `apb` | AMBA APB (ARM standard) | Memory-mapped register access |
-| `lmmi` | Lattice Memory Mapped Interface | Simple memory-mapped access |
+| `lmmi` | Lattice Memory Mapped Interface (A2C Pro only) | Simple memory-mapped access |
 | `axi4_stream` | AXI4-Stream | High-performance streaming |
 | `axi_read` | AXI4 read channel | Memory read transactions |
 | `axi_write` | AXI4 write channel | Memory write transactions |
@@ -632,7 +609,7 @@ Based on `builder/interfaces/` directory:
 | `notify_ack` | Notify-acknowledge | Event notifications |
 | `memory` | Memory interface | SRAM/ROM access |
 | `external_reg` | External register | Register access |
-| `raw` | Handshake-less data bus (**last resort**) | Legacy / external boundary pinouts only |
+| `raw` | Handshake-less data bus (**last resort**) | External boundary pinouts only |
 
 ### Interface Definition Syntax
 
@@ -726,11 +703,11 @@ interfaces:
 #### push_ack (Push-Acknowledge)
 
 **Signals:**
-- `vld`: Valid signal
-- `data`: Data payload
-- `ack`: Acknowledge signal
+- `push`: Push signal, from the source
+- `data`: Data payload, from the source
+- `ack`: Acknowledge signal, from the destination
 
-**Protocol:** Source pushes when valid, destination acknowledges.
+**Protocol:** Source pushes a transaction, destination acknowledges.
 
 **Example:**
 ```yaml
@@ -745,11 +722,11 @@ interfaces:
 #### pop_ack (Pop-Acknowledge)
 
 **Signals:**
-- `rdy`: Ready signal
-- `rdata`: Read data
-- `ack`: Acknowledge signal
+- `pop`: Pop request, from the source
+- `ack`: Acknowledge signal, from the destination
+- `rdata`: Read data, from the destination
 
-**Protocol:** Destination requests when ready, source acknowledges with data.
+**Protocol:** Source requests with `pop`, destination acknowledges with data.
 
 **Example:**
 ```yaml
@@ -765,7 +742,7 @@ interfaces:
 
 **`raw` is supported but is an interface of last resort.** Prefer `rdy_vld`,
 `push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at
-design **boundaries** when adapting to **legacy / external IP** whose pinout is
+design **boundaries** when adapting to **external IP** whose pinout is
 a free-running data bus with **no ready/valid/ack wires** (validity is usually
 encoded in the payload, e.g. CSI-style `fv`/`lv`). Do **not** use `raw` for new
 internal pipeline links between arch2code blocks.
@@ -786,9 +763,11 @@ internal pipeline links between arch2code blocks.
 **Why it is problematic (even though supported):**
 1. No hardware backpressure — flow control cannot be expressed on the interface.
 2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
-3. `raw_channel` drives both handshake directions off one `sc_event`. `write()`
-   returns only once the consumer has taken the value, so no beat is lost, but
-   each side is woken once more per beat than a two-event channel would need.
+3. `raw_channel` drives both handshake directions off one `sc_event`, unless
+   the reader passes its own event to `setExternalEvent()`, which then carries
+   "value written". `write()` returns only once the consumer has taken the
+   value, so no beat is lost. On the single-event path each side is woken once
+   more per beat than two events would need.
 4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
 5. Easy to misuse in place of `status` or a real streaming protocol.
 
@@ -797,25 +776,25 @@ internal pipeline links between arch2code blocks.
 interfaces:
   csi_video_in:
     interfaceType: raw
-    desc: "Legacy CSI-2 pixel bus at the chip/IP boundary"
+    desc: "External CSI-2 pixel bus at the chip/IP boundary"
     structures:
       - {structure: video_csi_t, structureType: data_t}
 ```
 
 **AI Agent Guidance:**
 - For streaming data with backpressure, use `rdy_vld`
-- For register access, use `apb` or `lmmi`
+- For register access, use `apb` (or `lmmi` with A2C Pro)
 - For command-response patterns, use `req_ack`
 - For FIFO-like interfaces, use `push_ack` (write) and `pop_ack` (read)
 - Prefer `rdy_vld` / `push_ack` / `pop_ack` / `axi4_stream` for new streams
-- Use `raw` only at chip/IP boundaries to match legacy handshake-less pinouts
+- Use `raw` only at chip/IP boundaries to match external handshake-less pinouts
 - Do not use `raw` between new arch2code blocks; convert to a handshaked
   protocol at the first internal hop
 - Do not confuse `raw` with `status` (same wires; different SystemC semantics)
 - If proposing `raw`, confirm with the user that a handshaked protocol is
   impossible for that boundary
 - The `structureType` must match what the interface definition expects
-- Check `builder/interfaces/<type>/<type>_if.yaml` for structureType requirements
+- Check `builder/base/interfaces/<type>/<type>_if.yaml` for structureType requirements
 
 ---
 
@@ -850,12 +829,12 @@ blocks:
    - `hasTb: true`: Generate testbench skeleton
    - RTL hierarchy is closed: if a parent block has `hasRtl: true`, every block instantiated inside it must also have `hasRtl: true`. A `hasRtl: false` child is only valid under a model-only parent.
 4. **Special Flags**:
-   - `isRegHandler: true`: Marks a synthesised register handler block. It is set automatically on the `<blockname>_regs` blocks.
+   - `isRegHandler: true`: Marks a synthesised register handler block. It is set automatically on the generated handler blocks (`<blockname>` plus `fileGeneration.regBlockNaming.blockSuffix`, default `_regs`).
    - **Do not manually set** `isRegHandler` - a block that sets `isRegHandler: true` is rejected
 5. **Parameters**:
    - `params` names block parameters that can be bound by variant under the project-level `parameters:` section
-   - Parameters that affect type widths, structure widths, or memory depth should be declared in `ipParameters` when they have a backing constant/type
-   - Pure block parameters are allowed for variant-bound values that do not have a backing constant; when used as memory `wordLines`, address sizing uses the maximum bound value across variants
+   - Each parameter must be backed by exactly one visible parameterizable constant, normally declared in `ipParameters`. `make db` rejects a parameter with no backing constant
+   - When a parameter is used as memory `wordLines`, address sizing uses the backing constant's `maxValue`, and `make db` rejects a variant that binds it above that `maxValue`
 6. **Default Values** (from schema):
    - `hasRtl`: defaults to `true` (most blocks have RTL)
    - `hasMdl`: defaults to `true` (most blocks have model)
@@ -913,7 +892,7 @@ blocks:
 - Keeping RTL without VL is allowed but unusual; leave `hasVl: false` only for intentional no-wrapper cases. Auto-generated register handlers are the normal RTL/no-VL exception
 - Set `hasTb: true` on the **DUT block** (not on the `_tb` wrapper block). This triggers generation of `*Testbench`, `*External`, and `*Config` files. The `_tb` wrapper block itself has `hasTb: false`
 - Use `params` for values that will be assigned by variant under `parameters:`
-- **Block register handlers are auto-generated**: If a block has registers or FW-accessible memories, arch2code automatically creates a `<blockname>_regs` block to handle register access within that block
+- **Block register handlers are auto-generated**: In a project with at least one `addressBlock:` router, each reachable block that has registers or FW-accessible memories gets a generated handler block, `<blockname>` plus `fileGeneration.regBlockNaming.blockSuffix` (default `_regs`, `Regs` in the examples). The handler always has RTL. It has a model only when the owning block has children. A leaf block's own model holds its registers and the generated `regHandler` thread
 
 ### Instances
 
@@ -926,15 +905,14 @@ instances:
   instance_name:
     container: <parent_block_name>
     instanceType: <block_name>
-    instGroup: <group_name>      # Optional, for ID enumeration
-    addressGroup: <addr_group>   # Optional, required if block has addressable elements
-    addressID: <number>          # Optional, auto-assigned if omitted
+    instGroup: <group_name>      # Optional; must name a group declared in instanceGroups:
+    addressGroup: <addr_group>   # Set on an instance a router dispatches to (see Rules)
     addressMultiples: <number>   # Optional, defaults to 1
     variant: <variant_name>      # Optional, for variant-specific parameters
-    color: <color_name>          # Optional, for visualization (not fully functional)
-    count: <number>              # Optional, defaults to 1 (not fully supported yet)
-    offset: <number>             # Optional, defaults to 0 (overridden by address generation)
+    color: <color_name>          # Optional, for visualization
 ```
+
+`addressID` and `offset` are computed by address generation, in instance order within each address group. A value written in YAML is overwritten, so leave both out.
 
 #### Rules
 
@@ -942,15 +920,13 @@ instances:
 2. **Container**: Must reference a defined block
 3. **Instance Type**: Must reference a defined block
 4. **Self-Referential**: Top-level can have `container` = `instanceType`
-5. **Instance Groups**: Optional grouping for ID enumeration generation
-6. **Address Groups**: Required for blocks with registers, or memories with FW access
-7. **Unique Names**: All instance names must be unique across the entire project
+5. **Instance Groups**: Optional grouping. An `instGroup:` naming a group not declared in `instanceGroups:` fails `make db`
+6. **Address Groups**: An instance a router dispatches to carries `addressGroup:` set to the router's `addressBlock.addressGroup`: a leaf that owns registers or `regAccess` memories, the outermost passthrough container, or a nested-router host. A register consumer inside a passthrough container carries none, and `make db` rejects one that does (`design-register-decode.md` §1)
+7. **Unique Names**: All instance names must be unique across the entire project. An instance name must also differ from every clock, reset, port, register, memory and connection channel of its container block, because the generated module and class declare them in one scope
 8. **Optional Fields**:
    - `variant`: Use with parameterized blocks (see parameters section)
    - `addressMultiples`: Use when block needs multiple address spaces (large memories)
-   - `count`: Not fully supported yet - defaults to 1
-   - `offset`: Not recommended - let arch2code auto-generate addresses
-   - `color`: For visualization only (not fully functional)
+   - `color`: For visualization only
 
 #### Examples
 
@@ -964,8 +940,8 @@ instances:
   
   u_memory: {container: top, instanceType: ram_block, instGroup: main}
   
-  # Memory-mapped register block
-  u_control_regs: {container: top, instanceType: control_registers, instGroup: peripherals, addressGroup: system_addr_space, addressID: 0x0}  # Explicit address ID
+  # Memory-mapped register block, served by the router of group system_addr_space
+  u_control_regs: {container: top, instanceType: control_registers, instGroup: peripherals, addressGroup: system_addr_space}
   
   # Instance with multiple address spaces
   u_dma: {container: top, instanceType: dma_controller, instGroup: peripherals, addressGroup: system_addr_space, addressMultiples: 4}  # Allocates 4 address spaces
@@ -978,12 +954,12 @@ instances:
 
 **AI Agent Guidance:**
 - Always create a top-level instance first (self-referential)
-- Use `instGroup` to organize instances for ID enumeration generation
-- Set `addressGroup` for any block that has registers or FW-accessible memories
-- Let `addressID` auto-assign unless specific ordering is required
+- Use `instGroup` only with a group declared in `instanceGroups:`
+- Set `addressGroup` on each instance a router dispatches to, as Rule 6 describes
+- Do not write `addressID` or `offset`. Address generation assigns them in instance order
 - Use hierarchical instances to mirror the physical design hierarchy
 - **The register-bus decoder/router is a generated block** — declare it as a block with a populated `addressBlock:` and instance it in the container of the leaves it serves; its RTL comes from the `apbDecodeModule` template (`make newmodule` selects it automatically). Do not hand-author a top-level decoder.
-- **Block-level register handlers** (e.g., `u_<blockname>_regs`) are auto-generated - don't create these
+- **Block-level register handlers** (e.g., `u_<blockname>_regs`, suffix from `fileGeneration.regBlockNaming.blockSuffix`) are generated. Do not create them.
 - A routed leaf instance names the serving router's address group via `addressGroup:`; the register-bus fan-out below the primary router is synthesized. See the "Register/Memory Decode" skill (`design-register-decode.md`).
 
 ---
@@ -1015,7 +991,7 @@ connections:
 
 1. **Interface**: Must reference a defined interface
 2. **Source/Destination**: Must reference valid instances in the SAME container
-3. **Direction**: Source is typically "master" or "producer", destination is "slave" or "consumer"
+3. **Direction**: Source is the producer or initiator, destination is the consumer or target. They bind the interface's `src` and `dst` modports
 4. **Optional Fields Purpose**:
    - `name`: Use when multiple connections use same interface (for disambiguation)
    - `srcport`/`dstport`: Use when you need different port names at each end
@@ -1205,7 +1181,7 @@ Need to connect two instances?
 | Source Port | `srcport` → `name` → `interface` |
 | Destination Port | `dstport` → `name` → `interface` |
 | Channel/Interface Instance | `interfaceName` → `srcport` → `name` → `interface` |
-| Internal Port (via connectionMap) | `instancePort` (if specified) |
+| Internal Port (via connectionMap) | `instancePort` → `name` → `interface` |
 
 **Common Patterns**
 
@@ -1243,31 +1219,33 @@ registers:
 1. **Register Types**:
    - `rw`: Read-write register
    - `ro`: Read-only register (status)
-   - `ext`: External register (control handled by user logic, eg for registers that create actions on write)
+   - `ext`: External register (control handled by user logic, eg for registers that create actions on write). Its structure is at most 32 bits wide, the register bus width, and `make db` rejects a wider one, checking a parameterizable structure at its `maxBitwidth`
    - `memory`: Memory-style register with `wordLines` and `addressStruct`
 2. **Block**: The block that owns this register
 3. **Structure**: Data structure defining register fields
-4. **Memory Register Depth**: For `regType: memory`, `wordLines` may be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
-5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users
+4. **Memory Register Depth**: For `regType: memory`, `wordLines` is a literal integer or a constant
+5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users. A parameterizable `rw` or `ro` register decodes every word of that allocation in every variant, in the RTL and the model. Words above the bound variant's width read 0 and drop writes
 6. **Description**: Required for documentation
 
 #### Automatic Block-Level Register Handler Generation
 
-**Important:** When you define registers for a block OR when a block has firmware-accessible memories (`regAccess` set), arch2code automatically generates:
+**Important:** In a project with at least one `addressBlock:` router, each block reachable from a router that defines registers OR has firmware-accessible memories (`regAccess` set) gets a generated handler:
 
-1. **Register Handler Block**: A block named `<blockname>_regs`
-   - Example: If block is `dma_controller` → `dma_controller_regs`
-   - Example: If block is `uart` → `uart_regs`
+1. **Register Handler Block**: A block named `<blockname>` plus `fileGeneration.regBlockNaming.blockSuffix`, which defaults to `_regs`. The examples set `blockSuffix: 'Regs'`.
+   - Example: If block is `dma_controller` → `dma_controller_regs` with the default suffix
    - Generated for blocks with:
      - One or more registers defined
      - One or more memories with `regAccess` set (FW accessible)
    - This block handles register read/write operations within that specific block
+   - The handler always has RTL. It has a model only when the owning block has children. A leaf block's own model holds its `hwRegister` members and the generated `regHandler` thread
 
-2. **Purpose**: The `<blockname>_regs` block:
+2. **Purpose**: The handler block:
    - Decodes register addresses within the block's address space
    - Handles register read/write logic
    - Connects to the block's internal registers/memories
-   - Is automatically instantiated within the parent block
+   - Is automatically instantiated within the owning block
+
+A project with registers but no `addressBlock:` router gets no handler.
 
 **What This Means:**
 - You **do not** need to manually create `<blockname>_regs` blocks in your YAML
@@ -1291,8 +1269,10 @@ register-bus fan-out below it.
    container block.
 
 3. **Routed Leaves**: a block that owns registers or `regAccess` memories
-   (or authors `registerPorts:`) is a routed leaf. Tag the leaf **instance**
-   with `addressGroup:` naming the serving router's `addressBlock.addressGroup`.
+   (or authors `registerPorts:`) is a register consumer. Tag the instance the
+   router dispatches to with `addressGroup:` naming the serving router's
+   `addressBlock.addressGroup`. Inside a passthrough container only the
+   outermost container instance carries it.
 
 For the full decode decision rule (where registers/memories live, nested
 routers, container blocks that own registers), see the **Register/Memory Decode**
@@ -1378,7 +1358,7 @@ blocks:
   dma_controller_regs:
     desc: "Register handler for dma_controller"
     hasRtl: true
-    hasMdl: true
+    hasMdl: false       # dma_controller is a leaf, so its own model handles registers
     isRegHandler: true  # Special flag (set automatically)
 
 # AUTO-GENERATED: the dma_controller_regs instance inside dma_controller, the
@@ -1394,22 +1374,20 @@ blocks:
 
 ### Register Connections
 
-When a block is instantiated multiple times, register connections specify which instance owns each register.
+A register connection wires a register the container block owns to one of its child instances. The child reads an `rw` register and drives an `ro` register. An `ext` or `memory` register reaches the child as a `dst` port, as `rw` does.
 
 ```yaml
 registerConnections:
-  - {register: <register_name>, block: <block_name>, instance: <instance_name>}
+  - {register: <register_name>, block: <owning_container_block>, instance: <child_instance>}
 ```
 
-**Example:**
+**Example** (`examples/mixed`: container `blockB` owns `rwD` and forwards it to its child `uBlockF0`):
 ```yaml
 registers:
-  - {register: config, regType: rw, block: uart, structure: uart_config_t, desc: "UART configuration"}
+  - {register: rwD, regType: rw, block: blockB, structure: dRegSt, desc: "A Read Write register"}
 
 registerConnections:
-  - {register: config, block: uart, instance: u_uart_0}
-  
-  - {register: config, block: uart, instance: u_uart_1}
+  - {register: rwD, block: blockB, instance: uBlockF0}
 ```
 
 ### Memory Definitions
@@ -1443,7 +1421,7 @@ memories:
    - `portRportW`: read-only port A, write-only port B
    - `register`: Register-based memory (flops)
 2. **regAccess**: the firmware access mode. `rw` (or `true`) lets firmware read and write, `ro` only read, `wo` only write. Any other value is an error.
-   - **Triggers automatic `<blockname>_regs` generation** (just like registers)
+   - **Triggers automatic register handler generation** (just like registers)
    - Memory becomes memory-mapped via register interface
    - The block-level register handler manages both registers and memories
    - The handler takes one port. Among the ports that support the mode it prefers the one whose capability matches the mode exactly. If two ports are still left, it takes port B. `portRportW` with `rw` has no supporting port and is an error
@@ -1455,9 +1433,10 @@ memories:
 6. **Structure**: Data structure defining memory data format
 7. **addressStruct**: Address structure for memory addressing
 8. **wordLines**: Number of addressable locations
-   - May be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
-   - If the structure or `wordLines` is parameterizable, address allocation uses worst-case sizing (`maxBitwidth`, `maxValue`, or max bound variant value)
-   - Misspelled or out-of-scope bare names are errors; arch2code does not search unrelated YAML contexts for `wordLines`
+   - May be a literal integer, a constant, an `ipParameters` constant, or a block parameter listed in `blocks.<block>.params`
+   - If the structure or `wordLines` is parameterizable, address allocation uses worst-case sizing: the structure's `maxBitwidth`, and the `maxValue` of the constant that `wordLines` names or that backs the block parameter. `make db` rejects a variant that binds the parameter above that `maxValue`
+   - Every variant uses one row stride, the worst-case row width in bytes rounded up to a power of two, at least 4. Row N is at `base + N * stride` in the RTL and the model. Bytes of a row above the bound variant's width read 0 and drop writes
+   - `wordLines` resolves only through the declaring file and the files it sees through `include:`. A misspelled or out-of-scope name is an error
 
 #### Example with Firmware Access
 
@@ -1472,164 +1451,86 @@ memories:
   # Parameterized FW-accessible memory
   - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized IP memory", regAccess: true}  # Uses IP_MEM_DEPTH.maxValue for address sizing
 
-  # Pure block-param wordLines; sizing uses max variant binding
-  - {memory: ip_nonconst_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_NONCONST_DEPTH, desc: "Memory depth supplied only by parameters variants", regAccess: true}
-
   # Local flop-based memory (no FW access)
   - {memory: fifo_storage, block: fifo, structure: fifo_entry_t, addressStruct: fifo_addr_t, wordLines: 16, desc: "FIFO storage", local: true, regAccess: false}  # No FW access, internal only
 ```
 
 **Important:** When `regAccess` is set:
-- Arch2code automatically generates the `<blockname>_regs` block (just like for registers)
-- The `<blockname>_regs` block handles both register and memory access for that block
+- Arch2code automatically generates the block's register handler (just like for registers)
+- The handler handles both register and memory access for that block
 - The memory becomes memory-mapped and accessible via the register bus interface
-- The instance must have `addressGroup` set, naming a serving router's `addressBlock.addressGroup`
+- The instance a router dispatches to must have `addressGroup` set, naming the serving router's `addressBlock.addressGroup`
 - `regAccess` (with `local:` absent) is the single switch for FW-accessible memory; the serving router is a generated `addressBlock:` block (see the Register/Memory Decode skill)
 
-### Address Policy and Address Control
+### Address policy
 
-Address configuration has two accepted sources:
+Address configuration comes from two places:
 
-- `project.yaml` owns reusable address-policy sections for new and
-  migrated projects: `instanceGroups:` and `addressObjects:`.
-- Legacy `addressControl.yaml` still owns `AddressGroups:` and
-  `RegisterBusInterface:`, and may still carry `InstanceGroups:` and
-  `AddressObjects:` until a project migrates those sections. When both
-  spellings carry an address-policy section, the rows must match
-  exactly.
-- The legacy `addressControl.yaml` path is supported during migration
-  but is expected to be deprecated. Prefer the per-block schema and
-  project-level address-policy fields for new work.
+- Each router block's `addressBlock:` declares one address group. See `design-register-decode.md` §6.
+- The project file's `instanceGroups:` and `addressObjects:` sections set the address policy. See `manage-address-space.md`.
 
-#### AddressGroups
-
-Address groups define hierarchical address spaces. Legacy projects
-author these rows in `addressControl.yaml`; projects migrating to the
-per-block register-bus schema author equivalent router-local
-`addressBlock:` rows instead.
+#### addressBlock
 
 ```yaml
-AddressGroups:
-  group_name:
-    addressIncrement: <bytes>
-    maxAddressSpaces: <count>
-    varType: <type_name>
-    enumPrefix: <PREFIX_>
-    decoderInstance: <decoder_instance_name>
-    primaryDecode: <true|false>
+blocks:
+  apb_decode:
+    desc: "APB register decoder"
+    addressBlock:
+      addressGroup: system          # instances it dispatches to name this in addressGroup:
+      addressIncrement: 0x01000000  # bytes per address space, a power of two
+      maxAddressSpaces: 16          # a power of two
+      varType: system_addr_id_t     # generated address-ID enum type
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: apbReg          # the addressBus interface feeding this router
+      registerDecoderPort: apbReg   # downstream register-bus port name
 ```
 
 **Fields:**
-- `addressIncrement`: Byte spacing between instances (e.g., 0x00100000)
-- `maxAddressSpaces`: Maximum number of addressable instances
-- `varType`: Generated enumeration type name
-- `enumPrefix`: Prefix for enumeration constants
-- `decoderInstance`: **(legacy `addressControl.yaml` only)** names the router instance for this group. In the per-block schema this is not authored: the router is the block whose `addressBlock.addressGroup` equals this group, and routed leaves select it via their instance `addressGroup:`.
-- `primaryDecode`: **(legacy only)** True for root address space. In the per-block schema the primary router is inferred by hierarchy walk (the one router not nested under another).
-
-**Example:**
-```yaml
-AddressGroups:
-  system:
-    addressIncrement: 0x01000000  # 16MB spacing
-    maxAddressSpaces: 16
-    varType: system_addr_id_t
-    enumPrefix: SYSTEM_ADDR_
-    decoderInstance: u_system_decoder  # legacy: names the router instance
-    primaryDecode: true
-  
-  peripheral:
-    addressIncrement: 0x00010000  # 64KB spacing
-    maxAddressSpaces: 32
-    varType: periph_addr_id_t
-    enumPrefix: PERIPH_ADDR_
-    decoderInstance: u_periph_decoder  # legacy: names the router instance
-    primaryDecode: false
-```
-
-**Important Note on the per-block schema (`addressBlock:`):**
-- `AddressGroups:`, `decoderInstance:`, and `primaryDecode:` belong to the
-  **legacy** `addressControl.yaml` path. For new work, do not author them.
-- Instead, declare a router block with `addressBlock:` (its `addressGroup` field
-  is the group name), and the router's RTL is generated from `apbDecodeModule`.
-- The router instance and the leaves it serves must share a container; leaves
-  select the group via their instance `addressGroup:`. See the Register/Memory
-  Decode skill (`design-register-decode.md`).
-- `<blockname>_regs` is always auto-generated per routed leaf — never author it.
+- `upstreamPort` and `registerDecoderPort` default to `apbReg`.
+- Optional `clock:` and `reset:` name the router's bus clock and reset from the block's own `clocks:` and `resets:`. Without them the router uses the block's default clock and its selected reset. A router declares at most one clock.
+- A block declaring `addressBlock:` must not also declare `registerPorts:`, and owns no registers or `regAccess` memories.
+- An instance's `addressGroup:` resolves only within the project that owns the file declaring the instance. Within one project, one router block at most may declare a group name.
+- `varType:` and `enumPrefix:` must be unique across the whole build, even across projects. In a reusable IP, qualify both by the declaring project.
+- The primary router is the one not nested in another router's scope. Nothing in YAML marks it.
 
 #### instanceGroups
 
-Instance groups provide ID enumeration without address space allocation.
+`instanceGroups:` declares the names an instance's `instGroup:` may use. An `instGroup:` naming an undeclared group fails `make db`. Its `varType:` and `enumPrefix:` keys have no effect.
 
 ```yaml
 instanceGroups:
-  group_name:
-    varType: <type_name>
-    enumPrefix: <PREFIX_>
+  top: {}
 ```
-
-**Example:**
-```yaml
-instanceGroups:
-  top:
-    varType: inst_id_t
-    enumPrefix: INST_ID_
-```
-
-Use this top-level `project.yaml` spelling for new work. Legacy
-`addressControl.yaml` `InstanceGroups:` rows use the same body shape.
 
 #### addressObjects
 
-Address objects control the ordering and alignment of memory-mapped elements.
+`addressObjects:` places each block's registers and `regAccess` memories at offsets inside the block's address space. A project with any register or `regAccess` memory needs it. Without it every object keeps offset 0, and the model asserts on the overlap.
 
-```yaml
-addressObjects:
-  object_type:
-    alignment: <memsize|bytes>
-    sizeRoundUpPowerOf2: <true|false>
-    sortDescending: <true|false>
-```
-
-**Example:**
 ```yaml
 addressObjects:
   memories:
     alignment: memsize  # Align to memory size
     sizeRoundUpPowerOf2: true
     sortDescending: true  # Largest first
-  
+
   registers:
     alignment: 8  # 8-byte alignment
     sortDescending: true
 ```
 
-Use this top-level `project.yaml` spelling for new work. Legacy
-`addressControl.yaml` `AddressObjects:` rows use the same body shape.
-
-#### RegisterBusInterface
-
-Specifies the interface used for register access in the legacy
-`addressControl.yaml` path. In the per-block schema, leaf
-`registerPorts:` and router `addressBlock:` declarations provide the
-register-bus surface instead.
-
-```yaml
-RegisterBusInterface: <interface_name>
-```
-
-**Example:**
-```yaml
-RegisterBusInterface: cpu_apb_reg
-```
+- Key order sets placement. Within each block, offsets start at 0 and the first key's objects take the low offsets.
+- `alignment` is a byte count, or `memsize` for memories to align each memory to its own size. Pair `memsize` with `sizeRoundUpPowerOf2: true`.
+- `sizeRoundUpPowerOf2` rounds a memory's size up to a power of two, at least 4 bytes.
+- `sortDescending` places the largest objects first. Without it, objects keep their declaration order.
+- A `regType: memory` register is placed with the `registers` key but takes its alignment and rounding from the `memories` row, so a project with one needs both rows.
 
 **AI Agent Guidance:**
 - For multi-level decode, use **nested routers**: a second `addressBlock:` block
-  inside a container that is itself a routed leaf of the parent router (two
-  address groups). The nested feed is auto-wired — see `design-register-decode.md`.
+  inside a container that the parent router serves. The container instance
+  carries the parent router's group and must not own registers or `regAccess`
+  memories. The nested feed is auto-wired. See `design-register-decode.md` §1.
 - Use `memsize` alignment for memories to enable lower-bit internal decode
-- Instance groups are useful for error reporting and debug ID assignment
-- **The decoder is a generated `addressBlock:` block** — declare and instance it
+- **The decoder is a generated `addressBlock:` block**. Declare and instance it
   in the container of the leaves it serves; its RTL and the register-bus fan-out
   below it are synthesized. Do not hand-author a decoder or its bus connections
   (beyond the single upstream feed into the primary router).
@@ -1643,7 +1544,7 @@ the framework synthesises the RTL and the bus fan-out.
 ```
 CPU → [Router (addressBlock:)] → [Block-Level Handler] → Registers/Memories
       (GENERATED block,            (AUTO-GENERATED,
-       apbDecodeModule RTL)         <blockname>_regs)
+       apbDecodeModule RTL)         <blockname> + blockSuffix)
 
       apb_decode                   dma_controller_regs
       (you DECLARE addressBlock:)  (arch2code creates this)
@@ -1667,18 +1568,18 @@ synthesized.
 - **Example**: block `apb_decode` (`addressBlock:`), instance `u_apb_decode`.
 
 #### Level 2: Block-Level Register Handler (AUTO - Arch2code Creates)
-- **Name Pattern**: `<blockname>_regs`
+- **Name Pattern**: `<blockname>` plus `fileGeneration.regBlockNaming.blockSuffix` (default `_regs`, `Regs` in the examples)
 - **Purpose**: Handles register/memory access within a specific block's address space
 - **Arch2code Automatically**:
-  - Creates the `<blockname>_regs` block
-  - Instantiates it within the parent block
+  - Creates the handler block
+  - Instantiates it within the owning block
   - Wires it to the block's registers and memories
   - Emits the router→leaf dispatch connection
-- **Triggered By**:
+- **Triggered By** (in a project with at least one `addressBlock:` router):
   - Registers defined for the block, **or**
   - Memories with `regAccess` set for the block
-  - (register-only blocks DO get a synthesizable `_regs`)
-- **Example**: `dma_controller_regs`, `uart_regs`
+- **RTL and model**: the handler always has RTL. It has a model only when the owning block has children. A leaf block's own model runs the generated `regHandler` thread
+- **Example**: `dma_controller_regs` with the default suffix, `blockBRegs` in `examples/mixed`
 
 #### Complete Flow Example
 
@@ -1753,12 +1654,24 @@ dirs:
   rtl: $root/rtl                   # SystemVerilog RTL
   vl_wrap: $root/verif/vl_wrap     # Verilator wrappers
   tb: $root/tb                     # Testbenches
-  fwInc: $root/fw/includes         # Firmware includes
+  fwInc: $root/fw/include          # Firmware includes
+  registrar: $root/registrar       # Block registration files
 ```
+
+These are the base defaults from `builder/base/config/project.yaml`, so a project file needs only `root`.
 
 **Macros:**
 - `$root`: References the `root` directory
 - `$a2c`: Auto-defined, points to arch2code installation
+
+#### Layout
+
+`fileGeneration.layout` picks where generated files go.
+
+- **`functional`** is the base default, used by a project file that sets no layout. Each `dirs:` segment has one root under the project root, and files inside it mirror the YAML file's directory relative to the project file.
+- **`hierarchical`** is opt-in. Generated files sit beside the YAML of each node: a file at `<node>/yaml/<file>.yaml` generates into `<node>/model/`, `<node>/rtl/`, `<node>/base/` and so on. `arch2code.py --newproject` writes `layout: hierarchical` into the new project file.
+
+To move a functional project to the hierarchical layout, follow `migrate-project.md` Section 7. `setup-project.md` describes both layouts.
 
 ### File Generation Configuration
 
@@ -1802,18 +1715,18 @@ fileGeneration:
       name: "regAddresses",
       ext: {hdr: "h"},
       mode: project,
-      basePath: model,
-      langDomain: sc,
+      basePath: fwInc,
+      langDomain: fw,
       desc: "Per-project instance and register address defines"
     }
 ```
 
 **Notes:**
 - The `includeFW` mapping generates a header and a source file (`<context>IncludesFW.{h,cpp}`) in the `fwInc` directory (typically `$root/fw/include`)
-- `smartInclude: true` means files are only created if there is register or memory content to export
+- `smartInclude: true` creates a context's files only when the context has types, structures or constants. These come from `types:` (or its alias `enums:`), `structures:` and `constants:`, from `encoders:`, and from the address enum of a router's `addressBlock:`, which lands in the router block's own YAML file. A context whose YAML holds only registers, memories or `ipParameters:` gets no file. The default `include` (`Includes.cppm`) and `package` (`_package.sv`) entries follow the same rule
 - `mode: context` generates one file per YAML file (not per block)
 - `mode: project` generates exactly one file for the whole product, keyed to its top context
-- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`
+- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`axi4sRegAddresses` in `examples/axi4sDemo`). `basePath:` picks the segment, commonly `model` or `fwInc`. The default entry uses `fwInc` with `langDomain: fw`, next to `includeFW`
 - Both are commented out by default in `builder/base/config/project.yaml`
 
 #### Custom Copyright Statement
@@ -1827,24 +1740,24 @@ fileGeneration:
 
 **AI Agent Guidance:**
 - **Do NOT define full fileMap sections** - use defaults from `builder/base/config/project.yaml`
-- **Only add `includeFW`** if the project needs firmware header files
+- Add `includeFW` only for firmware headers, and `regAddresses` only for per-product address defines
 - For other customizations, consult `builder/base/config/project.yaml` for the complete reference
 - The defaults handle all standard SystemC, SystemVerilog, Verilator, and testbench file generation
 
 ### Post-Processing
 
-Optional post-processing scripts run after YAML parsing.
+Post-processing scripts run after YAML parsing. The base config lists:
 
 ```yaml
 postProcess:
+  - $a2c/config/postParseRegisterPorts.py
   - $a2c/config/postParseChecks.py
-  - $a2c/config/postParseRegister.py
 ```
 
 **AI Agent Guidance:**
 - Use post-processing for validation and consistency checks
 - Standard post-processors are in `$a2c/config/`
-- Custom post-processors can be added for project-specific validation
+- `postProcess:` merges with `list_override`, so a project list replaces the base list. A project that sets `postProcess:` must list the base scripts too
 
 ---
 
@@ -1852,34 +1765,8 @@ postProcess:
 
 ### Code Generation Workflow
 
-**Step 0: Create New Modules (If Needed)**
-
-**⚠️ CRITICAL:** When adding new blocks or YAML files, use `make newmodule` - do NOT create files manually.
-
-```bash
-make newmodule
-```
-
-This interactive tool will:
-- Prompt for module name and location
-- Create properly structured YAML file in `arch/yaml/`
-- Generate file skeletons for implementation (`.h`, `.cpp`, `.sv`)
-- Update project structure with correct naming conventions
-- Ensure consistency with existing project organization
-
-**DO NOT manually create:**
-- New YAML files in `arch/yaml/`
-- New block definitions from scratch
-- Implementation file skeletons
-
-Manual creation bypasses:
-- Naming convention enforcement
-- Directory structure rules
-- File template application
-- Project database synchronization
-
 **Step 1: Modify YAML Architecture Files**
-- Edit existing files in `arch/yaml/` directory (or files created by `make newmodule`)
+- Edit the design YAML files (`arch/yaml/` in the functional layout, `<node>/yaml/` in the hierarchical one)
 - Follow schema defined in `builder/base/config/schema.yaml`
 - Validate syntax and references
 
@@ -1887,32 +1774,34 @@ Manual creation bypasses:
 
 ```bash
 # Full workflow: Parse YAML and generate all artifacts
-make db    # Parse YAML → create/update project database (.db files)
-make gen   # Generate SystemVerilog, SystemC, and documentation
+make db         # Parse YAML → create/update project database (.db files)
+make newmodule  # Create any implementation file that does not exist yet
+make gen        # Fill the generated regions of files that exist
 
-# Or combine both steps (if your Makefile supports it)
-make all
-
-# Create new modules interactively
-make newmodule
-
-# Clean all generated files
+# Clean the database, .gen/ and rundir/build/ (source files are kept)
 make clean
 ```
+
+When a block needs an implementation file (`.sv`, `.cppm`, `.cpp`, `.h`) that arch2code scaffolds, use `make newmodule`. Do not create it by hand. Run it after `make db`, once the block is in the YAML. It is not interactive. It:
+- Creates every missing file that a `fileGeneration.fileMap` entry names, such as the block files in `model/` and `rtl/` and the testbench files in `tb/`
+- Never rewrites an existing file
+- Never creates YAML. Add blocks to YAML files by hand
+
+This applies to new blocks and to existing blocks gaining an artifact, for example `hasRtl: false` changed to `hasRtl: true`.
 
 **Step 3: Implement Custom Logic**
 - Add implementation in `rtl/` (SystemVerilog) or `model/` (SystemC)
 - Use generated base classes and interfaces
-- Do NOT modify auto-generated files (marked with `GENERATED_CODE_`)
+- Do NOT edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`. `make gen` rewrites those regions
 
 **Step 4: Build and Test**
 ```bash
-# Build simulation (SystemC example)
+# Build the model (from rundir/)
 cd rundir
 make
 
-# Run tests
-make sim
+# Run it
+make run
 ```
 
 **⚠️ CRITICAL RULE: Never Run Python Directly**
@@ -1935,7 +1824,7 @@ The make targets handle:
 
 Arch2code generates:
 
-1. **Packages** (`<module>_package.sv`)
+1. **Packages** (`<includeName>_package.sv`, one per YAML file that declares constants, types, enums or structures)
    - Constants as `localparam`
    - Types as `typedef`
    - Enumerations
@@ -1951,22 +1840,22 @@ Arch2code generates:
    - Register blocks
    - Instance declarations
 
-4. **Register Blocks**
+4. **Register Handlers** (`<block>` plus `fileGeneration.regBlockNaming.blockSuffix`, e.g. `blockARegs.sv`)
    - Address decode logic
    - Register read/write logic
    - Reset values
 
 #### Implementation Workflow
 
-1. Run arch2code to generate skeletons
-2. Implement functionality in designated regions (usually between `GENERATED_CODE` markers)
-3. Re-run arch2code - manual code in safe regions is preserved
+1. `make newmodule` creates the file and `make gen` fills its generated region
+2. Write your logic outside the `GENERATED_CODE_BEGIN`/`GENERATED_CODE_END` regions, after the generated region and before `endmodule`
+3. Re-run `make gen`. It keeps code outside the generated regions
 
 #### Example Generated Package
 
 ```systemverilog
-// Auto-generated
-package my_module_package;
+// Auto-generated from my_design.yaml
+package my_design_package;
 localparam int unsigned BUFFER_SIZE = 32'h0000_0400;
 
 typedef logic[7:0] byte_t;
@@ -1985,41 +1874,36 @@ typedef struct packed {
   dword32_t data;
 } apb_data_t;
 
-endpackage : my_module_package
+endpackage : my_design_package
 ```
 
 #### Example Generated Module
 
 ```systemverilog
-// Auto-generated module skeleton
-module my_module
-  import my_module_package::*;
+// From examples/apbDecode/rtl/blockA.sv, abbreviated
+// GENERATED_CODE_PARAM --block=blockA
+// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
+//module as defined by block: blockA
+module blockA
+// Generated Import package statement(s)
+import apbDecode_package::*;
 (
-  input  logic clk,
-  input  logic rst_n,
-  apb_if.dst   apb_s,
-  rdy_vld_if.src data_out
+    apb_if.dst apbReg,
+    input clk, rst_n
 );
-
-// GENERATED_CODE_BEGIN --template=registers
-// Register block auto-generated
+    // ... interface instances, memory interfaces, the register handler
+    // instance, child instances and memory instances ...
 // GENERATED_CODE_END
 
-// GENERATED_CODE_BEGIN --template=instances
-// Instance declarations
-// GENERATED_CODE_END
+// Hand-written logic goes here, outside the generated region
 
-// IMPLEMENTATION_BEGIN
-// Add your implementation here
-// IMPLEMENTATION_END
-
-endmodule
+endmodule // blockA
 ```
 
 **AI Agent Guidance:**
 - Never manually edit files between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`
-- Add custom logic in `IMPLEMENTATION` regions
-- Import packages with `import package_name::*;`
+- Add custom logic outside the generated regions
+- The generated region imports the package of each YAML context the block takes types or constants from. To import other packages, list them after one `--importPackages` flag on the `GENERATED_CODE_PARAM` line (`--importPackages a_package b_package`). Do not hand-write an import in a module
 - Use generated typedefs for signal declarations
 
 ### SystemC Implementation
@@ -2034,85 +1918,73 @@ Generated structures carry hardware dimensions and a packed-form conversion cont
 
 #### Auto-Generated Files
 
-1. **Base Classes** (`<Module>Base.h`)
-   - Pure virtual interface definitions
+1. **Base Classes** (`base/<block>Base.cppm`, module `<project>_<block>.base`)
    - Port declarations
-   - Virtual methods for transactions
+   - `setTimed` and `setLogging` forwarding
+   - Fully generated
 
-2. **Module Classes** (`<Module>.h`, `<Module>.cpp`)
-   - Derived from base class
-   - Constructor with port bindings
-   - Thread/method declarations
+2. **Model** (`model/<block>.cppm`, module `<project>_<block>.block`)
+   - Generated class declaration with registers and memories
+   - Generated constructor init list and body, including the register handler thread
+   - Your members, threads and methods go outside the generated regions
 
-3. **Includes** (`<context>Includes.h`, `<context>Includes.cpp`)
-   - Type definitions
+3. **Includes** (`model/<includeName>Includes.cppm`, module `<project>_<includeName>`, namespace `<module>_ns`)
+   - Constants, types and enums
    - Structure classes
-   - Utility functions
+
+A block or context name that equals the project name, or already starts with `<project>_`, is used unchanged. Copy a module name from the generated file's `export module` line rather than building it.
 
 #### Implementation Workflow
 
-1. Run arch2code to generate base and skeleton
-2. Implement behavior in module class methods
-3. Re-run arch2code - preserves implementation
+1. `make newmodule` creates the files and `make gen` fills the generated regions
+2. Implement behavior in the model's user regions
+3. Re-run `make gen`. It keeps code outside the generated regions
 
-#### Example Generated Base Class
+#### Example Model File
 
-```cpp
-// Auto-generated base class
-#ifndef MY_MODULE_BASE_H
-#define MY_MODULE_BASE_H
-
-#include <systemc.h>
-#include "rdy_vld_channel.h"
-#include "apb_channel.h"
-
-class my_moduleBase : public sc_module {
-public:
-  // Ports
-  apb_channel<apb_addr_t, apb_data_t>* apb_s;
-  rdy_vld_channel<stream_data_t>* data_out;
-  
-  // Constructor
-  my_moduleBase(sc_module_name name) : sc_module(name) {}
-  
-  // Virtual methods
-  virtual void process() = 0;
-};
-
-#endif
-```
-
-#### Example Implementation
+An abbreviated `examples/apbDecode/model/blockA.cppm`:
 
 ```cpp
-// User implementation
-#ifndef MY_MODULE_H
-#define MY_MODULE_H
-
-#include "my_moduleBase.h"
-
-class my_module : public my_moduleBase {
-public:
-  SC_HAS_PROCESS(my_module);
-  
-  my_module(sc_module_name name) : my_moduleBase(name) {
-    SC_THREAD(process);
-  }
-  
-  void process() override {
-    // Implement behavior
-    while (true) {
-      wait(clk.posedge_event());
-      // ... implementation ...
-    }
-  }
+// GENERATED_CODE_PARAM --block=blockA --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+module;
+#include "systemc.h"
+// ... other generated #includes ...
+// GENERATED_CODE_END
+// user #includes here
+// GENERATED_CODE_BEGIN --template=moduleExport
+export module apbDecode_blockA.block;
+import apbDecode_blockA.base;
+import apbDecode;
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
+using namespace apbDecode_ns;
+export SC_MODULE(blockA), public blockBase, public blockABase
+{
+    // ... generated registers, memories, constructor declaration ...
+    // GENERATED_CODE_END
+    // block implementation members
+private:
+    void LocalRegAccess();
 };
 
-#endif
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+// ... generated registration, regHandler, constructor init list ...
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    // ... generated _a2cRegs.addRegister / addMemory calls, SC_THREAD(regHandler) ...
+    // GENERATED_CODE_END
+    SC_THREAD(LocalRegAccess);
+};
+
+void blockA::LocalRegAccess() { /* user thread */ }
 ```
 
 **AI Agent Guidance:**
-- Never edit `*Base.h` files - they are fully regenerated
+- Never edit `*Base.cppm` files. `make gen` regenerates them whole
+- Models are not clocked. A thread loop that blocks in a port call needs no explicit `wait()`
 - Implement behavior in derived module classes
 - Use channel abstractions (e.g., `apb_channel`, `rdy_vld_channel`)
 - For Verilator integration, use generated `*_hdl_sc_wrapper.h` files
@@ -2124,46 +1996,39 @@ public:
 
 ### 1. Module Creation Workflow
 
-**⚠️ ALWAYS use `make newmodule` when creating new modules or blocks.**
+**⚠️ ALWAYS use `make newmodule` to create a block's implementation files.**
 
 **Correct Approach:**
 ```bash
 # User wants to add a new "uart" block
+# 1. Add the block (and its instance) to a design YAML file by hand
+# 2. Build the database
+make db
+# 3. Create the missing implementation files
 make newmodule
+# 4. Fill the generated regions
+make gen
 
-# Interactive prompts will ask:
-# - Module name: uart
-# - Directory: arch/yaml/peripherals/
-# - Type: block/interface/etc.
-# - Generate implementation skeletons: yes
-
-# Tool creates:
-# - arch/yaml/peripherals/uart.yaml (with template structure)
+# For a uart block declared in arch/yaml/peripherals/periph.yaml (functional layout):
 # - rtl/peripherals/uart.sv (if hasRtl)
-# - model/peripherals/uart.h/.cpp (if hasMdl)
+# - model/peripherals/uart.cppm and base/peripherals/uartBase.cppm (if hasMdl)
 ```
 
 **Wrong Approach (DO NOT DO THIS):**
 ```bash
-# ❌ Manually creating file
-touch arch/yaml/peripherals/uart.yaml
-# ❌ Copying from another file
-cp arch/yaml/i2c.yaml arch/yaml/uart.yaml
+# ❌ Manually creating an implementation file
+touch rtl/peripherals/uart.sv
+# ❌ Copying a scaffold from another block
+cp model/i2c.cppm model/uart.cppm
 ```
 
 **Why `make newmodule` is Required:**
-- Enforces naming conventions (snake_case for blocks, etc.)
-- Creates correct directory structure
-- Applies proper file templates with required fields
-- Generates matching implementation file skeletons
-- Registers module in project database
-- Prevents structural inconsistencies
+- Applies the file templates with the generated markers
+- Places files in the directory the layout defines
+- Creates each file the block's `fileGeneration.fileMap` entries name
+- Never rewrites an existing file
 
-**When Manual Editing is Appropriate:**
-- Adding new blocks to **existing** YAML files
-- Modifying existing block definitions
-- Adding types, structures, constants to existing files
-- Creating include/shared files (e.g., `shared_types.yaml`)
+YAML is always written by hand. `make newmodule` never creates YAML.
 
 ---
 
@@ -2190,7 +2055,8 @@ include:
 
 ### 3. Hierarchical Organization Pattern
 
-Organize large projects hierarchically:
+Organize large projects in nested directories. The tree below is the functional layout. In the hierarchical layout each subsystem node keeps its YAML in `<subsystem>/yaml/` (`setup-project.md`).
+
 
 ```
 arch/yaml/
@@ -2372,7 +2238,7 @@ instances:
 
 ### 9. Code Generation Markers — Comprehensive Reference
 
-Arch2code uses three marker types to manage generated vs. user code in implementation files:
+Arch2code uses two marker kinds to manage generated vs. user code in implementation files:
 
 - **`GENERATED_CODE_PARAM`** — File-level parameters (block name, context, variant, etc.)
 - **`GENERATED_CODE_BEGIN` / `GENERATED_CODE_END`** — Delimit a generated section with template and section arguments
@@ -2389,13 +2255,14 @@ The generator reads these markers, re-renders the content between BEGIN/END usin
 
 #### File Scoping Modes
 
-Files fall into three scoping categories based on which `GENERATED_CODE_PARAM` option they use:
+Files fall into four scoping categories based on which `GENERATED_CODE_PARAM` option they use:
 
 | Mode | PARAM Option | What It Generates From | Example Files |
 |------|-------------|----------------------|---------------|
-| **Block-scoped** | `--block=<name>` | A single block's ports, instances, registers | `*.h`, `*.cpp`, `*.sv`, `*Base.h`, TB files |
-| **Context-scoped** | `--context=<yaml_file>` | All types/structures in a YAML file | `*Includes.h/cpp`, `*_package.sv`, `rtl.f` |
-| **Hierarchy-scoped** | `--hierarchy` | Entire design hierarchy | `vl_wrap.h/cpp` (Verilator factory) |
+| **Block-scoped** | `--block=<name>` | A single block's ports, instances, registers | `model/*.cppm`, `base/*Base.cppm`, `*.sv`, TB files, `registrar/*VlRegistrar.cpp` |
+| **Context-scoped** | `--project=<project> --context=<yaml_file>` | All types/structures in a YAML file | `*Includes.cppm`, `*IncludesFW.h/cpp`, `*_package.sv` |
+| **Project-scoped** | `--project=<name>` only | The whole project | `rtl.f`, `regAddresses.h` |
+| **Hierarchy-scoped** | `--hierarchy` | Entire design hierarchy | None in the shipped examples |
 
 ---
 
@@ -2416,22 +2283,23 @@ One line per file, sets defaults for all `GENERATED_CODE_BEGIN` sections in that
 | `--scope=<name>` | string | Hierarchy scope (e.g., top-level name) | `--scope=top` |
 | `--mode=<mode>` | string | File-level mode modifier (e.g., `fw` for firmware headers) | `--mode=fw` |
 | `--importPackages <pkg ...>` | list | SystemVerilog packages to import (SV files only) | `--importPackages shared_pkg` |
-| `--project <name ...>` | list | Project filter — file is skipped if project doesn't match | `--project myProject` |
+| `--project=<name>` | string | Owning project. Names the owner of a project-mode file or context file, or of a block whose bare name several projects declare | `--project=apbDecode` |
+| `--parent=<name>` | string | Assembling block of a registrar file | `--parent=someRapper` |
 
 ##### Block-Scoped Examples
 
 ```cpp
-// Model implementation — generates constructor, ports, register init
-// GENERATED_CODE_PARAM --block=dma_controller
+// Model (model/dma_controller.cppm): class, constructor, register init
+// GENERATED_CODE_PARAM --block=dma_controller --mode=module
 
 // RTL module — generates module declaration, ports, instances
 // GENERATED_CODE_PARAM --block=dma_controller
 
-// Base class — generates pure virtual base with port declarations
-// GENERATED_CODE_PARAM --block=dma_controller
+// Base class (base/dma_controllerBase.cppm): port declarations
+// GENERATED_CODE_PARAM --block=dma_controller --mode=module
 
 // Testbench External — excludes the DUT instance
-// GENERATED_CODE_PARAM --block=dma_tb --excludeInst=u_dma
+// GENERATED_CODE_PARAM --block=dma_tb --excludeInst=u_dma --mode=module
 
 // Verilator variant wrapper
 // GENERATED_CODE_PARAM --block=ip --variant=variant0
@@ -2441,20 +2309,13 @@ One line per file, sets defaults for all `GENERATED_CODE_BEGIN` sections in that
 
 ```cpp
 // SystemC includes — generates types, structures, enums from YAML file
-// GENERATED_CODE_PARAM --context=ip.yaml
+// GENERATED_CODE_PARAM --project=ip --context=ip.yaml --mode=module
 
 // SystemVerilog package — generates package with types and structures
-// GENERATED_CODE_PARAM --context=ip.yaml
+// GENERATED_CODE_PARAM --project=ip --context=ip.yaml
 
 // Firmware includes — generates FW-safe headers in fw_ns namespace
-// GENERATED_CODE_PARAM --context=dma.yaml --mode=fw
-```
-
-##### Hierarchy-Scoped Examples
-
-```cpp
-// Verilator factory registration — covers all VL-enabled blocks
-// GENERATED_CODE_PARAM --hierarchy
+// GENERATED_CODE_PARAM --project=dma --context=dma.yaml --mode=fw
 ```
 
 ---
@@ -2479,59 +2340,47 @@ Marks the start of a generated section within a file. Each file can have multipl
 
 #### Template + Section Reference by File Type
 
-##### SystemC Base Classes (`base/*Base.h`)
+##### SystemC Base Classes (`base/*Base.cppm`)
 
 ```
-PARAM: --block=<block>
-```
-
-| Template | Section | Content |
-|----------|---------|---------|
-| `baseClassDecl` | *(none)* | Pure virtual base class with ports, virtual methods |
-
-##### SystemC Base Constructor (`base/*Base.cpp` — if exists)
-
-```
-PARAM: --block=<block>
+PARAM: --block=<block> --mode=module
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
-| `baseConstructor` | `init` | Base constructor initialization list |
-| `baseConstructor` | `body` | Base constructor body |
+| `moduleScaffold` | `baseModuleHeader` | Global module fragment `#include`s, `export module <project>_<block>.base;` and context imports |
+| `baseClassDecl` | *(none)* | Base class with ports, plus the `Inverted` and `Channels` helper classes |
 
-##### SystemC Class Declaration (`model/*.h`)
+##### SystemC Model (`model/*.cppm`)
 
 ```
-PARAM: --block=<block>
+PARAM: --block=<block> --mode=module
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
+| `moduleScaffold` | `blockModuleHeader` | Global module fragment `#include`s |
+| `moduleExport` | *(none)* | `export module <project>_<block>.block;` and its imports |
 | `classDecl` | *(none)* | Derived class: members, registers, memories, ports |
-
-User code goes **after** `GENERATED_CODE_END` inside the class body for manual member variables and method declarations.
-
-##### SystemC Constructor (`model/*.cpp`)
-
-```
-PARAM: --block=<block>
-```
-
-| Template | Section | Content |
-|----------|---------|---------|
 | `constructor` | `init` | Constructor initialization list (base classes, registers, memories) |
-| `constructor` | `body` | Constructor body (addRegister, addMemory, regHandler thread) |
+| `constructor` | `body` | Constructor body (`_a2cRegs.addRegister`, `_a2cRegs.addMemory`, `SC_THREAD(regHandler)`) |
+
+User `#include`s go after the `moduleScaffold` region and user `import`s after the `moduleExport` region. User code goes **after** `GENERATED_CODE_END` inside the class body for manual member variables and method declarations.
+
+##### SystemC Constructor (in `model/*.cppm`)
+
+The `constructor` regions follow the class in the same file.
 
 **User code insertion points:**
 - **Between `init` END and `body` BEGIN:** Add manual member initializers (starting with `,`)
 - **After `body` END:** Add `SC_THREAD` registrations and other constructor logic
 
 ```cpp
-// GENERATED_CODE_PARAM --block=myBlock
+// GENERATED_CODE_PARAM --block=myBlock --mode=module
+// ... moduleScaffold, moduleExport and classDecl regions ...
 // GENERATED_CODE_BEGIN --template=constructor --section=init
-myBlock::myBlock(...)
-    : sc_module(name)
+myBlock::myBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+    : sc_module(blockName)
     ,blockBase("myBlock", name(), bbMode)
     ,myBlockBase(name(), variant)
     ,configReg()                    // generated register init
@@ -2539,7 +2388,7 @@ myBlock::myBlock(...)
     ,myUserVar(0)                   // <-- USER: manual initializer
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    regs.addRegister(0x100, 4, "configReg", &configReg);
+    _a2cRegs.addRegister( REG_ADDR_MYBLOCK_CONFIGREG, 4, "configReg", &configReg );
     SC_THREAD(regHandler);
 // GENERATED_CODE_END
     SC_THREAD(mainProcess);         // <-- USER: manual thread
@@ -2548,8 +2397,7 @@ myBlock::myBlock(...)
 
 ##### SystemC Includes (`model/*Includes.cppm`)
 
-A context's types are a single C++20 module interface unit. There is no paired
-`.h`/`.cpp`.
+A context's types are a single C++20 module interface unit.
 
 ```
 PARAM: --project=<project> --context=<yaml_file> --mode=module
@@ -2557,7 +2405,7 @@ PARAM: --project=<project> --context=<yaml_file> --mode=module
 
 | Template | Section | Content |
 |----------|---------|---------|
-| `moduleScaffold` | `moduleHeader` | Global module fragment `#include`s plus `export module <context>;` |
+| `moduleScaffold` | `moduleHeader` | Global module fragment `#include`s plus `export module <project>_<includeName>;` |
 | `headers` | *(none)* | `import` + `using namespace` for each context this one depends on |
 | `includes` | `constants` | `constexpr` constant definitions |
 | `includes` | `types` | Typedef definitions |
@@ -2569,7 +2417,7 @@ PARAM: --project=<project> --context=<yaml_file> --mode=module
 ##### SystemC Firmware Includes (`fw/include/*IncludesFW.h/.cpp`)
 
 ```
-PARAM: --context=<yaml_file> --mode=fw
+PARAM: --project=<project> --context=<yaml_file> --mode=fw
 ```
 
 Same templates as regular Includes, but with:
@@ -2577,14 +2425,16 @@ Same templates as regular Includes, but with:
 - `--namespace=fw_ns` on the `structures` `cpp` section
 - Content wrapped in `namespace fw_ns { ... }`
 
-##### SystemC Register Handler (`model/*Regs.h` / `*Regs.cpp` — auto-generated blocks)
+##### SystemC Register Handler (`model/<block>Regs.cppm`, only for a handler whose owning block has children)
 
 ```
-PARAM: --block=<block>Regs
+PARAM: --block=<block>Regs --mode=module
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
+| `moduleScaffold` | `blockModuleHeader` | Global module fragment `#include`s |
+| `moduleExport` | *(none)* | `export module` line and imports |
 | `blockRegs` | `header` | Register handler class declaration |
 | `blockRegs` | `init` | Register handler constructor init list |
 | `blockRegs` | `body` | Register handler constructor body |
@@ -2595,6 +2445,9 @@ Scaffolded by the opt-in `regAddresses` fileMap entry, `mode: project`, one file
 per product. The basename is that entry's `name:` verbatim and its directory is
 its `basePath:` segment, so the path is per project (`model/regAddresses.h` in
 `examples/apbDecode`, `fw/include/axi4sRegAddresses.h` in `examples/axi4sDemo`).
+The default entry uses `basePath: fwInc`, which puts the file at
+`fw/include/regAddresses.h` in the functional layout and `fw/regAddresses.h` in
+the hierarchical one.
 
 ```
 PARAM: --project=<projectName>
@@ -2681,13 +2534,13 @@ Without `--excludeInst`, `--block` names the **DUT block itself**, not a `_tb` c
 | `*External.cppm` | TB wrapper block | DUT instance | `tbExternal` | `header`, `init`, `body` |
 
 The two `.cppm` files are C++20 module interface units and carry `--mode=module`
-on their `GENERATED_CODE_PARAM` line. `*Config.cpp` stays a plain translation
-unit.
+on their `GENERATED_CODE_PARAM` line. `*Config.cpp` is a plain translation unit
+and has no `--mode=module`.
 
 ##### SystemVerilog Package (`rtl/*_package.sv`)
 
 ```
-PARAM: --context=<yaml_file>
+PARAM: --project=<project> --context=<yaml_file>
 ```
 
 | Template | Section | Content |
@@ -2706,7 +2559,9 @@ PARAM: --block=<block>
 
 User code goes **after** `GENERATED_CODE_END`, before `endmodule`.
 
-##### SystemVerilog Register Decoder (`rtl/*Regs.sv`)
+##### SystemVerilog Register Handler (`rtl/*Regs.sv`)
+
+`Regs` stands for the configured `fileGeneration.regBlockNaming.blockSuffix`, which defaults to `_regs`.
 
 ```
 PARAM: --block=<block>Regs
@@ -2719,7 +2574,7 @@ PARAM: --block=<block>Regs
 ##### SystemVerilog File List (`rtl/rtl.f`)
 
 ```
-PARAM: --context=<top_yaml_file>
+PARAM: --project=<project>
 ```
 
 | Template | Section | Content |
@@ -2745,22 +2600,22 @@ PARAM: --block=<block>
 
 | Template | Section | Content |
 |----------|---------|---------|
+| `module_hdl_sc_wrapper` | `preamble` | Includes and imports |
 | `module_hdl_sc_wrapper` | `hdl_sc_wrapper_class` | SC wrapper class definition |
-| `module_hdl_sc_wrapper` | `variant_include_sv_wrapper_header` | Variant SV wrapper includes (if variants exist) |
-| `module_hdl_sc_wrapper` | `variant_class_template_spec` | Variant template specializations (if variants exist) |
 
-##### Verilator Factory Registration (`verif/vl_wrap/vl_wrap.h` / `vl_wrap.cpp`)
+##### Verilator Wrapper Registration (`registrar/<block>VlRegistrar.cpp`)
+
+One file per assembling block and `hasVl` child.
 
 ```
-PARAM: --hierarchy
+PARAM: --block=<block> --parent=<assembling_block>
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
-| `module_hdl_sc_wrapper` | `factory_register_vl_incl` | Factory include directives |
-| `module_hdl_sc_wrapper` | `factory_register_vl_decl` | Factory registration declarations |
+| `vlRegistrar` | *(none)* | Registers the child's Verilated wrapper with the instance factory |
 
-##### Tandem Verification Files
+##### Tandem Verification Files (A2C Pro)
 
 **Tandem Header:**
 ```
@@ -2829,29 +2684,30 @@ See the **verify-testbench** skill for additional detail on the `--excludeInst` 
 What kind of file am I working with?
 │
 ├─ Types, structures, enums (shared definitions)
-│  └─ Use --context=<yaml_file>
-│     ├─ SystemC: *Includes.h/cpp
+│  └─ Use --project=<project> --context=<yaml_file>
+│     ├─ SystemC: *Includes.cppm (add --mode=module)
 │     ├─ SystemVerilog: *_package.sv
 │     └─ Firmware: *IncludesFW.h/cpp (add --mode=fw)
 │
 ├─ A single block's implementation
 │  └─ Use --block=<block_name>
-│     ├─ SystemC model: *.h (classDecl), *.cpp (constructor)
-│     ├─ SystemC base: *Base.h (baseClassDecl)
+│     ├─ SystemC model: *.cppm (classDecl, constructor; add --mode=module)
+│     ├─ SystemC base: *Base.cppm (baseClassDecl; add --mode=module)
 │     ├─ SystemVerilog: *.sv (moduleInterfacesInstances)
-│     ├─ Register handler: *Regs.sv (moduleRegs)
+│     ├─ Register handler: *Regs.sv (moduleRegs), suffix from blockSuffix
 │     └─ Has variants? Add --variant=<name>
 │
 ├─ Testbench files
-│  └─ Testbench/Config: --block=<dut_block>
-│     External: --block=<tb_block> --excludeInst=<dut_instance>
+│  └─ Testbench (*Testbench.cppm): --block=<dut_block> --mode=module
+│     Config (*Config.cpp): --block=<dut_block>
+│     External: --block=<tb_block> --excludeInst=<dut_instance> --mode=module
 │
 ├─ Verilator wrappers for a block
 │  └─ Use --block=<block_name>
 │     Has variants? Add --variant=<name>
 │
-└─ Verilator factory (whole hierarchy)
-   └─ Use --hierarchy
+└─ Verilator wrapper registrar (registrar/*VlRegistrar.cpp)
+   └─ Use --block=<child_block> --parent=<assembling_block>
 ```
 
 ---
@@ -2862,6 +2718,7 @@ What kind of file am I working with?
 
 #### Always Required
 - `desc`: Description field in almost all elements
+- `yamlFormat: 2`: In project.yaml
 - `projectName`: In project.yaml
 - `topInstance`: In project.yaml
 - `dirs.root`: In project.yaml
@@ -2870,20 +2727,21 @@ What kind of file am I working with?
 - `interface`, `src`, `dst`: In connections
 
 #### Context-Dependent Required
-- `addressGroup`: Required for instances with registers
-- `addressControl`: Required if any instance has addressGroup
+- `addressGroup`: On each instance a router dispatches to
+- An `addressBlock:` router: Required for each `addressGroup` an instance names
+- `addressObjects`: In project.yaml, if any register or `regAccess` memory exists
 - `structures`: Required in interfaces (at least one)
 - `value` OR `eval`: Required in constants (exactly one)
 
 ### 2. Type Width Requirements
 
-**Critical Rule:** Width is **required** for all non-enum types.
+**Critical Rule:** Every non-enum type needs one of `width`, `widthLog2` or `widthLog2minus1`.
 
 ```yaml
 # ❌ BAD - missing width for non-enum type
 types:
   data_t:
-    desc: "Data type"  # ERROR: width is required!
+    desc: "Data type"  # ERROR: needs width, widthLog2 or widthLog2minus1
 
 # ✅ GOOD - width specified
 types:
@@ -2935,27 +2793,19 @@ connections:
   - {interface: data_if, src: u_producer, dst: u_consumer}
 ```
 
-### 5. Address Space Conflicts
+### 5. Address Space Overflow
+
+Address generation assigns `addressID` in instance order within each group and overwrites any value written in YAML, so IDs cannot conflict. A group that runs out of spaces fails `make db`.
 
 ```yaml
-# ❌ BAD - address IDs conflict
+# ❌ BAD - writing addressID by hand (it is overwritten)
 instances:
-  u_module_a:
-    addressGroup: system
-    addressID: 0x0
-  u_module_b:
-    addressGroup: system
-    addressID: 0x0  # Conflict!
+  u_module_a: {container: top, instanceType: module_a, addressGroup: system, addressID: 0x0}
 
-# ✅ GOOD - unique addresses
+# ✅ GOOD - leave addressID out; raise maxAddressSpaces on the router if the group is full
 instances:
-  u_module_a:
-    addressGroup: system
-    addressID: 0x0
-  u_module_b:
-    addressGroup: system
-    addressID: 0x1
-  # Or let arch2code auto-assign by omitting addressID
+  u_module_a: {container: top, instanceType: module_a, addressGroup: system}
+  u_module_b: {container: top, instanceType: module_b, addressGroup: system}
 ```
 
 ### 6. Naming Collisions
@@ -2996,12 +2846,12 @@ interfaces:
 ```yaml
 # ❌ BAD - referencing undefined constant
 constants:
-  ADDR_WIDTH: {eval: '$UNDEFINED_CONST.bit_length()', desc: "Error"}
+  ADDR_WIDTH: {eval: '$clog2($UNDEFINED_CONST)', desc: "Error"}
 
 # ✅ GOOD - reference exists
 constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size"}
-  ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
+  ADDR_WIDTH: {eval: '$clog2($BUFFER_SIZE)', desc: "Address width"}
 ```
 
 ### 9. Container Hierarchy Violations
@@ -3058,7 +2908,9 @@ instances:
 
 # ERROR (from postParseRegisterPorts.py):
 #   Leaf instance 'u_my_module' (block 'my_module') is in container 'top'
-#   which is not served by any router.
+#   which is not served by any router, directly or through single-consumer
+#   containers. Place the instance in a router's container, or in a container
+#   that a router serves and that holds no other register consumer.
 
 # ✅ GOOD - declare the GENERATED router and co-locate it with the leaf
 blocks:
@@ -3103,17 +2955,18 @@ include:
 ```
 
 **AI Agent Guidance:**
-- **Always specify `width` for non-enum types** - omitting it is an error
+- **Give every non-enum type one of `width`, `widthLog2` or `widthLog2minus1`**. Omitting all three is an error
 - Always validate all references before suggesting YAML
 - Check that interface structureTypes match the interface definition requirements
 - Verify container hierarchy is valid (containers must be instantiated)
-- Ensure address groups exist in addressControl.yaml before using in instances
+- Ensure each `addressGroup` an instance names is declared by an `addressBlock:` router in the same project
 - Use consistent naming conventions throughout
 - Remember: blocks default to `hasRtl: true` and `hasMdl: true` (only specify if different)
 - **Declare the register-bus router as a generated `addressBlock:` block** and instance it in the container of the leaves it serves - its RTL (`apbDecodeModule`) and the bus fan-out below it are synthesized
 - **Never manually create block-level register handlers** (e.g., `<blockname>_regs`) - these are auto-generated
 - Author only the upstream feed into the primary router; tag routed leaves with `addressGroup:`. See `design-register-decode.md`
-- When in doubt, let arch2code auto-assign IDs rather than specifying explicit values
+- Do not write `addressID` or `offset`. Address generation assigns them
+
 
 ---
 
@@ -3122,14 +2975,14 @@ include:
 ### Template System Overview
 
 Arch2code uses Python-based templates to generate code. Templates are located in:
-- `builder/templates/systemVerilog/`: SystemVerilog generators
-- `builder/templates/systemc/`: SystemC generators
-- `builder/templates/doc/`: Documentation generators
-- `builder/templates/fileGen/`: File generation orchestration
+- `builder/base/templates/systemVerilog/`: SystemVerilog generators
+- `builder/base/templates/systemc/`: SystemC generators
+- `builder/base/templates/doc/`: Documentation generators
+- `builder/base/templates/fileGen/`: File generation orchestration
 
 ### Template Customization
 
-Projects can override default templates using the unified `templates:` section in project.yaml:
+Projects override default templates in the `templates:` section of project.yaml:
 
 ```yaml
 # project.yaml
@@ -3148,7 +3001,7 @@ templates:
 
 ### SystemVerilog Templates
 
-Key templates in `builder/templates/systemVerilog/`:
+Key templates in `builder/base/templates/systemVerilog/`:
 
 | Template | Purpose | Output |
 |----------|---------|--------|
@@ -3161,17 +3014,19 @@ Key templates in `builder/templates/systemVerilog/`:
 
 ### SystemC Templates
 
-Key templates in `builder/templates/systemc/`:
+Key templates in `builder/base/templates/systemc/`:
 
 | Template | Purpose | Output |
 |----------|---------|--------|
-| `baseClassDecl.py` | Base class declaration | `*Base.h` |
-| `classDecl.py` | Derived class declaration | `*.h` |
-| `constructor.py` | Constructor implementation | `*.cpp` |
-| `blockRegs.py` | Register access methods | Register methods |
+| `moduleScaffold.py` | Global module fragment and `export module` lines | `*.cppm` headers |
+| `baseClassDecl.py` | Base class declaration | `*Base.cppm` |
+| `classDecl.py` | Derived class declaration | `*.cppm` |
+| `constructor.py` | Constructor implementation | `*.cppm` |
+| `blockRegs.py` | Register handler model | `*Regs.cppm` |
 | `structures.py` | Structure classes | Structure definitions |
-| `headers.py` | Header file generation | Include guards, imports |
-| `includes.py` | Include file generation | `*Includes.h/cpp` |
+| `headers.py` | Context imports | `import` and `using namespace` lines |
+| `includes.py` | Include file generation | `*Includes.cppm`, `*IncludesFW.h` |
+| `vlRegistrar.py` | Verilated wrapper registration | `registrar/*VlRegistrar.cpp` |
 | `testbench.py` | Testbench generation | `*Testbench.cppm`, `*External.cppm`, `*Config.cpp` |
 
 ### Understanding Generated Code
@@ -3179,8 +3034,8 @@ Key templates in `builder/templates/systemc/`:
 #### SystemVerilog Package Structure
 
 ```systemverilog
-// GENERATED_CODE_PARAM --context=<yaml_file>
-package <module>_package;
+// GENERATED_CODE_PARAM --project=<project> --context=<yaml_file>
+package <includeName>_package;
 
 // Constants
 localparam int unsigned CONST_NAME = <value>;
@@ -3199,65 +3054,59 @@ typedef struct packed {
   <type> <field>;
 } <struct_name>;
 
-endpackage : <module>_package
+endpackage : <includeName>_package
 ```
 
 #### SystemVerilog Module Structure
 
 ```systemverilog
-module <module_name>
-  import <module>_package::*;
+// GENERATED_CODE_PARAM --block=<block>
+// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
+module <block>
+// Generated Import package statement(s)
+import <includeName>_package::*;
 (
-  input  logic clk,
-  input  logic rst_n,
-  // Interface ports
-  <interface_type>.modport <port_name>
+    <interface>_if.src <port_name>,   // or .dst
+    input clk, rst_n
 );
-
-// GENERATED_CODE_BEGIN --template=registers
-// Register block
+    // interface instances, register handler, child and memory instances
 // GENERATED_CODE_END
 
-// GENERATED_CODE_BEGIN --template=instances
-// Sub-module instances
-// GENERATED_CODE_END
+// User implementation, outside the generated region
 
-// IMPLEMENTATION_BEGIN
-// User implementation area
-// IMPLEMENTATION_END
-
-endmodule : <module_name>
+endmodule // <block>
 ```
 
 #### SystemC Base Class Structure
 
 ```cpp
-#ifndef <MODULE>_BASE_H
-#define <MODULE>_BASE_H
-
-#include <systemc.h>
+// GENERATED_CODE_PARAM --block=<block> --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
+module;
+#include "systemc.h"
 #include "<interface>_channel.h"
 
-class <module>Base : public sc_module {
-public:
-  // Port declarations
-  <channel_type>* <port_name>;
-  
-  // Constructor
-  <module>Base(sc_module_name name);
-  
-  // Virtual methods
-  virtual void <method_name>() = 0;
-};
+export module <project>_<block>.base;
+import <project>_<includeName>;
+using namespace <project>_<includeName>_ns;
+// GENERATED_CODE_END
 
-#endif
+// GENERATED_CODE_BEGIN --template=baseClassDecl
+export class <block>Base : public virtual blockPortBase
+{
+public:
+    <interface>_in< ... > <port_name>;   // or <interface>_out
+    ...
+};
+// <block>Inverted and <block>Channels helper classes follow
+// GENERATED_CODE_END
 ```
 
 ### Customizing Generation
 
 To customize generation behavior:
 
-1. **Create custom template**: Copy from `builder/templates/` and modify
+1. **Create custom template**: Copy from `builder/base/templates/` and modify
 2. **Reference in project.yaml**: Add template to `templates:` section
    ```yaml
    templates:
@@ -3278,14 +3127,14 @@ To customize generation behavior:
 
 ### Common Issues and Solutions
 
-#### Issue 1: "Interface type 'X' not found"
+#### Issue 1: Unknown interface type
 
-**Cause:** Referencing undefined or misspelled interface type.
+**Cause:** Referencing undefined or misspelled interface type. `make db` reports `section interfaces, key:my_if field interfaceType, value ready_valid was not valid in context ...`.
 
 **Solution:**
 ```yaml
 # Check interfaceType against available types
-# Valid types: rdy_vld, req_ack, push_ack, pop_ack, apb, lmmi, axi4_stream, etc.
+# Valid types: rdy_vld, req_ack, push_ack, pop_ack, apb, axi4_stream, etc. (lmmi needs A2C Pro)
 
 # ❌ Wrong
 interfaces:
@@ -3298,9 +3147,9 @@ interfaces:
     interfaceType: rdy_vld
 ```
 
-#### Issue 2: "Structure 'X' not defined"
+#### Issue 2: Unknown structure
 
-**Cause:** Using structure before it's defined or in wrong scope.
+**Cause:** Using structure before it's defined or in wrong scope. `make db` reports `'my_data_t' is neither a type nor a structure in <file> or anything it includes.`
 
 **Solution:**
 ```yaml
@@ -3319,9 +3168,9 @@ interfaces:
 
 **Alternative:** Use `include` if structure is in another file.
 
-#### Issue 3: "Instance 'X' not found in container 'Y'"
+#### Issue 3: Unknown container
 
-**Cause:** Instance created with incorrect container or container not instantiated.
+**Cause:** Instance created with incorrect container or container not instantiated. `make db` reports `section instances, key:u_child field container, value ... was not valid in context ...`.
 
 **Solution:**
 ```yaml
@@ -3334,9 +3183,9 @@ instances:
   u_child: {container: parent, instanceType: child, instGroup: sub}  # Must match instanceType of u_parent
 ```
 
-#### Issue 4: "Address group 'X' not defined"
+#### Issue 4: Undeclared address group
 
-**Cause:** Instance references an `addressGroup` that no router declares.
+**Cause:** Instance references an `addressGroup` that no router declares. `make db` reports `'u_module' referenced address group 'system', which project '...' does not declare.`
 
 **Solution:**
 ```yaml
@@ -3357,37 +3206,32 @@ instances:
   u_module: {container: top, addressGroup: system}  # Must match a router's addressBlock.addressGroup
 ```
 
-#### Issue 5: "Constant 'X' not defined"
+#### Issue 5: Undeclared constant
 
-**Cause:** Using constant before definition or wrong reference syntax.
+**Cause:** Using constant before definition or wrong reference syntax. In `width:`, `make db` reports `Constant or enum 'X' is not declared in '<file>' or any file it includes.` In `eval`, it reports `eval expression '...' is invalid: unresolved symbol: $X`.
 
 **Solution:**
 ```yaml
-# Define constant first
 constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size"}
+  ADDR_WIDTH: {eval: '$clog2($BUFFER_SIZE)', desc: "Address width"}  # $ prefix in eval
 
-# Reference with $ prefix in eval
-constants:
-  ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
-
-# Reference by name (no $) in width
 types:
   buffer_addr_t:
-    width: ADDR_WIDTH  # No $ prefix for direct references
+    width: ADDR_WIDTH  # bare name, no $ prefix, in width
     desc: "Buffer address type"
 ```
 
-#### Issue 5a: "Type 'X' missing width field" or width-related errors
+#### Issue 5a: Type with no width
 
-**Cause:** Width field omitted for non-enum type (width is required).
+**Cause:** Width field omitted for a non-enum type. `make db` reports `type 'my_type_t' is missing width — must specify one of width, widthLog2, or widthLog2minus1 (or provide an enum)`.
 
 **Solution:**
 ```yaml
 # ❌ Wrong - width missing for non-enum type
 types:
   my_type_t:
-    desc: "My type"  # ERROR: width is required!
+    desc: "My type"  # ERROR: needs width, widthLog2 or widthLog2minus1
 
 # ✅ Correct - width specified
 types:
@@ -3404,7 +3248,7 @@ types:
       - {enumName: STATUS_BUSY, value: 1, desc: "Busy"}
 ```
 
-**Key Rule:** Width is **required** for all non-enum types. Only enum types can omit width (it's calculated automatically).
+**Key Rule:** Every non-enum type needs one of `width`, `widthLog2` or `widthLog2minus1`. An enum type may omit all three, and arch2code derives the width from its values.
 
 #### Issue 6: Connection fails between instances
 
@@ -3451,10 +3295,7 @@ connections:
 
 **Debugging steps:**
 ```bash
-# Regenerate with verbose output (if supported by project Makefile)
-make gen VERBOSE=1
-
-# Or check the generation log/output
+# Check the generation log/output
 make db
 make gen
 
@@ -3525,8 +3366,13 @@ connections:
 **Common Mistakes:**
 ```yaml
 # ❌ MISTAKE 1: No router in the leaf's container
-#   -> "Leaf instance '...' is in container '...' which is not served by any router."
-#   Fix: instance an addressBlock: router as the leaf's sibling.
+#   -> "Leaf instance '...' (block '...') is in container '...' which is not served
+#      by any router, directly or through single-consumer containers. Place the
+#      instance in a router's container, or in a container that a router serves
+#      and that holds no other register consumer."
+#   Fix: instance an addressBlock: router as the leaf's sibling, or place the leaf
+#   in a passthrough container that a router serves and that holds no other
+#   register consumer.
 
 # ❌ MISTAKE 2: Manually creating block-level register handler
 blocks:
@@ -3579,26 +3425,29 @@ registers:
 |-----------|-----------|-----------|----------|----------------------|
 | `rdy_vld` | vld/rdy | Unidirectional | Streaming with backpressure | `data_t` |
 | `req_ack` | req/ack | Bidirectional | Command-response | `data_t`, `rdata_t` |
-| `push_ack` | vld/ack | Unidirectional | FIFO write | `data_t` |
-| `pop_ack` | rdy/ack | Unidirectional | FIFO read | `rdata_t` |
+| `push_ack` | push/ack | Unidirectional | FIFO write | `data_t` |
+| `pop_ack` | pop/ack | Unidirectional | FIFO read | `rdata_t` |
 | `apb` | APB protocol | Bidirectional | Register access | `addr_t`, `data_t` |
-| `lmmi` | LMMI protocol | Bidirectional | Simple register access | `addr_t`, `data_t` |
-| `axi4_stream` | TVALID/TREADY | Unidirectional | High-speed streaming | `data_t` |
-| `axi_read` | AXI4 | Bidirectional | Memory read | Multiple |
-| `axi_write` | AXI4 | Bidirectional | Memory write | Multiple |
+| `lmmi` (A2C Pro) | LMMI protocol | Bidirectional | Simple register access | see `builder/pro/interfaces/lmmi/lmmi_if.yaml` |
+| `axi4_stream` | TVALID/TREADY | Unidirectional | High-speed streaming | `tdata_t`, `tid_t`, `tdest_t` (optional `tuser_t`) |
+| `axi_read` | AXI4 | Bidirectional | Memory read | `addr_t`, `data_t` (optional `aruser_t`, `ruser_t`, `id_t`) |
+| `axi_write` | AXI4 | Bidirectional | Memory write | `addr_t`, `data_t`, `strb_t` (optional `awuser_t`, `wuser_t`, `buser_t`, `id_t`) |
 | `status` | None | Unidirectional | Static signals | `data_t` |
-| `notify_ack` | notify/ack | Unidirectional | Event notification | `data_t` |
-| `raw` | None (SC rendezvous only) | Unidirectional | **Last resort** — legacy/external handshake-less boundary | `data_t` |
+| `notify_ack` | notify/ack | Unidirectional | Event notification | None |
+| `external_reg` | `write` | Bidirectional | Register owned outside the handler | `data_t` |
+| `memory` | enable/wr_en | Bidirectional | Memory port | `addr_t`, `data_t` |
+| `raw` | None (SC rendezvous only) | Unidirectional | **Last resort**. External boundary with no handshake | `data_t` |
 
 #### Interface Files Location
 
-All interface definitions are in: `builder/interfaces/<interface_type>/`
+All base interface definitions are in: `builder/base/interfaces/<interface_type>/` (`lmmi` is in `builder/pro/interfaces/`)
 
 Each interface directory contains:
 - `<type>_if.yaml`: Interface definition
 - `<type>_if.sv`: SystemVerilog interface
 - `<type>_channel.h`: SystemC channel
 - `<type>_bfm.h`: Bus functional model
+- `<type>_port_thunker.h` and `<type>_port_socket.h`: thunker and socket support, where the interface has them. `notify_ack` has no thunker. `external_reg`, `memory`, `raw` and `lmmi` have no socket
 
 ### B. Built-in Types
 
@@ -3634,8 +3483,9 @@ Avoid using these as identifiers:
 |-----------|---------|
 | `.yaml` | Architecture definition files |
 | `.sv` | SystemVerilog files |
-| `.h` | C/C++/SystemC header files |
-| `.cpp` | C++/SystemC source files |
+| `.cppm` | C++20 module interface units (SystemC models, base classes, includes, socket shells, testbench top and External, registrars, Config modules) |
+| `.h` | C/C++/SystemC header files (channels, Verilator wrappers, firmware headers) |
+| `.cpp` | C++/SystemC source files (testbench Config, Verilated-wrapper registrars, firmware sources) |
 | `.db` | Arch2code database (generated) |
 | `.f` | File list for simulation |
 
@@ -3651,17 +3501,18 @@ make help
 make db         # Parse YAML and create project database
 make gen        # Generate SystemVerilog, SystemC, and documentation
 
-# Create a new module in the project
-make newmodule  # Interactive module creation
+# Create missing implementation files (never YAML)
+make newmodule
 
-# Clean generated files and database
+# Clean the database, .gen/ and rundir/build/
 make clean
 
-# Run simulation (project-specific)
-make sim        # If available in your project
+# Build and run the model (from rundir/)
+make
+make run
 
 # Setup AI assistant support
-make cursor_setup
+make agents-setup
 
 # View documentation
 # See project README for specific instructions
@@ -3677,24 +3528,25 @@ make cursor_setup
 
 ### F. Directory Structure Template
 
+Functional layout (the default when the project file sets no `fileGeneration.layout`):
+
 ```
 project_name/
 ├── arch/
 │   └── yaml/
 │       ├── project.yaml
-│       ├── config/
-│       │   └── addressControl.yaml
 │       ├── shared_types.yaml
 │       └── <modules>/
 │           └── <module>.yaml
-├── base/                      # Base classes
+├── base/                      # Base classes (*Base.cppm)
+│   └── <modules>/
 ├── model/                     # SystemC models
-│   ├── <module>/
-│   │   ├── <module>.h
-│   │   └── <module>.cpp
-│   └── *Includes.h/cpp
+│   ├── <modules>/
+│   │   └── <module>.cppm
+│   └── *Includes.cppm
+├── registrar/                 # Block registration files
 ├── rtl/                       # SystemVerilog RTL
-│   ├── <module>/
+│   ├── <modules>/
 │   │   └── <module>.sv
 │   ├── *_package.sv
 │   └── rtl.f
@@ -3706,10 +3558,12 @@ project_name/
 │       ├── <module>External.cppm
 │       └── <module>Config.cpp
 ├── fw/                        # Firmware (optional)
-│   └── includes/
-├── Makefile
-└── README.md
+│   └── include/
+├── rundir/Makefile
+└── Makefile
 ```
+
+In the hierarchical layout, which `arch2code.py --newproject` writes, each node holds its own `yaml/`, `model/`, `rtl/`, `base/`, `tb/`, `verif/`, `fw/` and `registrar/` directories, and the project file sits in `prj/yaml/`. See `setup-project.md`.
 
 ### G. Mermaid Diagram: Complete Flow
 
@@ -3717,7 +3571,6 @@ project_name/
 graph TB
     subgraph Input [YAML Input Files]
         PF[project.yaml]
-        AC[addressControl.yaml]
         ST[shared_types.yaml]
         MA[module_a.yaml]
         MB[module_b.yaml]
@@ -3745,7 +3598,6 @@ graph TB
     end
     
     PF --> Parse
-    AC --> Parse
     ST --> Parse
     MA --> Parse
     MB --> Parse
@@ -3782,8 +3634,8 @@ graph TB
   - `helloWorld`: Minimal example
   - `simple`: Basic project structure
   - `mixed`: Complex hierarchical design
-- **Interface Definitions**: `builder/interfaces/`
-- **Template Source**: `builder/templates/`
+- **Interface Definitions**: `builder/base/interfaces/`
+- **Template Source**: `builder/base/templates/`
 
 ### I. AI Agent Quick Checklist
 
@@ -3799,22 +3651,12 @@ When helping a user create arch2code files:
 - [ ] Create instances before making connections
 - [ ] Verify all references exist (types, structures, blocks, instances)
 - [ ] Check naming conventions (snake_case, UPPER_CASE, etc.)
-- [ ] Ensure address groups exist in addressControl.yaml if used
+- [ ] Ensure each `addressGroup` an instance names has an `addressBlock:` router in the same project
 - [ ] Validate interface structureTypes match interface definition
 - [ ] Check container hierarchy is valid
 - [ ] Verify all required fields have values
 - [ ] Add descriptions to all elements
 - [ ] Use relative paths in includes
-
----
-
-## Document Revision History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | 2025-12-16 | Initial comprehensive release |
-| 1.1 | 2026-04-30 | Expanded Section 9 (Code Generation Markers) with comprehensive GENERATED_CODE_PARAM/BEGIN reference |
-| 1.2 | 2026-05-01 | Documented `ipParameters`, parameterizable max bounds, and worst-case register/memory address sizing |
 
 ---
 

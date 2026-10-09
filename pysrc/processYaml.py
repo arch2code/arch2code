@@ -26,8 +26,22 @@ from pysrc.memoryPortAccess import memoryRegisterPort
 # Current user-YAML authoring format. A migrated project carries a single
 # top-level `yamlFormat:` field in its project.yaml equal to this value; its
 # absence marks a pre-migration (legacy) project that projectCreate refuses to
-# build. See plan-yaml-migration.md.
+# build until `make migrate` (migrate-project skill) brings it current.
 CURRENT_YAML_FORMAT = 2
+
+# Bytes the register bus moves per access. The model's cpu_write is 32 bits wide
+# to match.
+REG_BUS_WIDTH_BYTES = 4
+
+def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
+    """Firmware reaches a register or memory row of every variant through one
+    address range, so the range is sized for the widest variant."""
+    return maxBitwidth if isParameterizable else width
+
+def rowFootprintBytes(bitwidth):
+    """Address stride between the rows of a memory whose rows are `bitwidth`
+    bits wide, as the address map allocates it."""
+    return roundup_pow2min4((bitwidth + 7) >> 3)
 
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
@@ -264,6 +278,16 @@ def getKeyPriority(data, prioritylist):
         if ret:
             return key, ret
     return None, None
+
+def connectionChannelName(row):
+    # The channel a connection between two children declares in their container.
+    _, name = getKeyPriority(row, ['interfaceName', 'srcport', 'name', 'interface'])
+    return name
+
+def memoryChannelName(memory, port):
+    # The channel a memory's owning block declares for one memory port; the
+    # register handler's port is 'reg'.
+    return f"{memory}_{port}"
 
 def getPortChannelName(row, portKeyName = 'port'):
     _, value = getKeyPriority(row, [portKeyName, 'name', 'interface'])
@@ -2371,6 +2395,10 @@ class projectOpen:
                 if objInfo['blockKey'] == block:
                     data[obj] = dict(objInfo)
                     ret['temp']['structs'][objInfo['structureKey']] = 0
+                    struct = self.data['structures'][objInfo['structureKey']]
+                    data[obj]['worstBitwidth'] = worstCaseBitwidth(struct['width'], struct['maxBitwidth'], struct['isParameterizable'])
+                    if designObject == 'memories' or objInfo['regType'] == 'memory':
+                        data[obj]['rowBytes'] = rowFootprintBytes(data[obj]['worstBitwidth'])
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
@@ -2392,13 +2420,7 @@ class projectOpen:
                                 data.pop(obj)
 
                     else:  # registers
-                        data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
-                        # Surface worst-case bytes alongside nominal bytes for parameterized structures.
-                        _struct = self.data['structures'][objInfo['structureKey']]
-                        if _struct.get('isParameterizable') and _struct.get('maxBitwidth'):
-                            data[obj]['maxBytes'] = (_struct['maxBitwidth'] + 7) >> 3
-                        else:
-                            data[obj]['maxBytes'] = data[obj]['bytes']
+                        data[obj]['bytes'] = (struct['width'] + 7) >> 3 # round up to whole byte
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             if objInfo.get('wordLinesKey'):
@@ -2450,14 +2472,7 @@ class projectOpen:
                            instanceData['addressGroup']) == groupKey]
             routed.sort(key=lambda instanceData: instanceData['addressID'])
             # A referenced child project's standalone harness router is outside
-            # this build's tree; its view still renders, with no channels.
-            if not routed and qualDecoder in self.reachableInstances:
-                printError(f"Router block '{blockRow['block']}' declares address group "
-                           f"'{addressGroupLabel(groupKey)}' but no instance in this "
-                           f"build's design tree is routed to it, so the decoder has no "
-                           f"channels to dispatch. Route at least one instance to the "
-                           f"group, or remove the addressBlock: declaration.")
-                exit(warningAndErrorReport())
+            # this build's tree; its view renders with no channels.
             ret['addressDecode']['routedInstances'] = routed
         ret['addressDecode']['isApbRouter'] = isApbRouter
 
@@ -2472,7 +2487,7 @@ class projectOpen:
             if val['blockKey'] == qualBlock and val['instanceKey'] in containedInstances:
                 # the connection is to a memory inside the target block so we will need a channel and bindings
                 ret['memoryConnections'][memConn] = dict(val)
-                ret['memoryConnections'][memConn]['interfaceName'] = val['memory']+'_'+val['port']
+                ret['memoryConnections'][memConn]['interfaceName'] = memoryChannelName(val['memory'], val['port'])
                 if (val['instance'] != ''):
                     # we are connecting to an instance so lets add the instance type for the template
                     ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
@@ -2498,7 +2513,7 @@ class projectOpen:
         for mem, memInfo in ret['memories'].items():
             # we also need to create a port for any memory that has regAccess as the register block will need to connect to it
             if memInfo['regAccess']:
-                interfaceName = memInfo['memory']+ '_reg'
+                interfaceName = memoryChannelName(memInfo['memory'], 'reg')
                 ret['temp']['structs'][memInfo['structureKey']] = 0
                 if isRegHandler:
                     ret['memoryPorts'][interfaceName] = dict(memInfo)
@@ -2705,7 +2720,7 @@ class projectOpen:
                 ret['interfaceTypes'][intf_type] = intfInfo['interfaceTypeKey']
         for conn, connVal in connections.items():
             # create jinja friendly names
-            _, connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
+            connVal['interfaceName'] = connectionChannelName(connVal)
             intfInfo = self.data['interfaces'][connVal['interfaceKey']]
             self.getBDGetIntfStructs(ret, intfData=intfInfo)
             connVal['interfaceType'] = intfInfo['interfaceType']
@@ -4485,6 +4500,10 @@ class projectCreate:
             self.flatData['memories'], self.flatData['registers'],
             self.flatData['memoryConnections'],
             self.flatData['registerConnections'], self.flatData['connectionMaps'],
+            {connKey: connectionChannelName(row) for connKey, row in self.flatData['connections'].items()},
+            {key: memoryChannelName(row['memory'], row['port'])
+             for key, row in self.flatData['memoryConnections'].items()},
+            {key: memoryChannelName(row['memory'], 'reg') for key, row in self.flatData['memories'].items()},
             registerBusPassthroughs,
             self._blocksDeclaringNoResets,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
@@ -6055,9 +6074,8 @@ class projectCreate:
                     currentBlock = row['blockKey']
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
-                # Pick worst-case width when row is parameterizable.
                 isParam = bool(row['rowIsParam'])
-                width = row['maxBitwidth'] if (isParam and row['maxBitwidth']) else row['width']
+                width = worstCaseBitwidth(row['width'], row['maxBitwidth'], row['structIsParam'])
                 # for register memory type, use the memory objects alignment settings
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
@@ -6084,7 +6102,7 @@ class projectCreate:
                                    f"Address sizing requires a resolvable "
                                    f"wordLines value.")
                         exit(warningAndErrorReport())
-                    decodeSize = roundup_pow2min4((width + 7) >> 3) * wordLines
+                    decodeSize = rowFootprintBytes(width) * wordLines
                     size = decodeSize
                     if sizeRoundUpPowerOf2:
                         size = roundup_pow2min4(size)
@@ -6100,12 +6118,10 @@ class projectCreate:
                     # Decoded address footprint for a non-memory register: the
                     # SV decoder emits one exact-offset case arm per
                     # REG_BUS_WIDTH_BYTES-wide bus segment of the structure, so
-                    # the row occupies ceil(bytes / busWidth) * busWidth bytes
-                    # of address space (no power-of-2 rounding; that only
-                    # applies to memory range-match decode). busWidth matches
-                    # templates/systemVerilog/moduleRegs.py REG_BUS_WIDTH_BYTES.
-                    busWidth = 4
-                    decodeSize = ((bytesPerRow + busWidth - 1) // busWidth) * busWidth
+                    # the row occupies ceil(bytes / REG_BUS_WIDTH_BYTES) *
+                    # REG_BUS_WIDTH_BYTES bytes of address space (no power-of-2
+                    # rounding; that only applies to memory range-match decode).
+                    decodeSize = ((bytesPerRow + REG_BUS_WIDTH_BYTES - 1) // REG_BUS_WIDTH_BYTES) * REG_BUS_WIDTH_BYTES
                 else:
                     continue
                 allocateOrder[row[keyField]] = size
@@ -9343,6 +9359,19 @@ class projectCreate:
             )
             return item
 
+        # The model and RTL decoders select a slot from address bits, so a
+        # non-power-of-two value aliases or misroutes slots.
+        for field, fmt in (('maxAddressSpaces', str), ('addressIncrement', hex)):
+            value = item[field]
+            if value <= 0 or value & (value - 1):
+                suggest = f" Use {fmt(1 << (value - 1).bit_length())}." if value > 0 else ""
+                self.logError(
+                    f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, addressBlock: "
+                    f"of block '{itemkey}' (addressGroup '{group}') sets {field} "
+                    f"{fmt(value)}, which is not a power of two. The decoder selects "
+                    f"an address space from address bits.{suggest}"
+                )
+
         # varTypeContext = yamlFile scopes varType resolution to the
         # router block's own YAML file.
         groupRow = OrderedDict()
@@ -10028,16 +10057,18 @@ class projectCreate:
                 return True
         return structIsParam
 
+    def _regWorstWidth(self, structKey):
+        """Worst-case bit width of a register structure: maxBitwidth when parameterizable."""
+        sEntry = self._rowByQualifiedKey('structures', structKey)
+        return worstCaseBitwidth(sEntry['width'], sEntry['maxBitwidth'], sEntry['isParameterizable'])
+
     def _auto_regMaxBytes(self, section, itemkey, item, field, yamlFile, processed):
         # Worst-case byte size for a register, derived from its structure.
         # Hard-error on any failure path: a silent 0 propagates downstream as a
         # zero-sized register, corrupting address allocation without warning.
         structKey = processed['structureKey']
         sEntry = self._rowByQualifiedKey('structures', structKey)
-        if sEntry['isParameterizable'] and sEntry['maxBitwidth']:
-            width = sEntry['maxBitwidth']
-        else:
-            width = sEntry['width']
+        width = self._regWorstWidth(structKey)
         if not isinstance(width, int) or width <= 0:
             paramFlag = sEntry['isParameterizable']
             printError(f"Register '{itemkey}' in {yamlFile}: structure "
@@ -10066,6 +10097,13 @@ class projectCreate:
                 f"Change memoryType or regAccess.")
             return item
         listed = list(item.get('ports') or {})
+        if regPort is not None and 'reg' in listed:
+            # The register handler's port already takes the 'reg' channel name.
+            self.logError(
+                f"{where} lists port 'reg', but with regAccess the register "
+                f"handler's port is channel '{memoryChannelName(item['memory'], 'reg')}', "
+                f"so the two would share a name. Rename the port.")
+            return item
         available = len(portAccess) - (regPort is not None)
         if len(listed) > available:
             def ports(count):
@@ -10087,6 +10125,25 @@ class projectCreate:
         """Validate memory register constraints after processing"""
         regType = item.get('regType', None)
         registerName = item.get('register', itemkey)
+
+        if regType == 'ext':
+            # An ext register reaches its owner as one command, so it must fit one bus access.
+            width = self._regWorstWidth(item['structureKey'])
+            limit = REG_BUS_WIDTH_BYTES * 8
+            if width > limit:
+                where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, ext register "
+                         f"'{registerName}' of block '{item['block']}'")
+                if item['isParameterizable']:
+                    self.logError(f"{where} can be up to {width} bits wide, the width of structure "
+                                  f"'{item['structure']}' with its parameterizable fields at their maximum, wider "
+                                  f"than the {limit}-bit register bus. Narrow its fixed fields, or lower the "
+                                  f"maxBitwidth of its field types and the maxValue of any parameterizable "
+                                  f"constant that sets their width, so the structure fits in {limit} bits.")
+                else:
+                    self.logError(f"{where} is {width} bits wide, wider than the {limit}-bit register bus. "
+                                  f"An ext register must fit one bus access, so narrow it to {limit} bits or "
+                                  f"split it into several ext registers.")
+                return item
 
         if regType == 'memory':
             # Memory registers must have non-empty wordLines
@@ -10469,6 +10526,14 @@ class projectCreate:
         return item
 
     def _post_validateInstanceParameterBinding(self, itemkey, item, yamlFile):
+        # The schema default is the string '1'; an authored count is a YAML int.
+        if item['count'] not in (1, '1'):
+            self.logError(
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, instance "
+                f"'{itemkey}' sets count: {item['count']}. Instance replication is "
+                f"not supported, so the instance would be generated once. Remove "
+                f"count: and declare each instance separately.")
+            return item
         # A params-declaring block takes its Config from a variant selector or
         # from inheritContainerParam, and a top can use neither, so a top is
         # never parameterized. The instanceType foreign key orders the block row

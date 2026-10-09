@@ -3,7 +3,7 @@ include $(REPO_ROOT)/include/make/shared.mk
 
 EXTRA_CPP_SRC      =
 EXTRA_CPP_INCLUDES =
-EXTRA_LD_FLAGS     =
+EXTRA_LD_FLAGS     +=
 
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 

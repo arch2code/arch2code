@@ -95,7 +95,7 @@ inline const char* enumType_prt( enumType val )
 namespace fw_ns::nested {
 // structures
 struct test_st {
-    cmdidT a; //
+    cmdidT a; /* [9:0] */ //
 
     test_st() { memset(this, 0, sizeof(test_st)); }
 
@@ -104,7 +104,7 @@ struct test_st {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -118,7 +118,7 @@ struct test_st {
 
 };
 struct bigSt {
-    bigT b; //
+    bigT b; /* [95:0] */ //
 
     bigSt() { memset(this, 0, sizeof(bigSt)); }
 
@@ -127,7 +127,7 @@ struct bigSt {
     typedef uint64_t _packedSt[2];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bigSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, BIG_WIDTH);
     }
     inline void unpack(const _packedSt &_src)
@@ -144,7 +144,7 @@ struct bigSt {
 
 };
 struct testDataSt {
-    dataT data; //
+    dataT data; /* [127:0] */ //
 
     testDataSt() { memset(this, 0, sizeof(testDataSt)); }
 
@@ -153,7 +153,7 @@ struct testDataSt {
     typedef uint64_t _packedSt[2];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 128);
     }
     inline void unpack(const _packedSt &_src)
@@ -170,7 +170,7 @@ struct testDataSt {
 
 };
 struct testDataHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; /* [9:0] */ //Command context
 
     testDataHdrSt() { memset(this, 0, sizeof(testDataHdrSt)); }
 
@@ -179,7 +179,7 @@ struct testDataHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, testDataHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)
@@ -193,7 +193,7 @@ struct testDataHdrSt {
 
 };
 struct lengthHdrSt {
-    lengthT length; //
+    lengthT length; /* [15:0] */ //
 
     lengthHdrSt() { memset(this, 0, sizeof(lengthHdrSt)); }
 
@@ -202,7 +202,7 @@ struct lengthHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, lengthHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = length;
     }
     inline void unpack(const _packedSt &_src)
@@ -216,7 +216,7 @@ struct lengthHdrSt {
 
 };
 struct cmdidHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; /* [9:0] */ //Command context
 
     cmdidHdrSt() { memset(this, 0, sizeof(cmdidHdrSt)); }
 
@@ -225,7 +225,7 @@ struct cmdidHdrSt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cmdidHdrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = cmdid;
     }
     inline void unpack(const _packedSt &_src)

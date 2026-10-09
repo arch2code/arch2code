@@ -52,8 +52,8 @@ inline const char* addr_id_ipstd_prt( addr_id_ipstd val )
 namespace fw_ns::ip_ipTop {
 // structures
 struct ipStdData8St {
-    ipStdData8T data; //8-bit payload; matches ipDataSt::data @variant0
-    ipStdMarkerT marker; //Marker bit; matches ipDataSt::marker
+    ipStdData8T data; /* [7:0] */ //8-bit payload; matches ipDataSt::data @variant0
+    ipStdMarkerT marker; /* [8:8] */ //Marker bit; matches ipDataSt::marker
 
     ipStdData8St() { memset(this, 0, sizeof(ipStdData8St)); }
 
@@ -62,7 +62,7 @@ struct ipStdData8St {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipStdData8St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint16_t)marker << (8 & 15);
     }

@@ -171,7 +171,7 @@ fileGeneration:
     # Address defines for the whole product, one file per project, so a project
     # wanting them declares the entry. name: is the literal basename, so a product
     # normally spells its own (e.g. <product>RegAddresses).
-    #regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: model,   langDomain: sc, desc: "Per-project instance and register address defines"}
+    #regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: fwInc,   langDomain: fw, desc: "Per-project instance and register address defines"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     langDomain: sv, desc: "yaml based package file"}
     # mode: project creates exactly one artifact per project at its basePath segment
     # root, keyed to the project's top context. rtl.f is the verilator file list (-F)

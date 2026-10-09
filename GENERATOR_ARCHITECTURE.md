@@ -74,7 +74,7 @@ Both stages are classes in `pysrc/processYaml.py`, dispatched from
 `arch2code.py`: supplying `--yaml` and `--db` runs `projectCreate`; supplying
 `--db` (with `--readonly`) runs `projectOpen`, after which independent post-open
 dispatch branches may run: `--systemc`,
-`--systemVerilogGenerator`, `--docgen`, `--newmodule`, `--diagram`,
+`--systemVerilogGenerator`, `--docgen`, `--newmodule`, `--vlBoundary`, `--diagram`,
 `--drawStructure`, `--flows`, `--instancesWithBlockType`, `--blockContexts`. These are a sequence of
 independent `if`s, not a mutually exclusive mode selection, so several can run in
 one invocation. (`--newproject` is *not* one of them: it dispatches before any
@@ -206,6 +206,9 @@ Grouped by role:
   `registerPorts:`, an optional `addressBlock:` router declaration, and three
   columns filled by post-processing: `isParameterizable`, `defaultConfig`,
   `configContext`.
+  How `registerPorts:` and `addressBlock:` become the register-bus decode (router
+  index, handler synthesis, address allocation and the decode views) is specified
+  in `specs/spec-register-bus-distribution.md`.
 - `instances` — occurrences of a block inside a container block. Carry the
   selected `variant` and the container-inheritance flag
   `inheritContainerParam`.
@@ -279,6 +282,30 @@ is **projectName-blind**. In a composed build, two projects binding the same
 `(block, variant, param)` collapse onto one entry, last load winning.
 Identity-sensitive code must therefore use the flat leaf table
 `parametersvariantsparams`, whose combo key carries the declaring `projectName`.
+
+### Clock and reset model
+
+Clocks and resets are not resolved by the schema alone. `pysrc/clockTree.py`
+builds an in-memory model inside `projectCreate`, after post-parse synthesis,
+checks it, and persists only its results. The model itself is never stored.
+
+- `BlockDomains` is one block's clocks and resets in declaration order. Its
+  `build()` materialises the implicit input `clk` and its `rst_n` for a block
+  that declares none, and checks the block-level rules (default marking, async
+  resets, name uniqueness). The schema's `blockClock`/`blockReset` combo foreign
+  key only proves that a stated name exists on the block.
+- `Container` holds the `Net`s (declared, local or testbench) inside one block
+  with children, or inside the testbench root. `ClockTree` is the set of
+  containers, and `ClockTree.check()` runs the checks that need every block
+  built.
+- `ClockTree.rows()` yields five non-schema tables: `blockClocksResets`,
+  `instanceClockResetBinds`, `memoryClocks`, `portDomains` and
+  `containerLocalNets`. `projectOpen` loads them grouped by key, and the
+  `getBD*` clock views (`getBDClocksResets`, `getBDInstanceClockResetBinds`,
+  `getBDMemoryClock`, `getBDLocalNets`, `getBDPortDomain` and their siblings)
+  read them for the templates.
+
+The requirements are in `specs/spec-clock-reset-requirements.md`.
 
 ---
 
@@ -389,8 +416,13 @@ the discovery closure**, never inferred from disk location.
   sentinel set `projectName` + `dirs` + `fileGeneration`, *and* it arrived via the
   `projectFiles:` slot.
 - The scan-all pre-pass assigns ownership: the root closure belongs to the root
-  project, and for a file reachable through several providers **the deepest
-  closure wins, equal depth broken lexically on the provider path.**
+  project. A file listed directly in a provider's `projectFiles:` belongs to that
+  provider; two providers listing the same file directly is an error. Any other
+  file reachable through several providers goes to the provider with the
+  **longest path from the root** over the provider graph, and a dependency on a
+  symlinked copy of a project also ranks that project's override-selected master.
+  A file still tied at that depth is rejected at scan time, naming the file and
+  the tied providers; a `projectFiles:`/`include:` reference cycle is rejected.
 - `projectCreate` then records the result as `contextOwningProject`, persisted as
   `CONTEXTOWNINGPROJECT`. A design context absent from the scan closure is a hard
   error and does not default to the root.
@@ -471,6 +503,17 @@ generic `cpu` block, generating their package / include / firmware artefacts.
 Note that `builder/base/common/` is *not* a project — it is the framework runtime
 source tree.
 
+### The active project
+
+A build has one **active project**: the one whose `rundir/` runs `make`. Only its
+`topInstance` is elaborated, and only its build configuration is read:
+`$(REPO_ROOT)/include/make/shared.mk`, its `rundir/Makefile` (where hand-written
+sources such as `fw/src` are listed) and its Verilated tops. A child's
+`include/` directory and rundir are never read. Child-owned testbench and
+registrar files are compiled with the rest of the foreign compile set; the
+testbench to run is chosen by name on the command line. Which instances count as
+reachable is specified in `specs/spec-project-composition.md` §8.
+
 ### How file ownership decides who generates what
 
 Ownership is enforced at **three** gates, all resolving a file to an owning
@@ -494,17 +537,19 @@ files.
 
 Crucially, ownership is not merely a skip flag. It is an **identity axis inside
 composite keys**: address groups are keyed `(owningProject, group)`, foreign
-Config headers `(owningProject, child)`, the SystemC instance factory
+Config headers `(declaringProject, child)`, the SystemC instance factory
 `Key{blockType, variant, projectName}`, and per-variant Config semantic identity
 `(projectName, block, variant)`.
 
-### The reference-depth trap
+### Ownership ties
 
-Because ownership is "deepest provider closure wins, lexical tiebreak", an
-assembler **must not** list a sub-project at the same closure depth as another
-sub-project that includes it. Doing so attributes the shared context to whichever
-provider sorts last, which **renames its generated module** and makes the build
-unresolvable.
+Because ownership ranks providers by their longest path from the root, an
+assembler may list a sub-project directly even when another sub-project also
+includes it: the dependee still ranks below the project that depends on it, so
+the shared context keeps one owner. Two providers that reach a file at the same
+depth, neither depending on the other, have no single owner. The scan rejects
+that case; listing the file directly in the owning project's `projectFiles:`
+resolves it.
 
 ---
 
@@ -532,10 +577,6 @@ Parameterizability then propagates transitively: a type whose width names a
 parameterizable constant becomes parameterizable, and so on through structures,
 interfaces, registers, memories, and connections. The affected schema sections
 carry an `isParameterizable` column as a result.
-
-`ipParameters:` is invalid in a shared include file, meaning one that another
-file includes and that declares no `blocks:`, because "parameter bounds are tied
-to the IP root". A declaration therefore lives in a file that declares blocks.
 
 **Naming.** A block opts in by naming the constants it consumes:
 
@@ -580,8 +621,12 @@ parameters:
   (`validateVariantParameterCompleteness`, a per-row `post` hook resolving the
   block in the row's own scope).
 - **Emission is N+1.** The generator emits one baseline
-  `<stem>DefaultConfig` plus one `<block><Variant>Config` per declared variant.
-  Variants with identical values still receive distinct variant-named structs.
+  `<project>_<block>DefaultConfig` plus one `<project>_<block><Variant>Config`
+  per declared variant, where `<project>` is the declaring project and is
+  omitted when the block name already leads with it. Variants with identical
+  values still receive distinct variant-named structs. A variant the block's
+  owner labels `default` is the block's default Config, and no synthetic
+  default is persisted beside it.
 - A binding is **either** a literal `value` **or** container-sourced
   (`containerParam:`), never both; the singular shorthand `<param>: <scalar>`
   routes to `value`.
@@ -608,10 +653,11 @@ compatibility gate compares.
 `pysrc/evalPyToSv.py` is **one-time migration tooling**, not part of emission: it
 rewrites legacy Python `eval:` strings in YAML into the SV subset, using Python's
 own `ast` as the front end and applying targeted text spans so untouched text
-stays byte-identical. It refuses two cases rather than guessing:
-`real`-typed evals, and `//` floor division (which floors toward −∞ where SV `/`
-truncates toward zero, so a blind rewrite would silently corrupt the ceiling
-idiom `-(-a//b)`).
+stays byte-identical. It reports `NEEDS_MANUAL` rather than guessing for four
+cases: real-valued evals; `//` floor division (which floors toward −∞ where SV
+`/` truncates toward zero, so a blind rewrite would silently corrupt the ceiling
+idiom `-(-a//b)`); `**`; and any other construct outside the subset, such as
+`and`/`or`, `x if c else y`, or a call or attribute other than `.bit_length()`.
 
 ### The two container-inheritance mechanisms
 
@@ -655,12 +701,20 @@ scope, this reduces to spelling the container's own `Config` symbol at that
 instance, and C++ template instantiation resolves the concrete struct at the
 container's instantiation site — including transitively. No configuration value is
 plumbed. Database creation enforces that the child's params are a **by-name
-subset** of the container's and that **container and child have the same owning
-project**.
+subset** of the container's, that each shared name is backed by the **same
+`ipParameters` constant** on both sides, that the container declares `params:`,
+and that **container and child have the same owning project**.
+
+The register handler synthesised for a parameterized routed leaf is such a
+child: it declares the leaf's `params:` and sets `inheritContainerParam`, so it
+is typed with the leaf's own Config.
 
 Such an instance binds **no variant label**: it is one member of a type family a
 registration key cannot select from, so its container names the class at the site
-and it reaches no factory registration. A consequence worth knowing: HDL-wrapper
+and forwards its own runtime variant label. An exact registration under that key
+(a Verilated or tandem replacement) still wins; otherwise a model request builds
+the named class, and any other mode must find a registration
+(`specs/spec-block-registration.md` §6). A consequence worth knowing: HDL-wrapper
 views must therefore source from a block's **declared** variants and params, not
 its instantiated set, or a declared-but-uninstantiated variant silently renders as
 a broken parameterless module.
@@ -698,8 +752,9 @@ The same parameterized block becomes:
   instantiating a child must name the child's per-variant Config, because the
   container's `dynamic_pointer_cast<childBase<childConfig>>` returns `nullptr`
   otherwise — the container translation unit is deliberately **not** config-free.
-  Eval-derived constants are emitted **symbolically**, not frozen to literals, so
-  `WIDTH_X2 = WIDTH * 2` recomputes inside each struct from that struct's own
+  Eval-derived constants are emitted **symbolically** in the block's Base class,
+  not frozen to literals and not copied into each Config struct, so
+  `WIDTH_X2 = Config::WIDTH * 2` recomputes from the selected Config's own
   `WIDTH` — which is what makes deferring per-variant eval re-resolution sound.
 - **SystemVerilog** — a parameterized module. Because SV cannot parameterize a
   package, every parameterizable constant, type, enum, and structure moves **out
@@ -714,6 +769,15 @@ They must agree on **resolved bit layout**, and the compatibility barrier
 (`validatePorts` and its helpers) is what enforces it: identical protocol,
 identical structure list, identical field widths and bit offsets under the bound
 variant. Field names are never compared.
+
+**Both endpoints carry the payload's parameters.** SV sizes a parameterizable
+payload from the module's own parameters, so each endpoint of a parameterizable
+connection or connectionMap that binds the connection's own interface must
+declare every backing parameter of that payload
+(`_validateParameterizedConnectionEndpoints`). The error says whether the block
+"is not parameterized" or "does not declare the required parameter(s)". An
+endpoint whose declared port names a different interface is adapted instead and
+is exempt.
 
 Two boundary rules are easy to get wrong:
 
@@ -744,6 +808,32 @@ typed at. There are exactly three possibilities, and the design enumerates them:
 3. **Nothing** — fails at `make db` with a diagnostic naming the channel, both
    ends, and the two available fixes.
 
+### Junction compatibility and adaptation
+
+Three separate questions are asked wherever two interfaces meet, each with its
+own owner:
+
+| Question | Decides | Owner |
+| :-- | :-- | :-- |
+| Same packed layout: protocol, structure list, field widths and offsets | accept or reject | `validatePorts` / `checkInterfacePair`, at `make db` |
+| Same C++ type | whether an adapter is needed at all | value-keyed payload types (`<name>_v<values>`) |
+| Same emitted member storage | which copy an adapter uses | `buildThunkerView` in `projectOpen` |
+
+The first is the only one that rejects. A junction whose end takes its values
+from a container, through `inheritContainerParam` or `containerParam:`, is
+checked once per configuration its container is instantiated at
+(`SiteBindingIndex.junctionBindings`). The second decides binding: equal values
+on one interface name one type and bind directly, while a container-sourced end
+facing a literal end keeps a same-interface thunker
+(`specs/spec-parameter-inheritance.md`, "Payload types at a junction"). The
+third never rejects. It emits one `directCopy` verdict per required payload,
+which the thunker template takes as a `bool` argument.
+
+A testbench External built with `--excludeInst` drops the DUT's end of each
+boundary connection. The pruned connection keeps the excluded instance's Config
+selection as `excludedEndConfig`, and the boundary thunker types its DUT side
+with it.
+
 ---
 
 ## 7. Artefact generation and file ownership
@@ -766,15 +856,45 @@ Each entry declares:
   (`sc` / `sv` / `vl`).
 - **`cond`** (OR) / **`condAnd`** (AND) — a predicate over the block's flags
   (`hasMdl`, `hasRtl`, `hasVl`, `hasTb`, `isParameterizable`, `hasOwnParams`,
-  `smartInclude`).
+  `smartInclude`). The registrar and Config-module entries key on
+  `hasOwnParams`, so a block that is parameterizable only because payloads
+  transit it gets neither.
+- **`langDomain`** — `sv`, `sc` or `fw`, required on every entry. It selects
+  which of the owning project's `svFilePrefix`, `scFilePrefix` or `fwFilePrefix`
+  goes in front of the file name. A `project`-mode name is literal and takes
+  none.
 - Modifiers — `blockDir`, `variant` (one file per declared variant),
   `ownerQualified` (only the declaring assembler emits),
   `requiresRegistrations` (suppress an empty trampoline).
 
 Layout is either `functional` (`$root/<segment>/<decomp>`) or `hierarchical`
-(`<node>/<segment>`), selected **per project file**, so a nested project uses its
+(`<node>/<segment>`, where a node is the directory that holds a design file's
+`yaml/` directory), selected **per project file**, so a nested project uses its
 own setting. Four keys — `yaml`, `prj`, `rundir`, `include` — are layout
 *conventions*, not fileMap segments.
+
+In a composed build each block's and context's files are named and placed by the
+merged fileMap of the project that owns them, as that project would place them
+standalone. `pysrc/artifactPaths.py` holds the one naming and placement rule:
+`fileStem` gives a file's stem, and `artifactRows` is the single per-artefact
+row view that `newModule`, the build manifest and the migration sweep all read.
+
+### Generated identity naming
+
+Every emitted identifier is derived once in `projectCreate` from the owning
+project, `CONTEXTOWNINGPROJECT`, so a child spells the same names standalone
+and composed. C++ module names, namespaces and Config names are
+project-qualified by `qualifyModuleIdentity`: `<project>_<name>`, unless
+`leadsWithProject` finds the name already equal to the project name or starting
+with `<project>_` (the `_` boundary keeps `fooBar` from counting as led by
+`foo`). Both tokens pass through `sanitizeIdentifierToken`, so a project name
+such as `my-project` still yields a legal identifier. SV module and package
+names are not project-qualified: each is its file's stem, the local name with
+the owner's `svFilePrefix`. Two gates reject collisions: `rejectSharedName` over
+the C++ module identities and Config names, and `validateSvDesignUnitNames`,
+which checks every SV module, wrapper, variant top and package against one
+namespace and as legal, non-keyword identifiers. The full table is in
+`specs/spec-project-composition.md` §5.
 
 ### Generated regions, user regions, and the crucial asymmetry
 
@@ -839,8 +959,10 @@ Three distinct write disciplines:
 So: **`make gen` does not create files; `make newmodule` does not fill them.**
 
 File classes are keyed on **segment role**, not literal directory (so the rule is
-identical in both layouts). Migration derives wholesale-clean eligibility from
-the frozen legacy map, where the wholesale-clean set is `{base}`:
+identical in both layouts). The format migration's orphan sweep derives
+wholesale-clean eligibility from the frozen legacy map, where the
+wholesale-clean set is `{base}`; the layout migration also clears `registrar`
+by directory, so its set is `{base, registrar}`:
 
 1. **GENERATED-deletable** — `base`, `registrar`, `fwInc`.
 2. **MIXED** — `vl_wrap`. Its files are generated, but the SC wrapper header
@@ -866,9 +988,12 @@ never rewrites the file. Named exceptions: `fw` is split (`fw/include` generated
 `config/createBuildManifest.py` runs inside `projectCreate` (via
 `createArtifacts:`) and emits `.gen/build.mk` plus a `BUILDMANIFEST` blob: source
 directories, generated file lists, module files, verilated tops, and the
-per-project `rtl.f`. It re-walks the merged `fileMap` using the *same* placement
-primitives as `newModule`, explicitly so the manifest cannot drift from what is
-actually emitted. Regeneration targets are owned-only; compile sets are
+per-project `rtl.f`. It reads the same `artifactRows` view as `newModule`,
+explicitly so the manifest cannot drift from what is actually emitted. Which
+contexts' packages compile is `COMPILECONTEXTS`, the persisted compile closure
+(the top context's include chain plus the context of every reachable block,
+closed under include scope); `rtl.f` and the Verilator dependency list both
+read it. Regeneration targets are owned-only; compile sets are
 foreign-inclusive. Makefile consumption wraps the lists in `$(wildcard ...)`
 deliberately: the manifest lists **intent**, and a not-yet-scaffolded file must
 not be a missing prerequisite. `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES` are
@@ -876,6 +1001,36 @@ the documented seam for the user-hosted files carrying generated regions that no
 fileMap entry expresses. The rule is fileMap first, seam only for what falls
 outside it. `examples/mixed` and its encoder units are the seam's only user in
 base or pro.
+
+Verilated tops are explicit records, never derived from file names:
+`A2C_VL_TOPS` lists every top's design-unit name (from `SVWRAPPERNAMES` or the
+registrar pair), `A2C_VL_SV_<top>` names the physical `.sv` holding it,
+`A2C_VL_PORTMAP_<top>` its VCS port map, and `A2C_VL_TOP_<block>` the DUT top
+that `make lint` resolves through `HDL_TOP_MODULE`. Each top verilates into its
+own `--Mdir`. A separate generator mode, `arch2code.py --vlBoundary`
+(`pysrc/vlBoundaryGen.py`), reads the manifest and the per-top widths in
+`VLTOPS` and writes `.gen/vl/<top>.portmap` and `.gen/vl/<top>_xcelium.h`
+whole, with no user region. `make gen` runs it only for the VCS and Xcelium
+flows. See `specs/spec-verilated-wrappers.md` and
+`specs/SIMULATOR_INTEGRATION.md`.
+
+### Runtime registration and the registrar segment
+
+A generated parent constructs each child through `instanceFactory::createInstance`
+with a string key `(blockType, variant, projectName)` and never names the child's
+class. Registrations reach the factory three ways: a retain-marked static in a
+non-templated block's own module unit and in the testbench, a per-child
+`<child>Registrar.cppm` for blocks that declare their own `params:`, and a
+`<child>VlRegistrar.cpp` for `hasVl` blocks, compiled empty outside an HDL DUT build.
+The registrar files are `mode: registrar` fileMap entries in the `registrar` segment.
+Each one aggregates the owning project's pairs for one child, is anchored at the
+assembler, and is stamped `--parent=<assembler>` so the ownership gate assigns it to
+the assembler's project. The key's `projectName` is a factory domain: a bare project
+name, or `<owner>.<parentModule>.<childModule>` for a child with its own params, which
+keeps two parents of one child apart. `projectCreate` persists the pair records
+(`REGISTRARPAIRS`, `PAIRFACTORYPROJECTS`), and `getRegistrarConfigView` is the view the
+registrar templates read. Lookup order, container-typed children, Config identity and
+the archive link requirement are specified in `specs/spec-block-registration.md`.
 
 ### Migration
 
@@ -897,3 +1052,12 @@ manual-work-remains / blocked, and
 Migration must know about ownership (so a composed build does not delete or
 re-stamp a child's artefacts), about stamps (whose vocabulary it is changing),
 and about user regions (which it transplants rather than regenerates).
+
+Every phase holds to one rule: it never deletes, overwrites or moves a file onto
+a path that is some artefact's current file. Where that would be needed it
+reports a manual item instead (`TODO_CURRENT_ARTIFACT`,
+`TODO_FILE_PREFIX_BOTH_EXIST`, `TODO_FILE_PREFIX_CHAIN`), and a phase that
+cannot proceed safely halts before `newmodule` can delete anything. Migration
+reads only the file system, never version control. Setting a filename prefix
+where there was none is migrated; changing one prefix to another is a manual
+rename before `make migrate`.

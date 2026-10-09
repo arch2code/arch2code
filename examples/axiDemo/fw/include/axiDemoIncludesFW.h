@@ -45,7 +45,7 @@ namespace fw_ns::axiDemo {
 namespace fw_ns::axiDemo {
 // structures
 struct axiAddrSt {
-    axiAddrT addr; //
+    axiAddrT addr; /* [31:0] */ //
 
     axiAddrSt() { memset(this, 0, sizeof(axiAddrSt)); }
 
@@ -54,7 +54,7 @@ struct axiAddrSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = addr;
     }
     inline void unpack(const _packedSt &_src)
@@ -68,7 +68,7 @@ struct axiAddrSt {
 
 };
 struct axiDataSt {
-    axiDataT data; //
+    axiDataT data; /* [31:0] */ //
 
     axiDataSt() { memset(this, 0, sizeof(axiDataSt)); }
 
@@ -77,7 +77,7 @@ struct axiDataSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -91,7 +91,7 @@ struct axiDataSt {
 
 };
 struct axiStrobeSt {
-    axiStrobeT strobe; //
+    axiStrobeT strobe; /* [3:0] */ //
 
     axiStrobeSt() { memset(this, 0, sizeof(axiStrobeSt)); }
 
@@ -100,7 +100,7 @@ struct axiStrobeSt {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, axiStrobeSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = strobe;
     }
     inline void unpack(const _packedSt &_src)

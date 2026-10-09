@@ -266,7 +266,7 @@ def restructureTbConfigs(prj, write=False):
     for blockRow in prj.data["blocks"].values():
         if prj.contextOwningProject[blockRow["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(fileDef, blockRow):
+        if not fileMapCondMatch(fileDef, prj.getBlockCondRow(blockRow["blockKey"])):
             continue
         blockName = blockRow["block"]
         path = expandNewModulePath(fileDef, blockRow["dir"], blockName, blockName,

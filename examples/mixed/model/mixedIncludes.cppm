@@ -214,7 +214,7 @@ struct aSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = variablea2;
         uint16_t _pos{2};
         for(unsigned int i=0; i<ASIZE2; i++) {
@@ -297,7 +297,7 @@ struct aASt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aASt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = variablea;
     }
     inline void unpack(const _packedSt &_src)
@@ -356,7 +356,7 @@ struct aRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -423,7 +423,7 @@ struct dRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, dRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = d;
     }
     inline void unpack(const _packedSt &_src)
@@ -494,7 +494,7 @@ struct dSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, dSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = variabled2;
         _ret |= (uint8_t)variabled << (4 & 7);
     }
@@ -557,7 +557,7 @@ struct bigSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bigSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = big;
     }
     inline void unpack(const _packedSt &_src)
@@ -624,7 +624,7 @@ struct nestedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, nestedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<2; i++) {
             seeSt::_packedSt _tmp{0};
@@ -721,7 +721,7 @@ struct bSizeRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bSizeRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = index;
     }
     inline void unpack(const _packedSt &_src)
@@ -789,7 +789,7 @@ struct bSizeSt {
     inline bSizeT _getAddress(void) { return( index); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bSizeSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = index;
     }
     inline void unpack(const _packedSt &_src)
@@ -845,7 +845,7 @@ struct apbAddrSt {
     inline apbAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -902,7 +902,7 @@ struct apbDataSt {
     inline void _setData(apbDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -961,7 +961,7 @@ struct cSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<5; i++) {
             pack_bits((uint64_t *)&_ret, _pos, sevenBitArray[i], 7);
@@ -1049,7 +1049,7 @@ struct test1St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test1St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<5; i++) {
             pack_bits((uint64_t *)&_ret, _pos, sevenBitArray2[i], 7);
@@ -1153,7 +1153,7 @@ struct test2St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test2St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<5; i++) {
             cSt::_packedSt _tmp{0};
@@ -1233,7 +1233,7 @@ struct test3St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test3St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<5; i++) {
             aRegSt::_packedSt _tmp{0};
@@ -1309,7 +1309,7 @@ struct test4St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test4St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         {
             sevenBitArray.pack(*(aRegSt::_packedSt*)&_ret);
         }
@@ -1372,7 +1372,7 @@ struct test5St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test5St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<10; i++) {
             aRegSt::_packedSt _tmp{0};
@@ -1448,7 +1448,7 @@ struct test6St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test6St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         {
             largeStruct.pack(*(test1St::_packedSt*)&_ret[ 0 ]);
         }
@@ -1512,7 +1512,7 @@ struct test7St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test7St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<5; i++) {
             test1St::_packedSt _tmp{0};
@@ -1592,7 +1592,7 @@ struct test8St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test8St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<3; i++) {
             pack_bits((uint64_t *)&_ret, _pos, words[i], 16);
@@ -1672,7 +1672,7 @@ struct test9St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test9St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<4; i++) {
             test8St::_packedSt _tmp{0};
@@ -1752,7 +1752,7 @@ struct signedTestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, signedTestSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = unsignedValue;
         _ret |= ((uint16_t)(signedValue & ((1ULL << (8)) - 1))) << (2 & 15);
     }
@@ -1832,7 +1832,7 @@ struct mixedSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, mixedSignedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = flags;
         _ret |= ((uint32_t)(offset & ((1ULL << (8)) - 1))) << (4 & 31);
         _ret |= ((uint32_t)(temp & ((1ULL << (16)) - 1))) << (12 & 31);
@@ -1923,7 +1923,7 @@ struct signedArraySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, signedArraySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<3; i++) {
             pack_bits((uint64_t *)&_ret, _pos, values[i] & ((1ULL << (4)) - 1), 4);
@@ -2019,7 +2019,7 @@ struct nonByteAlignedSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, nonByteAlignedSignedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = field4;
         _ret |= ((uint16_t)(field3 & ((1ULL << (5)) - 1))) << (3 & 15);
         _ret |= (uint16_t)field2 << (8 & 15);
@@ -2129,7 +2129,7 @@ struct complexMixedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, complexMixedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = signedE & ((1ULL << (8)) - 1);
         _ret |= (uint64_t)unsignedD << (8 & 63);
         _ret |= ((uint64_t)(signedC & ((1ULL << (11)) - 1))) << (12 & 63);
@@ -2250,7 +2250,7 @@ struct edgeCaseSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, edgeCaseSignedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = largeVal & ((1ULL << (16)) - 1);
         _ret |= ((uint64_t)(mediumVal & ((1ULL << (11)) - 1))) << (16 & 63);
         _ret |= ((uint64_t)(smallVal & ((1ULL << (4)) - 1))) << (27 & 63);
@@ -2372,7 +2372,7 @@ struct mixedArraySignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, mixedArraySignedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<3; i++) {
             pack_bits((uint64_t *)&_ret, _pos, unsignedVals[i], 5);
@@ -2480,7 +2480,7 @@ struct test37BitRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test37BitRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = value37;
     }
     inline void unpack(const _packedSt &_src)
@@ -2555,7 +2555,7 @@ struct log2TestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, log2TestSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = signedCount & ((1ULL << (clog2(BSIZE+1)+1)) - 1);
         _ret |= (uint16_t)index << (5 & 15);
         _ret |= (uint16_t)count << (9 & 15);
@@ -2637,7 +2637,7 @@ struct nestedLog2St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, nestedLog2St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         {
             log2Data.pack(*(log2TestSt::_packedSt*)&_ret);
         }
@@ -2745,7 +2745,7 @@ struct wideLog2St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wideLog2St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         {
             nested.pack(*(log2TestSt::_packedSt*)&_ret);
         }

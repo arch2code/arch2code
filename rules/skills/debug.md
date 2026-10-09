@@ -4,140 +4,118 @@ description: Guide for using debugging tools in SystemC including trackers, asse
 ---
 # Skill: Debugging
 
-## Purpose
-Guide the user on using debugging tools and techniques in SystemC, including Trackers, Assertions, Logging, and Status Reporting.
+## Trackers
+A tracker (`tracker<T>`) follows a tag, such as a command ID or a read tag, from allocation to release. It attaches an info object of type `T` to each live tag and prints that info wherever the tag is logged.
 
-## Instructions
+### Info type
+`T` needs a `std::string prt()` method. It also needs a constructor that takes a `std::string`, because the tracker can create an info object itself from a channel's log string. Without that constructor `tracker<T>` does not compile.
 
-1.  **Trackers (`tracker<T>`):**
-    *   **Crucial Debug Tool:** Used to track the lifecycle of objects (tags, commands) through the pipeline.
-    *   Initialize via `trackerCollection::GetInstance().getTracker(...)`.
-    *   **Lifecycle:**
-        *   `alloc(tag, info, refDelta)`: Start tracking a tag.
-        *   `dealloc(tag, refDelta)`: End tracking.
-    *   **Ref Counting:** Use `getTrackerRefCountDelta()` for correct tandem verification reference counting.
+```cpp
+struct tagInfo {
+    uint32_t cmdId = 0;
+    std::string tagType;
+    tagInfo() = default;
+    explicit tagInfo(const std::string &s) : tagType(s) {}
+    std::string prt() { return std::format("cmd:{} type:{}", cmdId, tagType); }
+};
+```
 
-    ```cpp
-    // Example from tagScheduler.cpp
-    std::shared_ptr<tracker<tagInfo>> rdTagTracker;
-    // Constructor
-    rdTagTracker(std::static_pointer_cast<tracker<tagInfo>>( trackerCollection::GetInstance().getTracker("rdTag") ))
-    // Allocation
-    auto tag = std::make_shared< tagInfo >();
-    tag->cmdId = cmdId;
-    // ... populate info
-    rdTagTracker->alloc(rd.rdTag, tag, getTrackerRefCountDelta());
-    // Update
-    rdTagTracker->setLen(rd.rdTag, length);
-    // Deallocation
-    rdTagTracker->dealloc(rdTag, getTrackerRefCountDelta());
-    ```
+### Registration
+Register every tracker in the testbench's `<dut>Config::createTestBench()`, before `createTbTop()`. Blocks and channels look their trackers up while the hierarchy is built, and `getTracker` asserts `Tracker not found` for a name not yet registered.
 
-    *   **Info Struct:** Define a struct (e.g., `tagInfo`) with a `prt()` method for string representation in logs/waveforms.
+```cpp
+bool createTestBench(void) override
+{
+    auto &trackers = trackerCollection::GetInstance();
+    // appended to the alloc and dealloc log lines
+    auto prtTag = [](int tag) { return std::format(" tag:0x{:x}", tag); };
 
-    ```cpp
-    struct tagInfo {
-        uint32_t cmdId;
-        std::string tagType;
-        std::string prt() {
-            return std::format("cmd:{} type:{}", cmdId, tagType);
-        }
-    };
-    ```
+    // tracker(size, name, log prefix, tag formatter)
+    trackers.addTracker("cmd", std::make_shared<tracker<tagInfo>>(NUM_CMDS, "cmdTracker", "C#", prtTag));
 
-2.  **Tracker Definition & Registration:**
-    *   **Registration:** In a global initialization function (e.g., `trackerInit`), create the tracker and add it to the `trackerCollection`. This is typically called from your testbench configuration.
+    // trackers that draw sequence numbers from one shared counter
+    auto seq = std::make_shared<uint64_t>(0);
+    trackers.addTracker("rdTag", std::make_shared<tracker<tagInfo>>(NUM_TAGS, seq, "rdTag", "T#", prtTag));
+    trackers.addTracker("wrTag", std::make_shared<tracker<tagInfo>>(NUM_TAGS, seq, "wrTag", "T#", prtTag));
 
-    ```cpp
-    // 1. Define Tag Formatter (Optional)
-    std::string myTagFormatter(int tag) {
-        return std::format("tag:0x{:x}", tag);
-    }
+    std::shared_ptr<blockBase> tb = createTbTop();
+    return true;
+}
+```
 
-    // 2. Register in trackerInit()
-    void trackerInit(void) {
-        auto &trackers = trackerCollection::GetInstance();
-        
-        // Simple Tracker
-        trackers.addTracker("cmd", std::make_shared<tracker<cmdIdInfo>>(
-            NUM_COMMANDS,   // Depth
-            "cmdTracker",   // Name
-            "C#",           // Log Prefix
-            cmdidAlloc      // Tag formatter func
-        ));
+### Use in a block
+```cpp
+// member, initialized in the constructor
+std::shared_ptr<tracker<tagInfo>> rdTagTracker;
+rdTagTracker(std::static_pointer_cast<tracker<tagInfo>>(trackerCollection::GetInstance().getTracker("rdTag")))
 
-        // Shared Counter Tracker (e.g., for unified Read/Write tags)
-        // Useful when multiple trackers share the same sequence number space
-        auto sharedCounter = std::make_shared<uint64_t>(0);
-        
-        auto rdTracker = std::make_shared<tracker<tagInfo>>(
-            NUM_TAGS, 
-            sharedCounter, 
-            "rdTag",        // Name
-            "T#",           // Log Prefix
-            rdTagAlloc      // Tag formatter func
-        );
-        trackers.addTracker("rdTag", rdTracker);
-    }
-    ```
+// allocate
+auto info = std::make_shared<tagInfo>();
+info->cmdId = cmdId;
+rdTagTracker->alloc(rdTag, info, getTrackerRefCountDelta());
+// update
+rdTagTracker->setLen(rdTag, length);
+// release
+rdTagTracker->dealloc(rdTag, getTrackerRefCountDelta());
+```
 
-3.  **Tracker Integration in YAML:**
-    *   **Generator Tag:** Use `generator: tracker(trackerName)` in your YAML structure definition to automatically link a field to a tracker.
-    *   **Effect:** When this field is printed (e.g., in logs), the system automatically looks up the active tracker for that tag value and prints the tracker's info alongside the value.
+Pass `getTrackerRefCountDelta()` to `alloc` and `dealloc`. It halves the reference count step in tandem, where both sides allocate and release the same tag.
 
-    ```yaml
-    # Example from sharedTop.yaml
-    structures:
-      rdTagSt:
-        rdTag: {varType: rdTagT, generator: tracker(rdTag), desc: "Read tag"}
-    ```
+### Tracker fields in YAML
+`generator: tracker(<name>)` on a structure field binds the tracker named `<name>` to every channel that carries the structure. The name `length` is reserved and binds no tracker.
 
-    *   **Log Output:** The log will show the tracker ID (e.g., `T#...`) and the content returned by your info struct's `prt()` method inside curly braces `{...}`.
+```yaml
+structures:
+  rdTagSt:
+    rdTag: {varType: rdTagT, generator: tracker(rdTag), desc: "Read tag"}
+```
 
-    ```text
-    # Log format: Prefix#TrackerID{InfoPrtOutput}FieldName:Value
-    NVMe.FTL_retrieve:T#2d73{C#2cdb Type:HOSTRD cmdId:0x1b4}rdTag:0x0a1
-    ```
-    *   In this example:
-        *   `T#2d73`: Unique Tracker ID.
-        *   `{C#2cdb Type:HOSTRD cmdId:0x1b4}`: Output from `tagInfo::prt()`.
-        *   `rdTag:0x0a1`: The actual field name and value.
+*   The channel looks the tracker up in its constructor, so the tracker must be registered before `createTbTop()`.
+*   The channel logs every transfer through the tracker. A transfer whose tag is not allocated at that moment fails the run with `Invalid tracker interface data`. The check is a `Q_ASSERT_CTX`, so the steps under Assertions apply. Allocate the tag before the first transfer that carries it.
 
-4.  **Assertions (`Q_ASSERT`):**
-    *   **Internal Consistency:** Use `Q_ASSERT` to verify internal state and assumptions.
-    *   **Parameters:** Takes a condition and an error message string.
-    *   **Failure:** Halts simulation immediately with the message if the condition is false.
+A transfer logs at `LOG_NORMAL`, so it appears only with `--verbosity high` or above:
 
-    ```cpp
-    void myModule::processData(uint32_t index) {
-        // Verify index is within bounds before access
-        Q_ASSERT(index < MAX_SIZE, "Index out of range");
-        
-        data_st data = dataArray[index];
-        // ... processing logic ...
-    }
-    ```
+```text
+T#2d73{cmd:436 type:HOSTRD}rdTag:0x0a1
+```
 
-5.  **Status Reporting:**
-    *   **Simulation Hangs:** Implement `statusPrint(void)` to dump internal state (e.g., queue contents, current arbitration state) when simulation hangs or errors occur.
-    *   **Registration:** Register the status callback in the constructor using `logging::GetInstance().registerStatus`.
+*   `T#` is the tracker's log prefix.
+*   `2d73` is the allocation's sequence number, in hex. Trackers that share a counter never reuse one.
+*   `{cmd:436 type:HOSTRD}` is the info object's `prt()`.
+*   `rdTag:0x0a1` is the structure's own `prt()`.
 
-    ```cpp
-    // Constructor registration
-    logging::GetInstance().registerStatus(name(), [this](void){ statusPrint();});
+The logging block's name comes before all of it.
 
-    // Implementation
-    void hostTransferAscari::statusPrint(void) {
-        log_.logPrint(std::format("stuckDebug:{:08x}", stuckDebug), LOG_IMPORTANT);
-        // Dump queues, trackers, and other internal state
-    }
-    ```
+## Assertions
+`Q_ASSERT(cond, msg)` checks internal state. Outside a module, where there is no `name()`, use `Q_ASSERT_CTX`; see "Assertions and unique names" in `systemc-core`.
 
-6.  **Logging (Advanced):**
-    *   **Lazy Evaluation:** Use lambdas for complex formatting to avoid performance overhead when logging is disabled for that level.
-    *   **Levels:** Use appropriate log levels (`LOG_DEBUG`, `LOG_IMPORTANT`, etc.).
+On failure, `Q_ASSERT`:
+1.  prints the message and a stack trace;
+2.  runs every registered status function, then dumps the trackers (the `_NODUMP` variants skip the dump);
+3.  when called from a thread, waits 10 ns of simulated time, so the rest of the design keeps running and logging before the stop;
+4.  records the failure as the exit status and stops the simulation.
 
-    ```cpp
-    // Only formats the string if LOG_DEBUG is enabled
-    log_.logPrint([&]() { return std::format("complex info: {}", calculate_debug_info()); }, LOG_DEBUG);
-    ```
+```cpp
+void myModule::processData(uint32_t index)
+{
+    Q_ASSERT(index < MAX_SIZE, "Index out of range");
+    data_st data = dataArray[index];
+}
+```
+
+## Status reporting
+A status function dumps a block's state, such as queue contents or arbitration state. Register it in the constructor:
+
+```cpp
+logging::GetInstance().registerStatus(name(), [this](void){ statusPrint(); });
+
+void myBlock::statusPrint(void)
+{
+    log_.logPrint(std::format("pending:{} state:{}", pending.size(), state), LOG_IMPORTANT);
+}
+```
+
+Status functions run on a `Q_ASSERT`, on a watchdog timeout, on SIGINT or SIGTERM, and at the end of every run.
+
+## Logging
+For `logPrint`, levels and lazy formatting with a lambda, see "Logging and errors" in `systemc-core`.

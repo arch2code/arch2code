@@ -29,13 +29,17 @@ endif
 ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
-# LD_BOOST is only needed by the BOOST_LIBS default below (the static site
-# Boost's directory); a caller that sets BOOST_LIBS itself (linking a shared
-# Boost) does not need it.
-ifeq ($(origin BOOST_LIBS),undefined)
+# A non-empty BOOST_LIBS is the whole Boost link line, which lets a site or a
+# farm layer link a shared Boost. An empty one, from the command line too,
+# counts as unset, and the default links the site Boost in LD_BOOST.
+# Boost.System is header-only, and the stacktrace in q_assert.cpp uses the
+# header-only backend, which needs only -ldl, so the default links
+# program_options alone.
+ifeq ($(strip $(BOOST_LIBS)),)
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
+override BOOST_LIBS = -lboost_program_options -L$(LD_BOOST)
 endif
 
 ifndef VERILATOR_ROOT
@@ -62,14 +66,6 @@ VL_DUT ?= 1
 endif
 
 CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
-# Boost.System is header-only since 1.69, and a2c's stacktrace use
-# (q_assert.cpp) runs on the header-only backend (no BOOST_STACKTRACE_LINK)
-# with identical output, needing only -ldl (already in LD_FLAGS below); Boost
-# program_options is therefore the only Boost library actually linked.
-# BOOST_LIBS names that link input; the container default below links the
-# static site Boost in LD_BOOST, and a builder layer such as pro can set
-# BOOST_LIBS to link a shared Boost instead (see the LD_BOOST check above).
-BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)
 LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 # The native C++ link recipe passes LD_FLAGS, never CXX_FLAGS, so -pthread is
 # repeated here whether or not a Verilated library is linked: the runtime's
@@ -492,7 +488,7 @@ compdb:
 	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
 		$(COMPDB_MAKE_N_FILES) \
 		$(REPO_ROOT)/compile_commands.json \
-		--directory $(PROJECT_RUNDIR) >/dev/null
+		--directory $(PROJECT_RUNDIR) --compiler $(CXX) >/dev/null
 	@echo "Generated $(REPO_ROOT)/compile_commands.json"
 
 #------------------------------------------------------------------------
@@ -513,7 +509,7 @@ clangd: compdb
 		for inc in $(CPP_INCLUDES); do \
 			echo "    - $$inc"; \
 		done; \
-		echo "  Compiler: clang++"; \
+		echo "  Compiler: $(CXX)"; \
 		echo "  Remove:"; \
 		echo "    - -m*"; \
 		echo "    - -W*fatal-errors"; \

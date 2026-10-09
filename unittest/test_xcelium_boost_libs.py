@@ -6,8 +6,12 @@ parse checks taken from the test alone, never from the caller's shell:
 - neither set: make stops with "LD_BOOST is not set";
 - BOOST_LIBS set, LD_BOOST unset: no error, and XRUN_LD_LIBS carries the
   caller's BOOST_LIBS;
+- BOOST_LIBS exported empty, LD_BOOST unset: make stops with "LD_BOOST is not
+  set", because an empty BOOST_LIBS counts as unset;
 - LD_BOOST set, BOOST_LIBS unset: XRUN_LD_LIBS carries the default Boost link
-  inputs, -L joined to LD_BOOST.
+  inputs, -L joined to LD_BOOST;
+- LD_BOOST set, `BOOST_LIBS=` on the make command line: XRUN_LD_LIBS carries
+  the same default Boost link inputs.
 
 The dry runs pass placeholder XCELIUM_TOOLS, XRUN_GCC_VERS and BOOST_INCLUDE,
 so they need no Xcelium install.
@@ -25,14 +29,14 @@ XRUN_ARGS = ['USE_XCELIUM=1', 'XCELIUM_TOOLS=/hook/xcelium', 'XRUN_GCC_VERS=hook
 PRINT_LIBS = 'pxl: ; @echo "XRUN_LD_LIBS=[$(XRUN_LD_LIBS)]"'
 
 
-def dryRun(rundir, boost):
+def dryRun(rundir, boost, *args):
     e = os.environ.copy()
     e['NO_COLOR'] = '1'
     e['BOOST_INCLUDE'] = '/hook/boost/include'
     for name in ('LD_BOOST', 'BOOST_LIBS', 'USE_VCS'):
         e.pop(name, None)
     e.update(boost)
-    return subprocess.run(['make', '-C', rundir, '--no-print-directory', '-n', *XRUN_ARGS,
+    return subprocess.run(['make', '-C', rundir, '--no-print-directory', '-n', *XRUN_ARGS, *args,
                            '--eval', PRINT_LIBS, 'pxl'],
                           capture_output=True, text=True, timeout=3600, env=e)
 
@@ -53,6 +57,11 @@ def main():
             failures.append(f"neither set: make did not stop on LD_BOOST "
                             f"(exit {result.returncode}):\n{result.stdout}{result.stderr}")
 
+        result = dryRun(rundir, {'BOOST_LIBS': ''})
+        if result.returncode == 0 or 'LD_BOOST is not set' not in result.stderr:
+            failures.append(f"BOOST_LIBS exported empty: make did not stop on LD_BOOST "
+                            f"(exit {result.returncode}):\n{result.stdout}{result.stderr}")
+
         result = dryRun(rundir, {'BOOST_LIBS': '-lboost_program_options -L/x'})
         libs = xrunLdLibs(result)
         if result.returncode != 0 or libs is None or '-Wld,-L/x' not in libs:
@@ -66,12 +75,19 @@ def main():
             failures.append(f"LD_BOOST set: XRUN_LD_LIBS is not the default Boost link "
                             f"(exit {result.returncode}):\n{result.stdout}{result.stderr}")
 
+        result = dryRun(rundir, {'LD_BOOST': '/x'}, 'BOOST_LIBS=')
+        libs = xrunLdLibs(result)
+        if (result.returncode != 0 or libs is None or '-Wld,-L' in libs
+                or '-Wld,-lboost_program_options -Wld,-L/x' not in ' '.join(libs)):
+            failures.append(f"BOOST_LIBS= on the command line: XRUN_LD_LIBS is not the default "
+                            f"Boost link (exit {result.returncode}):\n{result.stdout}{result.stderr}")
+
         if failures:
             for failure in failures:
                 print(f"FAIL: {failure}")
             print("SOME TESTS FAILED")
             return 1
-        print("PASS: USE_XCELIUM=1 requires LD_BOOST unless BOOST_LIBS is set, "
+        print("PASS: USE_XCELIUM=1 requires LD_BOOST unless BOOST_LIBS is non-empty, "
               "and XRUN_LD_LIBS carries the Boost link inputs")
         print("ALL TESTS PASSED")
         return 0

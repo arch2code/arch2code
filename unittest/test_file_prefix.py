@@ -39,6 +39,9 @@ parameterized registrars:
 - a vlSvWrapBody entry with its own name gives the body file and module that
   name, and the variant top includes it;
 - a new project file lists the three keys as comments;
+- a new firmware project file carries the regAddresses entry commented out,
+  with the fields of the base config's entry, and a project without firmware
+  carries none;
 - an entry's langDomain alone picks its prefix, and make db rejects an entry
   of the root or a child with no langDomain or an unknown one.
 """
@@ -55,7 +58,7 @@ import yaml
 from _addrctl_helpers import base_dir, test_dir
 from pysrc import checkSvNames, migrateFilePrefix, migrateOrphans
 from pysrc.artifactPaths import currentArtifactRows, fileNamePrefix
-from pysrc.newProject import projectFileTemplate
+from pysrc.newProject import firmwareFileMapTemplate, projectFileTemplate
 from pysrc.processYaml import projectOpen
 from _tmp_helpers import remove_tree
 
@@ -297,7 +300,7 @@ def tree_digest(directory):
 def migrate_composed(work, beforeRoot):
     """Migrate each project from its own directory, children first. Returns
     False and prints why when root migrate touched a child's file or left
-    manual items other than the known one."""
+    manual items."""
     for project in ('common', 'ip'):
         run(['make', '-C', os.path.join(work, project), '-j8', 'migrate'])
     beforeRoot()
@@ -312,9 +315,7 @@ def migrate_composed(work, beforeRoot):
         if changed:
             print(f"FAIL: the root migrate changed {project}'s files: {changed}")
             ok = False
-    # simple_ip's root always asks for a decision on ip/tb/ip, prefix or not.
-    expected = {'common': set(), 'ip': set(),
-                '.': {(migrateOrphans.TODO_UNMANIFESTED_SRC_DIR, os.path.join('ip', 'tb', 'ip'))}}
+    expected = {'common': set(), 'ip': set(), '.': set()}
     for project, want in expected.items():
         prj = open_db(work, project)
         orphans = migrateOrphans.sweepOrphans(prj)
@@ -945,6 +946,38 @@ def check_scaffold_keys():
     return ok
 
 
+def check_scaffold_reg_addresses():
+    def commentedEntry(text):
+        lines = [line for line in text.splitlines() if line.lstrip().startswith('#regAddresses:')]
+        return yaml.safe_load(lines[0].lstrip()[1:])['regAddresses'] if lines else None
+
+    withFw = projectFileTemplate.format(name='demo', copyright='c',
+                                        fileMap=firmwareFileMapTemplate.format())
+    withoutFw = projectFileTemplate.format(name='demo', copyright='c', fileMap='')
+    with open(os.path.join(base_dir, 'config', 'project.yaml')) as f:
+        baseEntry = commentedEntry(f.read())
+    if baseEntry is None:
+        print("FAIL: config/project.yaml has no commented '#regAddresses:' entry to compare "
+              "the firmware project file against")
+        return False
+    ok = True
+    entry = commentedEntry(withFw)
+    if entry != baseEntry:
+        print(f"FAIL: a firmware project file's commented regAddresses entry is {entry!r}, "
+              f"not the base config's {baseEntry!r}")
+        ok = False
+    if re.search(r'^\s*regAddresses\s*:', withFw, re.M):
+        print("FAIL: a firmware project file enables regAddresses")
+        ok = False
+    if 'regAddresses' in withoutFw:
+        print("FAIL: a project file without firmware mentions regAddresses")
+        ok = False
+    if ok:
+        print("PASS: a new firmware project file carries the regAddresses entry commented out, "
+              "and one without firmware does not")
+    return ok
+
+
 def check_langdomain_picks_prefix():
     # The entry's langDomain alone picks the prefix; its ext and basePath do
     # not. Project-mode and legacy entries take none.
@@ -1200,7 +1233,8 @@ def check_settled_prefixed_twin_migrates():
 
 
 def main():
-    checks = (check_scaffold_keys, check_collisions, check_omitted_equals_empty,
+    checks = (check_scaffold_keys, check_scaffold_reg_addresses, check_collisions,
+              check_omitted_equals_empty,
               check_each_language_alone, check_main_migrate_without_prefix,
               check_main_migrate_with_prefixes, check_prefix_conflict_halts_migrate,
               check_main_migrate_ports_legacy_tb_with_prefix,

@@ -70,14 +70,14 @@ struct streamSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamSt_v<DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, DATA_WIDTH);
         _pos += DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (streamDataT_v<DATA_WIDTH>)((_src) & ((1ULL << (DATA_WIDTH)) - 1));
+        data = (streamDataT_v<DATA_WIDTH>)((_src) & (~0ULL >> (64 - (DATA_WIDTH))));
     }
     inline sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> sc_pack(void) const
     {
@@ -132,7 +132,7 @@ struct streamBndrySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamBndrySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

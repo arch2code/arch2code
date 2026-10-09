@@ -72,7 +72,7 @@ struct sharedInfoSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, sharedInfoSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = value;
         _ret |= (uint64_t)tag << (32 & 63);
     }

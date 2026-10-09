@@ -59,6 +59,12 @@ EXAMPLE_READERS=(
     test_db_failure_no_stale_artifact.py      # reads examples/simple + xprojParam/cpLayoutBad (copytree)
     test_tb_variant_plain_block.py            # reads examples/helloWorld (copytree)
     test_vl_registrar_factory_domain.py       # reads examples/twoClk + examples/mixed (db to a temp path)
+    test_make_site_env.py                     # reads examples/helloWorld (copytree)
+    test_make_builder_stamp.py                # reads examples/helloWorld (copytree)
+    test_make_relocated_tree.py               # reads examples/helloWorld (copytree)
+    test_compdb_configured_compiler.py        # reads examples/helloWorld (copytree)
+    test_missing_include_diagnostic.py        # reads examples/helloWorld (copytree)
+    test_make_synthf.py                       # reads examples/hierVlDemo + examples/ip_test (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

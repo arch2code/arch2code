@@ -23,9 +23,10 @@
 // raw is a one-shot blocking rendezvous).
 //
 // Why problematic while still supported: no HW backpressure; SystemC
-// rendezvous ≠ RTL free-running sample (timed/tandem can diverge); one
-// sc_event serves both handshake directions (write() re-checks that the value
-// was taken, so wake-ups are spurious but no value is lost);
+// rendezvous ≠ RTL free-running sample (timed/tandem can diverge); the
+// channel's own sc_event signals "value taken", and also "value written" unless
+// the reader passes its own event to setExternalEvent() (write() re-checks that
+// the value was taken, so wake-ups are spurious but no value is lost);
 // co-sim BFMs invent clocked timing the protocol does not express.
 // See ARCH2CODE_AI_RULES.md (§ raw) and SYSTEMC_API_USER_REFERENCE.md (§ 4.9).
 //
@@ -205,6 +206,10 @@ inline void raw_channel<T>::read( T& val_ )
         interfaceLog(val_.prt(isDebugLog), tag);
     }
     m_channel_sync_event_ptr->notify(SC_ZERO_TIME);
+    // write() waits on the channel's own event even when the reader uses an external one
+    if (m_channel_sync_event_ptr != &m_channel_sync_event) {
+        m_channel_sync_event.notify(SC_ZERO_TIME);
+    }
 }
 
 
@@ -246,9 +251,9 @@ inline void raw_channel<T>::write( const T& val_, uint64_t userMagic )
     {
         m_channel_sync_event_ptr->notify(SC_ZERO_TIME);
     }
-    // One event serves both directions, so the notify that wakes the reader
-    // wakes this writer too. Return only once the reader has taken the value,
-    // or a writer scheduled ahead of the reader overwrites it on its next write.
+    // Without an external event the notify that wakes the reader wakes this
+    // writer too. Return only once the reader has taken the value, or a writer
+    // scheduled ahead of the reader overwrites it on its next write.
     while (m_value_written) {
         sc_core::wait(m_channel_sync_event);
     }

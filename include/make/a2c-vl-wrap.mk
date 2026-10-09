@@ -13,7 +13,15 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4 -DVL_DUT -MMD
+# Verilate threads, and the --build job count when no outer jobserver exists.
+VL_JOBS ?= 4
+VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -DVL_DUT -MMD
+# verilated.mk names the compiler Verilator was built with, and its flags suit
+# that compiler. A Clang build swaps in the project's Clang; USE_GCC keeps
+# Verilator's own.
+ifndef USE_GCC
+VERILATOR_OPTS += -MAKEFLAGS CXX=$(CXX) -MAKEFLAGS LINK=$(CXX)
+endif
 VERILATOR_CFLAG_OPTS = -std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 
 ifdef VL_COV
@@ -21,6 +29,9 @@ VERILATOR_OPTS += --coverage
 endif
 
 # Builder options, then the project's hooks. -CFLAGS is one quoted argument.
+# The recipes add -j $(VL_JOBS) after the hooks. Verilator takes the first -j,
+# so a project -j wins. The options stamps leave out the job count, so a
+# VL_JOBS change does not re-verilate.
 VL_VERILATE = verilator $(VERILATOR_OPTS) $(VERILATOR_USER_OPTS) $(EXTRA_VERILATOR_OPTS) $(EXTRA_VL_OPTS) -CFLAGS '$(strip $(VERILATOR_CFLAG_OPTS) $(EXTRA_VL_CFLAGS))'
 
 # Compiler and flags for Verilator's own make, which builds the verilated model
@@ -98,6 +109,12 @@ endif
 # Systemc build file based targets
 #------------------------------------------------------------------------
 
+# Under a parallel outer make, verilator --build drops its own -j and runs its
+# C++ sub-make on the jobserver named in MAKEFLAGS. The `+` keeps that jobserver
+# open to the recipe (without it the sub-make falls back to one job).
+# A `+` line also runs under `make -n`, so a dry run drops it.
+VL_PLUS = $(if $(findstring n,$(firstword -$(MAKEFLAGS))),,+)
+
 # Compile the verilator common runtime objects (verilated.o, verilated_dpi.o,
 # verilated_vcd_c.o, verilated_threads.o) into their own Mdir. Framework sources
 # and the option record only: a generated-source prerequisite would rerun this
@@ -105,7 +122,7 @@ endif
 # nothing to rebuild.
 obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(VL_RUNTIME_OPTS_STAMP) $(call vl_dep_prereqs,vl_dummy)
 	mkdir -p obj_dir/vl_dummy
-	$(VL_VERILATE) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
+	$(VL_PLUS)$(VL_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/vl_dummy $(VL_DUMMY_SRC) --top vl_dummy -exe
 	touch $@
 
 # One verilate per recorded top into its own --Mdir: the explicit design unit
@@ -116,7 +133,7 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_DUMMY_SRC) $(VL_RUNTIME_OPTS_STAMP) $(call vl_d
 define vl_top_rule
 obj_dir/$(1)/V$(1)__ALL.a: $(VL_SV_DEPS) $(A2C_HDL_DEPS) $(VL_OPTS_STAMP) $(call vl_dep_prereqs,$(1))
 	mkdir -p obj_dir/$(1)
-	$(VL_TOP_VERILATE) --Mdir obj_dir/$(1) $(A2C_VL_SV_$(1)) -top $(1)
+	$$(VL_PLUS)$(VL_TOP_VERILATE) -j $(VL_JOBS) --Mdir obj_dir/$(1) $(A2C_VL_SV_$(1)) -top $(1)
 	touch $$@
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))

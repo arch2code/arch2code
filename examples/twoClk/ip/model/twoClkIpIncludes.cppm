@@ -69,7 +69,7 @@ struct twoClkDataSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

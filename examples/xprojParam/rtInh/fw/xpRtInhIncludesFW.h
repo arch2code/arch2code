@@ -71,14 +71,14 @@ struct cfgSt_v {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cfgSt_v<RT_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, value, RT_WIDTH);
         _pos += RT_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        value = (cfgDataT_v<RT_WIDTH>)((_src) & ((1ULL << (RT_WIDTH)) - 1));
+        value = (cfgDataT_v<RT_WIDTH>)((_src) & (~0ULL >> (64 - (RT_WIDTH))));
     }
     explicit cfgSt_v(
         cfgDataT_v<RT_WIDTH> value_) :

@@ -2,69 +2,59 @@
 name: review-model
 description: Checklist-driven review of SystemC model code for arch2code conventions, behavioral correctness, tandem readiness, model-RTL conformity, and code quality
 ---
-# Skill: Review Model
+# Skill: Review model
 
 ## Purpose
-Perform a structured code review of a SystemC model module within the arch2code framework. The review covers framework conventions, behavioral correctness, tandem verification readiness, lightweight model-RTL conformity checks, and code quality. Functional equivalence between model and RTL is ultimately proven by tandem mode; this review focuses on structural correctness and adherence to standards.
+Review a SystemC model block against arch2code conventions, behavioral correctness, tandem readiness, light model-RTL conformity and code quality. Tandem proves functional equivalence with the RTL, so this review checks structure and standards.
 
 ## References
-*   **SystemC Core:** `systemc-core.md` (Module structure, threading, logging)
-*   **SystemC Patterns:** `systemc-patterns.md` (Producer-Consumer, Register Handler, Multi-Cycle)
-*   **SystemC Sync:** `systemc-synchronization.md` (Locking, arbitration, events)
-*   **SystemC Interfaces:** `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack)
-*   **Debugging:** `debug.md` (Trackers, assertions, status reporting)
-*   **Tandem:** `run-tandem.md` (Build/run tandem verification)
-*   **RTL->SC Conversion:** `rtl-to-systemc.md` (Conversion patterns)
+*   **systemc-core**: module layout, user slots, register and memory access, threads, logging.
+*   **systemc-interfaces**: port calls for each family.
+*   **systemc-synchronization**: shared events, `synchLock`, tandem-safe arbitration.
+*   **systemc-patterns**: multi-cycle bursts.
+*   **debug**: trackers, assertions, `statusPrint`.
+*   **run-tandem** (A2C Pro): building and running tandem.
 
 ## Instructions
 
-### 1. Arch2code Convention Checks
+### 1. Arch2code conventions
+*   **Generated regions.** Nothing is hand-edited between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` in `model/<block>.cppm`. A block model has `moduleScaffold --section=blockModuleHeader`, `moduleExport`, `classDecl` and `constructor --section=init` / `--section=body`. In a project with an `addressBlock:` router, a block that has children and owns registers or firmware-accessible memories also has a register handler model, whose regions are `blockRegs --section=header`, `--section=init` and `--section=body`. A leaf block's own model holds its `regHandler`.
+*   **User slots.** Members follow the class region's end marker. Initializers, each starting with a comma, sit between the `init` end marker and the `body` begin marker. `SC_THREAD` registrations follow the `body` end marker. Imports and headers sit in the slots **systemc-core** describes.
+*   **Class shape.** The class is a `template<typename Config>` class, with `using <block>Base<Config>::...` lines, only when the block declares its own `params:`. Otherwise it is a plain class, and its out-of-class definitions are `void blk::fn()`. Either shape is correct when it matches the YAML.
+*   **Base files.** `*Base.cppm` files are unmodified.
 
-*   **Generated Code Zones:** Verify no manual edits exist between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers in the block's single `model/<block>.cppm` module file. Its generated regions are `moduleScaffold --section=blockModuleHeader` (global module fragment), `moduleExport` (`export module`/`import`), `classDecl` (the templated class), and the `constructor --section=init` / `--section=body` regions.
-*   **Class Layout:** Manual member variables and function declarations are placed **after** the `classDecl` region's `// GENERATED_CODE_END`, inside the class body.
-*   **Constructor Initializers:** Manual member initializers (starting with `,`) are placed **between** the `constructor --section=init` `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
-*   **Constructor Body:** `SC_THREAD` registrations and other manual logic are placed **after** the `constructor --section=body` `// GENERATED_CODE_END`.
-*   **Types -- Arch2code Typedefs Only:** All variables representing hardware signals, registers, counters, factors, addresses, or pixel data **must** use the arch2code-generated typedefs imported from the context modules (`*Includes.cppm`, via `import <ctx>;`) and inherited through the `using <block>Base<Config>::...;` declarations (e.g., `lsc_factor_t`, `pixel_t`, `x_pos_t`), **not** raw C++ integer types (`int32_t`, `uint8_t`, etc.). The generator maps YAML-defined bit-widths to the smallest C++ type that fits (e.g., a 6-bit field becomes `uint8_t`), and the typedef carries the semantic meaning and RTL correspondence. Using raw types loses that traceability and risks width mismatches if the YAML changes. Native C++ types are acceptable **only** for loop iterators, boolean flags (`bool`), and temporaries that have no RTL counterpart. Do not redefine types that exist in the package.
-*   **Base Files:** Never modify `*Base.cppm` files.
+### 2. Behavioral correctness
+*   **Thread loops.** Every `SC_THREAD` loop blocks somewhere. A loop that blocks in a port call (`read()`, `receiveAddr()`, `request()`) needs no explicit `wait()`. FAIL only a loop of non-blocking calls with no `wait()`, because it spins.
+*   **Shared state.** Threads that share data synchronize with an `sc_event` or a `synchLock`, not with cooperative scheduling order. A thread does not busy-poll a shared variable.
+*   **Owned registers.** A register the block owns is an `hwRegister` member. It is read with `reg.read()`, and a thread reacting to firmware writes calls `reg.registerEvent(&ev)` once and loops on `wait(ev)`. It has no `->`, no `setExternalEvent` and no `readNonBlocking`.
+*   **Register ports.** A `status` port is sampled with `readNonBlocking()`, or awaited with `read()`, which wakes on each firmware write, on the first `write()` and on each later `write()` that changes the value. It can return an unchanged value. On the dst side of an `external_reg` port, `read(v)` waits for a firmware write and `update_mirror(v)` publishes the read-back value. FAIL `reg_write` used to publish from a block that loops on `read()`, because it wakes that `read()`.
+*   **Register handler.** The generator emits the handler (`regHandler`, `_a2cRegs.addRegister/addMemory`, `SC_THREAD(regHandler)`). FAIL any hand-written thread on the register bus port. The one allowed hand-written register thread serves a local `regType: memory` register on `<reg>_channel`.
+*   **Owned memories.** A memory the block owns is an `hwMemory` member. Datapath code uses `read(i)`, `write(i, v)` and the RMW calls in **systemc-core**. FAIL `operator[]` on a datapath path, because it skips timing. It is fine for backdoor uses such as logging. FAIL any shadow copy of an `hwMemory`.
+*   **Memory ports.** A memory reached through a `memory` port uses `port->request(isWrite, addr, data)`.
 
-### 2. Behavioral Correctness Checks
+### 3. Tandem readiness
+*   **Deterministic output.** Identical stimulus gives identical output transactions. Nothing depends on random seeds, wall-clock time or other uncontrolled state.
+*   **No hidden state.** All state that affects output is visible at the interfaces or derivable from input stimulus.
+*   **Arbitration.** A timing-dependent choice between ports goes through `synchLock::arb()`, and each `lock()` call site passes its own value. See **systemc-synchronization**.
+*   **Trackers.** `alloc` and `dealloc` are balanced and pass `getTrackerRefCountDelta()`.
+*   **Model/model first** (A2C Pro). The model passes model/model tandem before RTL/model tandem. The run needs `--vlInst <path> --vlType model --vlTandem`. Without `--vlInst`, tandem does not engage.
 
-*   **Thread Safety:** Every `SC_THREAD` `while(true)` loop contains at least one `wait()` call. No infinite spin loops.
-*   **Event Synchronization:** Inter-thread communication uses `sc_event` and `wait(event)`. No busy-wait polling of shared variables.
-*   **Register Listener Pattern:** Register access uses a dedicated listener thread with `setExternalEvent` + `readNonBlocking` + `wait(event)`. Derived values are cached as class members for use by the main processing thread.
-*   **Memory Access:** Memory reads/writes use the `mem->request(isWrite, addr, data)` API. No direct memory manipulation.
-*   **No Shared Mutable State Without Events:** If multiple threads access the same data, synchronization is enforced via `sc_event`, not by relying on SystemC cooperative scheduling order.
-*   **Blocking vs Non-Blocking:** `port->read()` / `port->write()` for streaming interfaces (blocking). `reg->readNonBlocking()` for registers (non-blocking, in listener threads).
+### 4. Model-RTL conformity
+*   Open `rtl/<block>.sv` beside the model.
+*   **Names.** Model variables are recognizable counterparts of RTL signals. RTL signal `<name>` is `<name>` in the model.
+*   **Types.** A variable that holds a hardware-visible value (signal, register, counter, factor, address, pixel, struct field) uses the same arch2code type as the RTL signal, such as `<name>_t`, not a raw `int32_t` that happens to fit. The generator picks the C++ width from the YAML, so the typedef tracks width changes and the raw type does not. Raw integer types are fine for loop iterators, `bool` flags, temporaries with no RTL counterpart, and the `int64_t` intermediates of bit-exact arithmetic (see **rtl-to-systemc**). The value stored back to a hardware-visible variable uses the arch2code type. Casts between arch2code types are fine. FAIL a raw type on a hardware-visible value, and FAIL a redefinition of a type the YAML already defines.
+*   Algorithm, rounding and transaction-order equivalence belong to tandem. Do not re-verify them here.
 
-### 3. Tandem / RTL Equivalence Readiness
+### 5. Code quality
+*   **Logging.** Output goes through `log_.logPrint` with `std::format`, not `printf`, `std::cout` or `std::cerr`.
+*   **Lazy logging.** Costly debug formatting on a hot path (per pixel, per transaction, inside tight loops) uses the lambda form: `log_.logPrint([&]() { return std::format(...); }, LOG_DEBUG);`. Mark direct `std::format` in rare paths, such as configuration listeners, initialization, start-of-frame handlers and error branches, `[N/A]`, not `[WARN]`.
+*   **Assertions.** Internal invariants (index bounds, queue capacity, state validity) use `Q_ASSERT(condition, "message")`.
+*   **Status reporting.** A missing `statusPrint(void)` is `[WARN]`, not `[FAIL]`. When present, the constructor registers it with `logging::GetInstance().registerStatus(name(), ...)`, and it dumps the queues, counters and flags that help diagnose a hang.
+*   **Magic numbers.** Numeric literals in expressions, comparisons, shift amounts, array sizes and loop bounds come from a `constexpr` or a YAML constant. `0`, `1` and `-1` in simple increments and decrements, and `true`/`false`, are fine.
+*   **Undefined behavior.** No out-of-bounds access, use-after-free or signed overflow in intermediate calculations.
 
-*   **Deterministic Output:** For identical input stimulus, the model produces identical output transactions. No dependence on uncontrolled state (e.g., random seeds, wall-clock time).
-*   **No Hidden State:** All state that affects output transactions is either visible at interface boundaries or is derivable from input stimulus. No internal-only state that could diverge from RTL.
-*   **Tracker Lifecycle:** `tracker->alloc()` and `tracker->dealloc()` calls are balanced. Every allocated tag is eventually deallocated.
-*   **Tandem Ref Counting:** `getTrackerRefCountDelta()` is used when calling `alloc`/`dealloc` to ensure correct reference counting in tandem mode.
-*   **Model/Model First:** The model should pass model/model tandem (`--vlType model --vlTandem`) before attempting RTL/model tandem. This validates that the model itself is tandem-safe.
-
-### 4. Model-RTL Conformity Checks
-
-*   **Read the RTL:** Open the corresponding `rtl/<block>.sv` alongside the model.
-*   **Naming Consistency:** Model variable names should be recognizable counterparts of RTL signal names (e.g., RTL `pos_x` maps to model `pos_x`, RTL `gain_factor` maps to model `gain_factor`).
-*   **Type/Width Alignment via Typedefs:** Verify that model variables use the **same arch2code typedef** as the corresponding RTL signal's type. For example, if the RTL declares `lsc_factor_t`, the model variable must also be `lsc_factor_t` -- not a raw `int32_t` that happens to be wide enough. This ensures that if the YAML-defined bit-width changes, both model and RTL update automatically via regeneration. Flag any variable representing a hardware-visible value that uses a raw C++ type (`int32_t`, `uint16_t`, etc.) instead of its arch2code typedef as `[FAIL]`.
-*   **No Native C++ Types for Signals:** Scan the model `.cppm` module file for raw C++ integer types (`int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`). Each occurrence must be justified: loop iterators and non-signal temporaries are acceptable; variables that correspond to RTL signals, struct fields, or intermediate pipeline values must use arch2code typedefs. Cast expressions (e.g., `(lsc_pixel_m_factor_t)value`) are acceptable when converting between types.
-*   **Scope:** Functional equivalence (algorithm correctness, rounding behavior, transaction ordering) is proven by tandem mode. Do not duplicate that verification here.
-
-### 5. Code Quality Checks
-
-*   **Logging:** Use `log_.logPrint` with `std::format` for all output. No `printf`, `std::cout`, or `std::cerr`.
-*   **Lazy Logging:** Use lambda form for expensive debug formatting: `log_.logPrint([&]() { return std::format(...); }, LOG_DEBUG);`. **Context matters:** only flag direct `std::format` calls that execute on hot paths (e.g., per-pixel, per-transaction, or inside tight loops). Logging in rarely executed paths -- such as configuration listeners, initialization, start-of-frame handlers, or error/warning branches -- does not benefit from the lazy form and should be marked `[N/A]` or ignored, not `[WARN]`.
-*   **Assertions:** Use `Q_ASSERT(condition, "message")` for internal invariants (index bounds, queue capacity, state validity).
-*   **Status Reporting:** `statusPrint(void)` is recommended and should be flagged as `[WARN]` (not `[FAIL]`) if missing. When present, it should be registered via `logging::GetInstance().registerStatus(name(), ...)` in the constructor and dump internal state (queues, counters, flags) useful for diagnosing simulation hangs.
-*   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, shift amounts, array sizes, and loop bounds. Every such value should be a `constexpr`, a `localparam`-equivalent constant from the package, or derived from one. Acceptable exceptions: `0`, `1`, `-1` in simple increments/decrements, and `bool` literals (`true`/`false`).
-*   **No C++ Undefined Behavior:** No out-of-bounds array access, no use-after-free, no signed integer overflow in intermediate calculations.
-*   **Tracker Info Struct:** If trackers are used, the info struct has a `prt()` method for human-readable output.
-
-### 6. Review Output Format
-
-Present findings as a checklist. For each category, report:
+### 6. Output format
+Report each category as a checklist:
 
 ```
 ## <Category Name>
@@ -74,10 +64,10 @@ Present findings as a checklist. For each category, report:
 - [N/A]  <item description> -- <reason not applicable>
 ```
 
-Summarize with a count: `X PASS, Y FAIL, Z WARN, W N/A`.
+End with a count: `X PASS, Y FAIL, Z WARN, W N/A`.
 
 ## Constraints
-*   This review is for **model code only** (`model/**/*.cppm`, and any `model/**/*.cpp`, `model/**/*.h` testbench/wrapper files). For RTL code, use the **review-rtl** skill.
-*   Do not modify generated code zones or `*Base.cppm` files.
-*   Do not attempt to verify algorithmic equivalence with the RTL -- that is the role of tandem verification.
-*   Flag items as `[WARN]` rather than `[FAIL]` when the issue is stylistic rather than functional.
+*   This review covers model code: `model/**/*.cppm`, plus any plain `.cpp` or `.h` beside them. Review RTL with **review-rtl**.
+*   Do not modify generated regions or `*Base.cppm` files.
+*   Do not verify algorithmic equivalence with the RTL. Tandem does that.
+*   Use `[WARN]`, not `[FAIL]`, for a stylistic issue.

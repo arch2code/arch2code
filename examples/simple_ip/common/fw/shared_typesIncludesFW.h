@@ -41,7 +41,7 @@ namespace fw_ns::common_shared_types {
 namespace fw_ns::common_shared_types {
 // structures
 struct apbAddrSt {
-    apbAddrT address; //
+    apbAddrT address; /* [31:0] */ //
 
     apbAddrSt() { memset(this, 0, sizeof(apbAddrSt)); }
 
@@ -50,7 +50,7 @@ struct apbAddrSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -64,7 +64,7 @@ struct apbAddrSt {
 
 };
 struct apbDataSt {
-    apbDataT data; //
+    apbDataT data; /* [31:0] */ //
 
     apbDataSt() { memset(this, 0, sizeof(apbDataSt)); }
 
@@ -73,7 +73,7 @@ struct apbDataSt {
     typedef uint32_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

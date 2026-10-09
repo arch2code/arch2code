@@ -1,14 +1,14 @@
 
-// GENERATED_CODE_PARAM --context=../../core/yaml/core.yaml --mode=module
+// GENERATED_CODE_PARAM --project=hier --context=../../core/yaml/core.yaml --mode=module
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
 module;
 #include "systemc.h"
 #include "logging.h"
+#include <algorithm>
 #include "bitTwiddling.h"
 #include "q_assert.h"
-#include <algorithm>
 
 export module hier_core;
 // GENERATED_CODE_END

@@ -1,56 +1,70 @@
 ---
 name: authoring-interface-definitions
-description: How to author an Arch2Code `interface_defs` entry - entry layout, the hand-written companion files it names, and the declaration rules the contract test enforces. Use when adding or changing an interface protocol.
+description: How to author an Arch2Code `interface_defs` entry - entry layout, the hand-written companion files it names, and the declaration rules the schema and the contract test enforce. Use when adding or changing an interface protocol.
 ---
 
-# Authoring an Interface Definition
+# Authoring an interface definition
 
-An interface protocol is declared by an `interface_defs:` entry. The shipped definitions live one per directory under `interfaces/`, next to the hand-written files that implement the protocol, and are loaded into every project through the `systemFiles:` list in `config/project.yaml`. A project may also declare `interface_defs:` in any of its own `projectFiles:`; a project-local definition is read exactly the same way.
+An `interface_defs:` entry declares an interface protocol. Base ships one definition per directory under `builder/base/interfaces/`, next to the hand-written files that implement it. Pro ships its own under `builder/pro/interfaces/`. A project loads them through the `systemFiles:` list in `builder/base/config/project.yaml` and `builder/pro/config/project.yaml`, so a new shipped definition needs a line there. A project may also declare `interface_defs:` in its own `projectFiles:`, and the generator reads it the same way.
 
-## Entry Layout
+`builder/base/interfaces/rdy_vld/rdy_vld_if.yaml` is the smallest complete example. The schema is the `interface_defs:` section of `builder/base/config/schema.yaml`.
 
-An `interface_defs:` entry is keyed by the interface type name and carries the following sections.
+## Entry layout
 
-- `parameters:` - the payloads the interface carries, in declaration order. Each entry declares `datatype: struct` or `datatype: type`, and adds `optional: true` for a payload a declaring interface may leave unbound. An optional entry may also set `defaultWidth:`, the width its signals take when it is left unbound. An `interfaces:` entry binds them by name, through the `structureType:` field of its `structures:` list. The section is omitted for a protocol with no payload.
-- `hdlparams:` - widths derived from a bound payload rather than declared directly. Each entry declares `datatype: integer`, `isEval: true`, and a `value:` of the form `<parameter>.<expression>`, where the parameter is a `parameters:` entry and `to_bytes()` is the expression the evaluator provides.
-- `signals:` - the wires of the protocol, mapping each signal name to its type. A type may name a `parameters:` entry, an `isEval` `hdlparams:` entry, `bool`, or a type in scope of the definition's file or the system YAML. The shipped AXI and external_reg signals name `_axi*` and `_extRegWriteT` types that way. Declaration order is the order the flattened boundary ports are emitted in.
-- `modports:` - one entry per modport, `src` and `dst`, each listing every signal under `inputs:` or `outputs:` from that modport's point of view.
-- `sc_channel:` - `type:` is the prefix of the hand-written SystemC class names described below. `multicycle_types:` lists the transactional modes the channel supports. `param_cast:`, `thunker:` and `set_initial_value:` are optional.
-- `multiDst:` - allows a connection of this type to have more than two ends.
-- `addressBus:` - marks the definition as a register or address bus meta-protocol.
-- `mappedFrom:` - lists the register and memory type aliases, such as `reg_ro` and `reg_rw`, that resolve to this definition.
+The entry key is the interface type name. The sections are:
 
-## Companion Files
+- `parameters:` lists the payloads the interface carries, in declaration order. An `interfaces:` entry binds each one by name through `structureType:` in its `structures:` list. Each parameter declares a `datatype:`:
+  - `struct` binds a `structures` row and is one C++ template argument.
+  - `type` binds a `types` row and is two template arguments, the name and the width. `axi_read` declares `id_t` this way.
+  - `typeStruct` binds either kind and is also two arguments.
 
-The definition names the protocol, it does not generate the implementation. For a definition whose `sc_channel.type:` is `myproto`, the generator emits references to hand-written files that must exist:
+  `optional: true` lets a declaring interface leave the payload unbound. `defaultWidth:` (default 1) is the width of the signals an unbound optional parameter types. A protocol with no payload writes `parameters: {}` or omits the section.
+- `hdlparams:` lists widths derived from a bound payload. Each entry declares `datatype: integer`, `isEval: true`, and a `value:` of the form `<parameter>.<expression>`, such as `data_t.to_bytes()`.
+- `signals:` maps each wire to its type: a `parameters:` entry, an `isEval` `hdlparams:` entry, `bool`, or a type in scope of the definition's file or the system YAML. The shipped AXI and external_reg signals name `_axi*` and `_extRegWriteT` types this way. Flattened boundary ports follow this order.
+- `modports:` has `src` and `dst`. Each lists every signal under `inputs:` or `outputs:`, from that end's point of view.
+- `sc_channel:` names the SystemC side.
+  - `type:` is the prefix of the channel, port, BFM and thunker class names.
+  - `multicycle_types:` lists the transactional modes the channel supports.
+  - `set_initial_value: true` makes a channel created for a register connection start at the register's default value. `status` and `external_reg` set it.
+  - `param_cast:` wraps the channel's template arguments in the named template. No shipped definition uses it.
+  - The generator never reads `thunker:`. Leave it out.
+- `socket:` is keyed by modport. Each entry sets `kind: drive` or `kind: observe`. `observe: true` adds an `_obs` observe connection, and `lockstep: true` adds the `pysocket_sync` connection. Leave out an end that has no socket shell.
+- `multiDst: true` allows a connection of this type to have more than two ends.
+- `addressBus: true` marks a register or address bus meta-protocol.
+- `mappedFrom:` lists the register and memory type aliases, such as `reg_ro` and `reg_rw`, that resolve to this definition.
 
-- `myproto_if.sv` - the SystemVerilog interface and its `src` and `dst` modports.
-- `myproto_channel.h` - the SystemC channel `myproto_channel` and the ports `myproto_in` and `myproto_out`.
-- `myproto_bfm.h` - `myproto_src_bfm`, `myproto_dst_bfm`, and the Verilated bridge `myproto_hdl_if` used by the generated HDL wrappers.
-- `myproto_port_thunker.h` - `myproto_port_thunker`, needed only where the protocol is used in a cross-interface bind.
+## Companion files
 
-Every one of these names is built from `sc_channel.type:` rather than from the interface type name. Every shipped definition sets the two equal, which is convention and not a requirement: a definition that points `sc_channel.type:` at another protocol generates consistent code against that protocol's classes.
+The definition names the protocol. It does not generate the implementation. The generator emits `#include` lines and class names for hand-written files, and some names come from the interface key while others come from `sc_channel.type`. For key `myproto` with `sc_channel.type: myproto`:
 
-## Declaration Rules
+| File | Name built from | Contents |
+| :--- | :--- | :--- |
+| `myproto_if.sv` | interface key | SV interface `myproto_if` with `src` and `dst` modports |
+| `myproto_channel.h` | `sc_channel.type` | `myproto_channel`, `myproto_in`, `myproto_out` |
+| `myproto_bfm.h` | interface key | `myproto_src_bfm`, `myproto_dst_bfm` and the Verilated bridge `myproto_hdl_if`, whose class names come from `sc_channel.type` |
+| `myproto_port_thunker.h` | `sc_channel.type` | `myproto_port_thunker`, used where the protocol takes part in a cross-interface bind |
+| `myproto_port_socket.h` | interface key | socket shell, needed only when the definition has `socket:` |
+| `myproto_port_tee.h` | interface key | Pro tandem tee, in `builder/pro/common/systemc/` |
 
-`unittest/test_interface_def_contracts.py` checks the rules below over every definition in the shipped interface trees. They are data contracts between the definition and the generator. Apart from rule 5, the schema cannot express them, so nothing else checks them. Most violations produce wrong generated code rather than a generation failure, so run the suite after editing a definition:
+The generator spells a thunker as `<type>_port_thunker<up required payloads, down required payloads, one bool per required payload, up optional payloads, down optional payloads>`, each group in declaration order. Declare one `bool` per required parameter, defaulted to `false`, in that position, and pass it to `copyPayload<Flag>` at every copy site of that payload. `true` means the two sides emit identical member storage, so the payload is copied whole. `interfaces/rdy_vld/rdy_vld_port_thunker.h` is the smallest example. A protocol with no parameters, such as `notify_ack`, needs no thunker.
+
+Every shipped definition sets `sc_channel.type` equal to its key. Keep them equal. A definition that points `sc_channel.type` at another protocol mixes two sets of names.
+
+## Declaration rules
+
+The schema enforces rule 5, so a misdeclared parameter stops `make db`. `builder/base/unittest/test_interface_def_contracts.py` checks the other rules over every definition under `builder/base/interfaces/` and `builder/pro/interfaces/`. Run it after you edit a shipped definition:
 
 ```bash
-cd unittest && python3 test_interface_def_contracts.py
+python3 builder/base/unittest/test_interface_def_contracts.py
 ```
 
-1. **Optional parameters are declared last.** Every parameter marked `optional: true` must come after every parameter that is not. Parameters, struct or type, become positional C++ template arguments, and the hand-written BFM and thunker templates splice another argument group into the middle of that list. The generator builds those signatures by splitting the declared parameter list at its first optional parameter. That split only produces the right argument order, and only stays a split rather than becoming a reorder, when the optional parameters form the tail of the list.
-2. **An `isEval` hdlparam evaluates a required `struct` parameter.** The width an `isEval` hdlparam supplies is always needed, because the generator has no way to omit the signal it types. An optional parameter may be left unbound, and an unbound parameter carries no structure and so no width. It must be a `struct` because, for a parameterizable payload, the SystemC bridge spells the width as `S<Config>::_byteWidth`, which only a generated structure declares.
-3. **Every modport lists every declared signal.** A signal must appear under `inputs:` or `outputs:` of every modport. The generator gives a flattened boundary port its direction by asking whether the signal is in that modport's `inputs:` group and calling it an output otherwise, so a signal no group mentions takes its direction from that fallback instead of from the definition.
-4. **An `isEval` hdlparam `value:` calls one method on one parameter.** The generator evaluates the value with each struct parameter name bound to an object that measures that payload, and with no Python builtins, so `<parameter>.to_bytes()` is the only shape it can evaluate. Any other shape stops generation with a bare Python error that names neither the interface nor its file.
-5. **Every parameter declares `datatype: struct` or `datatype: type`.** These are the only parameter datatypes the generator recognises: a `struct` parameter binds a `structures` row and a `type` parameter binds a `types` row. The schema enforces this one, so a misdeclared parameter stops the database build. The suite keeps a negative case to prove the constraint still exists.
-6. **Only an optional parameter declares a `defaultWidth` other than 1.** The generator reads `defaultWidth` only when a parameter is left unbound. Every declaring interface binds a required parameter, so a `defaultWidth` on one is never read and misleads the reader.
+1. **Optional parameters come last.** Declare every `optional: true` parameter after every required one. The generator builds the BFM and thunker signatures by splitting the parameter list at its first optional parameter and splicing another argument group between the halves. A required parameter after an optional one lands in the wrong argument slot, and generation still succeeds.
+2. **An `isEval` hdlparam evaluates a required `struct` parameter.** The signal it types is always declared, so its width must always exist. An unbound optional parameter has no width, and generation fails for an interface that leaves it unbound. The parameter must be a `struct` because, for a parameterizable payload, the SystemC bridge spells the width as `S<Config>::_byteWidth`, and only a generated structure declares `_byteWidth`.
+3. **Every modport lists every signal.** The generator makes a signal an input when it is in the modport's `inputs:` and an output otherwise. A signal missing from a modport becomes an output, the wrapper drives it backwards, and generation still succeeds.
+4. **An `isEval` `value:` calls one method on one parameter.** The generator evaluates the value with each parameter name bound to an object that measures that payload, and with no Python builtins, so `<parameter>.to_bytes()` is the only shape it can evaluate. Any other shape stops generation with a bare Python error that names neither the interface nor its file.
+5. **Every parameter declares `datatype:` as `struct`, `type` or `typeStruct`.** Any other value fails the schema check.
+6. **Only an optional parameter sets `defaultWidth:` other than 1.** A required parameter is always bound, so the generator never reads its `defaultWidth`, and the value misleads the reader.
 7. **Every signal type resolves to a width.** A signal's type must be `bool`, a parameter, an `isEval` hdlparam, or a type in scope. The SV boundary port and the simulator boundary pin both take their width from it, so a literal SV spelling such as `bit [7:0]` leaves the pin with no width.
-8. **Every `isEval` hdlparam types at least one signal.** The Verilated bridge takes one type per `isEval` hdlparam, and the generator reads that type from the signal the hdlparam types. An `isEval` hdlparam that no signal names stops generation with a bare `KeyError` that names neither the interface nor its file.
+8. **Every `isEval` hdlparam types at least one signal.** The Verilated bridge takes one type per `isEval` hdlparam and reads it from a signal of that type. An `isEval` hdlparam that types no signal stops generation with a bare `KeyError` that names neither the interface nor its file.
 
-The suite walks the shipped interface trees only. A definition a project declares in its own YAML is subject to the same rules, because the generator makes no distinction between the two, but nothing validates it automatically. Checking a project-local definition against this list is the author's responsibility.
-
-## Related
-
-- The transactional modes named by `multicycle_types:` are described in the `Trackers & Interfaces` documentation page.
-- The interfaces themselves are described in the `Description of Common Interfaces` documentation page.
+The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 8 by hand.

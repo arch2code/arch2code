@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=gen
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: hier_gen
-module hier_gen
+//module as defined by block: gen
+module gen
 // Generated Import package statement(s)
-import hier_core_package::*;
+import core_package::*;
 (
     push_ack_if.src dOut,
     push_ack_if.dst dIn,

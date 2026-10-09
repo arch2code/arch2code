@@ -1,71 +1,90 @@
 ---
 name: rtl-registers
-description: Guide for implementing register logic in SystemVerilog including decoder architecture and external register handling
+description: Guide for the hand-written RTL behind a block's registers - driving ro registers, reading rw registers, implementing ext registers, the register clock domain, and wide-register access
 ---
-# Skill: RTL Registers
+# Skill: RTL registers
 
 ## Purpose
-Guide the user in implementing the **RTL-side logic for external (`ext`)
-registers** and driving `ro`/`rw` register ports. The decoder and the register
-handlers are generated — this skill covers only the user RTL you write inside a
-block to back its registers.
+Write the RTL a routed leaf needs behind its registers. The generator writes the decoder and each block's register handler. You write only the logic that drives `ro` values, reads `rw` values and backs `ext` registers.
 
 ## References
-*   **Decode hierarchy (router/leaf model):** `design-register-decode.md`
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Register Decoder Architecture")
+*   `design-register-decode.md` owns the decode hierarchy: routers, routed leaves, `registerPorts:`, register clocks, memories on another clock, and what an unclaimed address reads (`32'hBADD_C0DE`).
+*   `rtl-core.md` owns the flop macros and clock domains.
 
 ## Prerequisites
-*   Registers and memories must already be defined in the YAML architecture (see `design-architecture.md`).
-*   The block must be a routed leaf served by a generated `addressBlock:` router (see `design-register-decode.md`). You do **not** write the decoder.
+*   The registers and memories are defined in YAML (`design-architecture.md`).
+*   A generated `addressBlock:` router serves the block (`design-register-decode.md`).
 
 ## Instructions
 
-1.  **Register Decoder Architecture (RTL View) — all generated:**
-    *   **Router (generated):** the `addressBlock:` block's RTL comes from the `apbDecodeModule` template (scaffolded by `make newmodule`). It routes the register bus to served instances. You never write it.
-    *   **Block-level handler (generated):** each routed leaf block (e.g., `dma_controller`) gets an auto-generated `<block>_regs` instance that decodes registers/memories defined in YAML. You never write it.
-    *   **Your RTL** only provides the storage/side-effects for `ext` registers and drives `ro` read data, as below.
-    *   **Domain.** The router and the handlers it serves run on the register bus's clock, not necessarily the block's default `clk`: a top-down leaf's register port is whichever of its own declared clocks the instance map binds to the bus, and its reset the selected reset of that clock. The `clk`/`rst_n` used below is that domain's alias when the leaf declares nothing else. A `regAccess` memory on another of the leaf's clocks must be a dual-port memory. The handler's port runs on the bus clock and the block-side port on the memory's `clock:`, so the handler carries only the bus clock and its reset. A `singlePort` `regAccess` memory must be on the bus clock. A block-side memory port your RTL does not use, such as the read-only port A of a table only firmware touches, is a declared `memory_if` named `<memory>` (or `<memory>_unused`) that you tie off in your RTL outside the generated region. See `design-register-decode.md`.
+### 1. What is generated
+*   **Router.** The `addressBlock:` block's RTL comes from the `apbDecodeModule` template. The module is named after the router block.
+*   **Register handler.** Each routed leaf gets a handler instance in its generated region. The handler module is named `<block>` plus the suffix in `project.yaml` `fileGeneration: regBlockNaming: blockSuffix`. The default is `_regs`, and the examples set `Regs` (`blockARegs`). Every access completes without PSLVERR. The handler takes the leaf's `params:` and inherits the leaf instance's variant, so a parameterized leaf's handler module carries the same parameters as the leaf.
+*   **Register ports.** The generated region declares one interface instance per register and binds it to the handler. Your RTL uses these instances by register name.
 
-    > For reusable-IP leaves that ship their own register-bus port, the IP block authors one `registerPorts:` row (e.g. `registerPorts: { regs: { interface: ipReg } }`) so its generated `<block>Base` stays self-contained. Plain top-down leaves omit it. See `design-register-decode.md`.
+| `regType` | Interface instance | Your RTL |
+| :--- | :--- | :--- |
+| `ro` | `status_if` | drives `<reg>.data` |
+| `rw` | `status_if` | reads `<reg>.data` |
+| `ext` | `external_reg_if` | reads `<reg>.write` and `<reg>.wdata`, drives `<reg>.rdata` |
 
-2.  **Implementing External Registers (`regType: ext`):**
-    *   **Concept:** For `ext` registers, the auto-generated block provides ports but NO internal storage or logic. You must implement this in your RTL.
-    *   **Ports Provided:** 
-        *   `<regName>_wr`: Write strobe (1 cycle).
-        *   `<regName>_wdata`: Write data payload.
-        *   `<regName>_rd`: Read strobe.
-        *   `<regName>_rdata`: Read data input (you drive this).
-    *   **Implementation Pattern:**
-        ```systemverilog
-        // In your module's IMPLEMENTATION section
-        logic [31:0] my_ext_reg;
+`external_reg_if` has no read strobe, so reading an `ext` register cannot trigger logic such as clear-on-read.
 
-        always_ff @(posedge clk or negedge rst_n) begin
-            if (!rst_n) begin
-                my_ext_reg <= '0;
-            end else if (my_ext_reg_wr) begin
-                my_ext_reg <= my_ext_reg_wdata;
-                // Add side effects here (e.g., start a transaction)
-            end
-        end
+### 2. Register clock domain
+The handler runs on the block's register clock and reset. For a top-down leaf, these are the leaf's synchronous input reset bound to the serving router's bus reset, and the clock that owns that reset. A `registerPorts:` row can name them instead. `design-register-decode.md` covers both.
 
-        // Drive read data
-        always_comb begin
-            my_ext_reg_rdata = my_ext_reg;
-        end
-        ```
+*   Write flops that capture `<reg>.write` and `<reg>.wdata` on the register clock. If the register clock and reset are the block's `clk` and `rst_n`, use the bare macros. Otherwise use the `_DOM` form, for example `` `DFFR_INST_DOM(<regClock>, <regReset>, <type>, <name>, <rval>) ``.
+*   The handler samples `ro` and `ext` read data on the register clock without synchronising it. If your logic for that data runs on another clock, the read crosses clock domains.
 
-3.  **Read-Only Registers (`regType: ro`):**
-    *   **Concept:** Auto-generated logic handles the read bus protocol. You only need to provide the current value.
-    *   **Ports Provided:** `<regName>_rdata` (input to generated block).
-    *   **Implementation:**
-        ```systemverilog
-        // Drive status signals to the register port
-        assign status_reg_rdata.busy = is_busy;
-        assign status_reg_rdata.error_cnt = error_counter;
-        ```
+### 3. `ro` registers
+Drive the whole structure or its fields:
 
-4.  **Read-Write Registers (`regType: rw`):**
-    *   **Concept:** Fully handled by auto-generated code.
-    *   **Usage:** Use the generated signals (typically `regs.regName.field`) if you need to read the value in your logic.
-    *   **Note:** Check generated signal names in the header of the generated `.sv` file.
+```systemverilog
+assign roA.data.busy     = busy;
+assign roA.data.errorCnt = errorCnt;
+```
+
+### 4. `rw` registers
+The handler holds the value. Read it as `<reg>.data` or `<reg>.data.<field>`:
+
+```systemverilog
+assign enable = ctrlReg.data.enable;
+```
+
+### 5. `ext` registers
+The handler gives no storage. `<reg>.write` is nonzero for one cycle per firmware write, with `<reg>.wdata` holding the value. Drive `<reg>.rdata` with the value firmware reads back.
+
+```systemverilog
+localparam un0ExtRegSt EXTA_RESET = '{fa: 8'h61, fb: 16'h1234, fc: 8'h63};
+`DFFR_INST(un0ExtRegSt, extAReg, EXTA_RESET)
+always_comb begin
+    n_extAReg = extAReg;
+    if (|extA.write) begin
+        n_extAReg = extA.wdata;
+    end
+end
+
+assign extA.rdata = extAReg;
+```
+
+`un0ExtRegSt` is the register's YAML `structure:`. The generator writes it into the context package under the same name and declares `extA` as `external_reg_if #(.data_t(un0ExtRegSt))`. The reset value is yours to write, as `EXTA_RESET` is here. The handler applies `defaultValue:` to `rw` registers only.
+
+Put side effects of the write, such as starting a command, in the same `if (|extA.write)` branch.
+
+### 6. Unused memory ports
+A block-side memory port your RTL does not use, such as the read port of a table only firmware touches, still needs driving. Tie it off after the generated region:
+
+```systemverilog
+assign tbl.enable     = 1'b0;
+assign tbl.wr_en      = 1'b0;
+assign tbl.addr       = '0;
+assign tbl.write_data = '0;
+```
+
+### 7. Registers wider than 32 bits
+*   The register bus is 32 bits wide, so a wider register spans consecutive words: bits `[31:0]` at offset `+0`, bits `[63:32]` at `+4`, and so on.
+*   Each word write to an `rw` register takes effect on its own. After a write to `+0` the register holds the new low word next to the old high word.
+*   A memory row behaves differently. The handler stages the lower words and writes the whole row to the memory when firmware writes the row's highest word.
+*   An `ext` register is at most the bus width, and `make db` rejects a wider one. Firmware writes it in one access, so its owner sees one `write` carrying the whole value. Split wider external state into several `ext` registers.
+*   An `rw` or `ro` register with a parameterizable structure spans the words of its widest variant in every variant. Words above the bound variant's width read 0 and drop writes.
+*   Firmware that needs a consistent `rw` value writes the word that completes it last, usually the highest. To read a value that hardware changes, read the high word, the low word, then the high word again, and retry if the two high reads differ.

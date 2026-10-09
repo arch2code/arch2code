@@ -14,6 +14,7 @@
 #include "testBenchConfigFactory.h"
 #include "synchLock.h"
 #include "simController.h"
+#include "testController.h"
 #include "watchDog.h"
 import a2c.endOfTest;
 
@@ -32,7 +33,7 @@ extern "C" void VcsSetExitFunc(int (*)(int));
 static std::string VERSION = "build " __DATE__ " "  __TIME__;
 static std::string COPYRIGHT = "Copyright QiStor, Inc. 2022-2024";
 int try_sc_start(bool noLimit, const sc_time scMaxRunTime);
-void configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerbosity);
+bool configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerbosity);
 namespace po = boost::program_options;
 
 void signalHandler(int signum) {
@@ -62,6 +63,8 @@ int sc_main(int argc, char* argv[])
     std::string testBenchName;
     std::shared_ptr<testBenchConfigBase> testBench;
     std::string configFile;
+    std::vector<std::string> selectedTests;
+    bool listTests = false;
     std::filesystem::path execPath{argv[0]};
     std::string execName = execPath.filename().string();
 #ifdef VCS
@@ -88,8 +91,10 @@ int sc_main(int argc, char* argv[])
 
         po::variables_map vm;
 
+        // No prefix guessing, or --test would be read as --testBench.
         po::parsed_options parsed1 = po::command_line_parser(argc, argv).
             options(stage1Options).
+            style(po::command_line_style::default_style & ~po::command_line_style::allow_guessing).
             positional(pos).
             allow_unregistered().
             run();
@@ -120,6 +125,12 @@ int sc_main(int argc, char* argv[])
             ("unbufferedLogs",  po::bool_switch(&unbufferedLogs)->default_value(false), "flush every log write immediately");
         allOptions.add(logging);
 
+        po::options_description tests{"Tests"};
+        tests.add_options()
+            ("test", po::value<std::vector<std::string>>(&selectedTests)->composing(), "Run only this test; repeatable, runs in the testbench's order")
+            ("listTests", po::bool_switch(&listTests)->default_value(false), "Print the testbench's test names and exit");
+        allOptions.add(tests);
+
         po::options_description fileOptions{"File"};
         fileOptions.add_options()
             ("blockVerbosity", po::value<std::vector<std::string>>(&blockVerbosity)->multitoken()->composing(), "allow the verbosity of debug to change per block");
@@ -142,6 +153,8 @@ int sc_main(int argc, char* argv[])
             }
         }
         notify(vm);
+        // Set before the testbench can call set_test_names, from handleProgramOptions or createTestBench.
+        testController::GetInstance().select_tests(selectedTests);
         if (!testBench->handleProgramOptions(vm)) {
             return(2);
         }
@@ -168,7 +181,8 @@ int sc_main(int argc, char* argv[])
             if ((tempVerbosity = lg.verbosityDecode(verbosityStr)) != VERBOSITY_UNKNOWN) {
                 verbosity = tempVerbosity;
             } else {
-                std::cout << "Invalid verbosity '"  << verbosityStr << "'. Using default verbosity " << verbosity << std::endl;
+                std::cerr << "Invalid verbosity '" << verbosityStr << "'. Valid values: " << lg.verbosityNames() << std::endl;
+                return(2);
             }
         }
         if (!instVerbosityStr.empty())
@@ -176,6 +190,7 @@ int sc_main(int argc, char* argv[])
             if ((tempVerbosity = lg.verbosityDecode(instVerbosityStr)) != VERBOSITY_UNKNOWN) {
                 instVerbosity = tempVerbosity;
             } else {
+                std::cerr << "Invalid instVerbosity '" << instVerbosityStr << "'. Valid values: " << lg.verbosityNames() << std::endl;
                 return(2);
             }
         }
@@ -186,7 +201,9 @@ int sc_main(int argc, char* argv[])
             std::cout << fileOptions << '\n';
             return(2);
         }
-        configureLogging(verbosity, blockVerbosity);
+        if (!configureLogging(verbosity, blockVerbosity)) {
+            return(2);
+        }
 
         logfile = vm["log"].as<std::string>();
         if (logfile.compare("") == 0)
@@ -202,7 +219,7 @@ int sc_main(int argc, char* argv[])
     }
     std::ofstream logOut;
     auto cout_buff = std::cout.rdbuf();
-    auto cerr_buff = std::cout.rdbuf();
+    auto cerr_buff = std::cerr.rdbuf();
 
     if (log) {
         std::cout << "Logging redirected to: " << logfile << endl;
@@ -248,6 +265,53 @@ int sc_main(int argc, char* argv[])
 
 
     const bool testBenchCreated = testBench->createTestBench();
+    // The testbench has declared its tests and nothing has simulated yet.
+    if (testBenchCreated && (listTests || !selectedTests.empty())) {
+        // Only the branches that print and return go back to the console; a
+        // valid --test simulates and keeps the --log redirect.
+        auto restoreConsole = [&]() {
+            std::cout.rdbuf(cout_buff);
+            std::cerr.rdbuf(cerr_buff);
+        };
+        testController &controller = testController::GetInstance();
+        const std::list<std::string> &declared = controller.declared_test_names();
+        if (declared.empty()) {
+            restoreConsole();
+            std::cerr << "Testbench " << testBenchName << " does not declare its tests with testController::set_test_names, so --test and --listTests have nothing to select" << std::endl;
+            return(2);
+        }
+        if (listTests) {
+            restoreConsole();
+            for (const auto &name : declared) {
+                std::cout << name << '\n';
+            }
+            return(0);
+        }
+        for (const auto &name : selectedTests) {
+            if (std::find(declared.begin(), declared.end(), name) == declared.end()) {
+                std::string valid;
+                for (const auto &declaredName : declared) {
+                    valid += (valid.empty() ? "" : ", ") + declaredName;
+                }
+                restoreConsole();
+                std::cerr << "Invalid test '" << name << "'. Valid tests: " << valid << std::endl;
+                return(2);
+            }
+        }
+    }
+    // In a testbench that uses add_test, a test without a body is either an
+    // old-style thread's or one that nothing runs, which the run never completes.
+    if (testBenchCreated && testController::GetInstance().uses_add_test()) {
+        const std::vector<std::string> missing = testController::GetInstance().tests_without_body();
+        if (!missing.empty()) {
+            std::string names;
+            for (const auto &name : missing) {
+                names += (names.empty() ? "" : ", ") + name;
+            }
+            std::cout << "WARNING: no add_test or ADD_TEST runs these tests from set_test_names: " << names
+                      << ". Each needs an old-style register_test_name thread. Otherwise the run never completes that test. If --scTimeLimit, a watchdog or another voter ends the run, final() fails. If none does, the run hangs." << std::endl;
+        }
+    }
 
     // General framework startup process: after simController::startupDelay of
     // simulation time, allow end-of-test to latch. This runs for EVERY project
@@ -327,6 +391,7 @@ int sc_main(int argc, char* argv[])
 
     logging::GetInstance().final();
     testBench->final();
+    exitMsg << lg.report();
     exitMsg << errorCode::getErrorString() << endl;
     testBench->exitSummary();
     //cleanup original output buffs
@@ -343,7 +408,7 @@ exit_goto:
 }
 
 
-void configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerbosity)
+bool configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerbosity)
 {
     logging &lg = logging::GetInstance();
     lg.setDefaultVerbosity(verbosity);
@@ -356,16 +421,16 @@ void configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerb
             if (equalsPos != std::string::npos && equalsPos > 0 && equalsPos < dbgModule.size() - 1) {
                 std::string moduleName = dbgModule.substr(0, equalsPos);
                 std::string verbosityStr = dbgModule.substr(equalsPos + 1);
-                verbosity_e tempVerbosity;
-                if ((tempVerbosity = lg.verbosityDecode(verbosityStr)) != VERBOSITY_UNKNOWN) {
-                    verbosity = tempVerbosity;
-                } else {
-                    std::cout << "Invalid block verbosity '"  << verbosityStr << " (" << moduleName << ")'. Using default verbosity " << verbosity << std::endl;
+                verbosity_e blockLevel = lg.verbosityDecode(verbosityStr);
+                if (blockLevel == VERBOSITY_UNKNOWN) {
+                    std::cerr << "Invalid block verbosity '" << verbosityStr << "' (" << moduleName << "). Valid values: " << lg.verbosityNames() << std::endl;
+                    return false;
                 }
-                lg.addBlock(moduleName, verbosity);
+                lg.addBlock(moduleName, blockLevel);
             }
         }
     }
+    return true;
 }
 
 int try_sc_start(bool noLimit, const sc_time scMaxRunTime)

@@ -72,7 +72,7 @@ struct litSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, litSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = v;
     }
     inline void unpack(const _packedSt &_src)
@@ -132,7 +132,7 @@ struct tcSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tcSt_v<TC_GAIN>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, val, TC_GAIN);
         _pos += TC_GAIN;
@@ -142,9 +142,9 @@ struct tcSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        val = (tcValT_v<TC_GAIN>)((_src >> (_pos & 63)) & ((1ULL << (TC_GAIN)) - 1));
+        val = (tcValT_v<TC_GAIN>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (TC_GAIN))));
         _pos += TC_GAIN;
-        tag = (tcTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (tcTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<tcSt_v<TC_GAIN>::_bitWidth> sc_pack(void) const
     {

@@ -81,7 +81,7 @@ struct mtChSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, mtChSt_v<MTX_CH_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -93,11 +93,11 @@ struct mtChSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (mtChMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (mtChMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (mtChPixelT_v<MTX_CH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (MTX_CH_WIDTH)) - 1));
+        data = (mtChPixelT_v<MTX_CH_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (MTX_CH_WIDTH))));
         _pos += MTX_CH_WIDTH;
-        tag = (mtChTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (mtChTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<mtChSt_v<MTX_CH_WIDTH>::_bitWidth> sc_pack(void) const
     {

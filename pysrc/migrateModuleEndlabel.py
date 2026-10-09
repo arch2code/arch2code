@@ -89,7 +89,7 @@ def restampModuleEndlabel(prj, write=False):
         # project/context re-stamp owner guard).
         if prj.contextOwningProject[blockRow["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(rtlDef, blockRow):
+        if not fileMapCondMatch(rtlDef, prj.getBlockCondRow(blockRow["blockKey"])):
             continue
         filePath = expandNewModulePath(rtlDef, blockRow["dir"], blockRow["block"],
                                        blockRow["block"], layout, missingDirOk=True)

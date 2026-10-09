@@ -79,6 +79,7 @@ def get_hwregs(prj, data):
                 "datatype_inclass": bareParameterizedType(datatype, hasOwnParams),
                 "addresstype": intf_gen_utils.sc_structure_field_type(inst, 'addressStruct', 'addressStructKey', prj),
                 "word_lines": inst['wordLines'],
+                "row_bytes": intf_gen_utils.sc_explicit_row_bytes(inst, prj),
                 "offset": const_name,
                 "offset_value": hex(inst['offset']),
                 "const_name": const_name,
@@ -89,7 +90,6 @@ def get_hwregs(prj, data):
             })
         else:
             const_name = address_const_name(data, inst, 'register')
-            effective_bytes = inst.get('maxBytes', inst['bytes'])
             port_type = intf_gen_utils.get_intf_type(inst['interfaceType'], data)
             direction = "_out" if inst['direction'] == 'src' else "_in"
             port_type = port_type + direction
@@ -100,8 +100,8 @@ def get_hwregs(prj, data):
                 "datatype": datatype,
                 "datatype_inclass": bareParameterizedType(datatype, hasOwnParams),
                 "packedst_typename": 'typename ' if '<Config>' in datatype else '',
-                "size_rounded": roundup_multiple(effective_bytes, 4),
-                "size": inst['bytes'],
+                "size_rounded": roundup_multiple(inst['maxBytes'], 4),
+                "size": inst['maxBytes'],
                 # "ro" : 'true' if ( inst['regType'] == 'ro' or port_type == 'external_reg_out' ) else 'false', # FIXME: consider changing this to a more general rule with property in interface definition
                 "ro" : 'true' if inst['regType'] == 'ro' else 'false',
                 "offset": const_name,
@@ -234,7 +234,7 @@ public:
     //registers
     {% for entry in hwregs -%}
     {% if entry.is_memory -%}
-    hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}} > {{entry.name}}; // {{entry.descr}}
+    hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}}{% if entry.row_bytes %}, {{entry.row_bytes}}{% endif %} > {{entry.name}}; // {{entry.descr}}
     {% else -%}
     hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endif -%}
@@ -283,7 +283,11 @@ block_regs_body_section_template = '''\
     {% if memory_items -%}
     // register memories for FW access
     {% for entry in memory_items -%}
+    {% if entry.row_bytes -%}
+    _a2cRegs.addMemory({{entry.offset}}, {{entry.row_bytes}} * {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% else -%}
     _a2cRegs.addMemory({{entry.offset}}, {{entry.datatype_inclass}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% endif -%}
     {% endfor -%}
     {% endif -%}
     {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}

@@ -1,12 +1,11 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
 from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
+from pysrc.processYaml import REG_BUS_WIDTH_BYTES
 
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
-
-REG_BUS_WIDTH_BYTES = 4
 
 def getParentStructures(prj, d):
     for item in d['structures']:
@@ -41,7 +40,8 @@ def render(args, prj, data):
 
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
-        reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
+        row_is_param = reg_data['isParameterizable']
+        reg_data['bitwidth'] = reg_data['worstBitwidth']
         # A register is parameterizable iff its storage structure is. Its
         # storage is then the variant-width module-local struct and its
         # per-word data flops/slices are elaborated away per variant via
@@ -51,17 +51,16 @@ def render(args, prj, data):
         
         # For memory registers, compute memory-specific fields
         if reg_data.get('regType') == 'memory':
-            reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
+            reg_data['rowwidth'] = clog2(reg_data['rowBytes'])
             # decodeSize is the worst-case decoded address range in bytes,
-            # persisted by projectCreate's calcAddresses. The template no
-            # longer derives it from wordLines * 2^rowwidth.
+            # persisted by projectCreate's calcAddresses.
             reg_data['memsize'] = reg_data['decodeSize']
             addr_l = reg_data['offset']
             addr_h = addr_l + reg_data['memsize'] - REG_BUS_WIDTH_BYTES
             reg_data['address_range'] = (addr_l, addr_h)
             reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
             reg_data['size_const_name'] = reg_data['addr_const_name'] + '_SIZE'
-            reg_data['decode_size'] = reg_data['memsize']
+            reg_data['size_value'] = decode_size_value(reg_data, row_is_param)
         else:
             reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
 
@@ -70,28 +69,19 @@ def render(args, prj, data):
         ctxt_memories = dict()
         for mem_key, mem_data in data['memoriesParent'].items():
             entry = dict(mem_data)
-            entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
+            entry['bitwidth'] = mem_data['worstBitwidth']
             entry['isParameterizable'] = prj.data['structures'][mem_data['structureKey']]['isParameterizable']
             entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES, 0))
-            entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
+            entry['rowwidth'] = clog2(mem_data['rowBytes'])
             # decodeSize is the worst-case decoded address range in bytes,
             # persisted by projectCreate's calcAddresses.
             entry['memsize'] = entry['decodeSize']
             entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
             entry['addr_const_name'] = address_const_name(data, entry, 'memory')
             entry['size_const_name'] = entry['addr_const_name'] + '_SIZE'
-            entry['decode_size'] = entry['memsize']
+            entry['size_value'] = decode_size_value(entry, mem_data['isParameterizable'])
             ctxt_memories[mem_key] = entry
         data['memories'] = ctxt_memories
-
-    # TODO extend support beyond 8-bytes wide for external registers
-    for reg_key, reg_data in data['registers'].items():
-        unsup_ = False
-        if reg_data['regType'] == 'ext' and len(reg_data['segments']) * REG_BUS_WIDTH_BYTES > 8 :
-            printError(f"External register {reg_data['register']} > 8 bytes is not supported by current generator")
-            unsupp_ = True
-        if unsup_:
-            warningAndErrorReport()
 
     t = Template(regs_module_sv_j2_template)
 
@@ -124,6 +114,14 @@ def address_const_name(data, entry, name_field):
 
 def sv_hex(value):
     return f"32'h{value:08x}"
+
+def decode_size_value(mem_data, row_is_param):
+    """Bytes of a memory's decoded address range. decodeSize is sized for the
+    worst-case depth; a parameterizable memory decodes only its variant's
+    rows, and an access past them falls to the default arm."""
+    if row_is_param:
+        return f"{mem_data['wordLines']} * 32'd{1 << mem_data['rowwidth']}"
+    return sv_hex(mem_data['memsize'])
 
 def section_package_imports(args, prj, data):
     startingContext = data['blockInfo']['_context']
@@ -172,10 +170,10 @@ def section_address_constants(data):
     for reg_data in data['registers'].values():
         entries.append((reg_data['offset'], reg_data['addr_const_name'], sv_hex(reg_data['offset']), reg_data.get('desc', '')))
         if reg_data.get('regType') == 'memory':
-            entries.append((reg_data['offset'], reg_data['size_const_name'], sv_hex(reg_data['decode_size']), 'Decode range size'))
+            entries.append((reg_data['offset'], reg_data['size_const_name'], reg_data['size_value'], 'Decode range size'))
     for mem_data in data['memories'].values():
         entries.append((mem_data['offset'], mem_data['addr_const_name'], sv_hex(mem_data['offset']), mem_data.get('desc', '')))
-        entries.append((mem_data['offset'], mem_data['size_const_name'], sv_hex(mem_data['decode_size']), 'Decode range size'))
+        entries.append((mem_data['offset'], mem_data['size_const_name'], mem_data['size_value'], 'Decode range size'))
 
     out = []
     seen = set()
@@ -336,7 +334,7 @@ def section_01_mem_param(mem_intf, mem_data, mode):
     if writes:
         s += [ f"logic {mem_intf}_wr_enable;" ]
     s += [ "" ]
-    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'(apb_addr[31:{rowwidth}]))" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'((apb_addr - {mem_data['addr_const_name']}) >> {rowwidth}))" ]
     if writes:
         s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_wr_enable, {mem_intf}_update[{top_lp}])" ]
     if reads:
@@ -372,6 +370,7 @@ def section_01_memregs(reg_data):
         mem_addrtype=reg_data['addressStruct'],
         segments=reg_data['segments'],
         paddr_l = reg_data['rowwidth'],
+        addr_const_name = reg_data['addr_const_name'],
         seg_last = len(reg_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
@@ -391,6 +390,7 @@ def section_01_mems(mem_data):
         mem_addrtype=mem_data['addressStruct'],
         segments=mem_data['segments'],
         paddr_l = mem_data['rowwidth'],
+        addr_const_name = mem_data['addr_const_name'],
         seg_last = len(mem_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
@@ -540,7 +540,7 @@ def section_02b_mem_param(mem_intf, mem_data):
     rowwidth = mem_data['rowwidth']
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth-1}:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -566,7 +566,7 @@ def section_02b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o_rel = o - addr_l  # offset relative to base of mem mod bus width
@@ -597,7 +597,7 @@ def section_02b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
@@ -692,7 +692,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     word_offsets = []
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth-1}:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -708,7 +708,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     s_1 += [ f"            nxt_rd_data = '0;" ]
     s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     return string_joiner(s_1, '\n')
 
@@ -732,7 +732,7 @@ def section_03b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -751,7 +751,7 @@ def section_03b_mems(mem_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{mem_data['rowwidth']-1}:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
 
     return string_joiner(s_1, '\n')
@@ -772,7 +772,7 @@ def section_03b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         _, (o, u, l, w, _) = seg
@@ -791,7 +791,7 @@ def section_03b_memregs(reg_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = (apb_addr[{rowwidth}-1:0] inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     
     return string_joiner(s_1, '\n')
@@ -890,16 +890,17 @@ module {{ modulename }}
         if (rd_select) begin
             case (apb_addr) inside
                 {{ section_03b | indent(16) }}
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = {{regs_data_t}}'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
@@ -939,7 +940,7 @@ logic nxt_{{mem_intf}}_rd_enable, {{mem_intf}}_rd_enable, {{mem_intf}}_rd_captur
 {% if writes -%}
 logic {{mem_intf}}_wr_enable;
 {% endif %}
-`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'(apb_addr[31:{{paddr_l}}]))
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'((apb_addr - {{addr_const_name}}) >> {{paddr_l}}))
 {% if writes -%}
 `DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_wr_enable, {{mem_intf}}_update_{{seg_last}})
 {% endif -%}

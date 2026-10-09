@@ -1,6 +1,5 @@
 # SystemC API Reference for arch2code
 
-**Version:** 1.0  
 **Audience:** C++ developers implementing hardware blocks  
 **Scope:** User-facing SystemC APIs for module implementation
 
@@ -23,6 +22,10 @@
    - [notify_ack_channel](#47-notify_ack_channel---notify-with-acknowledge)
    - [status_channel](#48-status_channel---status-monitoring)
    - [raw_channel](#49-raw_channel---last-resort-handshake-less-boundary)
+   - [axi_read_channel](#410-axi_read_channel---axi-read)
+   - [axi_write_channel](#411-axi_write_channel---axi-write)
+   - [axi4_stream_channel](#412-axi4_stream_channel---axi4-stream)
+   - [external_reg_channel](#413-external_reg_channel---register-owned-by-another-block)
 5. [Transaction Tracking](#5-transaction-tracking-user-api)
 6. [Framework Reference](#6-framework-reference-minimal-documentation)
 7. [Advanced Topics](#7-advanced-topics-power-users)
@@ -40,7 +43,7 @@
 
 ### Purpose and Scope
 
-This document provides a comprehensive reference for **user-facing SystemC APIs** in the arch2code toolchain. It focuses on the APIs that C++ developers use to implement hardware module behavior in `.cpp` files.
+This document is the reference for **user-facing SystemC APIs** in the arch2code toolchain. It focuses on the APIs that C++ developers use to implement hardware module behavior in `model/<block>.cppm` files.
 
 **What You'll Learn:**
 - How to access registers and memories
@@ -59,12 +62,12 @@ This document provides a comprehensive reference for **user-facing SystemC APIs*
 arch2code generates two types of files:
 
 **Generated Files (DO NOT EDIT):**
-- `*Base.h` - Pure virtual base classes with port declarations
-- `*Includes.h/cpp` - Type definitions and structures
+- `base/<block>Base.cppm` - The block's base class with its port declarations
+- `model/<includeName>Includes.cppm` - The constants, types and structures of one YAML context
 - Code between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers
 
 **User Implementation Files (YOUR CODE):**
-- `*.cpp` - Module implementation outside generated markers
+- `model/<block>.cppm` - One C++20 module file per block. Your code goes outside the generated markers.
 - Your `SC_THREAD` and `SC_METHOD` implementations
 - Business logic, algorithms, protocols
 
@@ -83,9 +86,9 @@ Every generated structure carries two separate notions of size:
 
 | Member | Represents | Used For |
 |--------|-----------|----------|
-| `_bitWidth` | **HW bit width** — sum of all field widths as defined in YAML | `sc_bv<>` sizing, pack/unpack serialization, address-map calculations |
-| `_byteWidth` | **HW byte width** — `(_bitWidth + 7) >> 3` | Register/memory byte footprint in address maps, `addMemory()` calls |
-| `sizeof(T)` | **C++ storage size** — actual memory footprint of the C++ struct | Multi-cycle burst sizing, `memcpy`, array allocation |
+| `_bitWidth` | **HW bit width**, the sum of all field widths as defined in YAML | `sc_bv<>` sizing, pack/unpack serialization, address-map calculations |
+| `_byteWidth` | **HW byte width**, `(_bitWidth + 7) >> 3` | Register/memory byte footprint in address maps, `addMemory()` calls. A parameterizable structure's footprint is its widest variant's, not this |
+| `sizeof(T)` | **C++ storage size**, the actual memory footprint of the C++ struct | Multi-cycle burst sizing, `memcpy`, array allocation |
 
 These are **deliberately different**. C++ storage types are typically wider than the hardware reality they model. For example, a 1-bit `eol_t` field is stored in a `uint8_t` (8× wider), and a 3-field struct of single-bit types has `_byteWidth = 1` but `sizeof = 3`.
 
@@ -112,52 +115,57 @@ struct video_frame_t {
 
 - Use **`_bitWidth` / `_byteWidth`** when reasoning about the hardware: register byte widths, address-space allocation, `sc_bv` template parameters, and pack/unpack operations.
 - Use **`sizeof`** when reasoning about C++ memory: multi-cycle channel burst lengths, buffer allocation, `memcpy` sizes, and pointer arithmetic.
-- Never assume `sizeof(T)` equals `_byteWidth` — they are independent by design.
+- Never assume `sizeof(T)` equals `_byteWidth`. They are independent by design.
 
 ### Understanding Code Markers
 
+An abridged `model/myBlock.cppm` for a block without its own `params:` in project `proj`. The `moduleScaffold` and `moduleExport` regions above the class are omitted. The `systemc-core` skill (`rules/skills/systemc-core.md`, sections 1 and 2) shows the whole file and every user slot.
+
 ```cpp
-// GENERATED_CODE_PARAM --block=myBlock
+// GENERATED_CODE_BEGIN --template=classDecl
+using namespace proj_ns;
+export SC_MODULE(myBlock), public blockBase, public myBlockBase
+{
+    // ... generated register and memory members ...
+    myBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    // GENERATED_CODE_END
+    // block implementation members
+    uint32_t myUserVariable;
+    void myThread(void);
+};
+
 // GENERATED_CODE_BEGIN --template=constructor --section=init
-#include "myBlock.h"
 SC_HAS_PROCESS(myBlock);
-
-myBlock::myBlock(sc_module_name blockName, const char* variant, blockBaseMode bbMode)
-    : sc_module(blockName)
-    ,blockBase("myBlock", name(), bbMode)
-    ,myBlockBase(name(), variant)
-    ,controlReg()  // Generated register initialization
-    ,dataMemory(name(), "dataMemory", mems, 1024)  // Generated memory
-    // User can add initialization here:
-    ,myUserVariable(0)  // USER: Custom initialization
+// ... factory registration ...
+myBlock::myBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("myBlock", name(), bbMode)
+        ,myBlockBase(name(), variant)
 // GENERATED_CODE_END
-
+        ,myUserVariable(0)
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    // ... FRAMEWORK CODE - DO NOT EDIT ...
-    regs.addRegister(0x100, 4, "controlReg", &controlReg);
-    SC_THREAD(regHandler);
+    // ... generated body: register and memory registration, SC_THREAD(regHandler) ...
     // GENERATED_CODE_END
-    
-    // YOUR USER CODE STARTS HERE
     SC_THREAD(myThread);
 }
 
-void myBlock::myThread() {
-    // ALL YOUR IMPLEMENTATION CODE
+void myBlock::myThread(void)
+{
+    // your implementation
 }
 ```
 
 **Important Notes:**
-- **Base files (`*Base.h`)** and **Include files (`*Includes.h/cpp`)** contain ONLY generated code between markers
+- **Base files (`base/<block>Base.cppm`)** and **Include files (`model/<includeName>Includes.cppm`)** contain only generated code between markers
 - These files are **NOT regenerated** from scratch - they use in-place generation
 - The markers allow selective regeneration of sections while preserving the file
-- **Implementation files (`*.cpp`, `*.h`)** allow user code outside markers
+- **Model files (`model/<block>.cppm`)** allow user code outside markers
 
 **Rules:**
 - Never edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`
-- In constructor init sections, you can add user member initializations after generated ones
-- Implement your logic outside these markers in implementation files
+- Add your member initializers between the `constructor --section=init` end marker and the `--section=body` begin marker, each starting with a comma
+- Implement your logic outside these markers
 - Re-running generators preserves your user code
 
 ---
@@ -191,6 +199,8 @@ log_.logPrint("Important event", LOG_IMPORTANT);
 | `LOG_IMPORTANT` | High | Major events, initialization |
 | `LOG_NORMAL` | Medium | Regular transactions |
 | `LOG_DEBUG` | Low | Detailed debug information |
+
+The run's `--verbosity` decides which levels print. Each verbosity adds one level: `low` prints `LOG_ALWAYS`, `medium` adds `LOG_IMPORTANT`, `high` adds `LOG_NORMAL`, and `full` adds `LOG_DEBUG`. The default is `medium`, so `logPrint(msg)` with no level (`LOG_NORMAL`) prints only with `--verbosity high` or above.
 
 ### Usage Examples
 
@@ -237,13 +247,13 @@ void myModule::efficientLogging() {
 
 ### Best Practices
 
-✅ **DO:**
+**Do:**
 - Use appropriate log levels
 - Include context in log messages
 - Log at transaction boundaries
 - Use lazy evaluation for expensive formatting
 
-❌ **DON'T:**
+**Don't:**
 - Log every cycle in tight loops
 - Include sensitive data without filtering
 - Use `std::cout` directly (breaks logging hierarchy)
@@ -254,67 +264,32 @@ void myModule::efficientLogging() {
 
 ### 3.1 Direct Register Access
 
-Registers are declared in generated Base classes and can be accessed directly from user code.
-
-#### Unclocked Access (Preferred)
-
-Direct access to register value without timing delay.
+A register the block owns is an `hwRegister` member that the generator declares in the block's `classDecl` region. Its accessors take no simulation time.
 
 **API:**
-- `myRegister.m_val` - Direct member access to register value
-- `myRegister.m_val.field` - Access structure fields
+- `myRegister.read()` - Returns the current value
+- `myRegister.write(value)` - Sets the value and notifies the event passed to `registerEvent()`
+- `myRegister.registerEvent(&ev)` - Hooks an `sc_event` that fires on each firmware write and on each `write()`. The register holds one event, so a second call replaces the first
+- `myRegister.m_val` - The stored value. Assigning to it directly notifies no event
 
-**Example:**
+An `hwRegister` has no `->`, no `setExternalEvent` and no `readNonBlocking`.
+
+**Example - React to firmware writes:**
 
 ```cpp
-void blockA::LocalRegAccess() {
-    // Direct register access
-    un0ARegSt arw;
-    
-    // Read register value
-    arw = rwUn0A.m_val;
-    
-    // Write register value
-    arw.fa = 'a';
-    arw.fb = 0xfefe1234;
-    arw.fc = 'c';
-    extA.m_val = arw;
-    
-    // Field access
-    uint32_t fieldValue = rwUn0A.m_val.fb;
-    rwUn0A.m_val.fa = 'x';
+void myBlock::controlThread(void)
+{
+    sc_event ctrlEvent;
+    controlReg.registerEvent(&ctrlEvent);
+    while (true) {
+        wait(ctrlEvent);
+        controlRegSt ctrl = controlReg.read();
+        // act on ctrl
+    }
 }
 ```
 
-#### Clocked Access
-
-Access with configured timing delays (for timing-accurate models).
-
-**API:**
-- `myRegister.read()` - Get register value with timing
-- `myRegister.write(value)` - Set register value with timing
-
-**Example:**
-
-```cpp
-void myModule::timedAccess() {
-    // Clocked register read (includes timing delay)
-    regSt value = myRegister.read();
-    
-    // Process value
-    value.field += 1;
-    
-    // Clocked register write (includes timing delay)
-    myRegister.write(value);
-}
-```
-
-### When to Use Each
-
-| Access Type | Use Case | Timing |
-|-------------|----------|--------|
-| `m_val` | Functional models, fast simulation | No delay |
-| `read()`/`write()` | Timing-accurate models | Configured delay |
+Firmware writes a register wider than 32 bits one word at a time, and each word write notifies the event. A thread woken by the low-word write still sees the old high word. A read-only register ignores firmware writes.
 
 ### 3.2 Direct Memory Access
 
@@ -326,7 +301,7 @@ void myModule::timedAccess() {
 - `myMemory.read(index)` - Timed read with delay (preferred for functional code)
 - `myMemory.write(index, value)` - Timed write with delay (preferred for functional code)
 - `myMemory.writeNoDelay(index, value)` - Write without timing delay (for streaming data with clocked interfaces)
-- `myMemory[index]` - **Backdoor access** (bypasses locking/synchronization, test initialization only)
+- `myMemory[index]` - **Backdoor access** that skips timing and locking. Use it only for backdoor work such as logging and test initialization
 
 **Example - Functional Access:**
 
@@ -371,9 +346,9 @@ void myModule::initializeMemory() {
 }
 ```
 
-**⚠️ Important - Backdoor Access (`[]`):**
+**Important - Backdoor Access (`[]`):**
 - **Bypasses:** Locking, synchronization, timing delays
-- **Use ONLY for:** Test initialization, verification backdoor reads
+- **Use ONLY for:** Logging, test initialization, verification backdoor reads
 - **DO NOT use for:** Functional module behavior
 - **Functional code:** Always use `read()`, `write()`, or `writeNoDelay()`
 
@@ -386,14 +361,18 @@ For thread-safe modifications when multiple threads or instances access the same
 - `myMemory.writeRMW(index, value)` - Complete atomic RMW
 - `myMemory.releaseRMW(index)` - Release RMW lock without write
 - `myMemory.lock(index, magicNumber)` - Acquire lock only
+- `myMemory.configureSynch(getAltName(), nullptr)` - Sets the memory up for row locking. Call it once in the constructor body. `readRMW`, `writeRMW`, `releaseRMW` and `lock` assert without it
 
-**Magic Number:** Used for synchronization between multiple instances accessing shared memory, particularly in tandem mode (RTL + SystemC co-simulation) where the magic value coordinates access through synchLock.
+**Magic Number:** The tandem match key, as for `synchLock::lock` (see section 7.2). In tandem, the memory records each (magic number, row) pair the first copy locks, and the second copy waits until the next recorded pair equals its own. Give each call site its own value.
 
 **Example:**
 
 ```cpp
+// constructor body, after the generated region:
+//     myMemory.configureSynch(getAltName(), nullptr);
+
 void myModule::atomicUpdate() {
-    // Magic value for synchronization (important for tandem mode)
+    // Match key for this call site (important for tandem mode)
     const uint64_t MAGIC = 0x12345;
     
     // Start atomic RMW (locks the row)
@@ -414,18 +393,19 @@ void myModule::atomicUpdate() {
 
 **Use Cases:**
 - Multiple SystemC threads accessing same memory
-- Tandem mode: RTL and SystemC model accessing shared memory
+- Tandem mode: both copies of the block take the row locks in the same order
 - Coordinated access across module instances
 
 ### Memory Access Summary
 
 | Method | Timing | Thread-Safe | Use Case |
 |--------|--------|-------------|----------|
-| `[index]` | None | ⚠️ No | Backdoor (test init / verification only) |
-| `read(index)` | Yes | ⚠️ No | Timed single-thread |
-| `write(index, value)` | Yes | ⚠️ No | Timed single-thread |
-| `readRMW()` | Yes | ✅ Yes | Multi-threaded access |
-| `writeRMW()` | Yes | ✅ Yes | Complete atomic update |
+| `[index]` | None | No | Backdoor (logging, test init, verification) |
+| `read(index)` | Yes | No | Timed single-thread |
+| `write(index, value)` | Yes | No | Timed single-thread |
+| `writeNoDelay(index, value)` | None | No | Interface already provides the timing |
+| `readRMW()` | Yes | Yes, after `configureSynch` | Multi-threaded access |
+| `writeRMW()` | Yes | Yes, after `configureSynch` | Complete atomic update |
 
 ---
 
@@ -445,10 +425,11 @@ All channels are created and connected in generated code. Users call methods on 
 | `pop_ack` | Pop with ack | FIFO-like pull interfaces |
 | `notify_ack` | Notify with ack | Event signaling |
 | `status` | Status monitoring | Read-only state sharing |
-| `raw` | Handshake-less data (**last resort**) | Legacy / external boundary pinouts only |
+| `raw` | Handshake-less data (**last resort**) | External boundary pinouts only |
 | `axi_read` | AXI read | Burst read transactions |
 | `axi_write` | AXI write | Burst write transactions |
 | `axi4_stream` | AXI4-Stream | High-speed streaming |
+| `external_reg` | Firmware register owned by another block | Register whose storage lives outside the register handler |
 
 ### 4.1 rdy_vld_channel - Ready/Valid Handshake
 
@@ -470,8 +451,6 @@ void producer::producerOutRdyVld(void)
 {
     data_st data;
     data.b = 0;
-    wait(SC_ZERO_TIME);
-    
     log_.logPrint("RV1");
     test_rdy_vld->write(data);  // Blocks until sink ready
     
@@ -502,7 +481,6 @@ void producer::producerOutRdyVld(void)
 void consumer::consumerInRdyVld(void)
 {
     data_st data;
-    wait(SC_ZERO_TIME);
     
     log_.logPrint("RV1");
     // Calling read() signals ready and waits for data
@@ -523,8 +501,8 @@ Request/response protocol for register and memory access. Supports single outsta
 - `myPort->request(isWrite, addr, data)` - Blocking request (write or read)
   - For writes: `data` contains write data
   - For reads: `data` receives read data on return
-- `myPort->requestNonBlocking(isWrite, addr, data)` - Non-blocking request
-- `myPort->waitComplete(data)` - Wait for non-blocking read completion
+- `myPort->requestNonBlocking(isWrite, addr, data)` - Non-blocking request, for tee use only
+- `myPort->waitComplete(data)` - Wait for the non-blocking read to complete, for tee use only
 
 **Example - APB Master:**
 
@@ -534,12 +512,12 @@ void myModule::apbMaster() {
     apbDataSt data;
     
     // Write transaction
-    addr._setAddress(0x100);
+    addr.address = 0x100;
     data._setData(0xDEADBEEF);
     apbPort->request(true, addr, data);  // Blocking write
     
     // Read transaction
-    addr._setAddress(0x100);
+    addr.address = 0x100;
     apbPort->request(false, addr, data);  // Blocking read, data returned
     
     log_.logPrint(std::format("Read value: 0x{:x}", data._getData()));
@@ -555,44 +533,14 @@ void myModule::apbMaster() {
 - `myPort->isActive()` / `myPort->isNotActive()` - Check whether a request is pending
 - `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration (see `rules/skills/systemc-synchronization.md` Section 1)
 
-**Example - APB Slave / Register Handler:**
-
-```cpp
-void blockA::regHandler(void) {
-    // Uses template helper function
-    registerHandler<apbAddrSt, apbDataSt>(regs, apbReg, (1<<10)-1);
-}
-
-// Or custom handler:
-void myModule::customHandler() {
-    while (true) {
-        bool isWrite;
-        apbAddrSt addr;
-        apbDataSt data;
-        
-        // Wait for request
-        apbPort->reqReceive(isWrite, addr, data);
-        
-        uint64_t address = addr._getAddress();
-        
-        if (isWrite) {
-            // Handle write
-            myMemory.write(address, data._getData());
-        } else {
-            // Handle read
-            data._setData(myMemory.read(address));
-            apbPort->complete(data);
-        }
-    }
-}
-```
+**Register bus ports:** When a block's `apb` port is its register bus, the generator writes the handler (`regHandler`, which calls `registerHandler(_a2cRegs, ...)`, and `SC_THREAD(regHandler)`). Never add a thread on the register bus port. See section 8.5.
 
 ### 4.3 memory_channel - Memory Access Protocol
 
 1-cycle latency memory interface. Same API as APB but optimized for memory timing.
 
 **API:** Same as `apb_channel`
-- `request()`, `requestNonBlocking()`, `waitComplete()` on requester side
+- `request()` on requester side (`requestNonBlocking()` and `waitComplete()` are for tee use only)
 - `reqReceive()`, `complete()`, `isActive()`/`isNotActive()`, `setExternalEvent(event)` on completer side
 
 **Example:**
@@ -648,6 +596,7 @@ void producer::producerOutReqAck(void)
 - `myPort->reqReceive(request)` - Wait for and receive request
 - `myPort->ack(ack)` - Send acknowledgement
 - `myPort->isActive()` / `myPort->isNotActive()` - Check request status
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration
 
 **Example:**
 
@@ -698,6 +647,8 @@ void producer::producerOutPushAck(void)
 **API:**
 - `myPort->pushReceive(data)` - Receive pushed data
 - `myPort->ack()` - Acknowledge receipt
+- `myPort->isActive()` / `myPort->isNotActive()` - Check whether a push is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration
 
 **Example:**
 
@@ -745,6 +696,8 @@ void producer::producerOutPopAck(void)
 **API:**
 - `myPort->popReceive()` - Wait for pop request
 - `myPort->ack(data)` - Provide data
+- `myPort->isActive()` / `myPort->isNotActive()` - Check whether a pop is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration
 
 **Example:**
 
@@ -794,6 +747,7 @@ void myModule::sendNotification() {
 - `myPort->waitNotify()` - Wait for notification
 - `myPort->ack()` - Acknowledge notification
 - `myPort->isActive()` / `myPort->isNotActive()` - Check notification status
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration
 
 **Example:**
 
@@ -817,7 +771,7 @@ Broadcast read-only status information. Writer updates status, readers can poll.
 #### Writer Side
 
 **API:**
-- `myPort->write(value)` - Update status (non-blocking)
+- `myPort->write(value)` - Update status (non-blocking). A `write()` that repeats the current value raises no event, except the first `write()`, which always does
 
 **Example:**
 
@@ -834,8 +788,11 @@ void myModule::updateStatus() {
 #### Reader Side
 
 **API:**
-- `myPort->read(value)` - Read current status (blocking, waits for update)
-- `myPort->readNonBlocking(value)` - Read current status (non-blocking)
+- `myPort->read(value)` - Blocks until the next event, then returns the current value
+- `myPort->readNonBlocking(value)` - Samples the current value (non-blocking)
+- `myPort->setExternalEvent(event)` - Replaces the port's own event, so `read()` also returns when another port fires it. There is no `isActive()`
+
+`read()` wakes on each firmware write, on the first `write()`, and on each later `write()` that changes the value. The initial value raises no event, so a thread that needs it at start-up samples it with `readNonBlocking()` first. `read()` can return the value it returned last time, so compare with the last value seen.
 
 **Example:**
 
@@ -855,24 +812,23 @@ void myModule::monitorStatus() {
 
 **`raw` is supported but is an interface of last resort.** Prefer `rdy_vld`,
 `push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at
-design **boundaries** when adapting to **legacy / external IP** whose pinout is
+design **boundaries** when adapting to **external IP** whose pinout is
 a free-running data bus with **no ready/valid/ack wires** (validity usually
 encoded in the payload). Do **not** use `raw` for new internal pipeline links
 between arch2code blocks.
 
 RTL exposes only `data`. SystemC provides a blocking `write()` / `read()`
-rendezvous so threads stay in lockstep in simulation — that rendezvous is **not**
+rendezvous so threads stay in lockstep in simulation. That rendezvous is **not**
 expressed on the wire, and timed/tandem runs can diverge if delay is enabled.
 
 **Do not confuse with `status`:** same wire shape; `status` is publish/sample
 (non-blocking write), `raw` is a one-shot transfer that blocks both sides until
 the beat is consumed.
 
-**Note:** `raw_channel` uses one `sc_event` for both directions. `write()`
-re-checks that the consumer has taken the value before it returns, so a parked
-consumer plus an immediate re-`write` cannot lose a beat; the shared event only
-costs each side a spurious wake-up per beat. Prefer a handshaked protocol
-whenever possible.
+**Note:** `raw_channel` signals both "value written" and "value taken" on one
+`sc_event` unless the reader passes its own event to `setExternalEvent()`. On
+that single-event path each side gets a spurious wake-up per beat. Prefer a
+handshaked protocol whenever possible.
 
 #### Source Side
 
@@ -880,7 +836,7 @@ whenever possible.
 - `myPort->write(data)` - Blocking write; waits until the sink consumes the value
 
 ```cpp
-void producer::driveLegacyBoundary(void)
+void producer::driveExternalBoundary(void)
 {
     video_csi_t beat;
     // ... fill beat (validity may live in payload fields) ...
@@ -892,13 +848,176 @@ void producer::driveLegacyBoundary(void)
 
 **API:**
 - `myPort->read(data)` - Blocking read; waits until a value is written
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*`. `raw` has no `isActive()`
 
 ```cpp
-void consumer::sampleLegacyBoundary(void)
+void consumer::sampleExternalBoundary(void)
 {
     video_csi_t beat;
     csi_video_in->read(beat);
     // Convert to rdy_vld (or similar) at the first internal hop
+}
+```
+
+### 4.10 axi_read_channel - AXI read
+
+AXI read with an address channel (`axiReadAddressSt`: `arid`, `araddr`, `arlen`, `arsize`, `arburst`) and a read data channel (`axiReadRespSt`: `rid`, `rdata`, `rresp`, `rlast`). Responses are matched to requests by ID. The burst buffer calls (`push_burst`, `getReadPtr`, `getWritePtr`, `sendData(first, beats)`) and the per-beat calls need the interface's YAML entry to set `multiCycleMode` and `maxTransferSize`.
+
+#### Source side (manager)
+
+**API:**
+- `myPort->sendAddr(addr)` - Send a read request
+- `myPort->receiveData(resp)` - Blocking read of the response
+- `myPort->push_burst(beats)` - Before `sendAddr`, size the receive buffer for a burst of `beats` responses
+- `myPort->getReadPtr()` - After `receiveData`, a pointer to the received burst buffer
+- `myPort->receiveDataCycle(resp)` - Receive one beat. Needs the interface's `multiCycleMode` and `setCycleTransaction(PORTTYPE_OUT)` on this port
+
+```cpp
+axiReadAddressSt<axiAddrSt> addr;
+addr.arid = 0x1;
+addr.arlen = 255;               // 256 beats
+addr.arsize = 0x2;              // 4 bytes per beat
+addr.arburst = AXIBURST_INCR;
+axiReadRespSt<axiDataSt> data;
+axiRd0->push_burst(256);
+axiRd0->sendAddr(addr);
+axiRd0->receiveData(data);
+auto *buff = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd0->getReadPtr());
+```
+
+#### Sink side (subordinate)
+
+**API:**
+- `myPort->receiveAddr(addr)` - Blocking wait for a read request
+- `myPort->sendData(resp)` - Send one response
+- `myPort->sendData(first, beats)` - Send `beats` responses from the buffer that `getWritePtr()` returns. `first` is its first element
+- `myPort->getWritePtr()` - The send buffer, to fill before `sendData(first, beats)`
+- `myPort->sendDataCycle(resp)` - Send one beat. Needs `multiCycleMode` and `setCycleTransaction(PORTTYPE_IN)` on this port
+- `myPort->isActive()` / `myPort->isNotActive()` - Whether a read request is pending on the address channel
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` to the address channel
+
+```cpp
+axiReadAddressSt<axiAddrSt> addr;
+auto *resp = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd0->getWritePtr());
+axiRd0->receiveAddr(addr);
+int beats = addr.arlen + 1;
+for (int i = 0; i < beats; i++) {
+    resp[i].rid = addr.arid;
+    resp[i].rresp = AXIRESP_OKAY;
+    resp[i].rdata.data = i;
+}
+axiRd0->sendData(*resp, beats);
+```
+
+### 4.11 axi_write_channel - AXI write
+
+AXI write with an address channel (`axiWriteAddressSt`: `awid`, `awaddr`, `awlen`, `awsize`, `awburst`), a write data channel (`axiWriteDataSt`: `wid`, `wdata`, `wstrb`, `wlast`) and a response channel (`axiWriteRespSt`: `bid`, `bresp`). As for `axi_read`, the burst buffer calls and the per-beat calls need `multiCycleMode` and `maxTransferSize` on the interface.
+
+#### Source side (manager)
+
+**API:**
+- `myPort->sendAddr(addr)` - Send a write request
+- `myPort->sendData(data)` - Send one data beat
+- `myPort->sendData(first, beats)` - Send `beats` data beats from the buffer that `getSendDataPtr()` returns. `first` is its first element
+- `myPort->getSendDataPtr()` - The send buffer, to fill before `sendData(first, beats)`
+- `myPort->receiveResp(resp)` - Blocking read of the write response
+- `myPort->sendDataCycle(data)` - Send one beat. Needs `multiCycleMode` and `setCycleTransaction(PORTTYPE_OUT)` on this port
+
+```cpp
+axiWr0->sendAddr(addr);
+auto *buff = reinterpret_cast<axiWriteDataSt<axiDataSt, axiStrobeSt> *>(axiWr0->getSendDataPtr());
+for (int i = 0; i < 256; i++) {
+    buff[i].wid = addr.awid;
+    buff[i].wdata.data = i;
+    buff[i].wstrb.strobe = 0xF;
+    buff[i].wlast = (i == 255);
+}
+axiWr0->sendData(*buff, 256);
+axiWriteRespSt<> resp;
+axiWr0->receiveResp(resp);   // often in a separate thread
+```
+
+#### Sink side (subordinate)
+
+**API:**
+- `myPort->receiveAddr(addr)` - Blocking wait for a write request
+- `myPort->receiveData(data)` - Blocking read of the data
+- `myPort->getReceiveDataPtr()` / `myPort->getReceiveBeatCount()` - After `receiveData`, the received burst buffer and its beat count
+- `myPort->sendResp(resp)` - Send the write response
+- `myPort->receiveDataCycle(data)` - Receive one beat. Needs `multiCycleMode` and `setCycleTransaction(PORTTYPE_IN)` on this port
+- `myPort->isActive()` / `myPort->isNotActive()` - Whether a write request is pending on the address channel
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` to the address channel
+
+```cpp
+axiWriteAddressSt<axiAddrSt> addr;
+axiWriteDataSt<axiDataSt, axiStrobeSt> first;
+axiWr0->receiveAddr(addr);
+axiWr0->receiveData(first);
+auto *data = reinterpret_cast<axiWriteDataSt<axiDataSt, axiStrobeSt> *>(axiWr0->getReceiveDataPtr());
+// check data[0 .. addr.awlen]
+axiWriteRespSt<> resp;
+resp.bid = addr.awid;
+resp.bresp = AXIRESP_OKAY;
+axiWr0->sendResp(resp);
+```
+
+### 4.12 axi4_stream_channel - AXI4-Stream
+
+One data channel carrying `axi4StreamInfoSt` (`tdata`, `tstrb`, `tkeep`, `tid`, `tlast`, `tdest`, and `tuser` when the interface has one). `tstrb` and `tkeep` hold one qualifier per byte, indexed with `[]` and set to `Q_TRUE` or `Q_FALSE`.
+
+#### Source side
+
+**API:**
+- `myPort->sendInfo(info)` - Blocking send of one transfer
+
+#### Sink side
+
+**API:**
+- `myPort->receiveInfo(info)` - Blocking receive of one transfer
+- `myPort->isActive()` / `myPort->isNotActive()` - Whether a transfer is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration
+
+```cpp
+void myBlock::streamThread(void)
+{
+    while (true) {
+        // the port's template arguments, as declared in the base class
+        axi4StreamInfoSt<data_t, tid_t, tdest_t, tuser_t> info;
+        axisIn->receiveInfo(info);
+        // ...
+        axisOut->sendInfo(info);
+    }
+}
+```
+
+### 4.13 external_reg_channel - Register owned by another block
+
+A firmware register whose storage lives in the block that owns it, not in the register handler. The src side is normally the generated register handler. The dst side is the owning block.
+
+#### Source side (register handler)
+
+**API:**
+- `myPort->reg_write_cmd(value)` - Issues a firmware write. It wakes the owner's `read()` and leaves the readback value unchanged. A test driver that emulates firmware uses this call too
+- `myPort->readNonBlocking(value)` - The readback value the owner last published
+- `myPort->write(value)` - Never wakes the owner's `read()`. Do not use it to drive the owner
+
+#### Sink side (owning block)
+
+**API:**
+- `myPort->read(value)` - Blocks until firmware writes and returns the written value
+- `myPort->update_mirror(value)` - Publishes the value firmware reads back, without waking `read()`
+- `myPort->reg_write(value)` - Publishes the readback value and also wakes `read()`, so do not use it from a block that loops on `read()`
+- `myPort->setExternalEvent(event)` - Hooks a shared event. It fires only on `write()`, never on a firmware write. There is no `isActive()`
+
+```cpp
+void myBlock::ctrlThread(void)
+{
+    ctrlRegSt ctrl;
+    while (true) {
+        ctrlReg->read(ctrl);          // wait for a firmware write
+        // apply ctrl, then publish the readback value
+        ctrlReg->update_mirror(ctrl);
+    }
 }
 ```
 
@@ -916,13 +1035,14 @@ void consumer::sampleLegacyBoundary(void)
 | Status broadcasting | `status` |
 | Burst read/write | `axi_read`/`axi_write` |
 | High-speed streaming | `axi4_stream` |
-| Legacy/external handshake-less boundary only | `raw` (**last resort**) |
+| Firmware register stored in the block that owns it | `external_reg` |
+| External handshake-less boundary only | `raw` (**last resort**) |
 
 ---
 
 ## 5. Transaction Tracking (USER API)
 
-Trackers provide a powerful mechanism for tracking transactions and resources as they flow through your design.
+Trackers follow transactions and resources as they flow through your design.
 
 ### Overview
 
@@ -942,8 +1062,8 @@ Trackers provide a powerful mechanism for tracking transactions and resources as
 - **Correlation:** Match requests with responses in command/response protocols
 
 **How They Work:**
-- User code allocates a tag when a transaction enters the system
-- Tag carries transaction metadata (source, destination, size, type)
+- User code allocates a tag, such as a command ID, when a transaction enters the system
+- Tag carries an info object of the tracker's type `T` (source, destination, size, type)
 - Tag flows with the transaction through channels and modules
 - Each tag gets a unique sequence number for identification
 - User code deallocates the tag when transaction completes
@@ -959,55 +1079,44 @@ The tracker tag stays with the command throughout, linking it to its allocated b
 
 ### Accessing Trackers
 
-**From Channels:**
+The testbench registers each tracker by name in `<dut>Config::createTestBench()`, before `createTbTop()`. The `debug` skill (`rules/skills/debug.md`) shows how. `getTracker` asserts `Tracker not found` for a name not yet registered.
+
+**By Name:** `alloc`, `dealloc` and `info` belong to `tracker<T>`, so cast the `trackerBase` pointer:
 ```cpp
-std::shared_ptr<trackerBase> tracker = myChannel->getTracker();
+// member, initialized in the constructor
+std::shared_ptr<tracker<tagInfo>> cmdTracker;
+,cmdTracker(std::static_pointer_cast<tracker<tagInfo>>(trackerCollection::GetInstance().getTracker("cmd")))
 ```
 
-**By Name:**
-```cpp
-auto& trackers = trackerCollection::GetInstance();
-std::shared_ptr<trackerBase> tracker = trackers.getTracker("tracker_name");
-```
+**From Ports:** `myPort->getTracker()` returns the `trackerBase` bound to the port, which offers the printing and backdoor calls below.
 
 ### User API Reference
 
-#### `tracker->alloc()`
-Allocate a new tag for tracking a transaction.
+#### `tracker->alloc(tag, info, getTrackerRefCountDelta())`
+Allocate `tag` and attach the info object `info` (a `std::shared_ptr<T>`).
 
-**Returns:** Unique tag ID
-
-**Use Case:** Call when a transaction enters your system or when allocating a resource.
+**Use Case:** Call when a transaction enters your system or when allocating a resource. The tag must be allocated before the first transfer that carries it.
 
 **Example:**
 ```cpp
-void myModule::newCommand() {
-    auto tracker = cmdTracker->getTracker();
-    
-    // Allocate tag for new command
-    uint32_t tag = tracker->alloc();
-    
-    // Associate with command
-    cmd.tag = tag;
-    
-    log_.logPrint(tracker->prt(tag, "Command allocated"), LOG_NORMAL);
+void myModule::newCommand(uint32_t tag, uint32_t cmdId) {
+    auto info = std::make_shared<tagInfo>();
+    info->cmdId = cmdId;
+    cmdTracker->alloc(tag, info, getTrackerRefCountDelta());
+    log_.logPrint(cmdTracker->prt(tag, "Command allocated"), LOG_NORMAL);
 }
 ```
 
-#### `tracker->dealloc(tag)`
-Deallocate a tag when transaction completes.
+#### `tracker->dealloc(tag, getTrackerRefCountDelta())`
+Deallocate a tag when the transaction completes.
 
-**Use Case:** Call when transaction finishes or resource is released.
+**Use Case:** Call when transaction finishes or resource is released. `getTrackerRefCountDelta()` halves the reference count step in tandem, where both copies allocate and release the same tag, so pass it to both `alloc` and `dealloc`.
 
 **Example:**
 ```cpp
-void myModule::commandComplete() {
-    auto tracker = cmdTracker->getTracker();
-    
-    log_.logPrint(tracker->prt(tag, "Command complete"), LOG_NORMAL);
-    
-    // Release the tag
-    tracker->dealloc(tag);
+void myModule::commandComplete(uint32_t tag) {
+    log_.logPrint(cmdTracker->prt(tag, "Command complete"), LOG_NORMAL);
+    cmdTracker->dealloc(tag, getTrackerRefCountDelta());
 }
 ```
 
@@ -1019,7 +1128,7 @@ Print tag information as a formatted string.
 **Example:**
 ```cpp
 void myModule::logTransaction(uint32_t tag) {
-    auto tracker = myChannel->getTracker();
+    auto tracker = myPort->getTracker();
     log_.logPrint(tracker->prt(tag), LOG_NORMAL);
     // Output: "PKT#3a{src:0x10 dst:0x20 len:256}"
 }
@@ -1044,16 +1153,15 @@ std::string tagStr = tracker->getString(tag);
 ```
 
 #### `tracker->info(tag)`
-Get transaction info object (type-specific).
+Get the info object attached at `alloc`. Only `tracker<T>` has it.
 
-**Returns:** Shared pointer to transaction metadata structure
+**Returns:** `std::shared_ptr<T>`
 
 **Example:**
 ```cpp
-auto tracker = myChannel->getTracker();
-auto info = tracker->info(tag);
+auto info = cmdTracker->info(tag);
 // Access fields from info structure
-log_.logPrint(std::format("Source: 0x{:x}", info->source));
+log_.logPrint(std::format("Command: {}", info->cmdId));
 ```
 
 #### `tracker->getBackdoorPtr(tag)`
@@ -1093,126 +1201,43 @@ log_.logPrint(std::format("Packet size: {} bytes", packetSize));
 
 #### Complete Example: Command Flow with Resource Tracking
 
-This example shows a command flowing through a DMA controller that allocates a buffer, processes the transfer, and releases the buffer. The tracker links the command to its buffer throughout the flow.
+A DMA block takes a free buffer for each command and uses the buffer number as the tag. Every stage logs through the tag, and the last stage releases it. `cmdTracker` is a `std::shared_ptr<tracker<dmaInfo>>` member initialized as in "Accessing Trackers". `dmaInfo` is an info type like the `debug` skill's `tagInfo`: a `cmdId` member, a default constructor, a constructor that takes a `std::string`, and a `std::string prt()` method.
 
 ```cpp
-class dmaController : public dmaControllerBase {
-private:
-    std::shared_ptr<trackerBase> cmdTracker;
-    std::array<uint8_t*, 16> buffers;  // 16 data buffers
-    
-public:
-    void commandReceive() {
-        cmdTracker = cmdChannel->getTracker();
-        
-        while (true) {
-            dma_cmd_t cmd;
-            
-            // Receive DMA command
-            cmdPort->read(cmd);
-            
-            // Allocate tracker tag for this command
-            uint32_t tag = cmdTracker->alloc();
-            
-            // Find free buffer (example uses tag as buffer ID)
-            uint32_t bufferId = tag % 16;
-            
-            // Log command entry
-            log_.logPrint(cmdTracker->prt(tag, 
-                std::format("DMA cmd allocated buffer {}", bufferId)), 
-                LOG_NORMAL);
-            
-            // Store command with tag
-            cmd.tag = tag;
-            cmd.bufferId = bufferId;
-            
-            // Forward to address decoder
-            addrDecodePort->write(cmd);
-        }
+void dmaController::commandReceive(void)
+{
+    while (true) {
+        dma_cmd_t cmd;
+        cmdIn->read(cmd);
+        uint32_t bufferId = takeFreeBuffer();
+        auto info = std::make_shared<dmaInfo>();
+        info->cmdId = cmd.cmdId;
+        cmdTracker->alloc(bufferId, info, getTrackerRefCountDelta());
+        cmd.bufferId = bufferId;
+        log_.logPrint(cmdTracker->prt(bufferId, "DMA cmd accepted"), LOG_NORMAL);
+        moveOut->write(cmd);
     }
-    
-    void addressDecode() {
-        cmdTracker = cmdChannel->getTracker();
-        
-        while (true) {
-            dma_cmd_t cmd;
-            addrDecodePort->read(cmd);
-            
-            // Process address translation
-            uint64_t physAddr = translateAddress(cmd.address);
-            cmd.physAddr = physAddr;
-            
-            // Log progress (tag flows with command)
-            log_.logPrint(cmdTracker->prt(cmd.tag, 
-                std::format("Address translated: 0x{:x} -> 0x{:x}", 
-                    cmd.address, physAddr)), 
-                LOG_DEBUG);
-            
-            // Forward to data mover
-            dataMovePort->write(cmd);
-        }
+}
+
+void dmaController::dataMove(void)
+{
+    while (true) {
+        dma_cmd_t cmd;
+        moveIn->read(cmd);
+        log_.logPrint(cmdTracker->prt(cmd.bufferId, std::format("Moving {} bytes", cmd.length)), LOG_NORMAL);
+        performTransfer(cmd);
+        log_.logPrint(cmdTracker->prt(cmd.bufferId, "DMA complete"), LOG_NORMAL);
+        cmdTracker->dealloc(cmd.bufferId, getTrackerRefCountDelta());
+        releaseBuffer(cmd.bufferId);
     }
-    
-    void dataMove() {
-        cmdTracker = cmdChannel->getTracker();
-        
-        while (true) {
-            dma_cmd_t cmd;
-            dataMovePort->read(cmd);
-            
-            // Get buffer associated with this command
-            uint8_t* buffer = buffers[cmd.bufferId];
-            
-            log_.logPrint(cmdTracker->prt(cmd.tag, 
-                std::format("Moving {} bytes using buffer {}", 
-                    cmd.length, cmd.bufferId)), 
-                LOG_NORMAL);
-            
-            // Perform data transfer
-            performTransfer(cmd.physAddr, buffer, cmd.length);
-            
-            // Send completion
-            dma_complete_t complete;
-            complete.tag = cmd.tag;
-            complete.status = DMA_SUCCESS;
-            completePort->write(complete);
-        }
-    }
-    
-    void commandComplete() {
-        cmdTracker = cmdChannel->getTracker();
-        
-        while (true) {
-            dma_complete_t complete;
-            completePort->read(complete);
-            
-            // Log completion
-            log_.logPrint(cmdTracker->prt(complete.tag, "DMA complete"), 
-                LOG_NORMAL);
-            
-            // Deallocate tag - transaction finished
-            cmdTracker->dealloc(complete.tag);
-            
-            // Buffer now free for reuse
-        }
-    }
-};
+}
 ```
 
-**Key Points in Example:**
-- **Allocate** when command enters system
-- **Tag flows** through all processing stages
-- **Links command** to allocated buffer throughout flow
-- **Tracks progress** at each stage with meaningful log messages
-- **Deallocate** when transaction completes
-- **Buffer management** tied to tag lifecycle
-
-**Output Example:**
+**Output Example** (prefix `C#`, sequence number in hex, then the info object's `prt()`):
 ```
-CMD#01[DMA cmd allocated buffer 5]
-CMD#01[Address translated: 0x80000000 -> 0x40000000]
-CMD#01[Moving 4096 bytes using buffer 5]
-CMD#01[DMA complete]
+DMA cmd accepted C#1{cmd:7}
+Moving 4096 bytes C#1{cmd:7}
+DMA complete C#1{cmd:7}
 ```
 
 #### Basic Transaction Logging
@@ -1270,12 +1295,11 @@ void producer::outAXI0Rd(void) {
 - `alloc()` and `dealloc()` are **commonly used in user code** for resource tracking
 - Allocate when transaction enters system or resource acquired
 - Deallocate when transaction completes or resource released
-- Automatic alloc/dealloc by channels often doesn't work well and may be deprecated
+- A channel that carries a tracker field logs every transfer through the tracker. A transfer whose tag is not allocated fails the run with `Invalid tracker interface data`
 
 **Tag Validity:**
-- Always check if tag is valid before accessing
-- Invalid tags will trigger assertions
-- Tags only valid between alloc/dealloc
+- Tags are valid only between `alloc` and `dealloc`
+- `prt`, `info`, `getLen` and the other per-tag calls assert on a tag that is out of range or not allocated
 
 **Performance:**
 - `prt()` creates formatted strings - avoid in performance-critical loops
@@ -1348,20 +1372,20 @@ These APIs are used in generated code. Users rarely need to call them directly. 
 
 **Framework APIs:**
 - `addRegister(address, size, name, ptr)` - Register a register
-- `addMemory(address, size, name, ptr)` - Register a memory
+- `addMemory(address, size, name, ptr)` - Register a memory. A memory with a parameterizable structure is registered this way, with `size` the row stride times the row count
 - `addMemory(address, structByteWidth, wordLines, name, ptr)` - Register memory with dimensions
 - `cpu_read(address)` - Read from address space
 - `cpu_write(address, value)` - Write to address space
-- `registerHandler()` - Template helper for register threads
+- `registerHandler<ADDR, DATA>(regs, apbPort, addressMask)` - Template helper the generated `regHandler` thread calls
 
-**Where Used:** Generated register handler initialization
+**Where Used:** Generated register handler initialization. The generator emits the `_a2cRegs` member, every `addRegister`/`addMemory` call, `regHandler` and `SC_THREAD(regHandler)`. Never hand-write them.
 
 **Example (generated code):**
 ```cpp
 // In generated constructor body:
-regs.addMemory(0x0, aMemSt::_byteWidth, MEMORYA_WORDS, 
-               std::string(this->name()) + ".blockATable0", &blockATable0);
-regs.addRegister(0x200, 5, "roA", &roA);
+_a2cRegs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLELOCAL, aRegSt::_byteWidth, BSIZE,
+               std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
+_a2cRegs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
 ```
 
 **User Access:** Access registers/memories via direct APIs (Section 3)
@@ -1371,28 +1395,39 @@ regs.addRegister(0x200, 5, "roA", &roA);
 **Purpose:** Factory for creating module instances dynamically.
 
 **Framework APIs:**
-- `createInstance(parent, name, blockType, variant)` - Create module instance
+- `registerBlock(blockType, factory, variant, projectName)` - Register a constructor under the key `(blockType, variant, projectName)`. `blockType` is `<block>_model`, `<block>_verif`, `<block>_socket` or `<block>_tandem`. The first registration under a key wins; a later one is ignored.
+- `createInstance(hierarchy, instanceName, blockType, variant, projectName)` - Create a module instance from the registration under that key, falling back to the empty variant.
+- `createInstance<Impl>(hierarchy, instanceName, blockType, variant, projectName)` - Same lookup, but when the exact key has no registration and the request is for the model, construct `Impl`. Generated code uses this form for a child whose Config comes from its container.
+- `createInstance(hierarchy, instanceName, blockType, variant, projectName, containerSuppliedFactory)` - The non-template form behind `createInstance<Impl>`. The factory answers model requests only.
 
-**Where Used:** Generated constructors for hierarchical designs
+The fifth argument is a factory domain, not always a bare project name. At a site whose child declares its own `params:` (every variant site) it is the dotted registration key `<owner>.<parentModule>.<childModule>`. For any other child it is the child's owning project.
+
+**Where Used:** Generated constructors, testbenches and registrar files
 
 **Example (generated code):**
 ```cpp
 uBlockD(std::dynamic_pointer_cast<blockDBase>(
-    instanceFactory::createInstance(name(), "uBlockD", "blockD", "")
+    instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")
+))
+uLeafA(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(
+    instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafA", "xpInhLeaf", variant,
+        "xpInhVar.xpInhVar_xpInhCont.xpInhVar_xpInhLeaf")
 ))
 ```
 
-**User Access:** Instances created automatically, users just use them
+**User Access:** Instances created automatically, users just use them. The key, lookup order and registrar files are specified in `specs/spec-block-registration.md`.
 
 ### 6.6 hwRegister/hwMemory Constructors (Framework)
 
 **Purpose:** Construct register and memory objects.
 
 **Framework APIs:**
-- `hwRegister<REG_DATA, N>(initialValue)` - Construct register
-- `hwMemory<MEM_DATA>(hierarchicalName, memName, memories, rows, type, fwAccess)` - Construct memory. `fwAccess` is `HWMEMORYFWACCESS_RW` (default), `_RO` or `_WO`, from the memory's `regAccess`
-- `hwMemoryPort<ADDR, DATA>(port, fwAccess, name)` - Firmware adapter a register handler uses to reach a memory over its channel; `fwAccess` and `name` default to rw and empty
+- `hwRegister<REG_DATA, N, RO>(initialValue)` - Construct register. `N` is the register size in bytes (default 4) and `RO` is `true` for a read-only register
+- `hwMemory<MEM_DATA, ROW_BYTES>(hierarchicalName, memName, memories, rows, type, fwAccess)` - Construct memory. `fwAccess` is `HWMEMORYFWACCESS_RW` (default), `_RO` or `_WO`, from the memory's `regAccess`
+- `hwMemoryPort<ADDR, DATA, ROW_BYTES>(port, fwAccess, name)` - Firmware adapter a register handler uses to reach a memory over its channel; `fwAccess` and `name` default to rw and empty
 - `bindPort()` - Bind memory to channel port
+
+`ROW_BYTES` is the address stride between rows. It defaults to the structure's byte width rounded up to a power of two, at least 4. A value that is not a power of two, or is smaller than that default, fails to compile. For a parameterizable structure the generated code passes the address map's stride, sized for the widest variant, so row N sits at the same address in every variant. Bytes of a row past the bound variant's width read 0 and drop writes, as in the RTL.
 
 Firmware access goes through `cpu_read`/`cpu_write`. On an `ro` memory `cpu_write` drops the write, and on a `wo` memory `cpu_read` returns 0; each logs at `LOG_ALWAYS`, so it prints at every verbosity, naming the memory and the offset. Block-side `read`/`write` ignore the mode.
 
@@ -1412,6 +1447,37 @@ blockBTable1.bindPort(blockBTable1_port1);
 
 **User Access:** Use direct access APIs (Section 3)
 
+### 6.7 endOfTest and endOfTestState (Framework and User)
+
+**Purpose:** Decide when a run ends. Every consumer imports the C++20 module `a2c.endOfTest`, which holds one shared state for the whole run. Never `#include` it.
+
+**APIs:**
+- `endOfTest(bool registerVoter)` - A voter. Pass `true` to register it at construction.
+- `endOfTest::registerVoter()` - Register later.
+- `endOfTest::setEndOfTest(bool isEnd)` - Cast or withdraw this voter's vote. Only a change of state is counted.
+- `endOfTest::isEndOfTest()` - True once end-of-test has latched.
+- `endOfTestState::GetInstance()` - The shared state. `isEndOfTest()`, `registeredVoters()`, and `eotEvent`, which is notified when the last registered voter votes, after framework startup.
+- `endOfTestState::forceEndOfTest()` - Latches end-of-test without a vote and without notifying `eotEvent`. `Q_ASSERT` uses it on failure. A testbench votes instead.
+
+**Where Used:** The generated External's `eotThread` waits on `eotEvent` and stops the simulation. The watchdog fails a run with no registered voter and no `--scTimeLimit`.
+
+**User Access:** One voter thread per testbench. See `verify-testbench`, "Ending a run and reporting failures" and "Test sequencing with `testController`".
+
+### 6.8 testController (User)
+
+**Purpose:** Run named tests in a fixed order. `#include "testController.h"`; the singleton is `testController::GetInstance()`.
+
+**APIs:**
+- `set_test_names(std::list<std::string>)` - The tests, in run order. Call once, before any `ADD_TEST`.
+- `ADD_TEST(fn)` / `add_test(name, body)` - Run a member function, or a callable, as the named test in its turn.
+- `register_test_name(name)`, `wait_test(name, delay)`, `test_complete(name)` - The thread-based form.
+- `wait_test_complete(name)`, `wait_all_tests_complete()` - Block until one test, or all, complete.
+- `are_all_tests_complete()` - True once every listed test has completed. False when no test was listed.
+
+**Where Used:** The scaffolded `<dut>Config.cpp` seeds `set_test_names` and asserts `are_all_tests_complete()` in `final()`.
+
+**User Access:** See `verify-testbench`, "Test sequencing with `testController`".
+
 ### Framework Summary
 
 | Component | Purpose | User Action |
@@ -1422,6 +1488,8 @@ blockBTable1.bindPort(blockBTable1_port1);
 | addressMap | Register/memory map | Use direct access |
 | instanceFactory | Module creation | Use created instances |
 | hwRegister/hwMemory | Hardware objects | Use access APIs |
+| endOfTest | End-of-test voting | One voter per testbench |
+| testController | Test sequencing | List and register tests |
 
 **Key Principle:** Framework APIs are called in generated code. Users interact with the system through high-level APIs documented in Sections 2-5.
 
@@ -1536,39 +1604,33 @@ void producer::outAXI0Rd(void) {
 
 ### 7.2 Synchronization (synchLock)
 
-Thread-safe access to shared resources.
+A mutex that also records decisions so tandem can replay them. The `systemc-synchronization` skill (`rules/skills/systemc-synchronization.md`, section 2) has the full rules.
 
-**Purpose:** Coordinate multiple threads accessing shared data.
+**Purpose:** Guard state shared between threads, and record timing-dependent arbitration choices.
 
-**Note:** Memory RMW operations use synchLock internally. Rarely needed in user code.
+**Note:** Memory RMW operations use a row lock internally (see section 3.2).
 
 **API:**
-- `synchLock<T>::lock(value)` - Acquire lock with value
-- `synchLock<T>::unlock()` - Release lock
-- `synchLockFactory::newLock(name)` - Create lock
+- `synchLockFactory<T>::getInstance().newLock(getAltName(), lockName)` - Create a lock. `T` defaults to `uint64_t`. `getAltName()` gives both tandem copies the same key. Lock names must be unique within a block instance
+- `lock->lock(value)` - Take the mutex. `value` is the tandem match key, so give each call site its own value
+- `lock->unlock()` - Release it. There is no RAII guard, so unlock on every path out
+- `lock->arb(value)` - Record the winner your code chose. Outside tandem it returns `value`. In tandem the second copy returns the first copy's value. Keep `arb()` and `lock()` on separate locks
 
-**Example - Custom Arbitration:**
+**Example - Guard shared state:**
 
 ```cpp
-class myModule : public myModuleBase {
-    std::shared_ptr<synchLock<uint32_t>> arbLock;
-    
-public:
-    myModule(...) {
-        arbLock = synchLockFactory<uint32_t>::getInstance()
-                    .newLock(name(), "arbitration");
-    }
-    
-    void thread1() {
-        uint32_t requestId = 0x1;
-        arbLock->lock(requestId);
-        
-        // Critical section
-        accessSharedResource();
-        
-        arbLock->unlock();
-    }
-};
+// block implementation members
+std::shared_ptr<synchLock<>> stateLock;
+
+// constructor initializers
+        ,stateLock(synchLockFactory<>::getInstance().newLock(getAltName(), "stateLock"))
+
+void myModule::thread1(void)
+{
+    stateLock->lock(LOCK_SITE_THREAD1);   // a constant the block defines, one per call site
+    accessSharedResource();
+    stateLock->unlock();
+}
 ```
 
 ### 7.3 Tag Encoding (encoderBase)
@@ -1677,7 +1739,7 @@ void myModule::dmaTransfer() {
     const uint32_t BUFFER_SIZE = 4096;
     uint8_t *externalBuffer = allocateExternal(BUFFER_SIZE);
     
-    auto tracker = myChannel->getTracker();
+    auto tracker = myPort->getTracker();
     uint32_t tag = allocateTag();
     
     // Point tracker to external buffer
@@ -1719,10 +1781,10 @@ void myModule::memoryBackdoor() {
 | Backdoor access | DMA, external memory | High |
 
 **When to Use:**
-- ✅ Use for performance-critical paths
-- ✅ Use when standard APIs insufficient
-- ⚠️ Requires careful testing
-- ⚠️ Can bypass safety checks
+- Use for performance-critical paths
+- Use when standard APIs insufficient
+- Requires careful testing
+- Can bypass safety checks
 
 ---
 
@@ -1732,48 +1794,21 @@ Complete examples of common module implementation patterns.
 
 ### 8.1 Basic Module Structure
 
-```cpp
-// GENERATED_CODE sections omitted for clarity
+The file layout, generated regions and user slots of `model/<block>.cppm` are in section 1, "Understanding Code Markers". Register the thread with `SC_THREAD(mainThread);` after the `constructor --section=body` end marker, and declare it in the class after the `classDecl` region.
 
-class myModule : public myModuleBase {
-public:
-    myModule(sc_module_name blockName, const char* variant, blockBaseMode bbMode)
-        : sc_module(blockName),
-          blockBase("myModule", name(), bbMode),
-          myModuleBase(name(), variant)
-    {
-        // Generated code here
-        // YOUR CODE:
-        SC_THREAD(mainThread);
+```cpp
+void myModule::mainThread(void)
+{
+    while (true) {
+        data_st data;
+        inputPort->read(data);   // blocks, so the loop needs no wait()
+
+        log_.logPrint(std::format("Received: 0x{:x}", data.value));
+
+        result_st result = processData(data);
+        outputPort->write(result);
     }
-    
-    void mainThread() {
-        // Initialization
-        wait(SC_ZERO_TIME);
-        
-        // Main loop
-        while (true) {
-            // Read input
-            data_st data;
-            inputPort->read(data);
-            
-            log_.logPrint(std::format("Received: 0x{:x}", data.value));
-            
-            // Process
-            result_st result = processData(data);
-            
-            // Write output
-            outputPort->write(result);
-        }
-    }
-    
-private:
-    result_st processData(const data_st& data) {
-        result_st result;
-        // Processing logic
-        return result;
-    }
-};
+}
 ```
 
 ### 8.2 Producer Pattern (rdy_vld source)
@@ -1782,8 +1817,6 @@ private:
 void producer::dataGenerator() {
     data_st data;
     uint32_t counter = 0;
-    
-    wait(SC_ZERO_TIME);  // Initial synchronization
     
     while (true) {
         // Generate data
@@ -1807,8 +1840,6 @@ void producer::dataGenerator() {
 void consumer::dataProcessor() {
     data_st data;
     
-    wait(SC_ZERO_TIME);  // Initial synchronization
-    
     while (true) {
         // Receive (blocks until data available)
         inputPort->read(data);
@@ -1828,14 +1859,12 @@ void consumer::dataProcessor() {
 
 ```cpp
 void myModule::apbMasterThread() {
-    wait(SC_ZERO_TIME);
-    
     while (true) {
         apbAddrSt addr;
         apbDataSt data;
         
         // Write transaction
-        addr._setAddress(0x1000);
+        addr.address = 0x1000;
         data._setData(0xDEADBEEF);
         
         log_.logPrint(std::format("APB Write addr:0x{:x} data:0x{:x}", 
@@ -1844,7 +1873,7 @@ void myModule::apbMasterThread() {
         apbPort->request(true, addr, data);
         
         // Read transaction
-        addr._setAddress(0x1000);
+        addr.address = 0x1000;
         apbPort->request(false, addr, data);
         
         log_.logPrint(std::format("APB Read addr:0x{:x} data:0x{:x}",
@@ -1857,50 +1886,38 @@ void myModule::apbMasterThread() {
 
 ### 8.5 APB Slave / Register Handler Pattern
 
-```cpp
-void blockA::regHandler(void) {
-    // Template helper handles register decode
-    registerHandler<apbAddrSt, apbDataSt>(regs, apbReg, (1<<10)-1);
-}
+The generator writes the register handler: `regHandler`, its `registerHandler(_a2cRegs, ...)` call, `SC_THREAD(regHandler)`, and the `_a2cRegs.addRegister`/`addMemory` calls. Never add a thread on the register bus port.
 
-// Or custom register handler:
-void myModule::customRegHandler() {
+The one hand-written register thread serves a local `regType: memory` register. It answers on `<reg>_channel` with `reqReceive` and `complete`, against storage the block declares:
+
+```cpp
+void blockA::blockATableLocalModel(void)
+{
     while (true) {
-        bool isWrite;
-        apbAddrSt addr;
-        apbDataSt data;
-        
-        // Wait for APB request
-        apbPort->reqReceive(isWrite, addr, data);
-        
-        uint64_t address = addr._getAddress();
-        
+        bool isWrite = false;
+        bSizeSt addr;
+        aRegSt data;
+        blockATableLocal_channel.reqReceive(isWrite, addr, data);
+        const uint32_t idx = static_cast<uint32_t>(addr.index);
+        if (idx >= blockATableLocal_shadow_.size()) {
+            log_.logPrint(std::format("blockATableLocalModel: addr out of range idx={}", idx), LOG_ALWAYS);
+            if (!isWrite) {
+                blockATableLocal_channel.complete(aRegSt());
+            }
+            continue;
+        }
         if (isWrite) {
-            // Decode and handle write
-            if (address == 0x100) {
-                controlReg.m_val.field = data._getData();
-                log_.logPrint("Control register written");
-            } else if (address >= 0x1000 && address < 0x2000) {
-                uint32_t index = (address - 0x1000) / 4;
-                myMemory.write(index, data._getData());
-            }
+            blockATableLocal_shadow_[idx] = data;
         } else {
-            // Decode and handle read
-            if (address == 0x100) {
-                data._setData(controlReg.m_val.field);
-            } else if (address >= 0x1000 && address < 0x2000) {
-                uint32_t index = (address - 0x1000) / 4;
-                data._setData(myMemory.read(index));
-            }
-            
-            // Send read response
-            apbPort->complete(data);
+            blockATableLocal_channel.complete(blockATableLocal_shadow_[idx]);
         }
     }
 }
 ```
 
 ### 8.6 Multi-Cycle Burst Pattern
+
+The interface's YAML entry must set `multiCycleMode`, plus `maxTransferSize` where the mode needs it. Without it, `writeClocked` sends each beat as a full transaction. Do not mix beat calls and whole-transaction calls on one interface.
 
 ```cpp
 void myModule::burstWrite() {
@@ -1914,8 +1931,7 @@ void myModule::burstWrite() {
     
     // Send burst cycle-by-cycle
     for (int i = 0; i < BURST_LEN; i++) {
-        burstPort->writeClocked(burstData[i]);
-        wait(SC_ZERO_TIME);  // One cycle per beat
+        burstPort->writeClocked(burstData[i]);  // blocks per beat
     }
 }
 
@@ -1925,8 +1941,7 @@ void myModule::burstRead() {
     
     // Receive burst cycle-by-cycle
     for (int i = 0; i < BURST_LEN; i++) {
-        burstPort->readClocked(burstData[i]);
-        wait(SC_ZERO_TIME);  // One cycle per beat
+        burstPort->readClocked(burstData[i]);  // blocks per beat
     }
     
     // Process received burst
@@ -1938,28 +1953,24 @@ void myModule::burstRead() {
 
 ```cpp
 void myModule::registerAccess() {
-    // Unclocked register access (preferred)
-    controlRegSt ctrl = controlReg.m_val;
+    // Register access takes no simulation time
+    controlRegSt ctrl = controlReg.read();
     ctrl.enable = 1;
     ctrl.mode = 3;
-    controlReg.m_val = ctrl;
-    
-    // Field access
-    uint32_t currentMode = controlReg.m_val.mode;
-    controlReg.m_val.enable = 0;
+    controlReg.write(ctrl);  // also notifies the registerEvent() event
 }
 
 void myModule::memoryAccess() {
-    // Timed memory access (preferred)
+    // Timed memory access
     aMemSt data = myMemory.read(0x100);
     data.field += 1;
     myMemory.write(0x100, data);
     
-    // Fast access (no timing)
-    myMemory[0x100] = data;
-    data = myMemory[0x100];
+    // Backdoor read for logging only (no timing)
+    log_.logPrint(myMemory[0x100].prt(), LOG_DEBUG);
 }
 
+// needs myMemory.configureSynch(getAltName(), nullptr) in the constructor body
 void myModule::atomicMemoryUpdate() {
     const uint64_t MAGIC = 0x1234;
     
@@ -1979,8 +1990,6 @@ void myModule::atomicMemoryUpdate() {
 
 ```cpp
 void myModule::pipelineStage() {
-    wait(SC_ZERO_TIME);
-    
     while (true) {
         data_st input;
         
@@ -2018,14 +2027,13 @@ void myModule::communicationThread() {
 }
 ```
 
-#### Always Include Initial wait(SC_ZERO_TIME)
+#### Add an initial wait(SC_ZERO_TIME) only when the thread needs other threads to start first
+
+A thread that blocks in a port call needs no initial wait. Add one only when the thread's first action reads state that another thread sets when it starts. The wait gives the other threads their first delta cycle.
 
 ```cpp
 void myModule::myThread() {
-    // Initial synchronization
-    wait(SC_ZERO_TIME);
-    
-    // Main loop
+    wait(SC_ZERO_TIME);   // let the other threads run their first delta cycle
     while (true) {
         // ...
     }
@@ -2037,9 +2045,10 @@ void myModule::myThread() {
 ```cpp
 // Good: Continuous processing
 void myModule::processor() {
-    wait(SC_ZERO_TIME);
     while (true) {
-        processData();
+        data_st data;
+        inputPort->read(data);   // blocks, so the loop needs no wait()
+        processData(data);
     }
 }
 
@@ -2060,13 +2069,6 @@ void myModule::simpleIO() {
     inputPort->read(data);   // Blocks until available
     outputPort->write(data);  // Blocks until accepted
 }
-
-// Avoid: Complex non-blocking unless necessary
-void myModule::complexIO() {
-    data_st data;
-    inputPort->readNonBlocking(data);
-    // Complex state management needed...
-}
 ```
 
 #### Let Channels Handle Handshaking
@@ -2074,13 +2076,14 @@ void myModule::complexIO() {
 ```cpp
 // Good: Channel handles ready/valid
 void myModule::autoHandshake() {
-    dataPort->write(data);  // Channel manages handshake
+    data_st data;
+    outputPort->write(data);  // Channel manages handshake
 }
 
-// Only for advanced cases:
+// Only for advanced cases, on an rdy_vld sink port:
 void myModule::manualHandshake() {
-    dataPort->enable_user_ready_control();
-    dataPort->set_rdy(true);
+    inputPort->enable_user_ready_control();
+    inputPort->set_rdy(true);
     // Manual control...
 }
 ```
@@ -2097,7 +2100,7 @@ log_.logPrint("Module initialized", LOG_IMPORTANT);
 log_.logPrint(std::format("Processing packet {}", id), LOG_NORMAL);
 
 // Detailed debug
-log_.logPrint(std::format("State: {} -> {}", old, new), LOG_DEBUG);
+log_.logPrint(std::format("State: {} -> {}", oldState, newState), LOG_DEBUG);
 
 // Critical errors
 log_.logPrint("Fatal error detected!", LOG_ALWAYS);
@@ -2139,31 +2142,22 @@ void myModule::processData(uint32_t index) {
 }
 ```
 
-#### Check Return Values
-
-```cpp
-void myModule::safeRead() {
-    data_st data;
-    bool success = tryRead(data);
-    
-    if (!success) {
-        log_.logPrint("Read failed, using default", LOG_IMPORTANT);
-        data = getDefaultData();
-    }
-}
-```
+`Q_ASSERT` passes `name()` as its context, so it compiles only inside an `sc_module` member. Firmware code is not an `sc_module`; use `Q_ASSERT_CTX(cond, ctx, msg)` there and pass the context string, as `examples/simple_ip/fw/src/fwModelMain.cpp` does.
 
 ### 9.5 Performance
 
-#### Use Direct Access When Timing Not Critical
+#### Skip the memory delay only where an interface already times the access
 
 ```cpp
-// Fast functional access
-value = myMemory[index];
-
-// Timed access when accuracy matters
+// Timed access in datapath code
 value = myMemory.read(index);
+
+// The clocked interface already provided the timing
+inputPort->readClocked(beat);
+myMemory.writeNoDelay(index, beat);
 ```
+
+`myMemory[index]` skips timing too, but it is only for backdoor uses such as logging.
 
 #### Use Backdoor Pointers for Large Transfers
 
@@ -2251,11 +2245,11 @@ void myModule::complexProcess() {
 
 | Category | Do | Don't |
 |----------|-----|-------|
-| Threads | Use `SC_THREAD`, `wait(SC_ZERO_TIME)`, `while(true)` | End threads prematurely |
+| Threads | Use `SC_THREAD` and `while(true)` | End threads prematurely |
 | Channels | Use blocking calls | Over-complicate with non-blocking |
 | Logging | Use levels, include context | Log in tight loops |
 | Errors | Check assertions, handle failures | Ignore error conditions |
-| Performance | Use direct access when safe | Copy unnecessarily |
+| Performance | Use zero-copy buffer pointers | Copy unnecessarily, or use `[]` in datapath code |
 | Debug | Use trackers, prt() methods | Ignore available tools |
 
 ---
@@ -2268,9 +2262,7 @@ This reference covers the essential SystemC APIs for implementing hardware block
 - **Framework Reference** (Section 6): Understanding generated code
 - **Advanced Topics** (Section 7): Specialized features
 - **Patterns** (Section 8): Proven implementation approaches
-- **Best Practices** (Section 9): Guidelines for quality code
+- **Best Practices** (Section 9): Thread, channel, logging, error-handling, performance and debug guidelines
 
 For code generation workflow and YAML architecture, see `ARCH2CODE_AI_RULES.md`.
-
-**Happy coding!**
 

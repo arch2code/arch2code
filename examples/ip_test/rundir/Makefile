@@ -4,7 +4,7 @@ include $(REPO_ROOT)/include/make/shared.mk
 # Include External dependencies in compilation
 EXTRA_CPP_SRC      =
 EXTRA_CPP_INCLUDES =
-EXTRA_LD_FLAGS     =
+EXTRA_LD_FLAGS     +=
 EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
 
 # This firmware example relies on the arch2code default BSP stubs. The BSP is no

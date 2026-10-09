@@ -206,10 +206,8 @@ blocks:
         hasMdl: true
         hasTb: true
         hasRtl: true
-        # Stage 5.2 of plan-variant-config-unification.md: bottom-up port
-        # declaration (D10). Matches the top-down inferred shape so the
-        # generator output is unchanged; exercises the Step 5.2 success
-        # path of projectCreate.validateDeclaredPorts.
+        # Declares ports bottom-up, matching the inferred shape, so
+        # projectCreate.validateDeclaredPorts accepts them unchanged.
         ports:
             ipDataIf: { interface: ipDataIf, direction: dst }
         registerPorts:

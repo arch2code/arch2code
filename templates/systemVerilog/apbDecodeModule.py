@@ -1,24 +1,8 @@
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from templates.systemVerilog.package import moduleParameterDecl, parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
-
-# sorts a list of dictionaries by the key 'offset'
-def keySort(d):
-    return int(d['offset'])
-
-def getParentStructures(prj, d):
-    for item in prj.data['interfaces'][d['interfaceKey']]['structures']:
-        if (item['structureType'] == 'addr_t'):
-            addrSt = item['structure']
-        elif (item['structureType'] == 'data_t'):
-            dataSt = item['structure']
-        else:
-            printError(f"APB address and or data structures do not match template structure {item['structure']} with structureType {item['structureType']}")
-            exit(warningAndErrorReport())
-    return addrSt, dataSt
 
 # args from generator line
 # prj object
@@ -65,30 +49,40 @@ def render(args, prj, data):
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']
     address_group_data = addr_decode_data['addressGroupData']
-    address_group = addr_decode_data['addressGroup']
     addr_decode_size = address_group_data['addressIncrement'] * address_group_data['maxAddressSpaces']
     addr_decode_mask = addr_decode_size - 1
     reg_intf_addr_st = addr_decode_data['registerBusStructs']['addr_t']['structure']
     reg_intf_data_st = addr_decode_data['registerBusStructs']['data_t']['structure']
-    inst_decode_info = dict()
-    for conn, conn_data in data['ports']['connections'].items():
+    child_ports = dict()
+    for conn_data in data['ports']['connections'].values():
         if conn_data['srcKey'] == qualInstance:
-            inst_decode_info[conn_data['dstKey']] = {'offset': prj.data['instances'][conn_data['dstKey']]['offset'],
-                                                     'name': conn_data['srcport'],
-                                                     'connectionKey': conn}
+            child_ports[conn_data['dstKey']] = conn_data['srcport']
         else:
             parent_interface_port = conn_data['name']
-    for conn, conn_data in data['ports']['connectionMaps'].items():
+    for conn_data in data['ports']['connectionMaps'].values():
         if conn_data['direction'] == 'dst':
             parent_interface_port = conn_data['name']
-    sorted_keys = sorted(inst_decode_info.keys(), key=lambda k: int(inst_decode_info[k]['offset']), reverse=True)
-# for now assume any selection at any address from the parent_interface_port is valid
-#   there is no way to check address ranges currently
-# need a selection
-# need a clear of selection
-# selection is held until incoming PREADY from selected port
-# flop prdata and pready
-# pass pWData and all other signals down without flops
+    # Decode arms as (start address, child key), highest start first. A range
+    # no child covers is an arm with child None that selects nothing, so the
+    # response mux falls through to 32'hBADD_C0DE and the write is dropped.
+    inst_decode_info = dict()
+    decode_arms = []
+    next_free = 0
+    for instanceData in addr_decode_data['routedInstances']:
+        item = instanceData['instanceKey']
+        if item not in child_ports:
+            continue
+        offset = instanceData['offset']
+        inst_decode_info[item] = {'name': child_ports[item]}
+        if offset > next_free:
+            decode_arms.append((next_free, None))
+        decode_arms.append((offset, item))
+        next_free = offset + address_group_data['addressIncrement'] * instanceData['addressMultiples']
+    if next_free < addr_decode_size:
+        decode_arms.append((next_free, None))
+    decode_arms.reverse()
+    sorted_keys = list(reversed(inst_decode_info))
+    has_gap = len(decode_arms) > len(sorted_keys)
 
     out.append(f"{reg_intf_addr_st} apb_addr;")
     out.append(f"assign apb_addr = {reg_intf_addr_st}'({parent_interface_port}.paddr) & {reg_intf_addr_st}'(32'h{addr_decode_mask:_x});")
@@ -121,23 +115,23 @@ def render(args, prj, data):
     out.append(f"{indent}set_trans_active = 1'b0;")
     out.append(f"{indent}if ({parent_interface_port}.psel & ~trans_active) begin")
     out.append(f"{indent*2}set_trans_active = 1'b1;")
-    if len(sorted_keys) == 1:
+    if len(decode_arms) == 1:
         # A single child needs no address compare: whatever address the
         # parent selected on, that child is the only place it can go.
         item = sorted_keys[0]
         out.append(f"{indent*2}{inst_decode_info[item]['name']}_next_psel = '1;")
     else:
-        first = True
-        for item in sorted_keys:
-            if first:
-                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
-                first = False
+        for index, (start, item) in enumerate(decode_arms):
+            if index == 0:
+                out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{start:_x})) begin")
+            elif index == len(decode_arms) - 1:
+                out.append(f"{indent*2}end else begin")
             else:
-                if (int(inst_decode_info[item]['offset']) == 0 ):
-                    out.append(f"{indent*2}end else begin")
-                else:
-                    out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
-            out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
+                out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{start:_x})) begin")
+            if item is None:
+                out.append(f"{indent*3}// unmapped, selects no child")
+            else:
+                out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
         out.append(f"{indent*2}end")
     out.append(f"{indent}end")
     out.append("end\n")
@@ -163,6 +157,13 @@ def render(args, prj, data):
             out.append(f"{indent*2}{parent_interface_port}_next_prdata  = {item['name']}.prdata;")
             out.append(f"{indent*2}{parent_interface_port}_next_pslverr = {item['name']}.pslverr;")
         first += 1
+    if has_gap:
+        # trans_active with no child selected and no response yet is an
+        # unmapped access. A child's select clears on its pready, the edge
+        # that registers pready, so ~pready excludes that last clock.
+        out.append(f"{indent}end else if (trans_active & ~pready) begin")
+        out.append(f"{indent*2}{parent_interface_port}_next_pready  = 1'b1;")
+        out.append(f"{indent*2}{parent_interface_port}_next_prdata  = {reg_intf_data_st}'(32'hBADD_C0DE);")
     out.append(f"{indent}end")
     out.append("end\n")
 

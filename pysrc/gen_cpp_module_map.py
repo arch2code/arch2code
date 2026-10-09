@@ -8,14 +8,21 @@ import sys
 
 MODULE_NAME = r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
 MODULE_DECL_RE = re.compile(rf"^\s*export\s+module\s+({MODULE_NAME})\s*;")
+IMPL_DECL_RE = re.compile(rf"^\s*module\s+({MODULE_NAME})\s*;")
 IMPORT_RE = re.compile(rf"^\s*(?:export\s+)?import\s+({MODULE_NAME})\s*;")
 
 
 def scan_module(path):
     module_name = None
+    implemented = None
     imports = list()
     with open(path, "r", encoding="utf-8", errors="replace") as source:
         for line_number, line in enumerate(source, start=1):
+            implementation = IMPL_DECL_RE.match(line)
+            if implementation:
+                implemented = implementation.group(1)
+                continue
+
             declaration = MODULE_DECL_RE.match(line)
             if declaration:
                 if module_name is not None:
@@ -28,6 +35,19 @@ def scan_module(path):
             imported = IMPORT_RE.match(line)
             if imported and imported.group(1) not in imports:
                 imports.append(imported.group(1))
+
+    if implemented is not None:
+        # `module <name>;` opens an implementation unit. It provides nothing, and
+        # the build compiles a .cppm only as an interface unit, so this one would
+        # never be compiled. A .cpp implementation unit is compiled after every
+        # interface with each module mapped, so that is where it belongs.
+        print(
+            f"gen_cpp_module_map.py: warning: {path}: "
+            f"'module {implemented};' is a module implementation unit, which "
+            "is not compiled from a .cppm; rename it to .cpp; skipping",
+            file=sys.stderr,
+        )
+        return None
 
     if module_name is None:
         # A .cppm without an `export module` declaration provides no module, so

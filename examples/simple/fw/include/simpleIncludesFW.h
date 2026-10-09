@@ -41,7 +41,7 @@ namespace fw_ns::simple {
 namespace fw_ns::simple {
 // structures
 struct tag_st {
-    tag tagId; //tag id
+    tag tagId; /* [4:0] */ //tag id
 
     tag_st() { memset(this, 0, sizeof(tag_st)); }
 
@@ -50,7 +50,7 @@ struct tag_st {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tag_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tagId;
     }
     inline void unpack(const _packedSt &_src)

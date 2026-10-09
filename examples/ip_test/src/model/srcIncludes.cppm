@@ -78,7 +78,7 @@ struct srcOut0St_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, srcOut0St_v<OUT0_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, OUT0_DATA_WIDTH);
         _pos += OUT0_DATA_WIDTH;
@@ -88,7 +88,7 @@ struct srcOut0St_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (srcOut0DataT_v<OUT0_DATA_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (OUT0_DATA_WIDTH)) - 1));
+        data = (srcOut0DataT_v<OUT0_DATA_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (OUT0_DATA_WIDTH))));
         _pos += OUT0_DATA_WIDTH;
         marker = (srcMarkerT)((_src >> (_pos & 63)) & 1);
     }
@@ -159,7 +159,7 @@ struct srcOut1St_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, srcOut1St_v<OUT1_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&data, OUT1_DATA_WIDTH);
         _pos += OUT1_DATA_WIDTH;

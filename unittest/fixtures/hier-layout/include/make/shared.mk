@@ -1,5 +1,5 @@
-# Build harness for the green-field hierarchical-layout fixture
-# (plan-decomp-functional-layout.md T2a.3). User-owned, committed: it is the
+# Build harness for the green-field hierarchical-layout fixture.
+# User-owned, committed: it is the
 # project's build config, living at the project root under include/ (Q-L3
 # amended: build config and rundir/ are user-owned entry points that stay at the
 # root; only generated orphans move under prj/). The structural-golden test

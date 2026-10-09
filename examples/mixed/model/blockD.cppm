@@ -37,7 +37,8 @@ public:
     // GENERATED_CODE_END
     // block implementation members
 
-    void memoryTest(void);
+    void test_mem_hier_blockd_write(void);
+    void test_mem_hier_blockd_read(void);
     
     // Memory register handler for blockBTableExt.
     // This services register accesses to blockBTableExt through the memory port.
@@ -72,7 +73,8 @@ blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbM
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    SC_THREAD(memoryTest);
+    ADD_TEST(test_mem_hier_blockd_write);
+    ADD_TEST(test_mem_hier_blockd_read);
     SC_THREAD(blockBTableExtModel);
     SC_THREAD(blockBTable37BitModel);
     
@@ -89,19 +91,10 @@ blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbM
     }
 };
 
-void blockD::memoryTest(void)
+void blockD::test_mem_hier_blockd_write(void)
 {
-    testController &controller = testController::GetInstance();
-    
-    std::string test_write = "test_mem_hier_blockd_write";
-    controller.register_test_name(test_write);
-    
-    std::string test_read = "test_mem_hier_blockd_read";
-    controller.register_test_name(test_read);
+    wait(1, SC_NS);
 
-    // Wait for write test
-    controller.wait_test(test_write, sc_time(1, SC_NS));
-    
     bSizeSt addr;
     addr.index = 0;
     bigSt data;
@@ -109,12 +102,14 @@ void blockD::memoryTest(void)
     data.big = 0x1234567812345678;
     blockBTable1->request(true, addr, data);
     log_.logPrint("BlockD Write complete", LOG_ALWAYS);
-    
-    controller.test_complete(test_write);
+}
 
-    // Wait for read test
-    controller.wait_test(test_read);
-    
+void blockD::test_mem_hier_blockd_read(void)
+{
+    bSizeSt addr;
+    addr.index = 0;
+    bigSt data;
+
     blockBTable1->request(false, addr, data);
     
     if (data.big == 0x1234567812345678) {
@@ -124,8 +119,6 @@ void blockD::memoryTest(void)
         ss << "BlockD Read verify failed. Expected 0x1234567812345678, got 0x" << std::hex << data.big;
         log_.logPrint(ss.str(), LOG_ALWAYS);
     }
-    
-    controller.test_complete(test_read);
 }
 
 void blockD::blockBTableExtModel(void)

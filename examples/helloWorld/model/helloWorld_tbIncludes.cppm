@@ -69,7 +69,7 @@ struct test_st {
     inline uint64_t getStructValue(void) const { return( a );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -124,7 +124,7 @@ struct test_no_tracker_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, test_no_tracker_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -179,7 +179,7 @@ struct data_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_st::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = b;
     }
     inline void unpack(const _packedSt &_src)

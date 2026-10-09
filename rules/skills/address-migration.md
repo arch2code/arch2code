@@ -1,456 +1,233 @@
 ---
 name: address-migration
-description: Convert legacy arch2code projects from project-wide addressControl.yaml address control to per-block addressBlock: routers and project.yaml address-policy sections.
+description: Convert a legacy arch2code project from project-wide addressControl.yaml to per-block addressBlock: routers and the project.yaml address-policy sections. Covers what the make migrate address phase does, how to resolve TODO_ROUTER_RESOLUTION, TODO_INTERFACE_SCOPE and TODO_LEAF_REGISTER_PORTS, and the checks to make after conversion.
 ---
-# Skill: Legacy Address Control Migration
-
-## Run `make migrate` first
-
-This skill is the **fallback** for the automated migration tool, not the
-primary path. Run the converter before working through any step by hand:
-
-```text
-make migrate
-```
-
-`make migrate` wraps `migrateYaml.py --write <project.yaml>`. It converts every
-case it can resolve mechanically — emits `addressBlock:` on each resolved
-router, moves the policy sections to `project.yaml`, normalizes `postProcess:`,
-removes the `addressControl:` pointer, deletes the legacy `addressControl.yaml`
-once the project is clean, and stamps `yamlFormat: 2`. The cases it cannot
-resolve unambiguously are printed under a `manual TODO:` heading and block the
-stamp. **This skill covers exactly those manual-TODO cases.**
-
-Each manual-TODO line is printed as:
-
-```text
-<file>:<line>  <KIND>  <message>
-```
-
-Resolve every reported item, then re-run `make migrate`. The tool is
-idempotent: already-converted evals, an existing `addressBlock:`, and an absent
-`addressControl:` pointer are skipped, and a project already carrying
-`yamlFormat: 2` short-circuits to "already migrated".
-
-In a **composed build**, run it once per sub-project from that project's own
-`rundir/` — `make migrate` converts only the project `A2C_PRJ_YAML` names, and
-each sub-project carries its own `addressControl:` pointer and its own routing to
-convert. See "Composed builds" in the `migrate-project` skill, Section 1.
-
-### Manual-TODO kinds and where each is resolved
-
-| Tool report `KIND` | Meaning | Resolve in |
-| --- | --- | --- |
-| `TODO_ROUTER_RESOLUTION` | An `AddressGroups` row's router cannot be resolved — it names no `decoderInstance`, or its `decoderInstance` does not resolve to a router block. | Step 3 |
-| `TODO_INTERFACE_SCOPE` | A router has no `addressBus: true` interface authored in its load-time scope. | Step 2 |
-| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. Raised only on the migrating run; afterwards the same leaf appears as the advisory below. | The `registerPorts:` note under Migration Diagnostics |
-
-One **advisory** kind is also emitted here. It prints on every run and never
-blocks the stamp or the exit code:
-
-| Tool report `KIND` | Meaning | Read about it in |
-| --- | --- | --- |
-| `ADVISORY_LEAF_REGISTER_PORTS` | A routed leaf declares no `registerPorts:`, so its register bus is inferred from the serving router. Correct for a top-down leaf, wrong for reusable IP. | The `registerPorts:` note under Migration Diagnostics |
-
-A real-valued `eval` (for example `$DWORD / 2.0`) is reported by Phase A as a
-`NEEDS_MANUAL` eval row and also blocks the stamp; convert it to a literal
-`value:` by hand. That is an eval migration, not an address one, and is outside
-this skill's scope.
+# Skill: legacy address-control migration
 
 ## Purpose
 
-Guide the user through converting an existing arch2code project that
-uses `project.yaml` `addressControl:` and project-wide
-`addressControl.yaml` declarations to the per-block address control
-schema:
+A legacy project points `project.yaml` at an `addressControl.yaml` holding
+`AddressGroups:`, `InstanceGroups:` and `AddressObjects:`. arch2code declares
+each router with a top-level `addressBlock:` on its block, and keeps
+`instanceGroups:` and `addressObjects:` in `project.yaml`. `make db` refuses a
+project whose `project.yaml` has no `yamlFormat: 2` and tells you to run
+`make migrate`.
 
-- Router blocks declare a top-level `addressBlock:` field.
-- Address-policy sections move from legacy `InstanceGroups:` and
-  `AddressObjects:` to top-level `project.yaml` fields named
-  `instanceGroups:` and `addressObjects:`.
+`make migrate` does the conversion. This skill covers what its address phase
+does, the manual items it reports, and what to check afterwards. For the
+migration as a whole, including the report format and exit codes, see
+`migrate-project.md`. To design or change decode in a migrated project, see
+`design-register-decode.md`.
 
-This skill is only for legacy migration. It is not a general guide for
-authoring a new address space or redesigning an existing one.
+## What the address phase does
+
+For each `AddressGroups:` row:
+
+- **No `decoderInstance:` and no instance names the group.** The row is dormant
+  and is dropped.
+- **`decoderInstance:` names an instance of a block in the project.** That block
+  becomes the router. The phase writes an `addressBlock:` on it with
+  `addressGroup:` set to the row name and `addressIncrement`,
+  `maxAddressSpaces`, `varType` and `enumPrefix` copied verbatim.
+  `RegisterBusInterface:` becomes both `upstreamPort:` and
+  `registerDecoderPort:`. When `RegisterBusInterface:` is absent or `None`,
+  the phase writes neither key, so both default to `apbReg`, and raises no
+  `TODO_INTERFACE_SCOPE`. The phase does not copy `primaryDecode`,
+  `varTypeContext` or `decoderInstance` into `addressBlock:`. The build infers
+  the primary router from the hierarchy.
+- **Anything else** is reported as `TODO_ROUTER_RESOLUTION` (Step 3).
+
+It also:
+
+- reports `TODO_INTERFACE_SCOPE` when a router's file does not see the
+  `RegisterBusInterface:` interface through its `include:` chain (Step 2);
+- reports `TODO_LEAF_REGISTER_PORTS` for each routed leaf (see "Migration
+  diagnostics");
+- rewrites `postProcess:` in `project.yaml`. It removes every entry that
+  names a base script or the legacy `postParseRegister.py`, and deletes the
+  block if nothing is left (Step 4);
+- appends `instanceGroups:` and `addressObjects:` to `project.yaml`, copying
+  the legacy row bodies;
+- removes the `addressControl:` pointer and deletes `addressControl.yaml`
+  once every `AddressGroups:` row is converted or dropped. Other manual items
+  do not keep the file. While a router is unresolved, both stay and the report
+  says `DELETE_DEFERRED`. Never delete the file by hand.
+
+The project is stamped `yamlFormat: 2` only when no address item remains and
+the other phases are clean.
+
+| Report `KIND` | Meaning | Resolve in |
+| --- | --- | --- |
+| `TODO_ROUTER_RESOLUTION` | An `AddressGroups:` row's router cannot be resolved. | Step 3 |
+| `TODO_INTERFACE_SCOPE` | A router's file does not see the register-bus interface. | Step 2 |
+| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` decision. | The `registerPorts:` note under Migration diagnostics |
+| `ADVISORY_LEAF_REGISTER_PORTS` | The same decision, restated on every later run. Never blocks. | The `registerPorts:` note under Migration diagnostics |
+
+## Step 1: capture a baseline, then run the converter
+
+`make migrate` regenerates the tree, so capture the generated SystemC and
+SystemVerilog output before the first run. Step 5 compares against it.
+
+Then run `make migrate` from the project's `rundir/`. In a composed build, run
+it once per sub-project, children first (`migrate-project.md`, "Composed
+builds").
+
+## Step 2: make the register-bus interface visible to every router
+
+`TODO_INTERFACE_SCOPE` reads `Router block '<block>' (file <file>) has no
+addressBus: true interface authored in its load-time scope.` The router's file
+has to see the interface named by `upstreamPort:`, with its structures and
+types.
+
+Each YAML file sees only itself, the files it includes, and the files those
+include. If a router's file does not see the interface, move the interface,
+its structures and their types into an existing file every router file sees
+by that rule, usually the deepest shared or router file. Do not create a new
+YAML file for it, and do not give a router file an `include:` of the top
+integration file, which inverts the include direction. See
+`design-yaml-includes.md`.
+
+`TODO_INTERFACE_SCOPE` is raised once per router, on the run that writes that
+router's `addressBlock:`. It is not repeated, even while another router is
+unresolved, so fix it before you re-run. A missed scope fix fails `make db`
+later with `Router block '…' (file …) names upstreamPort '…', but no visible
+interface has that name.`
+
+## Step 3: resolve the router in the legacy row
+
+`TODO_ROUTER_RESOLUTION` has three forms:
+
+- `AddressGroups row '<group>' is referenced by an instance but names no
+  decoderInstance, so its router block cannot be resolved …`
+- `AddressGroups row '<group>' decoderInstance '<inst>' does not resolve to a
+  router block …`
+- `AddressGroups rows [<groups>] both resolve to router '<block>'; this group
+  duplicates a prior addressBlock: …`
+
+The first two messages say `author addressBlock: by hand` and the third says
+`resolve by hand`. Do not follow that wording. Do not author `addressBlock:`.
+Fix the legacy row in `addressControl.yaml` as below, then re-run
+`make migrate`. The phase re-reads the legacy row on every run and keeps
+reporting it until the row resolves, so a hand-written `addressBlock:` loops.
+
+- **No `decoderInstance:`, or one that does not resolve.** Set
+  `decoderInstance:` to the instance of the router block that serves the
+  group. The instance and its block must be declared in the project's YAML.
+  For a router instance `uApbDec`:
+
+  ```yaml
+  AddressGroups:
+    top:
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: addr_id_top
+      enumPrefix: ADDR_ID_TOP_
+      decoderInstance: uApbDec
+  ```
+- **Two rows on one router.** A router block serves one group. If one group
+  is redundant, move its instances' `addressGroup:` to the other group and
+  delete its row. Otherwise declare a second router block, instance it where
+  that group's instances sit, and point the second row's `decoderInstance:` at
+  it.
+
+While a router is unresolved, each run appends `instanceGroups:` and
+`addressObjects:` to `project.yaml` again. Before each re-run, delete the
+copies the previous run appended at the end of `project.yaml`, or the file ends
+up with duplicate keys.
+
+## Step 4: check `project.yaml` after the conversion
+
+Do these once the run that removes the `addressControl:` pointer has finished.
+The phase does nothing after that run, so it cannot undo them.
+
+- **`postProcess:`.** A project's `postProcess:` list replaces the base list;
+  it does not add to it. The phase strips the base scripts from a block it
+  keeps, so a kept block runs only the project's own scripts and register-port
+  synthesis never runs. If `project.yaml` keeps a `postProcess:` block,
+  list the base scripts first, in the order `builder/base/config/project.yaml`
+  gives them, then the project's own:
+
+  ```yaml
+  postProcess:
+    - $a2c/config/postParseRegisterPorts.py
+    - $a2c/config/postParseChecks.py
+    - $root/scripts/myCheck.py   # the project's own script
+  ```
+
+  If the block was deleted, the base list applies and nothing is needed.
+- **`instanceGroups:` and `addressObjects:`.** Each appears at most once.
+  `addressObjects:` must be present if the design has registers or `regAccess`
+  memories (`manage-address-space.md`). Add it by hand if the legacy file had
+  none.
+- **The pointer and the legacy file are gone.** Search the tree for any other
+  project that names `addressControl.yaml`.
+
+## Step 5: regenerate and compare
+
+`make migrate` ends with `make gen`. Build and run the project's normal targets
+(`manage-build.md`), then compare the generated output with the Step 1
+baseline. Byte-identical output is the goal. Review every difference.
+
+## Migration diagnostics
+
+### The `registerPorts:` note
+
+`TODO_LEAF_REGISTER_PORTS` reads `Routed leaf block '<leaf>' (instance '<inst>',
+served by router '<router>' for group '<group>') needs a registerPorts:
+declaration authored by hand …`. It is raised on every run while the legacy
+`AddressGroups:` table exists, and the run that deletes the table is the last
+to raise it. Decide each leaf as follows:
+
+- **A reusable IP**, whose `<block>Base` must be self-contained, declares one
+  `registerPorts:` row naming the register-bus interface. The interface must
+  be visible in the leaf's own file.
+- **A block with a block-level `ports:` section** must declare `registerPorts:`
+  too, or `make db` fails.
+- **Any other top-down leaf** needs nothing. It infers its register bus from
+  the serving router.
+
+From the next run on, every routed leaf with no `registerPorts:` is listed as
+`ADVISORY_LEAF_REGISTER_PORTS`. The advisory never blocks and never clears for a
+top-down leaf. It stops only when the leaf declares `registerPorts:` or no
+router serves it. Read it once per leaf.
+
+### Build errors after conversion
+
+The converter copies the legacy topology, and `make db` fails where that
+topology breaks a decode rule. These come up most:
+
+- **A routed leaf below a router-less container.** The converter leaves
+  `addressGroup:` on the leaf. The router dispatches to the outermost
+  passthrough container beside it, and only that container instance carries
+  `addressGroup:` (`design-register-decode.md` §1). The build reports
+  `Leaf instance '…' … is in container '…' which is not served by any router,
+  …`, or `Instance '…' … is fed through router-less container '…' and must not
+  carry addressGroup:`. Move `addressGroup:` from the leaf to the container
+  instance that sits in the router's container, and remove it from every
+  instance below. This works only when each container on the way holds no
+  other register consumer and owns no registers. Otherwise add a router to
+  that container.
+- **`addressIncrement` or `maxAddressSpaces` not a power of two.** The value
+  was copied verbatim and fails with `In …, addressBlock: of block '…'
+  (addressGroup '…') sets maxAddressSpaces …, which is not a power of two. …`
+  Fix it in the router's `addressBlock:`.
+- **`upstreamPort` not visible.** `Router block '…' (file …) names upstreamPort
+  '…', but no visible interface has that name.` Redo Step 2.
+
+For every other decode error, see the diagnostics appendix of
+`design-register-decode.md`.
+
+A real-valued `eval:` such as `$DWORD / 2.0` is reported as an eval
+`NEEDS_MANUAL` row, not an address item. `migrate-project.md` covers it.
 
 ## References
 
-- `make migrate` → `builder/base/migrateYaml.py` — the automated converter
-  this skill backstops; `pysrc/migrateAddressControl.py` is its Phase B address
-  pass and the source of the `manual TODO:` messages quoted here.
-- `builder/base/config/schema.yaml` — accepted YAML fields for
-  `blocks.addressBlock`, `instanceGroups`, and `addressObjects`.
-- `builder/base/pysrc/processYaml.py` — schema hooks, project-config
-  normalization, and port validation.
-- `manage-address-space.md` — the legacy address-control skill; still
-  applies to projects that have not yet migrated.
-- `design-architecture.md` — block hierarchy and wiring conventions
-  that the new schema slots into.
-- `design-yaml-includes.md` — include direction and load-time scope.
-
-## When to Use
-
-- Converting an existing project's `addressControl.yaml` `AddressGroups`
-  into per-block `addressBlock:` declarations.
-- Moving legacy `InstanceGroups:` and `AddressObjects:` into
-  `project.yaml` under the new spellings as part of that conversion.
-
-If the project is staying on the legacy schema, use
-`manage-address-space.md` instead. If the project is already on the new
-schema and only needs ordinary address-space edits, use the design and
-address-management skills instead of this migration skill.
-
-## Core Rules
-
-1. Preserve the legacy topology. Each live legacy `AddressGroups:` row
-   becomes one router block with a top-level `addressBlock:` field.
-2. `primaryDecode`, `varTypeContext`, and `decoderInstance` from the
-   legacy `AddressGroups` row do not migrate. The primary router is
-   inferred from the router hierarchy; `varType` is resolved in the
-   router block's own scope; the router instance is resolved by
-   container-locality.
-3. Do not mix legacy `addressControl:` with authored `addressBlock:`.
-   A project that declares any `addressBlock:` must remove the
-   `addressControl:` pointer from `project.yaml`. The only dual
-   spelling allowed during migration is for address-policy sections:
-   legacy `InstanceGroups:` / `AddressObjects:` may overlap with
-   `project.yaml` `instanceGroups:` / `addressObjects:` if the rows
-   are identical.
-4. Make the minimum edits required to express the
-   existing address topology in the new schema. Do not create new
-   user YAML files or reorganize unrelated declarations; edit the
-   files that already author the relevant blocks, interfaces,
-   policy sections, and project config.
-
-## Migration Steps
-
-### Step 1 — Inventory the legacy declarations
-
-Open the project's `addressControl.yaml`. Record:
-
-- Each `AddressGroups:` row, its key fields (`addressIncrement`,
-  `maxAddressSpaces`, `varType`, `enumPrefix`), and the
-  `decoderInstance` it names.
-- The legacy `RegisterBusInterface:` value, if present. This becomes
-  the router `addressBlock:` `upstreamPort` and `registerDecoderPort`
-- The `InstanceGroups:` and `AddressObjects:` sections.
-
-For each `decoderInstance`, follow the instance row in the
-architecture YAML back to the router block type. That block type is
-the one that will grow an `addressBlock:`.
-
-Legacy `AddressGroups:` rows can also appear with **no** `decoderInstance:`
-field and with no instance row using them as `addressGroup:`. Those
-groups are dormant — they describe an address space the project does
-not actually decode. Drop them during migration; do not author a
-matching `addressBlock:`. (A still-referenced group with no router is
-a project error; the post-parse pass will diagnose it.)
-
-Note that `InstanceGroups:` is independent of `AddressGroups:`. The
-legacy `InstanceGroups:` section frequently contains rows that have
-nothing to do with the router hierarchy (for example a `blocks:` row
-used for general instance enumeration). Carry every active `InstanceGroups:`
-row across to the new `instanceGroups:` spelling in `project.yaml`
-(Step 4), not just the row matching the address-decoder group.
-
-### Step 2 — Place the address-bus interface so every router can see it
-
-Walk each router file and check whether the interface (typically
-`apbReg`) and its supporting types/structures are already visible
-through the existing `include:` chain. If they are, leave them alone.
-
-If some router's file does not see the interface, **relocate** the
-interface, its structures, and their types into a file that satisfies
-the constraint for every router. Use an existing shared or router file
-that already fits the include graph; do not create a new user YAML file
-just to hold migrated declarations.
-
-In practice, move the declarations into the deepest existing router or
-shared file that all consuming router files already see through normal
-include direction.
-
-Do not give a router file a new `include:` directive pointing at the
-top integration file — that inverts the include direction and breaks
-parsing.
-
-After the move the `DWORD` / `apbAddrT` / `apbDataT` constants and
-types simply live wherever the address-bus interface they support
-now lives.
-
-**Tool report item.** This step resolves the converter's
-`TODO_INTERFACE_SCOPE` items: `Router block '<block>' (file <file>) has no
-addressBus: true interface authored in its load-time scope.` The tool emits the
-`addressBlock:` but cannot relocate the interface (that requires reasoning about
-the include graph), so it reports the router and leaves the placement to you.
-
-### Step 3 — Declare `addressBlock:` on each router
-
-For every router block, add a top-level `addressBlock:` field.
-Copy the legacy row's body verbatim except for the retired fields:
-
-```yaml
-blocks:
-    topRegRouter:
-        desc: "Top register-bus router"
-        hasVl: true
-        hasMdl: true
-        hasRtl: true
-        addressBlock:
-            addressGroup: top
-            addressIncrement: 0x01000000
-            maxAddressSpaces: 16
-            varType: addr_id_top
-            enumPrefix: ADDR_ID_TOP_
-            upstreamPort: apbReg
-            registerDecoderPort: apbReg
-```
-
-Do not author `primaryDecode:`, `varTypeContext:`, or
-`decoderInstance:`.
-
-If the legacy file named `RegisterBusInterface:`, carry it into
-`upstreamPort:` and `registerDecoderPort:`. These fields may be omitted
-only when the router should use the schema default interface name.
-
-**Tool report item.** This step resolves the converter's
-`TODO_ROUTER_RESOLUTION` items, which the tool reports in one of two forms and
-will not author for you:
-
-- `AddressGroups row '<group>' is referenced by an instance but names no
-  decoderInstance, so its router block cannot be resolved — author addressBlock:
-  by hand — see address-migration.md Step 3.`
-- `AddressGroups row '<group>' decoderInstance '<inst>' does not resolve to a
-  router block — author addressBlock: by hand — see address-migration.md
-  Step 3.`
-
-For each, identify the router block by following the named (or intended)
-`decoderInstance` back through the architecture YAML per Step 1, then author the
-`addressBlock:` shown above on that block.
-
-Nested routers get their own `addressBlock:` row in the same shape,
-with the appropriate `addressGroup:`. Edit the nested router's block
-declaration in place in whatever file already authors it; do not split
-it out.
-
-If you see the diagnostic `Router block '<name>' (file <file>) has no
-addressBus: true interface authored in its load-time scope`, the
-nested router's file does not see the address-bus interface — revisit
-Step 2's placement decision rather than adding `include:` directives
-or creating new files.
-
-### Step 4 — Move address-policy sections to `project.yaml`
-
-Move `InstanceGroups:` and `AddressObjects:` from
-`addressControl.yaml` into `project.yaml` under their new spellings:
-
-```yaml
-# project.yaml
-instanceGroups:
-    top:
-        varType: inst_top
-        enumPrefix: INST_TOP_
-    blocks:
-        varType: blockID
-        enumPrefix: BLOCK_TOP_
-
-addressObjects:
-    memories:
-        alignment: memsize
-        sizeRoundUpPowerOf2: true
-        sortDescending: true
-    registers:
-        alignment: 8
-        sortDescending: true
-```
-
-Carry **every active** legacy `InstanceGroups:` row across, not just the
-address-decoder group. Rows like `blocks:` in the example above are
-unrelated to the router hierarchy but are still consumed by the
-generator for instance enumeration; dropping them produces a missing-
-symbol failure later in generation. Do not activate commented example
-rows during migration.
-
-These fields use the same row bodies as the legacy sections but lower
-camel-case section names. `instanceGroups:` rows have `varType` and
-`enumPrefix`; `addressObjects:` rows have `alignment`,
-`sizeRoundUpPowerOf2`, and `sortDescending`.
-
-If both legacy and new spellings of these two policy sections are
-present, the validator errors on any disagreement and names both files.
-Agreement passes silently, which is useful while converting one
-project. The completed migration should leave the policy sections in
-`project.yaml`.
-
-### Step 5 — Leave `postProcess:` to the base config
-
-Prefer removing any existing `postProcess:` override entirely. The base
-config already includes the standard scripts in the correct order. The
-merge rules treat lists as `list_append`, so any base script repeated
-in the project's `postProcess:` runs twice.
-
-A typical legacy `project.yaml` carries an override block like:
-
-```yaml
-# project.yaml (before — typical legacy override)
-postProcess:
-    - $a2c/config/postParseRegister.py
-    - $a2c/config/postParseChecks.py
-```
-
-Delete the entire block as part of this migration; the base config's
-`postProcess:` is the canonical list.
-
-If a project must keep a `postProcess:` block (for additional
-project-specific scripts), it must contain only those project-specific
-entries — never the base scripts.
-
-### Step 6 — Retire `addressControl:`
-
-Before any authored `addressBlock:` is committed, remove the
-`addressControl:` pointer from `project.yaml`. The new per-block router
-schema and legacy project-wide `AddressGroups:` schema are mutually
-exclusive.
-
-**Do not delete `addressControl.yaml` by hand.** `make migrate` owns that
-delete: it removes the file on the run that finds the project clean, and while
-manual TODOs remain it deliberately keeps the file as reference and reports
-`DELETE_DEFERRED` saying so. Because the pointer is removed as soon as the
-routing is accounted for, the next run removes the leftover on its own. A
-survivor after a non-clean run is expected, not a failure — resolve the reported
-TODOs and re-run rather than deleting it.
-
-The one thing to check by hand is references: if another project still names the
-file, search for any remaining `addressControl:` pointer or direct reference
-before the final run.
-
-### Step 7 — Regenerate and diff
-
-Run the project's normal build:
-
-```text
-make db
-make gen
-```
-
-Compare the generated SystemC and SystemVerilog output to the
-pre-migration snapshot. Byte-identical output is the goal; any
-deliberate naming or context change must be reviewed.
-
-## Migration Diagnostics
-
-If conversion fails, focus on mistakes introduced by the migration
-rather than redesigning the address space. The generator fails the
-build and names both sides of the offending relationship. The
-diagnostics below are grouped by the stage that emits them.
-
-These diagnostics are the same vocabulary the `make migrate` tool uses: the
-converter's `manual TODO:` messages (`TODO_INTERFACE_SCOPE`,
-`TODO_ROUTER_RESOLUTION`, `TODO_LEAF_REGISTER_PORTS`) quote the generator
-diagnostics below word for word, so a reported TODO and the eventual build error
-for the same unresolved relationship read identically.
-
-A note on `registerPorts:`: a reusable-IP leaf (one whose
-`<block>Base.cppm` must carry its own register-bus interface) declares a
-single `registerPorts:` row naming that interface. A plain top-down
-leaf needs no `registerPorts:` — it infers its register bus from the
-serving router. The first group below only applies when the migration
-touches a leaf that declares `registerPorts:`.
-
-**Tool report item.** The converter routes its `TODO_LEAF_REGISTER_PORTS`
-items here — `Routed leaf block '<leaf>' (instance '<inst>', served by router
-'<router>' for group '<group>') needs a registerPorts: declaration authored by
-hand — see the registerPorts: note under Migration Diagnostics in
-address-migration.md.` Authoring `registerPorts:` is a judgment call, not a
-mechanical edit: a plain top-down leaf needs no `registerPorts:`, and only a
-reusable-IP leaf must author one, per the rule just above.
-
-**It is asked twice, in two forms.** `TODO_LEAF_REGISTER_PORTS` is computed from
-the legacy `AddressGroups` table, which the migrating run consumes and deletes,
-so it can only be raised on that one run — and it blocks the stamp while it is.
-From then on the same set is recomputed from the migrated schema and re-reported
-every run as `ADVISORY_LEAF_REGISTER_PORTS`:
-
-```text
-Advisory - routed leaves with no registerPorts: (informational; does not block the stamp)
-    top.yaml:14  ADVISORY_LEAF_REGISTER_PORTS  routed leaf 'leafA' (instance
-    'uLeafA', group 'top') declares no registerPorts:, so its register bus is
-    inferred from the router 'apbDecode'. ...
-```
-
-The advisory cannot block, because a top-down leaf is a legitimate answer and
-blocking on it would leave such a project permanently un-stampable. It also
-never clears itself: it stops only when the leaf declares `registerPorts:` or
-stops being routed. So a leaf you have decided is top-down keeps appearing, by
-design — that line is a statement of what the design resolved to, not an
-outstanding task. Read it once per leaf and move on.
-
-### `registerPorts:` / `addressBlock:` authoring (parse time)
-
-- A block `declares both` `addressBlock:` and `registerPorts:`. These
-  are `mutually exclusive`: a block is either a router (`addressBlock:`)
-  or a routed leaf (`registerPorts:`). Remove whichever field does not
-  belong on that block.
-- A leaf `declares multiple` `registerPorts:` rows. Blocks support
-  `exactly` one register-bus ingress today; collapse the entries to a
-  single row.
-- A `registerPorts:` row names an interface whose `interfaceType` is
-  not `addressBus: true` (for example `push_ack`). Point the row at the
-  register-bus interface (`apb`), whose `interface_defs` entry carries
-  `addressBus: true`.
-- A `registerPorts:` row's interface is not visible in the leaf's
-  load-time scope: `no interfaces row named` ... in
-  `any context processed before` this one. Author or `include:` the interface in
-  the leaf's own scope so its `<block>Base.cppm` is self-contained.
-
-### Router topology (post parse)
-
-- Two router blocks declare the same `addressGroup` (the diagnostic
-  reports the group `duplicates a prior addressBlock:`). Rename one, or
-  merge the two router block types if the duplication was accidental.
-- A router block declares `addressBlock:` but has no instance in the
-  design (`Router blocks declare addressBlock:` ... but the named block
-  has no instance). Instantiate the router, or drop its `addressBlock:`.
-- A router block has more than one instance (`Multi-instance` routers
-  serving one group are not supported). Use distinct router blocks and
-  address groups instead of reinstantiating one router.
-- Zero or multiple primary-router candidates:
-  `Multiple candidate primary routers` or
-  `No primary router could be inferred`. Adjust the router declarations
-  so the migrated legacy hierarchy still has exactly one top router.
-- A routed leaf instance sits in a container `not served by any router,
-  directly or through single-consumer containers`. Place the leaf under a
-  routed container, under a chain of router-less containers that each hold
-  no other register consumer and that a router ultimately serves, or add the
-  serving router for that container.
-- `Router block '<name>' (file <file>) has no addressBus: true
-  interface authored in its load-time scope.` The router block's
-  YAML file does not see a register-bus interface. Move the interface
-  declaration into an existing router or lower-level/shared file the
-  router file already includes. Do not include the parent integration
-  file from the nested router file.
-
-### Register-bus compatibility (validation)
-
-- A `Register-bus dispatch` where the leaf and router resolve different
-  `interfaceType` values (the diagnostic notes they must share the
-  `same interface meta-protocol` and points at a `protocol changer`).
-  Cross-`interfaceType` adaptation needs an explicit protocol-changer
-  block (out of scope); make both sides the same `interfaceType`.
-- A `Register-bus dispatch` where the leaf and router share an
-  `interfaceType` but disagree on `per-field _bitWidth` (the diagnostic
-  names the offending `field index` and both `_bitWidth` values, and
-  prints a `parent side` / `child side` block naming each interface, its
-  declaring file, owning project, block and resolved variant). Align the
-  field widths of the leaf and router register interfaces.
-
-  These checks fire whether or not the leaf and router interfaces share
-  a name; matching names do not exempt a dispatch from validation.
-
-## Validation
-
-- `make db` succeeds; the project loads under the new schema.
-- `make gen` succeeds; generated output matches the pre-migration
-  snapshot or its differences are reviewer-approved.
-- Tandem / model regressions (for example `make step6` in the
-  proto-model build) continue to pass.
-- Each new diagnostic exercised by an intentional negative test
-  reports the expected file and field.
+- `builder/base/migrateYaml.py` (`make migrate`) and
+  `builder/base/pysrc/migrateAddressControl.py`, the address phase and the
+  source of its messages.
+- `builder/base/config/schema.yaml` for `blocks.addressBlock`,
+  `instanceGroups` and `addressObjects`.
+- `migrate-project.md` for the whole migration.
+- `design-register-decode.md` for the decode rules and diagnostics.
+- `manage-address-space.md` for `instanceGroups:` and `addressObjects:`.
+- `design-yaml-includes.md` for include visibility.

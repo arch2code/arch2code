@@ -322,6 +322,18 @@ def verilated_object_stamps(rundir):
             for o in glob.glob(pattern)}
 
 
+def verilate_run_stamps(rundir):
+    """Modification time of each top's V<top>__verFiles.dat, keyed by its Mdir.
+
+    Verilator rewrites that file on every run that verilates and leaves it
+    alone when --skip-identical finds nothing changed. The recipe touches the
+    archive after every run, so the archive's time does not show a verilate.
+    """
+    pattern = os.path.join(rundir, 'build', 'vl', 'obj_dir', '*', 'V*__verFiles.dat')
+    return {os.path.basename(os.path.dirname(o)): os.stat(o).st_mtime_ns
+            for o in glob.glob(pattern)}
+
+
 def check_rtl_edit_reverilates(project, rundir, env):
     """An edit to design RTL reaches the Verilated object and the run, and a
     rebuild after no edit verilates nothing. The pairing is the check.
@@ -329,6 +341,7 @@ def check_rtl_edit_reverilates(project, rundir, env):
     ok = True
     leaf = os.path.join(project, 'rtl', 'vliLeaf.sv')
     before = verilated_object_stamps(rundir)
+    runsBefore = verilate_run_stamps(rundir)
     if RUNTIME_MDIR not in before or len(before) < 2:
         print(f"  FAIL: expected {RUNTIME_MDIR} and at least one design top, "
               f"found {sorted(before)}")
@@ -372,7 +385,9 @@ def check_rtl_edit_reverilates(project, rundir, env):
         print(f"  FAIL: the set of Verilated tops changed across the edit: "
               f"{sorted(before)} -> {sorted(after)}")
         return False
-    stale = [t for t, m in after.items() if t != RUNTIME_MDIR and before[t] == m]
+    runsAfter = verilate_run_stamps(rundir)
+    stale = [t for t in after if t != RUNTIME_MDIR
+             and (t not in runsAfter or runsBefore.get(t) == runsAfter[t])]
     if stale:
         print(f"  FAIL: the RTL edit did not re-verilate {sorted(stale)}")
         ok = False

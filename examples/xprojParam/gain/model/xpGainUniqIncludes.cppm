@@ -74,7 +74,7 @@ struct gnVideoSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, gnVideoSt_v<GN_PIXEL_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, GN_PIXEL_WIDTH);
         _pos += GN_PIXEL_WIDTH;
@@ -84,9 +84,9 @@ struct gnVideoSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (gnPixelT_v<GN_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (GN_PIXEL_WIDTH)) - 1));
+        data = (gnPixelT_v<GN_PIXEL_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (GN_PIXEL_WIDTH))));
         _pos += GN_PIXEL_WIDTH;
-        tag = (gnTagT)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
+        tag = (gnTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (4))));
     }
     inline sc_bv<gnVideoSt_v<GN_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {

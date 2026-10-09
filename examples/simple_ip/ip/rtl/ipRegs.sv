@@ -61,11 +61,11 @@ module ipRegs
     assign apb_addr = ipRegAddrSt'(regs.paddr) & 32'h3ff;
     // Register/memory address offsets for decode documentation
     localparam int unsigned REG_IP_IPMEM = 32'h00000000; // IP scratch memory (FW-accessible)
-    localparam int unsigned REG_IP_IPMEM_SIZE = 32'h00000200; // Decode range size
+    localparam int unsigned REG_IP_IPMEM_SIZE = IP_MEM_DEPTH * 32'd16; // Decode range size
     localparam int unsigned REG_IP_IPFIXEDMEM = 32'h00000200; // Fixed-struct memory with block-param wordLines (F2.4 regression)
-    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = 32'h00000080; // Decode range size
+    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = IP_MEM_DEPTH * 32'd4; // Decode range size
     localparam int unsigned REG_IP_IPNONCONSTMEM = 32'h00000280; // Block-param wordLines with no backing constant (worst-case sizing regression)
-    localparam int unsigned REG_IP_IPNONCONSTMEM_SIZE = 32'h00000060; // Decode range size
+    localparam int unsigned REG_IP_IPNONCONSTMEM_SIZE = IP_NONCONST_DEPTH * 32'd4; // Decode range size
     localparam int unsigned REG_IP_IPCFG = 32'h00000300; // IP configuration
     localparam int unsigned REG_IP_IPLASTDATA = 32'h00000318; // Last data word received on ipDataIf
 
@@ -73,12 +73,12 @@ module ipRegs
 
     ipCfgSt ipCfg_reg;
     localparam int unsigned IPCFG_W = $bits(ipCfgSt);
-    logic [31:0] ipCfg_rword [0:2];
-    logic [2:0] ipCfg_update;
+    logic [31:0] ipCfg_rword [0:4];
+    logic [4:0] ipCfg_update;
     assign ipCfg.data = ipCfg_reg;
-    localparam logic [31:0] ipCfg_rst [0:2] = '{ 32'h00000000, 32'h00000000, 32'h00000000 };
+    localparam logic [31:0] ipCfg_rst [0:4] = '{ 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000, 32'h00000000 };
     generate
-        for (gi = 0; gi < 3; gi++) begin : g_ipCfg
+        for (gi = 0; gi < 5; gi++) begin : g_ipCfg
             if (IPCFG_W > 32*gi) begin : present
                 if (IPCFG_W >= 32*(gi+1)) begin : full
                     `DFFREN_DOM(clk, rst_n, ipCfg_reg[32*gi +: 32], regs.pwdata[31:0], ipCfg_update[gi], ipCfg_rst[gi])
@@ -95,10 +95,10 @@ module ipRegs
 
     ipDataSt ipLastData_reg;
     localparam int unsigned IPLASTDATA_W = $bits(ipDataSt);
-    logic [31:0] ipLastData_rword [0:2];
+    logic [31:0] ipLastData_rword [0:4];
     assign ipLastData_reg = ipLastData.data;
     generate
-        for (gi = 0; gi < 3; gi++) begin : g_ipLastData
+        for (gi = 0; gi < 5; gi++) begin : g_ipLastData
             if (IPLASTDATA_W > 32*gi) begin : present
                 if (IPLASTDATA_W >= 32*(gi+1)) begin : full
                     assign ipLastData_rword[gi] = ipLastData_reg[32*gi +: 32];
@@ -115,17 +115,17 @@ module ipRegs
     ipMemSt ipMem_reg;
     localparam int unsigned IPMEM_W = $bits(ipMemSt);
     localparam int unsigned IPMEM_TOP = (IPMEM_W-1)/32; // top present word for this variant
-    logic [2:0] ipMem_update;
-    logic [31:0] ipMem_rword [0:2];
+    logic [3:0] ipMem_update;
+    logic [31:0] ipMem_rword [0:3];
     ipMemAddrSt ipMem_addr;
     logic nxt_ipMem_rd_enable, ipMem_rd_enable, ipMem_rd_capture;
     logic ipMem_wr_enable;
-    `DFF_DOM(clk, rst_n, ipMem_addr, ipMemAddrSt'(apb_addr[31:4]))
+    `DFF_DOM(clk, rst_n, ipMem_addr, ipMemAddrSt'((apb_addr - REG_IP_IPMEM) >> 4))
     `DFF_DOM(clk, rst_n, ipMem_wr_enable, ipMem_update[IPMEM_TOP])
     `DFF_DOM(clk, rst_n, ipMem_rd_enable, nxt_ipMem_rd_enable)
     `DFF_DOM(clk, rst_n, ipMem_rd_capture, ipMem_rd_enable)
     generate
-        for (gi = 0; gi < 3; gi++) begin : g_ipMem
+        for (gi = 0; gi < 4; gi++) begin : g_ipMem
             if (IPMEM_W > 32*gi) begin : present
                 if (IPMEM_W >= 32*(gi+1)) begin : full
                     `DFFEN_DOM(clk, rst_n, ipMem_reg[32*gi +: 32], regs.pwdata[31:0], ipMem_update[gi])
@@ -152,7 +152,7 @@ module ipRegs
     logic nxt_ipFixedMem_rd_enable, ipFixedMem_rd_enable, ipFixedMem_rd_capture;
     logic ipFixedMem_wr_enable;
 
-    `DFF_DOM(clk, rst_n, ipFixedMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, ipFixedMem_addr, ipFixedAddrSt'((apb_addr - REG_IP_IPFIXEDMEM) >> 2))
     `DFF_DOM(clk, rst_n, ipFixedMem_wr_enable, ipFixedMem_update_0)
     `DFF_DOM(clk, rst_n, ipFixedMem_rd_enable, nxt_ipFixedMem_rd_enable)
     `DFF_DOM(clk, rst_n, ipFixedMem_rd_capture, ipFixedMem_rd_enable)
@@ -172,7 +172,7 @@ module ipRegs
     logic nxt_ipNonConstMem_rd_enable, ipNonConstMem_rd_enable, ipNonConstMem_rd_capture;
     logic ipNonConstMem_wr_enable;
 
-    `DFF_DOM(clk, rst_n, ipNonConstMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, ipNonConstMem_addr, ipFixedAddrSt'((apb_addr - REG_IP_IPNONCONSTMEM) >> 2))
     `DFF_DOM(clk, rst_n, ipNonConstMem_wr_enable, ipNonConstMem_update_0)
     `DFF_DOM(clk, rst_n, ipNonConstMem_rd_enable, nxt_ipNonConstMem_rd_enable)
     `DFF_DOM(clk, rst_n, ipNonConstMem_rd_capture, ipNonConstMem_rd_enable)
@@ -209,16 +209,23 @@ module ipRegs
                 REG_IP_IPCFG + 32'd8 : begin
                     ipCfg_update[2] = 1'b1;
                 end
+                REG_IP_IPCFG + 32'd12 : begin
+                    ipCfg_update[3] = 1'b1;
+                end
+                REG_IP_IPCFG + 32'd16 : begin
+                    ipCfg_update[4] = 1'b1;
+                end
                 [REG_IP_IPMEM:REG_IP_IPMEM + REG_IP_IPMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[3:0])
+                    case (4'(apb_addr - REG_IP_IPMEM))
                         4'h0: ipMem_update[0] = 1'b1;
                         4'h4: ipMem_update[1] = 1'b1;
                         4'h8: ipMem_update[2] = 1'b1;
+                        4'hc: ipMem_update[3] = 1'b1;
                         default: ;
                     endcase
                 end
                 [REG_IP_IPFIXEDMEM:REG_IP_IPFIXEDMEM + REG_IP_IPFIXEDMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_IP_IPFIXEDMEM))
                         2'h0: begin
                             ipFixedMem_update_0 = 1'b1;
                             nxt_ipFixedMem_data[7:0] = regs.pwdata[7:0];
@@ -227,7 +234,7 @@ module ipRegs
                     endcase
                 end
                 [REG_IP_IPNONCONSTMEM:REG_IP_IPNONCONSTMEM + REG_IP_IPNONCONSTMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_IP_IPNONCONSTMEM))
                         2'h0: begin
                             ipNonConstMem_update_0 = 1'b1;
                             nxt_ipNonConstMem_data[7:0] = regs.pwdata[7:0];
@@ -263,6 +270,14 @@ module ipRegs
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = ipRegDataSt'(ipCfg_rword[2]);
                 end
+                REG_IP_IPCFG + 32'd12 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = ipRegDataSt'(ipCfg_rword[3]);
+                end
+                REG_IP_IPCFG + 32'd16 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = ipRegDataSt'(ipCfg_rword[4]);
+                end
                 REG_IP_IPLASTDATA : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = ipRegDataSt'(ipLastData_rword[0]);
@@ -275,8 +290,16 @@ module ipRegs
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = ipRegDataSt'(ipLastData_rword[2]);
                 end
+                REG_IP_IPLASTDATA + 32'd12 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = ipRegDataSt'(ipLastData_rword[3]);
+                end
+                REG_IP_IPLASTDATA + 32'd16 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = ipRegDataSt'(ipLastData_rword[4]);
+                end
                 [REG_IP_IPMEM:REG_IP_IPMEM + REG_IP_IPMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[3:0])
+                    case (4'(apb_addr - REG_IP_IPMEM))
                         4'h0: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -295,15 +318,21 @@ module ipRegs
                                 nxt_rd_data = ipRegDataSt'(ipMem_rword[2]);
                             end
                         end
+                        4'hc: begin
+                            if (ipMem_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = ipRegDataSt'(ipMem_rword[3]);
+                            end
+                        end
                         default: begin
                             nxt_rd_ready = 1'b1;
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_ipMem_rd_enable = (apb_addr[3:0] inside {4'h0, 4'h4, 4'h8}) & ~ipMem_rd_capture;
+                    nxt_ipMem_rd_enable = (4'(apb_addr - REG_IP_IPMEM) inside {4'h0, 4'h4, 4'h8, 4'hc}) & ~ipMem_rd_capture;
                 end
                 [REG_IP_IPFIXEDMEM:REG_IP_IPFIXEDMEM + REG_IP_IPFIXEDMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_IP_IPFIXEDMEM))
                         2'h0: begin
                             if (ipFixedMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -315,10 +344,10 @@ module ipRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_ipFixedMem_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~ipFixedMem_rd_capture;
+                    nxt_ipFixedMem_rd_enable = (2'(apb_addr - REG_IP_IPFIXEDMEM) inside {2'h0}) & ~ipFixedMem_rd_capture;
                 end
                 [REG_IP_IPNONCONSTMEM:REG_IP_IPNONCONSTMEM + REG_IP_IPNONCONSTMEM_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_IP_IPNONCONSTMEM))
                         2'h0: begin
                             if (ipNonConstMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -330,18 +359,19 @@ module ipRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_ipNonConstMem_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~ipNonConstMem_rd_capture;
+                    nxt_ipNonConstMem_rd_enable = (2'(apb_addr - REG_IP_IPNONCONSTMEM) inside {2'h0}) & ~ipNonConstMem_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = ipRegDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

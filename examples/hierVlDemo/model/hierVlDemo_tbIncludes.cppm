@@ -82,7 +82,7 @@ struct data_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 256);
     }
     inline void unpack(const _packedSt &_src)
@@ -150,7 +150,7 @@ struct tid_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tid_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -205,7 +205,7 @@ struct tdest_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tdest_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -260,7 +260,7 @@ struct tuser_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tuser_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = parity;
     }
     inline void unpack(const _packedSt &_src)
@@ -315,7 +315,7 @@ struct data_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -370,7 +370,7 @@ struct tid_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tid_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -425,7 +425,7 @@ struct tdest_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tdest_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -480,7 +480,7 @@ struct tuser_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tuser_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = parity;
     }
     inline void unpack(const _packedSt &_src)

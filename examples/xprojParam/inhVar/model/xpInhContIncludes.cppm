@@ -84,7 +84,7 @@ struct inhSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, inhSt_v<INH_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -98,13 +98,13 @@ struct inhSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (inhMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (inhMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (inhPixelT_v<INH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (INH_WIDTH)) - 1));
+        data = (inhPixelT_v<INH_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (INH_WIDTH))));
         _pos += INH_WIDTH;
-        algo = (inhAlgoT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        algo = (inhAlgoT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (inhTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (inhTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<inhSt_v<INH_WIDTH>::_bitWidth> sc_pack(void) const
     {

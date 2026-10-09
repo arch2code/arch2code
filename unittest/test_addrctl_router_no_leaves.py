@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
 """Router declared but no leaves under it.
 
-A router with `addressBlock:` declared but no routed leaves (and no
-register-bearing leaves) builds: the pass synthesises no handler
-blocks or instances and emits no router-to-leaf binds.
-
-Its own view is still rejected: the router is in this build's design tree,
-so a decoder with no channels to dispatch is an error there. Only a router
-outside the tree (a referenced child's standalone harness) renders with no
-channels.
+A router with `addressBlock:` declared and no instance carrying its
+addressGroup: has no channel to dispatch to. make db rejects it.
 """
 
-import contextlib
-import io
 import sys
 
 from _addrctl_helpers import (
     APB_PREAMBLE,
-    assert_no_global_register_binds,
     build_database,
     cleanup,
-    find_block,
-    find_connections,
-    projectOpen,
     render_plain_block,
     render_router,
 )
@@ -49,49 +37,30 @@ instances:
 
 def _run():
     print("router with no leaves to dispatch to")
-    db_path, project_path, arch_paths = build_database(ARCH_YAML)
-    paths = [project_path, db_path] + arch_paths
     try:
-        prj = projectOpen(db_path)
-
-        # No router-to-leaf binds were emitted.
-        outbound = find_connections(prj, src='uAPBDecode')
-        assert outbound == [], \
-            f"expected no router-to-leaf binds, got {outbound}"
-
-        # No handler block / instance was synthesised. Iterate every
-        # block looking for the _regs suffix the helper would emit.
-        offenders = [
-            row.get('block') for row in prj.data['blocks'].values()
-            if isinstance(row, dict) and row.get('block', '').endswith('_regs')
-        ]
-        assert offenders == [], \
-            f"router with no leaves must not produce _regs handler blocks; got {offenders}"
-
-        # INSTANCES_WITH_REGAPB exists but is empty.
-        instances_with_regapb = prj.config.getConfig('INSTANCES_WITH_REGAPB', failOk=True)
-        assert instances_with_regapb == [], \
-            f"INSTANCES_WITH_REGAPB expected empty list, got {instances_with_regapb}"
-
-        assert_no_global_register_binds(prj)
-
-        router_key, _ = find_block(prj, 'apbDecode')
-        captured = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(captured):
-                prj.getBlockData(router_key)
-        except SystemExit:
-            pass
-        else:
-            raise AssertionError(
-                "the reachable router's view rendered with no channels to "
-                "dispatch; it must be rejected")
-        assert "no channels to dispatch" in captured.getvalue(), \
-            f"the router's view exited for another reason:\n{captured.getvalue()}"
+        db_path, project_path, arch_paths, completed = build_database(
+            ARCH_YAML, expect_success=False)
+    except RuntimeError as exc:
+        print(f"FAIL: {exc}")
+        return False
+    try:
+        combined = completed.stdout + completed.stderr
+        needle = (
+            "Router 'uAPBDecode' (block 'apbDecode') serves addressGroup "
+            "'top', but no instance in this build's design tree carries "
+            "addressGroup: top, so the router has nothing to dispatch to. "
+            "Set addressGroup: top on an instance in container 'top' that "
+            "has registers, a regAccess memory or a registerPorts: entry, or "
+            "remove the addressBlock: from block 'apbDecode'."
+        )
+        if needle not in combined:
+            print(f"FAIL: diagnostic missing substring '{needle}'.\n"
+                  f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}")
+            return False
         print("PASS")
         return True
     finally:
-        cleanup(paths)
+        cleanup([project_path, db_path] + arch_paths)
 
 
 def run_all_tests():

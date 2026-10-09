@@ -5,98 +5,83 @@ description: Checklist-driven review of SystemVerilog RTL for arch2code conventi
 # Skill: Review RTL
 
 ## Purpose
-Perform a structured code review of a SystemVerilog RTL module within the arch2code framework. The review covers framework conventions, industry best practices, functional safety (FUSA), and lightweight model-RTL conformity checks.
-
-**Tandem mode context:** In this framework, RTL is verified against a SystemC golden model via tandem mode (see `run-tandem.md`). Tandem mode proves functional equivalence at interface boundaries by running both implementations in lockstep and comparing every transaction. This fundamentally affects the code review approach -- many checks that would traditionally require RTL-side assertions or formal properties are instead caught by tandem mode. The reviewer must understand this tradeoff and not flag the *absence* of certain assertions as a defect when tandem mode covers them.
+Review a hand-written SystemVerilog module for arch2code conventions, industry practice, functional safety (FUSA) and conformity with its SystemC model.
 
 ## References
-*   **RTL Conventions:** `rtl-core.md` (Module structure, FSMs, DFF macros, naming)
-*   **RTL Patterns:** `rtl-patterns.md` (Pipelines, saturation, resource sharing)
-*   **RTL Interfaces:** `rtl-interfaces.md` (Port protocols)
-*   **RTL Registers:** `rtl-registers.md` (Decoder, external regs)
-*   **Tandem:** `run-tandem.md` (Build/run tandem verification)
-*   **Co-Simulation:** `verify-cosimulation.md` (Verilator wrapper setup)
-*   **SC->RTL Conversion:** `systemc-to-rtl.md` (Conversion patterns)
+*   `rtl-core.md` owns the rules this review checks: flop macros and clock domains, FSMs, naming, package imports and idioms. Judge against it, not against memory.
+*   `rtl-interfaces.md`, `rtl-registers.md`, `rtl-patterns.md` and `systemc-to-rtl.md` cover interfaces, register ports, patterns and conversion.
+*   `run-tandem.md` (A2C Pro) and `verify-cosimulation.md` cover tandem and co-simulation.
 
-## Understanding Tandem Mode's Impact on Review
+## How tandem changes the review
+Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same stimulus and compares what each sends out. A mismatch on any interface except `status` fails the run. A `status` mismatch only warns unless the run sets `--tandemStatusFatal`. Tandem shows that model and RTL agree on that stimulus. It does not show either is correct, because a bug both share passes. Review with that in mind:
 
-Before reviewing, understand how tandem mode affects what to look for:
-
-1.  **Assertions are often intentionally sparse in RTL.** Tandem mode catches functional mismatches (wrong output values, wrong transaction ordering, missing transactions) by comparing RTL outputs against the model. Adding redundant `qAssertError` or `qAssertWarning` checks for conditions that tandem already covers adds simulation overhead without additional safety. Only flag missing assertions when they guard structural invariants that tandem cannot observe (e.g., internal FSM illegal states, FIFO pointer corruption).
-
-2.  **Algorithmic correctness should be reviewed.** The reviewer should check that the RTL algorithm (math, rounding, saturation, interpolation, etc.) is logically correct and matches the design intent. Tandem mode proves that model and RTL *agree*, but if both implementations share the same algorithmic mistake, tandem will not catch it. The reviewer adds value by independently reasoning about the algorithm.
-
-3.  **Interface-level behavior is the contract.** Tandem mode compares at interface boundaries (`rdy_vld_if`, `memory_if`, `status_if`). Internal pipeline structure, number of stages, and intermediate signal values are implementation details -- they only matter if they affect the interface contract.
-
-4.  **Where assertions ARE still needed:**
-    *   FSM `default:` clauses with `qAssertFatal` -- these catch illegal states that could cause the RTL to lock up silently (tandem would hang rather than report the root cause).
-    *   Structural invariants: FIFO pointer wrap-around, counter overflow where the counter controls interface behavior, arbiter grant conflicts.
-    *   Conditions that would cause simulation divergence rather than a clean mismatch (e.g., X-propagation in Verilator).
+*   Review the algorithm independently: math, rounding, saturation, interpolation.
+*   Treat the interface behaviour as the contract. Pipeline depth and internal signals matter only when they change it.
+*   Do not ask for assertions on things tandem compares, such as "output value in range". Ask for them only on internal invariants tandem cannot see: illegal FSM states, FIFO pointer corruption, arbiter grant conflicts, and counters that control flow, such as credits.
 
 ## Instructions
 
-### 1. Arch2code Convention Checks
+### 1. Arch2code conventions
 
-*   **Generated Code Zones:** Verify no manual edits exist between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
-*   **DFF Macros:** All sequential logic uses `DFF_INST`, `DFFR_INST`, `DFFNR_INST`, `DFFEN_INST`, or the raw variants (`DFF`, `DFFR`, `DFFNR`, `DFFEN`, `DFFREN`, `SCFF`), or the `_CLK` form of any of these (`DFF_CLK`, `DFF_INST_CLK`, ...) taking the clock as its first argument. No raw `always_ff` blocks. The `_CLK` form is correct, not a violation: it is required in a module whose clock port is not named `clk`. The generated `<block>_regs` and `apbDecode` modules emit the `_DOM` form (`DFF_DOM`, `DFFR_DOM`, ...), which takes the clock and reset as its first two arguments. For either form, check that the clock argument names a clock port the module actually declares.
-*   **FSM Macros:** All state machines use `fsmDefs.svh` macros (`fsmCase`, `fsmState`, `nxtState`, `fsmEndCase`). The enum type is named `statesT`. Multiple FSMs use `if (1) begin: <label>` scoping.
-*   **Naming Conventions:** Verify against `rtl-core.md` table:
-    *   Modules: `snake_case`. Instances: `u_<name>`.
-    *   Constants: `UPPER_SNAKE_CASE`. Types: `snake_case_t`.
-    *   Next-state (`_INST` macros): `n_<name>`. Next-state (raw macros): `nxt_<name>`.
-    *   Pipeline stages: `stgN_` or `sN_` prefix. Generate blocks: `gen_<desc>` label.
-*   **Type Usage:** All signals declared with `logic`. No `reg` or `wire`.
-*   **Arch2code Types:** Signals should use typedefs from the block package (`<block>_package`) or shared packages rather than raw `logic [N:0]` declarations. Flag any locally defined types (e.g., `logic [15:0] my_data;` or local `typedef logic [N:0] my_type;`) when an equivalent arch2code-generated type already exists in the package. Local typedefs are acceptable only for module-internal intermediates that have no package counterpart (e.g., accumulator widths derived from `localparam` arithmetic).
-*   **Module End Label:** Module ends with `endmodule: <module_name>`.
-*   **Package Imports:** Block package imported via `import <block>_package::*;`.
+*   **Generated regions.** Nothing between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` is hand-edited.
+*   **Flops.** Every flop uses a macro from the `rtl-core.md` table, in its bare, `_CLK` or `_DOM` form. `always_ff` is allowed only on a reset supplier's assertion path.
+*   **Flop clock and reset.** Check each flop's domain:
+    *   A bare macro is correct for the default clock, whatever its port is called. The generated region aliases `clk` and `rst_n` onto it. Do not flag a bare macro because the clock port is not named `clk`.
+    *   A flop on any other clock uses `_DOM` with that clock and its own reset. PASS.
+    *   `_CLK` resets on `rst_n`. It is correct only on a clock that shares `rst_n`, where that reset is safe to use. FAIL `_CLK` on a clock that has its own reset.
+    *   A library instance on a non-default clock binds `.clk` and `.rst_n` explicitly. FAIL one that relies on `.*` there.
+    *   Check the cases in `rtl-core.md` where the aliases are missing or point elsewhere.
+*   **FSMs.** The state is a flop macro. Either the plain `case` form or the A2C Pro `fsmDefs.svh` macros with the enum named `statesT` passes. Several FSMs in one module are each scoped with `if (1) begin: gen_<fsm> ... end: gen_<fsm>`.
+*   **Naming.** Do not flag names generated from YAML: modules, ports, instances, YAML types and constants. Hand-written names follow `rtl-core.md` and stay consistent within the module. Report naming as WARN.
+*   **Types.** Declare with `logic`, never `reg`. Prefer the generated package types to raw `logic [N:0]`. A local typedef is fine for an internal value with no package counterpart, such as an accumulator width derived from a `localparam`.
+*   **Parameterized types.** The generated region declares a parameterized block's parameterizable types inside the module, not in the package. Do not flag them as missing from the package or as local typedefs.
+*   **Package imports.** FAIL any hand-written package import in a module. A package the generated region does not import comes through `--importPackages` on the `GENERATED_CODE_PARAM` line (`rtl-core.md`). Packages are per context, not per block, so `<block>_package` does not exist.
+*   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
+*   **Module end.** The module ends with `endmodule: <module_name>`.
 
-### 2. Industry Best Practice Checks
+### 2. Industry practice
 
-*   **No Inferred Latches:** Every `always_comb` block assigns default values at the top for all driven signals.
-*   **Combinational Only:** All procedural logic uses `always_comb`. No `always @*` or `always @(posedge ...)` outside of macros.
-*   **Width Matching:** Expressions have matching bit-widths, or intentional mismatches are guarded by Verilator lint pragmas (`WIDTHTRUNC`, `WIDTHEXPAND`).
-*   **No X/Z Propagation Risks:** Reset values are explicit. Uninitialized signals do not propagate to outputs.
-*   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, bit-slicing bounds, and shift amounts. Every such value should be a `localparam`, a package constant, or derived from one. Acceptable exceptions: `'0`, `'1`, `1'b0`, `1'b1`, single-bit literals in increment/decrement (`+ 1'b1`), and `32'hBADD_C0DE` (the standard invalid-address read-data sentinel).
-*   **No Combinational Loops:** No signal driven by an `always_comb` block that also reads itself without a flop in the path.
-*   **Functions:** Use `automatic` keyword. No side effects.
-*   **Generate Blocks:** All generate blocks have `gen_<desc>` labels. Use `genvar` for generate loops, `int` for procedural loops.
+*   **No latches.** Every `always_comb` gives each driven signal a default at the top.
+*   **Combinational logic.** Procedural logic is `always_comb`. No `always @*`.
+*   **Widths.** Expressions match in width, or a Verilator `WIDTHTRUNC`/`WIDTHEXPAND` waiver covers an intended mismatch.
+*   **X propagation.** Flops that reach an output or control state have a reset value. Uninitialized signals do not reach outputs.
+*   **Magic numbers.** Flag numeric literals in logic, comparisons, slice bounds and shift amounts. Each should be a `localparam` or package constant. `'0`, `'1`, `1'b0`, `1'b1`, `+ 1'b1` and `32'hBADD_C0DE` are fine.
+*   **Combinational loops.** No `always_comb` reads a signal it drives without a flop in between.
+*   **Order inside `always_comb`.** No block reads a signal before the statement in the same block that assigns it. Verilator reports this as `ALWCOMBORDER`.
+*   **Functions.** Functions are `automatic` and have no side effects.
+*   **Generate blocks.** Each has a `gen_<desc>` label. Generate loops use `genvar`, procedural loops `int`.
 
-### 3. Functional Safety (FUSA) Checks
+### 3. Functional safety
 
-*   **Reset Coverage:** Every flop has a defined reset value via `DFF_INST` (resets to `'0`), `DFFR_INST` (explicit value), or `DFFEN_INST`, or the `_CLK` form of one of those. Use of `DFFNR_INST` / `DFFNR_INST_CLK` (no reset) must be justified (e.g., datapath-only, non-safety-critical).
-*   **FSM Default Clauses:** Every FSM has a `default:` case with `` `qAssertFatal(0, "...") ``. This is required even though tandem mode catches functional mismatches -- a silent illegal state causes hangs that are hard to diagnose.
-*   **No Unreachable States:** FSM state encoding has no unused states, or unused states transition to a known-good state.
-*   **Structural Assertions Only:** Assertions (for example, `` `qAssertFatal` ``, `` `qAssertError` ``, or `` `qAssertWarning` ``) should guard structural invariants that tandem mode cannot directly observe:
-    *   FIFO pointer corruption or overflow.
-    *   Arbiter grant conflicts (multiple simultaneous grants).
-    *   Counter overflow where the counter controls flow (e.g., credit counters).
-    *   Do **not** flag the absence of assertions for algorithmic checks (e.g., "output value in range") -- tandem mode covers these.
-*   **Error Propagation:** Error signals from sub-blocks propagate to the module's outputs or are handled (not silently dropped).
-*   **Deterministic Behavior:** No reliance on undefined evaluation order. No race conditions between combinational assignments.
+*   **Reset coverage.** Every flop resets, except where a no-reset macro (`DFFNR`, `DFFNR_INST` and their variants) is justified, such as datapath storage that a valid bit qualifies.
+*   **FSM default.** Every FSM `case` has a `default:` branch with `` `qAssertFatal(0, "...") ``. An illegal state otherwise hangs tandem without naming the cause.
+*   **Unreachable states.** Unused state encodings either do not exist or go to a known state.
+*   **Assertions.** Use `qAssertFatal`, `qAssertError` or `qAssertWarning` for the internal invariants listed under "How tandem changes the review". Do not flag a missing assertion that tandem covers.
+*   **Error propagation.** Error signals from sub-blocks reach an output or are handled.
+*   **Determinism.** Nothing depends on evaluation order between combinational blocks.
 
-### 4. Model-RTL Conformity Checks
+### 4. Model-RTL conformity
 
-*   **Read the Model:** Open the corresponding `model/<block>.cpp` alongside the RTL.
-*   **Naming Consistency:** RTL signal names should be recognizable counterparts of model variable names (e.g., model `pos_x` maps to RTL `pos_x`, model `gain_factor` maps to RTL `gain_factor`).
-*   **Type/Width Alignment:** RTL types should use arch2code package typedefs that correspond to the model's C++ types. Flag raw `logic [N:0]` declarations where a package typedef exists. Check for silent truncation or sign mismatch between the RTL types and the model's C++ types.
-*   **Scope:** Tandem mode proves that model and RTL *agree* on outputs. It does not prove the algorithm itself is correct -- if both share the same bug, tandem will not catch it. The reviewer should verify algorithmic correctness independently and flag model-RTL conformity issues that could indicate divergence.
+*   Read `model/<block>.cppm` next to the RTL.
+*   RTL signal names are recognisable counterparts of the model's variables.
+*   RTL types correspond to the model's C++ types. Flag silent truncation and sign mismatches.
+*   Check the algorithm on its own merits, as described under "How tandem changes the review".
 
-### 5. Review Output Format
+### 5. Output format
 
-Present findings as a checklist. For each category, report:
+Report a checklist per category:
 
 ```
-## <Category Name>
-- [PASS] <item description>
-- [FAIL] <item description> -- <explanation and suggested fix>
-- [WARN] <item description> -- <note or recommendation>
-- [N/A]  <item description> -- <reason not applicable>
+## <Category>
+- [PASS] <item>
+- [FAIL] <item>: <why, and the fix>
+- [WARN] <item>: <note>
+- [N/A]  <item>: <why it does not apply>
 ```
 
-Summarize with a count: `X PASS, Y FAIL, Z WARN, W N/A`.
+End with the counts: `X PASS, Y FAIL, Z WARN, W N/A`.
 
 ## Constraints
-*   This review is for **RTL code only** (`rtl/**/*.sv`). For model code, use the **review-model** skill.
-*   Do not modify generated code zones.
-*   Do not flag missing assertions for conditions that tandem mode directly observes (e.g., "output value in range"). Tandem proves model-RTL agreement, not algorithmic correctness.
-*   Flag items as `[WARN]` rather than `[FAIL]` when the issue is stylistic rather than functional.
+*   This review covers RTL only (`rtl/**/*.sv`). Use `review-model` for model code.
+*   Do not modify generated regions.
+*   Use WARN, not FAIL, for style issues that do not change behaviour.

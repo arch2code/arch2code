@@ -15,9 +15,11 @@ Two pieces of groundwork make this affordable; before them it would have meant
 auditing 84 independently formatted messages.
 
 1. **One location constructor.** `projectCreate.diagnosticLocation(yamlFile, lc)`
-   is the sole producer of location text for YAML diagnostics; 84 call sites route
-   through it and none formats its own `path:line`. A source-excerpt renderer is a
-   sibling of that function, not a sweep of the call sites.
+   is the main producer of location text for YAML diagnostics; 109 call sites in
+   `processYaml.py`, `valueResolver.py` and `clockTree.py` route through it. Two
+   sites still format their own `path:line`: `processYaml.py:1285` (constants
+   type check) and `schema.py:973-976` (schema field line). A source-excerpt
+   renderer is a sibling of that function, not a sweep of the call sites.
 2. **Diagnostics name the section key's own line.** `_sectionKeyLc` recovers a
    section key's position from the parent mapping, because a section's own `lc` is
    the `lc` of its *body*, which sits a line lower in block style. Covered by
@@ -56,8 +58,9 @@ token is available without new plumbing.
   adoption is per-site, and should be selective rather than universal.
 - **Do not extend the YAML byte cache to serve diagnostics.**
   `yamlReadCache` holds every parsed file's raw bytes, but is deliberately
-  cleared at `processYaml.py:4426` so the whole closure does not stay resident;
-  the `_post_*` validators run after that point. Re-read the single file on the
+  cleared at `processYaml.py:5997` (after the closure is parsed; a first clear
+  runs at the start of `projectCreate`, `:4295`) so the whole closure does not
+  stay resident; the `_post_*` validators run after that point. Re-read the single file on the
   error path instead. One read in a process that is about to exit is the same
   trade already made for location strings: the work happens only once something
   has gone wrong.
@@ -65,8 +68,10 @@ token is available without new plumbing.
 ## 4. The hazard to settle first
 
 **Some rows carry a borrowed `lc`.** `_encoders` and `postParseRegisterPorts`
-synthesise rows and copy a `LineCol` from a different parsed row. Today that
-yields a quietly wrong line number. An excerpt would print source text that is
+synthesise rows and copy a `LineCol` from a different parsed row
+(`_encoders`: `processYaml.py:9474`, `:9514`, `:9534`). `clockTree.py:175` and
+`:286` do the same: the default `clk` and `rst_n` rows copy the block row's
+`lc`. Today that yields a quietly wrong line number. An excerpt would print source text that is
 not the fault, with a caret under an unrelated token — confidently wrong instead
 of quietly wrong.
 

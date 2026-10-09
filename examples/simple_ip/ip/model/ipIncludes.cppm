@@ -144,7 +144,7 @@ struct ipDataSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipDataSt_v<IP_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&data, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
@@ -245,7 +245,7 @@ struct ipCfgSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipCfgSt_v<IP_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&threshold, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
@@ -260,7 +260,7 @@ struct ipCfgSt_v {
         memset((uint64_t *)&threshold, 0, sizeof(threshold));
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
-        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (2)) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (2))));
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -348,7 +348,7 @@ struct ipMemSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipMemSt_v<IP_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&data, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
@@ -428,14 +428,14 @@ struct ipMemAddrSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipMemAddrSt_v<IP_MEM_DEPTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, address, clog2(IP_MEM_DEPTH));
         _pos += clog2(IP_MEM_DEPTH);
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(IP_MEM_DEPTH))) - 1));
+        address = (ipMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(IP_MEM_DEPTH)))));
     }
     inline sc_bv<ipMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
@@ -497,7 +497,7 @@ struct ipBurstSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipBurstSt_v<IP_DATA_WIDTH, IP_MEM_DEPTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
             pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&samples[i], IP_DATA_WIDTH);
@@ -589,14 +589,14 @@ struct ipDerivedMemAddrSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, address, clog2(((IP_MEM_DEPTH * 2) * 2)));
         _pos += clog2(((IP_MEM_DEPTH * 2) * 2));
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & ((1ULL << (clog2(((IP_MEM_DEPTH * 2) * 2)))) - 1));
+        address = (ipDerivedMemAddrT_v<IP_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(((IP_MEM_DEPTH * 2) * 2))))));
     }
     inline sc_bv<ipDerivedMemAddrSt_v<IP_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
@@ -651,7 +651,7 @@ struct ipFixedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = b;
     }
     inline void unpack(const _packedSt &_src)
@@ -706,7 +706,7 @@ struct ipFixedAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -769,7 +769,7 @@ struct ipFixedHeaderSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedHeaderSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tag;
         _ret |= (uint16_t)status << (4 & 15);
         _ret |= (uint16_t)opcode << (7 & 15);
@@ -851,7 +851,7 @@ struct ipFixedSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedSignedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = lane;
         _ret |= (uint32_t)magnitude << (9 & 31);
         _ret |= ((uint32_t)(offset & ((1ULL << (4)) - 1))) << (14 & 31);
@@ -957,7 +957,7 @@ struct ipFixedArraySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedArraySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
             pack_bits((uint64_t *)&_ret, _pos, words[i], 16);
@@ -1061,7 +1061,7 @@ struct ipFixedLog2St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedLog2St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = index;
         _ret |= (uint8_t)count << (4 & 7);
     }
@@ -1145,7 +1145,7 @@ struct ipFixedNestedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipFixedNestedSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret[ 0 ] = wideValue;
         {
             ipFixedLog2St::_packedSt _tmp{0};
@@ -1281,7 +1281,7 @@ struct ipParamNestedSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipParamNestedSt_v<IP_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
             typename ipDataSt_v<IP_DATA_WIDTH>::_packedSt _tmp{0};
@@ -1380,7 +1380,7 @@ struct ipRegAddrSt {
     inline ipRegAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipRegAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -1437,7 +1437,7 @@ struct ipRegDataSt {
     inline void _setData(ipRegDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipRegDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

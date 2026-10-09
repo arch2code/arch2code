@@ -79,7 +79,7 @@ struct cshSt_v {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cshSt_v<CSH_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
@@ -91,11 +91,11 @@ struct cshSt_v {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (cshMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (cshMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (cshPixelT_v<CSH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CSH_WIDTH)) - 1));
+        data = (cshPixelT_v<CSH_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (CSH_WIDTH))));
         _pos += CSH_WIDTH;
-        tag = (cshTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (cshTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
     inline sc_bv<cshSt_v<CSH_WIDTH>::_bitWidth> sc_pack(void) const
     {

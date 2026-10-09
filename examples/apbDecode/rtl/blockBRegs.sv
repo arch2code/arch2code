@@ -20,7 +20,7 @@ module blockBRegs
     // Register/memory address offsets for decode documentation
     localparam int unsigned REG_BLOCKB_BLOCKBTABLE = 32'h00000000; // Table to test memory access from cpu
     localparam int unsigned REG_BLOCKB_BLOCKBTABLE_SIZE = 32'h00000150; // Decode range size
-    localparam int unsigned REG_BLOCKB_RWUN0B = 32'h00000200; // A unaligned four bytes Read Write register
+    localparam int unsigned REG_BLOCKB_RWUN0B = 32'h00000200; // A unaligned three bytes Read Write register
     localparam int unsigned REG_BLOCKB_ROB = 32'h00000208; // A Read Only register
 
     un0BRegSt rwUn0B_reg;
@@ -41,7 +41,7 @@ module blockBRegs
     logic nxt_blockBTable_rd_enable, blockBTable_rd_enable, blockBTable_rd_capture;
     logic blockBTable_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockBTable_addr, bMemAddrSt'(apb_addr[31:4]))
+    `DFF_DOM(clk, rst_n, blockBTable_addr, bMemAddrSt'((apb_addr - REG_BLOCKB_BLOCKBTABLE) >> 4))
     `DFF_DOM(clk, rst_n, blockBTable_wr_enable, blockBTable_update_2)
     `DFF_DOM(clk, rst_n, blockBTable_rd_enable, nxt_blockBTable_rd_enable)
     `DFF_DOM(clk, rst_n, blockBTable_rd_capture, blockBTable_rd_enable)
@@ -74,7 +74,7 @@ module blockBRegs
                     rwUn0B_reg_update_0 = 1'b1;
                 end
                 [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
-                    case (apb_addr[3:0])
+                    case (4'(apb_addr - REG_BLOCKB_BLOCKBTABLE))
                         4'h0: begin
                             blockBTable_update_0 = 1'b1;
                             nxt_blockBTable_data[31:0] = apbReg.pwdata[31:0];
@@ -113,7 +113,7 @@ module blockBRegs
                     nxt_rd_data = apbDataSt'(roB_reg[28:0]);
                 end
                 [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
-                    case (apb_addr[3:0])
+                    case (4'(apb_addr - REG_BLOCKB_BLOCKBTABLE))
                         4'h0: begin
                             if (blockBTable_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -137,18 +137,19 @@ module blockBRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockBTable_rd_enable = (apb_addr[3:0] inside {4'h0, 4'h4, 4'h8}) & ~blockBTable_rd_capture;
+                    nxt_blockBTable_rd_enable = (4'(apb_addr - REG_BLOCKB_BLOCKBTABLE) inside {4'h0, 4'h4, 4'h8}) & ~blockBTable_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

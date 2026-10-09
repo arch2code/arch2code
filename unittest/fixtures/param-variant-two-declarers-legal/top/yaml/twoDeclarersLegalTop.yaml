@@ -27,8 +27,8 @@ instances:
     uIpW:  { container: top, instanceType: ipWrap,  variant: v0 }
 
 connections:
-    - { interface: wrapIf, src: uDrvW, srcport: out, dst: uWrap, dstport: in }
-    - { interface: ipwIf,  src: uDrvI, srcport: out, dst: uIpW,  dstport: in }
+    - { interface: wrapIf, src: uDrvW, srcport: out, dst: uWrap, dstport: in, interfaceName: outW }
+    - { interface: ipwIf,  src: uDrvI, srcport: out, dst: uIpW,  dstport: in, interfaceName: outI }
 
 parameters:
     drvW:

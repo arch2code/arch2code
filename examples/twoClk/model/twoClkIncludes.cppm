@@ -95,7 +95,7 @@ struct twoClkRegAddrSt {
     inline twoClkRegAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkRegAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -152,7 +152,7 @@ struct twoClkRegDataSt {
     inline void _setData(twoClkRegDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkRegDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -208,7 +208,7 @@ struct twoClkTblAddrSt {
     inline twoClkTblAddrBitsT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkTblAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -267,7 +267,7 @@ struct twoClkTblSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkTblSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = lo;
         _ret |= (uint64_t)hi << (32 & 63);
     }
@@ -331,7 +331,7 @@ struct twoClkLutAddrSt {
     inline twoClkLutAddrBitsT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkLutAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -386,7 +386,7 @@ struct twoClkLutSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkLutSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = val;
     }
     inline void unpack(const _packedSt &_src)
@@ -441,7 +441,7 @@ struct twoClkStatsSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, twoClkStatsSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = val;
     }
     inline void unpack(const _packedSt &_src)
