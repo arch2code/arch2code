@@ -67,8 +67,8 @@ CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wsh
 # with identical output, needing only -ldl (already in LD_FLAGS below); Boost
 # program_options is therefore the only Boost library actually linked.
 # BOOST_LIBS names that link input; the container default below links the
-# static site Boost in LD_BOOST, and a farm/pro layer can set BOOST_LIBS to
-# link a shared Boost instead (see the LD_BOOST check above).
+# static site Boost in LD_BOOST, and a builder layer such as pro can set
+# BOOST_LIBS to link a shared Boost instead (see the LD_BOOST check above).
 BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)
 LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 # The native C++ link recipe passes LD_FLAGS, never CXX_FLAGS, so -pthread is
@@ -235,7 +235,7 @@ BIN = run_$(DUT_TOPOLOGY)
 DUT_TESTBENCH ?= $(HDL_TOP_MODULE)
 DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $(VL_TYPE)) $(if $(filter 1,$(VL_TANDEM)),--vlTandem)
 # Regression snapshots, one entry per block: <inst>:<type>[:tandem][,<type>[:tandem]]...
-# e.g. debayer:verif,verif:tandem,model:tandem. Regression files pass one
+# e.g. top:verif,verif:tandem,model:tandem. Regression files pass one
 # DUT_TOPOLOGIES+=<entry> per block on the build command line. Every test that
 # instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
 DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
