@@ -1,11 +1,21 @@
 # Plan: file-granular C++ compile set and instantiated-variant Verilator tops
 
-Status: proposal, 2026-09-18. Supersedes the `A2C_CPP_EXCLUDE_FILES` interim
-(base, uncommitted, fix 3 of the root VL_DUT unblock; hardened the same day to
-exclude foreign-owned `blockVlRegistrar` TUs whose owner build has pair-specific
-registrations for the child, `ownerPairSpecific`; base's `ip_test` example
-shows a root may swap a reused project's literal-label internal instance). Keeps fix 1 (the
-`calcRegistrarPairs` ownership guard: pair-specific registrations are skipped
+## Status
+
+- Stage 0 interim is in the tree.
+- Stages 1-3 are not started.
+- The section 3.3 policy ruling, (a) or (b), is still needed.
+
+Proposal, 2026-09-18. Supersedes the `A2C_CPP_EXCLUDE_FILES` interim (fix 3
+of the root VL_DUT unblock), which is in the tree:
+`config/createBuildManifest.py` collects `cppExcludeFiles` and emits
+`A2C_CPP_EXCLUDE_FILES`; `include/make/a2c-systemc.mk` filters it out of
+`CPP_SRC`; `calcRegistrarPairs` in `pysrc/processYaml.py` sets
+`ownerPairSpecific` so foreign-owned `blockVlRegistrar` TUs are excluded when
+the owner build has pair-specific registrations for the child; and
+`unittest/test_filemap_name_overrides.py` reads the variable. Base's `ip_test`
+example shows a root may swap a reused project's literal-label internal
+instance. Keeps fix 1 (the `calcRegistrarPairs` ownership guard: pair-specific registrations are skipped
 when the pair owner is not the owner of the build's top block) and fix 2
 (`__ALL.a` archive merge in a2c-vl-wrap.mk), which are independent of this plan.
 
