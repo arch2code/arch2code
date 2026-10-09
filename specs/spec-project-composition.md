@@ -67,6 +67,8 @@ directory prefixes, so a symlinked copy of a project is a second, distinct path.
   name stop `make db`. Neither dominates, so no master can be chosen.
 - **Target validation.** The target must exist, be a project file, and declare the requested
   `projectName`. It need not be reachable by any `projectFiles:` edge; the scan reads it anyway.
+  The override applies only when the build provides that name; an override for a name no file
+  provides is ignored.
 - **Member-level aliasing.** Every file reached through a non-selected copy is aliased onto the
   same relative file in the selected master copy, and only master files are parsed.
 - **Divergence.** When non-master copies of one file differ from each other, `make db` warns.
@@ -80,6 +82,8 @@ names onto the real-tree paths, so its `projectFiles:` path through the symlink 
 `include:` path through the real tree resolve to one provider. Composed, the root's overrides
 win.
 
+The scan reads files with PyYAML's `CSafeLoader`, so libyaml is required.
+
 Implementation: `pysrc/projectScan.py::ProjectScanner._foldEffective` and `_selectMasters`;
 `pysrc/processYaml.py::projectCreate._mergeOverrides`, `_selectProvider` and `readRaw`.
 
@@ -89,11 +93,13 @@ Implementation: `pysrc/projectScan.py::ProjectScanner._foldEffective` and `_sele
 `projectFiles:` and `include:` closure, including every copy's own closure. It assigns each file
 one owner. `projectCreate._deriveOwnershipFromScan` copies the result into
 `contextOwningProject`. A parsed design context missing from the scan result stops `make db`;
-nothing defaults to the root.
+nothing defaults to the root. Contexts listed under `systemFiles:` lie outside the scan and
+are owned by the root project.
 
 Ownership rules, applied in order:
 
-1. The root project owns its own closure. A reference to a child project file is a boundary;
+1. The root project owns each file in its closure that it lists directly in `projectFiles:` or
+   that no child provider's closure reaches. A reference to a child project file is a boundary;
    the walk records it and does not cross it.
 2. A file listed directly in a project's `projectFiles:` belongs to that project. Two projects
    listing the same file directly is an error.
@@ -126,7 +132,9 @@ whether the child is built standalone or composed.
 `resolveFileOwner` reads the `GENERATED_CODE_PARAM` line. `--project=<name>` names the owner
 directly and is checked first, because a child's standalone stamp spells its `--context` relative
 to the child's root, which a parent cannot resolve. Per-project artefacts such as `rtl.f` and
-migrated context files carry `--project`.
+migrated context files carry `--project`. A stamp carrying only `--context` resolves only when
+its spelling equals this build's exact context key, so files stamped before `--project` need
+`make migrate`.
 
 ## 5. Identity across projects
 
@@ -138,8 +146,12 @@ migrated context files carry `--project`.
 | SV package and module | The owning project's file stem: `svFilePrefix` plus the local name | `deriveModuleIdentities`, `artifactPaths.fileStem` |
 | Address group | Tuple `(owner, group)`, shown as `owner::group` | `calcAddresses`, `generateAddressEnums` |
 
-- `qualifyModuleIdentity` leaves a name unchanged when it already equals the project name or
-  starts with `<project>_`. `sanitizeIdentifierToken` maps `-` and `.` to `_`.
+- `includeName` defaults to the file stem (`readRaw`).
+- `qualifyModuleIdentity` leaves a name unchanged apart from `sanitizeIdentifierToken` when it
+  already equals the project name or starts with `<project>_`. `sanitizeIdentifierToken` maps
+  `-` and `.` to `_`. The same rule applies to a Config: a block that leads with the declaring
+  project drops the project prefix from the struct stem and the module, which is
+  `<block>.config` (`calcConfigModules`).
 - The owner is the intrinsic owning project, so a child spells every identity the same way
   standalone and composed.
 - SV names are not project-qualified. Verilator keeps modules and packages in one namespace, so
@@ -153,10 +165,12 @@ migrated context files carry `--project`.
   owner that declares variants of it gets its own module and its own foreign Verilated tops
   (`calcForeignConfigHeaders`).
 - The instance factory key is `Key{blockType, variant, projectName}`
-  (`common/systemc/instanceFactory.h`). For a child that declares its own `params:`, the
-  assembler's trampoline registers it under a pair domain
-  `<owner>.<parentModule>.<childModule>`; any other child self-registers under its owner.
-  Two assemblers instancing one variant therefore never share a key.
+  (`common/systemc/instanceFactory.h`). Its third field is the factory domain. For a child that
+  declares its own `params:`, the assembler's trampoline registers it under a pair domain,
+  `<owner>.<parentModule>.<childModule>`; any other child self-registers under its child-owner
+  domain, the bare owning project name. Pair domains are never shared between assemblers. The
+  trampoline also registers each model under the child-owner domain, and that registration can
+  collide across assembling projects: the first static initializer wins and nothing checks it.
 - Routers join an instance to a group only when the instance's own `(owner, group)` matches the
   router's, so two projects may each name a group `top`.
 
@@ -240,7 +254,8 @@ A definitions-only project has no `TOPCONTEXT` and emits no `rtl.f`.
 - The `cpu` block in `examples/ip_test/common/cpu/yaml/cpu.yaml` is a generic APB master owned by
   `common`. It runs firmware through the BSP `regRead32`/`regWrite32` seam.
 - The BSP in `common/fw/bsp` is not in the default source set. A project opts in with
-  `EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp`, as every `ip_test` and `simple_ip` rundir does.
+  `EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp`, as the `ip_test`, `ip_test/common`,
+  `ip_test/bridge`, `simple_ip` and `simple_ip/common` rundirs do.
 
 ## 10. Build and migration order
 

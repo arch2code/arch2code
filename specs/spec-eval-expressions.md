@@ -29,8 +29,9 @@ is used and the expression is ignored. An entry with neither is an error.
 
 In-tree examples: `examples/ip_test/ip/yaml/ip.yaml` (parameterizable chain
 `IP_DATA_WIDTH_X2`, `IP_DATA_WIDTH_X4`, and the fixed `IP_FIXED_WORD_COUNT`),
-`examples/mixed/arch/yaml/mixed.yaml` (an eval referencing an enum value, and an enum entry
-computed by eval), `examples/nested/yaml/nested.yaml` (`$clog2` over a sum).
+`examples/mixed/arch/yaml/mixed.yaml` (an eval referencing an enum value, an enum entry
+computed by eval, and `$clog2` over a sum, `$clog2($DWORD + 1)`), `examples/nested/yaml/nested.yaml`
+(`$clog2` over a constant, `$clog2($NUM_TAGS)`).
 
 ## 2. Grammar
 
@@ -43,10 +44,12 @@ computed by eval), `examples/nested/yaml/nested.yaml` (`$clog2` over a sum).
 
 **Symbols.**
 
-- `$NAME` names a constant or an enum value visible from the row's own file through its
-  `include:` chain. An unresolved name is an error.
+- `$NAME` names a constant or an enum value in the row's include scope (its own file, its
+  includes and their includes). The first match in include order wins, so a name in the row's
+  own file shadows an included one. An unresolved name is an error.
 - `${name/context}` is the qualified form. It is what the database stores (section 5); authors
-  write `$NAME`.
+  write `$NAME`. An authored qualified form is accepted as written and is not checked against the
+  include scope, so it can reach a constant in a file the row does not include.
 
 **Function.** `$clog2(expr)` is the only function.
 
@@ -70,10 +73,12 @@ The binary levels are `pysrc/evalExpr.py::PRECEDENCE`; the conditional is parsed
 as tree shape and the emitters restore parentheses from precedence
 (`pysrc/evalExpr.py::needsParens`).
 
-**Excluded:** `**`, `~^` and `^~`, `<<<` and `>>>`, `&&`, `||` and `!`, `$bits` and every other
-system function, and a lone `=` (diagnosed as a probable `==`). Every retained operator has the
-same spelling and precedence in SystemVerilog, C++ and C, so all emitters pass operators through
-unchanged.
+**Excluded:** `**`, `~^`, `<<<` and `>>>`, `&&`, `||` and `!`, `$bits` and every other system
+function, and a lone `=` (diagnosed as a probable `==`). `^~` is not rejected: it parses as `^`
+followed by unary `~`, which has the same value as SV XNOR. Every retained operator has the same
+spelling and precedence in SystemVerilog, C++ and C, so the emitters copy each operator's
+spelling and restore only parentheses. Two adjacent unary operators are the exception
+(section 9).
 
 ## 3. Semantics
 
@@ -94,8 +99,8 @@ unchanged.
   `$clog2` of a value of 0 or less.
 
 A constant's declared `valueType` (default `uint`) is checked against the result: a negative
-`uint` result is an error. `valueType: real` cannot use `eval:`; a real constant takes a literal
-`value:`.
+`uint` result is an error, and `valueType: int` allows negative results. `valueType: real` cannot
+use `eval:`; a real constant takes a literal `value:`.
 
 ## 4. Values
 
@@ -104,8 +109,11 @@ A constant's declared `valueType` (default `uint`) is checked against the result
 | Field | Meaning |
 | :--- | :--- |
 | `value` | The active value: the expression evaluated with each referent's `value`. For a derived parameterizable constant this is its value at the root parameters' declared defaults. |
-| `isParameterizable` | True when the expression names any parameterizable constant (a derived constant), or for a literal constant declared under `ipParameters:` or given `maxValue` or `isParameterizable: true` (a direct one). |
+| `isParameterizable` | True when the expression names any parameterizable constant (a derived constant), or for a constant without a parameterizable referent that is declared under `ipParameters:` or given `maxValue` or `isParameterizable: true` (a direct one; `maxValue` is then required). |
 | `maxValue` | Derived constant: the same tree evaluated with each parameterizable referent at its `maxValue` and every other referent at its `value`. Direct: the author's `maxValue`. Otherwise 0. |
+
+A direct parameterizable constant must declare a `maxValue` greater than 0 with `value` not
+above it; `maxValue` also accepts a quoted integer string such as `"0x10"`.
 
 Rules for a derived constant:
 
@@ -167,6 +175,10 @@ constant is written. That choice is the whole difference between the sites below
 | C++ `<block>Base` class | not declared | `static constexpr auto NAME = <expr>;` |
 | C++ derived block class | not declared | `using <block>Base<Config>::NAME;` |
 | Firmware header | `inline constexpr uint32_t NAME = <value>;` | `inline constexpr uint32_t NAME = <expr>;` |
+
+A fixed constant's emitted type follows its `valueType` and magnitude: SV `int unsigned` or
+`longint unsigned` for `uint` and `int` or `longint` for `int`; C++ and firmware `uint32_t` or
+`uint64_t`, and `int32_t` or `int64_t`.
 
 **SystemVerilog.** A package cannot be parameterized, so the package skips every
 parameterizable declaration (`templates/systemVerilog/package.py::render`). Each parameterizable
@@ -282,6 +294,10 @@ equivalence between each Python input and its converted form.
   parentheses in `unparse` and in `emitExpr`, which wrap a unary operand only when it is a binary
   expression. The value `make db` computes is correct, but the stored canonical and the emitted
   text read as `(-A) ? 1 : 2`. Write the operator inside each branch instead.
+- Two adjacent unary operators are emitted without a separator. `- -$A` (or `-(-$A)`) is stored
+  as `--${A/<context>}` and emitted as `--Config::A` or `--A`, and `+ +$A` as `++...`. The
+  canonical re-parses to the same tree, but C++ reads the emitted text as a decrement or
+  increment and fails to compile. Avoid stacking unary operators.
 - `$clog2` is computed through floating-point `math.log2`, so for arguments above 2^49 the
   create-time value can be one less than the true ceiling. The emitted C++ `clog2` is exact.
 - The SystemC structure emitter declares `_bitWidth` as `uint16_t`

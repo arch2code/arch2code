@@ -18,8 +18,8 @@ Unlike readRaw() this scanner:
     projectName stays a provider so its members can be enumerated with
     copy-local paths and reattributed to the copy's declaring projectName.
 
-It is NOT wired into projectCreate/readRaw and does not mutate the database; it
-returns a ScanResult. Path identity is the whole root-relative context key (no
+projectCreate runs it before readRaw, which parses only the master copies it
+selects. It does not mutate the database; it returns a ScanResult. Path identity is the whole root-relative context key (no
 basename, no dir-nesting, no realpath): distinct physical copies keep distinct
 physical keys while sharing one logical key.
 """

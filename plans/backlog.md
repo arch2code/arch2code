@@ -838,6 +838,49 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - `createBuildManifest` fills `dutTops` from `mode: block` rows only (`config/createBuildManifest.py:343-344`). A direct child of the top that runs at a foreign label or a container-sourced variant has its top on a registrar-mode row, so it gets no `A2C_VL_TOP_<block>` entry and `make lint` cannot resolve it through `HDL_TOP_MODULE`.
 - Source: found while writing `specs/spec-verilated-wrappers.md`. Grade: confirmed by reading; no fixture exercises it.
 
+### K134. Two adjacent unary operators emit an increment or decrement
+
+- `evalExpr.unparse` and `emissionUtils._emitNode` wrap a unary operand only when it is a `Bin` (`pysrc/evalExpr.py:461-465`, `pysrc/emissionUtils.py:52-56`). `- -$A` and `-(-$A)` store as `--${A/ctx}` and emit as `--Config::A`; `+ +$A` emits as `++Config::A`. The canonical re-parses to the same tree, but C++ reads the emitted text as a decrement or increment and fails to compile.
+- Reproduced: `unparse(parse('- -$A', qualify=...))` returns `'--${A/ctx}'` and `emitExpr` with `lang=C` returns `'--Config::A'`.
+- Fix: separate or parenthesize a unary operand that is itself a `Unary`.
+- Source: found while reviewing `specs/spec-eval-expressions.md`. Grade: confirmed (reproduced).
+
+### K135. An authored `${name/context}` bypasses include scope
+
+- `_Parser._atom` accepts a `SYM_Q` token as written and never calls `qualify` (`pysrc/evalExpr.py:366-367`), and `ValueResolver` takes any key containing `/` as already qualified (`pysrc/valueResolver.py:134-136`). An author who writes the qualified form can reach a constant in a file the row does not include.
+- Fix: reject the authored qualified form in user input, or check it against the row's include scope.
+- Source: found while reviewing `specs/spec-eval-expressions.md`. Grade: plausible; no fixture writes the qualified form.
+
+### K136. An `eval:` under `ipParameters:` over fixed constants becomes direct-parameterizable
+
+- `_constants` sets `directParam` from `ipActive` whenever no referent is parameterizable, with no check that the row has no `eval` (`pysrc/processYaml.py:9108-9111`). The comment there says the direct path applies to a "literal value (no eval)". An `eval:` under `ipParameters:` whose referents are all fixed is therefore treated as a direct parameter and requires an authored `maxValue`.
+- Fix: decide whether such a row is fixed or direct, and make the code and comment agree.
+- Source: found while reviewing `specs/spec-eval-expressions.md`. Grade: plausible; the branch is confirmed by reading, no fixture exercises it.
+
+### K137. A misspelled `projectOverrides:` key is silently ignored
+
+- `_selectMasters` looks up overrides only for names some provider declares (`pysrc/projectScan.py:532-570`), and the master-discovery pass scans any existing target regardless of the key (`:189-196`). An override keyed by a name no file provides, such as a typo, selects nothing and draws no diagnostic.
+- Fix: reject an override whose key names no provided `projectName`.
+- Source: found while reviewing `specs/spec-project-composition.md`. Grade: plausible.
+
+### K138. `blockRegistrarInitLines` has an unreachable `variants` branch
+
+- The `if data['variants']` branch in `templates/systemc/constructor.py:441` runs only for a block without its own `params:`, and `make db` rejects a variant on such a block (`pysrc/processYaml.py:10508-10514`). The branch never runs.
+- Fix: delete it and keep the single empty-variant registration.
+- Source: found while reviewing `specs/spec-project-composition.md`. Grade: confirmed by reading.
+
+### K139. Multi-word `regAccess` memory writes differ between RTL and model
+
+- The RTL handler stages the lower words of a memory row and writes the whole row when firmware writes the row's highest word (`rules/skills/rtl-registers.md:87`; the write enable follows the top word's update, `templates/systemVerilog/moduleRegs.py:339`).
+- The SystemC `hwMemoryPort::cpu_write` does a read-modify-write of the whole row on every 32-bit word (`common/systemc/hwMemory.h:258-275`), and `hwMemory::cpu_write` updates the row in place per word (`:81-92`). A tandem comparison or a model-side observer can therefore see a partly written row between the word writes.
+- Source: found while updating `rules/skills/design-register-decode.md` during the plans cleanup. Grade: confirmed by reading.
+
+### K139. Multi-word memory row writes differ between RTL and model
+
+- The RTL handler stages the lower words of a `regAccess` memory row and writes the whole row when firmware writes the highest word (`rules/skills/rtl-registers.md` section 7). The SystemC `hwMemoryPort::cpu_write` in `common/systemc/hwMemory.h` does a read-modify-write of each 32-bit word as it arrives.
+- A tandem comparison or a model-side observer can see a partly written row between the word writes; the RTL never exposes one.
+- Source: found while updating `rules/skills/design-register-decode.md` during the plans cleanup. Grade: confirmed by reading.
+
 ## Feature requests
 
 These stay off branch 155 (decision D12).
