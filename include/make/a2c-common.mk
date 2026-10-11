@@ -162,6 +162,10 @@ A2C_HDL_ARGS = $(addprefix -F ,$(A2C_LAYER_HDL_F_FILES)) $(EXTRA_HDL_FILES) $(ad
 	$(addprefix +incdir+,$(EXTRA_HDL_INCDIRS)) $(addprefix +define+,$(EXTRA_HDL_DEFINES))
 A2C_HDL_DEPS = $(A2C_LAYER_HDL_F_FILES) $(EXTRA_HDL_FILES) $(EXTRA_HDL_F_FILES)
 
+# VL_TIMING=1 verilates and lints with --timing, so RTL delays and event
+# controls run.
+VL_TIMING_OPT = $(if $(filter 1,$(VL_TIMING)),--timing,--no-timing)
+
 # Per-top HDL boundary files (VCS port map, Xcelium shell) under .gen/vl, derived
 # from the database for every top the manifest lists.
 VL_BOUNDARY_STAMP = $(GEN_BUILD_DIR)/vl/.boundary

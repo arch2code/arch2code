@@ -297,7 +297,7 @@ initial begin
     // Port A must be returning the real contents, not a stuck value - proves
     // the read path in the PORTA_READ_ONLY=1 branch actually works.
     begin
-        int unsigned bad = 0;
+        automatic int unsigned bad = 0;
         for (int unsigned i = 0; i < 64; i++) begin
             @(negedge clk);
             rw_A.enable = 1'b1; rw_A.wr_en = 1'b0; rw_A.addr = addr_t'(i);
@@ -443,7 +443,7 @@ initial begin
         localparam data_t NEW_VAL = data_t'(18'h2DDDD);
         data_t old_rw, old_ro, old_bw, old_wo, got_rw, got_ro, got_bw, got_wo;
         data_t old_b, got_b;
-        int unsigned bad = 0;
+        automatic int unsigned bad = 0;
 
         @(negedge clk);
         rw_A.enable = 1'b1; rw_A.wr_en = 1'b0; rw_A.addr = addr_t'(PX);
@@ -501,7 +501,7 @@ initial begin
     s_checking = 1'b1;
 
     begin
-        int unsigned bad = 0;
+        automatic int unsigned bad = 0;
         data_t rw, ro, bw, wo;
         for (int unsigned i = 0; i < 64; i++) begin
             s_read_a(i, rw, ro, bw, wo);
@@ -637,7 +637,7 @@ initial begin
         localparam data_t NEW_VAL = data_t'(18'h2DDDD);
         data_t old_rw, old_ro, old_bw, old_wo, got_rw, got_ro, got_bw, got_wo;
         data_t old_b, got_b;
-        int unsigned bad = 0;
+        automatic int unsigned bad = 0;
 
         s_read_a(PX, old_rw, old_ro, old_bw, old_wo);
         @(negedge clk);

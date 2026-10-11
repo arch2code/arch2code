@@ -1729,13 +1729,17 @@ def _normalize(body):
     return ' '.join(body.replace('\\', ' ').split())
 
 
+# A clocked flop body in any reset style's spelling.
+_FLOP_BODY = re.compile(r'always(?:_ff)? @\(posedge')
+
+
 def check_flops_bare_macro_is_an_alias():
     """Each `_CLK` macro is a one-line alias onto its `_DOM` form passing
     `rst_n`, and each bare macro a one-line alias onto its `_CLK` form passing
     `clk`.
 
     This is what keeps one body per family per reset style. A `_CLK` or bare
-    macro carrying its own always_ff is a second definition of what a flop is,
+    macro carrying its own always body is a second definition of what a flop is,
     and the two can then silently diverge; the argument-for-argument
     comparison also kills an alias that reorders or drops one. The `_INST`
     and `KEEP_INST` wrappers are not walked here; the expansion identity
@@ -1781,26 +1785,34 @@ def check_flops_bare_macro_is_an_alias():
                 f"`{bare}` expands to {body!r}, expected exactly {expected!r}; "
                 f"a bare macro that is not a pure alias onto _CLK is a second "
                 f"flop body")
-    # One body per family per reset style: counted, so a duplicated body fails
-    # even if it is spelled somewhere this case does not read.
+    # One body per family per reset style, in that style's spelling: counted,
+    # so a duplicated body fails even if it is spelled somewhere this case does
+    # not read. NONE's body is a plain always, so its initial may also write it.
+    for style, spelling in (('SYNC', r'\balways_ff @\(posedge'),
+                            ('ASYNC', r'\balways_ff @\(posedge'),
+                            ('NONE', r'\balways @\(posedge')):
+        branch = '\n'.join(sections[style])
+        bodies = len(re.findall(spelling, branch))
+        expected = len(_flops_defines(sections[style]))
+        if bodies != expected:
+            raise AssertionError(
+                f"the A2C_RESET_{style} branch of flops.sv holds {bodies} "
+                f"{spelling!r} bodies for {expected} clock-parameterized macros; "
+                f"each family has exactly one body per reset-style branch")
+    if re.search(r'\balways_ff\b', '\n'.join(sections['NONE'])):
+        raise AssertionError(
+            "the A2C_RESET_NONE branch of flops.sv holds an always_ff; its "
+            "initial statement writes the flop too, so the body is a plain always")
     with open(FLOPS_SV) as f:
         text = f.read()
-    bodies = text.count('always_ff @(posedge')
-    expected = sum(len(_flops_defines(sections[style]))
-                   for style in ('SYNC', 'ASYNC', 'NONE'))
-    if bodies != expected:
-        raise AssertionError(
-            f"flops.sv holds {bodies} always_ff bodies for {expected} "
-            f"clock-parameterized macros; each family has exactly one body per "
-            f"reset-style branch")
     # No flop body may leak outside all three branches: only the alias layers
     # and the _INST/_KEEP wrappers are allowed there.
     strayBodies = sorted(name for name, (_, body) in outer.items()
-                          if 'always_ff' in body)
+                          if _FLOP_BODY.search(body))
     if strayBodies:
         raise AssertionError(
             f"{strayBodies} are defined outside every reset-style branch but "
-            f"hold an always_ff body; only a branch may define a flop body")
+            f"hold a flop body; only a branch may define a flop body")
     for needle in ('`RST', 'rstN'):
         if needle in text:
             raise AssertionError(
@@ -1884,7 +1896,9 @@ def _verilator_preprocess(flops_dir, module_text, defines, where):
 def check_flops_none_matches_pre_change_fpga_default():
     """A2C_RESET_NONE on the new file expands identically to no-define on the
     pre-selector file, kept as a fixture: the compatibility proof for existing
-    FPGA flows, which relied on that being the unconditional default.
+    FPGA flows, which relied on that being the unconditional default. The one
+    difference is the clocked process: A2C_RESET_NONE spells it as a plain
+    always, since the initial is a second writer an always_ff may not have.
 
     DFF_KEEP_INST is left out of this module: the pre-selector file predates it,
     so it would pass through unexpanded rather than diverge, and the mismatch
@@ -1894,6 +1908,7 @@ def check_flops_none_matches_pre_change_fpga_default():
         module_text = _identity_module(with_keep_inst=False)
         pre_change = _verilator_preprocess(tmp, module_text, ['A2C_RESET_NONE'],
                                            'the pre-selector file')
+    pre_change = pre_change.replace('always_ff @(posedge', 'always @(posedge')
     new = _verilator_preprocess(os.path.dirname(FLOPS_SV), module_text,
                                 ['A2C_RESET_NONE'], 'the new file')
     if pre_change != new:

@@ -249,6 +249,40 @@ file name with `$(notdir)` or a pattern.
   an output directory. The archive `lib<project>vl_s_wrap.a` takes the members
   of each `obj_dir/<top>/V<top>__ALL.a` plus the runtime objects. All of it
   sits under `A2C_VL_BUILD_DIR` (`$(BIN_DIR)/vl`).
+- The runtime objects come from verilating `common/verilator/vl_dummy.sv` into
+  `obj_dir/vl_dummy`. `VL_TIMING=1` swaps `--no-timing` for `--timing` on that
+  verilate, on every top and on `make lint`. Under `--timing`, `vl_dummy.sv`
+  has a delay (guarded by Verilator's `VERILATOR_TIMING` define), so the same
+  verilate also builds `verilated_timing.o`, and the archive adds it. Every
+  timing top links against that one copy.
+- `VL_RUNTIME_OPTS_STAMP` records the bare verilate command and
+  `VL_OPTS_STAMP` the per-top one. Both carry the timing option, so changing
+  `VL_TIMING` re-verilates the runtime and every top, and the archive follows.
+- The SystemC compile needs no flag for timing. Verilator's `verilated.mk`
+  adds its configured coroutine flag (`CFG_CXXFLAGS_COROUTINES`) to its own
+  compiles, after the `-CFLAGS -std=c++23`. Under `--timing` the Verilator
+  objects (runtime and model) therefore compile at that flag's standard,
+  `-std=gnu++20` on a Clang-configured Verilator, while project translation
+  units stay at `-std=c++23`. The two sets share no module or pcm, and both
+  define `SC_CPLUSPLUS=201703L`. C++23 turns on coroutines in Clang and in GCC
+  11 or later, so project code that includes a timing model's headers compiles
+  as it is.
+- `VL_TIMING=1` is supported only on Verilator 5.053 or later. Until 5.053 is
+  released, that is master at or after commit `ea536a5`. In older versions an
+  `--sc` model with a delay pending wakes on that delay's timer
+  (`next_trigger(dt)` overrides its static sensitivity), so it misses input
+  clock edges and can lose output updates until the delay ends
+  (verilator/verilator#8394, fixed by #8534). The library build warns when
+  `verilator --version` is below 5.053 and does not fail. A `5.053 devel`
+  build from before `ea536a5` passes that check.
+- Every generated SV wrapper port assign carries `#0`
+  (`pysrc/intf_gen_utils.py`). Under `--no-timing` Verilator drops it. Under
+  `--timing` each port update goes through the delay scheduler, which exposes
+  the bug above even when the RTL's own delays end before the first clock
+  edge. On Verilator 5.052, `unittest/fixtures/vl-timing` with a combinational
+  `assign out.data = stamp` delivered 0 to the checker through the generated
+  wrapper and 2000 with the `#0` removed. The fixture registers `out.data`, so
+  it passes on 5.052.
 - `include/make/a2c-systemc.mk` adds `-I$(A2C_VL_BUILD_DIR)/obj_dir/<top>` for
   each top under `VL_DUT`, so the registrar finds `V<top>.h`.
 - `include/make/a2c-vcs.mk` runs `vlogan -sc_model <top> -sc_portmap $(A2C_VL_PORTMAP_<top>)`
@@ -276,6 +310,10 @@ command line recorded in `VL_OPTS_STAMP` (`include/make/a2c-vl-wrap.mk`).
   that instance, the factory looks up `<block>_verif` under the container's
   factory key and builds the registered wrapper. The instance and its subtree
   run as RTL. A path that matches no instance fails with `Unknown instance`.
+- `sc_main` hands its whole command line to `Verilated::commandArgs`, so
+  `$test$plusargs` and `$value$plusargs` in Verilated RTL read plusargs such as
+  `+trace` or `+seed=5` given after the testbench name. The `sc_main` option
+  parser ignores them.
 - `make run VL_DUT=1` passes `--vlInst $(HDL_TOP_MODULE)`; the rule comes from
   the create-once rundir `Makefile` (`templates/fileGen/scaffold.py`). Projects add
   targets for other instances, such as `run-vl-ip1` and `run-vl-uBridgeIp1` in
@@ -293,6 +331,7 @@ command line recorded in `VL_OPTS_STAMP` (`include/make/a2c-vl-wrap.mk`).
 
 | Fixture | Shows |
 | :--- | :--- |
+| `unittest/fixtures/vl-timing` | A Verilated leaf whose RTL delay ends before the first clock edge, built with `VL_TIMING=1` (`test_vl_timing.py`) |
 | `examples/ip_test` | Body and bare tops (`ip`, `src`, `ipLeaf`), the foreign top `ipBridge_ip_variant1_hdl_sv_wrapper`, per-assembler registrars in `top/`, `bridge/` and `ip/`, hierarchical layout |
 | `examples/simple_ip` | A composing parent's registrar copy for a reused child's bare top |
 | `examples/hierVlDemo` | Hierarchical layout with a single non-parameterized top |

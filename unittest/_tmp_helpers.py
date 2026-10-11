@@ -11,10 +11,14 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 
 
-def remove_tree(path):
-    # An open database file on NFS leaves a .nfs placeholder that keeps its
-    # directory from being removed, so the last projectOpen connection is closed first.
+def close_db():
+    # A deleted database file still open on NFS lingers as a .nfs placeholder
+    # that keeps its directory from being removed until the connection closes.
     if g.db is not None:
         g.db.close()
         g.db = None
+
+
+def remove_tree(path):
+    close_db()
     shutil.rmtree(path)

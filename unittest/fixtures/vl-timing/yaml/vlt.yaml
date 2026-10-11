@@ -1,0 +1,54 @@
+# A source whose RTL stamps the simulation time an initial-block delay ends at,
+# and a checker that reads the stamp back.
+
+constants:
+    VLT_START_DELAY_PS: { value: 2000, desc: "Source start-up delay in picoseconds, ending before the first clock edge" }
+
+types:
+    vltStampT: { width: 32, desc: "Simulation time in picoseconds" }
+
+structures:
+    vltSt:
+        stamp: { varType: vltStampT, desc: "Time the source's start-up delay ended" }
+
+interfaces:
+    vltIf:
+        desc: "Single-sample push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: vltSt, structureType: data_t }
+
+blocks:
+    vltTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    vltTop_tb:
+        desc: "Testbench container for vltTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    vltSrc:
+        desc: "Sends one sample stamped with the time its start-up delay ended"
+        hasMdl: true
+        hasTb: false
+        hasVl: true
+        hasRtl: true
+    vltChk:
+        desc: "Checks the stamp against the delay"
+        hasMdl: true
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    vltTop_tb: { container: vltTop_tb, instanceType: vltTop_tb, instGroup: top }
+    u_vltTop:  { container: vltTop_tb, instanceType: vltTop,    instGroup: top }
+    uSrc:      { container: vltTop,    instanceType: vltSrc,    instGroup: top }
+    uChk:      { container: vltTop,    instanceType: vltChk,    instGroup: top }
+
+connections:
+    - { interface: vltIf, src: uSrc, srcport: out, dst: uChk, dstport: in, name: stampLink }

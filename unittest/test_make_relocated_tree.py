@@ -28,6 +28,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir
+from _make_helpers import shell_make_env
 
 
 FIXTURE = os.path.join(base_dir, 'examples', 'helloWorld')
@@ -41,7 +42,7 @@ def make(project, *args, builder=base_dir):
     result = subprocess.run(['make', '-C', project, '--no-print-directory',
                              f'REPO_ROOT={project}', f'A2C_ROOT={builder}', *args],
                             capture_output=True, text=True, timeout=600,
-                            env=dict(os.environ, NO_COLOR='1'))
+                            env=shell_make_env())
     return result, result.stdout + result.stderr
 
 
@@ -185,7 +186,7 @@ def main():
             result = subprocess.run(
                 ['make', '-C', project, '--no-print-directory', f'REPO_ROOT={elsewhere}',
                  f'A2C_ROOT={builderB}', f'A2C_PRJ_YAML={project}/arch/yaml/project.yaml', 'db'],
-                capture_output=True, text=True, timeout=600, env=dict(os.environ, NO_COLOR='1'))
+                capture_output=True, text=True, timeout=600, env=shell_make_env())
             output = result.stdout + result.stderr
             check('stale' in output and 'warning' in output.lower(),
                   f"make {attempt} with a root that is not REPO_ROOT warns that the manifest "

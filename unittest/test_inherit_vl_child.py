@@ -10,6 +10,9 @@ resolves when the factory is asked. Exactly one instance is verilated per run
 (`--vlInst`), so the two container variants are two runs, in the manner of
 ip_test's `run-vl-ip0` / `run-vl-ip1`.
 
+A run with plusargs on its command line checks that the verilated leaf's
+`$test$plusargs` and `$value$plusargs` read them.
+
 Having verilated once, it also gates the verilate step's dependencies: an edit to
 design RTL must reach the Verilated object and the run, and a rebuild after no
 edit must verilate nothing.
@@ -417,6 +420,25 @@ def check_rtl_edit_reverilates(project, rundir, env):
     return ok
 
 
+def check_plusargs(rundir, env):
+    """The verilated leaf reads the plusargs given on the run's command line."""
+    ran = subprocess.run(
+        ['./run', 'vliTop', '--vlInst', SWAPPED_LEAF['def'], '+vliGreet', '+vliBias=37'],
+        capture_output=True, text=True, timeout=600, env=env,
+        cwd=os.path.join(rundir, 'build'))
+    ok = ran.returncode == 0
+    for expected in ('vliLeaf plusarg vliGreet set', 'vliLeaf plusarg vliBias=37'):
+        ok = ok and expected in ran.stdout
+    if ok:
+        print("  PASS: the verilated leaf read +vliGreet and +vliBias=37")
+    else:
+        print(f"  FAIL: the run with plusargs (rc={ran.returncode}) did not echo "
+              f"+vliGreet and +vliBias=37 from the verilated leaf. A "
+              f"'Verilated::commandArgs' error means sc_main did not hand its "
+              f"arguments to Verilator:\n{ran.stdout}\n{ran.stderr}")
+    return ok
+
+
 def check_run(which, output):
     """The inherited and ordinary sites each constructed at their own Config."""
     ok = True
@@ -439,6 +461,10 @@ def check_run(which, output):
         else:
             print(f"  FAIL ({which}): run did not report '{expected}' ({what})")
             ok = False
+    if 'vliLeaf plusarg' in output:
+        print(f"  FAIL ({which}): the verilated leaf echoed a plusarg the run "
+              f"did not pass")
+        ok = False
     if f"{SWAPPED_LEAF[which]} forwarding" in output:
         print(f"  FAIL ({which}): {SWAPPED_LEAF[which]} still logged as a model; "
               f"the verilated wrapper was not swapped in")
@@ -461,6 +487,7 @@ def run_all_tests():
         ok = check_mixed_instance_orders(env)
         rundir = generate_and_build(project, env)
         ok = check_emitted(project) and ok
+        ok = check_plusargs(rundir, env) and ok
         for which in ('def', 'alt'):
             ran = make(f'run-vl-{which}', project, env, directory=rundir,
                        extra=('VL_DUT=1',))

@@ -42,8 +42,10 @@ build/run <testbench> --vlInst <instance path>
 ```
 
 *   `make VL_DUT=1` verilates every `hasVl` block and links the result into `build/run`. See `manage-build`.
+*   RTL with delays (`#`) or other timing constructs needs `make VL_DUT=1 VL_TIMING=1`. Without it Verilator ignores the delays. `VL_TIMING=1` is supported only on Verilator 5.053 or later (master at or after commit `ea536a5` until 5.053 is released). On older versions a timing top can lose output updates and miss input clock edges. `manage-build` has the details.
 *   `--vlInst` names the instance to replace. The path is dot-separated and starts at the DUT, which the testbench names after the DUT block, so `--vlInst clkGen.uDivider` in `examples/clkGen` replaces child `uDivider` of DUT `clkGen`. A leading `tb.` is optional. A path that matches no instance fails the run with `Unknown instance <path>`.
 *   `make run VL_DUT=1` runs with `--vlInst $(HDL_TOP_MODULE)`, which replaces the DUT top. Projects that verify every RTL instance add their own targets, such as `run-vl` in `examples/clkGen/rundir/Makefile`.
+*   Plusargs go on the same command line, for example `build/run <testbench> --vlInst <instance path> +myflag +depth=4`. The RTL reads them with `$test$plusargs` and `$value$plusargs`, and the testbench's own option parser ignores them.
 *   The named instance and everything below it run as RTL. The rest stays as models, so to check each block against model neighbours, run once per instance.
 
 ## Clocks and resets

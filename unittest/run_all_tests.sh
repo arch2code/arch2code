@@ -1077,6 +1077,12 @@ python3 test_vl_boundary_widths_build.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
+echo "------------------------------------------------------------------------"
+python3 test_vl_timing.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

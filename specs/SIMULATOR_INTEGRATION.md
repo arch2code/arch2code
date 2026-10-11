@@ -27,7 +27,7 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | `VCS_DUT` | `USE_VCS` and `VL_DUT` | registrars and SystemC HDL wrappers use the `vlogan -sc_model` shell `<top>` from `<top>.h` as the DUT class |
 | `XCELIUM`, `NCSC`, `CADENCE`, `LNX86`, `XMSC`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_XCELIUM` | `main.cpp` rethrows `xmsc_elab_exception`, which xmelab uses to end the elaboration run of `sc_main`. The other defines are the ones xmsc passes to its own compiler |
 | `XCELIUM_DUT` | `USE_XCELIUM` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_xcelium.h` |
-| `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing |
+| `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
 | `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1` | the HDL wrapper calls `$fsdbDumpvars` when the run passes `+fsdbTrace` |
 
 ### 1.3 DUT topologies and snapshots
@@ -98,7 +98,7 @@ The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<va
 | VCS | W-2024.09-SP2 | SystemC 2.3.4 shipped with VCS, GCC 13 build (`systemc234-gcc13`), `-sysc=234` |
 | Xcelium | 26.03-s002 | bundled SystemC 2.3.4 (Cadence), link with the bundled GCC 12.4 (`-gcc_vers 12.4`) |
 | Boost | headers 1.74; shared `program_options` 1.75 (RHEL 9) and 1.66 (RHEL 8) | stacktrace and system are header-only |
-| Verilator | 5.038 | needed only for `make lint` in `rtl/` and the Verilator flow |
+| Verilator | 5.038 | needed only for `make lint` in `rtl/` and the Verilator flow. `VL_TIMING=1` is supported only on 5.053 or later, currently master at or after `ea536a5` |
 
 Tested and rejected:
 
@@ -180,6 +180,7 @@ These are set in the project's `include/make/shared.mk` (and `rundir/Makefile`),
 | `USE_VCS` | unset | `1` selects the VCS flow and implies `VL_DUT=1` |
 | `USE_XCELIUM` | unset | `1` selects the Xcelium flow and implies `VL_DUT=1` |
 | `VL_DUT` | `1` under a simulator switch, else unset | RTL DUT in the build. `VL_DUT=` gives a model-only binary |
+| `VL_TIMING` | unset | `1` verilates and lints with `--timing` and adds Verilator's timing runtime to the Verilator library. Verilator flow and `make lint` only. Set it in `shared.mk`, on the command line or in the environment. A rundir `Makefile` setting does not reach the Verilator build |
 | `SKIP_GEN` | unset | `1` skips the `gen` step. Under `USE_VCS` or `USE_XCELIUM` the build still runs `--vlBoundary` when `.gen/vl` is older than the database, because the `vlogan -sc_model` step and the registrar objects depend on it |
 
 The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in section 1.3.
@@ -439,7 +440,6 @@ A builder layer adds its own arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER
 | VCS link `make[2]: *** read jobs pipe: Bad file descriptor` | VCS's internal make inheriting the jobserver (seen with GNU Make 4.2.1) | the builder clears `MAKEFLAGS` for `vcs`. The `jobserver unavailable: using -j1` warning that follows is expected |
 | VCS runs `Queuing for License` until timeout | more parallel runs than runtime licences | lower `session.jobs` |
 | Two VCS builds in one rundir fail or remove each other's `csrc` | they share `AN.DB`, `csrc` and `vcs.log` | one VCS build or regression per rundir at a time |
-| Xcelium `*E,MULAXX` from `flops.sv` | `A2C_RESET_NONE` or `FPGA_INIT_FLOPS` pairs `initial` with `always_ff` | keep `-warn_multiple_driver`, which the default `XRUN_OPTS` carries, in any `XRUN_OPTS` override |
 | Xcelium `*E,NODEFP` | an `EXTRA_HDL_*` unit with a parameter without default, elaborated as an idle top | give every parameter a default, or leave unused units off the list |
 | Xcelium `*F,CUSCTOP` | `-top` given | do not pass `-top` |
 | Xcelium `*E,SVNT2S` | a 2-state net type such as `wire int unsigned` in RTL | declare a variable and drive it with `assign` |

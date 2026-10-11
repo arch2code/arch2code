@@ -50,6 +50,15 @@ import vlInh_vliCont_package::*;
         fwd.data = vliPixelT'(inSt.data + (1 << (VLI_WIDTH - 3)));
     end
 
+    // Echoes the run's +vliGreet and +vliBias=<n> plusargs.
+    initial begin
+        int bias;
+        if ($test$plusargs("vliGreet"))
+            $display("vliLeaf plusarg vliGreet set");
+        if ($value$plusargs("vliBias=%d", bias))
+            $display("vliLeaf plusarg vliBias=%0d", bias);
+    end
+
     assign out.push = in.push;
     assign out.data = fwd;
     assign in.ack   = out.ack;

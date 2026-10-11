@@ -149,46 +149,47 @@ always_ff @(posedge clkSig or negedge rstSig) begin \
 end
 
 `elsif A2C_RESET_NONE
-// No reset: use initial statements to set start values in the FPGA image.
+// No reset: an initial statement sets the start value in the FPGA image. The
+// flop body is a plain always, so the initial statement may also write the flop.
 
 // D flop
 `define DFF_DOM(clkSig, rstSig, q, d) \
 initial q = '0; \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= (d); \
 end
 
 // D flop with initial value
 `define DFFR_DOM(clkSig, rstSig, q, d, rval) \
 initial q = rval; \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= (d); \
 end
 
 // D flop explicitly with no reset value
 `define DFFNR_DOM(clkSig, rstSig, q, d) \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= (d); \
 end
 
 // D flop with enable
 `define DFFEN_DOM(clkSig, rstSig, q, d, en) \
 initial q = '0; \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= (en) ? (d) : q; \
 end
 
 // D flop with reset and enable
 `define DFFREN_DOM(clkSig, rstSig, q, d, en, rval) \
 initial q = rval; \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= (en) ? (d) : q; \
 end
 
 // Set clear flop, set priority
 `define SCFF_DOM(clkSig, rstSig, q, s, c) \
 initial q = '0; \
-always_ff @(posedge clkSig) begin \
+always @(posedge clkSig) begin \
     q <= ((q) & ~(c)) | (s); \
 end
 
