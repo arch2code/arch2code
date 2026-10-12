@@ -13,7 +13,11 @@ Checks:
 - `make VL_DUT=1 VL_TIMING=1` links with no EXTRA_VL_LIB_OBJS, and the
   library carries the timing runtime built in the shared vl_dummy Mdir;
 - the build warns about the Verilator version exactly when it is below 5.053;
-- the model run and the Verilated run both read back the 2000ps stamp;
+- the model run and the Verilated run both read back the 2000ps stamp. The
+  stamp leaves the RTL combinationally, so a delay in the generated wrapper
+  assigns makes the checker read 0;
+- the generated wrapper's port assigns preprocess to `assign #0` with
+  VERILATOR undefined (VCS, Xcelium) and to a bare `assign` under Verilator;
 - a repeat build with the same setting verilates nothing and relinks nothing;
 - VL_TIMING=0 re-verilates with --no-timing, and the Verilated leaf, its delay
   now ignored, stamps 0.
@@ -69,6 +73,16 @@ def verilate_lines(output):
     return [line for line in output.splitlines() if line.startswith('verilator ')]
 
 
+def wrapper_assigns(wrapper, *defines):
+    # The wrapper's assign lines after Verilator preprocessing.
+    result = subprocess.run(
+        ['verilator', '-E', '-P', *defines,
+         f"+incdir+{os.path.join(base_dir, 'common', 'systemVerilog')}", wrapper],
+        capture_output=True, text=True, check=True)
+    return [line.strip() for line in result.stdout.splitlines()
+            if line.strip().startswith('assign')]
+
+
 def main():
     failures = []
 
@@ -88,6 +102,16 @@ def main():
             require(make(project, target), f"make {target}")
         rtl = os.path.join(project, 'rtl')
         rundir = os.path.join(project, 'rundir')
+
+        wrapper = os.path.join(project, 'verif', 'vltSrc_hdl_sv_wrapper.sv')
+        assigns = wrapper_assigns(wrapper, '-UVERILATOR')
+        check(assigns and all(a.startswith('assign #0 ') for a in assigns),
+              f"without VERILATOR every wrapper assign is #0 ({len(assigns)} assigns)",
+              '\n'.join(assigns))
+        assigns = wrapper_assigns(wrapper)
+        check(assigns and not any('#' in a for a in assigns),
+              f"under Verilator no wrapper assign has a delay ({len(assigns)} assigns)",
+              '\n'.join(assigns))
 
         lint = make(project, 'lint', 'VL_TIMING=1', directory=rtl)
         out = lint.stdout + lint.stderr

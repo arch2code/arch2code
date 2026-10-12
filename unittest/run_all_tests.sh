@@ -639,6 +639,12 @@ python3 test_memory_dp_lint.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: axi4_stream_if tkeep/tstrb width simulation"
+echo "------------------------------------------------------------------------"
+python3 test_axi4_stream_if_width_sim.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: memory port assignment"
 echo "------------------------------------------------------------------------"
 python3 test_memory_access_ports.py || FAILED=1

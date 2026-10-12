@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=twoClkTable
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module twoClkTable_hdl_sv_wrapper
     // Generated Import package statement(s)
     import twoClk_package::*;
@@ -26,14 +28,14 @@ module twoClkTable_hdl_sv_wrapper
     // apb_if.dst
     apb_if #(.addr_t(twoClkRegAddrSt), .data_t(twoClkRegDataSt)) twoClkReg();
 
-    assign #0 twoClkReg.paddr = twoClkReg_paddr;
-    assign #0 twoClkReg.psel = twoClkReg_psel;
-    assign #0 twoClkReg.penable = twoClkReg_penable;
-    assign #0 twoClkReg.pwrite = twoClkReg_pwrite;
-    assign #0 twoClkReg.pwdata = twoClkReg_pwdata;
-    assign #0 twoClkReg_pready = twoClkReg.pready;
-    assign #0 twoClkReg_prdata = twoClkReg.prdata;
-    assign #0 twoClkReg_pslverr = twoClkReg.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.paddr = twoClkReg_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.psel = twoClkReg_psel;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.penable = twoClkReg_penable;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.pwrite = twoClkReg_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.pwdata = twoClkReg_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_pready = twoClkReg.pready;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_prdata = twoClkReg.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_pslverr = twoClkReg.pslverr;
 
     twoClkTable dut (
         .twoClkReg(twoClkReg), // apb_if.dst

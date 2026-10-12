@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=bridgeApbDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module bridgeApbDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
     import shared_types_package::*;
@@ -44,38 +46,38 @@ module bridgeApbDecode_hdl_sv_wrapper
     // apb_if.src
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridgeIp0();
 
-    assign #0 apbReg_uBridgeIp0_paddr = apbReg_uBridgeIp0.paddr;
-    assign #0 apbReg_uBridgeIp0_psel = apbReg_uBridgeIp0.psel;
-    assign #0 apbReg_uBridgeIp0_penable = apbReg_uBridgeIp0.penable;
-    assign #0 apbReg_uBridgeIp0_pwrite = apbReg_uBridgeIp0.pwrite;
-    assign #0 apbReg_uBridgeIp0_pwdata = apbReg_uBridgeIp0.pwdata;
-    assign #0 apbReg_uBridgeIp0.pready = apbReg_uBridgeIp0_pready;
-    assign #0 apbReg_uBridgeIp0.prdata = apbReg_uBridgeIp0_prdata;
-    assign #0 apbReg_uBridgeIp0.pslverr = apbReg_uBridgeIp0_pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0_paddr = apbReg_uBridgeIp0.paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0_psel = apbReg_uBridgeIp0.psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0_penable = apbReg_uBridgeIp0.penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0_pwrite = apbReg_uBridgeIp0.pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0_pwdata = apbReg_uBridgeIp0.pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0.pready = apbReg_uBridgeIp0_pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0.prdata = apbReg_uBridgeIp0_prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp0.pslverr = apbReg_uBridgeIp0_pslverr;
 
     // apb_if.src
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridgeIp1();
 
-    assign #0 apbReg_uBridgeIp1_paddr = apbReg_uBridgeIp1.paddr;
-    assign #0 apbReg_uBridgeIp1_psel = apbReg_uBridgeIp1.psel;
-    assign #0 apbReg_uBridgeIp1_penable = apbReg_uBridgeIp1.penable;
-    assign #0 apbReg_uBridgeIp1_pwrite = apbReg_uBridgeIp1.pwrite;
-    assign #0 apbReg_uBridgeIp1_pwdata = apbReg_uBridgeIp1.pwdata;
-    assign #0 apbReg_uBridgeIp1.pready = apbReg_uBridgeIp1_pready;
-    assign #0 apbReg_uBridgeIp1.prdata = apbReg_uBridgeIp1_prdata;
-    assign #0 apbReg_uBridgeIp1.pslverr = apbReg_uBridgeIp1_pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1_paddr = apbReg_uBridgeIp1.paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1_psel = apbReg_uBridgeIp1.psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1_penable = apbReg_uBridgeIp1.penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1_pwrite = apbReg_uBridgeIp1.pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1_pwdata = apbReg_uBridgeIp1.pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1.pready = apbReg_uBridgeIp1_pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1.prdata = apbReg_uBridgeIp1_prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uBridgeIp1.pslverr = apbReg_uBridgeIp1_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
 
-    assign #0 apbReg.paddr = apbReg_paddr;
-    assign #0 apbReg.psel = apbReg_psel;
-    assign #0 apbReg.penable = apbReg_penable;
-    assign #0 apbReg.pwrite = apbReg_pwrite;
-    assign #0 apbReg.pwdata = apbReg_pwdata;
-    assign #0 apbReg_pready = apbReg.pready;
-    assign #0 apbReg_prdata = apbReg.prdata;
-    assign #0 apbReg_pslverr = apbReg.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.paddr = apbReg_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.psel = apbReg_psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.penable = apbReg_penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwrite = apbReg_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwdata = apbReg_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pready = apbReg.pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_prdata = apbReg.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pslverr = apbReg.pslverr;
 
     bridgeApbDecode dut (
         .apbReg_uBridgeIp0(apbReg_uBridgeIp0), // apb_if.src

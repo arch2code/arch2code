@@ -8,7 +8,7 @@
 
 module vliLeaf_solo_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import vlInh_vliCont_package::*;
+    import vliCont_package::*;
 #(
     localparam VLI_ALGO = 3,
     localparam VLI_WIDTH = 8

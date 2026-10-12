@@ -23,35 +23,31 @@ import vlt_package::*;
     logic     started;
 
     initial begin
+        stamp   = '0;
         started = 1'b0;
         #(VLT_START_DELAY_PS * 1ps);
         stamp   = vltStampT'($time);
         started = 1'b1;
     end
 
-    // The output is registered on purpose: on Verilator before 5.053 a
-    // --timing wrapper can drop the update of a combinational output.
-    logic loadData;
     `DFFR_INST(logic, push, 1'b0)
     `DFFR_INST(logic, sent, 1'b0)
-    `DFFEN_INST(vltSt, data, loadData)
 
     // One push once the delay has ended, held until the checker acks it.
     always_comb begin
-        n_push   = push;
-        n_sent   = sent;
-        loadData = 1'b0;
-        n_data   = vltSt'(stamp);
+        n_push = push;
+        n_sent = sent;
         if (push && out.ack) begin
             n_push = 1'b0;
             n_sent = 1'b1;
         end else if (started && !sent) begin
-            n_push   = 1'b1;
-            loadData = 1'b1;
+            n_push = 1'b1;
         end
     end
 
+    // The data output is combinational, so the stamp reaches SystemC only if
+    // the wrapper passes a combinational update through under --timing.
     assign out.push = push;
-    assign out.data = data;
+    assign out.data = vltSt'(stamp);
 
 endmodule: vltSrc

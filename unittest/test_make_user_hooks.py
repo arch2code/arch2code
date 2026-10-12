@@ -382,7 +382,7 @@ def main():
                                 set(hdl) | XRUN_HOOKS | {'-DHOOK_VCS'})
         vcsLinks = segments(vcs, 'vcs')
         failures += checkOrder('vcs link', vcsLinks,
-                               ['initial_driver_checks', '-DHOOK_VCS', LAYER_LD_FLAG, LD_FLAG])
+                               ['-DHOOK_VCS', LAYER_LD_FLAG, LD_FLAG])
         failures += checkTokens('vcs link', vcsLinks, [],
                                 set(hdl) | VERILATOR_HOOKS | XRUN_HOOKS | {'-DHOOK_VLOGAN'})
         vcsStampDir = os.path.dirname(single('vcs', os.path.join(rundir, 'build', '*.build',

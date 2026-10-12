@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=hierVlDemo
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module hierVlDemo_hdl_sv_wrapper
     // Generated Import package statement(s)
     import hierVlDemo_tb_package::*;
@@ -36,28 +38,28 @@ module hierVlDemo_hdl_sv_wrapper
     // axi4_stream_if.dst
     axi4_stream_if #(.tdata_t(data_t1_t), .tid_t(tid_t1_t), .tdest_t(tdest_t1_t), .tuser_t(tuser_t1_t)) axis4_t1();
 
-    assign #0 axis4_t1.tvalid = axis4_t1_tvalid;
-    assign #0 axis4_t1_tready = axis4_t1.tready;
-    assign #0 axis4_t1.tdata = axis4_t1_tdata;
-    assign #0 axis4_t1.tstrb = axis4_t1_tstrb;
-    assign #0 axis4_t1.tkeep = axis4_t1_tkeep;
-    assign #0 axis4_t1.tlast = axis4_t1_tlast;
-    assign #0 axis4_t1.tid = axis4_t1_tid;
-    assign #0 axis4_t1.tdest = axis4_t1_tdest;
-    assign #0 axis4_t1.tuser = axis4_t1_tuser;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tvalid = axis4_t1_tvalid;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1_tready = axis4_t1.tready;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tdata = axis4_t1_tdata;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tstrb = axis4_t1_tstrb;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tkeep = axis4_t1_tkeep;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tlast = axis4_t1_tlast;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tid = axis4_t1_tid;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tdest = axis4_t1_tdest;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t1.tuser = axis4_t1_tuser;
 
     // axi4_stream_if.src
     axi4_stream_if #(.tdata_t(data_t2_t), .tid_t(tid_t2_t), .tdest_t(tdest_t2_t), .tuser_t(tuser_t2_t)) axis4_t2();
 
-    assign #0 axis4_t2_tvalid = axis4_t2.tvalid;
-    assign #0 axis4_t2.tready = axis4_t2_tready;
-    assign #0 axis4_t2_tdata = axis4_t2.tdata;
-    assign #0 axis4_t2_tstrb = axis4_t2.tstrb;
-    assign #0 axis4_t2_tkeep = axis4_t2.tkeep;
-    assign #0 axis4_t2_tlast = axis4_t2.tlast;
-    assign #0 axis4_t2_tid = axis4_t2.tid;
-    assign #0 axis4_t2_tdest = axis4_t2.tdest;
-    assign #0 axis4_t2_tuser = axis4_t2.tuser;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tvalid = axis4_t2.tvalid;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2.tready = axis4_t2_tready;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tdata = axis4_t2.tdata;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tstrb = axis4_t2.tstrb;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tkeep = axis4_t2.tkeep;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tlast = axis4_t2.tlast;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tid = axis4_t2.tid;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tdest = axis4_t2.tdest;
+    assign `A2C_HDL_BOUNDARY_DLY axis4_t2_tuser = axis4_t2.tuser;
 
     hierVlDemo dut (
         .axis4_t1(axis4_t1), // axi4_stream_if.dst

@@ -15,9 +15,9 @@ module memory_dp_2clk #(
     input clkB
 );
 
-    typedef logic [$size(mem_portA.addr)-1:0] _addrA_t;
-    typedef logic [$size(mem_portB.addr)-1:0] _addrB_t;
-    typedef logic [$size(data_t)-1:0] _data_t;
+    typedef logic [$bits(mem_portA.addr)-1:0] _addrA_t;
+    typedef logic [$bits(mem_portB.addr)-1:0] _addrB_t;
+    typedef logic [$bits(data_t)-1:0] _data_t;
 
     // Two writers on two clocks do not map to FPGA block RAM. Simulation and
     // an ASIC memory macro are supported uses, so this must not fail a build.

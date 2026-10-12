@@ -14,7 +14,7 @@ VCS ?= vcs
 VLOGAN ?= vlogan
 VCS_OPTS ?= +vcs+lic+wait -full64 -timescale=1ns/1ps
 VLOGAN_OPTS ?= +vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps
-VCS_ELAB_OPTS ?= -sysc=234 -ignore initial_driver_checks
+VCS_ELAB_OPTS ?= -sysc=234
 # Verdi/FSDB debug costs simulation time, so it is opt-in: -kdb -debug_access
 # at link, and VCS_DEBUG defined for the wrappers' $fsdbDumpvars call.
 ifdef VCS_DEBUG
@@ -30,7 +30,8 @@ VCS_LIB_SV_FILES ?= $(wildcard $(A2C_ROOT)/interfaces/*/*_if.sv) \
 VCS_LIB_SV_FILES += $(A2C_LAYER_VCS_LIB_SV_FILES) $(EXTRA_VCS_LIB_SV_FILES)
 
 VCS_SV_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F)
-VCS_INCDIRS = $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS))
+# common/systemVerilog holds hdlBoundary.svh, which every wrapper with port assigns includes.
+VCS_INCDIRS = $(addprefix +incdir+,$(A2C_ROOT)/common/systemVerilog $(A2C_VL_WRAP_DIRS))
 
 VCS_STAMP_DIR = $(BUILD_DIR)/vcs
 VCS_RTL_STAMP = $(VCS_STAMP_DIR)/rtl.vlogan

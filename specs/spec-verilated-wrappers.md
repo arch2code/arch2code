@@ -275,14 +275,15 @@ file name with `$(notdir)` or a pattern.
   (verilator/verilator#8394, fixed by #8534). The library build warns when
   `verilator --version` is below 5.053 and does not fail. A `5.053 devel`
   build from before `ea536a5` passes that check.
-- Every generated SV wrapper port assign carries `#0`
-  (`pysrc/intf_gen_utils.py`). Under `--no-timing` Verilator drops it. Under
-  `--timing` each port update goes through the delay scheduler, which exposes
-  the bug above even when the RTL's own delays end before the first clock
-  edge. On Verilator 5.052, `unittest/fixtures/vl-timing` with a combinational
-  `assign out.data = stamp` delivered 0 to the checker through the generated
-  wrapper and 2000 with the `#0` removed. The fixture registers `out.data`, so
-  it passes on 5.052.
+- Generated SV wrapper port assigns (`pysrc/intf_gen_utils.py`) carry
+  `` `A2C_HDL_BOUNDARY_DLY ``, from `common/systemVerilog/hdlBoundary.svh`,
+  which every wrapper with port assigns includes. It is `#0` under VCS and
+  Xcelium, because VCS needs that delta delay inside the wrapper and a delay
+  at the port map is not equivalent. It is empty under Verilator, because
+  under `--timing` a `#0` keeps a combinational output's update from reaching
+  SystemC (measured on 5.052 and on master `a55d6c698`).
+  `unittest/fixtures/vl-timing` drives `out.data` combinationally from its
+  stamp, so a wrapper `#0` makes the checker read 0 instead of 2000.
 - `include/make/a2c-systemc.mk` adds `-I$(A2C_VL_BUILD_DIR)/obj_dir/<top>` for
   each top under `VL_DUT`, so the registrar finds `V<top>.h`.
 - `include/make/a2c-vcs.mk` runs `vlogan -sc_model <top> -sc_portmap $(A2C_VL_PORTMAP_<top>)`

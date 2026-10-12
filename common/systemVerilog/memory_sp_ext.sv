@@ -3,12 +3,12 @@ module memory_sp_ext #(
     parameter type data_t = logic [1:0])
 (
     memory_if.dst mem_port,
-    output logic [$size(data_t)-1:0] mem [DEPTH-1:0],
+    output logic [$bits(data_t)-1:0] mem [DEPTH-1:0],
     input clk
 );
 
-    typedef logic [$size(mem_port.addr)-1:0] _addr_t;
-    typedef logic [$size(data_t)-1:0] _data_t;
+    typedef logic [$bits(mem_port.addr)-1:0] _addr_t;
+    typedef logic [$bits(data_t)-1:0] _data_t;
 
     _addr_t addr;
     _data_t write_data, read_data;

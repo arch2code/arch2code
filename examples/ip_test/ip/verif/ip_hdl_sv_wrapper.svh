@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=ip
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
 
+`include "hdlBoundary.svh"
+
 module ip_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ip_package::*;
@@ -72,21 +74,21 @@ module ip_hdl_sv_wrapper
     // push_ack_if.dst
     push_ack_if #(.data_t(ipDataSt)) ipDataIf();
 
-    assign #0 ipDataIf.push = ipDataIf_push;
-    assign #0 ipDataIf.data = ipDataIf_data;
-    assign #0 ipDataIf_ack = ipDataIf.ack;
+    assign `A2C_HDL_BOUNDARY_DLY ipDataIf.push = ipDataIf_push;
+    assign `A2C_HDL_BOUNDARY_DLY ipDataIf.data = ipDataIf_data;
+    assign `A2C_HDL_BOUNDARY_DLY ipDataIf_ack = ipDataIf.ack;
 
     // apb_if.dst
     apb_if #(.addr_t(ipRegAddrSt), .data_t(ipRegDataSt)) regs();
 
-    assign #0 regs.paddr = regs_paddr;
-    assign #0 regs.psel = regs_psel;
-    assign #0 regs.penable = regs_penable;
-    assign #0 regs.pwrite = regs_pwrite;
-    assign #0 regs.pwdata = regs_pwdata;
-    assign #0 regs_pready = regs.pready;
-    assign #0 regs_prdata = regs.prdata;
-    assign #0 regs_pslverr = regs.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY regs.paddr = regs_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY regs.psel = regs_psel;
+    assign `A2C_HDL_BOUNDARY_DLY regs.penable = regs_penable;
+    assign `A2C_HDL_BOUNDARY_DLY regs.pwrite = regs_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY regs.pwdata = regs_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY regs_pready = regs.pready;
+    assign `A2C_HDL_BOUNDARY_DLY regs_prdata = regs.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY regs_pslverr = regs.pslverr;
 
     ip #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) dut (
         .ipDataIf(ipDataIf), // push_ack_if.dst

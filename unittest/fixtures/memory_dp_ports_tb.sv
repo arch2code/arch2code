@@ -24,6 +24,10 @@
 // the cycle of a same-address write from the other port returns the old data;
 // the memory_dp_2clk set checks this only when the half periods are equal,
 // because only then do the two clocks share edges.
+//
+// A last phase stores a logic [3:0][7:0] word, whose total width differs from
+// its first dimension, in both modules and in memory_sp, memory_sp_ext and
+// memory_dp_ext, and checks the _ext modules' exposed arrays.
 module memory_dp_ports_tb;
 
 parameter int unsigned DEPTH = 320;
@@ -131,6 +135,45 @@ assign s_wo_A.wr_en = s_rw_A.wr_en; assign s_wo_A.write_data = s_rw_A.write_data
 assign s_wo_B.addr = s_rw_B.addr;  assign s_wo_B.enable = s_rw_B.enable;
 assign s_wo_B.wr_en = s_rw_B.wr_en; assign s_wo_B.write_data = s_rw_B.write_data;
 
+// Multi-dimensional packed data, port A only. ms_A drives every copy.
+typedef logic [3:0][7:0] bytes_t;
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_A();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_B();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) m_A();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) m_B();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_sp();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_sp_ext();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_ext_A();
+memory_if #(.data_t(bytes_t), .addr_t(addr_t)) ms_ext_B();
+
+// The _ext modules expose their array, declared as the generated code does.
+bytes_t ms_sp_ext_mem [DEPTH-1:0];
+bytes_t ms_ext_mem [DEPTH-1:0];
+
+memory_dp #(.DEPTH(DEPTH), .data_t(bytes_t)) us_bytes (
+    .mem_portA (ms_A), .mem_portB (ms_B), .clk (clk));
+memory_dp_2clk #(.DEPTH(DEPTH), .data_t(bytes_t)) u_bytes (
+    .mem_portA (m_A), .mem_portB (m_B), .clkA (clk), .clkB (clkB));
+memory_sp #(.DEPTH(DEPTH), .data_t(bytes_t)) us_sp_bytes (
+    .mem_port (ms_sp), .clk (clk));
+memory_sp_ext #(.DEPTH(DEPTH), .data_t(bytes_t)) us_sp_ext_bytes (
+    .mem_port (ms_sp_ext), .mem (ms_sp_ext_mem), .clk (clk));
+memory_dp_ext #(.DEPTH(DEPTH), .data_t(bytes_t)) us_ext_bytes (
+    .mem_portA (ms_ext_A), .mem_portB (ms_ext_B), .mem (ms_ext_mem), .clk (clk));
+
+assign m_A.addr = ms_A.addr;   assign m_A.enable = ms_A.enable;
+assign m_A.wr_en = ms_A.wr_en; assign m_A.write_data = ms_A.write_data;
+assign m_B.addr = ms_B.addr;   assign m_B.enable = ms_B.enable;
+assign m_B.wr_en = ms_B.wr_en; assign m_B.write_data = ms_B.write_data;
+assign ms_sp.addr = ms_A.addr;   assign ms_sp.enable = ms_A.enable;
+assign ms_sp.wr_en = ms_A.wr_en; assign ms_sp.write_data = ms_A.write_data;
+assign ms_sp_ext.addr = ms_A.addr;   assign ms_sp_ext.enable = ms_A.enable;
+assign ms_sp_ext.wr_en = ms_A.wr_en; assign ms_sp_ext.write_data = ms_A.write_data;
+assign ms_ext_A.addr = ms_A.addr;   assign ms_ext_A.enable = ms_A.enable;
+assign ms_ext_A.wr_en = ms_A.wr_en; assign ms_ext_A.write_data = ms_A.write_data;
+assign ms_ext_B.addr = ms_B.addr;   assign ms_ext_B.enable = ms_B.enable;
+assign ms_ext_B.wr_en = ms_B.wr_en; assign ms_ext_B.write_data = ms_B.write_data;
+
 int unsigned errors;
 int unsigned compares;
 logic        checking;
@@ -237,6 +280,13 @@ task automatic s_read_a(input int unsigned i, output data_t rw, output data_t ro
     end
 endtask
 
+task automatic ms_idle();
+    begin
+        ms_A.enable = 1'b0; ms_A.wr_en = 1'b0; ms_A.addr = '0; ms_A.write_data = '0;
+        ms_B.enable = 1'b0; ms_B.wr_en = 1'b0; ms_B.addr = '0; ms_B.write_data = '0;
+    end
+endtask
+
 task automatic idle_a();
     begin
         rw_A.enable = 1'b0; rw_A.wr_en = 1'b0;
@@ -277,6 +327,7 @@ initial begin
     checking = 1'b0;
     idle_a();
     idle_b();
+    ms_idle();
 
     repeat (4) @(negedge clk);
     fill_via_b();
@@ -676,6 +727,39 @@ initial begin
         errors += bad;
         $display("  %-40s %s", "same-cycle read returns the old data",
                  (bad == 0) ? "PASS" : "FAIL");
+    end
+
+    $display("=== logic [3:0][7:0] data_t ===");
+    begin
+        localparam int unsigned PROBE = 9;
+        localparam bytes_t BYTES_VAL = bytes_t'(32'hA1B2_C3D4);
+        bytes_t got_dp, got_2clk, got_sp, got_sp_ext, got_ext;
+        logic ok;
+        @(negedge clk);
+        ms_A.enable = 1'b1; ms_A.wr_en = 1'b1; ms_A.addr = addr_t'(PROBE);
+        ms_A.write_data = BYTES_VAL;
+        @(negedge clk);
+        ms_A.enable = 1'b1; ms_A.wr_en = 1'b0; ms_A.addr = addr_t'(PROBE);
+        @(posedge clk); #1;
+        got_dp = ms_A.read_data;
+        got_2clk = m_A.read_data;
+        got_sp = ms_sp.read_data;
+        got_sp_ext = ms_sp_ext.read_data;
+        got_ext = ms_ext_A.read_data;
+        @(negedge clk);
+        ms_idle();
+        ok = got_dp === BYTES_VAL && got_2clk === BYTES_VAL && got_sp === BYTES_VAL
+             && got_sp_ext === BYTES_VAL && got_ext === BYTES_VAL
+             && ms_sp_ext_mem[PROBE] === BYTES_VAL && ms_ext_mem[PROBE] === BYTES_VAL;
+        if (!ok) begin
+            $display("    32-bit word read back: memory_dp=0x%0x memory_dp_2clk=0x%0x memory_sp=0x%0x memory_sp_ext=0x%0x memory_dp_ext=0x%0x, expected 0x%0x",
+                     got_dp, got_2clk, got_sp, got_sp_ext, got_ext, BYTES_VAL);
+            $display("    exposed arrays: memory_sp_ext=0x%0x memory_dp_ext=0x%0x",
+                     ms_sp_ext_mem[PROBE], ms_ext_mem[PROBE]);
+            errors++;
+        end
+        $display("  %-40s %s", "all four bytes stored and returned",
+                 ok ? "PASS" : "FAIL");
     end
 
     $display("=== %s (%0d errors) ===", (errors == 0) ? "PASS" : "FAIL", errors);

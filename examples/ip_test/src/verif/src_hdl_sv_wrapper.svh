@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
 
+`include "hdlBoundary.svh"
+
 module src_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ipLeaf_package::*;
@@ -49,30 +51,30 @@ module src_hdl_sv_wrapper
     // push_ack_if.src
     push_ack_if #(.data_t(srcOut0St)) out0();
 
-    assign #0 out0_push = out0.push;
-    assign #0 out0_data = out0.data;
-    assign #0 out0.ack = out0_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out0_push = out0.push;
+    assign `A2C_HDL_BOUNDARY_DLY out0_data = out0.data;
+    assign `A2C_HDL_BOUNDARY_DLY out0.ack = out0_ack;
 
     // push_ack_if.src
     push_ack_if #(.data_t(srcOut1St)) out1();
 
-    assign #0 out1_push = out1.push;
-    assign #0 out1_data = out1.data;
-    assign #0 out1.ack = out1_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out1_push = out1.push;
+    assign `A2C_HDL_BOUNDARY_DLY out1_data = out1.data;
+    assign `A2C_HDL_BOUNDARY_DLY out1.ack = out1_ack;
 
     // push_ack_if.src
     push_ack_if #(.data_t(srcOut0St)) out2();
 
-    assign #0 out2_push = out2.push;
-    assign #0 out2_data = out2.data;
-    assign #0 out2.ack = out2_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out2_push = out2.push;
+    assign `A2C_HDL_BOUNDARY_DLY out2_data = out2.data;
+    assign `A2C_HDL_BOUNDARY_DLY out2.ack = out2_ack;
 
     // push_ack_if.src
     push_ack_if #(.data_t(srcOut1St)) out3();
 
-    assign #0 out3_push = out3.push;
-    assign #0 out3_data = out3.data;
-    assign #0 out3.ack = out3_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out3_push = out3.push;
+    assign `A2C_HDL_BOUNDARY_DLY out3_data = out3.data;
+    assign `A2C_HDL_BOUNDARY_DLY out3.ack = out3_ack;
 
     src #(.OUT0_DATA_WIDTH(OUT0_DATA_WIDTH), .OUT1_DATA_WIDTH(OUT1_DATA_WIDTH)) dut (
         .out0(out0), // push_ack_if.src

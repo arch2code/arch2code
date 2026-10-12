@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=xpRtNestDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
 
+`include "hdlBoundary.svh"
+
 module xpRtNestDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xpRtInh_package::*;
@@ -42,26 +44,26 @@ module xpRtNestDecode_hdl_sv_wrapper
     // apb_if.src
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uLeaf();
 
-    assign #0 apbReg_uLeaf_paddr = apbReg_uLeaf.paddr;
-    assign #0 apbReg_uLeaf_psel = apbReg_uLeaf.psel;
-    assign #0 apbReg_uLeaf_penable = apbReg_uLeaf.penable;
-    assign #0 apbReg_uLeaf_pwrite = apbReg_uLeaf.pwrite;
-    assign #0 apbReg_uLeaf_pwdata = apbReg_uLeaf.pwdata;
-    assign #0 apbReg_uLeaf.pready = apbReg_uLeaf_pready;
-    assign #0 apbReg_uLeaf.prdata = apbReg_uLeaf_prdata;
-    assign #0 apbReg_uLeaf.pslverr = apbReg_uLeaf_pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf_paddr = apbReg_uLeaf.paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf_psel = apbReg_uLeaf.psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf_penable = apbReg_uLeaf.penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf_pwrite = apbReg_uLeaf.pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf_pwdata = apbReg_uLeaf.pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf.pready = apbReg_uLeaf_pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf.prdata = apbReg_uLeaf_prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uLeaf.pslverr = apbReg_uLeaf_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
 
-    assign #0 apbReg.paddr = apbReg_paddr;
-    assign #0 apbReg.psel = apbReg_psel;
-    assign #0 apbReg.penable = apbReg_penable;
-    assign #0 apbReg.pwrite = apbReg_pwrite;
-    assign #0 apbReg.pwdata = apbReg_pwdata;
-    assign #0 apbReg_pready = apbReg.pready;
-    assign #0 apbReg_prdata = apbReg.prdata;
-    assign #0 apbReg_pslverr = apbReg.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.paddr = apbReg_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.psel = apbReg_psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.penable = apbReg_penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwrite = apbReg_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwdata = apbReg_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pready = apbReg.pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_prdata = apbReg.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pslverr = apbReg.pslverr;
 
     xpRtNestDecode #(.RT_WIDTH(RT_WIDTH)) dut (
         .apbReg_uLeaf(apbReg_uLeaf), // apb_if.src

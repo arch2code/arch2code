@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module producer_hdl_sv_wrapper
     // Generated Import package statement(s)
     import simple_package::*;
@@ -24,16 +26,16 @@ module producer_hdl_sv_wrapper
     // push_ack_if.src
     push_ack_if #(.data_t(tag_st)) tag0();
 
-    assign #0 tag0_push = tag0.push;
-    assign #0 tag0_data = tag0.data;
-    assign #0 tag0.ack = tag0_ack;
+    assign `A2C_HDL_BOUNDARY_DLY tag0_push = tag0.push;
+    assign `A2C_HDL_BOUNDARY_DLY tag0_data = tag0.data;
+    assign `A2C_HDL_BOUNDARY_DLY tag0.ack = tag0_ack;
 
     // push_ack_if.src
     push_ack_if #(.data_t(tag_st)) tag1();
 
-    assign #0 tag1_push = tag1.push;
-    assign #0 tag1_data = tag1.data;
-    assign #0 tag1.ack = tag1_ack;
+    assign `A2C_HDL_BOUNDARY_DLY tag1_push = tag1.push;
+    assign `A2C_HDL_BOUNDARY_DLY tag1_data = tag1.data;
+    assign `A2C_HDL_BOUNDARY_DLY tag1.ack = tag1_ack;
 
     producer dut (
         .tag0(tag0), // push_ack_if.src
