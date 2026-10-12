@@ -61,6 +61,7 @@ public:
     using ipDerivedMemAddrSt = ipDerivedMemAddrSt<Config>;
     using ipParamNestedSt = ipParamNestedSt<Config>;
     using ipSignedParamSt = ipSignedParamSt<Config>;
+    using ipParamBelowArraySt = ipParamBelowArraySt<Config>;
 };
 export template<typename Config>
 class ipInverted : public virtual blockPortBase

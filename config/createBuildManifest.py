@@ -34,11 +34,13 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_CPP_CONTEXT_MODULE_FILES := {asList(manifest['cppContextModuleFiles'])}",
+        f"A2C_CPP_BLOCK_MODULE_FILES := {asList(manifest['cppBlockModuleFiles'])}",
         f"A2C_CPP_CONTEXT_SRC_FILES := {asList(manifest['cppContextSrcFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_SV_PACKAGE_FILES := {asList(manifest['svPackageFiles'])}",
         f"A2C_SV_DEP_FILES := {asList(manifest['svDepFiles'])}",
         f"A2C_SC_GEN_FILES := {asList(manifest['scGenFiles'])}",
+        f"A2C_SC_GEN_SRC_FILES := {asList(manifest['scGenSrcFiles'])}",
         f"A2C_PY_GEN_FILES := {asList(manifest['pyGenFiles'])}",
         f"A2C_SV_GEN_FILES := {asList(manifest['svGenFiles'])}",
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
@@ -93,6 +95,8 @@ def create(prj):
     moduleFiles = set()
     # The context types modules, which every other module unit is ordered after.
     contextModuleFiles = set()
+    # The user's block implementation units, which the build keeps at -O0 for debugging.
+    blockModuleFiles = set()
     # The context .cpp sources, which the rundir scaffold builds at -O3.
     contextSrcFiles = set()
     svModuleFiles = set()
@@ -103,6 +107,9 @@ def create(prj):
     # generator emits is recorded here so the makefiles consume the DB-derived
     # set instead of rediscovering GENERATED-marked files on disk.
     scGenFiles = set()
+    # Every generated .cpp this build compiles, foreign ones included, so the
+    # build can tell generated sources from the user's hand-written ones.
+    scGenSrcFiles = set()
     pyGenFiles = set()
     svGenFiles = set()
 
@@ -154,6 +161,8 @@ def create(prj):
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
+        scGenSrcFiles.update(filePath + '.' + extVal for extVal in fileDef['ext'].values()
+                             if extVal == 'cpp')
         # Managed SV modules: role 'sv' selects rtlModule (vl wrappers and
         # packages are listed elsewhere); svCompile drops blocks outside this
         # build's hierarchy.
@@ -171,6 +180,8 @@ def create(prj):
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=row['blockKey'] in reachableBlockKeys)
+        if row['fileType'] == 'blockModule':
+            blockModuleFiles.add(row['files']['cppm'])
 
     # registrar mode: trampolines and Config modules are gen targets; the SV
     # wrapper tops (pairVlTop, owner-qualified variant) are recorded by the
@@ -369,11 +380,13 @@ def create(prj):
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'cppModuleFiles':sorted(moduleFiles),
         'cppContextModuleFiles': sorted(contextModuleFiles),
+        'cppBlockModuleFiles': sorted(blockModuleFiles),
         'cppContextSrcFiles': sorted(contextSrcFiles),
         'svFiles':       sorted(svModuleFiles),
         'svPackageFiles': svPackageFiles,
         'svDepFiles':    sorted(svDepFiles),
         'scGenFiles':    sorted(scGenFiles),
+        'scGenSrcFiles': sorted(scGenSrcFiles),
         'pyGenFiles':    sorted(pyGenFiles),
         'svGenFiles':    sorted(svGenFiles),
         'rtlDotF':       rtlDotFPath,

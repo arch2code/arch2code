@@ -56,6 +56,10 @@ import ip_package::*;
         ipSignedParamT offset; //Signed parameterizable field
         ipMemAddrT index; //Unsigned parameterizable field below it
     } ipSignedParamSt;
+    typedef struct packed {
+        ipNibbleT [5-1:0] nibbles; //Fixed nibble array above the data word
+        ipDataT data; //Parameterizable data word at bit 0
+    } ipParamBelowArraySt;
 
     // Interface Instances, needed for between instanced modules inside this module
     status_if #(.data_t(ipCfgSt)) ipCfg();

@@ -105,14 +105,25 @@ struct twoClkRegAddrSt {
     inline sc_bv<twoClkRegAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkRegAddrSt::_bitWidth> packed_data;
-        packed_data.range(31, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkRegAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkRegAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkRegAddrSt::_bitWidth> &packed_data)
     {
-        address = (twoClkRegAddrT) packed_data.range(31, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkRegAddrSt(sc_bv<twoClkRegAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkRegAddrSt(const sc_bv<twoClkRegAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkRegAddrSt(
         twoClkRegAddrT address_) :
         address(address_)
@@ -162,14 +173,25 @@ struct twoClkRegDataSt {
     inline sc_bv<twoClkRegDataSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkRegDataSt::_bitWidth> packed_data;
-        packed_data.range(31, 0) = data;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkRegDataSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkRegDataSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkRegDataSt::_bitWidth> &packed_data)
     {
-        data = (twoClkRegDataT) packed_data.range(31, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkRegDataSt(sc_bv<twoClkRegDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkRegDataSt(const sc_bv<twoClkRegDataSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkRegDataSt(
         twoClkRegDataT data_) :
         data(data_)
@@ -218,14 +240,25 @@ struct twoClkTblAddrSt {
     inline sc_bv<twoClkTblAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkTblAddrSt::_bitWidth> packed_data;
-        packed_data.range(2, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkTblAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkTblAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkTblAddrSt::_bitWidth> &packed_data)
     {
-        address = (twoClkTblAddrBitsT) packed_data.range(2, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkTblAddrSt(sc_bv<twoClkTblAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkTblAddrSt(const sc_bv<twoClkTblAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkTblAddrSt(
         twoClkTblAddrBitsT address_) :
         address(address_)
@@ -281,16 +314,25 @@ struct twoClkTblSt {
     inline sc_bv<twoClkTblSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkTblSt::_bitWidth> packed_data;
-        packed_data.range(31, 0) = lo;
-        packed_data.range(47, 32) = hi;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkTblSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkTblSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkTblSt::_bitWidth> &packed_data)
     {
-        lo = (twoClkTblLoT) packed_data.range(31, 0).to_uint64();
-        hi = (twoClkTblHiT) packed_data.range(47, 32).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkTblSt(sc_bv<twoClkTblSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkTblSt(const sc_bv<twoClkTblSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkTblSt(
         twoClkTblLoT lo_,
         twoClkTblHiT hi_) :
@@ -341,14 +383,25 @@ struct twoClkLutAddrSt {
     inline sc_bv<twoClkLutAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkLutAddrSt::_bitWidth> packed_data;
-        packed_data.range(1, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkLutAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkLutAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkLutAddrSt::_bitWidth> &packed_data)
     {
-        address = (twoClkLutAddrBitsT) packed_data.range(1, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkLutAddrSt(sc_bv<twoClkLutAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkLutAddrSt(const sc_bv<twoClkLutAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkLutAddrSt(
         twoClkLutAddrBitsT address_) :
         address(address_)
@@ -396,14 +449,25 @@ struct twoClkLutSt {
     inline sc_bv<twoClkLutSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkLutSt::_bitWidth> packed_data;
-        packed_data.range(15, 0) = val;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkLutSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkLutSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkLutSt::_bitWidth> &packed_data)
     {
-        val = (twoClkLutValT) packed_data.range(15, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkLutSt(sc_bv<twoClkLutSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkLutSt(const sc_bv<twoClkLutSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkLutSt(
         twoClkLutValT val_) :
         val(val_)
@@ -451,14 +515,25 @@ struct twoClkStatsSt {
     inline sc_bv<twoClkStatsSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<twoClkStatsSt::_bitWidth> packed_data;
-        packed_data.range(15, 0) = val;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "twoClkStatsSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<twoClkStatsSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<twoClkStatsSt::_bitWidth> &packed_data)
     {
-        val = (twoClkLutValT) packed_data.range(15, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit twoClkStatsSt(sc_bv<twoClkStatsSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit twoClkStatsSt(const sc_bv<twoClkStatsSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit twoClkStatsSt(
         twoClkLutValT val_) :
         val(val_)
@@ -470,6 +545,94 @@ struct twoClkStatsSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+export namespace twoClk_ns {
+inline sc_bv<twoClkRegAddrSt::_bitWidth> testRefPack(const twoClkRegAddrSt &x);
+inline void testRefUnpack(twoClkRegAddrSt &x, const sc_bv<twoClkRegAddrSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkRegDataSt::_bitWidth> testRefPack(const twoClkRegDataSt &x);
+inline void testRefUnpack(twoClkRegDataSt &x, const sc_bv<twoClkRegDataSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkTblAddrSt::_bitWidth> testRefPack(const twoClkTblAddrSt &x);
+inline void testRefUnpack(twoClkTblAddrSt &x, const sc_bv<twoClkTblAddrSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkTblSt::_bitWidth> testRefPack(const twoClkTblSt &x);
+inline void testRefUnpack(twoClkTblSt &x, const sc_bv<twoClkTblSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkLutAddrSt::_bitWidth> testRefPack(const twoClkLutAddrSt &x);
+inline void testRefUnpack(twoClkLutAddrSt &x, const sc_bv<twoClkLutAddrSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkLutSt::_bitWidth> testRefPack(const twoClkLutSt &x);
+inline void testRefUnpack(twoClkLutSt &x, const sc_bv<twoClkLutSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkStatsSt::_bitWidth> testRefPack(const twoClkStatsSt &x);
+inline void testRefUnpack(twoClkStatsSt &x, const sc_bv<twoClkStatsSt::_bitWidth> &packed_data);
+inline sc_bv<twoClkRegAddrSt::_bitWidth> testRefPack(const twoClkRegAddrSt &x)
+{
+    sc_bv<twoClkRegAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+TWO_CLK_REG_ADDR_WIDTH-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkRegAddrSt &x, const sc_bv<twoClkRegAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (twoClkRegAddrT) packed_data.range(0+TWO_CLK_REG_ADDR_WIDTH-1, 0).to_uint64();
+}
+inline sc_bv<twoClkRegDataSt::_bitWidth> testRefPack(const twoClkRegDataSt &x)
+{
+    sc_bv<twoClkRegDataSt::_bitWidth> packed_data;
+    packed_data.range(0+TWO_CLK_REG_DATA_WIDTH-1, 0) = x.data;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkRegDataSt &x, const sc_bv<twoClkRegDataSt::_bitWidth> &packed_data)
+{
+    x.data = (twoClkRegDataT) packed_data.range(0+TWO_CLK_REG_DATA_WIDTH-1, 0).to_uint64();
+}
+inline sc_bv<twoClkTblAddrSt::_bitWidth> testRefPack(const twoClkTblAddrSt &x)
+{
+    sc_bv<twoClkTblAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+TWO_CLK_TBL_WORDS_LOG2-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkTblAddrSt &x, const sc_bv<twoClkTblAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (twoClkTblAddrBitsT) packed_data.range(0+TWO_CLK_TBL_WORDS_LOG2-1, 0).to_uint64();
+}
+inline sc_bv<twoClkTblSt::_bitWidth> testRefPack(const twoClkTblSt &x)
+{
+    sc_bv<twoClkTblSt::_bitWidth> packed_data;
+    packed_data.range(0+32-1, 0) = x.lo;
+    packed_data.range(32+16-1, 32) = x.hi;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkTblSt &x, const sc_bv<twoClkTblSt::_bitWidth> &packed_data)
+{
+    x.lo = (twoClkTblLoT) packed_data.range(0+32-1, 0).to_uint64();
+    x.hi = (twoClkTblHiT) packed_data.range(32+16-1, 32).to_uint64();
+}
+inline sc_bv<twoClkLutAddrSt::_bitWidth> testRefPack(const twoClkLutAddrSt &x)
+{
+    sc_bv<twoClkLutAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+TWO_CLK_LUT_WORDS_LOG2-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkLutAddrSt &x, const sc_bv<twoClkLutAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (twoClkLutAddrBitsT) packed_data.range(0+TWO_CLK_LUT_WORDS_LOG2-1, 0).to_uint64();
+}
+inline sc_bv<twoClkLutSt::_bitWidth> testRefPack(const twoClkLutSt &x)
+{
+    sc_bv<twoClkLutSt::_bitWidth> packed_data;
+    packed_data.range(0+16-1, 0) = x.val;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkLutSt &x, const sc_bv<twoClkLutSt::_bitWidth> &packed_data)
+{
+    x.val = (twoClkLutValT) packed_data.range(0+16-1, 0).to_uint64();
+}
+inline sc_bv<twoClkStatsSt::_bitWidth> testRefPack(const twoClkStatsSt &x)
+{
+    sc_bv<twoClkStatsSt::_bitWidth> packed_data;
+    packed_data.range(0+16-1, 0) = x.val;
+    return packed_data;
+}
+inline void testRefUnpack(twoClkStatsSt &x, const sc_bv<twoClkStatsSt::_bitWidth> &packed_data)
+{
+    x.val = (twoClkLutValT) packed_data.range(0+16-1, 0).to_uint64();
+}
+} // namespace twoClk_ns
 export namespace twoClk_test_ns {
 class test_twoClk_structs {
 public:
@@ -479,45 +642,75 @@ private:
     template<typename T>
     static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
         for(auto pattern : patterns) {
-            typename T::_packedSt packed;
-            memset(&packed, pattern, T::_byteWidth);
-            sc_bv<T::_bitWidth> aInit;
-            sc_bv<T::_bitWidth> aTest;
-            for (int i = 0; i < T::_byteWidth; i++) {
-                int end = std::min((i+1)*8-1, T::_bitWidth-1);
-                aInit.range(end, i*8) = pattern;
+            roundTripBytes<T>(sName, pattern, 0);
+        }
+        // Bytes that differ by position expose a field placed a whole number of bytes off.
+        roundTripBytes<T>(sName, 0x5b, 0x35);
+    }
+    template<typename T>
+    static void roundTripBytes(const char* sName, uint8_t first, uint8_t step) {
+        using P = typename T::_packedSt;
+        P words{};
+        sc_bv<T::_bitWidth> aInit;
+        for (int i = 0; i < T::_byteWidth; i++) {
+            uint8_t byte = (uint8_t)(first + i * step);
+            int end = std::min((i+1)*8-1, T::_bitWidth-1);
+            aInit.range(end, i*8) = byte;
+            if constexpr (std::is_array_v<P>) {
+                words[i / 8] |= (uint64_t)byte << ((i % 8) * 8);
+            } else {
+                words |= (P)((uint64_t)byte << (i * 8));
             }
-            T a;
-            a.sc_unpack(aInit);
-            T b;
-            b.unpack(packed);
-            if (!(b == a)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false, sName);
+        }
+        T ref;
+        testRefUnpack(ref, aInit);
+        Q_ASSERT(testRefPack(ref) == aInit, std::string(sName) + ": testRefPack(testRefUnpack(pattern)) is not the pattern");
+        T b;
+        b.unpack(words);
+        if (!(b == ref)) {
+            cout << ref.prt() << endl << b.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": unpack() differs from the reference layout");
+        }
+        T c;
+        c.sc_unpack(aInit);
+        if (!(c == ref)) {
+            cout << ref.prt() << endl << c.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_unpack() differs from the reference layout");
+        }
+        P out;
+        ref.pack(out);
+        sc_bv<T::_bitWidth> outBits;
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t test;
-            memset(&test, pattern, 8);
-            b.pack(packed);
-            aTest = a.sc_pack();
-            if (!(aTest == aInit)) {;
-                cout << a.prt();
-                cout << aTest;
-                Q_ASSERT(false, sName);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << ref.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack() differs from the reference layout");
+        }
+        sc_bv<T::_bitWidth> scPacked = ref.sc_pack();
+        if (!(scPacked == aInit)) {
+            cout << ref.prt() << endl << scPacked << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_pack() differs from the reference layout");
+        }
+        b.pack(out);
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t *ptr = (uint64_t *)&packed;
-            uint16_t bitsLeft = T::_bitWidth;
-            do {
-                int bits = std::min((uint16_t)64, bitsLeft);
-                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-                if ((*ptr & mask) != (test & mask)) {;
-                    cout << a.prt();
-                    cout << b.prt();
-                    Q_ASSERT(false, sName);
-                }
-                bitsLeft -= bits;
-                ptr++;
-            } while(bitsLeft > 0);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << b.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack(unpack(pattern)) is not the pattern");
         }
     }
 };

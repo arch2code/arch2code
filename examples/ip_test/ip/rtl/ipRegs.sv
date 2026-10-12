@@ -61,6 +61,10 @@ module ipRegs
         ipSignedParamT offset; //Signed parameterizable field
         ipMemAddrT index; //Unsigned parameterizable field below it
     } ipSignedParamSt;
+    typedef struct packed {
+        ipNibbleT [5-1:0] nibbles; //Fixed nibble array above the data word
+        ipDataT data; //Parameterizable data word at bit 0
+    } ipParamBelowArraySt;
 
     ipRegAddrSt apb_addr;
     assign apb_addr = ipRegAddrSt'(regs.paddr) & 32'h3ff;

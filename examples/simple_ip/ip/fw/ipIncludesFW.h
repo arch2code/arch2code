@@ -177,6 +177,9 @@ struct ipCfgSt_v {
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, IP_DATA_WIDTH);
         _pos += IP_DATA_WIDTH;
         mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (2))));
+        if ((_pos & 63) + 2 > 64) {
+            mode = (ipModeT)(mode | ((_src[ (_pos >> 6) + 1 ] << (64 - (_pos & 63))) & (~0ULL >> (64 - (2)))));
+        }
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -458,11 +461,11 @@ struct ipFixedArraySt {
         memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
-            pack_bits((uint64_t *)&_ret, _pos, words[i], 16);
+            _ret |= (uint64_t)words[i] << (_pos & 63);
             _pos += 16;
         }
         for(unsigned int i=0; i<IP_FIXED_NIBBLE_COUNT; i++) {
-            pack_bits((uint64_t *)&_ret, _pos, nibbles[i], 4);
+            _ret |= (uint64_t)nibbles[i] << (_pos & 63);
             _pos += 4;
         }
     }
@@ -553,7 +556,7 @@ struct ipFixedNestedSt {
         {
             ipFixedLog2St::_packedSt _tmp{0};
             log2Fields.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, 37, _tmp, ipFixedLog2St::_bitWidth);
+            _ret[ 0 ] |= (uint64_t)_tmp << 37;
         }
         uint16_t _pos{45};
         for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
@@ -565,12 +568,12 @@ struct ipFixedNestedSt {
         {
             ipFixedSignedSt::_packedSt _tmp{0};
             signedFields.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, 149, _tmp, ipFixedSignedSt::_bitWidth);
+            _ret[ 2 ] |= (uint64_t)_tmp << 21;
         }
         {
             ipFixedHeaderSt::_packedSt _tmp{0};
             header.pack(_tmp);
-            pack_bits((uint64_t *)&_ret, 170, _tmp, ipFixedHeaderSt::_bitWidth);
+            _ret[ 2 ] |= (uint64_t)_tmp << 42;
         }
     }
     inline void unpack(const _packedSt &_src)
@@ -581,7 +584,7 @@ struct ipFixedNestedSt {
         {
             uint64_t _tmp{0};
             unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, ipFixedLog2St::_bitWidth);
-            log2Fields.unpack(*((ipFixedLog2St::_packedSt*)&_tmp));
+            log2Fields.unpack((ipFixedLog2St::_packedSt)_tmp);
         }
         _pos += ipFixedLog2St::_bitWidth;
         for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
@@ -597,13 +600,13 @@ struct ipFixedNestedSt {
         {
             uint64_t _tmp{0};
             unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, ipFixedSignedSt::_bitWidth);
-            signedFields.unpack(*((ipFixedSignedSt::_packedSt*)&_tmp));
+            signedFields.unpack((ipFixedSignedSt::_packedSt)_tmp);
         }
         _pos += ipFixedSignedSt::_bitWidth;
         {
             uint64_t _tmp{0};
             unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, ipFixedHeaderSt::_bitWidth);
-            header.unpack(*((ipFixedHeaderSt::_packedSt*)&_tmp));
+            header.unpack((ipFixedHeaderSt::_packedSt)_tmp);
         }
     }
     explicit ipFixedNestedSt(
