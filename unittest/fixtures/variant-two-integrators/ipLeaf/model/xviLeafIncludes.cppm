@@ -24,7 +24,8 @@ export namespace xviLeaf_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xviLeaf_ns {
 // types
-template<typename Config> using xviPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t XVI_WIDTH> using xviPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using xviPixelT = xviPixelT_v<Config::XVI_WIDTH>;
 typedef uint8_t xviTagT; // [8] Sample sequence tag
 
 } // namespace xviLeaf_ns
@@ -38,27 +39,27 @@ export namespace xviLeaf_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xviLeaf_ns {
 // structures
-template<typename Config>
-struct xviSt {
-    xviPixelT<Config> data; //Parameterizable pixel payload
+template<uint32_t XVI_WIDTH>
+struct xviSt_v {
+    xviPixelT_v<XVI_WIDTH> data; //Parameterizable pixel payload
     xviTagT tag; //Sample sequence tag
 
-    xviSt() {}
+    xviSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::XVI_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = XVI_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const xviSt<Config> & rhs) const {
+    inline bool operator == (const xviSt_v<XVI_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const xviSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const xviSt_v<XVI_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  xviSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  xviSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -73,48 +74,49 @@ struct xviSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, xviSt<Config>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::XVI_WIDTH);
-        _pos += Config::XVI_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, XVI_WIDTH);
+        _pos += XVI_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (xviPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::XVI_WIDTH)) - 1));
-        _pos += Config::XVI_WIDTH;
-        tag = (xviTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        data = (xviPixelT_v<XVI_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (XVI_WIDTH))));
+        _pos += XVI_WIDTH;
+        tag = (xviTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
-    inline sc_bv<xviSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<xviSt_v<XVI_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<xviSt<Config>::_bitWidth> packed_data;
+        sc_bv<xviSt_v<XVI_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::XVI_WIDTH-1, _pos) = data;
-        _pos += Config::XVI_WIDTH;
+        packed_data.range(_pos+XVI_WIDTH-1, _pos) = data;
+        _pos += XVI_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<xviSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<xviSt_v<XVI_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (xviPixelT<Config>) packed_data.range(_pos+Config::XVI_WIDTH-1, _pos).to_uint64();
-        _pos += Config::XVI_WIDTH;
+        data = (xviPixelT_v<XVI_WIDTH>) packed_data.range(_pos+XVI_WIDTH-1, _pos).to_uint64();
+        _pos += XVI_WIDTH;
         tag = (xviTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit xviSt(sc_bv<xviSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit xviSt(
-        xviPixelT<Config> data_,
+    explicit xviSt_v(sc_bv<xviSt_v<XVI_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit xviSt_v(
+        xviPixelT_v<XVI_WIDTH> data_,
         xviTagT tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit xviSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit xviSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using xviSt = xviSt_v<Config::XVI_WIDTH>;
 } // namespace xviLeaf_ns
 
 // GENERATED_CODE_END

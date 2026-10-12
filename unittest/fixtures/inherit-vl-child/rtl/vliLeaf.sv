@@ -2,13 +2,13 @@
 
 // GENERATED_CODE_PARAM --block=vliLeaf
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: vlInh_vliLeaf
-module vlInh_vliLeaf
+//module as defined by block: vliLeaf
+module vliLeaf
 // Generated Import package statement(s)
-import vlInh_vliCont_package::*;
+import vliCont_package::*;
 #(
-    parameter VLI_ALGO,
-    parameter VLI_WIDTH
+    parameter int unsigned VLI_ALGO = 32'h0000_0001,
+    parameter int unsigned VLI_WIDTH = 32'h0000_0008
 )
 (
     push_ack_if.src out,
@@ -48,6 +48,15 @@ import vlInh_vliCont_package::*;
         // has already lost it and wraps sooner; the checker's absolute
         // expectation then misses. A pass-through would carry the loss unseen.
         fwd.data = vliPixelT'(inSt.data + (1 << (VLI_WIDTH - 3)));
+    end
+
+    // Echoes the run's +vliGreet and +vliBias=<n> plusargs.
+    initial begin
+        int bias;
+        if ($test$plusargs("vliGreet"))
+            $display("vliLeaf plusarg vliGreet set");
+        if ($value$plusargs("vliBias=%d", bias))
+            $display("vliLeaf plusarg vliBias=%0d", bias);
     end
 
     assign out.push = in.push;

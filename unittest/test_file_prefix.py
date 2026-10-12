@@ -60,7 +60,7 @@ from pysrc import checkSvNames, migrateFilePrefix, migrateOrphans
 from pysrc.artifactPaths import currentArtifactRows, fileNamePrefix
 from pysrc.newProject import firmwareFileMapTemplate, projectFileTemplate
 from pysrc.processYaml import projectOpen
-from _tmp_helpers import remove_tree
+from _tmp_helpers import close_db, remove_tree
 
 
 SOURCE = os.path.join(base_dir, 'examples', 'simple_ip')
@@ -84,6 +84,9 @@ def env():
 
 
 def run(cmd, cwd=None):
+    # A make may replace the open database, which NFS keeps as a .nfs file
+    # until the connection closes.
+    close_db()
     return subprocess.run(cmd, capture_output=True, text=True, timeout=3600,
                           env=env(), cwd=cwd)
 
@@ -162,6 +165,8 @@ def db_path(work, project):
 
 
 def open_db(work, project):
+    # projectOpen replaces the global connection without closing it.
+    close_db()
     return projectOpen(db_path(work, project))
 
 

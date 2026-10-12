@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=xviLeaf
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
 
+`include "hdlBoundary.svh"
+
 module xviLeaf_hdl_sv_wrapper
     // Generated Import package statement(s)
     import xviLeaf_package::*;
@@ -33,16 +35,16 @@ module xviLeaf_hdl_sv_wrapper
     // push_ack_if.dst
     push_ack_if #(.data_t(xviSt)) in();
 
-    assign #0 in.push = in_push;
-    assign #0 in.data = in_data;
-    assign #0 in_ack = in.ack;
+    assign `A2C_HDL_BOUNDARY_DLY in.push = in_push;
+    assign `A2C_HDL_BOUNDARY_DLY in.data = in_data;
+    assign `A2C_HDL_BOUNDARY_DLY in_ack = in.ack;
 
     // push_ack_if.src
     push_ack_if #(.data_t(xviSt)) out();
 
-    assign #0 out_push = out.push;
-    assign #0 out_data = out.data;
-    assign #0 out.ack = out_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out_push = out.push;
+    assign `A2C_HDL_BOUNDARY_DLY out_data = out.data;
+    assign `A2C_HDL_BOUNDARY_DLY out.ack = out_ack;
 
     xviLeaf #(.XVI_WIDTH(XVI_WIDTH), .XVI_GAIN(XVI_GAIN)) dut (
         .in(in), // push_ack_if.dst
@@ -51,7 +53,7 @@ module xviLeaf_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

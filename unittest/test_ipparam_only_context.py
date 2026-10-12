@@ -13,6 +13,12 @@ user runs: `db`, `newmodule`, `gen`, then `lint` in `rtl/` and `run` in
 `rundir/`. Before `gen` it fills the scaffolded testbench's user regions with
 one empty test and an end-of-test voter, so the run ends and passes. After
 `gen` it checks that no file imports the context's package or module.
+
+The design file sits in the `ipp/` node, so rtl.f is `ipp/rtl/rtl.f` while lint
+runs in the project's `rtl/`. Before `gen` the suite adds a relative `+incdir+`
+to the user region of rtl.f and an `` `include `` of a header in that directory
+to ipp.sv. Lint finds the header only if it resolves rtl.f entries against the
+directory rtl.f is in, as the Verilated build does.
 """
 
 import os
@@ -29,7 +35,7 @@ FIXTURE = os.path.join(test_dir, 'fixtures', 'ipparam-only-context')
 CONTEXT_IMPORT = re.compile(r'^\s*import\s+(ipp_package\b|ipp\s*;)', re.MULTILINE)
 BUILD_JOBS = '8'
 
-EXTERNAL = os.path.join('tb', 'ipp', 'ippExternal.cppm')
+EXTERNAL = os.path.join('ipp', 'tb', 'ipp', 'ippExternal.cppm')
 # Fills the scaffold's user regions as its own comments describe: the seeded
 # placeholder test runs as an ADD_TEST and one voter waits for it. Anchored on
 # the scaffold's text, so a scaffold reword fails here rather than leaving a run
@@ -53,6 +59,11 @@ TESTBENCH = [
     ('    // ADD_TEST(test_replace_me);\n', '    ADD_TEST(test_replace_me);\n'),
     ('    // SC_THREAD(endOfTestVoter);\n', '    SC_THREAD(endOfTestVoter);\n'),
 ]
+
+
+RTL_DIR = os.path.join('ipp', 'rtl')
+INCLUDE_DIR = 'inc'
+HEADER = 'ippInc.svh'
 
 
 def make(target, project, *, directory=None, jobs=None):
@@ -80,6 +91,21 @@ def fill_testbench(project):
         f.write(text)
 
 
+def add_rtl_include(project):
+    """Point rtl.f at a header directory beside it and include the header in ipp.sv."""
+    rtlDir = os.path.join(project, RTL_DIR)
+    os.mkdir(os.path.join(rtlDir, INCLUDE_DIR))
+    with open(os.path.join(rtlDir, INCLUDE_DIR, HEADER), 'w') as f:
+        f.write('`define IPP_INC_W 8\n')
+    with open(os.path.join(rtlDir, 'rtl.f'), 'a') as f:
+        f.write(f'+incdir+{INCLUDE_DIR}\n')
+    path = os.path.join(rtlDir, 'ipp.sv')
+    with open(path) as f:
+        text = f.read()
+    with open(path, 'w') as f:
+        f.write(f'`include "{HEADER}"\n' + text)
+
+
 def context_importers(project):
     """Every file under the project that imports the context's package or module."""
     found = []
@@ -96,6 +122,7 @@ def check(project):
     for target in ('db', 'newmodule', 'gen'):
         if target == 'gen':
             fill_testbench(project)
+            add_rtl_include(project)
         rc, output = make(target, project, jobs=BUILD_JOBS if target == 'gen' else None)
         if rc != 0:
             print(f"  FAIL: make {target} failed (rc={rc})")
@@ -114,7 +141,7 @@ def check(project):
         print(f"  FAIL: make lint failed (rc={rc})")
         print(output)
         return False
-    print("  PASS: make lint succeeds on the generated RTL")
+    print("  PASS: make lint succeeds on the generated RTL, with an rtl.f-relative +incdir+")
 
     rc, output = make('run', project, directory=os.path.join(project, 'rundir'),
                       jobs=BUILD_JOBS)

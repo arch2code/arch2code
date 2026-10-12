@@ -19,6 +19,7 @@
 import a2c.endOfTest;
 
 #ifdef VERILATOR
+#include "verilated.h"
 #include "vl_tracer.h"
 #endif
 
@@ -48,6 +49,10 @@ void signalHandler(int signum) {
 
 int sc_main(int argc, char* argv[])
 {
+#ifdef VERILATOR
+    // Verilated RTL reads $test$plusargs and $value$plusargs from these args.
+    Verilated::commandArgs(argc, argv);
+#endif
     logging &lg = logging::GetInstance();
     // cmd line & config
     std::string logfile;

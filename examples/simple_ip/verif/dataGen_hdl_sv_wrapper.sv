@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=dataGen
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module dataGen_hdl_sv_wrapper
     // Generated Import package statement(s)
     import simple_ip_package::*;
@@ -19,9 +21,9 @@ module dataGen_hdl_sv_wrapper
     // push_ack_if.src
     push_ack_if #(.data_t(simpleData8St)) out();
 
-    assign #0 out_push = out.push;
-    assign #0 out_data = out.data;
-    assign #0 out.ack = out_ack;
+    assign `A2C_HDL_BOUNDARY_DLY out_push = out.push;
+    assign `A2C_HDL_BOUNDARY_DLY out_data = out.data;
+    assign `A2C_HDL_BOUNDARY_DLY out.ack = out_ack;
 
     dataGen dut (
         .out(out), // push_ack_if.src

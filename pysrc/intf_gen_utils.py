@@ -194,7 +194,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         is_input = row['direction'] == 'input'
         assign_lhs = f"{intf_name}.{intf_sig}" if is_input else f"{intf_name}_{intf_sig}"
         assign_rhs = f"{intf_name}_{intf_sig}" if is_input else f"{intf_name}.{intf_sig}"
-        out['assign'].append(f"assign #0 {assign_lhs} = {assign_rhs};")
+        out['assign'].append(f"assign `A2C_HDL_BOUNDARY_DLY {assign_lhs} = {assign_rhs};")
 
     return out
 

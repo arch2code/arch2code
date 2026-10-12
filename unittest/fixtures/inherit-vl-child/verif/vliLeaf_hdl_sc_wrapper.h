@@ -10,11 +10,15 @@ import vlInh_vliLeaf.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import vlInh_vliCont;
 using namespace vlInh_vliCont_ns;
-#include "vliContVariantConfig.h"
+import vlInh.vliLeaf.config;
 #include "push_ack_bfm.h"
 
+#include "socketSync.h"
 template <typename DUT_T, typename Config>
 class vliLeaf_hdl_sc_wrapper: public sc_module, public blockBase, public vliLeafBase<Config> {
 
@@ -22,10 +26,10 @@ public:
 
     DUT_T *dut_hdl;
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
-    push_ack_src_bfm<vliSt<Config>, sc_bv<vliSt<Config>::_bitWidth>> out_bfm;
-    push_ack_dst_bfm<vliSt<Config>, sc_bv<vliSt<Config>::_bitWidth>> in_bfm;
+    push_ack_src_bfm<vliSt<Config>, sc_bv<vliSt<Config>::_bitWidth>> out_bfm_inst;
+    push_ack_dst_bfm<vliSt<Config>, sc_bv<vliSt<Config>::_bitWidth>> in_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -36,33 +40,36 @@ public:
         sc_module(modulename),
         blockBase("vliLeaf_hdl_sc_wrapper", name(), bbMode),
         vliLeafBase<Config>(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
-        out_bfm("out_bfm"),
-        in_bfm("in_bfm"),
-        rst_n(0)
+        clk("clk"),
+        out_bfm_inst("out_bfm_inst"),
+        in_bfm_inst("in_bfm_inst"),
+        rst_n("rst_n", true),
+        clk_half_(sc_time(1, SC_NS) / 2)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
-        dut_hdl->out_push(out_hdl_if.push);
-        dut_hdl->out_data(out_hdl_if.data);
-        dut_hdl->out_ack(out_hdl_if.ack);
-        dut_hdl->in_push(in_hdl_if.push);
-        dut_hdl->in_data(in_hdl_if.data);
-        dut_hdl->in_ack(in_hdl_if.ack);
+        dut_hdl->out_push(out_hdl_inst.push);
+        dut_hdl->out_data(out_hdl_inst.data);
+        dut_hdl->out_ack(out_hdl_inst.ack);
+        dut_hdl->in_push(in_hdl_inst.push);
+        dut_hdl->in_data(in_hdl_inst.data);
+        dut_hdl->in_ack(in_hdl_inst.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        out_bfm.if_p(this->out);
-        out_bfm.hdl_if_p(out_hdl_if);
-        out_bfm.clk(clk);
-        out_bfm.rst_n(rst_n);
+        out_bfm_inst.if_p(this->out);
+        out_bfm_inst.hdl_if_p(out_hdl_inst);
+        out_bfm_inst.clk(clk);
+        out_bfm_inst.rst_n(rst_n);
 
-        in_bfm.if_p(this->in);
-        in_bfm.hdl_if_p(in_hdl_if);
-        in_bfm.clk(clk);
-        in_bfm.rst_n(rst_n);
+        in_bfm_inst.if_p(this->in);
+        in_bfm_inst.hdl_if_p(in_hdl_inst);
+        in_bfm_inst.clk(clk);
+        in_bfm_inst.rst_n(rst_n);
 
-        SC_THREAD(reset_driver);
+        clk.write(true);
+        SC_THREAD(clock_gen_clk);
+        SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
 
@@ -78,15 +85,76 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<vliSt<Config>::_bitWidth>> out_hdl_if;
-    push_ack_hdl_if<sc_bv<vliSt<Config>::_bitWidth>> in_hdl_if;
+    push_ack_hdl_if<sc_bv<vliSt<Config>::_bitWidth>> out_hdl_inst;
+    push_ack_hdl_if<sc_bv<vliSt<Config>::_bitWidth>> in_hdl_inst;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
 
-    void reset_driver() {
-        wait(5, SC_NS);
-        rst_n = true;
+    // Free-run: toggle every half period until gated lockstep begins. Gated
+    // lockstep: the quantum thread broadcasts one edge request per
+    // socketSyncClockHalfPeriod() of advanced time, and a clock toggles once
+    // its own half period has accumulated, so a slower clock keeps its period
+    // at quantum resolution and no clock can free-run during wait(ack). A half
+    // period that is not a whole number of lockstep steps would be silently
+    // moved onto the step grid, so it is fatal on entry to gated mode. Losing
+    // the sync link ends gating for good and wakes the gated wait without an
+    // edge, so the clock returns to free-running.
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        while (!socketSyncTimeGated()) {
+            wait(half);
+            sig.write(!sig.read());
+        }
+        const sc_time step = socketSyncClockHalfPeriod();
+        Q_ASSERT(half.value() % step.value() == 0,
+                 std::string("clock ") + sig.name() + " half period "
+                 + half.to_string() + " is not a whole multiple of the lockstep step "
+                 + step.to_string() + "; lockstep co-simulation cannot represent it. "
+                 "Declare a period that is a whole multiple of " + (step + step).to_string()
+                 + ", or set PYSOCKET_LOCKSTEP=0 to run free-running.");
+        sc_time gated = SC_ZERO_TIME;
+        while (true) {
+            socketSyncWaitClockEdge();
+            if (!socketSyncTimeGated()) {
+                break;
+            }
+            gated += step;
+            if (gated >= half) {
+                gated -= half;
+                sig.write(!sig.read());
+            }
+        }
+        while (true) {
+            wait(half);
+            sig.write(!sig.read());
+        }
     }
+
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    // The clock parameter is named reset_driver_clk, not clk: a block whose
+    // own default clock is literally named clk declares a same-named member,
+    // which a parameter named clk would otherwise shadow (-Wshadow).
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
+        if (socketSyncLockstepActive()) {
+            rst.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst.write(socketSyncRstN());
+            }
+        } else {
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(reset_driver_clk.posedge_event());
+            }
+            rst.write(true);
+        }
+    }
+
+    void clock_gen_clk() { clock_gen(clk, clk_half_); }
+    void reset_driver_rst_n() { reset_driver(rst_n, clk, 3); }
 
 // GENERATED_CODE_END
 

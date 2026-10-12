@@ -63,6 +63,8 @@ Run arch2code only through these targets. Two tools run directly: `arch2code.py 
 *   `A2C_CLANG` names the Clang for the whole build. Give one compiler path or name, such as `/opt/llvm/bin/clang++` or `clang++-20`, never a launcher plus a compiler. Verilator's `OBJCACHE` already adds ccache. The build ignores an exported `CXX`.
 *   The verilated objects use `A2C_CLANG` too. Under `USE_GCC` they use the compiler Verilator was configured with, because `verilated.mk` sets flags for that compiler.
 *   `VL_JOBS` (default 4) sets Verilator's threads and its C++ build jobs. Under `make -jN` the Verilator build shares the outer job pool instead. A bare `make -j` has no job pool, so `VL_JOBS` applies there too. `make -n` does not run the verilate step.
+*   `VL_TIMING=1` verilates and lints with `--timing` instead of `--no-timing`, so RTL delays and event controls run. The Verilator library then carries the timing runtime, `verilated_timing.o`, built once in the shared runtime directory `rundir/build/vl/obj_dir/vl_dummy`. Set it in `include/make/shared.mk`, on the command line or in the environment. A setting in the rundir `Makefile` does not reach the Verilator build or `make lint`. Changing the value re-verilates every top and rebuilds the library. Repeating a build with the same value does nothing.
+*   `VL_TIMING=1` is supported only on Verilator 5.053 or later. Until 5.053 is released, that means a master build at or after commit `ea536a5`. On older versions a timing top can lose output updates and miss input clock edges (verilator/verilator#8394, fixed by #8534). The build warns when `verilator --version` is below 5.053 and goes on. A `5.053 devel` build from before `ea536a5` passes the check but still has the bug.
 *   The default Boost link line is `-lboost_program_options -L$(LD_BOOST)`. A site can export `BOOST_LIBS` as the whole Boost link line instead, for example `-lboost_program_options -L/site/lib` for a shared Boost. `LD_BOOST` is then not needed.
 *   A site `EXTRA_LD_FLAGS` goes on the link line after the Boost and SystemC libraries and before the project's `EXTRA_LD_FLAGS +=` additions. A `-L` there cannot override the Boost search path, so set `BOOST_LIBS` to change Boost.
 *   Site values are make syntax and then pass through the shell, so write a literal `$` as `$$` inside shell quotes: `export EXTRA_LD_FLAGS="-Wl,-rpath,'\$\$ORIGIN/lib'"`.
@@ -101,7 +103,7 @@ The synthesis project adds the rest itself:
 | `EXTRA_LINT_OPTS` | `verilator --lint-only` (`make lint`) |
 | `EXTRA_VL_OPTS` | `verilator` model wrapping only: the runtime build (`vl_dummy`) and each verilated top |
 | `EXTRA_VL_CFLAGS` | C++ flags for Verilator-generated code, appended inside the single quoted `-CFLAGS '...'` argument of each model-wrapping verilate. Do not put single quotes in it |
-| `EXTRA_VL_LIB_OBJS` | `ar` script `ADDMOD` lines for `lib<project>vl_s_wrap.a`. Names objects a verilate already builds. The builder does not compile them |
+| `EXTRA_VL_LIB_OBJS` | `ar` script `ADDMOD` lines for `lib<project>vl_s_wrap.a`. Names objects a verilate already builds. The builder does not compile them. The timing runtime needs no entry, because `VL_TIMING=1` adds it |
 | `EXTRA_CXX_FLAGS` | C++ compile flags, after every builder flag |
 | `EXTRA_CPP_INCLUDES` | C++ include paths |
 | `EXTRA_CPP_SRC` | Extra C++ sources to compile |
@@ -126,12 +128,6 @@ The synthesis project adds the rest itself:
 *   HDL from outside arch2code, such as VIP, goes on the `EXTRA_HDL_*` hooks, and lint, Verilator, VCS and Xcelium all pick it up. Its C/C++ models go on `EXTRA_CPP_SRC`, `EXTRA_PRJ_SRC_DIRS`, `EXTRA_CPP_INCLUDES` and `EXTRA_LD_FLAGS`. Options only one tool understands, and precompiled libraries (`-reflib`, `synopsys_sim.setup` and the like), go on that tool's hooks. Simulation plusargs go on `EXTRA_XRUN_R_OPTS`. The VCS flow has no run hook, because `simv` takes the test's own arguments.
 *   Under Xcelium, every unit in `EXTRA_HDL_FILES`, or in a `.f` on `EXTRA_HDL_F_FILES`, must elaborate on its own. `xmelab` also elaborates the units nothing instantiates, so one parameter without a default fails the whole snapshot with `*E,NODEFP`. Give every parameter a default, or leave unused units off the list. VCS builds the same files without error.
 *   `EXTRA_VL_LIB_OBJS` paths are relative to `rundir/build/vl`, or absolute under `$(A2C_VL_BUILD_DIR)`. Each verilated top builds in its own `obj_dir/<top>`. The archive waits for every verilate before reading the objects, so `-j` builds are safe. Adding a path to an existing tree does not relink the archive by itself. Delete `rundir/build/vl/lib<project>vl_s_wrap.a` once, or run `make clean`.
-
-```make
-# A top verilated with --timing needs the Verilator timing runtime in the library.
-EXTRA_VL_OPTS     += --timing
-EXTRA_VL_LIB_OBJS += $(A2C_VL_BUILD_DIR)/obj_dir/<top>_hdl_sv_wrapper/verilated_timing.o
-```
 
 ## Simulator flows (VCS, Xcelium)
 *   Set the flow's environment before `make`. The builder checks these:

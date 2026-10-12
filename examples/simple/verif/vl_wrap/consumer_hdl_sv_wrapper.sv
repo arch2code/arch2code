@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module consumer_hdl_sv_wrapper
     // Generated Import package statement(s)
     import simple_package::*;
@@ -24,16 +26,16 @@ module consumer_hdl_sv_wrapper
     // push_ack_if.dst
     push_ack_if #(.data_t(tag_st)) tag0();
 
-    assign #0 tag0.push = tag0_push;
-    assign #0 tag0.data = tag0_data;
-    assign #0 tag0_ack = tag0.ack;
+    assign `A2C_HDL_BOUNDARY_DLY tag0.push = tag0_push;
+    assign `A2C_HDL_BOUNDARY_DLY tag0.data = tag0_data;
+    assign `A2C_HDL_BOUNDARY_DLY tag0_ack = tag0.ack;
 
     // push_ack_if.dst
     push_ack_if #(.data_t(tag_st)) tag1();
 
-    assign #0 tag1.push = tag1_push;
-    assign #0 tag1.data = tag1_data;
-    assign #0 tag1_ack = tag1.ack;
+    assign `A2C_HDL_BOUNDARY_DLY tag1.push = tag1_push;
+    assign `A2C_HDL_BOUNDARY_DLY tag1.data = tag1_data;
+    assign `A2C_HDL_BOUNDARY_DLY tag1_ack = tag1.ack;
 
     consumer dut (
         .tag0(tag0), // push_ack_if.dst

@@ -6,8 +6,8 @@ module memory_sp #(
     input clk
 );
 
-    typedef logic [$size(mem_port.addr)-1:0] _addr_t;
-    typedef logic [$size(data_t)-1:0] _data_t;
+    typedef logic [$bits(mem_port.addr)-1:0] _addr_t;
+    typedef logic [$bits(data_t)-1:0] _data_t;
 
     _data_t mem [DEPTH-1:0];
 

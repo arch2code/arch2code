@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module blockA_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixedInclude_package::*;
@@ -46,42 +48,42 @@ module blockA_hdl_sv_wrapper
     // req_ack_if.src
     req_ack_if #(.data_t(aSt), .rdata_t(aASt)) aStuffIf();
 
-    assign #0 aStuffIf_req = aStuffIf.req;
-    assign #0 aStuffIf_data = aStuffIf.data;
-    assign #0 aStuffIf.ack = aStuffIf_ack;
-    assign #0 aStuffIf.rdata = aStuffIf_rdata;
+    assign `A2C_HDL_BOUNDARY_DLY aStuffIf_req = aStuffIf.req;
+    assign `A2C_HDL_BOUNDARY_DLY aStuffIf_data = aStuffIf.data;
+    assign `A2C_HDL_BOUNDARY_DLY aStuffIf.ack = aStuffIf_ack;
+    assign `A2C_HDL_BOUNDARY_DLY aStuffIf.rdata = aStuffIf_rdata;
 
     // rdy_vld_if.src
     rdy_vld_if #(.data_t(seeSt)) cStuffIf();
 
-    assign #0 cStuffIf_vld = cStuffIf.vld;
-    assign #0 cStuffIf_data = cStuffIf.data;
-    assign #0 cStuffIf.rdy = cStuffIf_rdy;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf_vld = cStuffIf.vld;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf_data = cStuffIf.data;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf.rdy = cStuffIf_rdy;
 
     // notify_ack_if.src
     notify_ack_if #() startDone();
 
-    assign #0 startDone_notify = startDone.notify;
-    assign #0 startDone.ack = startDone_ack;
+    assign `A2C_HDL_BOUNDARY_DLY startDone_notify = startDone.notify;
+    assign `A2C_HDL_BOUNDARY_DLY startDone.ack = startDone_ack;
 
     // rdy_vld_if.src
     rdy_vld_if #(.data_t(seeSt)) dupIf();
 
-    assign #0 dupIf_vld = dupIf.vld;
-    assign #0 dupIf_data = dupIf.data;
-    assign #0 dupIf.rdy = dupIf_rdy;
+    assign `A2C_HDL_BOUNDARY_DLY dupIf_vld = dupIf.vld;
+    assign `A2C_HDL_BOUNDARY_DLY dupIf_data = dupIf.data;
+    assign `A2C_HDL_BOUNDARY_DLY dupIf.rdy = dupIf_rdy;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
 
-    assign #0 apbReg.paddr = apbReg_paddr;
-    assign #0 apbReg.psel = apbReg_psel;
-    assign #0 apbReg.penable = apbReg_penable;
-    assign #0 apbReg.pwrite = apbReg_pwrite;
-    assign #0 apbReg.pwdata = apbReg_pwdata;
-    assign #0 apbReg_pready = apbReg.pready;
-    assign #0 apbReg_prdata = apbReg.prdata;
-    assign #0 apbReg_pslverr = apbReg.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.paddr = apbReg_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.psel = apbReg_psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.penable = apbReg_penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwrite = apbReg_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg.pwdata = apbReg_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pready = apbReg.pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_prdata = apbReg.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_pslverr = apbReg.pslverr;
 
     blockA dut (
         .aStuffIf(aStuffIf), // req_ack_if.src

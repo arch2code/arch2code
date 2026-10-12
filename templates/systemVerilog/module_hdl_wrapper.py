@@ -129,6 +129,12 @@ def port_decl_block(prj, data, mp_sig, sc_bv):
     s += intf_gen_utils.sv_clock_reset_input_lines(data) + '\n'
     return s
 
+def boundary_include(mp_sig):
+    # The port assigns name `A2C_HDL_BOUNDARY_DLY; a wrapper without them skips the header.
+    if any(sig['assign'] for sig in mp_sig.values()):
+        return '`include "hdlBoundary.svh"\n\n'
+    return ''
+
 def intf_reconstruction(prj, data, mp_sig):
     # Interface declarations and the port<->interface assigns.
     s = ''
@@ -175,6 +181,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     # directly, and the DUT parameters are passed through by name.
     module_name = data['svWrapper']['bodyModule']
     out = '\n'
+    out += boundary_include(mp_sig)
     out += f'module {module_name}\n'
 
     startingContext = data['blockInfo']['_context']
@@ -288,6 +295,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
     module_name = data['svWrapper']['bodyModule']
 
     out = '\n'
+    out += boundary_include(mp_sig)
     out += f'module {module_name}\n'
 
     # packages

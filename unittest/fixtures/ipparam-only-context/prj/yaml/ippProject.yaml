@@ -5,7 +5,7 @@ yamlFormat: 2
 projectName: ipp
 
 projectFiles:
-    - ../../yaml/ipp.yaml
+    - ../../ipp/yaml/ipp.yaml
 
 topInstance: ipp_tb
 
