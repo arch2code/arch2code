@@ -42,7 +42,9 @@ if base_dir not in sys.path:
 if test_dir not in sys.path:
     sys.path.insert(0, test_dir)
 
+from pysrc.intf_gen_utils import sc_hdl_member_names
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -241,24 +243,28 @@ def _build(name, dut_clocks, instances, connections='', connection_maps='',
           expect_success=True, preamble=PREAMBLE):
     """Write and build one fixture. Returns (fixture_dir, db_path, result)."""
     fixture = tempfile.mkdtemp(prefix='clklocalnet_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT.format(name=name))
-    design = preamble.format(dutClocks=dut_clocks) + "\ninstances:\n" + instances
-    if connections:
-        design += "\nconnections:\n" + connections
-    if connection_maps:
-        design += "\nconnectionMaps:\n" + connection_maps
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(design)
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT.format(name=name))
+        design = preamble.format(dutClocks=dut_clocks) + "\ninstances:\n" + instances
+        if connections:
+            design += "\nconnections:\n" + connections
+        if connection_maps:
+            design += "\nconnectionMaps:\n" + connection_maps
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(design)
 
-    db = os.path.join(fixture, f"{name}.db")
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    if expect_success and built.returncode != 0:
-        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
-    return fixture, db, built
+        db = os.path.join(fixture, f"{name}.db")
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        if expect_success and built.returncode != 0:
+            raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+        return fixture, db, built
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 # --------------------------------------------------- Fixture A: wireTest --
@@ -435,12 +441,12 @@ def check_connection_clock_resolves_against_a_local_net():
             raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
         with open(os.path.join(fixture, rel)) as f:
             text = f.read()
-        if 'in_bfm.clk(clkAlt);' not in text:
+        if sc_hdl_member_names('in')[1] + '.clk(clkAlt);' not in text:
             raise AssertionError(
                 f"consumer's own BFM does not bind clk to clkAlt, the block's "
                 f"own clock the connection's clock: (clkDiv) resolved to:\n{text}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -462,7 +468,7 @@ def check_declared_port_clock_disagreeing_with_connection_clock_rejected():
         if "bound to 'clkDiv', but connection" not in report or "must agree" not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -490,7 +496,7 @@ def check_local_net_collides_with_reserved_name():
             if needle not in report:
                 raise AssertionError(f"the rejection does not mention {needle!r}:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -514,7 +520,7 @@ def check_rejects_self_driven_input():
         if 'An instance may not bind one of its own inputs to a net' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -552,7 +558,7 @@ def check_rejects_export_clock_mismatch():
         if 'An exported reset must be released on the clock' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -583,7 +589,7 @@ def check_rejects_local_net_membership_mismatch():
         if 'A synchronous reset must be released on the container clock' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -622,7 +628,7 @@ def check_rst_fallback_resolves_local_reset():
                 f"uPlain's own rst_n fallback did not resolve to the local "
                 f"reset net rstDivInt_n:\n{text}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -679,7 +685,7 @@ def check_local_net_wire_precedes_alias_reading_it():
                 f"dut.sv does not declare 'wire rstSyncd_n;' before the alias "
                 f"'wire rst_n = rstSyncd_n;' that reads it:\n{text}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -726,7 +732,7 @@ def check_rejects_boundary_port_on_unexported_local_net():
         if 'A boundary port timed by a local net the container does not export' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -754,7 +760,7 @@ def check_rejects_supply_cycle():
         if 'these nets supply each other' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -787,7 +793,7 @@ def check_supply_rejects_cycle_behind_a_second_input():
         if 'these nets supply each other' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -824,7 +830,7 @@ def check_supply_accepts_oscillator_as_root():
                 f"uOsc's own output clkOut is not bound to the local net "
                 f"clkOsc:\n{text}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -870,7 +876,7 @@ def check_supply_export_fed_by_inner_oscillator_accepted():
                 f"an export driven by an inner oscillator was reported as "
                 f"part of a supply cycle:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -890,7 +896,7 @@ def check_supply_export_fed_by_container_input_rejected():
                 f"a cycle through an export driven from the container's own "
                 f"input was not reported:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -1000,21 +1006,25 @@ def _build_registered_leaf(name, leaf_extra_lines, leaf_reset_map='', expect_suc
     """Write and build the router/leaf/synchroniser fixture. Returns
     (fixture_dir, db_path, result)."""
     fixture = tempfile.mkdtemp(prefix='clkregleaf_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT_REG.format(name=name))
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(_registered_leaf_design(leaf_extra_lines, leaf_reset_map))
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT_REG.format(name=name))
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(_registered_leaf_design(leaf_extra_lines, leaf_reset_map))
 
-    db = os.path.join(fixture, f"{name}.db")
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    if expect_success and built.returncode != 0:
-        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
-    return fixture, db, built
+        db = os.path.join(fixture, f"{name}.db")
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        if expect_success and built.returncode != 0:
+            raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+        return fixture, db, built
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 LEAF_EXTRA_SOLE_LOCAL = ("        clocks:\n"
@@ -1054,7 +1064,7 @@ def check_selected_reset_is_sole_local_reset_candidate():
                 f"leafA.sv's synthesised register handler is not bound to "
                 f"the local reset net rstBusInt_n:\n{text}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -1083,7 +1093,7 @@ def check_selected_reset_rejects_two_unmarked_candidates():
         if 'register bus clock must have one' not in report:
             raise AssertionError(f"the rejection does not report the expected diagnostic:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -1111,7 +1121,7 @@ def main():
     try:
         ok += [_run_case(label, lambda fn=fn: fn(text)) for label, fn in FIXTURE_A_CHECKS]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     cases = [
         ("a connection's clock: resolves against a local net",

@@ -34,6 +34,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -218,7 +219,7 @@ def _run_variant_rename():
               "warns about and newmodule replaces; the hand-authored file survives")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def _run_block_rename():
@@ -303,7 +304,7 @@ def _run_block_rename():
               "and the hand-authored file are handled as before")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def run_all_tests():

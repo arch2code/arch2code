@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import twoClk_twoClkSlowSink.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "twoClkSlowSink_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "twoClkSlowSink_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VtwoClkSlowSink_hdl_sv_wrapper.h"
 #endif
@@ -33,7 +35,7 @@ class twoClkSlowSink_hdl_sc_wrapper: public sc_module, public blockBase, public 
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     twoClkSlowSink_hdl_sv_wrapper *dut_hdl;
 #else
     VtwoClkSlowSink_hdl_sv_wrapper *dut_hdl;
@@ -41,7 +43,7 @@ public:
 
     sc_signal<bool> clkSlow;
 
-    push_ack_dst_bfm<twoClkDataSt, sc_bv<8>> in_bfm;
+    push_ack_dst_bfm<twoClkDataSt, sc_bv<8>> in_bfm_inst;
 
     SC_HAS_PROCESS (twoClkSlowSink_hdl_sc_wrapper);
 
@@ -50,26 +52,26 @@ public:
         blockBase("twoClkSlowSink_hdl_sc_wrapper", name(), bbMode),
         twoClkSlowSinkBase(name(), variant),
         clkSlow("clkSlow"),
-        in_bfm("in_bfm"),
+        in_bfm_inst("in_bfm_inst"),
         rstSlow_n("rstSlow_n", true),
         clkSlow_half_(sc_time(3, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new twoClkSlowSink_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VtwoClkSlowSink_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->in_push(in_hdl_if.push);
-        dut_hdl->in_data(in_hdl_if.data);
-        dut_hdl->in_ack(in_hdl_if.ack);
+        dut_hdl->in_push(in_hdl_inst.push);
+        dut_hdl->in_data(in_hdl_inst.data);
+        dut_hdl->in_ack(in_hdl_inst.ack);
         dut_hdl->clkSlow(clkSlow);
         dut_hdl->rstSlow_n(rstSlow_n);
 
-        in_bfm.if_p(this->in);
-        in_bfm.hdl_if_p(in_hdl_if);
-        in_bfm.clk(clkSlow);
-        in_bfm.rst_n(rstSlow_n);
+        in_bfm_inst.if_p(this->in);
+        in_bfm_inst.hdl_if_p(in_hdl_inst);
+        in_bfm_inst.clk(clkSlow);
+        in_bfm_inst.rst_n(rstSlow_n);
 
         clkSlow.write(true);
         SC_THREAD(clock_gen_clkSlow);
@@ -89,7 +91,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<8>> in_hdl_if;
+    push_ack_hdl_if<sc_bv<8>> in_hdl_inst;
 
     sc_signal<bool> rstSlow_n;
     sc_time clkSlow_half_;

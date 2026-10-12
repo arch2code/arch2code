@@ -36,6 +36,7 @@ import sys
 import tempfile
 
 from test_watchdog_no_terminator import buildProbe
+from _tmp_helpers import remove_tree
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -140,7 +141,7 @@ def test_assert_exit_path():
             if len(FAILURES) > before:
                 print(f"--- {scenario} output ---\n{output}")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def main():

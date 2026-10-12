@@ -51,6 +51,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -107,7 +108,7 @@ def test_power_of_two_helpers_hold_their_contracts_across_the_domain():
             excluded[mode] = subprocess.run([binary, mode], capture_output=True,
                                             text=True, timeout=300)
     finally:
-        shutil.rmtree(build_dir)
+        remove_tree(build_dir)
 
     for mode, r in excluded.items():
         assert r.returncode == -signal.SIGABRT, (

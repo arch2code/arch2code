@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -165,7 +166,7 @@ def _build(root_arch, top_instance, compose_child=True, child_arch=CHILD_ARCH):
             capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
         return completed.returncode, completed.stdout + completed.stderr
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _check_rejected(label, root_arch, top_instance, required, common=COMMON_REQUIRED):

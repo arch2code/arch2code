@@ -66,12 +66,27 @@ A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db
 A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
 
 PROJECT_RUNDIR = $(REPO_ROOT)/rundir
+# VCS (vlogan, vcs) and Xcelium (xrun) run in these directories and leave their
+# analysis, snapshot and log files there; `clean` removes them from either the
+# project root or the rundir, whichever simulator switch is set.
+VCS_RUNDIR ?= $(PROJECT_RUNDIR)
+XRUN_RUNDIR ?= $(PROJECT_RUNDIR)
 
 # Binary/object/dependency tree of the rundir build. Defined here rather than in
 # a2c-systemc.mk so `clean` from the project root removes it too: dependency
 # files left behind name sources that a later release may have deleted, and the
 # next build then fails with "No rule to make target".
-BIN_DIR = $(PROJECT_RUNDIR)/build
+# The Xcelium build has its own tree so its snapshots coexist with a VCS or
+# Verilator build of the same rundir; `clean` removes both trees whichever
+# flow is selected.
+DEFAULT_BIN_DIR = $(PROJECT_RUNDIR)/build
+XRUN_BIN_DIR = $(PROJECT_RUNDIR)/build_xrun
+BIN_DIR = $(if $(USE_XCELIUM),$(XRUN_BIN_DIR),$(DEFAULT_BIN_DIR))
+# Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
+# and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
+# tree (not a manifest fact). Defined here so shared.mk can name objects under it
+# (EXTRA_VL_LIB_OBJS) in the verilation sub-make, which reads no rundir Makefile.
+A2C_VL_BUILD_DIR = $(BIN_DIR)/vl
 
 GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 
@@ -113,8 +128,25 @@ PY_GEN_DOT_FILES = $(PY_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 SV_GEN_FILES =  $(wildcard $(A2C_SV_GEN_FILES)) $(wildcard $(A2C_RTL_DOT_F)) $(wildcard $(EXTRA_SV_GEN_FILES))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
+# HDL from outside arch2code (VIP and the like) for the Verilator lint, each
+# per-top verilate, the vlogan RTL analysis and the xrun DUT library, placed
+# after a2c.f and before the project's rtl.f. A builder layer's, then the
+# project's.
+A2C_HDL_ARGS = $(addprefix -F ,$(A2C_LAYER_HDL_F_FILES)) $(EXTRA_HDL_FILES) $(addprefix -F ,$(EXTRA_HDL_F_FILES)) \
+	$(addprefix +incdir+,$(EXTRA_HDL_INCDIRS)) $(addprefix +define+,$(EXTRA_HDL_DEFINES))
+A2C_HDL_DEPS = $(A2C_LAYER_HDL_F_FILES) $(EXTRA_HDL_FILES) $(EXTRA_HDL_F_FILES)
+
+# Per-top HDL boundary files (VCS port map, Xcelium shell) under .gen/vl, derived
+# from the database for every top the manifest lists.
+VL_BOUNDARY_STAMP = $(GEN_BUILD_DIR)/vl/.boundary
 ifndef SKIP_GEN
 GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES) $(PY_GEN_DOT_FILES)
+# The per-top boundary files serve only the VCS and Xcelium flows.
+ifneq ($(USE_VCS)$(USE_XCELIUM),)
+ifneq ($(strip $(A2C_VL_TOPS)),)
+GEN_DEPS += $(VL_BOUNDARY_STAMP)
+endif
+endif
 else
 $(warning "Forced skipping generation step (SKIP_GEN=1)")
 endif
@@ -145,19 +177,23 @@ endif
 # stale (or gate-aborted shell) db.
 $(A2C_SQLDB_FILE): $(A2C_PRJ_YAML)
 $(A2C_SQLDB_FILE): $(YAML_FILES)
-	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE) $(EXTRA_GEN_OPTS)
 	touch $(A2C_SQLDB_DOTFILE)
 
 $(SC_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $<
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 $(PY_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemVerilog --file $<
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemVerilog --file $< $(EXTRA_GEN_OPTS)
+	@mkdir -p $(@D) && touch $@
+
+$(VL_BOUNDARY_STAMP): $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary $(EXTRA_GEN_OPTS)
 	@mkdir -p $(@D) && touch $@
 
 #------------------------------------------------------------------------
@@ -207,15 +243,17 @@ gen: $(GEN_DEPS)
 # Creates missing fileMap files, never rewrites an existing one, and deletes
 # registrar files the current contract no longer names.
 newmodule: $(A2C_SQLDB_FILE)
-	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule $(EXTRA_GEN_OPTS)
 	touch $(A2C_SQLDB_FILE)
 	@# The compdb parse scans .cppm scaffolds gen has not filled yet and fails;
 	@# keep it non-fatal so newmodule and migrate proceed.
 	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null 2>&1 || true
 
 clean::
-	rm -rf $(GEN_BUILD_DIR) $(BIN_DIR)
+	rm -rf $(GEN_BUILD_DIR) $(DEFAULT_BIN_DIR) $(XRUN_BIN_DIR)
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
+	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
+	rm -rf $(XRUN_RUNDIR)/xcelium*.d $(XRUN_RUNDIR)/xrun*.log $(XRUN_RUNDIR)/xrun*.history
 
 
 help::
@@ -227,6 +265,42 @@ help::
 	@echo "  migrate  	- Migrate to the current authoring format (yaml convert + stamp, db, orphan sweep, gen)"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"
+	@echo "  help-hooks	- List the EXTRA_* user hooks, the command each feeds, and its value"
+
+# Each hook is read where its command is built; the user appends with += in
+# include/make/shared.mk. $(info) prints values verbatim, quotes included.
+.PHONY: help-hooks
+help-hooks:
+	$(info User hooks: append with += in include/make/shared.mk)
+	$(info EXTRA_GEN_OPTS         arch2code.py db build, gen, newmodule: $(EXTRA_GEN_OPTS))
+	$(info EXTRA_SC_GEN_FILES     arch2code.py --systemc --file (gen): $(EXTRA_SC_GEN_FILES))
+	$(info EXTRA_SV_GEN_FILES     arch2code.py --systemVerilog --file (gen): $(EXTRA_SV_GEN_FILES))
+	$(info EXTRA_VERILATOR_OPTS   verilator lint and model wrapping: $(EXTRA_VERILATOR_OPTS))
+	$(info EXTRA_HDL_FILES        verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_FILES))
+	$(info EXTRA_HDL_F_FILES      -F lists for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_F_FILES))
+	$(info EXTRA_HDL_INCDIRS      +incdir+ for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_INCDIRS))
+	$(info EXTRA_HDL_DEFINES      +define+ for verilator, vlogan RTL analysis, xrun DUT library: $(EXTRA_HDL_DEFINES))
+	$(info VERILATOR_USER_OPTS    alias of EXTRA_VERILATOR_OPTS: $(VERILATOR_USER_OPTS))
+	$(info EXTRA_LINT_OPTS        verilator lint: $(EXTRA_LINT_OPTS))
+	$(info EXTRA_VL_OPTS          verilator model wrapping: $(EXTRA_VL_OPTS))
+	$(info EXTRA_VL_CFLAGS        verilator model wrapping -CFLAGS: $(EXTRA_VL_CFLAGS))
+	$(info EXTRA_VL_LIB_OBJS      ar ADDMOD into lib$(PROJECTNAME)vl_s_wrap.a: $(EXTRA_VL_LIB_OBJS))
+	$(info EXTRA_CXX_FLAGS        C++ compile: $(EXTRA_CXX_FLAGS))
+	$(info EXTRA_CPP_INCLUDES     C++ compile include paths: $(EXTRA_CPP_INCLUDES))
+	$(info EXTRA_CPP_SRC          C++ compile sources: $(EXTRA_CPP_SRC))
+	$(info EXTRA_O3_CPP_SRC       C++ compile sources at -O3: $(EXTRA_O3_CPP_SRC))
+	$(info EXTRA_CPP_MODULE_SRC   C++ module interface units: $(EXTRA_CPP_MODULE_SRC))
+	$(info EXTRA_PRJ_SRC_DIRS     C++ project source dirs: $(EXTRA_PRJ_SRC_DIRS))
+	$(info EXTRA_A2C_SRC_DIRS     C++ builder source dirs: $(EXTRA_A2C_SRC_DIRS))
+	$(info EXTRA_A2C_RULES_DIRS   rules and skills source dirs for agents-setup, cursor-setup: $(EXTRA_A2C_RULES_DIRS))
+	$(info EXTRA_LD_FLAGS         C++ link, xrun snapshot link: $(EXTRA_LD_FLAGS))
+	$(info EXTRA_VLOGAN_OPTS      vlogan RTL analysis and -sc_model (USE_VCS): $(EXTRA_VLOGAN_OPTS))
+	$(info EXTRA_VCS_LIB_SV_FILES vlogan RTL analysis, library units (USE_VCS): $(EXTRA_VCS_LIB_SV_FILES))
+	$(info EXTRA_VCS_OPTS         vcs elaboration and link (USE_VCS): $(EXTRA_VCS_OPTS))
+	$(info EXTRA_XRUN_OPTS        xrun snapshot build (USE_XCELIUM): $(EXTRA_XRUN_OPTS))
+	$(info EXTRA_XRUN_LIB_OPTS    xrun snapshot build, DUT library (USE_XCELIUM): $(EXTRA_XRUN_LIB_OPTS))
+	$(info EXTRA_XRUN_R_OPTS      xrun -R, each simulation (USE_XCELIUM): $(EXTRA_XRUN_R_OPTS))
+	@:
 
 #------------------------------------------------------------------------
 # Include AI agent setup targets

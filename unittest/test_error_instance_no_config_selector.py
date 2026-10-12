@@ -34,6 +34,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'instance-no-config-selector')
@@ -136,7 +137,7 @@ def run_all_tests():
         ok = check_accepted(inherit, INHERIT_CONTAINER,
                             'inheritContainerParam: true') and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: an instance of a params-declaring block must select a Config")

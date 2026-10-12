@@ -13,6 +13,7 @@ systemFiles:
   - $a2c/interfaces/external_reg/external_reg_if.yaml
   - $a2c/interfaces/memory/memory_if.yaml
   - $a2c/interfaces/notify_ack/notify_ack_if.yaml
+  - $a2c/interfaces/axi_read/axi_types.yaml
   - $a2c/interfaces/axi_read/axi_read_if.yaml
   - $a2c/interfaces/axi_write/axi_write_if.yaml
   - $a2c/interfaces/axi4_stream/axi4_stream_if.yaml

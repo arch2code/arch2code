@@ -24,6 +24,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -35,7 +36,11 @@ def _header(name):
 def _copy_fixture(name, prefix):
     fixture = os.path.join(test_dir, 'fixtures', name)
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(fixture, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(fixture, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -118,7 +123,7 @@ def test_dup_declared_in_referring_and_included_file():
         print("  PASS: fault-injected copy (renamed the included declaration) builds")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_dup_declared_own_file_ipparameters_below_blocks():
@@ -182,7 +187,7 @@ parameters:
               "notwithstanding")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_dup_declared_in_two_included_files():
@@ -223,7 +228,7 @@ def test_dup_declared_in_two_included_files():
         print("  PASS: fault-injected copy (renamed the second declaration) builds")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_shared_definitions_file_consumed_by_two_including_files():
@@ -268,7 +273,7 @@ def test_shared_definitions_file_consumed_by_two_including_files():
               "pscDefs.yaml")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

@@ -13,7 +13,8 @@ $(error A2C_ROOT is not set - please set to the root of your A2C builder)
 endif
 
 #------------------------------------------------------------------------
-# AI rule source roots; base always, extensions (e.g. pro) append via EXTRA_A2C_RULES_DIRS
+# AI rule source roots; base always, then a builder layer's (e.g. pro)
+# A2C_LAYER_RULES_DIRS, then the project's EXTRA_A2C_RULES_DIRS
 #
 # Base content sits at $(A2C_ROOT) when running standalone; under pro (which
 # nests base and may not symlink every dir) it sits at $(A2C_ROOT)/base. Detect
@@ -24,7 +25,7 @@ A2C_BASE_DIR := $(A2C_ROOT)/base
 else
 A2C_BASE_DIR := $(A2C_ROOT)
 endif
-A2C_RULES_DIRS := $(A2C_BASE_DIR)/rules $(EXTRA_A2C_RULES_DIRS)
+A2C_RULES_DIRS := $(A2C_BASE_DIR)/rules $(A2C_LAYER_RULES_DIRS) $(EXTRA_A2C_RULES_DIRS)
 # Base dir expressed relative to REPO_ROOT, so the rules symlink planted in the
 # project root stays relative and survives a moved or renamed checkout. Falls
 # back to the absolute path when base is not under REPO_ROOT (an example project

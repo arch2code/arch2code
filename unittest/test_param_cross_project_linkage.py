@@ -22,6 +22,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'param-cross-project')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -42,7 +43,11 @@ def _copy_fixture(prefix):
     return its path. Inside unittest/ so any scaffold path resolves the repo root
     the way a real project does."""
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -148,7 +153,7 @@ def test_adapted_endpoint_exempt_from_parameter_rule():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_same_key_endpoint_with_foreign_same_named_param_rejected():
@@ -186,7 +191,7 @@ def test_same_key_endpoint_with_foreign_same_named_param_rejected():
         print("  PASS: rule 2 rejected the redeclaration, naming both files")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_deparameterized_boundary_across_three_projects():
@@ -223,7 +228,7 @@ def test_deparameterized_boundary_across_three_projects():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_same_named_cross_project_interfaces_are_adapted():
@@ -284,7 +289,7 @@ def test_same_named_cross_project_interfaces_are_adapted():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_shared_ipparameter_include_across_projects():
@@ -336,7 +341,7 @@ def test_shared_ipparameter_include_across_projects():
         print("  PASS: three projects, one shared parameter identity, chain accepted")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_one_interface_at_equal_valued_configs_binds_directly():
@@ -404,7 +409,7 @@ def test_one_interface_at_equal_valued_configs_binds_directly():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_one_interface_at_equal_valued_configs_binds_directly_type_payload():
@@ -519,7 +524,7 @@ def test_one_interface_at_equal_valued_configs_binds_directly_type_payload():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 # ----------------------------------------------------------------------------
@@ -579,7 +584,7 @@ def test_cross_project_width_mismatch_rejected():
         print("  PASS: cross-project width mismatch reported and attributed")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_port_binds_its_own_project_interface():
@@ -629,7 +634,7 @@ def test_port_binds_its_own_project_interface():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_shared_include_binding_sizing_enforced():
@@ -657,7 +662,7 @@ def test_shared_include_binding_sizing_enforced():
         print("  PASS: oversize binding rejected on the shared-include path")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_registrar_requirements_exclude_unreachable_child_harnesses():
@@ -715,7 +720,7 @@ parameters:
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

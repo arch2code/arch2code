@@ -9,7 +9,7 @@ interface axi4_stream_if #(
         parameter type tuser_t = logic
     );
 
-    localparam int unsigned P_TDATA_WIDTH = $size(tdata_t);
+    localparam int P_TDATA_WIDTH = $size(tdata_t);
 
     logic                       tvalid;
     logic                       tready;

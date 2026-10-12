@@ -187,6 +187,11 @@ echo "------------------------------------------------------------------------"
 python3 test_boundary_signals.py || FAILED=1
 
 echo ""
+echo "Test Suite 19b2: HDL Wrapper Member Names"
+echo "------------------------------------------------------------------------"
+python3 test_hdl_wrapper_member_names.py || FAILED=1
+
+echo ""
 echo "Test Suite 19c: Eval Expression Parser"
 echo "------------------------------------------------------------------------"
 python3 test_eval_expr_parser.py || FAILED=1
@@ -721,6 +726,18 @@ python3 test_fw_context_namespace.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: Each EXTRA_* user hook in shared.mk reaches its own tool command only"
+echo "------------------------------------------------------------------------"
+python3 test_make_user_hooks.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: The Xcelium link reads BOOST_LIBS and keeps the LD_BOOST check"
+echo "------------------------------------------------------------------------"
+python3 test_xcelium_boost_libs.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: Unit tests for the langDomain migration phase (pysrc/migrateLangDomain.py)"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_langdomain.py || FAILED=1
@@ -832,6 +849,18 @@ echo ""
 echo "Test Suite ${idx}: Verilated registrar registers each factory domain once"
 echo "------------------------------------------------------------------------"
 python3 test_vl_registrar_factory_domain.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Verilated-top boundary view pins, widths and vector classification"
+echo "------------------------------------------------------------------------"
+python3 test_vl_boundary_pin_widths.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: boundary files and Verilated pins agree for every fixture top"
+echo "------------------------------------------------------------------------"
+python3 test_vl_boundary_widths_build.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

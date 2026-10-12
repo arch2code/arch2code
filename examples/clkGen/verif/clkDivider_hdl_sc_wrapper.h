@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import clkGen_clkDivider.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "clkDivider_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "clkDivider_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VclkDivider_hdl_sv_wrapper.h"
 #endif
@@ -30,7 +32,7 @@ class clkDivider_hdl_sc_wrapper: public sc_module, public blockBase, public clkD
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     clkDivider_hdl_sv_wrapper *dut_hdl;
 #else
     VclkDivider_hdl_sv_wrapper *dut_hdl;
@@ -55,7 +57,7 @@ public:
         rstDivRaw_n("rstDivRaw_n", true),
         clkRef_half_(sc_time(10, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new clkDivider_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VclkDivider_hdl_sv_wrapper("dut_hdl");

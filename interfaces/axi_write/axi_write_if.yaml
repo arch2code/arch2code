@@ -19,9 +19,9 @@ interface_defs:
     signals:
       awaddr : addr_t
       awid : id_t
-      awlen : 'bit [7:0]'
-      awsize : 'bit [2:0]'
-      awburst : 'bit [1:0]'
+      awlen : _axiLenT
+      awsize : _axiSizeT
+      awburst : _axiBurstT
       awuser : awuser_t
       awvalid : bool
       awready : bool
@@ -32,7 +32,7 @@ interface_defs:
       wuser : wuser_t
       wvalid : bool
       wready : bool
-      bresp : 'bit [1:0]'
+      bresp : _axiResponseT
       bid : id_t
       buser : buser_t
       bvalid : bool

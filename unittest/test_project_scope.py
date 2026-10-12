@@ -33,6 +33,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.schema import Schema
 from pysrc.processYaml import projectCreate
+from _tmp_helpers import remove_tree
 
 g.disableColors = True
 
@@ -120,76 +121,80 @@ def _make_fixture(root_clocks, child_clocks=None, consumer_clock='clk',
     Returns (fixture_dir, project_path, db_path).
     """
     fixture = tempfile.mkdtemp(prefix='projscope_')
-    _write_schema(os.path.join(fixture, 'testSchema.yaml'), system_scope_field)
+    try:
+        _write_schema(os.path.join(fixture, 'testSchema.yaml'), system_scope_field)
 
-    def rootContext(path, key, desc):
-        with open(os.path.join(fixture, path), 'w') as f:
-            if consumer_clock is None:
-                f.write("plainRows:\n"
-                        f"  {key}:\n"
-                        f"    desc: \"{desc}\"\n")
-            else:
+        def rootContext(path, key, desc):
+            with open(os.path.join(fixture, path), 'w') as f:
+                if consumer_clock is None:
+                    f.write("plainRows:\n"
+                            f"  {key}:\n"
+                            f"    desc: \"{desc}\"\n")
+                else:
+                    f.write("clockConsumers:\n"
+                            f"  {key}:\n"
+                            f"    desc: \"{desc}\"\n"
+                            f"    clock: {consumer_clock}\n")
+
+        rootContext('top.yaml', 'topUser', 'consumer in the assembling project')
+        # Second root-owned context with NO include edge to top.yaml and none to the
+        # project file: proves project scope needs no include-chain plumbing.
+        rootContext('top2.yaml', 'top2User', 'unrelated second context, no include edge')
+        if design_yaml_extra:
+            with open(os.path.join(fixture, 'top.yaml'), 'a') as f:
+                f.write(design_yaml_extra)
+
+        childFiles = ''
+        if child_clocks is not None:
+            os.mkdir(os.path.join(fixture, 'ip'))
+            with open(os.path.join(fixture, 'ip', 'ipArch.yaml'), 'w') as f:
                 f.write("clockConsumers:\n"
-                        f"  {key}:\n"
-                        f"    desc: \"{desc}\"\n"
-                        f"    clock: {consumer_clock}\n")
+                        "  ipUser:\n"
+                        "    desc: \"consumer owned by the child IP\"\n"
+                        f"    clock: {child_consumer_clock}\n")
+            with open(os.path.join(fixture, 'ip', 'ipProject.yaml'), 'w') as f:
+                f.write("yamlFormat: 2\n"
+                        "projectName: childIp\n"
+                        "dbSchema: ../testSchema.yaml\n"
+                        "\n"
+                        "dirs:\n"
+                        "  root: .\n"
+                        "\n"
+                        "fileGeneration:\n"
+                        "  layout: functional\n"
+                        "\n"
+                        f"{child_clocks}"
+                        "\n"
+                        "projectFiles:\n"
+                        "  - ipArch.yaml\n")
+            childFiles = '  - ip/ipProject.yaml\n'
 
-    rootContext('top.yaml', 'topUser', 'consumer in the assembling project')
-    # Second root-owned context with NO include edge to top.yaml and none to the
-    # project file: proves project scope needs no include-chain plumbing.
-    rootContext('top2.yaml', 'top2User', 'unrelated second context, no include edge')
-    if design_yaml_extra:
-        with open(os.path.join(fixture, 'top.yaml'), 'a') as f:
-            f.write(design_yaml_extra)
+        extraFiles = ''
+        for name, content in extra_design_files:
+            with open(os.path.join(fixture, name), 'w') as f:
+                f.write(content)
+            extraFiles += f"  - {name}\n"
 
-    childFiles = ''
-    if child_clocks is not None:
-        os.mkdir(os.path.join(fixture, 'ip'))
-        with open(os.path.join(fixture, 'ip', 'ipArch.yaml'), 'w') as f:
-            f.write("clockConsumers:\n"
-                    "  ipUser:\n"
-                    "    desc: \"consumer owned by the child IP\"\n"
-                    f"    clock: {child_consumer_clock}\n")
-        with open(os.path.join(fixture, 'ip', 'ipProject.yaml'), 'w') as f:
+        project_path = os.path.join(fixture, 'project.yaml')
+        with open(project_path, 'w') as f:
             f.write("yamlFormat: 2\n"
-                    "projectName: childIp\n"
-                    "dbSchema: ../testSchema.yaml\n"
+                    f"projectName: {root_project_name}\n"
+                    "dbSchema: testSchema.yaml\n"
                     "\n"
                     "dirs:\n"
                     "  root: .\n"
                     "\n"
-                    "fileGeneration:\n"
-                    "  layout: functional\n"
-                    "\n"
-                    f"{child_clocks}"
+                    f"{root_clocks}"
                     "\n"
                     "projectFiles:\n"
-                    "  - ipArch.yaml\n")
-        childFiles = '  - ip/ipProject.yaml\n'
-
-    extraFiles = ''
-    for name, content in extra_design_files:
-        with open(os.path.join(fixture, name), 'w') as f:
-            f.write(content)
-        extraFiles += f"  - {name}\n"
-
-    project_path = os.path.join(fixture, 'project.yaml')
-    with open(project_path, 'w') as f:
-        f.write("yamlFormat: 2\n"
-                f"projectName: {root_project_name}\n"
-                "dbSchema: testSchema.yaml\n"
-                "\n"
-                "dirs:\n"
-                "  root: .\n"
-                "\n"
-                f"{root_clocks}"
-                "\n"
-                "projectFiles:\n"
-                "  - top.yaml\n"
-                "  - top2.yaml\n"
-                f"{extraFiles}"
-                f"{childFiles}")
-    return fixture, project_path, os.path.join(fixture, 'project.db')
+                    "  - top.yaml\n"
+                    "  - top2.yaml\n"
+                    f"{extraFiles}"
+                    f"{childFiles}")
+        return fixture, project_path, os.path.join(fixture, 'project.db')
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 ROOT_CLOCKS = ("clocks:\n"
@@ -680,7 +685,7 @@ def run_composed_build():
         if conn is not None:
             conn.close()
         os.chdir(original_cwd)
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_child_only_build():
@@ -761,7 +766,7 @@ def run_child_only_build():
     finally:
         if conn is not None:
             conn.close()
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_authored_order_build():
@@ -798,7 +803,7 @@ def run_authored_order_build():
     finally:
         if conn is not None:
             conn.close()
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_mapto_alias_build():
@@ -839,7 +844,7 @@ def run_mapto_alias_build():
     finally:
         if conn is not None:
             conn.close()
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_scope_named_context_build():
@@ -878,7 +883,7 @@ def run_scope_named_context_build():
     finally:
         if conn is not None:
             conn.close()
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_empty_body_accepted_by_guard():
@@ -913,7 +918,7 @@ def run_empty_body_accepted_by_guard():
                 print(f"PASS: {label}")
                 results.append(True)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
     return all(results)
 
 
@@ -944,7 +949,7 @@ def _built_rows(label, root_clocks, consumer_clock, checks):
         return all(_run_case(name, lambda fn=fn: fn(clocks, resets))
                    for name, fn in checks)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_implicit_default_build():
@@ -1036,7 +1041,7 @@ def run_single_entry_default_build():
                         f"expected true: the only entry of its section")
                 return True
             finally:
-                shutil.rmtree(fixture)
+                remove_tree(fixture)
         results.append(_run_case(label, check))
     return all(results)
 
@@ -1171,7 +1176,7 @@ def _build_expecting_failure(**fixtureKwargs):
     try:
         return _build(project_path, db_path)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def _expect_diagnostic(label, needles, **fixtureKwargs):
@@ -1245,7 +1250,7 @@ def _project_file_diagnostic_case(label, root_clocks, needles, expect_failure=Tr
                         f"name the file and line the author must edit.\n{output}")
             return True
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
     return _run_case(label, check)
 
 

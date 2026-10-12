@@ -24,6 +24,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
@@ -131,24 +132,27 @@ def _arch2code(*args, cwd):
 def _generate():
     """Build the fixture and render the leaf. Returns (fixture_dir, leaf text)."""
     fixture = tempfile.mkdtemp(prefix='lscluts_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT)
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(DESIGN)
-    db = os.path.join(fixture, 'lscLuts.db')
-    for args in (('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), '--db', db),
-                 ('--db', db, '-r', '--newmodule'),
-                 ('--db', db, '-r', '--systemVerilog', '--file', os.path.join(fixture, LEAF))):
-        done = _arch2code(*args, cwd=fixture)
-        if done.returncode != 0:
-            shutil.rmtree(fixture)
-            raise AssertionError(f"arch2code {' '.join(args[:2])} failed:\n{done.stdout}\n{done.stderr}")
-    with open(os.path.join(fixture, LEAF)) as f:
-        return fixture, f.read()
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT)
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(DESIGN)
+        db = os.path.join(fixture, 'lscLuts.db')
+        for args in (('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), '--db', db),
+                     ('--db', db, '-r', '--newmodule'),
+                     ('--db', db, '-r', '--systemVerilog', '--file', os.path.join(fixture, LEAF))):
+            done = _arch2code(*args, cwd=fixture)
+            if done.returncode != 0:
+                raise AssertionError(f"arch2code {' '.join(args[:2])} failed:\n{done.stdout}\n{done.stderr}")
+        with open(os.path.join(fixture, LEAF)) as f:
+            return fixture, f.read()
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _run_case(label, fn):
@@ -193,7 +197,7 @@ def main():
         ok.append(_run_case("the lsc_regs handler instance is clocked on cfg_clk only",
                             lambda: check_handler_on_cfg_clk(text)))
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     print()
     if all(ok):
         print("RESULT: all lsc LUT checks passed")

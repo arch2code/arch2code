@@ -54,6 +54,7 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from _tmp_helpers import remove_tree
 
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -298,7 +299,7 @@ def test_watchdog_arming():
                   if expected else
                   f"{scenario} runs to completion untouched (got {fired}): {why}")
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def main():

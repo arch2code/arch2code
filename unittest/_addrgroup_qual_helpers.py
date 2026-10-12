@@ -25,6 +25,8 @@ import subprocess
 import sys
 import tempfile
 
+from _tmp_helpers import remove_tree
+
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -51,7 +53,11 @@ def copy_fixture(prefix):
     return its path. Inside unittest/ so the makefile scaffolds newModule lays
     down resolve the repo root the same way a real project does."""
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -128,4 +134,4 @@ def instance_address_rows(db):
 
 
 def cleanup(work):
-    shutil.rmtree(work, ignore_errors=True)
+    remove_tree(work)

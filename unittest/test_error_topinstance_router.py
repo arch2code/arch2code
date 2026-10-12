@@ -36,6 +36,7 @@ from _addrctl_helpers import (
     render_router,
     test_dir,
 )
+from _tmp_helpers import remove_tree
 
 
 REGISTERS = """
@@ -217,7 +218,7 @@ def _build_composed(root_arch):
             capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
         return completed.returncode, completed.stdout + completed.stderr
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _check_composed_rejected(label, root_arch, required):

@@ -29,7 +29,7 @@ module twoClkSlowTick_hdl_sv_wrapper
         .rstTick_n(rstTick_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

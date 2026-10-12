@@ -44,7 +44,7 @@ module twoClk_hdl_sv_wrapper
         .rstSlow_n(rstSlow_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

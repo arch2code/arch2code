@@ -42,6 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -300,7 +301,7 @@ def resolve_toolchain():
             return None, f"{mk_path} did not report CXX/C_STD_VER"
         return (values['CXX'], values['C_STD_VER']), None
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def include_dirs():
@@ -395,7 +396,7 @@ def test_trio_compile_contract(trio_complete_families, headers):
                                          cxxstd, include_flags, workdir)
             check(ok, message)
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        remove_tree(workdir)
 
 
 MALFORMED_OVERRIDE_SRC = """\
@@ -462,7 +463,7 @@ def test_compile_harness_detects_malformed_override():
               f"generic error, so the failure is diagnosable "
               f"(stderr: {result.stderr.strip()[:400]})")
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        remove_tree(workdir)
 
 
 def main():

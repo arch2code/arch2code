@@ -55,8 +55,9 @@ import hierVlDemo_tb_package::*;
     assign axis4_t1.tready = !have_word;
 
     // Variable part-select bases (bit and byte)
-    wire int unsigned bit_base  = int'(chunk_idx) * DST_DATA_WIDTH;
-    wire int unsigned byte_base = int'(chunk_idx) * DST_BYTES;
+    int unsigned bit_base, byte_base;
+    assign bit_base  = int'(chunk_idx) * DST_DATA_WIDTH;
+    assign byte_base = int'(chunk_idx) * DST_BYTES;
 
     // Output muxing; drive zeros when not valid
     wire                        out_valid = have_word;

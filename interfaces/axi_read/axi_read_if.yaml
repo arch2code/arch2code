@@ -16,15 +16,15 @@ interface_defs:
     signals:
       araddr : addr_t
       arid : id_t
-      arlen : 'bit [7:0]'
-      arsize : 'bit [2:0]'
-      arburst : 'bit [1:0]'
+      arlen : _axiLenT
+      arsize : _axiSizeT
+      arburst : _axiBurstT
       aruser : aruser_t
       arvalid : bool
       arready : bool
       rdata : data_t
       rid : id_t
-      rresp : 'bit [1:0]'
+      rresp : _axiResponseT
       rlast : bool
       ruser : ruser_t
       rvalid : bool

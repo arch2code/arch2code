@@ -23,6 +23,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 TWO_DECLARERS_FIXTURE = os.path.join(test_dir, 'fixtures', 'param-variant-two-declarers')
@@ -37,7 +38,11 @@ def _header(name):
 
 def _copy_fixture(fixture, prefix):
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(fixture, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(fixture, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -126,7 +131,7 @@ def test_two_visible_declarations_rejected():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_out_of_scope_declaration_rejected():
@@ -181,7 +186,7 @@ def test_out_of_scope_declaration_rejected():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_two_out_of_scope_declarers_both_named():
@@ -221,7 +226,7 @@ def test_two_out_of_scope_declarers_both_named():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 _DECLARATION = ("parameters:\n"
@@ -269,7 +274,7 @@ def test_in_scope_declaration_resolves_to_its_own_project():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_two_projects_each_declare_one_label_builds():
@@ -328,7 +333,7 @@ def test_two_projects_each_declare_one_label_builds():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def test_two_projects_each_declare_one_label_mismatch_rejected():
@@ -372,7 +377,7 @@ def test_two_projects_each_declare_one_label_mismatch_rejected():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

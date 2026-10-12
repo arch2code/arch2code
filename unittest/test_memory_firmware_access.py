@@ -29,6 +29,7 @@ if base_dir not in sys.path:
 
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 COMMON_SV = os.path.join(base_dir, 'common', 'systemVerilog')
@@ -144,18 +145,22 @@ def _build(mode, memoryType='portRportW'):
     Returns (fixture_dir, db_path, completed_process).
     """
     fixture = tempfile.mkdtemp(prefix='fwaccess_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT)
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(DESIGN.format(blocks=BLOCKS, mode=mode, memoryType=memoryType))
-    db = os.path.join(fixture, 'fwAccess.db')
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    return fixture, db, built
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT)
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(DESIGN.format(blocks=BLOCKS, mode=mode, memoryType=memoryType))
+        db = os.path.join(fixture, 'fwAccess.db')
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        return fixture, db, built
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _generated_files(fixture):
@@ -327,9 +332,9 @@ def _check_same_output(spelling, reference, stored):
             if got != {'tbl': stored, 'tblFixed': stored, 'tblB': stored}:
                 raise AssertionError(f"regAccess: {spelling} loads back as {got}, expected {stored!r} for every memory")
         finally:
-            shutil.rmtree(refFixture)
+            remove_tree(refFixture)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def check_unknown_mode_rejected():
@@ -342,7 +347,7 @@ def check_unknown_mode_rejected():
             raise AssertionError(f"rejection is a traceback, not a diagnostic:\n{output}")
         _expect(output, "field regAccess, rx is not in the allowed values", "diagnostic")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # The model harness compiles hwMemory.h with the arch2code SystemC flags and
@@ -389,7 +394,7 @@ def check_model_drops_and_logs():
             raise AssertionError(f"link failed:\n{result.stdout}{result.stderr}")
         ran = subprocess.run([binary], capture_output=True, text=True, timeout=120)
     finally:
-        shutil.rmtree(build_dir)
+        remove_tree(build_dir)
     output = ran.stdout + ran.stderr
     if ran.returncode != 0 or 'checks:7 failures:0' not in output:
         raise AssertionError(f"harness exited {ran.returncode}, expected 'checks:7 failures:0':\n{output}")
@@ -417,7 +422,7 @@ def main():
             ok.append(_run_case(f"{mode}: the handler lints clean through its leaf",
                                 lambda: check_handler_lints_clean(fixture)))
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
     for spelling, reference, stored in (('true', 'rw', 'rw'), ('1', 'true', 'rw'), ('0', 'false', 0)):
         ok.append(_run_case(f"regAccess: {spelling} is stored as {stored!r} and generates the same files as {reference}",
                             lambda spelling=spelling, reference=reference, stored=stored:

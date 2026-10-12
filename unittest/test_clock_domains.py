@@ -38,6 +38,7 @@ from pysrc.processYaml import projectOpen
 
 import test_register_decode_clock as regdecode
 from _addrctl_helpers import APB_PREAMBLE
+from _tmp_helpers import remove_tree
 
 g.disableColors = True
 
@@ -145,35 +146,39 @@ def _make_fixture(consumerDomains='', connectionClock='',
     Returns (fixture_dir, project_path, db_path).
     """
     fixture = tempfile.mkdtemp(prefix='clkdomains_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
 
-    projectFiles = ['    - ../../yaml/top.yaml\n']
+        projectFiles = ['    - ../../yaml/top.yaml\n']
 
-    if design is None:
-        design = DESIGN.format(consumerDomains=consumerDomains,
-                               containerDomains=containerDomains,
-                               extraInstances=extraInstances,
-                               connectionClock=connectionClock,
-                               extraConnections=extraConnections,
-                               extraBlocks=extraBlocks,
-                               extraSections=extraSections)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(design)
-    project_path = os.path.join(fixture, 'prj', 'yaml', 'project.yaml')
-    with open(project_path, 'w') as f:
-        f.write("yamlFormat: 2\n"
-                "projectName: clkTest\n"
-                "topInstance: top_tb\n"
-                "\n"
-                "projectFiles:\n"
-                f"{''.join(projectFiles)}"
-                f"{projectDomains}"
-                "\n"
-                "dirs:\n"
-                "    root: ../..\n"
-                f"{PROJECT_TAIL}")
-    return fixture, project_path, os.path.join(fixture, 'project.db')
+        if design is None:
+            design = DESIGN.format(consumerDomains=consumerDomains,
+                                   containerDomains=containerDomains,
+                                   extraInstances=extraInstances,
+                                   connectionClock=connectionClock,
+                                   extraConnections=extraConnections,
+                                   extraBlocks=extraBlocks,
+                                   extraSections=extraSections)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(design)
+        project_path = os.path.join(fixture, 'prj', 'yaml', 'project.yaml')
+        with open(project_path, 'w') as f:
+            f.write("yamlFormat: 2\n"
+                    "projectName: clkTest\n"
+                    "topInstance: top_tb\n"
+                    "\n"
+                    "projectFiles:\n"
+                    f"{''.join(projectFiles)}"
+                    f"{projectDomains}"
+                    "\n"
+                    "dirs:\n"
+                    "    root: ../..\n"
+                    f"{PROJECT_TAIL}")
+        return fixture, project_path, os.path.join(fixture, 'project.db')
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _run_case(label, fn):
@@ -212,7 +217,7 @@ def _expect_diagnostic(label, needles, **fixtureKwargs):
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0:
             raise AssertionError(f"build succeeded; it must fail.\n{output}")
         # A crash is not a diagnostic: an unguarded dict index exits non-zero too.
@@ -240,7 +245,7 @@ def _expect_builds(label, viewCheck=None, **fixtureKwargs):
             if viewCheck is not None:
                 viewCheck(db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         return True
     return _run_case(label, check)
 
@@ -326,7 +331,7 @@ def run_declaration_completeness_cases():
             _run_case("a block declaring resets: {} has no reset at all",
                       empty_mapping_resets_means_none)]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, project_path, db_path = _make_fixture(
         consumerDomains="        resets: []\n")
@@ -351,7 +356,7 @@ def run_declaration_completeness_cases():
             empty_list_resets_means_none))
         return all(results)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_view_build():
@@ -492,7 +497,7 @@ resets:
             _run_case("a port takes the selected reset of its clock, not the "
                       "first declared", port_takes_the_selected_reset_not_the_first_declared)])
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_default_clock_port_resolution_cases():
@@ -557,7 +562,7 @@ instances:
             "a declared port naming no clock resolves to the block default, "
             "not its first declared clock", lambda: True)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_declared_port_connection_clock_mismatch_rejected():
@@ -792,7 +797,7 @@ def run_connectionmaps_boundary_derives_inside_out():
             "a connectionMaps: boundary port derives its domain inside-out "
             "from the inner port it routes to, declared or top-down", lambda: True)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_boundary_port_clock_agreement_cases():
@@ -1354,7 +1359,7 @@ parameters:
                       "getBDMemoryClock and getBDParameterizedDecls each "
                       "match a direct per-key SELECT", helpersMatchPerKeySelect)])
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # ------------------------------------------------------------- validation --
@@ -1372,7 +1377,7 @@ def run_reference_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in ("must name the container clock an input clock of the instance is bound to",
@@ -1433,7 +1438,7 @@ def run_connection_clock_driven_by_end_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in ("'uGen'", "names clock: 'clkLocal'",
@@ -1538,7 +1543,7 @@ resets:
             print("PASS: a connection clock: both endpoints declare builds")
             results.append(True)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return all(results)
 
 
@@ -1598,7 +1603,7 @@ def run_ambiguous_connection_clock_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code != 0:
             raise AssertionError(f"the build failed.\n{output}")
         return True
@@ -1774,7 +1779,7 @@ resets:
         print("PASS: an async reset input bound by name match builds")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 ASYNC_MAP_DESIGN = """blocks:
@@ -1835,7 +1840,7 @@ def run_async_reset_bound_by_map_cases():
         print("PASS: an async reset input mapped across clocks builds, exempt from clock membership")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_output_clock_bindable_cases():
@@ -1872,7 +1877,7 @@ instances:
         print("PASS: an output clock bound to `~` builds clean")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # ------------------------------------ standalone period resolution --
@@ -1945,7 +1950,7 @@ instances:
         print("PASS: the standalone period resolves through two agreeing instances to clkA's own period")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_standalone_declared_period_wins_over_disagreement():
@@ -1992,7 +1997,7 @@ instances:
         print("PASS: a declared standalone period wins even though the two instances disagree")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_standalone_period_rejects_disagreement():
@@ -2024,7 +2029,7 @@ instances:
               f"different testbench clocks, naming both{'' if ok else chr(10) + output}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_standalone_period_rejects_supplier_output():
@@ -2070,7 +2075,7 @@ instances:
               f"output with no declared period{'' if ok else chr(10) + output}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_standalone_period_rejects_zero_instance():
@@ -2099,7 +2104,7 @@ instances:
               f"declared period{'' if ok else chr(10) + output}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_standalone_period_cases():
@@ -2156,7 +2161,7 @@ resets:
               f"rejected{'' if ok else chr(10) + output}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_top_rst_fallback_several_testbench_resets_rejected():
@@ -2237,7 +2242,7 @@ instances:
               f"on its own output clock is rejected{'' if ok else chr(10) + output}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # ------------------------------------------------------- end-of-run report --
@@ -2298,7 +2303,7 @@ instances:
         print(f"FAIL: {exc}")
         return False
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     ok = True
     for needle in ('void end_of_simulation() override', "produced no edge",
@@ -2623,7 +2628,7 @@ connections:
     try:
         code, output = _build(project_path, db_path)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     if code != 0:
         print(f"FAIL: a renamed instance map still resolves the connection "
               f"clock: to the one renamed input clock\n{output}")
@@ -2735,7 +2740,7 @@ def run_local_net_positive_case():
               f"creates a local net, consumed by a sibling's own map entry")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_local_net_no_consumer_rejected():
@@ -2829,7 +2834,7 @@ instances:
               "(its own implementation is the driver)")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_local_net_cases():
@@ -2870,7 +2875,7 @@ def _expect_bind(label, design, instanceName, expectedBind):
               f"{'' if ok else f': {instanceName} binds {binds}, expected {expectedBind}'}")
         return ok
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_rst_fallback_excludes_async_only_local_net():
@@ -3148,7 +3153,7 @@ def run_rst_fallback_no_candidate_rejected():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in needles:
@@ -3357,7 +3362,7 @@ def run_rst_fallback_offered_fix_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in ("'uGsync'", "the only resets on it are local nets (rstL_n)",
@@ -3425,7 +3430,7 @@ def run_top_rst_fallback_no_testbench_reset_rejected():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in needles:
@@ -3483,7 +3488,7 @@ def run_rst_fallback_several_local_candidates_rejected():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in needles:
@@ -3629,7 +3634,7 @@ def _expect_diagnostic_without(label, needles, absent, **fixtureKwargs):
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in needles:
@@ -3873,7 +3878,7 @@ def run_clockless_row_cases():
                 try:
                     code, output = _build(project_path, db_path)
                 finally:
-                    shutil.rmtree(fixture)
+                    remove_tree(fixture)
                 if not mustFail:
                     if code != 0:
                         raise AssertionError(f"the fixture without clock: fails to build\n{output}")
@@ -3972,7 +3977,7 @@ def run_single_domain_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code != 0:
             raise AssertionError(
                 f"a memory accessor in the memory's own domain (both implicit "
@@ -4420,7 +4425,7 @@ def run_regaccess_dual_port_memory_on_other_clock_builds():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_regaccess_single_port_memory_on_other_clock_rejected():
@@ -4605,7 +4610,7 @@ def run_registerports_reset_disambiguates_bus_port_domain():
             _run_case("apbClk's own selectedReset stays None",
                       apbclk_selected_reset_stays_ambiguous)])
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_topdown_leaf_bus_port_domain_matches_register_clock():
@@ -4648,7 +4653,7 @@ def run_topdown_leaf_bus_port_domain_matches_register_clock():
             "registerClock/registerReset selection",
             bus_port_takes_the_leaf_register_clock)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # ------------------------------------------- hasVl BFM port reset check --
@@ -4938,7 +4943,7 @@ connectionMaps:
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code != 0:
             raise AssertionError(
                 f"a hasVl container's connectionMaps boundary port was "
@@ -5026,7 +5031,7 @@ connections:
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code != 0:
             raise AssertionError(
                 f"a hasVl port on a direction: output clock whose sole "
@@ -5069,7 +5074,7 @@ connections:
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code != 0:
             raise AssertionError(
                 f"a hasVl leaf whose declared port's clock has exactly one "
@@ -5115,7 +5120,7 @@ connections:
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0:
             raise AssertionError(f"build succeeded; it must fail.\n{output}")
         needle = "port(s) in are timed by clock 'clk'"
@@ -5252,7 +5257,7 @@ def run_hasvl_topdown_register_bus_port_excluded():
             "registerClock/registerReset, not the handler's own guess",
             bus_port_matches_register_clock_reset)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_hasvl_topdown_extra_port_still_rejected():
@@ -5451,7 +5456,7 @@ def run_hasvl_passthrough_register_bus_port_excluded():
             "its own resolved registerClock/registerReset",
             bus_port_matches_register_clock_reset)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_hasvl_passthrough_extra_port_still_rejected():
@@ -6951,7 +6956,7 @@ def run_hasvl_register_connection_port_rejected():
         try:
             code, output = regdecode._build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'Traceback' in output:
             raise AssertionError(f"the build did not report a diagnostic.\n{output}")
         for needle in ("Block 'regAccessor' (hasVl): port(s) cfgA are timed by "
@@ -7554,7 +7559,7 @@ def run_object_access_name_cases():
                             f"regAccessor has register ports {list(ports)}, expected ['cfgA']")
                     return True
             finally:
-                shutil.rmtree(fixture)
+                remove_tree(fixture)
             if code == 0:
                 raise AssertionError(f"build succeeded; it must fail.\n{output}")
             if 'Traceback' in output:
@@ -7789,7 +7794,7 @@ def run_block_clock_period_authored_falsy_cases():
         try:
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if code == 0 or 'not a positive integer' not in output:
             raise AssertionError(f"the block clock period: 0 was not rejected.\n{output}")
         if "(project '" in output:
@@ -7872,7 +7877,7 @@ def _expect_with_files(label, design, files, projectFiles, needles=None):
                 f.write(project.replace("projectFiles:\n", "projectFiles:\n" + projectFiles, 1))
             code, output = _build(project_path, db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         if needles is None:
             if code != 0:
                 raise AssertionError(f"the build failed.\n{output}")

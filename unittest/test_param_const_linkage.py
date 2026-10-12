@@ -21,6 +21,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate
+from _tmp_helpers import remove_tree
 
 
 def _write_temp(content, suffix, prefix):
@@ -34,10 +35,7 @@ def _write_temp(content, suffix, prefix):
 def _cleanup(paths):
     for path in paths:
         if path and os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            os.unlink(path)
 
 
 def _project_for(arch_path):
@@ -614,7 +612,11 @@ SAME_NAMED_ENDPOINT_FIXTURE = os.path.join(test_dir, 'fixtures', 'param-same-nam
 
 def _copy_same_named_endpoint_fixture():
     work = tempfile.mkdtemp(prefix='param_same_named_', dir=test_dir)
-    shutil.copytree(SAME_NAMED_ENDPOINT_FIXTURE, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(SAME_NAMED_ENDPOINT_FIXTURE, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -684,7 +686,7 @@ def test_param_interface_endpoint_same_named_foreign_param():
               "builds clean")
         return True
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():
