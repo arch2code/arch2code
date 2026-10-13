@@ -57,9 +57,9 @@ Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or t
 ## Timed delays
 `--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.
 
-Do not delay a datapath interface whose hardware timing is fixed and which cannot apply backpressure. That covers `memory` ports, `raw` streams, and outputs into a consumer that cannot stall. RTL on the far side cannot wait for a delayed call, so it loses beats or accesses. The run then fails, or passes with wrong data if nothing checks the output.
+Do not delay a datapath interface whose hardware timing is fixed and which cannot apply backpressure. That covers `memory` ports, `status` ports, `raw` streams, and outputs into a consumer that cannot stall. RTL on the far side cannot wait for a delayed call, so it loses beats or accesses. The run then fails, or passes with wrong data if nothing checks the output.
 
-The framework has no per-interface opt-out. To keep such a port undelayed in a delay run, override `setTimedLocal` in the block. The generated `setTimed` calls it after setting every port:
+The framework has no per-interface opt-out. To keep such a port undelayed in a delay run, override `setTimedLocal` in the block whose `setTimed` the run calls. The generated `setTimed` calls it after setting every port. In an RTL run that block is the Verilator wrapper, `verif/<block>_hdl_sc_wrapper.h`, which derives from the block's base class and not from the model, so the override goes in the wrapper's user region. In a model run it goes in the model:
 
 ```cpp
 // Local override of the interface delays
