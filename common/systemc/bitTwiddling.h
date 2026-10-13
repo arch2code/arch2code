@@ -1,6 +1,7 @@
 #ifndef BITTWIDDLING_H
 #define BITTWIDDLING_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+#include <algorithm>
 #include <bit>
 #include <cassert>
 #include <cstdint>
@@ -26,6 +27,12 @@ constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
 extern uint64_t findNextPowerOf2(uint64_t n);
 // Index of the single set bit; asserts unless `n` is a power of two.
 extern uint16_t log2ofPowerOf2(uint64_t n);
+// pack_bits and unpack_bits are internal generated-code support: user model code
+// moves typed structures through the generated channels, ports, pack()/unpack()
+// and register/memory APIs, and should not call them directly. Their masking
+// difference is deliberate and part of the SystemC/RTL equivalence contract;
+// read STRUCTURES_AND_DATA_TYPES_REFERENCE.md before changing it.
+
 // pack_bits — OR `bits` bits from src@srcPos into dest@destPos. Caller must
 // pre-clear the destination. Source words are NOT masked, so any bits set above
 // the width being consumed OR into the destination alongside it.
@@ -33,14 +40,81 @@ extern uint16_t log2ofPowerOf2(uint64_t n);
 // field's declared range, or outside the interface, corrupts the neighbouring
 // field and fails quickly instead of being silently truncated. Do not add
 // masking to pack_bits or to any pack path built on it.
-extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
-extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
-extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
+// By pointer, any alignment.
+inline void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    while (bits > 0) {
+        uint16_t left_shift = destPos & 63; // Bit offset within destination word (0-63)
+        uint16_t right_shift = srcPos & 63; // Bit offset within source word (0-63)
+        uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift))); // How many bits to consume from src without overflowing dest
+        consume = std::min(consume, (uint16_t)(64-(right_shift))); // How many bits to consume from src without overflowing src word
+        if (left_shift > right_shift) {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] << (left_shift - right_shift);
+        } else {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] >> (right_shift - left_shift);
+        }
+        destPos += consume;
+        srcPos += consume;
+        bits -= consume;
+    }
+}
+// By pointer, source aligned to bit 0 of src.
+inline void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits)
+{
+    uint16_t srcPos = 0;
+    while (bits > 0) {
+        uint16_t left_shift = destPos & 63;
+        uint16_t right_shift = srcPos & 63;
+        uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift)));
+        consume = std::min(consume, (uint16_t)(64-(right_shift)));
+        if (left_shift > right_shift) {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] << (left_shift - right_shift);
+        } else {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] >> (right_shift - left_shift);
+        }
+        destPos += consume;
+        srcPos += consume;
+        bits -= consume;
+    }
+}
+// By value.
+inline void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits)
+{
+    uint16_t srcPos = 0;
+    while (bits > 0) {
+        uint16_t left_shift = destPos & 63;
+        uint16_t right_shift = srcPos & 63;
+        uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift)));
+        consume = std::min(consume, (uint16_t)(64-(right_shift)));
+        if (left_shift > right_shift) {
+            dest[ destPos >> 6 ] |= src << (left_shift - right_shift);
+        } else {
+            dest[ destPos >> 6 ] |= src >> (right_shift - left_shift);
+        }
+        destPos += consume;
+        srcPos += consume;
+        bits -= consume;
+    }
+}
 
 // unpack_bits — the reverse; caller must pre-clear the destination. Each source
 // word IS masked to the width being consumed, so adjacent fields in a packed
 // form are dropped rather than propagated into the destination.
-extern void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits);
+inline void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    while (bits > 0) {
+        uint16_t left_shift  = destPos & 63;
+        uint16_t right_shift = srcPos  & 63;
+        uint16_t consume = std::min(bits, (uint16_t)(64 - left_shift));
+        consume = std::min(consume, (uint16_t)(64 - right_shift));
+        uint64_t mask = (consume >= 64) ? ~0ULL : ((1ULL << consume) - 1);
+        uint64_t bits_to_write = (src[srcPos >> 6] >> right_shift) & mask;
+        dest[destPos >> 6] |= bits_to_write << left_shift;
+        destPos += consume;
+        srcPos  += consume;
+        bits    -= consume;
+    }
+}
 
 template <typename OutPacked, typename InPacked>
 inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)

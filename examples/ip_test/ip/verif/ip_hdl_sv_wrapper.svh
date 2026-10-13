@@ -70,6 +70,10 @@ module ip_hdl_sv_wrapper
         ipSignedParamT offset; //Signed parameterizable field
         ipMemAddrT index; //Unsigned parameterizable field below it
     } ipSignedParamSt;
+    typedef struct packed {
+        ipNibbleT [5-1:0] nibbles; //Fixed nibble array above the data word
+        ipDataT data; //Parameterizable data word at bit 0
+    } ipParamBelowArraySt;
 
     // push_ack_if.dst
     push_ack_if #(.data_t(ipDataSt)) ipDataIf();

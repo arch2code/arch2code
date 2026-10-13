@@ -42,10 +42,11 @@ public:
     // GENERATED_CODE_END
     // external implementation members
 
-    // Directed stimulus: push one transaction whose payload satisfies the
-    // asserts in ip::dataHandler (marker == 1, high data word == 0x2A for
-    // IP_DATA_WIDTH > 64), then vote end-of-test. Reaching the line after
-    // push() is the functional assertion that the DUT acked.
+    // Directed stimulus: push one transaction whose payload fits
+    // IP_DATA_WIDTH and satisfies the asserts in ip::dataHandler (marker == 1,
+    // high data word == 0x2A for IP_DATA_WIDTH > 64), then vote end-of-test.
+    // Reaching the line after push() is the functional assertion that the DUT
+    // acked.
     void stimulusThread(void);
 
 private:
@@ -71,9 +72,12 @@ void ipExternal::stimulusThread(void)
 {
     wait(SC_ZERO_TIME);
 
+    constexpr uint32_t width = ipVariant0Config::IP_DATA_WIDTH;
     ipDataT<ipVariant0Config> payload{};
-    payload.word[0] = 0xDEADBEEFCAFEBABEULL;
-    payload.word[1] = 0x2A;
+    payload.word[0] = width < 64 ? 0xDEADBEEFCAFEBABEULL & ((1ULL << width) - 1) : 0xDEADBEEFCAFEBABEULL;
+    if constexpr (width > 64) {
+        payload.word[1] = 0x2A;
+    }
     ipDataSt<ipVariant0Config> data(payload, static_cast<enableT>(1));
 
     log_.logPrint(std::format("{} stimulusThread pushing data 0x{:x}{:016x} marker {}",

@@ -71,6 +71,7 @@ public:
     using typename ipBase<Config>::ipDerivedMemAddrSt;
     using typename ipBase<Config>::ipParamNestedSt;
     using typename ipBase<Config>::ipSignedParamSt;
+    using typename ipBase<Config>::ipParamBelowArraySt;
 
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;

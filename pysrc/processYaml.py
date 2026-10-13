@@ -1170,6 +1170,15 @@ class projectOpen:
                 return None
             members.append((extent, storage))
         return ('struct', tuple(members))
+    def structureHasDatapath(self, structureKey):
+        """A structure carries a datapath field, directly or in a nested
+        structure, and so a uint8_t* backdoor in place of payload bits."""
+        for varData in self.data['structures'][structureKey]['vars'].values():
+            if varData['generator'] == 'datapath':
+                return True
+            if varData['entryType'] == 'NamedStruct' and self.structureHasDatapath(varData['subStructKey']):
+                return True
+        return False
     def datatypeRef(self, kind, key):
         """Dereference a `typeStruct` field's stored (kind, key) pair.
 

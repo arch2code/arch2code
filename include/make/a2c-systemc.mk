@@ -318,9 +318,21 @@ $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUIL
 
 # main receipe to build the binary
 
-# All .o files go to build dir.
-OBJ = $(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)
-OBJ += $(CPP_MODULE_OBJ)
+# Optimization per object. The user's model code, meaning the block modules and
+# every .cpp outside the manifest and the builder source dirs, builds at -O0 to
+# stay debuggable. The generated context code builds at -O3 and everything else
+# at -O2. The level precedes CXX_FLAGS, so an -O in EXTRA_CXX_FLAGS wins.
+CXX_OPT = -O2
+MODEL_CPP_SRC := $(filter-out $(A2C_SC_GEN_SRC_FILES) $(O3_CPP_SRC) \
+	$(foreach dir,$(A2C_SRC_DIRS),$(dir)/%),$(CPP_SRC))
+CPP_BLOCK_MODULE_OBJ := $(foreach src,$(filter $(A2C_CPP_BLOCK_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
+MODEL_OBJ := $(MODEL_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o) $(CPP_BLOCK_MODULE_OBJ)
+$(MODEL_OBJ): private CXX_OPT := -O0
+
+# All .o files go to build dir. Every TU emits its own weak copy of the inline
+# and template code it uses (pack, unpack, the BFMs) and the linker keeps the
+# first, so the -O0 model objects link last.
+OBJ = $(filter-out $(MODEL_OBJ),$(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o) $(CPP_MODULE_OBJ)) $(MODEL_OBJ)
 # Gcc/Clang will create these .d files containing dependencies.
 DEP = $(OBJ:%.o=%.d)
 # Clang emits a .d beside each PCM; GCC's module .d comes from the .module.o and
@@ -360,7 +372,7 @@ $(sort $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODU
 # after `clean`, a deleted source) does not stop the build.
 $(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -MP -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CXX_FLAGS) -MMD -MP -c $< -o $@
 
 # Rules to build generated C++20 module interfaces to linkable objects. Clang
 # precompiles each interface to a PCM and then compiles that PCM to an object;
@@ -392,11 +404,11 @@ $(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(
 
 $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
 	mkdir -p $(@D)
-	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
 
-# The context modules' code generation runs at -O3. Their PCMs keep the common
-# flags, so importers load a PCM built as before.
-$(CPP_CONTEXT_MODULE_OBJ): private CPP_MODULE_OBJ_FLAGS := -O3 $(CPP_MODULE_OBJ_FLAGS)
+# The context modules' code generation runs at -O3. The optimization level
+# applies only to the object, so every PCM carries the same flags.
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_OPT := -O3
 
 else
 
@@ -405,10 +417,10 @@ else
 # interface's global module fragment includes headers (e.g. `<block>Base.h`).
 $(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
 
 # The context modules compile at -O3. Their CMIs come from this same compile.
-$(CPP_CONTEXT_MODULE_OBJ): private CXX_FLAGS := -O3 $(CXX_FLAGS)
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_OPT := -O3
 
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.

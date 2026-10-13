@@ -95,22 +95,25 @@ struct leafEqSt_v {
     inline sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
         sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
-        uint16_t _pos{0};
-        packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = data;
-        _pos += LEAF_PIXEL_WIDTH;
-        packed_data.range(_pos+8-1, _pos) = tag;
-        _pos += 8;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "leafEqSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
-    uint16_t _pos{0};
-        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += LEAF_PIXEL_WIDTH;
-        tag = (leafTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
-        _pos += 8;
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit leafEqSt_v(sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit leafEqSt_v(const sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit leafEqSt_v(
         leafPixelT_v<LEAF_PIXEL_WIDTH> data_,
         leafTagT tag_) :
@@ -173,22 +176,25 @@ struct leafOrderSt_v {
     inline sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
         sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
-        uint16_t _pos{0};
-        packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = second;
-        _pos += LEAF_PIXEL_WIDTH;
-        packed_data.range(_pos+8-1, _pos) = first;
-        _pos += 8;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "leafOrderSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
-    uint16_t _pos{0};
-        second = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += LEAF_PIXEL_WIDTH;
-        first = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
-        _pos += 8;
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit leafOrderSt_v(sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit leafOrderSt_v(const sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit leafOrderSt_v(
         leafPixelT_v<LEAF_PIXEL_WIDTH> second_,
         leafFlagT first_) :
@@ -246,22 +252,25 @@ struct leafSignSt_v {
     inline sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
         sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
-        uint16_t _pos{0};
-        packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = data;
-        _pos += LEAF_PIXEL_WIDTH;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "leafSignSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
-    uint16_t _pos{0};
-        data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
-        // Sign extension for signed type
-        if (data & (1ULL << (LEAF_PIXEL_WIDTH - 1))) {
-            data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(data | ~(~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
         }
-        _pos += LEAF_PIXEL_WIDTH;
+        unpack((_packedSt)_word);
     }
-    explicit leafSignSt_v(sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit leafSignSt_v(const sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit leafSignSt_v(
         leafSignedPixelT_v<LEAF_PIXEL_WIDTH> data_) :
         data(data_)
@@ -330,38 +339,42 @@ struct leafNestSt_v {
         data = (leafPixelT_v<LEAF_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
         _pos += LEAF_PIXEL_WIDTH;
         tail = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
+        if ((_pos & 63) + 8 > 64) {
+            tail = (leafFlagT)(tail | ((_src[ (_pos >> 6) + 1 ] << (64 - (_pos & 63))) & (~0ULL >> (64 - (8)))));
+        }
         _pos += 8;
         flag = (leafFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (8))));
+        if ((_pos & 63) + 8 > 64) {
+            flag = (leafFlagT)(flag | ((_src[ (_pos >> 6) + 1 ] << (64 - (_pos & 63))) & (~0ULL >> (64 - (8)))));
+        }
         _pos += 8;
         word = (leafWordT)((_src[ _pos >> 6 ] >> (_pos & 63)) & (~0ULL >> (64 - (32))));
+        if ((_pos & 63) + 32 > 64) {
+            word = (leafWordT)(word | ((_src[ (_pos >> 6) + 1 ] << (64 - (_pos & 63))) & (~0ULL >> (64 - (32)))));
+        }
     }
     inline sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
         sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
-        uint16_t _pos{0};
-        packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = data;
-        _pos += LEAF_PIXEL_WIDTH;
-        packed_data.range(_pos+8-1, _pos) = tail;
-        _pos += 8;
-        packed_data.range(_pos+8-1, _pos) = flag;
-        _pos += 8;
-        packed_data.range(_pos+32-1, _pos) = word;
-        _pos += 32;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "leafNestSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
     {
-    uint16_t _pos{0};
-        data = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += LEAF_PIXEL_WIDTH;
-        tail = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
-        _pos += 8;
-        flag = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
-        _pos += 8;
-        word = (leafWordT) packed_data.range(_pos+32-1, _pos).to_uint64();
-        _pos += 32;
+        _packedSt _words{};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
+        }
+        unpack(_words);
     }
-    explicit leafNestSt_v(sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit leafNestSt_v(const sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit leafNestSt_v(
         leafPixelT_v<LEAF_PIXEL_WIDTH> data_,
         leafFlagT tail_,
@@ -380,6 +393,96 @@ template<typename Config> using leafNestSt = leafNestSt_v<Config::LEAF_PIXEL_WID
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+export namespace xpCppLeaf_ns {
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafEqSt_v<LEAF_PIXEL_WIDTH> &x);
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafEqSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data);
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafOrderSt_v<LEAF_PIXEL_WIDTH> &x);
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafOrderSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data);
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafSignSt_v<LEAF_PIXEL_WIDTH> &x);
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafSignSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data);
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafNestSt_v<LEAF_PIXEL_WIDTH> &x);
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafNestSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data);
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafEqSt_v<LEAF_PIXEL_WIDTH> &x)
+{
+    sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
+    uint16_t _pos{0};
+    packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = x.data;
+    _pos += LEAF_PIXEL_WIDTH;
+    packed_data.range(_pos+8-1, _pos) = x.tag;
+    _pos += 8;
+    return packed_data;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafEqSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafEqSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
+{
+    uint16_t _pos{0};
+    x.data = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
+    _pos += LEAF_PIXEL_WIDTH;
+    x.tag = (leafTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
+    _pos += 8;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafOrderSt_v<LEAF_PIXEL_WIDTH> &x)
+{
+    sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
+    uint16_t _pos{0};
+    packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = x.second;
+    _pos += LEAF_PIXEL_WIDTH;
+    packed_data.range(_pos+8-1, _pos) = x.first;
+    _pos += 8;
+    return packed_data;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafOrderSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafOrderSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
+{
+    uint16_t _pos{0};
+    x.second = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
+    _pos += LEAF_PIXEL_WIDTH;
+    x.first = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
+    _pos += 8;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafSignSt_v<LEAF_PIXEL_WIDTH> &x)
+{
+    sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
+    uint16_t _pos{0};
+    packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = x.data;
+    _pos += LEAF_PIXEL_WIDTH;
+    return packed_data;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafSignSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafSignSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
+{
+    uint16_t _pos{0};
+    x.data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
+    // Sign extension for signed type
+    if (x.data & (1ULL << (LEAF_PIXEL_WIDTH - 1))) {
+        x.data = (leafSignedPixelT_v<LEAF_PIXEL_WIDTH>)(x.data | ~(~0ULL >> (64 - (LEAF_PIXEL_WIDTH))));
+    }
+    _pos += LEAF_PIXEL_WIDTH;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> testRefPack(const leafNestSt_v<LEAF_PIXEL_WIDTH> &x)
+{
+    sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> packed_data;
+    uint16_t _pos{0};
+    packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos) = x.data;
+    _pos += LEAF_PIXEL_WIDTH;
+    packed_data.range(_pos+8-1, _pos) = x.tail;
+    _pos += 8;
+    packed_data.range(_pos+8-1, _pos) = x.flag;
+    _pos += 8;
+    packed_data.range(_pos+32-1, _pos) = x.word;
+    _pos += 32;
+    return packed_data;
+}
+template<uint32_t LEAF_PIXEL_WIDTH> inline void testRefUnpack(leafNestSt_v<LEAF_PIXEL_WIDTH> &x, const sc_bv<leafNestSt_v<LEAF_PIXEL_WIDTH>::_bitWidth> &packed_data)
+{
+    uint16_t _pos{0};
+    x.data = (leafPixelT_v<LEAF_PIXEL_WIDTH>) packed_data.range(_pos+LEAF_PIXEL_WIDTH-1, _pos).to_uint64();
+    _pos += LEAF_PIXEL_WIDTH;
+    x.tail = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
+    _pos += 8;
+    x.flag = (leafFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
+    _pos += 8;
+    x.word = (leafWordT) packed_data.range(_pos+32-1, _pos).to_uint64();
+    _pos += 32;
+}
+} // namespace xpCppLeaf_ns
 export namespace xpCppLeaf_test_ns {
 class test_xpCppLeaf_structs {
 public:
@@ -389,45 +492,75 @@ private:
     template<typename T>
     static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
         for(auto pattern : patterns) {
-            typename T::_packedSt packed;
-            memset(&packed, pattern, T::_byteWidth);
-            sc_bv<T::_bitWidth> aInit;
-            sc_bv<T::_bitWidth> aTest;
-            for (int i = 0; i < T::_byteWidth; i++) {
-                int end = std::min((i+1)*8-1, T::_bitWidth-1);
-                aInit.range(end, i*8) = pattern;
+            roundTripBytes<T>(sName, pattern, 0);
+        }
+        // Bytes that differ by position expose a field placed a whole number of bytes off.
+        roundTripBytes<T>(sName, 0x5b, 0x35);
+    }
+    template<typename T>
+    static void roundTripBytes(const char* sName, uint8_t first, uint8_t step) {
+        using P = typename T::_packedSt;
+        P words{};
+        sc_bv<T::_bitWidth> aInit;
+        for (int i = 0; i < T::_byteWidth; i++) {
+            uint8_t byte = (uint8_t)(first + i * step);
+            int end = std::min((i+1)*8-1, T::_bitWidth-1);
+            aInit.range(end, i*8) = byte;
+            if constexpr (std::is_array_v<P>) {
+                words[i / 8] |= (uint64_t)byte << ((i % 8) * 8);
+            } else {
+                words |= (P)((uint64_t)byte << (i * 8));
             }
-            T a;
-            a.sc_unpack(aInit);
-            T b;
-            b.unpack(packed);
-            if (!(b == a)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false, sName);
+        }
+        T ref;
+        testRefUnpack(ref, aInit);
+        Q_ASSERT(testRefPack(ref) == aInit, std::string(sName) + ": testRefPack(testRefUnpack(pattern)) is not the pattern");
+        T b;
+        b.unpack(words);
+        if (!(b == ref)) {
+            cout << ref.prt() << endl << b.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": unpack() differs from the reference layout");
+        }
+        T c;
+        c.sc_unpack(aInit);
+        if (!(c == ref)) {
+            cout << ref.prt() << endl << c.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_unpack() differs from the reference layout");
+        }
+        P out;
+        ref.pack(out);
+        sc_bv<T::_bitWidth> outBits;
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t test;
-            memset(&test, pattern, 8);
-            b.pack(packed);
-            aTest = a.sc_pack();
-            if (!(aTest == aInit)) {;
-                cout << a.prt();
-                cout << aTest;
-                Q_ASSERT(false, sName);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << ref.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack() differs from the reference layout");
+        }
+        sc_bv<T::_bitWidth> scPacked = ref.sc_pack();
+        if (!(scPacked == aInit)) {
+            cout << ref.prt() << endl << scPacked << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_pack() differs from the reference layout");
+        }
+        b.pack(out);
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t *ptr = (uint64_t *)&packed;
-            uint16_t bitsLeft = T::_bitWidth;
-            do {
-                int bits = std::min((uint16_t)64, bitsLeft);
-                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-                if ((*ptr & mask) != (test & mask)) {;
-                    cout << a.prt();
-                    cout << b.prt();
-                    Q_ASSERT(false, sName);
-                }
-                bitsLeft -= bits;
-                ptr++;
-            } while(bitsLeft > 0);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << b.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack(unpack(pattern)) is not the pattern");
         }
     }
 };
