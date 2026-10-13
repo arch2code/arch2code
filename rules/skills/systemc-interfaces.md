@@ -54,5 +54,22 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header.
 
+## Timed delays
+`--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.
+
+Do not delay a datapath interface whose hardware timing is fixed and which cannot apply backpressure. That covers `memory` ports, `raw` streams, and outputs into a consumer that cannot stall. RTL on the far side cannot wait for a delayed call, so it loses beats or accesses. The run then fails, or passes with wrong data if nothing checks the output.
+
+The framework has no per-interface opt-out. To keep such a port undelayed in a delay run, override `setTimedLocal` in the block. The generated `setTimed` calls it after setting every port:
+
+```cpp
+// Local override of the interface delays
+void setTimedLocal(int nsec, timedDelayMode mode) override {
+    // mem_port faces RTL with fixed one-cycle read timing and no backpressure
+    mem_port->setTimed(0, TIMED_DELAY_FIXED_INIT);
+}
+```
+
+A block that forwards `setTimed` to the memories it owns, as in `mems.setTimed(nsec, mode)`, delays those memories too.
+
 ## Shared events
 Servicing several ports from one thread uses `setExternalEvent` and `isActive()`. **systemc-synchronization** lists which families support them and gives the pattern.

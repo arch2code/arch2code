@@ -543,6 +543,8 @@ void myModule::apbMaster() {
 - `request()` on requester side (`requestNonBlocking()` and `waitComplete()` are for tee use only)
 - `reqReceive()`, `complete()`, `isActive()`/`isNotActive()`, `setExternalEvent(event)` on completer side
 
+**Timed delays:** RTL memories have fixed one-cycle timing and no backpressure, so a memory port that faces RTL must not run with `--delay`. The section "Timed delays" in `rules/skills/systemc-interfaces.md` gives the `setTimedLocal` workaround.
+
 **Example:**
 
 ```cpp
