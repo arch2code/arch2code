@@ -272,6 +272,9 @@ ifdef VL_DUT
 ifndef USE_VCS
 ifndef USE_XCELIUM
 CXX_FLAGS += -DVERILATOR
+ifdef VL_COV
+CXX_FLAGS += -DVL_COV
+endif
 LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 # The linked-in verilated library is a build output of the vl sub-make, so name it
 # as a prerequisite: a re-verilate that leaves every generated V<top>.h alone
@@ -299,16 +302,17 @@ CPP_MODULE_OBJ_FLAGS := $(filter-out -I%,$(CXX_FLAGS))
 
 # Build-flavor stamp. The model and VL (VL_DUT=1) builds share the same
 # BIN/BUILD_DIR paths and the same object files; toggling VL_DUT only changes the
-# compile/link flags (adds -DVERILATOR and the vl wrapper lib). Timestamps cannot
-# see that flag flip, so `make all` after `make all VL_DUT=1` (or the reverse)
-# would otherwise reuse objects built for the other flavor and run a mismatched
-# binary (e.g. a model binary against a verif DUT -> unregistered <block>_verif).
+# compile/link flags (adds -DVERILATOR and the vl wrapper lib), and VL_COV adds
+# -DVL_COV the same way. Timestamps cannot see that flag flip, so `make all`
+# after `make all VL_DUT=1` (or the reverse) would otherwise reuse objects built
+# for the other flavor and run a mismatched binary (e.g. a model binary against
+# a verif DUT -> unregistered <block>_verif).
 # This stamp records the current flavor; the parse-time shell rewrites it only on
 # a mismatch, so its mtime bumps only on an actual flip. Listing it as a
 # prerequisite of every flag-carrying compile rule forces just the affected
 # objects to recompile (and the binary to relink) on a flip, without changing any
 # output path that downstream consumers of build/run depend on.
-BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl,model)
+BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
 FLAVOR_STAMP := $(BUILD_DIR)/.build_flavor
 $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUILD_FLAVOR)" ] || printf '%s\n' "$(BUILD_FLAVOR)" > $(FLAVOR_STAMP))
 

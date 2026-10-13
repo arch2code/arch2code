@@ -21,6 +21,10 @@ import a2c.endOfTest;
 #ifdef VERILATOR
 #include "verilated.h"
 #include "vl_tracer.h"
+#ifdef VL_COV
+// coveragep() needs the full VerilatedCovContext; verilated.h only forward declares it.
+#include "verilated_cov.h"
+#endif
 #endif
 
 #ifdef VCS
