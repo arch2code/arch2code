@@ -543,9 +543,8 @@ axiSocketSlave:
 	$(RUN_LIMIT) make -C $(AXISOCKET_SLAVE_DIR)/rundir run
 
 .PHONY : in-and-out
-# sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
-# demo, whose SystemC sim cannot regenerate under this branch's cppm-default
-# include. Verilator lint still exercises the generated SV.
+# inAndOut is a header-mode SV-generation / moduleSignalBlast demo with no
+# SystemC sim. Verilator lint exercises the generated SV.
 in-and-out:
 	make -C $(IN_OUT_DIR)/systemVerilog lint -j
 
