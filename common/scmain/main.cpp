@@ -3,6 +3,8 @@
 #include "systemc.h"
 #include <boost/program_options.hpp>
 #include <string>
+#include <string_view>
+#include <algorithm>
 #include <random>
 #include "logging.h"
 #include <thread>
@@ -94,9 +96,17 @@ int sc_main(int argc, char* argv[])
             ("testBench", po::value<std::string>(&testBenchName), "Test bench selection")
             ("subargs", po::value<std::vector<std::string> >(), "Arguments for command");
 
+        // With a named --testBench every positional word goes to subargs, so the value word
+        // in --test beta reaches stage 2.
+        bool namedTestBench = std::any_of(argv + 1, argv + argc, [](const char* arg) {
+            std::string_view a{arg};
+            return a == "--testBench" || a.starts_with("--testBench=");
+        });
         po::positional_options_description pos;
-        pos.add("testBench", 1).
-            add("subargs", -1);
+        if (!namedTestBench) {
+            pos.add("testBench", 1);
+        }
+        pos.add("subargs", -1);
 
         po::variables_map vm;
 
@@ -144,12 +154,9 @@ int sc_main(int argc, char* argv[])
         fileOptions.add_options()
             ("blockVerbosity", po::value<std::vector<std::string>>(&blockVerbosity)->multitoken()->composing(), "allow the verbosity of debug to change per block");
 
-        // Collect all the unrecognized options from the first pass. This will include the
-        // (positional) command name, so we need to erase that.
+        // Stage 2 re-parses stage 1's unrecognized and positional words, except the testBench name.
+        std::erase_if(parsed1.options, [](const po::option& o) { return o.string_key == "testBench"; });
         std::vector<std::string> opts = po::collect_unrecognized(parsed1.options, po::include_positional);
-        if (vm.count("testBench")) {
-            opts.erase(opts.begin()); // remove positional argument if it was provided
-        }
         po::store(po::command_line_parser(opts).options(allOptions).run(), vm);
 
         if (vm.count("config"))

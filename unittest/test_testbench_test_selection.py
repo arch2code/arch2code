@@ -11,6 +11,7 @@ from, so either option exits with status 2 instead of running everything.
 With --log, a run with --test writes the simulation to the log file and prints
 the exit summary once on the console. --listTests and a rejected --test print
 on the console, since they exit before simulating.
+--testBench <name> selects the testbench as the positional name does.
 
 The probe runs the shipped sc_main. selectProbe declares alpha, beta and gamma;
 each test prints "ran <name>". noTestsProbe declares none.
@@ -119,6 +120,38 @@ def check_log_console(binPath, tmpdir, scLibdir):
             print(run.stdout + run.stderr)
 
 
+def check_named_testbench(binPath, tmpdir, scLibdir):
+    # --testBench <name> selects the testbench as the positional form does, and
+    # every option after it still takes effect. Bare --log writes <binary>.log.
+    logPath = os.path.join(tmpdir, os.path.basename(binPath) + '.log')
+    onlyBeta = (('ran beta',), ('ran alpha', 'ran gamma'))
+    for args, (ordered, absent) in (
+            (('--testBench', 'selectProbe'), (ALL, ())),
+            (('--testBench', 'selectProbe', '--test=beta'), onlyBeta),
+            (('--testBench', 'selectProbe', '--test', 'beta'), onlyBeta),
+            (('--testBench=selectProbe', '--test', 'beta'), onlyBeta),
+            (('--test', 'beta', '--testBench', 'selectProbe'), onlyBeta),
+            (('--testBench', 'selectProbe', '--log'), ((), ALL))):
+        label = ' '.join(args)
+        run = subprocess.run([binPath, *args],
+                             capture_output=True, text=True, timeout=120, cwd=tmpdir,
+                             env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
+        output = run.stdout + run.stderr
+        before = len(FAILURES)
+        check(run.returncode == 0, f"{label} exits with status 0 (got {run.returncode})")
+        check(in_order(output, ordered), f"{label} prints lines starting {ordered!r} in that order")
+        for needle in absent:
+            check(needle not in output, f"{label} does not print {needle!r}")
+        if '--log' in args:
+            logged = os.path.isfile(logPath)
+            check(logged, f"{label} writes the log file")
+            if logged:
+                with open(logPath) as fh:
+                    check(in_order(fh.read(), ALL), f"{label} writes the tests to the log file")
+        if len(FAILURES) > before:
+            print(output)
+
+
 def test_testbench_test_selection():
     scLibdir = os.environ['SYSTEMC_LIBDIR']
     tmpdir = tempfile.mkdtemp(prefix='a2c_test_selection_')
@@ -149,6 +182,7 @@ def test_testbench_test_selection():
                 print(output)
         check_log_redirect(binPath, tmpdir, scLibdir)
         check_log_console(binPath, tmpdir, scLibdir)
+        check_named_testbench(binPath, tmpdir, scLibdir)
     finally:
         shutil.rmtree(tmpdir)
 
