@@ -229,6 +229,21 @@ The A2C Pro FSM macros require the names `state`, `nState`, `pushState` and `nPu
 *   Use `logic` for everything you declare. `wire` appears only in the generated region, for the `clk`/`rst_n` aliases and for clock and reset nets a child instance drives.
 *   Use `'0` and `'1` for all-zeros and all-ones.
 *   Mark functions and procedural loop variables `automatic`.
+*   A loop whose counter has a typed width tests for the last value before it increments, so the counter never has to hold the count. `for (i = 0; i < N; i++)` never ends when N is 2^width, because `i` wraps to 0 before the test can fail. An enum stepped with `next()` has the same trap, because `next()` wraps from `last()` to `first()`.
+
+    ```systemverilog
+    idx = '0;
+    do begin
+        ...
+    end while (idx++ != idxT'(NUM_ENTRIES - 1));
+
+    st = st.first();
+    forever begin
+        ...
+        if (st == st.last()) break;
+        st = st.next();
+    end
+    ```
 *   Detect overflow with a reduction OR, `|accum[MSB:DATA_WIDTH]`.
 *   Cast with the type: `addrT'(busAddr)`, `$signed({1'b0, uval})` to zero-extend into a signed value.
 *   Waive an intentional width mismatch around the expression only: `/* verilator lint_off WIDTHTRUNC */ ... /* verilator lint_on WIDTHTRUNC */`.

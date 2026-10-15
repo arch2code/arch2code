@@ -119,6 +119,14 @@ Firmware writes a register wider than 32 bits one word at a time (`+0` holds bit
 ## 4. Threads
 *   A thread is a `while (true)` loop registered with `SC_THREAD` in the constructor body.
 *   A loop that blocks in a port call (`read()`, `receiveAddr()`, `request()`) needs no explicit `wait()`. A loop of only non-blocking calls spins, so give it a `wait()`.
+*   A loop whose counter has a YAML type tests for the last value before it increments, the same form as the RTL in `rtl-core.md`. `for (i = 0; i < N; i++)` overflows when N is one past the type's maximum. The C++ typedef is often wider than the YAML width, so the model's loop can end while the same loop in the RTL never does.
+
+    ```cpp
+    idx_t i = 0;
+    do {
+        ...
+    } while (i++ != NUM_ENTRIES - 1);
+    ```
 *   A model has no clock or reset ports, and its threads never wait on a block clock. Block clocks and resets exist only in the RTL. An `output` clock or reset has no model counterpart, and co-simulation compares data ports only. See `builder/base/specs/spec-clock-reset-requirements.md` §4.11.
 
 ## 5. Logging and errors
