@@ -36,6 +36,14 @@ Tandem mode (A2C Pro) runs a leaf block's RTL and its SystemC model on the same 
 *   **Types.** Declare with `logic`, never `reg`. Prefer the generated package types to raw `logic [N:0]`. A local typedef is fine for an internal value with no package counterpart, such as an accumulator width derived from a `localparam`.
 *   **Parameterized types.** The generated region declares a parameterized block's parameterizable types inside the module, not in the package. Do not flag them as missing from the package or as local typedefs.
 *   **Package imports.** FAIL any hand-written package import in a module. A package the generated region does not import comes through `--importPackages` on the `GENERATED_CODE_PARAM` line (`rtl-core.md`). Packages are per context, not per block, so `<block>_package` does not exist.
+*   **`status_if` used for control.** FAIL a `status_if` port, or a project interface type built on the status channel, that tells another block when to act (design kernels 3, 6 and 9 in `design-architecture.md`). The model's channel keeps only the latest value and RTL samples it at clock edges, so a short change is lost and model and RTL can see different numbers of changes. Look for:
+    *   A `.dst` side that keeps a `_prev` copy of `data` and compares to find edges, then grants, blocks, starts or completes something.
+    *   A toggle or sequence bit in a status struct.
+    *   A `.src` value held for a minimum number of clocks, or kept sticky until the next operation, so the reader sees it.
+    *   A busy, done, valid, permission or count carried as a level.
+    *   A custom interface type adopted because `status` lost a value.
+
+    The fix is a transaction (`req_ack_if`, `notify_ack_if`, `push_ack_if` or `rdy_vld_if`). `design-architecture.md`, section "`status` carries state, never control", maps each case. Exempt a value where the consumer only needs the current value, never every change, such as configuration, mode, an enable, a lock, lifecycle state or a register mirror, even when it gates a decision. Also exempt a level that only rises until reset, such as a fatal alert, whose single rise one place turns into an event, and the block that turns a pin-level boundary input, such as GPIO, into transactions.
 *   **Generated modules.** Do not review the generated register handler (`<block>_regs` by default, `<block>Regs` in the examples) or the router module, which is named after the router block. Review only the hand-written RTL.
 *   **Module end.** The module ends with `endmodule: <module_name>`.
 

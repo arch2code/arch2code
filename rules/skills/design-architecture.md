@@ -10,6 +10,21 @@ Define hardware architecture in arch2code YAML: blocks, instances, interfaces, c
 ## References
 *   `ARCH2CODE_AI_RULES.md`, sections "Low-Level Architecture Elements", "Interfaces & Interface Types", "Blocks & Instances" and "Connections & Connection Maps".
 
+## Design kernels
+
+These hold for every arch2code design. When a design choice is unclear, prefer the one that keeps them true. The numbers are for citing in reviews, not an order of importance.
+
+1.  **The block that owns the facts makes the decision.** If a block needs a signal from another block to decide when to act, the decision is probably in the wrong place. Move it to the block that issues the work or receives the requests.
+2.  **Every action is a transaction, and every completion is its response.** Completion is the end-to-end response to the request and carries the result. A block knows its work is done when the answer comes back, not when a side-band level changes.
+3.  **An event is a message.** Deliver each occurrence once, in order, with its cause as payload. An event folded into a level change can be merged, missed or raised again.
+4.  **Wait for your own work.** A block that must not act while its earlier work is in flight tracks that work itself, from the moment it accepts it to its final response, and gates on that. It never asks downstream whether it is busy.
+5.  **Counts are tokens.** The block that issues or receives credits, occupancy or outstanding work counts them, one transaction per unit. A count is never carried as a level.
+6.  **State is a value, not a message.** `status` carries what is true now. It may gate a decision when read, but it never triggers one. See [`status` carries state, never control](#status-carries-state-never-control).
+7.  **Correctness does not depend on latency.** The design stays correct if any hop takes more or fewer cycles. If it does not, a handshake is missing. `--delay` runs and tandem (A2C Pro) expose this.
+8.  **Arbitrate where the requests meet, and record choices that depend on timing.** A choice that depends on arrival order goes through `synchLock` `arb()`, so every implementation takes the same branch (`systemc-synchronization.md`).
+9.  **Fix a lost value in the interface, not in the timing.** Holding a value for a minimum number of clocks, keeping it up until the next one, or adding a toggle bit so the reader notices all mean the information needed a transaction.
+10. **Two correct implementations exchange the same transactions, in the same order on each interface.** Model and RTL may differ in timing and internal state. What crosses a block boundary must not. If agreement depends on timing, resolve it with a handshake or a recorded decision.
+
 ## File structure
 
 *   Design sections: `include`, `constants`, `types`, `variables`, `structures`, `interfaces`, `blocks`, `instances`, `connections`, `connectionMaps`, `memoryConnections`, `registerConnections`, `registers`, `memories`. Parameterizable designs add `ipParameters` and `parameters`.
@@ -79,7 +94,8 @@ instances:
 | `backpressure` | Optional. Set `false` for a valid-only `rdy_vld` or `axi4_stream` stream. A `ports:` row can set it per port. See "Timed delays" in `systemc-interfaces.md`. |
 
 *   Prefer handshaked protocols for links between arch2code blocks. Use `raw` only at a design boundary with a handshake-less external pinout. See `ARCH2CODE_AI_RULES.md` (raw).
-*   Use `status` for level and pulse signals such as pps, fsync or GPIO pins. A `raw` output nobody reads stalls its writer. See `systemc-interfaces.md`.
+*   `status` carries state only, never control. See [`status` carries state, never control](#status-carries-state-never-control).
+*   A pin level at a design boundary, such as a GPIO, pps or fsync input, enters as `status`, not `raw`. A `raw` output nobody reads stalls its writer. See `systemc-interfaces.md`.
 
 ```yaml
 interfaces:
@@ -89,6 +105,31 @@ interfaces:
     structures:
       - {structureType: data_t, structure: dma_req_t}
 ```
+
+### `status` carries state, never control
+
+A `status` channel keeps only the latest value. It has no queue and no handshake. Writes in one delta reach the reader as one wake with the last value. A write that repeats the value raises no event. RTL sees only a value that holds across a clock edge. `status` is `timing: fixed`, so `--delay` never moves it. A change, a pulse or a count carried on it gets lost somewhere between the model, the RTL and tandem.
+
+*   Use `status` only for a value whose consumers need the current value, never every change. That means configuration and mode, enables, capability tables, lifecycle and lock state, a permission that is itself state, register mirrors, monitoring, and pin levels at a design boundary.
+*   Never use `status`, or a project interface type built on the status channel, to tell another block when to act. No busy, done, valid, start, ack or per-request grant flags. No interrupt or event pulses. No counts or credits encoded as a level. No toggle or sequence bits added to force an event. Design kernels 3, 6 and 9 give the reasons.
+*   The test is whether the consumer must observe every change. If missing a change, or seeing two changes as one, would be wrong, the information is a transaction. Events, completions, counts, credits and handshakes are all transactions. Use `req_ack`, `notify_ack`, `push_ack` or `rdy_vld`. If only the current value matters whenever it is read, `status` is correct, even when that value gates a decision, as an engine enable, a lock bit or a zeroize state does.
+*   A thread may wake on a `status` change to re-sample state, such as new configuration. It must stay correct if it misses an intermediate value.
+*   A level that only rises until reset, such as a fatal alert latched until reset, may be `status` when one place turns its single rise into an event.
+*   A boundary input that is genuinely pin-level, such as GPIO or an external pps or fsync, may enter as `status`. The block that receives it turns its edges into transactions for the rest of the design.
+*   Workarounds give the misuse away: a value held for a minimum number of clocks so the reader sees it, a `done` level kept up until the next operation, a toggle bit, edge detection in the consumer to recover events, or a custom interface type adopted because `status` lost a value. In tandem (A2C Pro) the status tee pairs the two sides' changes one for one, so a model and RTL that make different numbers of changes stall it.
+
+Replace each control use with its transactional form:
+
+| Control intent | Transactional form |
+| :--- | :--- |
+| Start or command work | A request on `rdy_vld` or `push_ack`, or on `req_ack` when the requester needs an answer. |
+| Work finished, with its result | The `req_ack` acknowledgement is the completion and carries the result code, error or data. Never return completion as a `status` level. |
+| Something happened, such as an error, interrupt cause or alert | One message per occurrence to the block that owns the reaction. Use `push_ack` when the message carries a payload such as the cause, and `notify_ack`, which has no payload, when it does not. A register block latches it for firmware. |
+| Wait until in-flight work drains | The block that accepted the work tracks it from acceptance to its end-to-end response, with a counter or the state of the FSM that owns it, and gates the dependent action itself. Work still in an internal check stage counts. No busy level from downstream. See design kernel 4. |
+| Choose between competing requests | Arbitrate inside the block that receives them. A choice that depends on arrival timing goes through `synchLock` `arb()` (`systemc-synchronization.md`). No per-request grant level from another block. |
+| Credits and counts | Tokens on a transactional interface, one per unit. |
+
+Define completion by an end-to-end response. The issuing block then knows when its work is done without a side-band signal.
 
 ## 4. Connections (`connections:`)
 

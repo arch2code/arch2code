@@ -605,11 +605,15 @@ Based on the `builder/base/interfaces/` directory (`lmmi` is in `builder/pro/int
 | `axi4_stream` | AXI4-Stream | High-performance streaming |
 | `axi_read` | AXI4 read channel | Memory read transactions |
 | `axi_write` | AXI4 write channel | Memory write transactions |
-| `status` | Status signal (no handshake) | Static signals, monitoring |
+| `status` | Status signal (no handshake) | State only (config, mode, enable, lock, lifecycle, register mirrors, monitoring, boundary pin levels). Never control |
 | `notify_ack` | Notify-acknowledge | Event notifications |
 | `memory` | Memory interface | SRAM/ROM access |
 | `external_reg` | External register | Register access |
 | `raw` | Handshake-less data bus (**last resort**) | External boundary pinouts only |
+
+**`status` carries state, never control.** It keeps only the latest value, with no queue and no handshake. Never use it, or a project interface type built on the status channel, to tell another block when to act: no busy, done, valid, grant, interrupt, count or toggle signals. The test is whether the consumer must observe every change. If missing a change, or seeing two changes as one, would be wrong, use `req_ack`, `notify_ack`, `push_ack` or `rdy_vld`. If only the current value matters whenever it is read, `status` is correct, even when that value gates a decision. `rules/skills/design-architecture.md`, section "`status` carries state, never control", maps each control use to its transactional form.
+
+When choosing interfaces and deciding which block makes a decision, apply the principles in `## Design kernels` in `rules/skills/design-architecture.md`.
 
 ### Interface Definition Syntax
 
@@ -3432,7 +3436,7 @@ registers:
 | `axi4_stream` | TVALID/TREADY | Unidirectional | High-speed streaming | `tdata_t`, `tid_t`, `tdest_t` (optional `tuser_t`) |
 | `axi_read` | AXI4 | Bidirectional | Memory read | `addr_t`, `data_t` (optional `aruser_t`, `ruser_t`, `id_t`) |
 | `axi_write` | AXI4 | Bidirectional | Memory write | `addr_t`, `data_t`, `strb_t` (optional `awuser_t`, `wuser_t`, `buser_t`, `id_t`) |
-| `status` | None | Unidirectional | Static signals | `data_t` |
+| `status` | None | Unidirectional | State only, never control | `data_t` |
 | `notify_ack` | notify/ack | Unidirectional | Event notification | None |
 | `external_reg` | `write` | Bidirectional | Register owned outside the handler | `data_t` |
 | `memory` | enable/wr_en | Bidirectional | Memory port | `addr_t`, `data_t` |

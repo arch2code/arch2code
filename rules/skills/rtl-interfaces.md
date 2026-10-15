@@ -29,7 +29,7 @@ Every interface has two modports and no others:
 | `req_ack_if` | Request with response data | `req`, `data` from src; `ack`, `rdata` from dst |
 | `pop_ack_if` | Pull data from dst | `pop` from src; `ack`, `rdata` from dst |
 | `notify_ack_if` | Event with no data | `notify` from src; `ack` from dst |
-| `status_if` | Level value such as config or status | `data` |
+| `status_if` | State level such as config or mode, never control | `data` |
 | `external_reg_if` | Register owned outside the handler | `write`, `wdata` from src; `rdata` from dst |
 | `memory_if` | Memory port | `addr`, `write_data`, `enable`, `wr_en` from src; `read_data` from dst |
 | `apb_if` | Register bus | `psel`, `penable`, `pwrite`, `paddr`, `pwdata` from src; `pready`, `prdata`, `pslverr` from dst |
@@ -56,6 +56,8 @@ Tie `dataIn.rdy = 1'b1` only when the block can accept every cycle.
 The source raises `notify` and holds it until a cycle where `notify && ack`. The destination raises `ack` for one cycle per event, in the first `notify` cycle or any later one. `notify` still high in the cycle after that handshake is a new event.
 
 ### 5. `status_if`
+`status_if` carries state, never control. Drive only a value whose consumers need the current value, never every change, such as a mode, enable, lock or lifecycle state. Such a value may gate a decision. Never use it for busy, done, valid, grant, interrupt, count or toggle signals. The SystemC channel keeps only the latest value and RTL samples it at clock edges, so a change that does not hold across an edge is lost. A `.dst` side that keeps a `_prev` copy of `data` and compares to find edges is recovering events from a level. That is the sign the link needs `notify_ack_if`, `push_ack_if`, `req_ack_if` or `rdy_vld_if`. Two cases are fine. One is the block that receives a pin-level input at the design boundary, such as GPIO or an external pps, and turns its edges into transactions. The other is a level that only rises until reset, such as a fatal alert latched until reset, whose single rise one place turns into an event. `design-architecture.md`, section "`status` carries state, never control", gives the replacements.
+
 `data` is a level, always valid. Read it combinationally on the `.dst` side and drive it on the `.src` side:
 
 ```systemverilog
