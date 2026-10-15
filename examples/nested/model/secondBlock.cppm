@@ -58,7 +58,7 @@ secondBlock::secondBlock(sc_module_name blockName, const char * variant, blockBa
        : sc_module(blockName)
         ,blockBase("secondBlock", name(), bbMode)
         ,secondBlockBase(name(), variant)
-        ,test("secondSubB_test", "secondSubA")
+        ,test("secondSubB_test", "secondSubA", BACKPRESSURE_ALLOWED)
         ,uSecondSubA(std::dynamic_pointer_cast<secondSubABase>(instanceFactory::createInstance(name(), "uSecondSubA", "secondSubA", "", "nested")))
         ,uSecondSubB(std::dynamic_pointer_cast<secondSubBBase>(instanceFactory::createInstance(name(), "uSecondSubB", "secondSubB", "", "nested")))
 // GENERATED_CODE_END

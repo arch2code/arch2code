@@ -193,6 +193,7 @@ modports:
 - **Purpose**: Field may be omitted in YAML
 - **Default**: Empty string "" (unless `optionalDefault` specified in schema)
 - **Source**: From YAML item data or default value
+- **Unstated versus false**: `optional()` with no default keeps "" for an unstated field and skips its validator, so a bool field can tell "not set" from an authored `false`. `interfaces.backpressure` and `blocks.ports.backpressure` use this with `_validate: values: [true, false]`. An unset interfaces entry falls back to its interface type's `backpressure.default`, and an unset port falls back to its interfaces entry.
 
 #### `const`
 - **Purpose**: Numeric constant or reference to named constant/enum
@@ -259,14 +260,14 @@ modports:
 - **Block-local reference**: a combo FK is how a row references a block's sub-table by pairing the block with the name; the parent key (`block`) is one component and the referenced name the other, so the match is confined to that block without a scope keyword. `parameters.variants.params.blockParam` against `blocksparams`, the block clock/reset references above, and `memories.blockClock` (a top-level row, not nested under the block, referencing the block's `clocks:` sub-table) are the examples.
 
 #### `dataGroup`
-- **Purpose**: Creates a 1-to-1 nested table that shares the parent's primary key
+- **Purpose**: Creates a nested table with at most one row per parent, sharing the parent's primary key
 - **Behavior**: 
   - Table-level attribute (specified in `_attribs` array)
   - No explicit `key` field needed - automatically inherits parent's storage key
   - Creates separate database table but logically extends parent record
-  - Each parent entry has exactly one dataGroup entry (1-to-1 relationship)
+  - Each parent entry has at most one dataGroup entry. A parent that omits the group has no row in its table, and `projectOpen` loads the field as `None`. Add `required` to the group's `_attribs` to reject the omission at parse time. Leave it out where the group is optional by design (`blocks.addressBlock`, `interface_defs.backpressure`). `interface_defs.sc_channel` is not marked required either
 - **Use Case**: Organizing related fields into logical groups without creating multi-entry nested tables
-- **Example**: `sc_channel` under `interface_defs` - groups SystemC channel-specific fields
+- **Example**: `sc_channel` under `interface_defs` - groups SystemC channel-specific fields; `backpressure` under `interface_defs` is a group present only on elastic definitions
 - **Schema Pattern**:
 ```yaml
 interface_defs:
@@ -367,16 +368,16 @@ mappedFrom: ['reg_ro', 'reg_rw']
 ```
 
 #### `dataGroup`
-- **Critical**: Creates a 1-to-1 nested table that shares parent's primary key
+- **Critical**: Creates a nested table with at most one row per parent, sharing the parent's primary key
 - **Behavior**:
-  - Unlike `multiple` tables, only one dataGroup entry per parent
+  - Unlike `multiple` tables, at most one dataGroup entry per parent; an omitted group loads as `None`
   - No explicit `key` field specification in schema - automatically inherits parent's key
   - Creates separate database table for organizational purposes
   - Used to group related fields without creating multi-entry nested structure
 - **Schema Requirements**:
   - Must be a nested table (not top-level)
   - Do NOT specify a `key` field - schema validation will configure key inheritance
-  - Do NOT include `multiple` attribute - enforces 1-to-1 relationship
+  - Do NOT include `multiple` attribute - a parent can have at most one row
 - **Example**:
 ```yaml
 interface_defs:
@@ -616,7 +617,7 @@ blocks:
 referring row's include-chain scope. The referenced block must already have
 been processed.
 
-### Pattern 7: DataGroup Table (1-to-1 Nested)
+### Pattern 7: DataGroup Table (at most one row per parent)
 
 ```yaml
 interface_defs:
@@ -633,7 +634,7 @@ interface_defs:
 
 **Key Characteristics**:
 - No explicit `key` field in `sc_channel` - automatically inherits parent's key
-- `_attribs: [dataGroup]` creates 1-to-1 relationship with parent
+- `_attribs: [dataGroup]` allows at most one row per parent
 - Cannot have multiple `sc_channel` entries per `interface_defs` entry
 - Creates separate table `interface_defssc_channel` for organizational purposes
 
@@ -876,7 +877,7 @@ parameter bindings".
 4. **Key Strategy**: 
    - Top-level storage: Always uses qualified keys (storage_key_field_qualified)
    - Nested dict reconstruction: Uses anchor field for user-friendly structure
-   - DataGroup tables: Share parent's storage key (1-to-1 relationship)
+   - DataGroup tables: Share parent's storage key (at most one row per parent)
 
 #### Example: Loading interface_defs → modports → modportGroups
 
@@ -1054,7 +1055,7 @@ Extracts the storage key from a processed YAML row.
 - **Don't** manually populate `contextKey` fields - they're auto-populated when base field is processed
 - **Do** use qualified keys for database lookups (`type/context`)
 - **Do** include `outerkey` fields in nested tables (automatic for parent keys via `set_parent_key_chain`)
-- **Do** use dataGroup for 1-to-1 nested relationships to organize fields
+- **Do** use dataGroup for a nested group with at most one row per parent
 - **Do** test schema changes with database rebuild
 
 ## Debugging Schema Issues
@@ -1125,7 +1126,7 @@ The schema system provides a powerful, declarative way to define configuration s
 - **Context awareness**: Qualified keys enable proper scoping and multi-context data
 - **Automatic key management**: `storage_key_field_qualified` precomputed, contextKey fields pre-populated
 - **Dual storage for efficiency**: Multi-entry tables maintain both flat and grouped indexes
-- **Flexible nesting**: DataGroup for 1-to-1, multiple for 1-to-many relationships
+- **Flexible nesting**: DataGroup for at most one row per parent, multiple for 1-to-many relationships
 - **Extensibility**: Auto functions and post-processing for custom logic
 - **Validation**: Built-in checks for data integrity with fail-fast error handling
 

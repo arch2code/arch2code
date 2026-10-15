@@ -61,7 +61,7 @@ nested::nested(sc_module_name blockName, const char * variant, blockBaseMode bbM
        : sc_module(blockName)
         ,blockBase("nested", name(), bbMode)
         ,nestedBase(name(), variant)
-        ,test("nestedL1_test", "testContainer")
+        ,test("nestedL1_test", "testContainer", BACKPRESSURE_ALLOWED)
         ,uTestTop(std::dynamic_pointer_cast<testContainerBase>(instanceFactory::createInstance(name(), "uTestTop", "testContainer", "", "nested")))
         ,uNestedL1(std::dynamic_pointer_cast<nestedL1Base>(instanceFactory::createInstance(name(), "uNestedL1", "nestedL1", "", "nested")))
 // GENERATED_CODE_END

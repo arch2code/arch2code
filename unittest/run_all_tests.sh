@@ -675,6 +675,18 @@ python3 test_interface_def_contracts.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: interface timing intent (backpressure overrides and setTimed marks)"
+echo "------------------------------------------------------------------------"
+python3 test_interface_timing_intent.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: channel setTimed fixed at construction (fixed timing, no backpressure)"
+echo "------------------------------------------------------------------------"
+python3 test_set_timed_ignore_runtime.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1

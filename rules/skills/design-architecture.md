@@ -76,6 +76,7 @@ instances:
 | `desc` | Required. |
 | `structures` | List of `{structureType, structure}` binding the protocol's payload slots. |
 | `maxTransferSize` | For multi-cycle interfaces. Default `0`. |
+| `backpressure` | Optional. Set `false` for a valid-only `rdy_vld` or `axi4_stream` stream. A `ports:` row can set it per port. See "Timed delays" in `systemc-interfaces.md`. |
 
 *   Prefer handshaked protocols for links between arch2code blocks. Use `raw` only at a design boundary with a handshake-less external pinout. See `ARCH2CODE_AI_RULES.md` (raw).
 *   Use `status` for level and pulse signals such as pps, fsync or GPIO pins. A `raw` output nobody reads stalls its writer. See `systemc-interfaces.md`.

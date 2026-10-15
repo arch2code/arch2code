@@ -83,7 +83,7 @@ public:
     // constructor const char * module, std::string block
     explicit raw_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        interfaceBase(name_, block_, autoMode),
+        interfaceBase(name_, block_, autoMode, TIMED_DELAY_FIXED_TIMING),
         m_channel_sync_event( (std::string(name_) + "m_channel_sync_event").c_str() ),
         m_channel_sync_event_ptr(&m_channel_sync_event),
         m_reader(nullptr),

@@ -88,6 +88,19 @@ generator reads that type from the signal the hdlparam types
 no signal names has no such row, so generation stops with a bare KeyError that
 names neither the interface nor its file.
 
+Rule 9 - backpressure is declared exactly when timing is elastic.
+
+`timing: fixed` means the receiver reads each value in a set cycle and cannot
+wait. Such an interface type has no handshake to stall, its channel class
+ignores setTimed, and nothing reads a backpressure group, so a group there
+misleads the reader. The block view reads `backpressure.default` of an elastic
+interface type for every channel and port of that type (`_channelBackpressure`
+in pysrc/processYaml.py), so an elastic definition without the group stops
+generation with a bare TypeError at the first channel or port of that type,
+and the error names neither the interface nor its file.
+The schema makes `timing` required and both group fields required when the
+group is present. The pairing is the part it cannot express.
+
 Interface definition files are discovered by walking the interface trees, so a
 newly authored interface is validated without anyone adding it to a list.
 """
@@ -137,6 +150,8 @@ instances:
 # declared after the optional p_opt.
 BAD_ARCH_YAML = """interface_defs:
   bad_order:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_opt: {datatype: struct, optional: true}
@@ -162,6 +177,8 @@ BAD_ARCH_YAML = """interface_defs:
 # evaluates p_u, which is declared optional and so may be left unbound.
 BAD_HDLPARAM_ARCH_YAML = """interface_defs:
   bad_hdlparam:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_u: {datatype: struct, optional: true}
@@ -203,6 +220,8 @@ BAD_TYPE_HDLPARAM_ARCH_YAML = (BAD_HDLPARAM_ARCH_YAML
 # output fallback instead of from the definition.
 BAD_MODPORT_ARCH_YAML = """interface_defs:
   bad_modport:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
     signals:
@@ -226,6 +245,8 @@ BAD_MODPORT_ARCH_YAML = """interface_defs:
 # parameter but calls no method on it, so it carries no '.'.
 BAD_HDLPARAM_VALUE_ARCH_YAML = """interface_defs:
   bad_hdlparam_value:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
     hdlparams:
@@ -252,6 +273,8 @@ BAD_HDLPARAM_VALUE_ARCH_YAML = """interface_defs:
 # datatype, so it is dropped from the payload bindings entirely.
 BAD_DATATYPE_ARCH_YAML = """interface_defs:
   bad_datatype:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_b: {datatype: strcut}
@@ -278,6 +301,8 @@ BAD_DATATYPE_ARCH_YAML = """interface_defs:
 # because a required parameter is never isNull.
 BAD_DEFAULT_WIDTH_ARCH_YAML = """interface_defs:
   bad_default_width:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct, defaultWidth: 4}
     signals:
@@ -301,6 +326,8 @@ BAD_DEFAULT_WIDTH_ARCH_YAML = """interface_defs:
 # type, which names no type and so carries no width.
 BAD_SIGNAL_TYPE_ARCH_YAML = """interface_defs:
   bad_signal_type:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
     signals:
@@ -324,6 +351,8 @@ BAD_SIGNAL_TYPE_ARCH_YAML = """interface_defs:
 # hdlparam, but no signal names it as its signalType.
 BAD_UNUSED_HDLPARAM_ARCH_YAML = """interface_defs:
   bad_unused_hdlparam:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
     hdlparams:
@@ -344,6 +373,39 @@ BAD_UNUSED_HDLPARAM_ARCH_YAML = """interface_defs:
       multicycle_types: []
 
 """ + ARCH_YAML
+
+# A fixed-timing definition that declares a backpressure group.
+BAD_FIXED_BACKPRESSURE_ARCH_YAML = """interface_defs:
+  bad_fixed_backpressure:
+    timing: fixed
+    backpressure: {default: true, overridable: false}
+    parameters:
+      p_a: {datatype: struct}
+    signals:
+      sig_a: p_a
+    modports:
+      src:
+        inputs: []
+        outputs: ['sig_a']
+      dst:
+        inputs: ['sig_a']
+        outputs: []
+    sc_channel:
+      type: 'bad_fixed_backpressure'
+      multicycle_types: []
+
+""" + ARCH_YAML
+
+# An elastic definition with no backpressure group.
+BAD_ELASTIC_NO_BACKPRESSURE_ARCH_YAML = (BAD_FIXED_BACKPRESSURE_ARCH_YAML
+    .replace('bad_fixed_backpressure', 'bad_elastic_no_backpressure')
+    .replace('    timing: fixed\n    backpressure: {default: true, overridable: false}\n',
+             '    timing: elastic\n'))
+
+# A definition with no timing at all, which the schema rejects.
+BAD_NO_TIMING_ARCH_YAML = (BAD_FIXED_BACKPRESSURE_ARCH_YAML
+    .replace('bad_fixed_backpressure', 'bad_no_timing')
+    .replace('    timing: fixed\n    backpressure: {default: true, overridable: false}\n', ''))
 
 PROJECT_YAML = """projectName: {name}
 yamlFormat: 2
@@ -532,6 +594,42 @@ def unused_hdlparam_error(sourceFile, interfaceType, hdlparam):
         f"isEval hdlparam and reads it from the signal that hdlparam types, so "
         f"generation stops with a bare KeyError. Name '{hdlparam}' as the "
         f"signalType of the signal it sizes, or remove it, in {sourceFile}.")
+
+
+def timing_backpressure_error(sourceFile, interfaceType, timing):
+    """The message an author sees. It has to be enough on its own.
+
+    It names the file to edit, the timing the definition declares, and why the
+    backpressure group must match it.
+    """
+    if timing == 'fixed':
+        return (
+            f"{sourceFile}: interface_defs '{interfaceType}' has timing: fixed "
+            f"and declares backpressure:. A fixed-timing interface has no "
+            f"handshake to stall, so the generator never reads the group and a "
+            f"reader would take it to mean the consumer can stall the producer. "
+            f"Remove backpressure: from '{interfaceType}', or declare it "
+            f"timing: elastic, in {sourceFile}.")
+    return (
+        f"{sourceFile}: interface_defs '{interfaceType}' has timing: elastic "
+        f"and declares no backpressure:. A port that sets no override takes the "
+        f"definition's backpressure default, so generation stops with a bare "
+        f"TypeError that names neither this interface nor this file. Add "
+        f"backpressure: {{ default: <bool>, overridable: <bool> }} to "
+        f"'{interfaceType}' in {sourceFile}.")
+
+
+def check_timing_backpressure(interfaceDefs, sourceFiles):
+    """timing/backpressure pairing errors for every definition in sourceFiles."""
+    errors = []
+    for row in interfaceDefs.values():
+        interfaceType = row['interface_type']
+        if interfaceType not in sourceFiles:
+            continue
+        if (row['backpressure'] is not None) != (row['timing'] == 'elastic'):
+            errors.append(timing_backpressure_error(sourceFiles[interfaceType],
+                                                    interfaceType, row['timing']))
+    return errors
 
 
 def check_hdlparam_usage(interfaceDefs, sourceFiles):
@@ -772,6 +870,14 @@ def test_shipped_interface_defs(proj, sourceFiles):
         print(f"  {error}")
     check(not errors,
           "every shipped isEval hdlparam types a signal of its interface")
+
+    print("\n[timing] backpressure is declared exactly when timing is elastic")
+    errors = check_timing_backpressure(interfaceDefs, sourceFiles)
+    for error in errors:
+        print(f"  {error}")
+    check(not errors,
+          "every shipped interface declares backpressure exactly when its "
+          "timing is elastic")
 
 
 def test_misdeclared_interface_is_reported():
@@ -1047,6 +1153,68 @@ def test_unused_hdlparam_is_reported():
         remove_tree(tmpdir)
 
 
+def test_timing_backpressure_mismatch_is_reported():
+    """The check fires both ways, and its message stands on its own."""
+    cases = (
+        (BAD_FIXED_BACKPRESSURE_ARCH_YAML, 'badFixedBackpressure', 'bad_fixed_backpressure',
+         "has timing: fixed and declares backpressure:"),
+        (BAD_ELASTIC_NO_BACKPRESSURE_ARCH_YAML, 'badElasticNoBackpressure',
+         'bad_elastic_no_backpressure', "has timing: elastic and declares no backpressure:"),
+    )
+    for archText, name, interfaceType, violation in cases:
+        print(f"\n[negative] {interfaceType} is reported")
+        try:
+            dbPath, tmpdir = build_database(archText, name)
+        except RuntimeError as exc:
+            check(False, f"mis-declared fixture must build a database: {exc}")
+            continue
+        try:
+            proj = projectOpen(dbPath)
+            archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
+            errors = check_timing_backpressure(proj.data['interface_defs'],
+                                               {interfaceType: archPath})
+            for error in errors:
+                print(f"  {error}")
+            if len(errors) != 1:
+                check(False, f"exactly one timing error is reported, got {len(errors)}")
+                continue
+            message = errors[0]
+            check(archPath in message, "the message names the file to edit")
+            check(f"'{interfaceType}'" in message, "the message names the interface")
+            check(violation in message, "the message states the violation")
+        finally:
+            remove_tree(tmpdir)
+
+
+def test_missing_timing_is_reported():
+    """A definition with no timing fails the build at the schema."""
+    print("\n[negative] a definition with no timing is reported")
+    tmpdir = tempfile.mkdtemp(prefix='intf_def_contract_')
+    try:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(BAD_NO_TIMING_ARCH_YAML)
+        projectPath = os.path.join(projDir, 'badNoTimingProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write(PROJECT_YAML.format(name='badNoTiming'))
+        env = dict(os.environ, NO_COLOR='1')
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', os.path.join(tmpdir, 'badNoTiming.db')],
+            capture_output=True, text=True, timeout=300, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a definition with no timing must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("arch.yaml" in message, "the message names the file to edit")
+        check("bad_no_timing" in message, "the message names the interface")
+        check("missing required field timing" in message, "the message names the missing field")
+    finally:
+        remove_tree(tmpdir)
+
+
 def test_unsignalled_parameter_is_accepted():
     """A required parameter typing no signal breaks no rule."""
     print("\n[positive] a required parameter that only an hdlparam measures is accepted")
@@ -1098,6 +1266,8 @@ def main():
     test_default_width_on_required_is_reported()
     test_untyped_signal_is_reported()
     test_unused_hdlparam_is_reported()
+    test_timing_backpressure_mismatch_is_reported()
+    test_missing_timing_is_reported()
     test_unsignalled_parameter_is_accepted()
 
     print("\n" + "=" * 72)

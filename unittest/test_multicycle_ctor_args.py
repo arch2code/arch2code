@@ -150,8 +150,10 @@ def _test_testbench_emitters_route_through_the_helper():
         return False
 
     # Both emitters (the connectDouble loop and the connectionMaps loop in
-    # ext_sec_init) must be present.
-    complete = re.findall(r'"\{(?:instName|srcInst)\}"\{extra\}\{autoMode\}\)',
+    # ext_sec_init) must be present. The backpressure argument, when the
+    # interface takes one, sits between the block name and the multicycle
+    # arguments.
+    complete = re.findall(r'"\{(?:instName|srcInst)\}"(?:\{[^{}]+\})?\{extra\}\{autoMode\}\)',
                           template)
     if len(complete) < 2:
         print(f"FAIL: expected 2 channel constructor emissions carrying the "

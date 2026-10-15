@@ -83,8 +83,8 @@ public:
 
 
     subBlockChannels(std::string name, std::string srcName) :
-    src(("src"+name).c_str(), srcName)
-    ,dst(("dst"+name).c_str(), srcName)
+    src(("src"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dst(("dst"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( subBlockBase *a, subBlockInverted *b)
     {

@@ -1525,6 +1525,8 @@ class projectOpen:
         self.getBDIncludes(ret)
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
+        # which generated channels ignore setTimed
+        self.getBDEffectiveBackpressure(ret)
         self.getBDConfigInfo(ret)
         # Surface the router block's authored addressBlock row on the view.
         self.getBDAddressBlockView(ret)
@@ -2687,6 +2689,7 @@ class projectOpen:
         excludeInstances = ret['excludedInstances']
         connections = dict()
         prunedConnections = dict()
+        excludedEnds = dict()
         for conn, connVal in self.data['connections'].items():
             connectionCount = 0
             isPort = False
@@ -2709,8 +2712,7 @@ class projectOpen:
                     # unresolved template parameter.
                     prunedConnections[conn] = excludeInstances[endVal['instanceKey']]['instanceConfigSelection']
             # filter out any excluded instances after looping
-            for end in pop_ends:
-                connVal['ends'].pop(end)
+            excludedEnds[conn] = {end: connVal['ends'].pop(end) for end in pop_ends}
             if isPort:
                 # shallow copy
                 ports[conn] = dict(connVal)
@@ -2740,6 +2742,7 @@ class projectOpen:
         for conn in prunedConnections:
             connMoved = connections.pop(conn)
             connMoved['excludedEndConfig'] = prunedConnections[conn]
+            connMoved['excludedEnds'] = excludedEnds[conn]
             ret['prunedConnections'][conn] = connMoved
 
         ret['connections'] = connections
@@ -3605,6 +3608,90 @@ class projectOpen:
         ret['interface_type_mappings'] = type_mappings
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
+
+    def getBDEffectiveBackpressure(self, ret):
+        """Annotate every channel the block's generated code builds, and every
+        boundary port, with effectiveBackpressure: true when the interface is
+        elastic and every port the channel joins lets the consumer stall the
+        producer.
+
+        A boundary port's value, which the <block>Channels constructor uses,
+        sees only the block's own port. The peers a testbench or tandem shell
+        binds to the other side are not in this view. A pruned connection's
+        value counts the excluded DUT end as well as the surviving ends. A
+        connectionMap row describes the channel a thunker or a testbench
+        External builds between the child port and the parent port.
+        """
+        for group in ret['connectDouble'].values():
+            for connVal in group.values():
+                intfDef = self._viewInterfaceDef(ret, connVal)
+                # A register connection names an interface type alias and its
+                # ends declare no ports, so only the protocol decides.
+                endpoints = ([self._endEndpoint(connVal, end) for end in connVal['ends'].values()]
+                             if 'interfaceKey' in connVal else [])
+                connVal['effectiveBackpressure'] = self._channelBackpressure(intfDef, endpoints)
+        for connVal in ret['prunedConnections'].values():
+            endpoints = [self._endEndpoint(connVal, end)
+                         for end in [*connVal['ends'].values(), *connVal['excludedEnds'].values()]]
+            connVal['effectiveBackpressure'] = self._channelBackpressure(self._viewInterfaceDef(ret, connVal), endpoints)
+        for connMap in ret['connectionMaps'].values():
+            childBlockKey = self.data['instances'][connMap['instanceKey']]['instanceTypeKey']
+            connMap['effectiveBackpressure'] = self._channelBackpressure(
+                self._viewInterfaceDef(ret, connMap),
+                [(childBlockKey, connMap['instancePortName'], connMap['interfaceKey']),
+                 (connMap['blockKey'], connMap['portName'], connMap['interfaceKey'])])
+        for portGroup in ret['ports'].values():
+            for portName, portRow in portGroup.items():
+                conn = portRow['connection']
+                endpoints = [(ret['qualBlock'], portName, conn['interfaceKey'])] if 'interfaceKey' in conn else []
+                portRow['effectiveBackpressure'] = self._channelBackpressure(self._viewInterfaceDef(ret, conn), endpoints)
+
+    def _endEndpoint(self, connVal, end):
+        return (self.data['instances'][end['instanceKey']]['instanceTypeKey'], end['portName'], connVal['interfaceKey'])
+
+    def _channelBackpressure(self, intfDef, endpoints):
+        """endpoints lists (blockKey, portName, interfaceKey) per port the
+        channel joins. A fixed-timing interface has no handshake, and a port
+        may only lower the protocol default."""
+        if intfDef['timing'] == 'fixed' or not intfDef['backpressure']['default']:
+            return False
+        return all(self._endpointBackpressure(*endpoint) for endpoint in endpoints)
+
+    def _endpointBackpressure(self, blockKey, portName, interfaceKey):
+        """A port's effective backpressure: its ports: row value, else its
+        interfaces entry value, else the protocol default. A declared port is
+        typed by its own interfaces entry, which a cross-interface bind makes
+        differ from the connection's.
+
+        A container binds a same-interface connectionMap child port straight
+        to the channel outside it, so a container port is false when the child
+        port it maps to is false, at any depth."""
+        declaredPorts = self.data['blocks'][blockKey]['ports']
+        backpressure = ''
+        if declaredPorts and portName in declaredPorts:
+            backpressure = declaredPorts[portName]['backpressure']
+            interfaceKey = declaredPorts[portName]['interfaceKey']
+        if backpressure == '':
+            backpressure = self.data['interfaces'][interfaceKey]['backpressure']
+        if backpressure == '':
+            intfTypeKey = self.data['interfaces'][interfaceKey]['interfaceTypeKey']
+            backpressure = self.data['interface_defs'][intfTypeKey]['backpressure']['default']
+        if not backpressure:
+            return False
+        for connMap in self.data['connectionMaps'].values():
+            if connMap['blockKey'] == blockKey and connMap['portName'] == portName:
+                childBlockKey = self.data['instances'][connMap['instanceKey']]['instanceTypeKey']
+                if not self._endpointBackpressure(childBlockKey, connMap['instancePortName'], connMap['interfaceKey']):
+                    return False
+        return True
+
+    def _viewInterfaceDef(self, ret, row):
+        # Register and memory rows name their interface type, an alias such as
+        # reg_ro, instead of an interfaces row.
+        if 'interfaceKey' in row:
+            return self.data['interface_defs'][self.data['interfaces'][row['interfaceKey']]['interfaceTypeKey']]
+        intfType = row['interfaceType']
+        return ret['interface_defs'][ret['interface_type_mappings'].get(intfType, intfType)]
 
     def evalHdlParam(self, intfDef, hdlparam, receivers):
         # An eval hdlparam's DSL expression, with each struct parameter name
@@ -9241,7 +9328,7 @@ class projectCreate:
             self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
         return item
 
-    def _post_validate_interface_structures(self, itemkey, item, yamlFile):
+    def _validateInterfaceStructures(self, itemkey, item, yamlFile):
         """Validate that every required interface_defs parameter has a
         corresponding structureType.
 
@@ -9296,6 +9383,44 @@ class projectCreate:
                         f"Every required parameter from interface_defs must have a corresponding structure.")
 
         return item
+
+    def _post_validateInterface(self, itemkey, item, yamlFile):
+        item = self._validateInterfaceStructures(itemkey, item, yamlFile)
+        # A failed interfaceType foreign key has already been reported.
+        if item['backpressure'] != '' and 'interfaceTypeKey' in item:
+            self._validateBackpressureOverride(
+                f"interface '{itemkey}'", item, item['interfaceType'],
+                self.flatData['interface_defs'][item['interfaceTypeKey']], yamlFile)
+        return item
+
+    def _post_validatePortBackpressure(self, itemkey, item, yamlFile):
+        # A failed interface foreign key has already been reported.
+        if item['backpressure'] != '' and 'interfaceKey' in item:
+            intfInfo = self.flatData['interfaces'][item['interfaceKey']]
+            self._validateBackpressureOverride(
+                f"block '{item['block']}' port '{itemkey}'", item, intfInfo['interfaceType'],
+                self.flatData['interface_defs'][intfInfo['interfaceTypeKey']], yamlFile)
+        return item
+
+    def _validateBackpressureOverride(self, where, item, intfType, intfDef, yamlFile):
+        """A design may lower an interface's backpressure only where its
+        protocol lets the handshake go unused, and never above the protocol
+        default."""
+        value = item['backpressure']
+        location = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, {where} "
+                    f"sets backpressure: {str(value).lower()}")
+        if intfDef['timing'] == 'fixed':
+            self.logError(f"{location}, but interfaceType '{intfType}' has timing: fixed. "
+                          f"A fixed-timing interface has no handshake to apply backpressure "
+                          f"through. Remove backpressure:.")
+        elif not intfDef['backpressure']['overridable']:
+            self.logError(f"{location}, but interfaceType '{intfType}' declares backpressure "
+                          f"overridable: false, so its consumer always honors the handshake. "
+                          f"Remove backpressure:.")
+        elif value and not intfDef['backpressure']['default']:
+            self.logError(f"{location}, but interfaceType '{intfType}' defaults to backpressure: "
+                          f"false, and a design may only lower the protocol default. "
+                          f"Remove backpressure: or set it to false.")
 
     def _post_validateBlockAddressDecl(self, itemkey, item, yamlFile):
         """Validate block-level address/register declaration invariants

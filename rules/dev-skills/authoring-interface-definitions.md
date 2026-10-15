@@ -13,6 +13,10 @@ An `interface_defs:` entry declares an interface protocol. Base ships one defini
 
 The entry key is the interface type name. The sections are:
 
+- `timing:` is required, `fixed` or `elastic`.
+  - `fixed` means the receiver reads each value in a set cycle and cannot wait. `status` and `raw` sample a free-running bus, and `memory` returns read data one cycle after the request. `status`, `memory`, `raw` and `external_reg` are fixed, and their channel classes ignore `setTimed`.
+  - `elastic` means a handshake paces each transfer, so idle cycles change only timing. Every handshake protocol is elastic.
+- `backpressure:` is `{ default: <bool>, overridable: <bool> }`, declared exactly when `timing: elastic`. `default` says whether the consumer may stall the producer. `overridable: true` lets an `interfaces:` entry or a `ports:` row turn backpressure off, for a protocol whose handshake a design may leave unused. A design can only lower the default, so `overridable: true` is useful only with `default: true`. `rdy_vld` and `axi4_stream` are overridable. `apb`, `axi_read`, `axi_write`, `push_ack`, `pop_ack`, `req_ack` and `notify_ack` are not, because their consumer drives the ready or ack signal and can always stall. An elastic channel takes a delay only when every port it joins has backpressure on.
 - `parameters:` lists the payloads the interface carries, in declaration order. An `interfaces:` entry binds each one by name through `structureType:` in its `structures:` list. Each parameter declares a `datatype:`:
   - `struct` binds a `structures` row and is one C++ template argument.
   - `type` binds a `types` row and is two template arguments, the name and the width. `axi_read` declares `id_t` this way.
@@ -46,13 +50,21 @@ The definition names the protocol. It does not generate the implementation. The 
 | `myproto_port_socket.h` | interface key | socket shell, needed only when the definition has `socket:` |
 | `myproto_port_tee.h` | interface key | Pro tandem tee, in `builder/pro/common/systemc/` |
 
+The channel class carries the interface type's timing. Every class that constructs `interfaceBase` passes a required `timedDelayRule`. Both enums, `timedDelayRule` and `channelBackpressure`, are in `common/systemc/interfaceBase.h`.
+
+- A fixed interface type's channel passes `TIMED_DELAY_FIXED_TIMING`, as `status_channel` does, and ignores `setTimed`.
+- An elastic, non-overridable interface type's channel takes no constructor argument. It passes `TIMED_DELAY_APPLIES` when the default is backpressure on, and `TIMED_DELAY_NO_BACKPRESSURE` when it is off.
+- An elastic, overridable interface type's channel takes a required `channelBackpressure` constructor argument after the block name, because the generator passes `BACKPRESSURE_ALLOWED` or `BACKPRESSURE_NONE` to every channel it builds for that type. It maps `BACKPRESSURE_NONE` to `TIMED_DELAY_NO_BACKPRESSURE` and `BACKPRESSURE_ALLOWED` to `TIMED_DELAY_APPLIES`.
+- A composite channel built on `rdy_vld` sub-channels passes them the value. An overridable one forwards its own argument, as `axi4_stream_channel` does. A non-overridable one passes the literal `BACKPRESSURE_ALLOWED` or `BACKPRESSURE_NONE` that matches its default, as `axi_read_channel` does.
+- A thunker of an overridable interface type takes the same `channelBackpressure` argument and passes it to its owned channel.
+
 The generator spells a thunker as `<type>_port_thunker<up required payloads, down required payloads, one bool per required payload, up optional payloads, down optional payloads>`, each group in declaration order. Declare one `bool` per required parameter, defaulted to `false`, in that position, and pass it to `copyPayload<Flag>` at every copy site of that payload. `true` means the two sides emit identical member storage, so the payload is copied whole. `interfaces/rdy_vld/rdy_vld_port_thunker.h` is the smallest example. A protocol with no parameters, such as `notify_ack`, needs no thunker.
 
 Every shipped definition sets `sc_channel.type` equal to its key. Keep them equal. A definition that points `sc_channel.type` at another protocol mixes two sets of names.
 
 ## Declaration rules
 
-The schema enforces rule 5, so a misdeclared parameter stops `make db`. `builder/base/unittest/test_interface_def_contracts.py` checks the other rules over every definition under `builder/base/interfaces/` and `builder/pro/interfaces/`. Run it after you edit a shipped definition:
+The schema enforces rule 5 and a missing `timing:`, so either stops `make db`. `builder/base/unittest/test_interface_def_contracts.py` checks the other rules over every definition under `builder/base/interfaces/` and `builder/pro/interfaces/`. Run it after you edit a shipped definition:
 
 ```bash
 python3 builder/base/unittest/test_interface_def_contracts.py
@@ -66,5 +78,6 @@ python3 builder/base/unittest/test_interface_def_contracts.py
 6. **Only an optional parameter sets `defaultWidth:` other than 1.** A required parameter is always bound, so the generator never reads its `defaultWidth`, and the value misleads the reader.
 7. **Every signal type resolves to a width.** A signal's type must be `bool`, a parameter, an `isEval` hdlparam, or a type in scope. The SV boundary port and the simulator boundary pin both take their width from it, so a literal SV spelling such as `bit [7:0]` leaves the pin with no width.
 8. **Every `isEval` hdlparam types at least one signal.** The Verilated bridge takes one type per `isEval` hdlparam and reads it from a signal of that type. An `isEval` hdlparam that types no signal stops generation with a bare `KeyError` that names neither the interface nor its file.
+9. **`backpressure:` is declared exactly when `timing: elastic`.** A fixed interface has no handshake to stall, so a group there misleads the reader. An elastic definition without one stops generation with a bare `TypeError` at the first channel or port of that type. The schema requires `timing:` and both group fields, but not the pairing.
 
-The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 8 by hand.
+The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 9 by hand.

@@ -83,8 +83,8 @@ public:
 
 
     secondSubAChannels(std::string name, std::string srcName) :
-    test(("test"+name).c_str(), srcName)
-    ,primary(("primary"+name).c_str(), srcName)
+    test(("test"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,primary(("primary"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( secondSubABase *a, secondSubAInverted *b)
     {

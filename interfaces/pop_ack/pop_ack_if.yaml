@@ -1,6 +1,8 @@
 
 interface_defs:
   pop_ack : 
+    timing: elastic
+    backpressure: { default: true, overridable: false }
     parameters : 
       rdata_t : { datatype : struct }
     signals: 

@@ -89,9 +89,9 @@ public:
 
 
     threeCsChannels(std::string name, std::string srcName) :
-    see0(("see0"+name).c_str(), srcName)
-    ,see1(("see1"+name).c_str(), srcName)
-    ,see2(("see2"+name).c_str(), srcName)
+    see0(("see0"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,see1(("see1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,see2(("see2"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( threeCsBase *a, threeCsInverted *b)
     {

@@ -1,6 +1,6 @@
 ---
 name: systemc-interfaces
-description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, memory, axi_read, axi_write, axi4_stream, status, external_reg, raw) in SystemC models
+description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, memory, axi_read, axi_write, axi4_stream, status, external_reg, raw) in SystemC models, and for which ports a --delay run delays
 ---
 # Skill: SystemC interfaces
 
@@ -52,24 +52,68 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 ### `raw`
 `raw` is a last resort. `read()` blocks until a value arrives, and `write()` blocks until the reader takes the value. Use it only at a design boundary to legacy or external IP that has a free-running data bus and no ready, valid or ack wires. Between arch2code blocks, use a handshaked family, and confirm with the user before proposing `raw`. The `raw` entry under "Interfaces & Interface Types" in `ARCH2CODE_AI_RULES.md` explains why.
 
-Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header.
+Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
 
 ## Timed delays
 `--delay` and `--delayMode` insert delays into a block's interface calls. They exist to expose ordering problems between interfaces in timed and tandem runs. They do not model hardware latency.
 
-Do not delay a datapath interface whose hardware timing is fixed and which cannot apply backpressure. That covers `memory` ports, `status` ports, `raw` streams, and outputs into a consumer that cannot stall. RTL on the far side cannot wait for a delayed call, so it loses beats or accesses. The run then fails, or passes with wrong data if nothing checks the output.
+The YAML decides which channels take a delay:
 
-The framework has no per-interface opt-out. To keep such a port undelayed in a delay run, override `setTimedLocal` in the block whose `setTimed` the run calls. The generated `setTimed` calls it after setting every port. In an RTL run that block is the Verilator wrapper, `verif/<block>_hdl_sc_wrapper.h`, which derives from the block's base class and not from the model, so the override goes in the wrapper's user region. In a model run it goes in the model:
+| Interface type | Delay |
+| :--- | :--- |
+| `status`, `memory`, `raw`, `external_reg` (`timing: fixed`) | Never. The channel ignores `setTimed`. |
+| `rdy_vld`, `axi4_stream` | Yes, unless backpressure is off on any port the channel joins. |
+| Every other type | Always. |
+
+RTL on the far side of a channel that ignores `setTimed` cannot wait for a delayed call, so a delay there loses beats or accesses. For a Pro or project interface type, read `timing:` and `backpressure:` in its `_if.yaml`.
+
+A delay run logs each channel that ignores `setTimed` once, with the reason:
+
+```text
+blockB.blockB_rwD:setTimed(10ns) ignored: fixed timing
+producer.consumer_video:setTimed(10ns) ignored: no backpressure
+```
+
+Turn backpressure off when nothing may stall the stream. Either the producer ignores `rdy` (`tready` for `axi4_stream`), or the consumer always holds it high, as in a valid-only video stream. Set it on the `interfaces:` entry:
+
+```yaml
+interfaces:
+  video_rgb_stream:
+    interfaceType: rdy_vld
+    desc: "RGB video, valid only"
+    backpressure: false
+    structures:
+      - {structure: rgb_st, structureType: data_t}
+```
+
+*   Other interface types reject the key at `make db`.
+*   A `ports:` row overrides the entry for that port.
+*   A channel takes the delay only if every port it joins has backpressure on.
+*   A container port has backpressure off when the child port it maps to has it off, at any depth.
+
+An excludeInst testbench builds the channels between itself and the DUT in `<DUT>Channels`. Those channels see only the DUT's ports, not the peers in the External, so set the value on the `interfaces:` entry or on the DUT's `ports:` row.
+
+Nothing delays a channel with backpressure off, so gaps between beats have to come from the testbench source.
+
+Generated code passes the value to the channel constructor, `BACKPRESSURE_ALLOWED` or `BACKPRESSURE_NONE`. A `rdy_vld` or `axi4_stream` channel constructed by hand in user code takes the same required argument: `rdy_vld_channel<data_st> ch("ch", "blk", BACKPRESSURE_NONE);`.
+
+The generated `setTimed` sets every port and then calls `setTimedLocal`. The YAML covers the usual cases. Override `setTimedLocal` only for a port whose behavior depends on the test configuration, such as a `rdy_vld` port whose RTL peer ignores `rdy` in one `--cfg` mode. It can remove a delay but cannot restore one on a channel that ignores `setTimed`. In an RTL run the block whose `setTimed` the run calls is the Verilator wrapper, `verif/<block>_hdl_sc_wrapper.h`, which derives from the block's base class and not from the model, so the override goes in the wrapper's user region. In a model run it goes in the model:
 
 ```cpp
 // Local override of the interface delays
 void setTimedLocal(int nsec, timedDelayMode mode) override {
-    // mem_port faces RTL with fixed one-cycle read timing and no backpressure
-    mem_port->setTimed(0, TIMED_DELAY_FIXED_INIT);
+    // In some --cfg modes the RTL sink ignores rdy on pix_out, so it cannot wait
+    // for a delayed write. m_sinkIgnoresRdy is this block's own flag, set from
+    // the test configuration.
+    if (m_sinkIgnoresRdy) {
+        pix_out->setTimed(0, TIMED_DELAY_FIXED_INIT);
+    }
 }
 ```
 
-A block that forwards `setTimed` to the memories it owns, as in `mems.setTimed(nsec, mode)`, delays those memories too.
+An existing `setTimedLocal` override that zeroes a `memory`, `status`, `raw` or `external_reg` port is now redundant. Remove it.
+
+A block that forwards `setTimed` to the memories it owns, as in `mems.setTimed(nsec, mode)`, delays its own memory accesses. Owned memories are block members, not channels, so `timing: fixed` does not stop their delay.
 
 ## Shared events
 Servicing several ports from one thread uses `setExternalEvent` and `isActive()`. **systemc-synchronization** lists which families support them and gives the pattern.

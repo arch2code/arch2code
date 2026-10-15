@@ -65,7 +65,7 @@ public:
 
 
     nestedL3Channels(std::string name, std::string srcName) :
-    nested3(("nested3"+name).c_str(), srcName)
+    nested3(("nested3"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( nestedL3Base *a, nestedL3Inverted *b)
     {

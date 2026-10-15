@@ -1,6 +1,7 @@
 
 interface_defs:
   memory : 
+    timing: fixed
     parameters : 
       addr_t : { datatype : struct }
       data_t : { datatype : struct }

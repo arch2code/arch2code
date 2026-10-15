@@ -65,7 +65,7 @@ public:
 
 
     nestedL5Channels(std::string name, std::string srcName) :
-    nested5(("nested5"+name).c_str(), srcName)
+    nested5(("nested5"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( nestedL5Base *a, nestedL5Inverted *b)
     {

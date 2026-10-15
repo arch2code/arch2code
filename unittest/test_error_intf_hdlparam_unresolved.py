@@ -52,6 +52,8 @@ import pysrc.intf_gen_utils as intf_gen_utils
 # rendered as the control.
 ARCH_YAML = """interface_defs:
   opt_stream:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       tdata_t: {datatype: struct}
       tuser_t: {datatype: struct, optional: true}

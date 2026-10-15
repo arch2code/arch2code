@@ -65,7 +65,7 @@ public:
 
 
     blockCChannels(std::string name, std::string srcName) :
-    see(("see"+name).c_str(), srcName)
+    see(("see"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( blockCBase *a, blockCInverted *b)
     {

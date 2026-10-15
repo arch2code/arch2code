@@ -151,7 +151,7 @@ interface_defs:
           - type
           - typeStruct
     # when true the parameter need not be bound by a declaring interface;
-    # unbound optional parameters are not required by validate_interface_structures
+    # unbound optional parameters are not required by _validateInterfaceStructures
     optional: optional(false)
     # width of the signals this parameter types when a declaring interface leaves
     # the parameter unbound; the companion SV interface and C++ templates default
@@ -200,12 +200,37 @@ interface_defs:
     observe: optional(false)
     lockstep: optional(false)
   multiDst: optional(False)  # allow multiple destinations to connect to a single source
+  # fixed: the cycle a value appears is part of its meaning, so the channel
+  # ignores setTimed. elastic: idle time between transfers changes nothing.
+  timing:
+    _type: required
+    _validate:
+      values:
+        - fixed
+        - elastic
+  # Whether the consumer may stall the producer, declared exactly when
+  # timing is elastic (checked in unittest/test_interface_def_contracts.py).
+  # overridable lets an interfaces entry or a port lower the default.
+  backpressure:
+    _attribs: [dataGroup]
+    default:
+      _type: required
+      _validate:
+        values:
+          - true
+          - false
+    overridable:
+      _type: required
+      _validate:
+        values:
+          - true
+          - false
   mappedFrom:
     _attribs: [optional, singleEntryList, multiple]
     mapped_type: listkey  
 
 interfaces:
-  _attribs: [flat, post(validate_interface_structures)]
+  _attribs: [flat, post(validateInterface)]
   interface: key
   interfaceType:
     _type: required
@@ -226,6 +251,13 @@ interfaces:
         - api_list_tracker  # tracker tag comes from write api and push_context
         - api_list_size     # size comes from write api and push_context
   trackerType: optional() # must specify a valid tracker name in the design. For cases where the tracker value is coming from the header, this field is optional
+  # Overrides the interface_defs backpressure default; unstated means the default
+  backpressure:
+    _type: optional()
+    _validate:
+      values:
+        - true
+        - false
   structures: #indented list for subtable
     _attribs: [optional, list] #list means potentially more than 1
     structureType: key  # validated by the auto below against interface_defs parameters
@@ -369,7 +401,7 @@ blocks:
   # from omitting resets: (implicit rst_n); recorded as parse-time state
   # (processYaml.py::_normalizeClockResetShortForm), not a schema field.
   ports:
-    _attribs: [optional, multiple]
+    _attribs: [optional, multiple, post(validatePortBackpressure)]
     port: key
     interface:
       _type: required
@@ -382,6 +414,13 @@ blocks:
         values:
           - src
           - dst
+    # Overrides the interfaces entry for this port; unstated means the entry's value
+    backpressure:
+      _type: optional()
+      _validate:
+        values:
+          - true
+          - false
     # The block clock this port is timed by; block-local, unstated means the
     # block default clock. A stated name must be one of the same
     # block's own clocks: rows (the blockClock combo).

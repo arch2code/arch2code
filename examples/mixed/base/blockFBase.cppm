@@ -127,10 +127,10 @@ public:
 
 
     blockFChannels(std::string name, std::string srcName) :
-    cStuffIf(("cStuffIf"+name).c_str(), srcName)
-    ,dSout(("dSout"+name).c_str(), srcName)
-    ,dStuffIf(("dStuffIf"+name).c_str(), srcName)
-    ,dSin(("dSin"+name).c_str(), srcName)
+    cStuffIf(("cStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dSout(("dSout"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dStuffIf(("dStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dSin(("dSin"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,rwD(("rwD"+name).c_str(), srcName)
     {};
     void bind( blockFBase<Config> *a, blockFInverted<Config> *b)

@@ -127,9 +127,9 @@ public:
 
     blockAChannels(std::string name, std::string srcName) :
     aStuffIf(("aStuffIf"+name).c_str(), srcName)
-    ,cStuffIf(("cStuffIf"+name).c_str(), srcName)
+    ,cStuffIf(("cStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,startDone(("startDone"+name).c_str(), srcName)
-    ,dupIf(("dupIf"+name).c_str(), srcName)
+    ,dupIf(("dupIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( blockABase *a, blockAInverted *b)

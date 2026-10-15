@@ -333,8 +333,8 @@ public:
     // constructor const char * module, std::string block
     explicit axi_read_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        m_addr_channel((std::string(name_) + "addr").c_str(), block_),
-        m_data_channel((std::string(name_) + "data").c_str(), block_),
+        m_addr_channel((std::string(name_) + "addr").c_str(), block_, BACKPRESSURE_ALLOWED),
+        m_data_channel((std::string(name_) + "data").c_str(), block_, BACKPRESSURE_ALLOWED),
         m_addr_out((std::string(name_) + "addrOut").c_str()),
         m_data_out((std::string(name_) + "dataOut").c_str()),
         m_addr_in((std::string(name_) + "addrIn").c_str()),
@@ -360,8 +360,8 @@ public:
 
     explicit axi_read_channel( const char* name_, std::string block_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        m_addr_channel((std::string(name_) + "addr").c_str(), block_),
-        m_data_channel((std::string(name_) + "data").c_str(), block_, multiCycleType_, pingpong_size_ * sizeof(axiReadRespSt<D, RU, ID, IDW>), trackerName_),
+        m_addr_channel((std::string(name_) + "addr").c_str(), block_, BACKPRESSURE_ALLOWED),
+        m_data_channel((std::string(name_) + "data").c_str(), block_, BACKPRESSURE_ALLOWED, multiCycleType_, pingpong_size_ * sizeof(axiReadRespSt<D, RU, ID, IDW>), trackerName_),
         m_addr_out((std::string(name_) + "addrOut").c_str()),
         m_data_out((std::string(name_) + "dataOut").c_str()),
         m_addr_in((std::string(name_) + "addrIn").c_str()),

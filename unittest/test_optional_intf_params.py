@@ -65,6 +65,8 @@ import pysrc.intf_gen_utils as intf_gen_utils
 # unbound optional falls back to when that default is not 1.
 ARCH_YAML = """interface_defs:
   tail_opt:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_b: {datatype: struct}
@@ -86,6 +88,8 @@ ARCH_YAML = """interface_defs:
       type: 'tail_opt'
       multicycle_types: []
   width4_opt:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_w4: {datatype: struct, optional: true, defaultWidth: 4}
@@ -105,6 +109,8 @@ ARCH_YAML = """interface_defs:
       type: 'width4_opt'
       multicycle_types: []
   type_opt:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_ty: {datatype: type, optional: true, defaultWidth: 4}
@@ -124,6 +130,8 @@ ARCH_YAML = """interface_defs:
       type: 'type_opt'
       multicycle_types: []
   typeStruct_opt:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_ts: {datatype: typeStruct}
@@ -921,6 +929,8 @@ def test_typestruct_datatype_rejects_mismatched_kind():
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
             f.write("""interface_defs:
   bad_struct_datatype:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
     signals:
@@ -988,6 +998,8 @@ projectFiles:
 
 PARAM_TYPE_ARCH_YAML = """interface_defs:
   ts_proto:
+    timing: elastic
+    backpressure: {{default: true, overridable: false}}
     parameters:
       p_ts: {{datatype: typeStruct}}
       p_ty: {{datatype: type, optional: true, defaultWidth: 4}}
@@ -1107,6 +1119,8 @@ def test_param_type_payload_builds_and_generates():
 
 PARAM_TYPE_VARIANT_ARCH_YAML = """interface_defs:
   ts_proto_variant:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ts: {datatype: typeStruct}
       p_ty: {datatype: type, optional: true, defaultWidth: 4}
@@ -1300,6 +1314,8 @@ projectFiles:
 
 PARAM_TYPE_CONNMAP_ARCH_YAML = """interface_defs:
   ts_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ts: {datatype: typeStruct}
       p_ty: {datatype: type, optional: true, defaultWidth: 4}
@@ -1415,6 +1431,8 @@ projectFiles:
 
 PARAM_TYPE_THUNKER_ARCH_YAML = """interface_defs:
   ty_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:
@@ -1549,6 +1567,8 @@ def test_cross_interface_bind_kind_mismatch():
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
             f.write("""interface_defs:
   ts_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_a: {datatype: struct}
       p_ts: {datatype: typeStruct}

@@ -56,7 +56,7 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
        : sc_module(blockName)
         ,blockBase("subBlockContainer", name(), bbMode)
         ,subBlockContainerBase(name(), variant)
-        ,src("subBlock_src", "subBlock")
+        ,src("subBlock_src", "subBlock", BACKPRESSURE_ALLOWED)
         ,uSubBlock0(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock0", "subBlock", "", "nested")))
         ,uSubBlock1(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock1", "subBlock", "", "nested")))
 // GENERATED_CODE_END

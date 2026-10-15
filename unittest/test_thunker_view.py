@@ -341,6 +341,8 @@ def test_connectionmap_child_missing_param_rejected():
 
 TYPE_PAYLOAD_INTERFACE_DEF = """interface_defs:
   ty_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:

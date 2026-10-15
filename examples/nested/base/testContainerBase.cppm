@@ -65,7 +65,7 @@ public:
 
 
     testContainerChannels(std::string name, std::string srcName) :
-    test(("test"+name).c_str(), srcName)
+    test(("test"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( testContainerBase *a, testContainerInverted *b)
     {

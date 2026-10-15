@@ -9,6 +9,11 @@
 #include "stringPingPong.h"
 
 enum INTERFACE_AUTO_MODE { INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_DEALLOC };
+// Whether the consumer of a channel whose protocol lets a design turn the
+// handshake off may stall the producer. BACKPRESSURE_NONE makes setTimed a no-op.
+enum channelBackpressure { BACKPRESSURE_ALLOWED, BACKPRESSURE_NONE };
+// Every channel states at construction whether setTimed applies to it.
+enum timedDelayRule { TIMED_DELAY_APPLIES, TIMED_DELAY_FIXED_TIMING, TIMED_DELAY_NO_BACKPRESSURE };
 
 struct interfaceBase
 {
@@ -27,11 +32,12 @@ public:
     std::shared_ptr<stringPingPong> m_logQueue = nullptr;
 
 public:
-    interfaceBase(const char * module, std::string block, INTERFACE_AUTO_MODE autoMode ) :
+    interfaceBase(const char * module, std::string block, INTERFACE_AUTO_MODE autoMode, timedDelayRule rule ) :
         log_(std::string(module), block),
         module_(module),
         blockName_(block),
-        m_delay(std::make_shared<timedDelay> (module))
+        m_delay(std::make_shared<timedDelay> (module)),
+        m_timedDelayRule(rule)
     {
         switch (autoMode)
         {
@@ -132,6 +138,15 @@ public:
     }
     void setTimed(int nsec, timedDelayMode mode)
     {
+        if (m_timedDelayRule != TIMED_DELAY_APPLIES) {
+            // Both ends of a channel call setTimed, so only the first drop logs.
+            if (nsec != 0 && !m_setTimedIgnoreLogged) {
+                m_setTimedIgnoreLogged = true;
+                const char * reason = m_timedDelayRule == TIMED_DELAY_FIXED_TIMING ? "fixed timing" : "no backpressure";
+                log_.logPrint(std::format("setTimed({}ns) ignored: {}", nsec, reason), LOG_IMPORTANT);
+            }
+            return;
+        }
         m_delay->setTimed(nsec, mode);
     }
 
@@ -143,6 +158,10 @@ public:
     {
         m_delay = pDelay;
     }
+
+private:
+    const timedDelayRule m_timedDelayRule;
+    bool m_setTimedIgnoreLogged = false;
 };
 
 

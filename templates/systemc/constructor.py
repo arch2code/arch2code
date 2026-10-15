@@ -157,7 +157,7 @@ def constructorInit(args, prj, data):
             else:
                 defaultValue = ''
 
-            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
+            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{chnl_table[chnl]["backpressure_arg"]}{extra}{autoMode}{defaultValue})')
 
             # Thunker entries are emitted after subBlockInstances below to
             # match classDecl.py declaration order, preserving the original
@@ -166,7 +166,8 @@ def constructorInit(args, prj, data):
                 memberName = intf_gen_utils._thunker_member_name(flagged, chnlInfo, is_connection_map=False)
                 thunker_inits.append(
                     f'        ,{memberName}("{memberName}", {channelBase}, '
-                    f'{flagged["instance"]}->{flagged["portName"]}, name())'
+                    f'{flagged["instance"]}->{flagged["portName"]}, name()'
+                    f'{intf_gen_utils.sc_thunker_backpressure_arg(chnlInfo, prj)})'
                 )
 
 
@@ -220,7 +221,8 @@ def constructorInit(args, prj, data):
             memberName = intf_gen_utils._thunker_member_name(flagged, value, is_connection_map=True)
             out.append(
                 f'        ,{memberName}("{memberName}", {parentPort}, '
-                f'{flagged["instance"]}->{flagged["portName"]}, name())'
+                f'{flagged["instance"]}->{flagged["portName"]}, name()'
+                f'{intf_gen_utils.sc_thunker_backpressure_arg(value, prj)})'
             )
 
     for reg, regData in data['registers'].items():

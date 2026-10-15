@@ -210,14 +210,14 @@ public:
 
 
     blockDChannels(std::string name, std::string srcName) :
-    cStuffIf(("cStuffIf"+name).c_str(), srcName)
-    ,dee0(("dee0"+name).c_str(), srcName)
-    ,dee1(("dee1"+name).c_str(), srcName)
-    ,outD(("outD"+name).c_str(), srcName)
+    cStuffIf(("cStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dee0(("dee0"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dee1(("dee1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,outD(("outD"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,roBsize(("roBsize"+name).c_str(), srcName)
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,blockBTableSP(("blockBTableSP"+name).c_str(), srcName)
-    ,inD(("inD"+name).c_str(), srcName)
+    ,inD(("inD"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,btod(("btod"+name).c_str(), srcName)
     ,rwD(("rwD"+name).c_str(), srcName)
     ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)

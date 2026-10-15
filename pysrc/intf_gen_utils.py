@@ -883,6 +883,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out['is_skip'] = intf_def.get('skip', False)
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
+    out['backpressure_arg'] = sc_backpressure_arg(intf_def, port_data)
     out['description'] = intf_data['desc']
     out['intf_name'] = intf_name
 
@@ -1076,6 +1077,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
 
     out['is_skip'] = intf_def.get('skip', False)
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
+    out['backpressure_arg'] = sc_backpressure_arg(intf_def, conn_data)
     out['intf_name'] = chnl_name
     out['chnl_name'] = chnl_name
     out['desc'] = intf_data['desc']
@@ -1240,6 +1242,22 @@ def sc_declare_thunkers(data, prj, indent, block_data):
         member_name = _thunker_member_name(flagged, value, is_connection_map)
         out.append(f"{indent}{member_type} {member_name};")
     return out
+
+
+def sc_backpressure_arg(intf_def, conn_data):
+    # A definition whose backpressure a design may lower declares channels and
+    # thunkers that take the row's effective value as a constructor argument.
+    # Every other definition's channel class fixes its own setTimed behaviour.
+    if intf_def['timing'] == 'elastic' and intf_def['backpressure']['overridable']:
+        return ', BACKPRESSURE_ALLOWED' if conn_data['effectiveBackpressure'] else ', BACKPRESSURE_NONE'
+    return ''
+
+
+def sc_thunker_backpressure_arg(conn_data, prj):
+    # The thunker's owned channel carries the traffic of the connection or
+    # connectionMap row that flags it.
+    intf_def = prj.data['interface_defs'][prj.data['interfaces'][conn_data['interfaceKey']]['interfaceTypeKey']]
+    return sc_backpressure_arg(intf_def, conn_data)
 
 
 def sc_thunker_protocols(data, prj):

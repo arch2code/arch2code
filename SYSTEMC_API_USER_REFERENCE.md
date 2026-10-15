@@ -413,6 +413,8 @@ void myModule::atomicUpdate() {
 
 All channels are created and connected in generated code. Users call methods on port objects to send and receive data.
 
+**Timed delays.** `status`, `memory`, `raw` and `external_reg` channels ignore `setTimed`. `rdy_vld` and `axi4_stream` channels take a required `channelBackpressure` constructor argument after the block name, `BACKPRESSURE_ALLOWED` or `BACKPRESSURE_NONE`. With `BACKPRESSURE_NONE` they ignore `setTimed` too. The generator works out the value from the `backpressure:` settings in the YAML and passes it. A `rdy_vld` or `axi4_stream` channel built by hand in user code must pass one. Every other channel applies the delay. A channel that ignores `setTimed` logs the first nonzero delay it drops. The section "Timed delays" in `rules/skills/systemc-interfaces.md` has the rules.
+
 ### Channel Overview
 
 | Channel Type | Protocol | Use Case |
@@ -543,7 +545,7 @@ void myModule::apbMaster() {
 - `request()` on requester side (`requestNonBlocking()` and `waitComplete()` are for tee use only)
 - `reqReceive()`, `complete()`, `isActive()`/`isNotActive()`, `setExternalEvent(event)` on completer side
 
-**Timed delays:** RTL memories have fixed one-cycle timing and no backpressure, so a memory port that faces RTL must not run with `--delay`. The section "Timed delays" in `rules/skills/systemc-interfaces.md` gives the `setTimedLocal` workaround.
+**Timed delays:** RTL memories have fixed one-cycle timing and no backpressure, so `memory` is `timing: fixed` and a memory channel ignores `setTimed`. The section "Timed delays" in `rules/skills/systemc-interfaces.md` explains which channels take a delay.
 
 **Example:**
 
@@ -821,7 +823,8 @@ between arch2code blocks.
 
 RTL exposes only `data`. SystemC provides a blocking `write()` / `read()`
 rendezvous so threads stay in lockstep in simulation. That rendezvous is **not**
-expressed on the wire, and timed/tandem runs can diverge if delay is enabled.
+on the wire, so tandem runs can diverge from the RTL. `raw` is `timing: fixed`,
+so its channel ignores `setTimed` and `--delay` never applies to it.
 
 **Do not confuse with `status`:** same wire shape; `status` is publish/sample
 (non-blocking write), `raw` is a one-shot transfer that blocks both sides until
@@ -1346,6 +1349,7 @@ These APIs are used in generated code. Users rarely need to call them directly. 
 - `setMultiDriver()` - Enable multi-driver synchronization
 - `setTandem()` - Configure tandem mode
 - Auto-allocation modes: `INTERFACE_AUTO_OFF`, `INTERFACE_AUTO_ALLOC`, `INTERFACE_AUTO_DEALLOC`
+- The constructor takes a required `timedDelayRule`: `TIMED_DELAY_APPLIES`, `TIMED_DELAY_FIXED_TIMING` or `TIMED_DELAY_NO_BACKPRESSURE`. With anything but `TIMED_DELAY_APPLIES` the channel ignores `setTimed`.
 
 **Where Used:** Channel constructors and configuration
 

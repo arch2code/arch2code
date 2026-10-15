@@ -1,6 +1,7 @@
 
 interface_defs:
   raw : 
+    timing: fixed
     parameters : 
       data_t : { datatype : struct }
     signals: 
