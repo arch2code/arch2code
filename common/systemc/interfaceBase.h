@@ -149,6 +149,7 @@ public:
         }
         m_delay->setTimed(nsec, mode);
     }
+    timedDelayRule getTimedDelayRule(void) const { return m_timedDelayRule; }
 
     void delay(bool waitOnZero=false)
     {

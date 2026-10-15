@@ -687,6 +687,12 @@ python3 test_set_timed_ignore_runtime.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: BFM checks against the channel backpressure rule (stalls, lost beats)"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_backpressure_checks.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1
