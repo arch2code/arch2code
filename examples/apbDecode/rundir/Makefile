@@ -29,10 +29,10 @@ endif
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
-	$(MAKE) run-vl-someRapper
-	$(MAKE) run-vl-apbDecode
-	$(MAKE) run-vl-blockA
-	$(MAKE) run-vl-blockB
+	$(MAKE) run-vl-someRapper VL_DUT=1
+	$(MAKE) run-vl-apbDecode VL_DUT=1
+	$(MAKE) run-vl-blockA VL_DUT=1
+	$(MAKE) run-vl-blockB VL_DUT=1
 
 run-vl-someRapper: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE)
