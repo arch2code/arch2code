@@ -16,21 +16,40 @@ if [ -f ~/.bash_custom ]; then
 fi
 EOF
 
-# New bash custom file default
-RUN cat <<EOF > /etc/skel/.bash_custom
+# arch2code environment for login shells; sshd sessions do not inherit the image ENV
+RUN cat <<EOF > /etc/profile.d/a2c-env.sh
+export XDG_CONFIG_HOME=/usr/local
 export NVM_DIR=/usr/local/nvm
-export PATH=\${NVM_DIR}/versions/node/default/bin:\${PATH}
+case ":\${PATH}:" in
+    *":\${NVM_DIR}/versions/node/default/bin:"*) ;;
+    *) export PATH=\${NVM_DIR}/versions/node/default/bin:\${PATH} ;;
+esac
 
+export SC_BASE=/usr
 export SYSTEMC_INCLUDE=/usr/include
 export SYSTEMC_LIBDIR=/usr/lib
-export LD_BOOST=/usr/lib/x86_64-linux-gnu
 export BOOST_INCLUDE=/usr/include/boost
+export LD_BOOST=/usr/lib/x86_64-linux-gnu
+
+export PIP_BREAK_SYSTEM_PACKAGES=1
 
 export TZ='US/Pacific'
 EOF
 
 # Podman hack for escape character substitution in command above
-RUN sed -i 's/\\\$/$/g' /etc/skel/.bash_custom
+RUN sed -i 's/\\\$/$/g' /etc/profile.d/a2c-env.sh
+
+# Non-login interactive shells (VS Code/Cursor remote terminals) skip profile.d
+RUN cat <<EOF >> /etc/bash.bashrc
+
+# arch2code environment
+[ -r /etc/profile.d/a2c-env.sh ] && . /etc/profile.d/a2c-env.sh
+EOF
+
+# New bash custom file default
+RUN cat <<EOF > /etc/skel/.bash_custom
+# arch2code defaults live in /etc/profile.d/a2c-env.sh; add personal settings here
+EOF
 
 COPY requirements.txt /tmp/a2c-requirements.txt
 # Ubuntu 24.04 marks the system Python as externally managed (PEP 668); the env var is ignored by older pip
