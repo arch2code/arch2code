@@ -75,7 +75,7 @@ public:
     // constructor const char * module, std::string block
     explicit push_ack_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        interfaceBase(name_, block_, autoMode),
+        interfaceBase(name_, block_, autoMode, TIMED_DELAY_APPLIES),
         m_channel_push_event( (std::string(name_) + "m_channel_push_event").c_str() ),
         m_channel_push_event_ptr(&m_channel_push_event),
         m_channel_ack_event( (std::string(name_) + "m_channel_ack_event").c_str() ),

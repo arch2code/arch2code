@@ -47,6 +47,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'regs-container-variant')
@@ -63,7 +64,10 @@ CFG_VALUE = 0xabc
 def toolchain_env():
     """The SystemC toolchain variables the arch2code makefiles require."""
     env = os.environ.copy()
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if env.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         if not env.get(var):
             raise RuntimeError(f"{var} is not set; the SystemC toolchain variables "
                                f"the arch2code makefiles require must be set to run "
@@ -170,7 +174,7 @@ def run_all_tests():
         ok = check_run(output)
         ok = check_emitted(project) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: the register handler takes the Config of the block whose "

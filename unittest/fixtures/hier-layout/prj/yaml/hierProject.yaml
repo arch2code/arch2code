@@ -1,7 +1,6 @@
 yamlFormat: 2
 
-# Green-field hierarchical-layout fixture (plan-decomp-functional-layout.md
-# T1.5). Proves the decomposition-outer inversion: each block's functional
+# Green-field hierarchical-layout fixture. Proves the decomposition-outer inversion: each block's functional
 # segments (base/model/rtl/tb/fw) are generated beside its yaml/ dir, under the
 # node directory, rather than under shared $root/<segment> roots. The project
 # file lives in the prj/ container; authored block YAML lives in each node's
@@ -19,9 +18,6 @@ fileGeneration:
     # blockBase (.cppm) and blockModule (.cppm) are inherited from the base
     # config fileMap; only the entries this fixture genuinely needs are overridden.
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     langDomain: sv, desc: "RTL implementation file"}
-    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      langDomain: sc, desc: "Testbench implementation file"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      langDomain: sc, desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      langDomain: sc, desc: "Testbench external files"}
     includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   langDomain: fw, desc: "yaml based fw include file"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     langDomain: sv, desc: "yaml based package file"}
   fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"

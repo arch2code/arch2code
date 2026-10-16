@@ -20,6 +20,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'default-variant-identity')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -27,7 +28,11 @@ ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
 def _copy_fixture(prefix):
     work = tempfile.mkdtemp(prefix=prefix, dir=test_dir)
-    shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -91,7 +96,7 @@ def test_declared_default_variant_takes_over_the_default_identity():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

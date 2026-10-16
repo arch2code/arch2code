@@ -1497,8 +1497,8 @@ struct axi4StreamConsumerHarness : sc_core::sc_module
     int beats = 0;
 
     axi4StreamConsumerHarness( sc_core::sc_module_name n, const char* label_ )
-      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
-        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", BACKPRESSURE_ALLOWED ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb", BACKPRESSURE_ALLOWED ), label( label_ )
     {
         SC_HAS_PROCESS( axi4StreamConsumerHarness );
         SC_THREAD( drive );
@@ -1561,8 +1561,8 @@ struct axi4StreamProducerHarness : sc_core::sc_module
     int beats = 0;
 
     axi4StreamProducerHarness( sc_core::sc_module_name n, const char* label_ )
-      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
-        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb", BACKPRESSURE_ALLOWED ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb", BACKPRESSURE_ALLOWED ), label( label_ )
     {
         SC_HAS_PROCESS( axi4StreamProducerHarness );
         SC_THREAD( drive );

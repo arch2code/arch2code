@@ -81,8 +81,8 @@ public:
     // constructor const char * module, std::string block
     explicit req_ack_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoModeReq=INTERFACE_AUTO_OFF, INTERFACE_AUTO_MODE autoModeAck=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq),
-        ack_interfaceBase((std::string(name_) + "_ack").c_str(), block_, autoModeAck),
+        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq, TIMED_DELAY_APPLIES),
+        ack_interfaceBase((std::string(name_) + "_ack").c_str(), block_, autoModeAck, TIMED_DELAY_APPLIES),
         m_channel_req_event( (std::string(name_) + "m_channel_req_event").c_str() ),
         m_channel_req_event_ptr(&m_channel_req_event),
         m_channel_ack_event( (std::string(name_) + "m_channel_ack_event").c_str() ),

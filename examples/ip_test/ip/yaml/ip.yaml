@@ -176,6 +176,12 @@ structures:
     ipSignedParamSt:
         offset: { varType: ipSignedParamT, desc: "Signed parameterizable field" }
         index: { varType: ipMemAddrT, desc: "Unsigned parameterizable field below it" }
+    # The array sits above a parameterizable-width field, so its bit position
+    # differs at each sample point and the generated round-trip checks pack()
+    # places it there.
+    ipParamBelowArraySt:
+        nibbles: { varType: ipNibbleT, arraySize: IP_FIXED_NIBBLE_COUNT, desc: "Fixed nibble array above the data word" }
+        data: { varType: ipDataT, desc: "Parameterizable data word at bit 0" }
     ipRegAddrSt:
         address: { varType: ipRegAddrT, generator: address }
     ipRegDataSt:
@@ -206,10 +212,8 @@ blocks:
         hasMdl: true
         hasTb: true
         hasRtl: true
-        # Stage 5.2 of plan-variant-config-unification.md: bottom-up port
-        # declaration (D10). Matches the top-down inferred shape so the
-        # generator output is unchanged; exercises the Step 5.2 success
-        # path of projectCreate.validateDeclaredPorts.
+        # Declares ports bottom-up, matching the inferred shape, so
+        # projectCreate.validateDeclaredPorts accepts them unchanged.
         ports:
             ipDataIf: { interface: ipDataIf, direction: dst }
         registerPorts:

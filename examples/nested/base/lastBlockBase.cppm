@@ -83,8 +83,8 @@ public:
 
 
     lastBlockChannels(std::string name, std::string srcName) :
-    response(("response"+name).c_str(), srcName)
-    ,beta(("beta"+name).c_str(), srcName)
+    response(("response"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,beta(("beta"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( lastBlockBase *a, lastBlockInverted *b)
     {

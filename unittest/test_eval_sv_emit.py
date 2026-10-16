@@ -33,6 +33,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate, projectOpen, qualifiedKeyContext
 from templates.systemVerilog import package
+from _tmp_helpers import remove_tree
 
 # projectCreate keeps its parse state in CLASS attributes, so two in-process
 # builds in one interpreter share it. Snapshotted at import time, before any
@@ -123,7 +124,7 @@ def _build_temp_project(ip_yaml_edit):
     except BaseException:
         # Fixture build failed after mkdtemp; drop the copied tree so a failing
         # run cannot leak an eval_sv_emit_* directory into the unittest dir.
-        shutil.rmtree(temp_root, ignore_errors=True)
+        remove_tree(temp_root)
         raise
 
 
@@ -281,7 +282,7 @@ def test_dependency_closure_orders_derived_constant_chain():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def test_type_using_eval_derived_constant_is_selected():
@@ -365,7 +366,7 @@ def test_struct_array_size_uses_eval_derived_localparam():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def test_foreign_param_closure_not_selected_for_block():
@@ -432,7 +433,7 @@ def test_foreign_param_closure_not_selected_for_block():
         g.cur = None
         if db_path is not None and os.path.exists(db_path):
             os.unlink(db_path)
-        shutil.rmtree(temp_root)
+        remove_tree(temp_root)
 
 
 def run_all_tests():

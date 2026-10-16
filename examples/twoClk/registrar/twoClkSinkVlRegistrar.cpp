@@ -2,13 +2,26 @@
 
 // GENERATED_CODE_PARAM --block=twoClkSink --parent=twoClk
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#ifdef VERILATOR
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "twoClkSink_hdl_sc_wrapper.h"
+#if defined(VERILATOR)
 #include "VtwoClkSink_hdl_sv_wrapper.h"
+#elif defined(VCS_DUT)
+#include "twoClkSink_hdl_sv_wrapper.h"
+#else
+#include "twoClkSink_hdl_sv_wrapper_xcelium.h"
+#endif
 
 namespace {
+#if defined(VERILATOR)
+using twoClkSink_hdl_sv_wrapper_dut_t = VtwoClkSink_hdl_sv_wrapper;
+#elif defined(VCS_DUT)
+using twoClkSink_hdl_sv_wrapper_dut_t = twoClkSink_hdl_sv_wrapper;
+#else
+using twoClkSink_hdl_sv_wrapper_dut_t = twoClkSink_hdl_sv_wrapper;
+#endif
 struct _twoClkSink_vl_registrar {
     _twoClkSink_vl_registrar() {
         instanceFactory::registerBlock(
@@ -21,5 +34,5 @@ struct _twoClkSink_vl_registrar {
 };
 static _twoClkSink_vl_registrar _twoClkSink_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
 // GENERATED_CODE_END

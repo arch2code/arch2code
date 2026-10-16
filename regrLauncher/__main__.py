@@ -21,15 +21,35 @@ def propagate_attributes(dictionary):
         dictionary[key] = propagate_attributes(value)
     return dictionary
 
+def append_attribute(base, value):
+    if isinstance(base, list) and isinstance(value, list):
+        return base + value
+    if isinstance(base, str) and isinstance(value, list):
+        return base + ' ' + ' '.join(value)
+    return str(base) + ' ' + str(value)
+
 def merge_parent_attributes(dictionary, attributes):
     for key_ in list(dictionary):
         key = key_[:-1] if key_[-1] == '+' else key_
         if key != key_ and key in attributes:
-            if isinstance(dictionary[key_], list):
-                dictionary[key] = attributes[key] + dictionary.pop(key_)
-            else:
-                dictionary[key] = str(attributes[key]) + ' ' + str(dictionary.pop(key_))
+            dictionary[key] = append_attribute(attributes[key], dictionary.pop(key_))
     return { **attributes, **dictionary }
+
+def resolve_rules_paths(dictionary, regr_dir):
+    for key, value in dictionary.items():
+        if key == 'rules':
+            dictionary[key] = [os.path.join(regr_dir, rules) for rules in value]
+        elif isinstance(value, dict):
+            resolve_rules_paths(value, regr_dir)
+
+def merge_append_attributes(dictionary):
+    # The build container has no parent, so <attr>+ appends to the sibling
+    # <attr> of the same container; a list value is joined with spaces so a
+    # long command can be written one entry per line.
+    for key_ in list(dictionary):
+        if key_[-1] == '+':
+            key = key_[:-1]
+            dictionary[key] = append_attribute(dictionary[key], dictionary.pop(key_))
 
 def queue_run_commands(level, dictionary, test_commands):
     for key, value in dictionary.items():
@@ -85,7 +105,8 @@ def session_attr_args(args, session_db):
             continue
         attr = session_db[sect][key]
         attr_ = list(map(lambda x: convert_value(x), value.split(',')))
-        if len(attr_) == 1:
+        # rules is always a list of files, even with one entry
+        if len(attr_) == 1 and key != 'rules':
             attr_ = attr_[0]
         if is_append and isinstance(attr_, (int, str, list)):
             if isinstance(attr, int):
@@ -148,6 +169,12 @@ def main():
     with args.file as file:
         session_db = json.load(file)
 
+    # Resolve build.command+ before the command line overrides: --attr
+    # build.command+=... appends after it and --attr build.command=... replaces
+    # the resolved command. --attr splits its value on commas, so a comma-
+    # separated topology entry must be given one configuration per --attr.
+    merge_append_attributes(session_db['build'])
+
     # Number of concurrent jobs from command line
     if args.jobs is not None:
         session_db['session']['jobs'] = args.jobs if args.jobs > 0 else None
@@ -171,6 +198,9 @@ def main():
 
     # Propagate session attributes top-down
     session_db = propagate_attributes(session_db)
+
+    # Relative rules files are named relative to the regression file
+    resolve_rules_paths(session_db['run'], os.path.dirname(os.path.abspath(args.file.name)))
 
     # Prepare execution based on parameters from session attributes
     setup_session(session_db, args)

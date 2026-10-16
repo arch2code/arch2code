@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import clkGen_rstSync.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "rstSync_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "rstSync_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VrstSync_hdl_sv_wrapper.h"
 #endif
@@ -30,7 +32,7 @@ class rstSync_hdl_sc_wrapper: public sc_module, public blockBase, public rstSync
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     rstSync_hdl_sv_wrapper *dut_hdl;
 #else
     VrstSync_hdl_sv_wrapper *dut_hdl;
@@ -51,7 +53,7 @@ public:
         rstOut_n("rstOut_n", true),
         clk_half_(sc_time(20, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new rstSync_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VrstSync_hdl_sv_wrapper("dut_hdl");

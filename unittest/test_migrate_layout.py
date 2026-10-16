@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in functional -> hierarchical layout migration
-(plan-decomp-functional-layout.md "Phase 4 - L4", T4.1-T4.4).
+"""Opt-in functional -> hierarchical layout migration.
 
 migrateLayout classifies a project into one of three layout states without
 opening the database (text-only, like the other migration phases), computes the
@@ -46,6 +45,7 @@ from pysrc.migrateLayout import (  # noqa: E402
     _planExtraPathWarnings,
     migrateLayoutInProject,
 )
+from _tmp_helpers import remove_tree
 
 _MARKER = "// GENERATED_CODE_BEGIN\n// GENERATED_CODE_END\n"
 
@@ -177,7 +177,7 @@ def test_decomposed_example_map(ok):
         ok &= _check("decomposed dry-run wrote nothing",
                      _treeSnapshot(dst) == before)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -298,7 +298,7 @@ def test_orphan_and_guard_map(ok):
         ok &= _check("synthetic dry-run wrote nothing",
                      _treeSnapshot(root) == before)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -382,7 +382,7 @@ def test_apply_decomposed(ok):
                      r2.state == LAYOUT_ALREADY_HIERARCHICAL and
                      r2.isNoOp and not r2.written)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -441,7 +441,7 @@ def test_apply_orphan_and_guard(ok):
         ok &= _check("re-run is LAYOUT_ALREADY_HIERARCHICAL no-op",
                      r2.state == LAYOUT_ALREADY_HIERARCHICAL and r2.isNoOp)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -483,7 +483,7 @@ def test_source_userregion_rewrite(ok):
                      text.count('#include "../b/bblk.h"') == 1)
         ok &= _check("source rewrite has no manual items", not r.manual)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -523,7 +523,7 @@ def test_unrewritable_reported(ok):
         ok &= _check("no path rewrite emitted for the escaping include",
                      not any(rw.old == "../../../../outside.yaml" for rw in r.rewrites))
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -560,7 +560,7 @@ def test_quoted_yaml_rewrite(ok):
                      '"../../b/yaml/bblk.yaml"' in movedA)
         ok &= _check("quoted rewrite has no manual items", not r.manual)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 
@@ -617,7 +617,7 @@ def test_extra_var_warning_spans_continuations(ok):
         ok &= _check("EXTRA_* pointing at a non-relocating root ignored",
                      "EXTRA_UNRELATED" not in messages)
     finally:
-        shutil.rmtree(tmp)
+        remove_tree(tmp)
     return ok
 
 

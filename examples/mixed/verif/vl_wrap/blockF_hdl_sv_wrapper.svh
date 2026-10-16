@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
 
+`include "hdlBoundary.svh"
+
 module blockF_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
@@ -41,35 +43,35 @@ module blockF_hdl_sv_wrapper
     // rdy_vld_if.src
     rdy_vld_if #(.data_t(seeSt)) cStuffIf();
 
-    assign #0 cStuffIf_vld = cStuffIf.vld;
-    assign #0 cStuffIf_data = cStuffIf.data;
-    assign #0 cStuffIf.rdy = cStuffIf_rdy;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf_vld = cStuffIf.vld;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf_data = cStuffIf.data;
+    assign `A2C_HDL_BOUNDARY_DLY cStuffIf.rdy = cStuffIf_rdy;
 
     // rdy_vld_if.dst
     rdy_vld_if #(.data_t(dSt)) dStuffIf();
 
-    assign #0 dStuffIf.vld = dStuffIf_vld;
-    assign #0 dStuffIf.data = dStuffIf_data;
-    assign #0 dStuffIf_rdy = dStuffIf.rdy;
+    assign `A2C_HDL_BOUNDARY_DLY dStuffIf.vld = dStuffIf_vld;
+    assign `A2C_HDL_BOUNDARY_DLY dStuffIf.data = dStuffIf_data;
+    assign `A2C_HDL_BOUNDARY_DLY dStuffIf_rdy = dStuffIf.rdy;
 
     // rdy_vld_if.dst
     rdy_vld_if #(.data_t(dSt)) dSin();
 
-    assign #0 dSin.vld = dSin_vld;
-    assign #0 dSin.data = dSin_data;
-    assign #0 dSin_rdy = dSin.rdy;
+    assign `A2C_HDL_BOUNDARY_DLY dSin.vld = dSin_vld;
+    assign `A2C_HDL_BOUNDARY_DLY dSin.data = dSin_data;
+    assign `A2C_HDL_BOUNDARY_DLY dSin_rdy = dSin.rdy;
 
     // rdy_vld_if.src
     rdy_vld_if #(.data_t(dSt)) dSout();
 
-    assign #0 dSout_vld = dSout.vld;
-    assign #0 dSout_data = dSout.data;
-    assign #0 dSout.rdy = dSout_rdy;
+    assign `A2C_HDL_BOUNDARY_DLY dSout_vld = dSout.vld;
+    assign `A2C_HDL_BOUNDARY_DLY dSout_data = dSout.data;
+    assign `A2C_HDL_BOUNDARY_DLY dSout.rdy = dSout_rdy;
 
     // status_if.dst
     status_if #(.data_t(dRegSt)) rwD();
 
-    assign #0 rwD.data = rwD_data;
+    assign `A2C_HDL_BOUNDARY_DLY rwD.data = rwD_data;
 
     blockF #(.bob(bob), .fred(fred)) dut (
         .cStuffIf(cStuffIf), // rdy_vld_if.src
@@ -81,7 +83,7 @@ module blockF_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

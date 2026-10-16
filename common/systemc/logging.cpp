@@ -276,30 +276,38 @@ void logging::lockStatus(void)
 
 }
 
+// Accepted verbosity spellings for --verbosity, --instVerbosity and config-file
+// blockVerbosity, matched case-insensitively
+static const std::vector<std::pair<std::string, verbosity_e>> verbosityNameTable = {
+    {"low", VERBOSITY_LOW},
+    {"0", VERBOSITY_LOW},
+    {"med", VERBOSITY_MEDIUM},
+    {"medium", VERBOSITY_MEDIUM},
+    {"1", VERBOSITY_MEDIUM},
+    {"high", VERBOSITY_HIGH},
+    {"2", VERBOSITY_HIGH},
+    {"full", VERBOSITY_FULL},
+    {"3", VERBOSITY_FULL}
+};
+
 verbosity_e logging::verbosityDecode(const std::string &VerbosityStr)
 {
     std::string lowercaseVerbosity = VerbosityStr;
     std::transform(lowercaseVerbosity.begin(), lowercaseVerbosity.end(), lowercaseVerbosity.begin(), ::tolower);
 
-    // Define a mapping of Verb level text to integer values
-    std::unordered_map<std::string, verbosity_e> VerbosityMap = {
-        {"low", VERBOSITY_LOW},
-        {"0",VERBOSITY_LOW},
-        {"med", VERBOSITY_MEDIUM},
-        {"medium", VERBOSITY_MEDIUM},
-        {"1", VERBOSITY_MEDIUM},
-        {"high", VERBOSITY_HIGH},
-        {"2", VERBOSITY_HIGH},
-        {"full", VERBOSITY_FULL},
-        {"3", VERBOSITY_FULL}
-    };
-    // Look up the Verb level in the map
-    auto it = VerbosityMap.find(lowercaseVerbosity);
-    if (it != VerbosityMap.end()) {
-        // Return the corresponding integer value
-        return it->second;
-    } else {
-        // If the text does not match any known Verb levels, return a default value
-        return VERBOSITY_UNKNOWN;
+    for (const auto &entry : verbosityNameTable) {
+        if (entry.first == lowercaseVerbosity) {
+            return entry.second;
+        }
     }
+    return VERBOSITY_UNKNOWN;
+}
+
+std::string logging::verbosityNames(void)
+{
+    std::string names;
+    for (const auto &entry : verbosityNameTable) {
+        names += (names.empty() ? "" : ", ") + entry.first;
+    }
+    return names;
 }

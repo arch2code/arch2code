@@ -543,9 +543,8 @@ axiSocketSlave:
 	$(RUN_LIMIT) make -C $(AXISOCKET_SLAVE_DIR)/rundir run
 
 .PHONY : in-and-out
-# sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
-# demo, whose SystemC sim cannot regenerate under this branch's cppm-default
-# include. Verilator lint still exercises the generated SV.
+# inAndOut is a header-mode SV-generation / moduleSignalBlast demo with no
+# SystemC sim. Verilator lint exercises the generated SV.
 in-and-out:
 	make -C $(IN_OUT_DIR)/systemVerilog lint -j
 
@@ -668,6 +667,6 @@ pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(filter-out $(PIPELINE_DISABLED),$(PIPELINE_TARGETS))
 push-test: clean unittest pipeline-test
 
-# AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).
+# AI agent rule/skill install targets (agents-setup, agent-dev-setup, ...).
 # Included last so the default goal stays the first target above.
 include $(REPO_ROOT)/include/make/a2c-agents.mk

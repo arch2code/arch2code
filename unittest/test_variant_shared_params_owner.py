@@ -23,6 +23,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc import artifactPaths
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 FIXTURE = os.path.join(test_dir, 'fixtures', 'param-variant-shared-params-owner')
@@ -34,7 +35,11 @@ def _header(name):
 
 def _copy_fixture():
     work = tempfile.mkdtemp(prefix='variant_shared_params_owner_', dir=test_dir)
-    shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+    except BaseException:
+        remove_tree(work)
+        raise
     return work
 
 
@@ -149,7 +154,7 @@ def test_shared_params_owner():
         return True
     finally:
         _close_db()
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def run_all_tests():

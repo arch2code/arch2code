@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=twoClkSlowSink
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module twoClkSlowSink_hdl_sv_wrapper
     // Generated Import package statement(s)
     import twoClkIp_package::*;
@@ -19,9 +21,9 @@ module twoClkSlowSink_hdl_sv_wrapper
     // push_ack_if.dst
     push_ack_if #(.data_t(twoClkDataSt)) in();
 
-    assign #0 in.push = in_push;
-    assign #0 in.data = in_data;
-    assign #0 in_ack = in.ack;
+    assign `A2C_HDL_BOUNDARY_DLY in.push = in_push;
+    assign `A2C_HDL_BOUNDARY_DLY in.data = in_data;
+    assign `A2C_HDL_BOUNDARY_DLY in_ack = in.ack;
 
     twoClkSlowSink dut (
         .in(in), // push_ack_if.dst
@@ -29,7 +31,7 @@ module twoClkSlowSink_hdl_sv_wrapper
         .rstSlow_n(rstSlow_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

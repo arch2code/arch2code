@@ -83,8 +83,8 @@ public:
 
 
     axi4sDemoChannels(std::string name, std::string srcName) :
-    axis4_t2(("axis4_t2"+name).c_str(), srcName, "api_list_size", 64, "")
-    ,axis4_t1(("axis4_t1"+name).c_str(), srcName, "api_list_size", 256, "")
+    axis4_t2(("axis4_t2"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 64, "")
+    ,axis4_t1(("axis4_t1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 256, "")
     {};
     void bind( axi4sDemoBase *a, axi4sDemoInverted *b)
     {

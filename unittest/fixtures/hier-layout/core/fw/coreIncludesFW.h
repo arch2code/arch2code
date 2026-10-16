@@ -6,34 +6,44 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=../../core/yaml/core.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=hier --context=../../core/yaml/core.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
+namespace fw_ns::hier_core {}
+namespace fw_ns { using namespace hier_core; }
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns::hier_core {
 //constants
 inline constexpr uint32_t W = 8;  // data width
 
+} // namespace fw_ns::hier_core
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns::hier_core {
 // types
 typedef uint8_t dat; // [8] data word
 
+} // namespace fw_ns::hier_core
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns::hier_core {
 // enums
 
+} // namespace fw_ns::hier_core
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns::hier_core {
 // structures
 struct dat_st {
-    dat d; //data
+    dat d; /* [7:0] */ //data
 
     dat_st() { memset(this, 0, sizeof(dat_st)); }
 
@@ -55,7 +65,7 @@ struct dat_st {
     {}
 
 };
+} // namespace fw_ns::hier_core
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //COREINCLUDESFW_H_

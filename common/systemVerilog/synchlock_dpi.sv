@@ -26,7 +26,7 @@ endfunction
 `define HASH_VAR(datavar, hashvar) \
     begin \
         byte unsigned _data []; \
-        _data = new[($size(datavar)+7)/8]; \
+        _data = new[($bits(datavar)+7)/8]; \
         foreach(_data[i]) _data[i] = datavar[8*i+:8]; \
         hashvar = fnv1a_hash(_data); \
     end

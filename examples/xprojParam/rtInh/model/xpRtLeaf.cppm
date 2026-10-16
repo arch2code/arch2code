@@ -74,7 +74,7 @@ xpRtLeaf<Config>::xpRtLeaf(sc_module_name blockName, const char * variant, block
     constexpr uint64_t REG_ADDR_XPRTLEAF_CFG = 0x0;
 
     // register registers for FW access
-    _a2cRegs.addRegister( REG_ADDR_XPRTLEAF_CFG, 1, "cfg", &cfg );
+    _a2cRegs.addRegister( REG_ADDR_XPRTLEAF_CFG, 4, "cfg", &cfg );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

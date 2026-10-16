@@ -21,6 +21,10 @@
 #     mixed_test_arch fixture. No shared-tree writes; safe to run anytime,
 #     including concurrently with the examples lane.
 #
+#   RUN_ALONE:
+#     Isolated suites too heavy to share the machine. They run one at a time
+#     after both lanes finish.
+#
 # Lanes (run concurrently):
 #   - ISOLATED lane: fanned across nproc. Never touches examples/.
 #   - EXAMPLES lane: readers run concurrently, then (after they all finish) the
@@ -51,16 +55,29 @@ EXAMPLE_READERS=(
     test_vl_sc_wrap_name.py           # reads examples/ip_test (copytree)
     test_filemap_name_overrides.py    # reads examples/simple_ip (copytree)
     test_rundir_o3_context_src.py     # reads examples/simple_ip (copytree)
+    test_make_user_hooks.py           # reads examples/simple_ip (copytree)
+    test_xcelium_boost_libs.py        # reads examples/simple_ip (copytree)
     test_sv_names_match_file_stem.py  # reads every examples/ tree
     test_payload_direct_copy.py       # reads examples/xprojParam/cppAxis + ip_test + simple_ip
     test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
     test_db_failure_no_stale_artifact.py      # reads examples/simple + xprojParam/cpLayoutBad (copytree)
     test_tb_variant_plain_block.py            # reads examples/helloWorld (copytree)
     test_vl_registrar_factory_domain.py       # reads examples/twoClk + examples/mixed (db to a temp path)
+    test_make_site_env.py                     # reads examples/helloWorld (copytree)
+    test_make_builder_stamp.py                # reads examples/helloWorld (copytree)
+    test_make_relocated_tree.py               # reads examples/helloWorld (copytree)
+    test_compdb_configured_compiler.py        # reads examples/helloWorld (copytree)
+    test_missing_include_diagnostic.py        # reads examples/helloWorld (copytree)
+    test_make_synthf.py                       # reads examples/hierVlDemo + examples/ip_test (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
 EXAMPLE_WRITER="test_build_manifest.py"
+
+# Isolated suites run one at a time after both lanes finish.
+RUN_ALONE=(
+    test_clockgen_link_loss.py        # Verilator make all, 300 s make timeout
+)
 
 # Suites held out of both runners; empty unless a check is being revived.
 # Temporarily disabled on the a2c-dev 3.0 image: Verilator 5.052 reports IMPLICITSTATIC in the
@@ -68,9 +85,9 @@ EXAMPLE_WRITER="test_build_manifest.py"
 # that fix lands.
 DISABLED=(test_memory_dp_ports_sim.py)
 
-# ISOLATED = all test_*.py minus readers minus writer minus disabled.
+# ISOLATED = all test_*.py minus readers minus writer minus run-alone minus disabled.
 declare -A SKIP=()
-for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER" "${DISABLED[@]}"; do SKIP["$s"]=1; done
+for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER" "${RUN_ALONE[@]}" "${DISABLED[@]}"; do SKIP["$s"]=1; done
 ISOLATED=()
 for f in test_*.py; do
     [[ -n "${SKIP[$f]:-}" ]] && continue
@@ -78,7 +95,7 @@ for f in test_*.py; do
 done
 
 # Every suite the serial runner runs, for aggregation.
-ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
+ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER" "${RUN_ALONE[@]}")
 
 # Guard against silently dropping or missing suites: diff ALL by name against
 # the suites run_all_tests.sh invokes (direct python3 calls and the
@@ -111,6 +128,7 @@ echo "========================================================================"
 echo "Running All Unit Tests (parallel)"
 echo "  isolated : ${#ISOLATED[@]} suites fanned across ${JOBS} cores"
 echo "  examples : ${#EXAMPLE_READERS[@]} readers (concurrent) then 1 in-place writer (exclusive)"
+echo "  alone    : ${#RUN_ALONE[@]} suites run one at a time after both lanes"
 echo "========================================================================"
 
 START=$SECONDS
@@ -129,6 +147,8 @@ printf '%s\n' "${ISOLATED[@]}" \
     | xargs -P "$JOBS" -I {} bash -c 'run_one "$@"' _ {} "$LOGDIR"
 
 wait "$EXAMPLES_PID"
+
+for s in "${RUN_ALONE[@]}"; do run_one "$s" "$LOGDIR"; done
 
 ELAPSED=$((SECONDS - START))
 

@@ -44,6 +44,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import build_database, cleanup
+from _tmp_helpers import remove_tree
 
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -189,7 +190,7 @@ def _build_composition(assembler_project):
             capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
         return completed.returncode, completed.stdout + completed.stderr
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        remove_tree(work)
 
 
 def _check_composed_accepted(label, assembler_project):

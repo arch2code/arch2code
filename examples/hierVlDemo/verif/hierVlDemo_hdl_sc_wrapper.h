@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import hierVlDemo.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "hierVlDemo_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "hierVlDemo_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VhierVlDemo_hdl_sv_wrapper.h"
 #endif
@@ -33,7 +35,7 @@ class hierVlDemo_hdl_sc_wrapper: public sc_module, public blockBase, public hier
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     hierVlDemo_hdl_sv_wrapper *dut_hdl;
 #else
     VhierVlDemo_hdl_sv_wrapper *dut_hdl;
@@ -41,8 +43,8 @@ public:
 
     sc_signal<bool> clk;
 
-    axi4_stream_dst_bfm<data_t1_t, tid_t1_t, tdest_t1_t, sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>, tuser_t1_t> axis4_t1_bfm;
-    axi4_stream_src_bfm<data_t2_t, tid_t2_t, tdest_t2_t, sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>, tuser_t2_t> axis4_t2_bfm;
+    axi4_stream_dst_bfm<data_t1_t, tid_t1_t, tdest_t1_t, sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>, tuser_t1_t> axis4_t1_bfm_inst;
+    axi4_stream_src_bfm<data_t2_t, tid_t2_t, tdest_t2_t, sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>, tuser_t2_t> axis4_t2_bfm_inst;
 
     SC_HAS_PROCESS (hierVlDemo_hdl_sc_wrapper);
 
@@ -51,47 +53,47 @@ public:
         blockBase("hierVlDemo_hdl_sc_wrapper", name(), bbMode),
         hierVlDemoBase(name(), variant),
         clk("clk"),
-        axis4_t1_bfm("axis4_t1_bfm"),
-        axis4_t2_bfm("axis4_t2_bfm"),
+        axis4_t1_bfm_inst("axis4_t1_bfm_inst"),
+        axis4_t2_bfm_inst("axis4_t2_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new hierVlDemo_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VhierVlDemo_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->axis4_t1_tvalid(axis4_t1_hdl_if.tvalid);
-        dut_hdl->axis4_t1_tready(axis4_t1_hdl_if.tready);
-        dut_hdl->axis4_t1_tdata(axis4_t1_hdl_if.tdata);
-        dut_hdl->axis4_t1_tstrb(axis4_t1_hdl_if.tstrb);
-        dut_hdl->axis4_t1_tkeep(axis4_t1_hdl_if.tkeep);
-        dut_hdl->axis4_t1_tlast(axis4_t1_hdl_if.tlast);
-        dut_hdl->axis4_t1_tid(axis4_t1_hdl_if.tid);
-        dut_hdl->axis4_t1_tdest(axis4_t1_hdl_if.tdest);
-        dut_hdl->axis4_t1_tuser(axis4_t1_hdl_if.tuser);
-        dut_hdl->axis4_t2_tvalid(axis4_t2_hdl_if.tvalid);
-        dut_hdl->axis4_t2_tready(axis4_t2_hdl_if.tready);
-        dut_hdl->axis4_t2_tdata(axis4_t2_hdl_if.tdata);
-        dut_hdl->axis4_t2_tstrb(axis4_t2_hdl_if.tstrb);
-        dut_hdl->axis4_t2_tkeep(axis4_t2_hdl_if.tkeep);
-        dut_hdl->axis4_t2_tlast(axis4_t2_hdl_if.tlast);
-        dut_hdl->axis4_t2_tid(axis4_t2_hdl_if.tid);
-        dut_hdl->axis4_t2_tdest(axis4_t2_hdl_if.tdest);
-        dut_hdl->axis4_t2_tuser(axis4_t2_hdl_if.tuser);
+        dut_hdl->axis4_t1_tvalid(axis4_t1_hdl_inst.tvalid);
+        dut_hdl->axis4_t1_tready(axis4_t1_hdl_inst.tready);
+        dut_hdl->axis4_t1_tdata(axis4_t1_hdl_inst.tdata);
+        dut_hdl->axis4_t1_tstrb(axis4_t1_hdl_inst.tstrb);
+        dut_hdl->axis4_t1_tkeep(axis4_t1_hdl_inst.tkeep);
+        dut_hdl->axis4_t1_tlast(axis4_t1_hdl_inst.tlast);
+        dut_hdl->axis4_t1_tid(axis4_t1_hdl_inst.tid);
+        dut_hdl->axis4_t1_tdest(axis4_t1_hdl_inst.tdest);
+        dut_hdl->axis4_t1_tuser(axis4_t1_hdl_inst.tuser);
+        dut_hdl->axis4_t2_tvalid(axis4_t2_hdl_inst.tvalid);
+        dut_hdl->axis4_t2_tready(axis4_t2_hdl_inst.tready);
+        dut_hdl->axis4_t2_tdata(axis4_t2_hdl_inst.tdata);
+        dut_hdl->axis4_t2_tstrb(axis4_t2_hdl_inst.tstrb);
+        dut_hdl->axis4_t2_tkeep(axis4_t2_hdl_inst.tkeep);
+        dut_hdl->axis4_t2_tlast(axis4_t2_hdl_inst.tlast);
+        dut_hdl->axis4_t2_tid(axis4_t2_hdl_inst.tid);
+        dut_hdl->axis4_t2_tdest(axis4_t2_hdl_inst.tdest);
+        dut_hdl->axis4_t2_tuser(axis4_t2_hdl_inst.tuser);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        axis4_t1_bfm.if_p(this->axis4_t1);
-        axis4_t1_bfm.hdl_if_p(axis4_t1_hdl_if);
-        axis4_t1_bfm.clk(clk);
-        axis4_t1_bfm.rst_n(rst_n);
+        axis4_t1_bfm_inst.if_p(this->axis4_t1);
+        axis4_t1_bfm_inst.hdl_if_p(axis4_t1_hdl_inst);
+        axis4_t1_bfm_inst.clk(clk);
+        axis4_t1_bfm_inst.rst_n(rst_n);
 
-        axis4_t2_bfm.if_p(this->axis4_t2);
-        axis4_t2_bfm.hdl_if_p(axis4_t2_hdl_if);
-        axis4_t2_bfm.clk(clk);
-        axis4_t2_bfm.rst_n(rst_n);
+        axis4_t2_bfm_inst.if_p(this->axis4_t2);
+        axis4_t2_bfm_inst.hdl_if_p(axis4_t2_hdl_inst);
+        axis4_t2_bfm_inst.clk(clk);
+        axis4_t2_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -111,8 +113,8 @@ public:
 
 private:
 
-    axi4_stream_hdl_if<sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>> axis4_t1_hdl_if;
-    axi4_stream_hdl_if<sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>> axis4_t2_hdl_if;
+    axi4_stream_hdl_if<sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>> axis4_t1_hdl_inst;
+    axi4_stream_hdl_if<sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>> axis4_t2_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

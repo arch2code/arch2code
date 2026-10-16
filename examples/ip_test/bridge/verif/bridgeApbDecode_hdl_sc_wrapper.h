@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import ipBridge_bridgeApbDecode.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "bridgeApbDecode_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "bridgeApbDecode_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VbridgeApbDecode_hdl_sv_wrapper.h"
 #endif
@@ -33,7 +35,7 @@ class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     bridgeApbDecode_hdl_sv_wrapper *dut_hdl;
 #else
     VbridgeApbDecode_hdl_sv_wrapper *dut_hdl;
@@ -41,9 +43,9 @@ public:
 
     sc_signal<bool> clk;
 
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_bfm;
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_bfm;
-    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_bfm_inst;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_bfm_inst;
+    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm_inst;
 
     SC_HAS_PROCESS (bridgeApbDecode_hdl_sc_wrapper);
 
@@ -52,59 +54,59 @@ public:
         blockBase("bridgeApbDecode_hdl_sc_wrapper", name(), bbMode),
         bridgeApbDecodeBase(name(), variant),
         clk("clk"),
-        apbReg_uBridgeIp0_bfm("apbReg_uBridgeIp0_bfm"),
-        apbReg_uBridgeIp1_bfm("apbReg_uBridgeIp1_bfm"),
-        apbReg_bfm("apbReg_bfm"),
+        apbReg_uBridgeIp0_bfm_inst("apbReg_uBridgeIp0_bfm_inst"),
+        apbReg_uBridgeIp1_bfm_inst("apbReg_uBridgeIp1_bfm_inst"),
+        apbReg_bfm_inst("apbReg_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new bridgeApbDecode_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VbridgeApbDecode_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->apbReg_uBridgeIp0_paddr(apbReg_uBridgeIp0_hdl_if.paddr);
-        dut_hdl->apbReg_uBridgeIp0_psel(apbReg_uBridgeIp0_hdl_if.psel);
-        dut_hdl->apbReg_uBridgeIp0_penable(apbReg_uBridgeIp0_hdl_if.penable);
-        dut_hdl->apbReg_uBridgeIp0_pwrite(apbReg_uBridgeIp0_hdl_if.pwrite);
-        dut_hdl->apbReg_uBridgeIp0_pwdata(apbReg_uBridgeIp0_hdl_if.pwdata);
-        dut_hdl->apbReg_uBridgeIp0_pready(apbReg_uBridgeIp0_hdl_if.pready);
-        dut_hdl->apbReg_uBridgeIp0_prdata(apbReg_uBridgeIp0_hdl_if.prdata);
-        dut_hdl->apbReg_uBridgeIp0_pslverr(apbReg_uBridgeIp0_hdl_if.pslverr);
-        dut_hdl->apbReg_uBridgeIp1_paddr(apbReg_uBridgeIp1_hdl_if.paddr);
-        dut_hdl->apbReg_uBridgeIp1_psel(apbReg_uBridgeIp1_hdl_if.psel);
-        dut_hdl->apbReg_uBridgeIp1_penable(apbReg_uBridgeIp1_hdl_if.penable);
-        dut_hdl->apbReg_uBridgeIp1_pwrite(apbReg_uBridgeIp1_hdl_if.pwrite);
-        dut_hdl->apbReg_uBridgeIp1_pwdata(apbReg_uBridgeIp1_hdl_if.pwdata);
-        dut_hdl->apbReg_uBridgeIp1_pready(apbReg_uBridgeIp1_hdl_if.pready);
-        dut_hdl->apbReg_uBridgeIp1_prdata(apbReg_uBridgeIp1_hdl_if.prdata);
-        dut_hdl->apbReg_uBridgeIp1_pslverr(apbReg_uBridgeIp1_hdl_if.pslverr);
-        dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
-        dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
-        dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
-        dut_hdl->apbReg_pwrite(apbReg_hdl_if.pwrite);
-        dut_hdl->apbReg_pwdata(apbReg_hdl_if.pwdata);
-        dut_hdl->apbReg_pready(apbReg_hdl_if.pready);
-        dut_hdl->apbReg_prdata(apbReg_hdl_if.prdata);
-        dut_hdl->apbReg_pslverr(apbReg_hdl_if.pslverr);
+        dut_hdl->apbReg_uBridgeIp0_paddr(apbReg_uBridgeIp0_hdl_inst.paddr);
+        dut_hdl->apbReg_uBridgeIp0_psel(apbReg_uBridgeIp0_hdl_inst.psel);
+        dut_hdl->apbReg_uBridgeIp0_penable(apbReg_uBridgeIp0_hdl_inst.penable);
+        dut_hdl->apbReg_uBridgeIp0_pwrite(apbReg_uBridgeIp0_hdl_inst.pwrite);
+        dut_hdl->apbReg_uBridgeIp0_pwdata(apbReg_uBridgeIp0_hdl_inst.pwdata);
+        dut_hdl->apbReg_uBridgeIp0_pready(apbReg_uBridgeIp0_hdl_inst.pready);
+        dut_hdl->apbReg_uBridgeIp0_prdata(apbReg_uBridgeIp0_hdl_inst.prdata);
+        dut_hdl->apbReg_uBridgeIp0_pslverr(apbReg_uBridgeIp0_hdl_inst.pslverr);
+        dut_hdl->apbReg_uBridgeIp1_paddr(apbReg_uBridgeIp1_hdl_inst.paddr);
+        dut_hdl->apbReg_uBridgeIp1_psel(apbReg_uBridgeIp1_hdl_inst.psel);
+        dut_hdl->apbReg_uBridgeIp1_penable(apbReg_uBridgeIp1_hdl_inst.penable);
+        dut_hdl->apbReg_uBridgeIp1_pwrite(apbReg_uBridgeIp1_hdl_inst.pwrite);
+        dut_hdl->apbReg_uBridgeIp1_pwdata(apbReg_uBridgeIp1_hdl_inst.pwdata);
+        dut_hdl->apbReg_uBridgeIp1_pready(apbReg_uBridgeIp1_hdl_inst.pready);
+        dut_hdl->apbReg_uBridgeIp1_prdata(apbReg_uBridgeIp1_hdl_inst.prdata);
+        dut_hdl->apbReg_uBridgeIp1_pslverr(apbReg_uBridgeIp1_hdl_inst.pslverr);
+        dut_hdl->apbReg_paddr(apbReg_hdl_inst.paddr);
+        dut_hdl->apbReg_psel(apbReg_hdl_inst.psel);
+        dut_hdl->apbReg_penable(apbReg_hdl_inst.penable);
+        dut_hdl->apbReg_pwrite(apbReg_hdl_inst.pwrite);
+        dut_hdl->apbReg_pwdata(apbReg_hdl_inst.pwdata);
+        dut_hdl->apbReg_pready(apbReg_hdl_inst.pready);
+        dut_hdl->apbReg_prdata(apbReg_hdl_inst.prdata);
+        dut_hdl->apbReg_pslverr(apbReg_hdl_inst.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apbReg_uBridgeIp0_bfm.if_p(this->apbReg_uBridgeIp0);
-        apbReg_uBridgeIp0_bfm.hdl_if_p(apbReg_uBridgeIp0_hdl_if);
-        apbReg_uBridgeIp0_bfm.clk(clk);
-        apbReg_uBridgeIp0_bfm.rst_n(rst_n);
+        apbReg_uBridgeIp0_bfm_inst.if_p(this->apbReg_uBridgeIp0);
+        apbReg_uBridgeIp0_bfm_inst.hdl_if_p(apbReg_uBridgeIp0_hdl_inst);
+        apbReg_uBridgeIp0_bfm_inst.clk(clk);
+        apbReg_uBridgeIp0_bfm_inst.rst_n(rst_n);
 
-        apbReg_uBridgeIp1_bfm.if_p(this->apbReg_uBridgeIp1);
-        apbReg_uBridgeIp1_bfm.hdl_if_p(apbReg_uBridgeIp1_hdl_if);
-        apbReg_uBridgeIp1_bfm.clk(clk);
-        apbReg_uBridgeIp1_bfm.rst_n(rst_n);
+        apbReg_uBridgeIp1_bfm_inst.if_p(this->apbReg_uBridgeIp1);
+        apbReg_uBridgeIp1_bfm_inst.hdl_if_p(apbReg_uBridgeIp1_hdl_inst);
+        apbReg_uBridgeIp1_bfm_inst.clk(clk);
+        apbReg_uBridgeIp1_bfm_inst.rst_n(rst_n);
 
-        apbReg_bfm.if_p(this->apbReg);
-        apbReg_bfm.hdl_if_p(apbReg_hdl_if);
-        apbReg_bfm.clk(clk);
-        apbReg_bfm.rst_n(rst_n);
+        apbReg_bfm_inst.if_p(this->apbReg);
+        apbReg_bfm_inst.hdl_if_p(apbReg_hdl_inst);
+        apbReg_bfm_inst.clk(clk);
+        apbReg_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -124,9 +126,9 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_hdl_inst;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

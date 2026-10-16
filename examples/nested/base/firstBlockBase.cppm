@@ -83,8 +83,8 @@ public:
 
 
     firstBlockChannels(std::string name, std::string srcName) :
-    primary(("primary"+name).c_str(), srcName)
-    ,response(("response"+name).c_str(), srcName)
+    primary(("primary"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,response(("response"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( firstBlockBase *a, firstBlockInverted *b)
     {

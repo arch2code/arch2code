@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import twoClkIp_twoClkIpSrc.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "twoClkIpSrc_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "twoClkIpSrc_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VtwoClkIpSrc_hdl_sv_wrapper.h"
 #endif
@@ -33,7 +35,7 @@ class twoClkIpSrc_hdl_sc_wrapper: public sc_module, public blockBase, public two
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     twoClkIpSrc_hdl_sv_wrapper *dut_hdl;
 #else
     VtwoClkIpSrc_hdl_sv_wrapper *dut_hdl;
@@ -41,7 +43,7 @@ public:
 
     sc_signal<bool> clk;
 
-    push_ack_src_bfm<twoClkDataSt, sc_bv<8>> out_bfm;
+    push_ack_src_bfm<twoClkDataSt, sc_bv<8>> out_bfm_inst;
 
     SC_HAS_PROCESS (twoClkIpSrc_hdl_sc_wrapper);
 
@@ -50,26 +52,26 @@ public:
         blockBase("twoClkIpSrc_hdl_sc_wrapper", name(), bbMode),
         twoClkIpSrcBase(name(), variant),
         clk("clk"),
-        out_bfm("out_bfm"),
+        out_bfm_inst("out_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(3, SC_NS) / 2)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new twoClkIpSrc_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VtwoClkIpSrc_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->out_push(out_hdl_if.push);
-        dut_hdl->out_data(out_hdl_if.data);
-        dut_hdl->out_ack(out_hdl_if.ack);
+        dut_hdl->out_push(out_hdl_inst.push);
+        dut_hdl->out_data(out_hdl_inst.data);
+        dut_hdl->out_ack(out_hdl_inst.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        out_bfm.if_p(this->out);
-        out_bfm.hdl_if_p(out_hdl_if);
-        out_bfm.clk(clk);
-        out_bfm.rst_n(rst_n);
+        out_bfm_inst.if_p(this->out);
+        out_bfm_inst.hdl_if_p(out_hdl_inst);
+        out_bfm_inst.clk(clk);
+        out_bfm_inst.rst_n(rst_n);
 
         clk.write(true);
         SC_THREAD(clock_gen_clk);
@@ -89,7 +91,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<8>> out_hdl_if;
+    push_ack_hdl_if<sc_bv<8>> out_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

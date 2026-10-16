@@ -547,11 +547,15 @@ class ClockTree:
 
 
 def build(blocks, instances, connections, memories, registers, memoryConnections,
-          registerConnections, connectionMaps, registerBusPassthroughs,
+          registerConnections, connectionMaps, channelNames, memoryChannelNames,
+          memoryRegisterChannelNames, registerBusPassthroughs,
           blocksDeclaringNoResets,
           testbenchClocks, testbenchResets, contextOwningProject, rootProjectName, diag):
     """Build the project's ClockTree from parsed flatData tables.
 
+    `channelNames` is each connection's channel name, keyed like `connections`;
+    `memoryChannelNames` and `memoryRegisterChannelNames` are the channel names
+    of each memoryConnections row and of each memory's register handler port.
     `registerBusPassthroughs` is the `REGAPB_PASSTHROUGH` blob from
     config/postParseRegisterPorts.py, keyed by passthrough container blockKey.
     `blocksDeclaringNoResets` is a parser-recorded fact from projectCreate.
@@ -609,6 +613,7 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             objectRows.append((instances[memConnRow['instanceKey']]['instanceTypeKey'],
                                memConnRow['memory'], 'memoryConnections port', memConnRow))
     addedObjects = set()
+    accessSuppliers = dict()
     for blockKey, name, kind, sourceRow in objectRows:
         if (blockKey, name, kind) in addedObjects:
             continue
@@ -616,6 +621,7 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
         collidingKind = domains[blockKey].names.get(name)
         if collidingKind is None:
             domains[blockKey].names[name] = kind
+            accessSuppliers[(blockKey, name)] = sourceRow
             continue
         diag.logError(
             f"Block '{blocks[blockKey]['block']}' uses the name '{name}' "
@@ -628,16 +634,19 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
 
     # An undeclared port that a connection or connectionMaps: row
     # introduces is still a module port, so it joins the block's names.
+    # Each port keeps its source row and a phrase naming the field to change.
     inferredPortRows = dict()
     for connRow in connections.values():
         for end in connRow['ends'].values():
-            inferredPortRows.setdefault((end['instanceTypeKey'], end['portName']), connRow)
+            inferredPortRows.setdefault((end['instanceTypeKey'], end['portName']),
+                                        (connRow, 'srcport:/dstport: on the connection that gives it'))
     for connMap in connectionMaps.values():
-        inferredPortRows.setdefault((connMap['blockKey'], connMap['portName']), connMap)
+        inferredPortRows.setdefault((connMap['blockKey'], connMap['portName']),
+                                    (connMap, 'port: on the connectionMaps row that gives it'))
         inferredPortRows.setdefault(
             (instances[connMap['instanceKey']]['instanceTypeKey'], connMap['instancePortName']),
-            connMap)
-    for (blockKey, portName), sourceRow in inferredPortRows.items():
+            (connMap, 'instancePort: on the connectionMaps row that gives it'))
+    for (blockKey, portName), (sourceRow, _) in inferredPortRows.items():
         if declaredPortRow(blocks[blockKey], portName) is not None:
             continue
         collidingKind = domains[blockKey].names.get(portName)
@@ -653,6 +662,127 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             f"them, the reserved names clk/rst_n, must be pairwise distinct "
             f"within a block, whether or not the port is declared in ports:. "
             f"Rename the {collidingKind} or the port. {_diagLoc(diag, sourceRow)}")
+
+    def renameAdvice(blockKey, name, kind):
+        # What to rename for an existing name of `kind`; None for an implicit
+        # clock or reset, which has no authored name.
+        if kind in ('implicit clock', 'implicit reset'):
+            return None
+        if kind in ('registerConnections port', 'memoryConnections port'):
+            supplier = accessSuppliers[(blockKey, name)]
+            objectKind = 'register' if kind == 'registerConnections port' else 'memory'
+            return f"Rename {objectKind} '{name}' of block '{supplier['block']}', which supplies the port"
+        if kind == 'registerPort':
+            return "Rename the registerPorts: entry"
+        if kind == 'port' and declaredPortRow(blocks[blockKey], name) is None:
+            return f"Name the port with {inferredPortRows[(blockKey, name)][1]}"
+        return f"Rename the {kind}"
+
+    def kindLabel(kind):
+        return 'registerPorts: entry' if kind == 'registerPort' else kind
+
+    # A child instance is declared in its container's module and class
+    # alongside the container's ports, register channels and memories, so
+    # its name joins the container's names.
+    for instRow in instances.values():
+        if instRow['container'] == ClockTree.ROOT_KEY or diag.isComposedChildRootRow(instRow):
+            continue
+        containerKey = instRow['containerKey']
+        name = instRow['instance']
+        collidingKind = domains[containerKey].names.get(name)
+        if collidingKind is None:
+            domains[containerKey].names[name] = 'child instance'
+            continue
+        advice = renameAdvice(containerKey, name, collidingKind)
+        remedy = "Rename the instance" if advice is None else f"{advice}, or rename the instance"
+        diag.logError(
+            f"Block '{blocks[containerKey]['block']}' uses the name '{name}' "
+            f"for its {kindLabel(collidingKind)} and for a child instance; the "
+            f"generated SystemVerilog module and SystemC class declare both in "
+            f"one scope. {remedy}. {_diagLoc(diag, instRow)}")
+
+    # getBDConnectionsFinal checks every channel of a block view against one
+    # pool, by name, across the connMapping sources: connections, register
+    # channels, connectionMaps: ports and memory channels. Any repeated name
+    # fails there except connections of one interface, which it numbers, so
+    # a repeat is rejected here; connection channels are checked below.
+    generatorChannels = dict()
+
+    def poolChannel(blockKey, name, kind, advice, row):
+        prior = generatorChannels.get((blockKey, name))
+        if prior is None:
+            generatorChannels[(blockKey, name)] = (kind, advice)
+            return
+        diag.logError(
+            f"Block '{blocks[blockKey]['block']}' uses the name '{name}' for "
+            f"its {prior[0]} and for its {kind}; the generator declares both as "
+            f"channels of the block and cannot declare both. {advice}. "
+            f"{_diagLoc(diag, row)}")
+
+    for regRow in registers.values():
+        poolChannel(regRow['blockKey'], regRow['register'], 'register',
+                    "Rename the register", regRow)
+    for connMap in connectionMaps.values():
+        poolChannel(connMap['blockKey'], connMap['portName'], 'connectionMaps: port',
+                    "Rename the port with port: on the connectionMaps row", connMap)
+    wiredMemoryPorts = dict()
+    for key, memConnRow in memoryConnections.items():
+        if memConnRow['instanceKey'] and instances[memConnRow['instanceKey']]['containerKey'] == memConnRow['blockKey']:
+            prior = wiredMemoryPorts.setdefault((memConnRow['memoryBlockKey'], memConnRow['port']), memConnRow)
+            if prior is not memConnRow:
+                diag.logError(
+                    f"Memory port '{memConnRow['port']}' of '{memConnRow['memory']}' in block "
+                    f"'{memConnRow['block']}' is wired to more than one instance, "
+                    f"'{prior['instance']}' and '{memConnRow['instance']}'. Wire each "
+                    f"memory port to one instance. {_diagLoc(diag, memConnRow)}")
+            poolChannel(memConnRow['blockKey'], memoryChannelNames[key],
+                        f"memory '{memConnRow['memory']}' channel",
+                        "Rename the memory or its port", memConnRow)
+    for key, memRow in memories.items():
+        if memRow['regAccess']:
+            poolChannel(memRow['blockKey'], memoryRegisterChannelNames[key],
+                        f"memory '{memRow['memory']}' register channel",
+                        "Rename the memory", memRow)
+
+    # A connection between two children declares its channel in their
+    # container. Connections of one interface sharing a channel name are
+    # declared numbered, so only a name one connection uses joins the
+    # container's names.
+    channelRows = dict()
+    for connKey, connRow in connections.items():
+        containerKey = instances[connRow['srcKey']]['containerKey']
+        channelRows.setdefault((containerKey, channelNames[connKey]), list()).append(connRow)
+    for (containerKey, name), connRows in channelRows.items():
+        if (containerKey, name) in generatorChannels:
+            collidingKind, advice = generatorChannels[(containerKey, name)]
+        elif len(connRows) > 1:
+            interfaces = {row['interfaceKey']: row['interface'] for row in connRows}
+            if len(interfaces) > 1:
+                diag.logError(
+                    f"Block '{blocks[containerKey]['block']}' has connections of "
+                    f"interfaces {', '.join(repr(i) for i in interfaces.values())} on one "
+                    f"channel name '{name}'; the generator numbers connections "
+                    f"that share a channel name only when they carry one "
+                    f"interface. A channel takes its name from interfaceName:, "
+                    f"else srcport:, else name:, else the interface name. Give "
+                    f"the channels distinct names with interfaceName:. "
+                    f"{_diagLoc(diag, connRows[0])}")
+            continue
+        else:
+            collidingKind = domains[containerKey].names.get(name)
+            if collidingKind is None:
+                domains[containerKey].names[name] = 'connection channel'
+                continue
+            advice = renameAdvice(containerKey, name, collidingKind)
+        remedy = ("Name the channel with interfaceName: on the connection" if advice is None
+                  else f"{advice}, or name the channel with interfaceName: on the connection")
+        diag.logError(
+            f"Block '{blocks[containerKey]['block']}' uses the name '{name}' "
+            f"for its {kindLabel(collidingKind)} and for the channel of a "
+            f"connection between its children; the generated SystemVerilog "
+            f"module and SystemC class cannot declare both. A channel takes its "
+            f"name from interfaceName:, else srcport:, else name:, else the "
+            f"interface name. {remedy}. {_diagLoc(diag, connRows[0])}")
 
     # A container exists only for a block that instantiates at least one
     # child; a leaf's own declared nets are never bound against (nothing
@@ -754,11 +884,9 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
                         f"Instance '{instRow['instance']}' of block "
                         f"'{childBlock}' binds output {netKind} '{name}' to "
                         f"'{net}', but '{containerBlock}' already uses that "
-                        f"name for its {collidingKind}; a local net's name may "
-                        f"not collide with the container's own clocks, "
-                        f"resets, interface ports, memories, or the "
-                        f"reserved names clk/rst_n. Choose another local net "
-                        f"name.")
+                        f"name for its {kindLabel(collidingKind)}; a local net's name may "
+                        f"not collide with any name the container already "
+                        f"uses. Choose another local net name.")
                     return
                 # A local reset net's own clock membership is
                 # not knowable yet here - the driving output's own clock

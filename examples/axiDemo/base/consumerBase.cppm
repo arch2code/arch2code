@@ -183,8 +183,8 @@ public:
     ,axiWr1(("axiWr1"+name).c_str(), srcName, "api_list_size", 256, "")
     ,axiWr2(("axiWr2"+name).c_str(), srcName, "api_list_size", 256, "")
     ,axiWr3(("axiWr3"+name).c_str(), srcName, "api_list_size", 256, "")
-    ,axiStr0(("axiStr0"+name).c_str(), srcName, "api_list_size", 256, "")
-    ,axiStr1(("axiStr1"+name).c_str(), srcName, "api_list_size", 256, "")
+    ,axiStr0(("axiStr0"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 256, "")
+    ,axiStr1(("axiStr1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 256, "")
     {};
     void bind( consumerBase *a, consumerInverted *b)
     {

@@ -35,13 +35,11 @@ public:
         {
             Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::abpBusDecode: number of ports {} does not match number of address spaces {}", blockPorts.size(), numberOfaddressSpaces));
         }
-        int addressBits = 0;
-        uint32_t numberOfSpaces = numberOfaddressSpaces_;
-        while (numberOfSpaces > 0) {
-            numberOfSpaces >>= 1;
+        uint32_t addressBits = 0;
+        while ((1u << addressBits) < numberOfaddressSpaces) {
             addressBits++;
         }
-        addressMask = (1 << (addressBits-1)) - 1;
+        addressMask = (1u << addressBits) - 1;
 
     }
     void decodeThread(void)
@@ -58,7 +56,8 @@ public:
             {
                 Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::decodeThread: address {:x} out of range, block {:x}", address, blockAddress));
             }
-            auto port = blockPorts[blockAddress];
+            // blockPorts may hold fewer ports than there are address spaces
+            auto port = blockAddress < blockPorts.size() ? blockPorts[blockAddress] : nullptr;
             if (port != nullptr)
             {
                 if (isWrite)
@@ -68,8 +67,18 @@ public:
                     (*port)->request(isWrite, addr, data);
                     apbIn->complete(data);
                 }
+            } else if (isWrite) {
+                // An empty slot drops the write and reads 0xBADDC0DE, as the generated RTL does
+                logging::GetInstance().logDirect(std::format("{}: firmware write to unmapped address 0x{:x} dropped",
+                                                             apbIn.get_parent_object()->name(), address), LOG_ALWAYS);
             } else {
-                Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::decodeThread: address {:x} not mapped, block {:x}", address, blockAddress));
+                logging::GetInstance().logDirect(std::format("{}: firmware read of unmapped address 0x{:x} returns 0xBADDC0DE",
+                                                             apbIn.get_parent_object()->name(), address), LOG_ALWAYS);
+                // truncated to a data bus narrower than 32 bits
+                constexpr uint64_t dataMask = DATA::_bitWidth >= 32 ? 0xFFFFFFFFull : (1ull << DATA::_bitWidth) - 1;
+                DATA badCode;
+                badCode._setData(0xBADDC0DEull & dataMask);
+                apbIn->complete(badCode);
             }
         }
     }

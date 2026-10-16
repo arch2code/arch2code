@@ -30,6 +30,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'clockgen-link-loss')
@@ -187,7 +188,7 @@ def _run():
               f"to free-running instead of freezing")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def run_all_tests():

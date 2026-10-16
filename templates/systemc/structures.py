@@ -58,6 +58,8 @@ def render(args, prj, data):
     if (args.section == 'testStructsHeader' or args.section == 'testStructsCPP'):
         out.extend(structTest(args, prj, data))
         out = wrap_module_test_namespace(args, data, out)
+        if args.section == 'testStructsHeader':
+            out = wrap_module_namespace(args, data, _referenceLines(args, prj, data)) + out
     out.append("")
     return("\n".join(out))
 
@@ -160,7 +162,7 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
         else:
             expr = str(vardata['bitwidth'])
 
-        if isArray and arraySizeValue > 1:
+        if isArray and (arraySizeValue > 1 or (useConfig and widthDependsOnConfig(vardata, prj))):
             # Wrap non-trivial expressions in parens before multiplying
             if '+' in expr or '-' in expr:
                 expr = f"({expr})"
@@ -179,6 +181,18 @@ def cppArraySize(vardata, prj, useConfig=False):
     if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey]['isParameterizable']:
         return constReferenceValueKeyed_cpp(arraySizeKey, prj)
     return vardata['arraySize']
+
+
+def widthDependsOnConfig(vardata, prj):
+    """The field's width or element count changes with Config, so every field
+    after it sits at a position known only at run time."""
+    arraySizeKey = vardata['arraySizeKey']
+    if vardata['isArray'] and arraySizeKey and prj.data['constants'][arraySizeKey]['isParameterizable']:
+        return True
+    if vardata['entryType'] == 'NamedStruct':
+        return prj.data['structures'][vardata['subStructKey']]['isParameterizable']
+    typeKey = vardata['varTypeKey']
+    return bool(typeKey) and prj.data['types'][typeKey]['isParameterizable']
 
 
 def cppVarBitwidth(vardata, prj, useConfig=False):
@@ -215,11 +229,17 @@ def packedStType(varType):
     return f"{prefix}{varType}::_packedSt"
 
 
-def cppWidthMask(widthExpr):
+def symbolicMask(widthExpr):
+    # A Config-dependent width may be 64, where 1ULL << W is undefined.
+    return f"(~0ULL >> (64 - ({widthExpr})))"
+
+def cppWidthMask(widthExpr, useConfig):
     if isinstance(widthExpr, int):
         widthExpr = str(widthExpr)
     if str(widthExpr) == '1':
         return ' & 1'
+    if useConfig:
+        return f" & {symbolicMask(widthExpr)}"
     return f" & ((1ULL << ({widthExpr})) - 1)"
 
 def printOneVar(prefix, space, varName, vardata, prtoss=True):
@@ -237,7 +257,7 @@ def printOneVar(prefix, space, varName, vardata, prtoss=True):
                 start = f'{space}{varName}:{{}}'
             varPrint = f'{ vardata["varType"] }_prt( {varName} )'
         else:
-            if bitwidth <= 64 or vardata['generator'] == 'datapath':
+            if vardata['varLoopCount'] == 1 or vardata['generator'] == 'datapath':
                 if prtoss:
                     start = f'{prefix}<< "{space}{varName}:0x"'
                     decorators = f' << std::hex << std::setw({hexwidth}) << std::setfill(\'0\') << '
@@ -398,7 +418,9 @@ def oneStruct(args, prj, data, struct, value):
             out.append(f"template<{argList}>")
         out.append(f"struct {declStructName} {{")
         # declare vars
-        out.extend(declareVars(value, indent, prj, isParam))
+        # A parameterizable struct's positions depend on Config, so it gets none.
+        out.extend(declareVars(value, indent, prj, isParam,
+                               args.mode == 'fw' and not isParam))
         if args.mode == 'fw':
             out.append(f"\n{indent}{declStructName}() {{ memset(this, 0, sizeof({ declStructName })); }}\n")
         else:
@@ -428,7 +450,7 @@ def oneStruct(args, prj, data, struct, value):
         out.append(f"{indent}static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;")
         packedWidth = value['maxBitwidth'] if isParam else value['width']
         retType, rowType, baseSize = convertToType(packedWidth)
-        if isParam and packedWidth <= 64:
+        if isParam and not packedStIsArray(value):
             retType = 'uint64_t _packedSt'
         out.append(f"{indent}typedef {retType};")
 
@@ -500,7 +522,8 @@ def oneStruct(args, prj, data, struct, value):
             out.append(f"template<typename Config> using {structName} = {declStructName}<{configArgs}>;")
     return out
 
-def declareVars(vars, indent, prj, useConfig=False):
+def declareVars(vars, indent, prj, useConfig, bitPositions):
+    # Declared in pack() order, last YAML field first.
     out = list()
     for var, vardata in reversed(vars["vars"].items()):
         if vardata['isArray']:
@@ -509,10 +532,12 @@ def declareVars(vars, indent, prj, useConfig=False):
         else:
             myArray= ''
             #myArrayLoopIndex= ''
+        lsb = vardata['bitshift']
+        bits = f"/* [{lsb + vardata['arraywidth'] - 1}:{lsb}] */ " if bitPositions else ''
         if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType' or vardata['entryType'] == 'Reserved':
-            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] + myArray}; //{ vardata['desc'] }")
+            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] + myArray}; {bits}//{ vardata['desc'] }")
         elif vardata['entryType'] == 'NamedStruct':
-            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] +myArray}; //{ vardata['desc'] }")
+            out.append(f"{indent}{cppTypeName(vardata, prj, useConfig)} {vardata['variable'] +myArray}; {bits}//{ vardata['desc'] }")
     return out
 
 def equalTest(handle, args, structName, vars, indent):
@@ -545,7 +570,7 @@ def equalTest(handle, args, structName, vars, indent):
             out.append(f"{indent}for(unsigned int i=0; i<{arraySizeExpr}; i++) {{")
             indent += ' '*4
 
-        if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
+        if vardata['varLoopCount'] == 1 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
             out.append(f"{indent}ret = ret && ({varName+myArrayLoopIndex} == rhs.{varName+myArrayLoopIndex});")
         else:
             for i in range(0, vardata['varLoopCount']):
@@ -586,7 +611,7 @@ def scTrace(handle, args, structName, vars, indent):
             out.append(f"{indent}for(unsigned int i=0; i<{arraySizeExpr}; i++) {{")
             indent += ' '*4
 
-        if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
+        if vardata['varLoopCount'] == 1 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
             out.append(f'{indent}sc_trace(tf,v.{varName+myArrayLoopIndex}, NAME + ".{varName+myArrayLoopIndex}");')
         else:
             for i in range(0, vardata['varLoopCount']):
@@ -757,6 +782,17 @@ def getSet(vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}inline void _setData({varType} value) {{ { var } = value; }}")
     return out
 def registerFeatures(vars, indent, prj, useConfig):
+    # A parameterizable struct's field positions depend on Config, so each
+    # shift is the sum of the later fields' widths, the same way sc_pack
+    # advances _pos.
+    shifts = dict()
+    later = []
+    for var, vardata in reversed(vars['vars'].items()):
+        if useConfig:
+            shifts[var] = f"({' + '.join(later)})" if later else 0
+            later.append(cppVarBitwidth(vardata, prj, useConfig))
+        else:
+            shifts[var] = vardata['bitshift']
     out = list()
     out.append(f"{indent}// register functions")
     out.append(f"{indent}inline int _size(void) {{return( (_bitWidth + 7) >> 4 ); }}")
@@ -768,12 +804,14 @@ def registerFeatures(vars, indent, prj, useConfig):
         varName = vardata['variable']
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
-            out.append(f"{indent}( {varName}._getValue() ) << { vardata['bitshift'] }")
+            out.append(f"{indent}(( {varName}._getValue() ) << { shifts[var] })")
         else:
-            if vardata['bitwidth'] < 64:
-                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { vardata['bitshift'] })")
+            if useConfig:
+                out.append(f"{indent}(( {varName} & {symbolicMask(widthExpr)} ) << { shifts[var] })")
+            elif vardata['bitwidth'] < 64:
+                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { shifts[var] })")
             else:
-                out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
+                out.append(f"{indent}( {varName} << { shifts[var] } )")
         out.append(f" +")
     out.pop()
     out[-1] = out[-1] + ";"
@@ -787,18 +825,35 @@ def registerFeatures(vars, indent, prj, useConfig):
         varName = vardata['variable']
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         typeName = cppTypeName(vardata, prj, useConfig)
-        if vardata['entryType'] == 'NamedStruct':
-            if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) )) ;")
-            else:
-                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ) ;")
+        if useConfig:
+            mask = symbolicMask(widthExpr)
+        elif vardata['bitwidth'] < 64:
+            mask = f"(( (uint64_t)1 << { widthExpr } ) - 1)"
         else:
-            if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) ) ;")
-            else:
-                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ;")
+            mask = None
+        field = (f"(( packedValue >> { shifts[var] } ) & {mask})" if mask
+                 else f"(( packedValue >> { shifts[var] } ) )")
+        if vardata['entryType'] == 'NamedStruct':
+            out.append(f"{indent}{ varName }._setValue( {field} ) ;")
+        else:
+            out.append(f"{indent}{ varName } = ( { typeName } ) {field} ;")
+            out.extend(get_sign_extension_code(varName, '', typeName, widthExpr, indent,
+                                               vardata['isSigned'],
+                                               None if useConfig else vardata['bitwidth']))
     out.append(f"{indent}}}")
     return out
+
+# The sc_digit words of an sc_bv<_bitWidth>, as a constant inside a struct member.
+SC_DIGIT_COUNT = "(_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE"
+
+# _packedSt is a uint64_t array exactly when the packed width exceeds 64 bits.
+def packedStIsArray(vars):
+    packedWidth = vars['maxBitwidth'] if vars['isParameterizable'] else vars['width']
+    return packedWidth > 64
+
+# _packedSt is uint64_t or a uint64_t array, rather than a narrower integer.
+def packedStIsWords(vars):
+    return vars['isParameterizable'] or convertToType(vars['width'])[1] == 'uint64_t'
 
 # sc_pack
 def sc_pack(handle, args, vars, indent, prj=None):
@@ -811,7 +866,6 @@ def sc_pack(handle, args, vars, indent, prj=None):
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
         structType = 'bool'
-    posUpdate = None
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline {structType} sc_pack(void) const")
     elif args.section == 'header' and handle == 'split':
@@ -825,6 +879,79 @@ def sc_pack(handle, args, vars, indent, prj=None):
     out.append(f'{indent}{{')
     indent += ' '*4
     out.append(f"{indent}{structType} packed_data;")
+    if structType == 'bool':
+        for _, data in reversed(vars['vars'].items()):
+            out.append(f"{indent}packed_data = (bool) {data['variable']};")
+    elif prj.structureHasDatapath(vars['structureKey']):
+        out.extend(_scPackDatapathLines(vars, indent, prj))
+    else:
+        # sc_bv stores 32-bit sc_digit words, two per _packedSt word.
+        word = '_packed[i >> 1] >> ((i & 1) * 32)' if packedStIsArray(vars) else '(uint64_t)_packed >> (i * 32)'
+        out.append(f"{indent}_packedSt _packed;")
+        out.append(f"{indent}pack(_packed);")
+        out.append(f"{indent}for (int i = 0; i < {SC_DIGIT_COUNT}; i++) {{")
+        out.append(f"{indent}    packed_data.set_word(i, (sc_digit)({word}));")
+        out.append(f"{indent}}}")
+        # pack() leaves an out-of-range top field unmasked so a bad value fails
+        # fast. The assert catches the bits it sets past _bitWidth in the last
+        # digit, which sc_bv requires to be zero.
+        out.append(f"{indent}constexpr int _last = {SC_DIGIT_COUNT} - 1;")
+        out.append(f"{indent}Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,")
+        out.append(f'{indent}             "{structName}", "a field holds more bits than its type");')
+    out.append(f"{indent}return packed_data;")
+    indent = indent[:-4]
+    out.append(f'{indent}}}')
+    return out
+
+# sc_unpack
+def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False):
+    out = list()
+    param = f"{structType} packed_data" if structType == 'bool' else f"const {structType} &packed_data"
+    if args.section == 'header' and handle == 'inline':
+        out.append(f"{indent}inline void sc_unpack({param})")
+    elif args.section == 'header' and handle == 'split':
+        out.append(f"{indent}void sc_unpack({param});")
+        return out
+    elif args.section == 'cpp' and handle == 'split':
+        decl = f"{args.namespace}::" if args.namespace else ''
+        out.append(f"{indent}void {decl}{vars['structure']}::sc_unpack({param})")
+    else:
+        return out
+    if structType != 'bool' and prj.structureHasDatapath(vars['structureKey']):
+        out.extend(_scUnpackDatapathLines(vars, indent, prj, useConfig))
+        out.append(f'{indent}}}')
+        return out
+    out.append(f'{indent}{{')
+    indent += ' '*4
+    if structType == 'bool':
+        for _, data in reversed(vars['vars'].items()):
+            varType = cppTypeName(data, prj, useConfig)
+            out.append(f"{indent}{data['variable']} = ({varType}) packed_data;")
+    elif packedStIsArray(vars):
+        # The loop ORs into zeroed words. A _packedSt sized for maxBitwidth
+        # has words past _bitWidth, and those stay zero.
+        out.append(f"{indent}_packedSt _words{{}};")
+        out.append(f"{indent}for (int i = 0; i < {SC_DIGIT_COUNT}; i++) {{")
+        out.append(f"{indent}    _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);")
+        out.append(f"{indent}}}")
+        out.append(f"{indent}unpack(_words);")
+    else:
+        out.append(f"{indent}uint64_t _word{{0}};")
+        out.append(f"{indent}for (int i = 0; i < {SC_DIGIT_COUNT}; i++) {{")
+        out.append(f"{indent}    _word |= (uint64_t)packed_data.get_word(i) << (i * 32);")
+        out.append(f"{indent}}}")
+        out.append(f"{indent}unpack((_packedSt)_word);")
+    indent = indent[:-4]
+    out.append(f'{indent}}}')
+    return out
+
+def _scPackDatapathLines(vars, indent, prj):
+    """sc_pack() statements for a struct with a datapath field anywhere in it.
+    The field is a uint8_t * backdoor, so its payload bytes are copied into
+    packed_data one byte at a time, and every other field by its own range."""
+    out = list()
+    isParam = vars['isParameterizable']
+    posUpdate = None
     high,low = 0,0
     if isParam:
         out.append(f"{indent}uint16_t _pos{{0}};")
@@ -832,7 +959,7 @@ def sc_pack(handle, args, vars, indent, prj=None):
         varName = data['variable']
         varIndex = ''
         high = low + data['arraywidth'] - 1
-        widthExpr = cppVarBitwidth(data, prj, isParam) if prj else data['bitwidth']
+        widthExpr = cppVarBitwidth(data, prj, isParam)
         if data['generator'] == 'datapath':
             num_bytes = int(data['bitwidth'] / 8)
             out.append(f'{indent}for(unsigned int bsl=0; bsl<{num_bytes}; bsl++) {{')
@@ -844,11 +971,7 @@ def sc_pack(handle, args, vars, indent, prj=None):
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                arraySizeExpr = data['arraySize']
-                if isParam:
-                    arraySizeExpr = cppArraySize(data, prj, True)
-                    widthExpr = cppVarBitwidth(data, prj, True)
-                out.append(f"{indent}for(unsigned int i=0; i<{arraySizeExpr}; i++) {{")
+                out.append(f"{indent}for(unsigned int i=0; i<{cppArraySize(data, prj, isParam)}; i++) {{")
                 if isParam:
                     rng_high, rng_low  = f"_pos+{widthExpr}-1", "_pos"
                     posUpdate = f"_pos += {widthExpr};"
@@ -857,38 +980,33 @@ def sc_pack(handle, args, vars, indent, prj=None):
                 indent += ' '*4
             else:
                 if isParam:
-                    widthExpr = cppVarBitwidth(data, prj, True)
                     rng_high, rng_low  = f"_pos+{widthExpr}-1", "_pos"
                 else:
                     rng_high, rng_low  = f"{high}", f"{low}"
             if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
-                if structType != 'bool':
-                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and isParam:
-                        widthExpr = cppVarBitwidth(data, prj, True)
-                        for wix in range(data['varLoopCount']):
-                            out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
-                            out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
-                            out.append(f'{indent}    packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}) = {varName}{varIndex}.word[{wix}];')
-                            out.append(f'{indent}}}')
-                    elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
-                        if not data['isArray']:
-                            loop_stride = 64
-                        else:
-                            loop_stride = data['bitwidth'] // data['varLoopCount']
-                        loop_low = low
-                        for wix in range(data['varLoopCount']):
-                            if not data['isArray']:
-                                loop_high = loop_low + loop_stride - 1
-                                loop_high = min(loop_high, high)
-                                rng_high, rng_low  = f"{loop_high}", f"{loop_low}"
-                                loop_low = loop_high + 1
-                            else:
-                                rng_high, rng_low  = f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix+1}-1", f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix}"
-                            out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}{varIndex}.word[{wix}];')
+                if data['varLoopCount'] > 1 and isParam:
+                    for wix in range(data['varLoopCount']):
+                        out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
+                        out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
+                        out.append(f'{indent}    packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}) = {varName}{varIndex}.word[{wix}];')
+                        out.append(f'{indent}}}')
+                elif data['varLoopCount'] > 1:
+                    if not data['isArray']:
+                        loop_stride = 64
                     else:
-                        out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}{varIndex};')
+                        loop_stride = data['bitwidth'] // data['varLoopCount']
+                    loop_low = low
+                    for wix in range(data['varLoopCount']):
+                        if not data['isArray']:
+                            loop_high = loop_low + loop_stride - 1
+                            loop_high = min(loop_high, high)
+                            rng_high, rng_low  = f"{loop_high}", f"{loop_low}"
+                            loop_low = loop_high + 1
+                        else:
+                            rng_high, rng_low  = f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix+1}-1", f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix}"
+                        out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}{varIndex}.word[{wix}];')
                 else:
-                    out.append(f'{indent}packed_data = ({structType}) {varName}{varIndex};')
+                    out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}{varIndex};')
             elif data['entryType'] == 'NamedStruct':
                 out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}{varIndex}.sc_pack();')
             else:
@@ -903,24 +1021,13 @@ def sc_pack(handle, args, vars, indent, prj=None):
                 out.append(f"{indent}_pos += {widthExpr};")
 
         low = high + 1
-    out.append(f"{indent}return packed_data;")
-    indent = indent[:-4]
-    out.append(f'{indent}}}')
     return out
 
-# sc_unpack
-def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False):
+def _scUnpackDatapathLines(vars, indent, prj, useConfig):
+    """sc_unpack() opening brace and statements for a struct with a datapath
+    field anywhere in it. The payload bytes are written through the field's
+    uint8_t * backdoor, so the destination struct must point it at a buffer."""
     out = list()
-    if args.section == 'header' and handle == 'inline':
-        out.append(f"{indent}inline void sc_unpack({structType} packed_data)")
-    elif args.section == 'header' and handle == 'split':
-        out.append(f"{indent}void sc_unpack({structType} packed_data);")
-        return out
-    elif args.section == 'cpp' and handle == 'split':
-        decl = f"{args.namespace}::" if args.namespace else ''
-        out.append(f"{indent}void {decl}{vars['structure']}::sc_unpack({structType} packed_data)")
-    else:
-        return out
     out.append(f'{indent}{{')
     high,low = 0,0
     if useConfig:
@@ -929,7 +1036,8 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
     posUpdate = None
     for _, data in reversed(vars['vars'].items()):
         varName = data['variable']
-        varType = cppTypeName(data, prj, useConfig) if prj else (data['varType'] if data['entryType'] != 'NamedStruct' else data['subStruct'])
+        varType = cppTypeName(data, prj, useConfig)
+        widthExpr = cppVarBitwidth(data, prj, useConfig)
         varIndex = ''
         high = low + data['arraywidth'] - 1
         if data['generator'] == 'datapath':
@@ -943,9 +1051,7 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                arraySizeExpr = cppArraySize(data, prj, useConfig) if prj else data['arraySize']
-                widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
-                out.append(f"{indent}for(unsigned int i=0; i<{arraySizeExpr}; i++) {{")
+                out.append(f"{indent}for(unsigned int i=0; i<{cppArraySize(data, prj, useConfig)}; i++) {{")
                 if useConfig:
                     rng_high, rng_low  = f"_pos+{widthExpr}-1", "_pos"
                     posUpdate = f"_pos += {widthExpr};"
@@ -954,49 +1060,41 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
                 indent += ' '*4
             else:
                 if useConfig:
-                    widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
                     rng_high, rng_low  = f"_pos+{widthExpr}-1", "_pos"
                     posUpdate = f"_pos += {widthExpr};"
                 else:
                     rng_high, rng_low  = f"{high}", f"{low}"
             if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
-                if structType != 'bool':
-                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
-                        widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
-                        # Zero the destination first: a Config whose width is an
-                        # exact multiple of 64 skips the guarded write of the
-                        # top word(s), so any preexisting garbage there would
-                        # survive. unpack() memsets for the same reason.
-                        out.append(f'{indent}memset((uint64_t *)&{varName}{varIndex}, 0, sizeof({varName}{varIndex}));')
-                        for wix in range(data['varLoopCount']):
-                            out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
-                            out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
-                            out.append(f'{indent}    {varName}{varIndex}.word[{wix}] = (uint64_t) packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}).to_uint64();')
-                            out.append(f'{indent}}}')
-                    elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
-                        if not data['isArray']:
-                            loop_stride = 64
-                        else:
-                            loop_stride = data['bitwidth'] // data['varLoopCount']
-                        loop_low = low
-                        varType = 'uint64_t'
-                        for wix in range(data['varLoopCount']):
-                            if not data['isArray']:
-                                loop_high = loop_low + loop_stride - 1
-                                loop_high = min(loop_high, high)
-                                rng_high, rng_low  = f"{loop_high}", f"{loop_low}"
-                                loop_low = loop_high + 1
-                            else:
-                                rng_high, rng_low  = f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix+1}-1", f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix}"
-                            out.append(f'{indent}{varName}{varIndex}.word[{wix}] = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
+                if data['varLoopCount'] > 1 and useConfig:
+                    # Zero the destination first: a Config whose width is an
+                    # exact multiple of 64 skips the guarded write of the
+                    # top word(s), so any preexisting garbage there would
+                    # survive. unpack() memsets for the same reason.
+                    out.append(f'{indent}memset((uint64_t *)&{varName}{varIndex}, 0, sizeof({varName}{varIndex}));')
+                    for wix in range(data['varLoopCount']):
+                        out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
+                        out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
+                        out.append(f'{indent}    {varName}{varIndex}.word[{wix}] = (uint64_t) packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}).to_uint64();')
+                        out.append(f'{indent}}}')
+                elif data['varLoopCount'] > 1:
+                    if not data['isArray']:
+                        loop_stride = 64
                     else:
-                        out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
-                        # Add sign extension for signed types
-                        isSigned = data['isSigned']
-                        widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
-                        out.extend(get_sign_extension_code(varName, varIndex, varType, widthExpr, indent, isSigned))
-                else :
-                    out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data;')
+                        loop_stride = data['bitwidth'] // data['varLoopCount']
+                    loop_low = low
+                    for wix in range(data['varLoopCount']):
+                        if not data['isArray']:
+                            loop_high = loop_low + loop_stride - 1
+                            loop_high = min(loop_high, high)
+                            rng_high, rng_low  = f"{loop_high}", f"{loop_low}"
+                            loop_low = loop_high + 1
+                        else:
+                            rng_high, rng_low  = f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix+1}-1", f"{low}+i*{data['bitwidth']}+{loop_stride}*{wix}"
+                        out.append(f'{indent}{varName}{varIndex}.word[{wix}] = (uint64_t) packed_data.range({rng_high}, {rng_low}).to_uint64();')
+                else:
+                    out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
+                    out.extend(get_sign_extension_code(varName, varIndex, varType, widthExpr, indent, data['isSigned'],
+                                                       None if useConfig else data['bitwidth']))
             elif data['entryType'] == 'NamedStruct':
                 out.append(f'{indent}{varName}{varIndex}.sc_unpack(packed_data.range({rng_high}, {rng_low}));')
             else :
@@ -1011,8 +1109,6 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
                 out.append(f"{indent}_pos += {widthExpr};")
 
         low = high + 1
-    indent = indent[:-4]
-    out.append(f'{indent}}}')
     return out
 
     # constructor
@@ -1026,7 +1122,8 @@ def constuctor_bv(structName, vars, indent, prj):
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
         structType = 'bool'
-    out.append(f"{indent}explicit {declStructName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
+    param = f"{structType} packed_data" if structType == 'bool' else f"const {structType} &packed_data"
+    out.append(f"{indent}explicit {declStructName}({param}) {{ sc_unpack(packed_data); }}")
     return out
 
 def constructor(structName, vars, indent, prj=None, useConfig=False):
@@ -1080,7 +1177,7 @@ def constructor_packed(structName, vars, indent):
 
 def get_unpack_mask_str(needBits, baseSize):
     if not isinstance(needBits, int):
-        return cppWidthMask(needBits)
+        return cppWidthMask(needBits, True)
     mask = ''
     # truncate the mask to the needed bits case
     if (needBits < baseSize):
@@ -1089,14 +1186,17 @@ def get_unpack_mask_str(needBits, baseSize):
         mask = ' & 1'
     return mask
 
-def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSigned):
-    """Generate sign extension code for signed types"""
+def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSigned, literalWidth):
+    """Sign extension for a signed field narrower than its C++ type.
+    `literalWidth` is the field's width outside a parameterizable struct and
+    None inside one; a fixed width of 64 has no upper bits to fill."""
     out = []
-    if isSigned and (not isinstance(bitwidth, int) or bitwidth < 64):
+    if isSigned and (literalWidth is None or literalWidth < 64):
         # Need to perform sign extension if the sign bit is set
         out.append(f"{indent}// Sign extension for signed type")
         out.append(f"{indent}if ({varName}{varIndex} & (1ULL << ({bitwidth} - 1))) {{")
-        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ~((1ULL << ({bitwidth})) - 1));")
+        fill = f"~{symbolicMask(bitwidth)}" if literalWidth is None else f"~((1ULL << ({bitwidth})) - 1)"
+        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | {fill});")
         out.append(f"{indent}}}")
     return out
 
@@ -1137,17 +1237,20 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
     baseMask = baseSize - 1
     log2BaseSize = baseMask.bit_length()
     usePos = False
-    isSingleArray = (count == 1 and vars['vars'][next(iter(vars['vars']))]['arraySizeValue'] == 1) # detect array with only single element
+    firstVar = vars['vars'][next(iter(vars['vars']))]
+    isSingleArray = count == 1 and firstVar['arraySizeValue'] == 1 and not widthDependsOnConfig(firstVar, prj)
     offsetShift = ""
     if bitwidth > baseSize:
         src = f"_src[ _pos >> {log2BaseSize} ]"
         isPtr = True
-    if isPtr or count > 1 or (count == 1 and vars['vars'][next(iter(vars['vars']))]['isArray'] and not isSingleArray):
+    if isPtr or count > 1 or (count == 1 and firstVar['isArray'] and not isSingleArray):
         out.append(f"{indent}uint16_t _pos{{0}};")
         usePos = True
         offsetShift = f" >> (_pos & {baseMask})"
     currentPos = 0
     nextPos = 0
+    # While staticPos holds, currentPos is the field's position under every Config.
+    staticPos = True
     for _, data in reversed(vars['vars'].items()):
         count -= 1
         is_last = (0 == count)
@@ -1169,7 +1272,7 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}uint16_t _bits = {bitwidthExpr};")
             out.append(f"{indent}uint16_t _consume;")
         if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
-            if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
+            if data['varLoopCount'] > 1 and useConfig:
                 # Templated array-backed field. Zero the destination so the
                 # subsequent OR-based copy lands cleanly, and use unpack_bits
                 # (masking variant of pack_bits) so adjacent packed-form
@@ -1179,7 +1282,7 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                 out.append(f'{indent}memset((uint64_t *)&{varName}{varIndex}, 0, sizeof({varName}{varIndex}));')
                 out.append(f'{indent}unpack_bits((uint64_t *)&{varName}{varIndex}, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});')
                 out.append(f'{indent}_pos += {bitwidthExpr};') if usePos else None
-            elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
+            elif data['varLoopCount'] > 1:
                 if not data['isArray']:
                     loop_stride = 64
                 else:
@@ -1223,6 +1326,15 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                 srcMask = get_unpack_mask_str(bitwidthExpr if useConfig else bitsLeft, baseSize)
                 out.append(f'{indent}{varName}{varIndex} = ({varType})(({src}{offsetShift}){srcMask});')
                 bitsLeft -= consumeBits
+                # A position or width that changes with Config can put the
+                # field across a word boundary at run time.
+                fixedWidth = not widthDependsOnConfig(data, prj)
+                fitsInWord = (fixedWidth and data['bitwidth'] == 1) or (staticPos and (
+                    (currentPos & baseMask) == 0 or (fixedWidth and (currentPos & baseMask) + data['bitwidth'] <= baseSize)))
+                if useConfig and isPtr and not calcAlign and not fitsInWord:
+                    out.append(f"{indent}if ((_pos & {baseMask}) + {bitwidthExpr} > {baseSize}) {{")
+                    out.append(f'{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ((_src[ (_pos >> {log2BaseSize}) + 1 ] << ({baseSize} - (_pos & {baseMask}))){srcMask}));')
+                    out.append(f"{indent}}}")
                 if (calcAlign):
                     out.append(f'{indent}_pos += _consume;') if usePos else None
                 else:
@@ -1239,7 +1351,8 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                     out.append(f'{indent}_pos += {bitsLeft};') if usePos else None
                 # Add sign extension for signed types
                 isSigned = data['isSigned']
-                out.extend(get_sign_extension_code(varName, varIndex, varType, bitwidthExpr, indent, isSigned))
+                out.extend(get_sign_extension_code(varName, varIndex, varType, bitwidthExpr, indent, isSigned,
+                                                   None if useConfig else data['bitwidth']))
         elif data['entryType'] == 'NamedStruct':
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
             tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
@@ -1247,35 +1360,35 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             # parameterized (templated) sub-struct types like rgb_pixel_t<Config>
             # make ::_packedSt a dependent type, which requires the typename keyword
             packedSt = packedStType(varType)
+            # A nested _packedSt narrower than uint64_t takes its bits by value
+            # conversion, so each access keeps the type of the object it reads.
+            nestedWords = packedStIsWords(prj.data['structures'][data['subStructKey']])
             # we are aligned if the current position is a multiple of the base size
             # except for the array case, unless the array case is the single element array case)
-            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray)
+            isAligned = staticPos and ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray)
             out.append(f'{indent}{{')
             indent += ' '*4
-            if (isAligned):
+            if (isAligned and nestedWords):
                 out.append(f'{indent}{varName}{varIndex}.unpack(*({packedSt}*)&{src});')
+            elif isAligned:
+                out.append(f'{indent}{varName}{varIndex}.unpack(({packedSt})({src}));')
             else:
                 # cases include whether src or dst is >=64 bits
-                # if tmp is <= 32 bit we want to use a 64 bit temp to prevent alignment issues and cast for the unpack
-                if data['bitwidth'] <= 32:
+                if not nestedWords:
                     out.append(f"{indent}uint64_t _tmp{{0}};")
-                    unpackCast = f"*(({packedSt}*)&_tmp)"
+                    unpackCast = f"({packedSt})_tmp"
                 else:
                     out.append(f"{indent}{packedSt} _tmp{{0}};")
                     unpackCast = f"_tmp"
                 if (bitwidth >= 64):
                     # src is using 64 bit words so use pass by pointer.
-                    # _tmp is value-initialised above (line ~1166), so the
-                    # "dest is clean" half of the unpack_bits contract is
-                    # already satisfied; this rename only adds the source
-                    # mask so adjacent parent-struct fields' bits do not
-                    # leak into the nested struct's _tmp staging area.
+                    # unpack_bits needs the zeroed _tmp and masks off the
+                    # parent's neighbouring fields.
                     out.append(f"{indent}unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});")
                 else:
                     # src is using < 64 bit so we can just use bit shifting
                     out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << ({bitwidthExpr})) - 1);")
                 out.append(f'{indent}{varName}{varIndex}.unpack({unpackCast});')
-                # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]
             out.append(f'{indent}}}')
             out.append(f'{indent}_pos += {bitwidthExpr};') if usePos else None
@@ -1285,6 +1398,7 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             indent = indent[:-4]
             out.append(f"{indent}}}")
         currentPos = nextPos
+        staticPos = staticPos and not widthDependsOnConfig(data, prj)
     # if the last statement was an increment its dead code - delete it
     if out[-1].strip().startswith('_pos +='):
         out.pop()
@@ -1298,9 +1412,7 @@ def fw_pack_setup(args, vars, indent, prj):
     fw_pack_vars = dict()
     useConfig = vars['isParameterizable']
     bitwidth = vars['maxBitwidth'] if useConfig else vars['width']
-    structName = (valueKeyedTypeRef('structure', vars['structureKey'], vars['structure'], prj)
-                 if useConfig else vars['structure'])
-    out.append(f"{indent}memset(&_ret, 0, {structName}::_byteWidth);")
+    out.append(f"{indent}memset(&_ret, 0, sizeof(_ret));")
     retType, rowType, baseSize = convertToType(bitwidth)
     if useConfig:
         rowType = 'uint64_t'
@@ -1342,14 +1454,16 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
     # Generate mask for signed types to strip sign-extended bits after cast to uint64_t
     # For unsigned types, the cast naturally zero-extends so no mask is needed
     if isSigned and (useConfig or data['bitwidth'] < 64):
-        valueMask = cppWidthMask(bitwidthExpr)
+        valueMask = cppWidthMask(bitwidthExpr, useConfig)
     else:
         valueMask = ""
-    fitsDirect = (pos + data['arraywidth'] <= 64 and not isArray and not useConfig)
+    # A struct of 64 bits or fewer takes every field by a shift into _ret, so
+    # each write stays inside a _packedSt narrower than uint64_t.
+    fitsDirect = not useConfig and (fw_pack_vars['bitwidth'] <= 64 or (pos + data['arraywidth'] <= 64 and not isArray))
     if fitsDirect:
         if useConfig:
             out.append(f"{indent}{ret} |= {fw_pack_vars['cast']}{data['variable']}{arrayIndex}{valueMask} << ({srcPos} & {baseMask});")
-        elif pos==0:
+        elif pos==0 and not isArray:
             out.append(f"{indent}{ret} = {data['variable']}{valueMask};")
         else:
             if valueMask:
@@ -1357,7 +1471,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
             else:
                 out.append(f"{indent}{ret} |= {fw_pack_vars['cast']}{data['variable']}{arrayIndex} << ({srcPos} & {baseMask});")
     else:
-        if data['bitwidth'] <= 64:
+        if data['varLoopCount'] == 1:
             if data['bitwidth'] == 1 and not isArray and not useConfig:
                 out.append(f"{indent}{ret} |= ({fw_pack_vars['cast']}{data['variable']} << ({srcPos} & {baseMask}));")
             else:
@@ -1379,7 +1493,12 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
     baseSize = fw_pack_vars['baseSize']
     baseMask = baseSize - 1
     isArray = data['isArray']
-    isAligned = ((pos & (baseMask)) == 0) and (not isArray or ((data['arraywidth'] & baseMask == 0) and (data['bitwidth'] & baseMask == 0)))
+    # A nested _packedSt narrower than uint64_t is packed into a local of its
+    # own type and shifted into _ret, so each access keeps the type of the
+    # object it writes.
+    isAligned = fw_pack_vars['staticPos'] and ((pos & (baseMask)) == 0) \
+        and (not isArray or ((data['arraywidth'] & baseMask == 0) and (data['bitwidth'] & baseMask == 0))) \
+        and packedStIsWords(prj.data['structures'][data['subStructKey']])
 
     if isArray:
         srcPos = '_pos'
@@ -1391,8 +1510,8 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
         srcPos = pos
         incPos = None
     if isAligned:
-        # for aligned data we can go straight to the destination
-        if data['arraywidth'] > 64:
+        # for aligned data we can go straight to the destination word
+        if fw_pack_vars['bitwidth'] > 64:
             log2BaseSize = baseMask.bit_length()
             if isArray:
                 dest = f"_ret[ _pos >> {log2BaseSize} ]"
@@ -1432,6 +1551,8 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
         out.append(f'{indent}{varName}{varIndex}.pack(_tmp);')
         if pos + data['arraywidth'] <= 64 and fw_pack_vars['bitwidth'] <= 64:
             out.append(f"{indent}_ret |= {fw_pack_vars['cast']}_tmp << ({srcPos} & {baseMask});")
+        elif not isArray and not useConfig and (pos & 63) + data['bitwidth'] <= 64:
+            out.append(f"{indent}_ret[ {pos >> 6} ] |= (uint64_t)_tmp << {pos & 63};")
         else:
             out.append(f'{indent}pack_bits((uint64_t *)&_ret, {srcPos}, {tmp}, {bitwidthExpr});')
     out.append(f'{indent}{incPos}') if incPos else None
@@ -1490,6 +1611,8 @@ def processPackUnpack(fname, handle, args, vars, indent, prj=None, useConfig=Fal
     # loop through the vars
     pos = 0
     posCorrect = True
+    # While staticPos holds, pos is the field's position under every Config.
+    setupVars['staticPos'] = True
 
     count = len(vars['vars'])
     varFn = p['functions'].get('oneVar', None)
@@ -1505,7 +1628,9 @@ def processPackUnpack(fname, handle, args, vars, indent, prj=None, useConfig=Fal
                 out.append(indent + posDeclare.format(pos))
                 posDeclare = None
             else:
-                out.append(indent + posCorrection.format(pos)) if not posCorrect and posCorrection else None
+                # A parameterizable struct advances _pos after every field, and
+                # pos holds default-Config widths, so it takes no correction.
+                out.append(indent + posCorrection.format(pos)) if not posCorrect and posCorrection and not useConfig else None
             arraySizeExpr = cppArraySize(data, prj, useConfig) if prj else data['arraySize']
             out.append(f"{indent}for(unsigned int i=0; i<{arraySizeExpr}; i++) {{")
             loopClose = f"{indent}}}"
@@ -1516,6 +1641,7 @@ def processPackUnpack(fname, handle, args, vars, indent, prj=None, useConfig=Fal
             out.extend(varFn(setupVars, pos, args, data, indent))
         pos += data['arraywidth']
         posCorrect = data['isArray']
+        setupVars['staticPos'] = setupVars['staticPos'] and not widthDependsOnConfig(data, prj)
 
         if loopClose:
             out.append(loopClose)
@@ -1542,60 +1668,194 @@ def structContainsSignedTypes(structValue, prj, data):
                 return True
     return False
 
+def _referenceFieldLines(direction, vars, indent, prj, useConfig):
+    """The statements of testRefPack (direction 'pack') or testRefUnpack
+    ('unpack') for one struct. Each field is placed with its own sc_bv range at
+    the position the YAML declares: the last field at bit 0, array element i
+    above element i-1, a word[] member's words in ascending order. A nested
+    struct goes through the nested type's reference, never its sc_pack()."""
+    out = list()
+    low = 0
+    if useConfig:
+        out.append(f"{indent}uint16_t _pos{{0}};")
+    for _, data in reversed(vars['vars'].items()):
+        varName = f"x.{data['variable']}"
+        widthExpr = cppVarBitwidth(data, prj, useConfig)
+        varType = cppTypeName(data, prj, useConfig)
+        bodyIndent = indent
+        if data['isArray']:
+            varIndex = '[i]'
+            out.append(f"{indent}for(unsigned int i=0; i<{cppArraySize(data, prj, useConfig)}; i++) {{")
+            bodyIndent = indent + ' '*4
+            base = '_pos' if useConfig else f"{low}+i*{widthExpr}"
+        else:
+            varIndex = ''
+            base = '_pos' if useConfig else f"{low}"
+        field = f"{varName}{varIndex}"
+        if data['entryType'] == 'NamedStruct':
+            rng = f"packed_data.range({base}+{widthExpr}-1, {base})"
+            if direction == 'pack':
+                out.append(f"{bodyIndent}{rng} = testRefPack({field});")
+            else:
+                out.append(f"{bodyIndent}testRefUnpack({field}, {rng});")
+        elif data['varLoopCount'] > 1 and useConfig:
+            if direction == 'unpack':
+                out.append(f"{bodyIndent}memset((uint64_t *)&{field}, 0, sizeof({field}));")
+            for wix in range(data['varLoopCount']):
+                out.append(f"{bodyIndent}if ({widthExpr} > {wix * 64}) {{")
+                out.append(f"{bodyIndent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));")
+                rng = f"packed_data.range({base} + {wix * 64} + _bits - 1, {base} + {wix * 64})"
+                if direction == 'pack':
+                    out.append(f"{bodyIndent}    {rng} = {field}.word[{wix}];")
+                else:
+                    out.append(f"{bodyIndent}    {field}.word[{wix}] = (uint64_t) {rng}.to_uint64();")
+                out.append(f"{bodyIndent}}}")
+        elif data['varLoopCount'] > 1:
+            for wix in range(data['varLoopCount']):
+                bits = min(64, data['bitwidth'] - wix * 64)
+                rng = f"packed_data.range({base}+{wix * 64 + bits - 1}, {base}+{wix * 64})"
+                if direction == 'pack':
+                    out.append(f"{bodyIndent}{rng} = {field}.word[{wix}];")
+                else:
+                    out.append(f"{bodyIndent}{field}.word[{wix}] = (uint64_t) {rng}.to_uint64();")
+        else:
+            rng = f"packed_data.range({base}+{widthExpr}-1, {base})"
+            if direction == 'pack':
+                out.append(f"{bodyIndent}{rng} = {field};")
+            else:
+                out.append(f"{bodyIndent}{field} = ({varType}) {rng}.to_uint64();")
+                out.extend(get_sign_extension_code(varName, varIndex, varType, widthExpr, bodyIndent,
+                                                   data['isSigned'], None if useConfig else data['bitwidth']))
+        if useConfig:
+            out.append(f"{bodyIndent}_pos += {widthExpr};")
+        if data['isArray']:
+            out.append(f"{indent}}}")
+        low += data['arraywidth']
+    return out
+
+def _referenceLines(args, prj, data):
+    """testRefPack/testRefUnpack for every struct the round-trip test covers:
+    an encoder written field by field, independent of pack()/unpack(), for the
+    test to check those against. They sit in the struct's namespace so a nested
+    struct from another context finds its own reference by argument-dependent
+    lookup."""
+    useConfig = args.mode == 'module'
+    decls = list()
+    defs = list()
+    for key, value in data['structures'].items():
+        isParam = value['isParameterizable']
+        if isParam and not useConfig:
+            continue
+        if prj.structureHasDatapath(value['structureKey']):
+            continue
+        structName = value['structure']
+        if isParam:
+            templateArgs = prj.paramTemplateArgs('structure', key)
+            argList = ', '.join(f"{configType(row)} {row['constant']}" for row in templateArgs)
+            template = f"template<{argList}> "
+            typeName = valueKeyedTypeRef('structure', key, structName, prj)
+        else:
+            template = ''
+            typeName = structName
+        bvType = f"sc_bv<{typeName}::_bitWidth>"
+        packSig = f"{template}inline {bvType} testRefPack(const {typeName} &x)"
+        unpackSig = f"{template}inline void testRefUnpack({typeName} &x, const {bvType} &packed_data)"
+        decls.extend([packSig + ';', unpackSig + ';'])
+        defs.append(packSig)
+        defs.append('{')
+        defs.append(f"    {bvType} packed_data;")
+        defs.extend(_referenceFieldLines('pack', value, ' '*4, prj, isParam))
+        defs.append('    return packed_data;')
+        defs.append('}')
+        defs.append(unpackSig)
+        defs.append('{')
+        defs.extend(_referenceFieldLines('unpack', value, ' '*4, prj, isParam))
+        defs.append('}')
+    return decls + defs
+
 def _roundTripHelperLines(indent):
     """The struct round-trip body, parameterized over the struct type T and a
-    runtime struct-name string. Emitted once per context (Option C) so test()
-    is a deterministic list of calls rather than inlined-per-struct bodies."""
-    out = list()
-    out.append(f'{indent}template<typename T>')
-    out.append(f'{indent}static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {{')
-    indent += ' '*4
-    out.append(f'{indent}for(auto pattern : patterns) {{')
-    indent += ' '*4
-    out.append(f'{indent}typename T::_packedSt packed;')
-    out.append(f'{indent}memset(&packed, pattern, T::_byteWidth);')
-    out.append(f'{indent}sc_bv<T::_bitWidth> aInit;')
-    out.append(f'{indent}sc_bv<T::_bitWidth> aTest;')
-    out.append(f'{indent}for (int i = 0; i < T::_byteWidth; i++) {{')
-    out.append(f'{indent}    int end = std::min((i+1)*8-1, T::_bitWidth-1);')
-    out.append(f'{indent}    aInit.range(end, i*8) = pattern;')
-    out.append(f'{indent}}}')
-    out.append(f'{indent}T a;')
-    out.append(f'{indent}a.sc_unpack(aInit);')
-    out.append(f'{indent}T b;')
-    out.append(f'{indent}b.unpack(packed);')
-    out.append(f'{indent}if (!(b == a)) {{;')
-    out.append(f'{indent}    cout << a.prt();')
-    out.append(f'{indent}    cout << b.prt();')
-    out.append(f'{indent}    Q_ASSERT(false, sName);')
-    out.append(f'{indent}}}')
-    out.append(f'{indent}uint64_t test;')
-    out.append(f'{indent}memset(&test, pattern, 8);')
-    out.append(f'{indent}b.pack(packed);')
-    out.append(f'{indent}aTest = a.sc_pack();')
-    out.append(f'{indent}if (!(aTest == aInit)) {{;')
-    out.append(f'{indent}    cout << a.prt();')
-    out.append(f'{indent}    cout << aTest;')
-    out.append(f'{indent}    Q_ASSERT(false, sName);')
-    out.append(f'{indent}}}')
-    out.append(f'{indent}uint64_t *ptr = (uint64_t *)&packed;')
-    out.append(f'{indent}uint16_t bitsLeft = T::_bitWidth;')
-    out.append(f'{indent}do {{')
-    out.append(f'{indent}    int bits = std::min((uint16_t)64, bitsLeft);')
-    out.append(f'{indent}    uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);')
-    out.append(f'{indent}    if ((*ptr & mask) != (test & mask)) {{;')
-    out.append(f'{indent}        cout << a.prt();')
-    out.append(f'{indent}        cout << b.prt();')
-    out.append(f'{indent}        Q_ASSERT(false, sName);')
-    out.append(f'{indent}    }}')
-    out.append(f'{indent}    bitsLeft -= bits;')
-    out.append(f'{indent}    ptr++;')
-    out.append(f'{indent}}} while(bitsLeft > 0);')
-    indent = indent[:-4]
-    out.append(f'{indent}}}')
-    indent = indent[:-4]
-    out.append(f'{indent}}}')
-    return out
+    runtime struct-name string. Emitted once per context so test()
+    is a deterministic list of calls rather than inlined-per-struct bodies.
+    The layout checks against testRefPack/testRefUnpack come before the
+    pack(unpack()) round trip, so a misplaced field fails as a layout error."""
+    body = [
+        'template<typename T>',
+        'static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {',
+        '    for(auto pattern : patterns) {',
+        '        roundTripBytes<T>(sName, pattern, 0);',
+        '    }',
+        '    // Bytes that differ by position expose a field placed a whole number of bytes off.',
+        '    roundTripBytes<T>(sName, 0x5b, 0x35);',
+        '}',
+        'template<typename T>',
+        'static void roundTripBytes(const char* sName, uint8_t first, uint8_t step) {',
+        '    using P = typename T::_packedSt;',
+        '    P words{};',
+        '    sc_bv<T::_bitWidth> aInit;',
+        '    for (int i = 0; i < T::_byteWidth; i++) {',
+        '        uint8_t byte = (uint8_t)(first + i * step);',
+        '        int end = std::min((i+1)*8-1, T::_bitWidth-1);',
+        '        aInit.range(end, i*8) = byte;',
+        '        if constexpr (std::is_array_v<P>) {',
+        '            words[i / 8] |= (uint64_t)byte << ((i % 8) * 8);',
+        '        } else {',
+        '            words |= (P)((uint64_t)byte << (i * 8));',
+        '        }',
+        '    }',
+        '    T ref;',
+        '    testRefUnpack(ref, aInit);',
+        '    Q_ASSERT(testRefPack(ref) == aInit, std::string(sName) + ": testRefPack(testRefUnpack(pattern)) is not the pattern");',
+        '    T b;',
+        '    b.unpack(words);',
+        '    if (!(b == ref)) {',
+        '        cout << ref.prt() << endl << b.prt() << endl;',
+        '        Q_ASSERT(false, std::string(sName) + ": unpack() differs from the reference layout");',
+        '    }',
+        '    T c;',
+        '    c.sc_unpack(aInit);',
+        '    if (!(c == ref)) {',
+        '        cout << ref.prt() << endl << c.prt() << endl;',
+        '        Q_ASSERT(false, std::string(sName) + ": sc_unpack() differs from the reference layout");',
+        '    }',
+        '    P out;',
+        '    ref.pack(out);',
+        '    sc_bv<T::_bitWidth> outBits;',
+        '    for (int i = 0; i < T::_bitWidth; i++) {',
+        '        uint64_t word;',
+        '        if constexpr (std::is_array_v<P>) {',
+        '            word = out[i / 64];',
+        '        } else {',
+        '            word = (uint64_t)out;',
+        '        }',
+        '        outBits[i] = (bool)((word >> (i % 64)) & 1);',
+        '    }',
+        '    if (!(outBits == aInit)) {',
+        '        cout << ref.prt() << endl << outBits << endl << aInit << endl;',
+        '        Q_ASSERT(false, std::string(sName) + ": pack() differs from the reference layout");',
+        '    }',
+        '    sc_bv<T::_bitWidth> scPacked = ref.sc_pack();',
+        '    if (!(scPacked == aInit)) {',
+        '        cout << ref.prt() << endl << scPacked << endl << aInit << endl;',
+        '        Q_ASSERT(false, std::string(sName) + ": sc_pack() differs from the reference layout");',
+        '    }',
+        '    b.pack(out);',
+        '    for (int i = 0; i < T::_bitWidth; i++) {',
+        '        uint64_t word;',
+        '        if constexpr (std::is_array_v<P>) {',
+        '            word = out[i / 64];',
+        '        } else {',
+        '            word = (uint64_t)out;',
+        '        }',
+        '        outBits[i] = (bool)((word >> (i % 64)) & 1);',
+        '    }',
+        '    if (!(outBits == aInit)) {',
+        '        cout << b.prt() << endl << outBits << endl << aInit << endl;',
+        '        Q_ASSERT(false, std::string(sName) + ": pack(unpack(pattern)) is not the pattern");',
+        '    }',
+        '}',
+    ]
+    return [indent + line for line in body]
 
 
 def _sampleConfigs(prj, data):
@@ -1666,6 +1926,10 @@ def structTest(args, prj, data):
     for _, value in data['structures'].items():
         isParam = value['isParameterizable']
         if isParam and not useConfig:
+            continue
+        if prj.structureHasDatapath(value['structureKey']):
+            # A datapath field is a host pointer, so unpacking a bit pattern
+            # into it and comparing layouts has no meaning.
             continue
         struct = value['structure']
         patternVar = 'signedPatterns' if structContainsSignedTypes(value, prj, data) else 'patterns'

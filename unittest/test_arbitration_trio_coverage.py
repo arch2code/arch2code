@@ -42,6 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from _tmp_helpers import remove_tree
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -155,7 +156,8 @@ def test_required_families_are_trio_complete(trio_complete_families):
 # push_ack, req_ack). A family that reaches trio-complete status without an
 # entry here fails loudly below instead of silently skipping its compile
 # check, so a new family cannot join the trio without also joining the real
-# compile contract.
+# compile contract. ctor_args holds any required constructor arguments after
+# the name and block.
 #
 # dummyPayload<W> (defined inline in the generated translation unit) is a
 # minimal stand-in for a generated payload struct (the same shape arch2code
@@ -167,44 +169,54 @@ def test_required_families_are_trio_complete(trio_complete_families):
 FAMILY_COMPILE_SPECS = {
     'rdy_vld': {
         'channel': 'rdy_vld_channel<dummyPayload<32>>',
+        'ctor_args': ', BACKPRESSURE_ALLOWED',
         'in_if': 'rdy_vld_in_if<dummyPayload<32>>',
     },
     'apb': {
         'channel': 'apb_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'apb_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
     'memory': {
         'channel': 'memory_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'memory_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
     'axi_read': {
         'channel': 'axi_read_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'axi_read_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
     'axi_write': {
         'channel': 'axi_write_channel<dummyPayload<32>, dummyPayload<32>, dummyPayload<4>>',
+        'ctor_args': '',
         'in_if': 'axi_write_in_if<dummyPayload<32>, dummyPayload<32>, dummyPayload<4>>',
     },
     'axi4_stream': {
         'channel': 'axi4_stream_channel<dummyPayload<32>, dummyPayload<8>, dummyPayload<8>>',
+        'ctor_args': ', BACKPRESSURE_ALLOWED',
         'in_if': 'axi4_stream_in_if<dummyPayload<32>, dummyPayload<8>, dummyPayload<8>>',
     },
     'notify_ack': {
         # T is an unused "dummy template argument for consistency with other
         # interfaces" per the header's own comment, defaulted to bool.
         'channel': 'notify_ack_channel<>',
+        'ctor_args': '',
         'in_if': 'notify_ack_in_if<>',
     },
     'pop_ack': {
         'channel': 'pop_ack_channel<dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'pop_ack_in_if<dummyPayload<32>>',
     },
     'push_ack': {
         'channel': 'push_ack_channel<dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'push_ack_in_if<dummyPayload<32>>',
     },
     'req_ack': {
         'channel': 'req_ack_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
         'in_if': 'req_ack_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
 }
@@ -255,7 +267,7 @@ struct dummyPayload
 
 void trio_compile_check_{family}()
 {{
-    {channel} channel("trioCheck", "trioCheckBlock");
+    {channel} channel("trioCheck", "trioCheckBlock"{ctor_args});
     {in_if} *ifacePtr = &channel;
     sc_event event;
     ifacePtr->setExternalEvent(&event);
@@ -300,7 +312,7 @@ def resolve_toolchain():
             return None, f"{mk_path} did not report CXX/C_STD_VER"
         return (values['CXX'], values['C_STD_VER']), None
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        remove_tree(tmpdir)
 
 
 def include_dirs():
@@ -346,7 +358,7 @@ def compile_family(family, header_path, cxx, cxxstd, include_flags, workdir):
     with open(src_path, 'w') as f:
         f.write(TU_TEMPLATE.format(
             family=family, header=os.path.basename(header_path),
-            channel=spec['channel'], in_if=spec['in_if']))
+            channel=spec['channel'], ctor_args=spec['ctor_args'], in_if=spec['in_if']))
 
     cmd = [cxx, f'-std={cxxstd}', '-fsyntax-only',
            '-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES',
@@ -395,7 +407,7 @@ def test_trio_compile_contract(trio_complete_families, headers):
                                          cxxstd, include_flags, workdir)
             check(ok, message)
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        remove_tree(workdir)
 
 
 MALFORMED_OVERRIDE_SRC = """\
@@ -462,7 +474,7 @@ def test_compile_harness_detects_malformed_override():
               f"generic error, so the failure is diagnosable "
               f"(stderr: {result.stderr.strip()[:400]})")
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        remove_tree(workdir)
 
 
 def main():

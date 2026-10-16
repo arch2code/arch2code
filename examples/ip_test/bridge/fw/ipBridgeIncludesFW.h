@@ -56,8 +56,8 @@ inline const char* addr_id_bridge_prt( addr_id_bridge val )
 namespace fw_ns::ipBridge {
 // structures
 struct data8St {
-    data8T data; //8-bit payload; matches ipDataSt::data under variant0
-    bridgeMarkerT marker; //Marker bit; bit-width matches ipDataSt::marker
+    data8T data; /* [7:0] */ //8-bit payload; matches ipDataSt::data under variant0
+    bridgeMarkerT marker; /* [8:8] */ //Marker bit; bit-width matches ipDataSt::marker
 
     data8St() { memset(this, 0, sizeof(data8St)); }
 
@@ -66,7 +66,7 @@ struct data8St {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data8St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
         _ret |= (uint16_t)marker << (8 & 15);
     }
@@ -86,8 +86,8 @@ struct data8St {
 
 };
 struct data70St {
-    data70T data; //70-bit payload; matches ipDataSt::data under variant1
-    bridgeMarkerT marker; //Marker bit; bit-width matches ipDataSt::marker
+    data70T data; /* [69:0] */ //70-bit payload; matches ipDataSt::data under variant1
+    bridgeMarkerT marker; /* [70:70] */ //Marker bit; bit-width matches ipDataSt::marker
 
     data70St() { memset(this, 0, sizeof(data70St)); }
 
@@ -96,7 +96,7 @@ struct data70St {
     typedef uint64_t _packedSt[2];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data70St::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 70);
         _ret[ 1 ] |= ((uint64_t)marker << (70 & 63));
     }

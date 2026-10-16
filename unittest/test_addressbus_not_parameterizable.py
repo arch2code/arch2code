@@ -14,6 +14,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'addressbus-parameterizable')
@@ -174,7 +175,7 @@ def test_router_present_rejected():
               "parameterizable structure")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def test_router_less_rejected():
@@ -214,7 +215,7 @@ def test_router_less_rejected():
               "interface in a router-less project too")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def run_all_tests():

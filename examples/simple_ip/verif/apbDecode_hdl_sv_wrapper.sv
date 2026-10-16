@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module apbDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
     import shared_types_package::*;
@@ -34,26 +36,26 @@ module apbDecode_hdl_sv_wrapper
     // apb_if.src
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uIp();
 
-    assign #0 apbReg_uIp_paddr = apbReg_uIp.paddr;
-    assign #0 apbReg_uIp_psel = apbReg_uIp.psel;
-    assign #0 apbReg_uIp_penable = apbReg_uIp.penable;
-    assign #0 apbReg_uIp_pwrite = apbReg_uIp.pwrite;
-    assign #0 apbReg_uIp_pwdata = apbReg_uIp.pwdata;
-    assign #0 apbReg_uIp.pready = apbReg_uIp_pready;
-    assign #0 apbReg_uIp.prdata = apbReg_uIp_prdata;
-    assign #0 apbReg_uIp.pslverr = apbReg_uIp_pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp_paddr = apbReg_uIp.paddr;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp_psel = apbReg_uIp.psel;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp_penable = apbReg_uIp.penable;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp_pwrite = apbReg_uIp.pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp_pwdata = apbReg_uIp.pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp.pready = apbReg_uIp_pready;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp.prdata = apbReg_uIp_prdata;
+    assign `A2C_HDL_BOUNDARY_DLY apbReg_uIp.pslverr = apbReg_uIp_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) cpu_main();
 
-    assign #0 cpu_main.paddr = cpu_main_paddr;
-    assign #0 cpu_main.psel = cpu_main_psel;
-    assign #0 cpu_main.penable = cpu_main_penable;
-    assign #0 cpu_main.pwrite = cpu_main_pwrite;
-    assign #0 cpu_main.pwdata = cpu_main_pwdata;
-    assign #0 cpu_main_pready = cpu_main.pready;
-    assign #0 cpu_main_prdata = cpu_main.prdata;
-    assign #0 cpu_main_pslverr = cpu_main.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main.paddr = cpu_main_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main.psel = cpu_main_psel;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main.penable = cpu_main_penable;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main.pwrite = cpu_main_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main.pwdata = cpu_main_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main_pready = cpu_main.pready;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main_prdata = cpu_main.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY cpu_main_pslverr = cpu_main.pslverr;
 
     apbDecode dut (
         .apbReg_uIp(apbReg_uIp), // apb_if.src
@@ -62,7 +64,7 @@ module apbDecode_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

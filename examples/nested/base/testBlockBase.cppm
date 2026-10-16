@@ -107,10 +107,10 @@ public:
 
 
     testBlockChannels(std::string name, std::string srcName) :
-    loop1src(("loop1src"+name).c_str(), srcName)
-    ,loop2src(("loop2src"+name).c_str(), srcName)
-    ,loop1dst(("loop1dst"+name).c_str(), srcName)
-    ,loop2dst(("loop2dst"+name).c_str(), srcName)
+    loop1src(("loop1src"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,loop2src(("loop2src"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,loop1dst(("loop1dst"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,loop2dst(("loop2dst"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( testBlockBase *a, testBlockInverted *b)
     {

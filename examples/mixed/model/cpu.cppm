@@ -32,7 +32,11 @@ public:
     // block implementation members
 
 private:
-    void fwTest(void);
+    void test_mem_hier_cpu_read(void);
+    void test_mem_hier_cpu_write(void);
+    void test_mem_hier_cpu_ext_rw(void);
+    void test_mem_local_cpu_rw(void);
+    void test_reg_cpu_rwg(void);
     void test_mem_37bit_cpu_rw(void);
 };
 
@@ -58,32 +62,18 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    SC_THREAD(fwTest);
-    SC_THREAD(test_mem_37bit_cpu_rw);
+    ADD_TEST(test_mem_hier_cpu_read);
+    ADD_TEST(test_mem_hier_cpu_write);
+    ADD_TEST(test_mem_hier_cpu_ext_rw);
+    ADD_TEST(test_mem_local_cpu_rw);
+    ADD_TEST(test_reg_cpu_rwg);
+    ADD_TEST(test_mem_37bit_cpu_rw);
 };
 
-void cpu::fwTest(void)
+void cpu::test_mem_hier_cpu_read(void)
 {
-    testController &controller = testController::GetInstance();
-    
-    std::string test_read = "test_mem_hier_cpu_read";
-    controller.register_test_name(test_read);
+    wait(1, SC_NS);
 
-    std::string test_write = "test_mem_hier_cpu_write";
-    controller.register_test_name(test_write);
-
-    std::string test_ext = "test_mem_hier_cpu_ext_rw";
-    controller.register_test_name(test_ext);
-
-    std::string test_local = "test_mem_local_cpu_rw";
-    controller.register_test_name(test_local);
-
-    std::string test_rwg = "test_reg_cpu_rwg";
-    controller.register_test_name(test_rwg);
-
-    // Wait for read test
-    controller.wait_test(test_read, sc_core::sc_time(1, sc_core::SC_NS));
-    
     apbAddrSt addr;
     apbDataSt data;
     
@@ -107,11 +97,15 @@ void cpu::fwTest(void)
          log_.logPrint(ss.str(), LOG_ALWAYS);
          errorCode::fail(ss.str());
     }
-    
-    controller.test_complete(test_read);
+}
 
-    // Wait for write test
-    controller.wait_test(test_write, sc_core::sc_time(1, sc_core::SC_NS));
+void cpu::test_mem_hier_cpu_write(void)
+{
+    wait(1, SC_NS);
+
+    apbAddrSt addr;
+    apbDataSt data;
+    uint32_t valLow, valHigh;
 
     // Write a new 64b value and read back via APB (2x32b)
     const uint32_t wrLow = 0xCAFEBABE;
@@ -145,11 +139,14 @@ void cpu::fwTest(void)
          log_.logPrint(ss.str(), LOG_ALWAYS);
          errorCode::fail(ss.str());
     }
+}
 
-    controller.test_complete(test_write);
+void cpu::test_mem_hier_cpu_ext_rw(void)
+{
+    wait(1, SC_NS);
 
-    // Wait for external memory interface test (blockBTableExt)
-    controller.wait_test(test_ext, sc_core::sc_time(1, sc_core::SC_NS));
+    apbAddrSt addr;
+    apbDataSt data;
 
     // blockBTableExt is an external memory: in the model it is serviced directly by blockB.
     // Access it via the FW-visible APB window (one 32b word per row; only low 5 bits are stored).
@@ -190,11 +187,14 @@ void cpu::fwTest(void)
          log_.logPrint(ss.str(), LOG_ALWAYS);
          errorCode::fail(ss.str());
     }
+}
 
-    controller.test_complete(test_ext);
+void cpu::test_mem_local_cpu_rw(void)
+{
+    wait(1, SC_NS);
 
-    // Wait for local memory register test (blockATableLocal)
-    controller.wait_test(test_local, sc_core::sc_time(1, sc_core::SC_NS));
+    apbAddrSt addr;
+    apbDataSt data;
 
     // blockATableLocal is a LOCAL memory register: serviced directly by blockA (not hierarchical)
     // Access it via the FW-visible APB window (one 32b word per row; only low 7 bits are stored).
@@ -259,17 +259,20 @@ void cpu::fwTest(void)
          log_.logPrint(ss.str(), LOG_ALWAYS);
          errorCode::fail(ss.str());
     }
+}
 
-    controller.test_complete(test_local);
-
+void cpu::test_reg_cpu_rwg(void)
+{
     // Parameterized reg-handler end-to-end guard. blockG is a PARAMETERIZED
     // container that owns rw register rwG and forwards it to leaf uBlockGLeaf over
     // a status channel; its synthesized blockGRegs handler is the parameterized
     // .cppm form that must emit hwRegisterIf<..., status_out<...>>. Write rwG over
     // APB and read it back (handler round-trip); blockGLeaf independently verifies
     // it received the forwarded value, proving the whole path.
-    controller.wait_test(test_rwg, sc_core::sc_time(1, sc_core::SC_NS));
+    wait(1, SC_NS);
 
+    apbAddrSt addr;
+    apbDataSt data;
     const uint32_t rwg_val = 0x5A; // fits dRegSt.d (7-bit sevenBitT field)
     addr.address = BASE_ADDR_UBLOCKG + REG_BLOCKG_RWG;
     data.data = rwg_val;
@@ -286,18 +289,12 @@ void cpu::fwTest(void)
         log_.logPrint(ss.str(), LOG_ALWAYS);
         errorCode::fail("blockG rwG APB write/readback mismatch");
     }
-
-    controller.test_complete(test_rwg);
 }
 
 void cpu::test_mem_37bit_cpu_rw(void)
 {
-    testController &controller = testController::GetInstance();
-    std::string test_37bit = "test_mem_37bit_cpu_rw";
-    controller.register_test_name(test_37bit);
-    
-    controller.wait_test(test_37bit, sc_core::sc_time(1, sc_core::SC_NS));
-    
+    wait(1, SC_NS);
+
     apbAddrSt addr;
     apbDataSt data;
     
@@ -430,7 +427,5 @@ void cpu::test_mem_37bit_cpu_rw(void)
     if (all_passed) {
         log_.logPrint("37-bit memory register test PASSED", LOG_ALWAYS);
     }
-    
-    controller.test_complete(test_37bit);
 }
 

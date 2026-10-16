@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'transit-vl-wrapper')
@@ -89,7 +90,7 @@ def run_all_tests():
               "and file")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 if __name__ == '__main__':

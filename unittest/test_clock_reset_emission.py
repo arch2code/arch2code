@@ -65,9 +65,11 @@ base_dir = os.path.dirname(test_dir)
 if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
+from pysrc.intf_gen_utils import sc_hdl_member_names
 from templates.systemc.module_hdl_wrapper import SC_TIME_UNIT
 from _addrctl_helpers import (APB_PREAMBLE, render_leaf, render_plain_block,
                               render_router)
+from _tmp_helpers import remove_tree
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 FLOPS_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'flops.sv')
@@ -591,60 +593,64 @@ def _generate():
     Returns (fixture_dir, {relative path: emitted text}).
     """
     fixture = tempfile.mkdtemp(prefix='clkemit_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    os.makedirs(os.path.join(fixture, 'ip', 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'ip', 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(PROJECT)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(DESIGN)
-    with open(os.path.join(fixture, 'ip', 'prj', 'yaml', 'ipProject.yaml'), 'w') as f:
-        f.write(IP_PROJECT)
-    with open(os.path.join(fixture, 'ip', 'yaml', 'emitIp.yaml'), 'w') as f:
-        f.write(IP_DESIGN)
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        os.makedirs(os.path.join(fixture, 'ip', 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'ip', 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(PROJECT)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(DESIGN)
+        with open(os.path.join(fixture, 'ip', 'prj', 'yaml', 'ipProject.yaml'), 'w') as f:
+            f.write(IP_PROJECT)
+        with open(os.path.join(fixture, 'ip', 'yaml', 'emitIp.yaml'), 'w') as f:
+            f.write(IP_DESIGN)
 
-    db = os.path.join(fixture, 'emit.db')
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    if built.returncode != 0:
-        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
-    # --newmodule scaffolds the files; it does not fill the generated regions.
-    made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
-    if made.returncode != 0:
-        raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
+        db = os.path.join(fixture, 'emit.db')
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        if built.returncode != 0:
+            raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+        # --newmodule scaffolds the files; it does not fill the generated regions.
+        made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
+        if made.returncode != 0:
+            raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
 
-    ipDb = os.path.join(fixture, 'ip', 'emitIp.db')
-    ipBuilt = _arch2code('--yaml', os.path.join(fixture, 'ip', 'prj', 'yaml',
-                                                'ipProject.yaml'),
-                         '--db', ipDb, cwd=fixture)
-    if ipBuilt.returncode != 0:
-        raise AssertionError(
-            f"child project build failed:\n{ipBuilt.stdout}\n{ipBuilt.stderr}")
-    ipMade = _arch2code('--db', ipDb, '-r', '--newmodule', cwd=fixture)
-    if ipMade.returncode != 0:
-        raise AssertionError(
-            f"child project newmodule failed:\n{ipMade.stdout}\n{ipMade.stderr}")
+        ipDb = os.path.join(fixture, 'ip', 'emitIp.db')
+        ipBuilt = _arch2code('--yaml', os.path.join(fixture, 'ip', 'prj', 'yaml',
+                                                    'ipProject.yaml'),
+                             '--db', ipDb, cwd=fixture)
+        if ipBuilt.returncode != 0:
+            raise AssertionError(
+                f"child project build failed:\n{ipBuilt.stdout}\n{ipBuilt.stderr}")
+        ipMade = _arch2code('--db', ipDb, '-r', '--newmodule', cwd=fixture)
+        if ipMade.returncode != 0:
+            raise AssertionError(
+                f"child project newmodule failed:\n{ipMade.stdout}\n{ipMade.stderr}")
 
-    emitted = dict()
-    for switch, paths in GENERATED.items():
-        for rel in paths:
-            gen = _arch2code('--db', db, '-r', switch,
+        emitted = dict()
+        for switch, paths in GENERATED.items():
+            for rel in paths:
+                gen = _arch2code('--db', db, '-r', switch,
+                                 '--file', os.path.join(fixture, rel), cwd=fixture)
+                if gen.returncode != 0:
+                    raise AssertionError(
+                        f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+                with open(os.path.join(fixture, rel)) as f:
+                    emitted[rel] = f.read()
+        for rel in ('ip/rtl/emitIp_package.sv', IP_LEAF):
+            gen = _arch2code('--db', ipDb, '-r', '--systemVerilog',
                              '--file', os.path.join(fixture, rel), cwd=fixture)
             if gen.returncode != 0:
                 raise AssertionError(
                     f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
             with open(os.path.join(fixture, rel)) as f:
                 emitted[rel] = f.read()
-    for rel in ('ip/rtl/emitIp_package.sv', IP_LEAF):
-        gen = _arch2code('--db', ipDb, '-r', '--systemVerilog',
-                         '--file', os.path.join(fixture, rel), cwd=fixture)
-        if gen.returncode != 0:
-            raise AssertionError(
-                f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
-        with open(os.path.join(fixture, rel)) as f:
-            emitted[rel] = f.read()
-    return fixture, emitted
+        return fixture, emitted
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _build_regs(feed_clock, router_clocks=None, memories_off_bus=False):
@@ -664,119 +670,123 @@ def _build_regs(feed_clock, router_clocks=None, memories_off_bus=False):
     Returns (fixture_dir, db path, database build result).
     """
     fixture = tempfile.mkdtemp(prefix='regsemit_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    # The short list form admits only one clock (a multi-clock block has
-    # nowhere to mark the default); more than one entry needs the
-    # mapping form, with the first marked default so the block builds at all.
-    if router_clocks and len(router_clocks) > 1:
-        routerLines = '        clocks:\n' + ''.join(
-            f"            {c}: {{ default: true }}\n" if i == 0 else f"            {c}: {{ }}\n"
-            for i, c in enumerate(router_clocks))
-    elif router_clocks:
-        routerLines = f"        clocks: [{', '.join(router_clocks)}]\n"
-    else:
-        routerLines = ''
-    # 'top' also declares leafA's own reset name (rstMain_n), so uLeafA's
-    # non-rst_n-named reset binds by name match with no instance map. In the
-    # non-default-domain case 'top' additionally declares the bus clock and
-    # its own reset (a container clock exists only where some block declares
-    # it): the router's instance map binds onto it directly, and leafA's
-    # registerPorts: entry names it as the register port's own clock, with
-    # leafA declaring that same clock itself and an instance
-    # map placing it on the same container net as the router.
-    # 'top' also declares clkSlow whenever the router's OWN extra clocks:
-    # name it (router_clocks), independently of feed_clock: a router
-    # declaring clkSlow needs a container clock of that name to bind to by
-    # name match, or it is a plain unbound-clock error rather than the
-    # single-domain-router rejection these cases are actually testing.
-    needsClkSlow = bool(feed_clock) or 'clkSlow' in (router_clocks or [])
-    if needsClkSlow:
-        topLines = ('        clocks:\n'
-                    '            clk:     { default: true }\n'
-                    '            clkSlow: { }\n'
-                    '        resets:\n'
-                    '            rst_n:     { default: true }\n'
-                    '            rstMain_n: { }\n'
-                    '            rstBus_n:  { clock: clkSlow }\n')
-    else:
-        topLines = ('        resets:\n'
-                    '            rst_n:     { default: true }\n'
-                    '            rstMain_n: { }\n')
-    if feed_clock:
-        leafClockLines = ('        clocks:\n'
-                         '            clk: { default: true }\n'
-                         f'            {feed_clock}: {{ }}\n'
-                         '        resets:\n'
-                         '            rstMain_n: { clock: clk }\n'
-                         f'            rstBus_n:  {{ clock: {feed_clock} }}\n')
-        leafPortExtra = f', clock: {feed_clock}, reset: rstBus_n'
-        routerMap = f", clocks: {{ clk: {feed_clock} }}, resets: {{ rst_n: rstBus_n }}"
-        leafMap = ''
-        # The memories are regAccess (firmware-only, reached through the
-        # generated handler); a memory's own clock: is otherwise the owning
-        # block's default. Declaring it on the bus clock directly
-        # keeps the handler and its memories in one domain; leaving clock:
-        # unstated (memories_off_bus) puts them on leafA's own default clk.
-        memClock = '' if memories_off_bus else f", clock: {feed_clock}"
-    else:
-        leafClockLines = ('        clocks:\n'
-                         '            clk: { }\n'
-                         '        resets:\n'
-                         '            rstMain_n: { clock: clk }\n')
-        leafPortExtra = ''
-        # A router whose FIRST (so default, absent an explicit mark - here
-        # each of router_clocks bar the first is marked default: true only
-        # via routerLines' own construction) declared clock is clkSlow gets
-        # no name match for its own implicit rst_n against 'top's rst_n (on
-        # clk): only an explicit map reaches rstBus_n instead. This is
-        # authoring a router on a non-default clock, the same shape a real
-        # design uses, not a fixture artifact these two rejection cases
-        # need to avoid.
-        # leafA (a reusable IP, registerPorts: unstated here) takes its own
-        # default clock, 'clk'; when the router's own bus clock is clkSlow
-        # instead, leafA's instance needs the same explicit map, or its
-        # register port genuinely sits in a different domain than the
-        # router's bus - a real mismatch these two cases are not
-        # testing.
-        if router_clocks and router_clocks[0] == 'clkSlow':
-            routerMap = ", resets: { rst_n: rstBus_n }"
-            leafMap = ", clocks: { clk: clkSlow }, resets: { rstMain_n: rstBus_n }"
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        # The short list form admits only one clock (a multi-clock block has
+        # nowhere to mark the default); more than one entry needs the
+        # mapping form, with the first marked default so the block builds at all.
+        if router_clocks and len(router_clocks) > 1:
+            routerLines = '        clocks:\n' + ''.join(
+                f"            {c}: {{ default: true }}\n" if i == 0 else f"            {c}: {{ }}\n"
+                for i, c in enumerate(router_clocks))
+        elif router_clocks:
+            routerLines = f"        clocks: [{', '.join(router_clocks)}]\n"
         else:
-            routerMap = ''
+            routerLines = ''
+        # 'top' also declares leafA's own reset name (rstMain_n), so uLeafA's
+        # non-rst_n-named reset binds by name match with no instance map. In the
+        # non-default-domain case 'top' additionally declares the bus clock and
+        # its own reset (a container clock exists only where some block declares
+        # it): the router's instance map binds onto it directly, and leafA's
+        # registerPorts: entry names it as the register port's own clock, with
+        # leafA declaring that same clock itself and an instance
+        # map placing it on the same container net as the router.
+        # 'top' also declares clkSlow whenever the router's OWN extra clocks:
+        # name it (router_clocks), independently of feed_clock: a router
+        # declaring clkSlow needs a container clock of that name to bind to by
+        # name match, or it is a plain unbound-clock error rather than the
+        # single-domain-router rejection these cases are actually testing.
+        needsClkSlow = bool(feed_clock) or 'clkSlow' in (router_clocks or [])
+        if needsClkSlow:
+            topLines = ('        clocks:\n'
+                        '            clk:     { default: true }\n'
+                        '            clkSlow: { }\n'
+                        '        resets:\n'
+                        '            rst_n:     { default: true }\n'
+                        '            rstMain_n: { }\n'
+                        '            rstBus_n:  { clock: clkSlow }\n')
+        else:
+            topLines = ('        resets:\n'
+                        '            rst_n:     { default: true }\n'
+                        '            rstMain_n: { }\n')
+        if feed_clock:
+            leafClockLines = ('        clocks:\n'
+                             '            clk: { default: true }\n'
+                             f'            {feed_clock}: {{ }}\n'
+                             '        resets:\n'
+                             '            rstMain_n: { clock: clk }\n'
+                             f'            rstBus_n:  {{ clock: {feed_clock} }}\n')
+            leafPortExtra = f', clock: {feed_clock}, reset: rstBus_n'
+            routerMap = f", clocks: {{ clk: {feed_clock} }}, resets: {{ rst_n: rstBus_n }}"
             leafMap = ''
-        memClock = ''
-    blocks = (render_plain_block('top', extra_block_lines=topLines) + render_plain_block('cpu')
-              + render_router('apbDecode', 'top', extra_block_lines=routerLines)
-              + render_leaf('leafA',
-                            extra_block_lines='        params: [CFG_WIDTH]\n' + leafClockLines,
-                            port_extra=leafPortExtra)
-              + render_plain_block('regAccessor'))
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        # The feed connection itself states no clock:: 'cpu' stays on the
-        # default clock (each end takes its own default
-        # independently), and the router's instance map alone is what puts
-        # the bus in a non-default domain - a connection clock: states the
-        # SAME container clock for both ends, which 'cpu' and the bus would
-        # not agree on here, and is not what this fixture is testing.
-        f.write(REGS_DESIGN.format(blocks=blocks, feed_clock="", routerMap=routerMap,
-                                   memClock=memClock, leafMap=leafMap))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        # 'top' only declares clkSlow (and thus needs a testbench binding
-        # for it) when needsClkSlow says so; the testbench declares it
-        # to match, never unconditionally.
-        clkSlowDecl = ('\n    clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }'
-                      if needsClkSlow else '')
-        rstBusDecl = ('\n    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", clock: clkSlow }'
-                     if needsClkSlow else '')
-        f.write(REGS_PROJECT.format(clkSlowDecl=clkSlowDecl, rstBusDecl=rstBusDecl))
+            # The memories are regAccess (firmware-only, reached through the
+            # generated handler); a memory's own clock: is otherwise the owning
+            # block's default. Declaring it on the bus clock directly
+            # keeps the handler and its memories in one domain; leaving clock:
+            # unstated (memories_off_bus) puts them on leafA's own default clk.
+            memClock = '' if memories_off_bus else f", clock: {feed_clock}"
+        else:
+            leafClockLines = ('        clocks:\n'
+                             '            clk: { }\n'
+                             '        resets:\n'
+                             '            rstMain_n: { clock: clk }\n')
+            leafPortExtra = ''
+            # A router whose FIRST (so default, absent an explicit mark - here
+            # each of router_clocks bar the first is marked default: true only
+            # via routerLines' own construction) declared clock is clkSlow gets
+            # no name match for its own implicit rst_n against 'top's rst_n (on
+            # clk): only an explicit map reaches rstBus_n instead. This is
+            # authoring a router on a non-default clock, the same shape a real
+            # design uses, not a fixture artifact these two rejection cases
+            # need to avoid.
+            # leafA (a reusable IP, registerPorts: unstated here) takes its own
+            # default clock, 'clk'; when the router's own bus clock is clkSlow
+            # instead, leafA's instance needs the same explicit map, or its
+            # register port genuinely sits in a different domain than the
+            # router's bus - a real mismatch these two cases are not
+            # testing.
+            if router_clocks and router_clocks[0] == 'clkSlow':
+                routerMap = ", resets: { rst_n: rstBus_n }"
+                leafMap = ", clocks: { clk: clkSlow }, resets: { rstMain_n: rstBus_n }"
+            else:
+                routerMap = ''
+                leafMap = ''
+            memClock = ''
+        blocks = (render_plain_block('top', extra_block_lines=topLines) + render_plain_block('cpu')
+                  + render_router('apbDecode', 'top', extra_block_lines=routerLines)
+                  + render_leaf('leafA',
+                                extra_block_lines='        params: [CFG_WIDTH]\n' + leafClockLines,
+                                port_extra=leafPortExtra)
+                  + render_plain_block('regAccessor'))
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            # The feed connection itself states no clock:: 'cpu' stays on the
+            # default clock (each end takes its own default
+            # independently), and the router's instance map alone is what puts
+            # the bus in a non-default domain - a connection clock: states the
+            # SAME container clock for both ends, which 'cpu' and the bus would
+            # not agree on here, and is not what this fixture is testing.
+            f.write(REGS_DESIGN.format(blocks=blocks, feed_clock="", routerMap=routerMap,
+                                       memClock=memClock, leafMap=leafMap))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            # 'top' only declares clkSlow (and thus needs a testbench binding
+            # for it) when needsClkSlow says so; the testbench declares it
+            # to match, never unconditionally.
+            clkSlowDecl = ('\n    clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }'
+                          if needsClkSlow else '')
+            rstBusDecl = ('\n    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", clock: clkSlow }'
+                         if needsClkSlow else '')
+            f.write(REGS_PROJECT.format(clkSlowDecl=clkSlowDecl, rstBusDecl=rstBusDecl))
 
-    db = os.path.join(fixture, 'regs.db')
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    return fixture, db, built
+        db = os.path.join(fixture, 'regs.db')
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        return fixture, db, built
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _generate_regs(feed_clock, memories_off_bus=False):
@@ -812,31 +822,35 @@ def _generate_clk_member(project=CLK_MEMBER_PROJECT, design=CLK_MEMBER_DESIGN,
     Returns (fixture_dir, {relative path: emitted text}).
     """
     fixture = tempfile.mkdtemp(prefix=prefix)
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
-        f.write(project)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(design)
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+            f.write(project)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(design)
 
-    db = os.path.join(fixture, db_name)
-    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
-                       '--db', db, cwd=fixture)
-    if built.returncode != 0:
-        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
-    made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
-    if made.returncode != 0:
-        raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
+        db = os.path.join(fixture, db_name)
+        built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                           '--db', db, cwd=fixture)
+        if built.returncode != 0:
+            raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+        made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
+        if made.returncode != 0:
+            raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
 
-    emitted = dict()
-    for rel in files:
-        gen = _arch2code('--db', db, '-r', switch,
-                         '--file', os.path.join(fixture, rel), cwd=fixture)
-        if gen.returncode != 0:
-            raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
-        with open(os.path.join(fixture, rel)) as f:
-            emitted[rel] = f.read()
-    return fixture, emitted
+        emitted = dict()
+        for rel in files:
+            gen = _arch2code('--db', db, '-r', switch,
+                             '--file', os.path.join(fixture, rel), cwd=fixture)
+            if gen.returncode != 0:
+                raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+            with open(os.path.join(fixture, rel)) as f:
+                emitted[rel] = f.read()
+        return fixture, emitted
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _run_case(label, fn):
@@ -847,6 +861,10 @@ def _run_case(label, fn):
         return False
     print(f"{'PASS' if ok else 'FAIL'}: {label}")
     return ok
+
+
+def _bfm(port):
+    return sc_hdl_member_names(port)[1]
 
 
 def _expect(text, needle, why, where):
@@ -1503,9 +1521,9 @@ def check_bfm_binds_names_the_wrapper_declares(emitted):
     `clk` / `rst_n` - or any name taken from somewhere other than this block's
     own resolved sets - would not compile here."""
     text = emitted['verif/slowProd_hdl_sc_wrapper.h']
-    _expect(text, 'out_bfm.clk(clkSlow);',
+    _expect(text, _bfm('out') + '.clk(clkSlow);',
             "the block's only clock is clkSlow", 'slowProd SC wrapper')
-    _expect(text, 'out_bfm.rst_n(rstSlow_n);',
+    _expect(text, _bfm('out') + '.rst_n(rstSlow_n);',
             "the block's only reset is rstSlow_n", 'slowProd SC wrapper')
     # slowProd has both a BFM port and a reset, so its constructor joins
     # sec_bfm_ctor_init and sec_reset_ctor_init: a stray trailing comma on
@@ -1533,15 +1551,15 @@ def check_bfm_binds_its_own_connection_domain(emitted):
     in another domain. Nothing else in the toolchain reports that, which is why
     each is asserted on both ports and refuted on the wrong one."""
     text = emitted['verif/cons_hdl_sc_wrapper.h']
-    for bind in ('slowIn_bfm.clk(clkSlow);', 'fastIn_bfm.clk(clk);',
-                 'slowIn_bfm.rst_n(rstSlow_n);', 'fastIn_bfm.rst_n(rst_n);'):
+    for bind in (_bfm('slowIn') + '.clk(clkSlow);', _bfm('fastIn') + '.clk(clk);',
+                 _bfm('slowIn') + '.rst_n(rstSlow_n);', _bfm('fastIn') + '.rst_n(rst_n);'):
         _expect(text, bind, "each BFM takes its own connection's clock and the "
                             'reset released on that clock', 'cons SC wrapper')
-    _refute(text, 'slowIn_bfm.clk(clk);',
+    _refute(text, _bfm('slowIn') + '.clk(clk);',
             "slowIn's connection is in the clkSlow domain, so binding clk "
             "clocks that BFM from the wrong domain",
             'cons SC wrapper')
-    _refute(text, 'slowIn_bfm.rst_n(rst_n);',
+    _refute(text, _bfm('slowIn') + '.rst_n(rst_n);',
             "rst_n is released on a clk edge, so binding it resets slowIn's BFM "
             "from the wrong domain - and it is the block's FIRST reset, which is "
             "what a reset taken per block rather than per port would give",
@@ -1551,13 +1569,13 @@ def check_bfm_binds_its_own_connection_domain(emitted):
     # from anywhere but the port's domain - the block's last reset, or the reset of
     # a clock the block merely carries - is visible here and not on cons.
     fast = emitted['verif/fastProd_hdl_sc_wrapper.h']
-    _expect(fast, 'out_bfm.rst_n(rst_n);',
+    _expect(fast, _bfm('out') + '.rst_n(rst_n);',
             "out's connection is in the clk domain and rst_n is the reset "
             'declared on clk', 'fastProd SC wrapper')
-    _refute(fast, 'out_bfm.rst_n(rstSlow_n);',
+    _refute(fast, _bfm('out') + '.rst_n(rstSlow_n);',
             'rstSlow_n is released on clkSlow, which out does not run in',
             'fastProd SC wrapper')
-    _refute(fast, 'out_bfm.rst_n(rstPico_n);',
+    _refute(fast, _bfm('out') + '.rst_n(rstPico_n);',
             "rstPico_n is released on clkPico and is the block's LAST reset, so "
             'binding it is what a reset taken from the end of the set gives',
             'fastProd SC wrapper')
@@ -1711,13 +1729,17 @@ def _normalize(body):
     return ' '.join(body.replace('\\', ' ').split())
 
 
+# A clocked flop body in any reset style's spelling.
+_FLOP_BODY = re.compile(r'always(?:_ff)? @\(posedge')
+
+
 def check_flops_bare_macro_is_an_alias():
     """Each `_CLK` macro is a one-line alias onto its `_DOM` form passing
     `rst_n`, and each bare macro a one-line alias onto its `_CLK` form passing
     `clk`.
 
     This is what keeps one body per family per reset style. A `_CLK` or bare
-    macro carrying its own always_ff is a second definition of what a flop is,
+    macro carrying its own always body is a second definition of what a flop is,
     and the two can then silently diverge; the argument-for-argument
     comparison also kills an alias that reorders or drops one. The `_INST`
     and `KEEP_INST` wrappers are not walked here; the expansion identity
@@ -1763,26 +1785,34 @@ def check_flops_bare_macro_is_an_alias():
                 f"`{bare}` expands to {body!r}, expected exactly {expected!r}; "
                 f"a bare macro that is not a pure alias onto _CLK is a second "
                 f"flop body")
-    # One body per family per reset style: counted, so a duplicated body fails
-    # even if it is spelled somewhere this case does not read.
+    # One body per family per reset style, in that style's spelling: counted,
+    # so a duplicated body fails even if it is spelled somewhere this case does
+    # not read. NONE's body is a plain always, so its initial may also write it.
+    for style, spelling in (('SYNC', r'\balways_ff @\(posedge'),
+                            ('ASYNC', r'\balways_ff @\(posedge'),
+                            ('NONE', r'\balways @\(posedge')):
+        branch = '\n'.join(sections[style])
+        bodies = len(re.findall(spelling, branch))
+        expected = len(_flops_defines(sections[style]))
+        if bodies != expected:
+            raise AssertionError(
+                f"the A2C_RESET_{style} branch of flops.sv holds {bodies} "
+                f"{spelling!r} bodies for {expected} clock-parameterized macros; "
+                f"each family has exactly one body per reset-style branch")
+    if re.search(r'\balways_ff\b', '\n'.join(sections['NONE'])):
+        raise AssertionError(
+            "the A2C_RESET_NONE branch of flops.sv holds an always_ff; its "
+            "initial statement writes the flop too, so the body is a plain always")
     with open(FLOPS_SV) as f:
         text = f.read()
-    bodies = text.count('always_ff @(posedge')
-    expected = sum(len(_flops_defines(sections[style]))
-                   for style in ('SYNC', 'ASYNC', 'NONE'))
-    if bodies != expected:
-        raise AssertionError(
-            f"flops.sv holds {bodies} always_ff bodies for {expected} "
-            f"clock-parameterized macros; each family has exactly one body per "
-            f"reset-style branch")
     # No flop body may leak outside all three branches: only the alias layers
     # and the _INST/_KEEP wrappers are allowed there.
     strayBodies = sorted(name for name, (_, body) in outer.items()
-                          if 'always_ff' in body)
+                          if _FLOP_BODY.search(body))
     if strayBodies:
         raise AssertionError(
             f"{strayBodies} are defined outside every reset-style branch but "
-            f"hold an always_ff body; only a branch may define a flop body")
+            f"hold a flop body; only a branch may define a flop body")
     for needle in ('`RST', 'rstN'):
         if needle in text:
             raise AssertionError(
@@ -1846,9 +1876,9 @@ def _identity_module(with_keep_inst):
 
 
 def _verilator_preprocess(flops_dir, module_text, defines, where):
-    """The `module flopsIdentity ... endmodule` text verilator's preprocessor
-    expands the identity module to, with `line directives and blank lines
-    dropped so only the macro expansion itself is compared."""
+    """What verilator's preprocessor expands `module_text` to, with `line
+    directives and blank lines dropped so only the macro expansion itself is
+    compared."""
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, 'identity.sv'), 'w') as f:
             f.write(module_text)
@@ -1866,7 +1896,9 @@ def _verilator_preprocess(flops_dir, module_text, defines, where):
 def check_flops_none_matches_pre_change_fpga_default():
     """A2C_RESET_NONE on the new file expands identically to no-define on the
     pre-selector file, kept as a fixture: the compatibility proof for existing
-    FPGA flows, which relied on that being the unconditional default.
+    FPGA flows, which relied on that being the unconditional default. The one
+    difference is the clocked process: A2C_RESET_NONE spells it as a plain
+    always, since the initial is a second writer an always_ff may not have.
 
     DFF_KEEP_INST is left out of this module: the pre-selector file predates it,
     so it would pass through unexpanded rather than diverge, and the mismatch
@@ -1876,6 +1908,7 @@ def check_flops_none_matches_pre_change_fpga_default():
         module_text = _identity_module(with_keep_inst=False)
         pre_change = _verilator_preprocess(tmp, module_text, ['A2C_RESET_NONE'],
                                            'the pre-selector file')
+    pre_change = pre_change.replace('always_ff @(posedge', 'always @(posedge')
     new = _verilator_preprocess(os.path.dirname(FLOPS_SV), module_text,
                                 ['A2C_RESET_NONE'], 'the new file')
     if pre_change != new:
@@ -1901,6 +1934,223 @@ def check_flops_default_matches_fork():
             f"no define on the new flops.sv does not expand identically to "
             f"no define on the fork:\n--- fork ---\n{fork}\n--- new "
             f"(no define) ---\n{new}")
+    return True
+
+
+# ------------------------------------------- flops.sv lint per reset style --
+
+# What each flop-macro argument name is bound to in the lint and simulation
+# modules. `q` and `name` get a fresh signal per call. `d` and `s` carry the
+# same value, which differs from both reset values, so a flop that ignored
+# its reset holds D_VALUE where its reset value was expected.
+_FLOP_ARG_VALUES = {'clkSig': 'clkB', 'rstSig': 'rstB_n', 'd': 'd', 'en': 'en',
+                    's': 's', 'c': 'c', 'rval': 'RVAL', 'type': 'logic [7:0]'}
+_RVAL = "8'hA5"
+_D_VALUE = "8'h5A"
+
+
+def _flop_instances():
+    """One call of every parameterized macro flops.sv defines, discovered from
+    the file, as dicts: `sig`, the call `lines`, `resets` and `resetValue`
+    (RVAL when the macro takes `rval`, else zero). A family resets when any
+    style's body for it reads the reset or sets an initial value, so a style
+    that drops one family's reset cannot also reclassify that family as
+    reset-less. A macro is resolved to the branch body it expands to by
+    following its first call of another defined macro."""
+    sections = _flops_sections()
+    branches = {style: _flops_defines(sections[style])
+                for style in ('SYNC', 'ASYNC', 'NONE')}
+    defined = dict(_flops_defines(sections['outer']), **branches['SYNC'])
+
+    def resets(macro):
+        while macro not in branches['SYNC']:
+            calls = [m for m in re.findall(r'`(\w+)\s*\(', defined[macro][1])
+                     if m in defined]
+            if not calls:
+                raise AssertionError(f"`{macro}` expands to no flop body")
+            macro = calls[0]
+        return ('rstSig' in branches['SYNC'][macro][1]
+                or 'rstSig' in branches['ASYNC'][macro][1]
+                or 'initial' in branches['NONE'][macro][1])
+
+    out = []
+    for index, (macro, (args, _)) in enumerate(sorted(defined.items())):
+        sig = f'f{index}_{macro}'
+        unknown = [a for a in args if a not in _FLOP_ARG_VALUES and a not in ('q', 'name')]
+        if unknown:
+            raise AssertionError(
+                f"`{macro}` takes {unknown}, which the flop test modules have no "
+                f"value for; add it to _FLOP_ARG_VALUES")
+        values = [sig if a in ('q', 'name') else _FLOP_ARG_VALUES[a] for a in args]
+        lines = [] if 'name' in args else [f'    logic [7:0] {sig};']
+        lines.append(f'    `{macro}({", ".join(values)})')
+        if 'name' in args:
+            lines.append(f'    assign n_{sig} = d;')
+        out.append({'sig': sig, 'lines': lines, 'resets': resets(macro),
+                    'resetValue': 'RVAL' if 'rval' in args else "8'h00"})
+    return out
+
+
+def _all_flops_module():
+    """The lint module: every flops.sv macro once, driven from ports."""
+    flops = _flop_instances()
+    return (
+        '`include "flops.sv"\n\n'
+        'module allFlops (\n'
+        '    input logic clk, rst_n, clkB, rstB_n, en,\n'
+        '    input logic [7:0] d, s, c,\n'
+        f'    output logic [{8 * len(flops) - 1}:0] flops\n'
+        ');\n'
+        f"    localparam logic [7:0] RVAL = {_RVAL};\n"
+        # Only a style without reset may leave the resets unread.
+        '`ifdef A2C_RESET_NONE\n'
+        '    logic unused_rst;\n'
+        '    assign unused_rst = rst_n ^ rstB_n;\n'
+        '`endif\n'
+        + '\n'.join(line for f in flops for line in f['lines']) + '\n'
+        f"    assign flops = {{{', '.join(f['sig'] for f in flops)}}};\n"
+        'endmodule : allFlops\n')
+
+
+def _all_flops_sim_module(style):
+    """A self-checking simulation of every flops.sv macro under `style`
+    (SYNC, ASYNC or NONE). Both clocks and both resets move together, and
+    reset edges fall while the clocks are low. Every flop is first clocked to
+    D out of reset, so the reset checks below do not depend on start values.
+    `c` clears every SCFF bit, so an SCFF loads s (= D) whatever it held."""
+    flops = _flop_instances()
+    resetting = [f for f in flops if f['resets']]
+    holding = [f for f in flops if not f['resets']]
+
+    def expect(phase, group, value):
+        return [f"        if ({f['sig']} !== {value(f)}) begin "
+                f"$display(\"FAIL {phase} {f['sig']} = %h\", {f['sig']}); fails++; end"
+                for f in group]
+
+    reset_value = lambda f: f['resetValue']
+    loaded = lambda f: 'D'
+    steps = ['        #1;']
+    if style == 'NONE':
+        steps += expect('initial', resetting, reset_value)
+    steps += ['        clk = 1; clkB = 1;', '        #1;',
+              '        clk = 0; clkB = 0;', '        #1;']
+    steps += expect('loaded', flops, loaded)
+    steps += ['        rst_n = 0; rstB_n = 0;', '        #1;']
+    steps += expect('reset-fell', resetting, reset_value if style == 'ASYNC' else loaded)
+    steps += ['        clk = 1; clkB = 1;', '        #1;']
+    steps += expect('reset-edge', resetting, loaded if style == 'NONE' else reset_value)
+    steps += expect('reset-edge', holding, loaded)
+    return (
+        '`include "flops.sv"\n\n'
+        'module allFlopsSim;\n'
+        f"    localparam logic [7:0] RVAL = {_RVAL};\n"
+        f"    localparam logic [7:0] D = {_D_VALUE};\n"
+        '    logic clk = 0, clkB = 0, rst_n = 1, rstB_n = 1, en = 1;\n'
+        "    logic [7:0] d = D, s = D, c = 8'hFF;\n"
+        '    int fails = 0;\n'
+        + '\n'.join(line for f in flops for line in f['lines']) + '\n'
+        '    initial begin\n'
+        + '\n'.join(steps) + '\n'
+        '        if (fails == 0) $display("ALLFLOPS PASS");\n'
+        '        $finish;\n'
+        '    end\n'
+        'endmodule : allFlopsSim\n')
+
+
+def _simulate_all_flops(defines, style):
+    """(returncode, output) of building and running the simulation module.
+    Uninitialised variables start random, from a fixed seed, so under NONE a
+    flop missing its initial value does not happen to read zero."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, 'allFlopsSim.sv'), 'w') as f:
+            f.write(_all_flops_sim_module(style))
+        env = dict(os.environ, CCACHE_DISABLE='1')
+        build = subprocess.run(
+            ['verilator', '--binary', '--timing', '--x-initial', 'unique',
+             f'-I{os.path.dirname(FLOPS_SV)}', '-Mdir', 'obj'] +
+            [f'+define+{d}' for d in defines] + ['allFlopsSim.sv'],
+            cwd=tmp, capture_output=True, text=True, env=env)
+        if build.returncode != 0:
+            return build.returncode, build.stdout + build.stderr
+        run = subprocess.run(
+            [os.path.join(tmp, 'obj', 'VallFlopsSim'),
+             '+verilator+rand+reset+2', '+verilator+seed+7'],
+            cwd=tmp, capture_output=True, text=True)
+    return run.returncode, run.stdout + run.stderr
+
+
+def check_flops_reset_behaviour_every_style():
+    """Each reset style does what it names. Every flop is first clocked to D
+    out of reset; then reset falls with the clocks low, then one edge comes
+    under reset. SYNC: a resetting flop still holds D when reset falls and
+    holds its reset value after the edge. ASYNC: it holds its reset value as
+    soon as reset falls. NONE: it starts at its reset value, and holds D
+    through both. A flop without reset holds D throughout."""
+    for defines, style in (([], 'SYNC'), (['A2C_RESET_SYNC'], 'SYNC'),
+                           (['A2C_RESET_ASYNC'], 'ASYNC'), (['A2C_RESET_NONE'], 'NONE'),
+                           (['ASIC'], 'SYNC'), (['FPGA_INIT_FLOPS'], 'NONE')):
+        code, out = _simulate_all_flops(defines, style)
+        if code != 0 or 'ALLFLOPS PASS' not in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines or 'none'} does not behave as "
+                f"A2C_RESET_{style}:\n{out}")
+    return True
+
+
+def _lint_all_flops(defines):
+    """(returncode, output) of verilator --lint-only -Wall on the module."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, 'allFlops.sv'), 'w') as f:
+            f.write(_all_flops_module())
+        cmd = ['verilator', '--lint-only', '-Wall', '--no-timing',
+               f'-I{os.path.dirname(FLOPS_SV)}'] + \
+              [f'+define+{d}' for d in defines] + ['allFlops.sv']
+        result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
+    return result.returncode, result.stdout + result.stderr
+
+
+def check_flops_lint_clean_every_reset_style():
+    """Every flops.sv macro lints clean under -Wall in each reset style and
+    through each compatibility alias, and each alias expands to its style."""
+    for defines in ([], ['A2C_RESET_SYNC'], ['A2C_RESET_ASYNC'], ['A2C_RESET_NONE'],
+                    ['ASIC'], ['FPGA_INIT_FLOPS'],
+                    ['ASIC', 'A2C_RESET_SYNC'], ['FPGA_INIT_FLOPS', 'A2C_RESET_NONE']):
+        code, out = _lint_all_flops(defines)
+        if code != 0 or '%Warning' in out or '%Error' in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines or 'none'} does not lint clean "
+                f"under verilator -Wall:\n{out}")
+    module_text = _all_flops_module()
+    flops_dir = os.path.dirname(FLOPS_SV)
+    expanded = {d: _verilator_preprocess(flops_dir, module_text, [d], d)
+                for d in ('A2C_RESET_SYNC', 'A2C_RESET_ASYNC', 'A2C_RESET_NONE',
+                          'ASIC', 'FPGA_INIT_FLOPS')}
+    for alias, style in (('ASIC', 'A2C_RESET_SYNC'),
+                         ('FPGA_INIT_FLOPS', 'A2C_RESET_NONE')):
+        if expanded[alias] != expanded[style]:
+            raise AssertionError(f"`{alias}` does not expand the same as `{style}`")
+    styles = [expanded[s] for s in ('A2C_RESET_SYNC', 'A2C_RESET_ASYNC', 'A2C_RESET_NONE')]
+    if len(set(styles)) != 3:
+        raise AssertionError("two reset styles expand to the same text, so the "
+                             "selector does not select")
+    return True
+
+
+def check_flops_reset_style_conflicts_fail():
+    """Two reset styles at once, or a define of RST, fails to compile and
+    names the cause."""
+    for defines, needle in (
+            (['A2C_RESET_SYNC', 'A2C_RESET_ASYNC'], 'A2C_RESET_STYLE_CONFLICT_SYNC_ASYNC'),
+            (['A2C_RESET_SYNC', 'A2C_RESET_NONE'], 'A2C_RESET_STYLE_CONFLICT_SYNC_NONE'),
+            (['A2C_RESET_ASYNC', 'A2C_RESET_NONE'], 'A2C_RESET_STYLE_CONFLICT_ASYNC_NONE'),
+            (['ASIC', 'FPGA_INIT_FLOPS'], 'A2C_RESET_STYLE_CONFLICT_SYNC_NONE'),
+            (['ASIC', 'A2C_RESET_ASYNC'], 'A2C_RESET_STYLE_CONFLICT_SYNC_ASYNC'),
+            (['RST'], 'A2C_RST_IS_UNSUPPORTED')):
+        code, out = _lint_all_flops(defines)
+        if code == 0 or needle not in out:
+            raise AssertionError(
+                f"flops.sv with defines {defines} should fail naming {needle}; "
+                f"got rc={code}:\n{out}")
     return True
 
 
@@ -2186,7 +2436,7 @@ def check_router_and_handler_share_the_bus_domain(emitted):
 
 def check_regs_handler_pslverr_tied_low(emitted):
     """The handler never asserts pslverr: every access ACKs, and an unmapped
-    read returns 0."""
+    read returns 32'hBADD_C0DE."""
     text = emitted[REGS_HANDLER]
     _expect(text, "pslverr = 1'b0;", 'the handler never asserts pslverr',
             'leafA_regs')
@@ -2548,7 +2798,7 @@ def _assert_router_rejected(feed_clock, router_clocks, expected_clocks):
                     f"the rejection does not mention {needle!r}, so the author "
                     f"cannot tell which block or which clocks to fix:\n{report}")
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     return True
 
 
@@ -2599,6 +2849,12 @@ def main():
                     check_flops_none_matches_pre_change_fpga_default),
           _run_case('the default reset style matches the fork, unconditionally',
                     check_flops_default_matches_fork),
+          _run_case('every flop macro lints clean in every reset style and alias',
+                    check_flops_lint_clean_every_reset_style),
+          _run_case('conflicting reset styles and RST fail to compile',
+                    check_flops_reset_style_conflicts_fail),
+          _run_case('every flop macro resets as its reset style names',
+                    check_flops_reset_behaviour_every_style),
           _run_case('a router explicitly declaring two clocks is rejected',
                     check_router_extra_clock_rejected),
           _run_case('a two-clock router is rejected however declaration order '
@@ -2663,7 +2919,7 @@ def main():
         ]
         ok += [_run_case(label, lambda fn=fn: fn(emitted)) for label, fn in cases]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, emitted = _generate_regs(None)
     try:
@@ -2678,7 +2934,7 @@ def main():
              check_alias_reset_independent_of_clock),
         )]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, emitted = _generate_regs('clkSlow')
     try:
@@ -2701,7 +2957,7 @@ def main():
              check_regs_handler_pslverr_tied_low),
         )]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, emitted = _generate_regs('clkSlow', memories_off_bus=True)
     try:
@@ -2721,7 +2977,7 @@ def main():
                  fixture, emitted)),
         )]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     for label, extra_reset, check in (
             ('a router bound onto bus nets keeps its declared clk/rst_n and '
@@ -2733,7 +2989,7 @@ def main():
         try:
             ok.append(_run_case(label, lambda: check(fixture, emitted)))
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
 
     fixture, emitted = _generate_clk_member(
         project=ROUTER_PORTS_PROJECT, design=_router_bus_ports_design(),
@@ -2745,7 +3001,7 @@ def main():
             "not clk/rst_n", lambda: check_router_runs_on_its_addressblock_bus_ports(
                 fixture, emitted)))
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, emitted = _generate_clk_member()
     try:
@@ -2754,7 +3010,7 @@ def main():
               _run_case('the alias RHS is the block\'s own clock/reset, not a shared literal',
                          lambda: check_alias_value_is_not_a_shared_literal(emitted))]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     fixture, emitted = _generate_clk_member(
         project=NO_RESET_PROJECT, design=NO_RESET_DESIGN,
@@ -2765,7 +3021,7 @@ def main():
                          'renders no stray comma in its constructor init list',
                          lambda: check_ctor_init_no_stray_comma(emitted))]
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
     print()
     if all(ok):

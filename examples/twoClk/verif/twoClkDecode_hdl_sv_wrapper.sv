@@ -4,6 +4,8 @@
 // GENERATED_CODE_PARAM --block=twoClkDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "hdlBoundary.svh"
+
 module twoClkDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
     import twoClk_package::*;
@@ -34,26 +36,26 @@ module twoClkDecode_hdl_sv_wrapper
     // apb_if.src
     apb_if #(.addr_t(twoClkRegAddrSt), .data_t(twoClkRegDataSt)) twoClkReg_uTable();
 
-    assign #0 twoClkReg_uTable_paddr = twoClkReg_uTable.paddr;
-    assign #0 twoClkReg_uTable_psel = twoClkReg_uTable.psel;
-    assign #0 twoClkReg_uTable_penable = twoClkReg_uTable.penable;
-    assign #0 twoClkReg_uTable_pwrite = twoClkReg_uTable.pwrite;
-    assign #0 twoClkReg_uTable_pwdata = twoClkReg_uTable.pwdata;
-    assign #0 twoClkReg_uTable.pready = twoClkReg_uTable_pready;
-    assign #0 twoClkReg_uTable.prdata = twoClkReg_uTable_prdata;
-    assign #0 twoClkReg_uTable.pslverr = twoClkReg_uTable_pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable_paddr = twoClkReg_uTable.paddr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable_psel = twoClkReg_uTable.psel;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable_penable = twoClkReg_uTable.penable;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable_pwrite = twoClkReg_uTable.pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable_pwdata = twoClkReg_uTable.pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable.pready = twoClkReg_uTable_pready;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable.prdata = twoClkReg_uTable_prdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_uTable.pslverr = twoClkReg_uTable_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(twoClkRegAddrSt), .data_t(twoClkRegDataSt)) twoClkReg();
 
-    assign #0 twoClkReg.paddr = twoClkReg_paddr;
-    assign #0 twoClkReg.psel = twoClkReg_psel;
-    assign #0 twoClkReg.penable = twoClkReg_penable;
-    assign #0 twoClkReg.pwrite = twoClkReg_pwrite;
-    assign #0 twoClkReg.pwdata = twoClkReg_pwdata;
-    assign #0 twoClkReg_pready = twoClkReg.pready;
-    assign #0 twoClkReg_prdata = twoClkReg.prdata;
-    assign #0 twoClkReg_pslverr = twoClkReg.pslverr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.paddr = twoClkReg_paddr;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.psel = twoClkReg_psel;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.penable = twoClkReg_penable;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.pwrite = twoClkReg_pwrite;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg.pwdata = twoClkReg_pwdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_pready = twoClkReg.pready;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_prdata = twoClkReg.prdata;
+    assign `A2C_HDL_BOUNDARY_DLY twoClkReg_pslverr = twoClkReg.pslverr;
 
     twoClkDecode dut (
         .twoClkReg_uTable(twoClkReg_uTable), // apb_if.src
@@ -62,7 +64,7 @@ module twoClkDecode_hdl_sv_wrapper
         .rst_n(rst_n)
     );
 
-    `ifdef VCS
+    `ifdef VCS_DEBUG
     initial if ($test$plusargs("fsdbTrace")) begin
         $fsdbDumpvars($sformatf("%m"), "+all");
     end

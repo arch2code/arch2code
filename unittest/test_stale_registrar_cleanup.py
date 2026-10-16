@@ -27,6 +27,7 @@ import sys
 import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -178,7 +179,7 @@ def _run_newmodule_cleanup():
               "the pair child's rename and scaffolded the renamed ones")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def _run_warning_path():
@@ -213,7 +214,7 @@ def _run_warning_path():
               "newmodule; newmodule removes it and gen then warns of nothing")
         return True
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
 
 def run_all_tests():

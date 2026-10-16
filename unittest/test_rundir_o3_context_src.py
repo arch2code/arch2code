@@ -21,7 +21,8 @@ import shlex
 import sys
 
 from test_file_prefix import (PROJECT_FILES, copy_simple_ip, edit, make, point_repo_root,
-                              remove, run)
+                              run)
+from _tmp_helpers import remove_tree
 
 # Context sources named twice in O3_CPP_SRC, as an older rundir Makefile does.
 DUPLICATE_O3 = 'EXTRA_O3_CPP_SRC=$(A2C_CPP_CONTEXT_SRC_FILES)'
@@ -163,7 +164,7 @@ def main():
         print("ALL TESTS PASSED")
         return 0
     finally:
-        remove(work)
+        remove_tree(work)
 
 
 if __name__ == '__main__':

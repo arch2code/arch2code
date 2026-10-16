@@ -112,7 +112,7 @@ public:
     blockBChannels(std::string name, std::string srcName) :
     btod(("btod"+name).c_str(), srcName)
     ,startDone(("startDone"+name).c_str(), srcName)
-    ,dupIf(("dupIf"+name).c_str(), srcName)
+    ,dupIf(("dupIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( blockBBase *a, blockBInverted *b)

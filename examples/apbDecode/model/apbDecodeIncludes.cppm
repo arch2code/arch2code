@@ -96,7 +96,7 @@ struct aRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = a;
     }
     inline void unpack(const _packedSt &_src)
@@ -118,14 +118,25 @@ struct aRegSt {
     inline sc_bv<aRegSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<aRegSt::_bitWidth> packed_data;
-        packed_data.range(36, 0) = a;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "aRegSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<aRegSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<aRegSt::_bitWidth> &packed_data)
     {
-        a = (thirtySevenBitT) packed_data.range(36, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit aRegSt(sc_bv<aRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit aRegSt(const sc_bv<aRegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit aRegSt(
         thirtySevenBitT a_) :
         a(a_)
@@ -134,8 +145,8 @@ struct aRegSt {
 
 };
 struct un0BRegSt {
-    u16T fb; //[23:8] - byte 3-4
-    u8T fa; //[7:0] - byte 0-2
+    u16T fb; //[15:0] - bytes 0-1
+    u8T fa; //[23:16] - byte 2
 
     un0BRegSt() {}
 
@@ -167,7 +178,7 @@ struct un0BRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, un0BRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = fb;
         _ret |= (uint32_t)fa << (16 & 31);
     }
@@ -183,29 +194,38 @@ struct un0BRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( fa & ((1ULL<<8)-1) ) << 0)
+        (( fa & ((1ULL<<8)-1) ) << 16)
  +
-        (( fb & ((1ULL<<16)-1) ) << 8);
+        (( fb & ((1ULL<<16)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
-        fb = ( u16T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 16 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u16T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 16 ) - 1)) ;
         }
     inline sc_bv<un0BRegSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<un0BRegSt::_bitWidth> packed_data;
-        packed_data.range(15, 0) = fb;
-        packed_data.range(23, 16) = fa;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "un0BRegSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<un0BRegSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<un0BRegSt::_bitWidth> &packed_data)
     {
-        fb = (u16T) packed_data.range(15, 0).to_uint64();
-        fa = (u8T) packed_data.range(23, 16).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit un0BRegSt(sc_bv<un0BRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit un0BRegSt(const sc_bv<un0BRegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit un0BRegSt(
         u16T fb_,
         u8T fa_) :
@@ -216,9 +236,9 @@ struct un0BRegSt {
 
 };
 struct un0ARegSt {
-    u8T fc; //[47:40] - byte 8-11
-    u32T fb; //[39:8] - byte 4-7
-    u8T fa; //[7:0] - byte 0-3
+    u8T fc; //[7:0] - byte 0
+    u32T fb; //[39:8] - bytes 1-4
+    u8T fa; //[47:40] - byte 5
 
     un0ARegSt() {}
 
@@ -253,7 +273,7 @@ struct un0ARegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, un0ARegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = fc;
         _ret |= (uint64_t)fb << (8 & 63);
         _ret |= (uint64_t)fa << (40 & 63);
@@ -272,34 +292,41 @@ struct un0ARegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( fa & ((1ULL<<8)-1) ) << 0)
+        (( fa & ((1ULL<<8)-1) ) << 40)
  +
         (( fb & ((1ULL<<32)-1) ) << 8)
  +
-        (( fc & ((1ULL<<8)-1) ) << 40);
+        (( fc & ((1ULL<<8)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
         fb = ( u32T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 32 ) - 1)) ;
-        fc = ( u8T ) (( packedValue >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fc = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
         }
     inline sc_bv<un0ARegSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<un0ARegSt::_bitWidth> packed_data;
-        packed_data.range(7, 0) = fc;
-        packed_data.range(39, 8) = fb;
-        packed_data.range(47, 40) = fa;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "un0ARegSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<un0ARegSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<un0ARegSt::_bitWidth> &packed_data)
     {
-        fc = (u8T) packed_data.range(7, 0).to_uint64();
-        fb = (u32T) packed_data.range(39, 8).to_uint64();
-        fa = (u8T) packed_data.range(47, 40).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit un0ARegSt(sc_bv<un0ARegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit un0ARegSt(const sc_bv<un0ARegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit un0ARegSt(
         u8T fc_,
         u32T fb_,
@@ -309,6 +336,109 @@ struct un0ARegSt {
         fa(fa_)
     {}
     explicit un0ARegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct un0ExtRegSt {
+    u8T fc; //[7:0] - byte 0
+    u16T fb; //[23:8] - bytes 1-2
+    u8T fa; //[31:24] - byte 3
+
+    un0ExtRegSt() {}
+
+    static constexpr uint16_t _bitWidth = 8 + 16 + 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint32_t _packedSt;
+    inline bool operator == (const un0ExtRegSt & rhs) const {
+        bool ret = true;
+        ret = ret && (fa == rhs.fa);
+        ret = ret && (fb == rhs.fb);
+        ret = ret && (fc == rhs.fc);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const un0ExtRegSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.fa, NAME + ".fa");
+        sc_trace(tf,v.fb, NAME + ".fb");
+        sc_trace(tf,v.fc, NAME + ".fc");
+    }
+    inline friend ostream& operator << ( ostream& os,  un0ExtRegSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("fa:0x{:02x} fb:0x{:04x} fc:0x{:02x}",
+           (uint64_t) fa,
+           (uint64_t) fb,
+           (uint64_t) fc
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, sizeof(_ret));
+        _ret = fc;
+        _ret |= (uint32_t)fb << (8 & 31);
+        _ret |= (uint32_t)fa << (24 & 31);
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        fc = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+        _pos += 8;
+        fb = (u16T)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
+        _pos += 16;
+        fa = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+    }
+    // register functions
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
+    uint64_t _getValue(void)
+    {
+        uint64_t ret =
+        (( fa & ((1ULL<<8)-1) ) << 24)
+ +
+        (( fb & ((1ULL<<16)-1) ) << 8)
+ +
+        (( fc & ((1ULL<<8)-1) ) << 0);
+        return( ret );
+    }
+    void _setValue(uint64_t packedValue)
+    {
+        fa = ( u8T ) (( packedValue >> 24 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u16T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        fc = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        }
+    inline sc_bv<un0ExtRegSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<un0ExtRegSt::_bitWidth> packed_data;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "un0ExtRegSt", "a field holds more bits than its type");
+        return packed_data;
+    }
+    inline void sc_unpack(const sc_bv<un0ExtRegSt::_bitWidth> &packed_data)
+    {
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
+    }
+    explicit un0ExtRegSt(const sc_bv<un0ExtRegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
+    explicit un0ExtRegSt(
+        u8T fc_,
+        u16T fb_,
+        u8T fa_) :
+        fc(fc_),
+        fb(fb_),
+        fa(fa_)
+    {}
+    explicit un0ExtRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 struct aSizeRegSt {
@@ -341,7 +471,7 @@ struct aSizeRegSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aSizeRegSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = index;
     }
     inline void unpack(const _packedSt &_src)
@@ -363,14 +493,25 @@ struct aSizeRegSt {
     inline sc_bv<aSizeRegSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<aSizeRegSt::_bitWidth> packed_data;
-        packed_data.range(28, 0) = index;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "aSizeRegSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<aSizeRegSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<aSizeRegSt::_bitWidth> &packed_data)
     {
-        index = (aSizeT) packed_data.range(28, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit aSizeRegSt(sc_bv<aSizeRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit aSizeRegSt(const sc_bv<aSizeRegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit aSizeRegSt(
         aSizeT index_) :
         index(index_)
@@ -409,7 +550,7 @@ struct apbAddrSt {
     inline apbAddrT _getAddress(void) { return( address); }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -419,14 +560,25 @@ struct apbAddrSt {
     inline sc_bv<apbAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<apbAddrSt::_bitWidth> packed_data;
-        packed_data.range(31, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "apbAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<apbAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<apbAddrSt::_bitWidth> &packed_data)
     {
-        address = (apbAddrT) packed_data.range(31, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit apbAddrSt(sc_bv<apbAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit apbAddrSt(const sc_bv<apbAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit apbAddrSt(
         apbAddrT address_) :
         address(address_)
@@ -466,7 +618,7 @@ struct apbDataSt {
     inline void _setData(apbDataT value) { data = value; }
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, apbDataSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -476,14 +628,25 @@ struct apbDataSt {
     inline sc_bv<apbDataSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<apbDataSt::_bitWidth> packed_data;
-        packed_data.range(31, 0) = data;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "apbDataSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<apbDataSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<apbDataSt::_bitWidth> &packed_data)
     {
-        data = (apbDataT) packed_data.range(31, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit apbDataSt(sc_bv<apbDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit apbDataSt(const sc_bv<apbDataSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit apbDataSt(
         apbDataT data_) :
         data(data_)
@@ -521,7 +684,7 @@ struct aMemAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aMemAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -531,14 +694,25 @@ struct aMemAddrSt {
     inline sc_bv<aMemAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<aMemAddrSt::_bitWidth> packed_data;
-        packed_data.range(4, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "aMemAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<aMemAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<aMemAddrSt::_bitWidth> &packed_data)
     {
-        address = (aAddrBitsT) packed_data.range(4, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit aMemAddrSt(sc_bv<aMemAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit aMemAddrSt(const sc_bv<aMemAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit aMemAddrSt(
         aAddrBitsT address_) :
         address(address_)
@@ -576,7 +750,7 @@ struct aMemSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, aMemSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -586,14 +760,25 @@ struct aMemSt {
     inline sc_bv<aMemSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<aMemSt::_bitWidth> packed_data;
-        packed_data.range(62, 0) = data;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "aMemSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<aMemSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<aMemSt::_bitWidth> &packed_data)
     {
-        data = (aDataBitsT) packed_data.range(62, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit aMemSt(sc_bv<aMemSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit aMemSt(const sc_bv<aMemSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit aMemSt(
         aDataBitsT data_) :
         data(data_)
@@ -631,7 +816,7 @@ struct bMemAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bMemAddrSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = address;
     }
     inline void unpack(const _packedSt &_src)
@@ -641,14 +826,25 @@ struct bMemAddrSt {
     inline sc_bv<bMemAddrSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<bMemAddrSt::_bitWidth> packed_data;
-        packed_data.range(4, 0) = address;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "bMemAddrSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<bMemAddrSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<bMemAddrSt::_bitWidth> &packed_data)
     {
-        address = (bAddrBitsT) packed_data.range(4, 0).to_uint64();
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
     }
-    explicit bMemAddrSt(sc_bv<bMemAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit bMemAddrSt(const sc_bv<bMemAddrSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit bMemAddrSt(
         bAddrBitsT address_) :
         address(address_)
@@ -690,7 +886,7 @@ struct bMemSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, bMemSt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         for(unsigned int i=0; i<3; i++) {
             pack_bits((uint64_t *)&_ret, _pos, data[i], 32);
@@ -716,18 +912,25 @@ struct bMemSt {
     inline sc_bv<bMemSt::_bitWidth> sc_pack(void) const
     {
         sc_bv<bMemSt::_bitWidth> packed_data;
-        for(unsigned int i=0; i<3; i++) {
-            packed_data.range(0+(i+1)*32-1, 0+i*32) = data[i];
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)(_packed[i >> 1] >> ((i & 1) * 32)));
         }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "bMemSt", "a field holds more bits than its type");
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<bMemSt::_bitWidth> packed_data)
+    inline void sc_unpack(const sc_bv<bMemSt::_bitWidth> &packed_data)
     {
-        for(unsigned int i=0; i<3; i++) {
-            data[i] = (u32T) packed_data.range(0+(i+1)*32-1, 0+i*32).to_uint64();
+        _packedSt _words{};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _words[i >> 1] |= (uint64_t)packed_data.get_word(i) << ((i & 1) * 32);
         }
+        unpack(_words);
     }
-    explicit bMemSt(sc_bv<bMemSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit bMemSt(const sc_bv<bMemSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
     explicit bMemSt(
         u32T data_[3])
     {
@@ -740,6 +943,154 @@ struct bMemSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+export namespace apbDecode_ns {
+inline sc_bv<aRegSt::_bitWidth> testRefPack(const aRegSt &x);
+inline void testRefUnpack(aRegSt &x, const sc_bv<aRegSt::_bitWidth> &packed_data);
+inline sc_bv<un0BRegSt::_bitWidth> testRefPack(const un0BRegSt &x);
+inline void testRefUnpack(un0BRegSt &x, const sc_bv<un0BRegSt::_bitWidth> &packed_data);
+inline sc_bv<un0ARegSt::_bitWidth> testRefPack(const un0ARegSt &x);
+inline void testRefUnpack(un0ARegSt &x, const sc_bv<un0ARegSt::_bitWidth> &packed_data);
+inline sc_bv<un0ExtRegSt::_bitWidth> testRefPack(const un0ExtRegSt &x);
+inline void testRefUnpack(un0ExtRegSt &x, const sc_bv<un0ExtRegSt::_bitWidth> &packed_data);
+inline sc_bv<aSizeRegSt::_bitWidth> testRefPack(const aSizeRegSt &x);
+inline void testRefUnpack(aSizeRegSt &x, const sc_bv<aSizeRegSt::_bitWidth> &packed_data);
+inline sc_bv<apbAddrSt::_bitWidth> testRefPack(const apbAddrSt &x);
+inline void testRefUnpack(apbAddrSt &x, const sc_bv<apbAddrSt::_bitWidth> &packed_data);
+inline sc_bv<apbDataSt::_bitWidth> testRefPack(const apbDataSt &x);
+inline void testRefUnpack(apbDataSt &x, const sc_bv<apbDataSt::_bitWidth> &packed_data);
+inline sc_bv<aMemAddrSt::_bitWidth> testRefPack(const aMemAddrSt &x);
+inline void testRefUnpack(aMemAddrSt &x, const sc_bv<aMemAddrSt::_bitWidth> &packed_data);
+inline sc_bv<aMemSt::_bitWidth> testRefPack(const aMemSt &x);
+inline void testRefUnpack(aMemSt &x, const sc_bv<aMemSt::_bitWidth> &packed_data);
+inline sc_bv<bMemAddrSt::_bitWidth> testRefPack(const bMemAddrSt &x);
+inline void testRefUnpack(bMemAddrSt &x, const sc_bv<bMemAddrSt::_bitWidth> &packed_data);
+inline sc_bv<bMemSt::_bitWidth> testRefPack(const bMemSt &x);
+inline void testRefUnpack(bMemSt &x, const sc_bv<bMemSt::_bitWidth> &packed_data);
+inline sc_bv<aRegSt::_bitWidth> testRefPack(const aRegSt &x)
+{
+    sc_bv<aRegSt::_bitWidth> packed_data;
+    packed_data.range(0+37-1, 0) = x.a;
+    return packed_data;
+}
+inline void testRefUnpack(aRegSt &x, const sc_bv<aRegSt::_bitWidth> &packed_data)
+{
+    x.a = (thirtySevenBitT) packed_data.range(0+37-1, 0).to_uint64();
+}
+inline sc_bv<un0BRegSt::_bitWidth> testRefPack(const un0BRegSt &x)
+{
+    sc_bv<un0BRegSt::_bitWidth> packed_data;
+    packed_data.range(0+16-1, 0) = x.fb;
+    packed_data.range(16+8-1, 16) = x.fa;
+    return packed_data;
+}
+inline void testRefUnpack(un0BRegSt &x, const sc_bv<un0BRegSt::_bitWidth> &packed_data)
+{
+    x.fb = (u16T) packed_data.range(0+16-1, 0).to_uint64();
+    x.fa = (u8T) packed_data.range(16+8-1, 16).to_uint64();
+}
+inline sc_bv<un0ARegSt::_bitWidth> testRefPack(const un0ARegSt &x)
+{
+    sc_bv<un0ARegSt::_bitWidth> packed_data;
+    packed_data.range(0+8-1, 0) = x.fc;
+    packed_data.range(8+32-1, 8) = x.fb;
+    packed_data.range(40+8-1, 40) = x.fa;
+    return packed_data;
+}
+inline void testRefUnpack(un0ARegSt &x, const sc_bv<un0ARegSt::_bitWidth> &packed_data)
+{
+    x.fc = (u8T) packed_data.range(0+8-1, 0).to_uint64();
+    x.fb = (u32T) packed_data.range(8+32-1, 8).to_uint64();
+    x.fa = (u8T) packed_data.range(40+8-1, 40).to_uint64();
+}
+inline sc_bv<un0ExtRegSt::_bitWidth> testRefPack(const un0ExtRegSt &x)
+{
+    sc_bv<un0ExtRegSt::_bitWidth> packed_data;
+    packed_data.range(0+8-1, 0) = x.fc;
+    packed_data.range(8+16-1, 8) = x.fb;
+    packed_data.range(24+8-1, 24) = x.fa;
+    return packed_data;
+}
+inline void testRefUnpack(un0ExtRegSt &x, const sc_bv<un0ExtRegSt::_bitWidth> &packed_data)
+{
+    x.fc = (u8T) packed_data.range(0+8-1, 0).to_uint64();
+    x.fb = (u16T) packed_data.range(8+16-1, 8).to_uint64();
+    x.fa = (u8T) packed_data.range(24+8-1, 24).to_uint64();
+}
+inline sc_bv<aSizeRegSt::_bitWidth> testRefPack(const aSizeRegSt &x)
+{
+    sc_bv<aSizeRegSt::_bitWidth> packed_data;
+    packed_data.range(0+ASIZE-1, 0) = x.index;
+    return packed_data;
+}
+inline void testRefUnpack(aSizeRegSt &x, const sc_bv<aSizeRegSt::_bitWidth> &packed_data)
+{
+    x.index = (aSizeT) packed_data.range(0+ASIZE-1, 0).to_uint64();
+}
+inline sc_bv<apbAddrSt::_bitWidth> testRefPack(const apbAddrSt &x)
+{
+    sc_bv<apbAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+DWORD-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(apbAddrSt &x, const sc_bv<apbAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (apbAddrT) packed_data.range(0+DWORD-1, 0).to_uint64();
+}
+inline sc_bv<apbDataSt::_bitWidth> testRefPack(const apbDataSt &x)
+{
+    sc_bv<apbDataSt::_bitWidth> packed_data;
+    packed_data.range(0+DWORD-1, 0) = x.data;
+    return packed_data;
+}
+inline void testRefUnpack(apbDataSt &x, const sc_bv<apbDataSt::_bitWidth> &packed_data)
+{
+    x.data = (apbDataT) packed_data.range(0+DWORD-1, 0).to_uint64();
+}
+inline sc_bv<aMemAddrSt::_bitWidth> testRefPack(const aMemAddrSt &x)
+{
+    sc_bv<aMemAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+MEMORYA_WORDS_LOG2-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(aMemAddrSt &x, const sc_bv<aMemAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (aAddrBitsT) packed_data.range(0+MEMORYA_WORDS_LOG2-1, 0).to_uint64();
+}
+inline sc_bv<aMemSt::_bitWidth> testRefPack(const aMemSt &x)
+{
+    sc_bv<aMemSt::_bitWidth> packed_data;
+    packed_data.range(0+MEMORYA_WIDTH-1, 0) = x.data;
+    return packed_data;
+}
+inline void testRefUnpack(aMemSt &x, const sc_bv<aMemSt::_bitWidth> &packed_data)
+{
+    x.data = (aDataBitsT) packed_data.range(0+MEMORYA_WIDTH-1, 0).to_uint64();
+}
+inline sc_bv<bMemAddrSt::_bitWidth> testRefPack(const bMemAddrSt &x)
+{
+    sc_bv<bMemAddrSt::_bitWidth> packed_data;
+    packed_data.range(0+MEMORYB_WORDS_LOG2-1, 0) = x.address;
+    return packed_data;
+}
+inline void testRefUnpack(bMemAddrSt &x, const sc_bv<bMemAddrSt::_bitWidth> &packed_data)
+{
+    x.address = (bAddrBitsT) packed_data.range(0+MEMORYB_WORDS_LOG2-1, 0).to_uint64();
+}
+inline sc_bv<bMemSt::_bitWidth> testRefPack(const bMemSt &x)
+{
+    sc_bv<bMemSt::_bitWidth> packed_data;
+    for(unsigned int i=0; i<3; i++) {
+        packed_data.range(0+i*32+32-1, 0+i*32) = x.data[i];
+    }
+    return packed_data;
+}
+inline void testRefUnpack(bMemSt &x, const sc_bv<bMemSt::_bitWidth> &packed_data)
+{
+    for(unsigned int i=0; i<3; i++) {
+        x.data[i] = (u32T) packed_data.range(0+i*32+32-1, 0+i*32).to_uint64();
+    }
+}
+} // namespace apbDecode_ns
 export namespace apbDecode_test_ns {
 class test_apbDecode_structs {
 public:
@@ -749,45 +1100,75 @@ private:
     template<typename T>
     static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
         for(auto pattern : patterns) {
-            typename T::_packedSt packed;
-            memset(&packed, pattern, T::_byteWidth);
-            sc_bv<T::_bitWidth> aInit;
-            sc_bv<T::_bitWidth> aTest;
-            for (int i = 0; i < T::_byteWidth; i++) {
-                int end = std::min((i+1)*8-1, T::_bitWidth-1);
-                aInit.range(end, i*8) = pattern;
+            roundTripBytes<T>(sName, pattern, 0);
+        }
+        // Bytes that differ by position expose a field placed a whole number of bytes off.
+        roundTripBytes<T>(sName, 0x5b, 0x35);
+    }
+    template<typename T>
+    static void roundTripBytes(const char* sName, uint8_t first, uint8_t step) {
+        using P = typename T::_packedSt;
+        P words{};
+        sc_bv<T::_bitWidth> aInit;
+        for (int i = 0; i < T::_byteWidth; i++) {
+            uint8_t byte = (uint8_t)(first + i * step);
+            int end = std::min((i+1)*8-1, T::_bitWidth-1);
+            aInit.range(end, i*8) = byte;
+            if constexpr (std::is_array_v<P>) {
+                words[i / 8] |= (uint64_t)byte << ((i % 8) * 8);
+            } else {
+                words |= (P)((uint64_t)byte << (i * 8));
             }
-            T a;
-            a.sc_unpack(aInit);
-            T b;
-            b.unpack(packed);
-            if (!(b == a)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false, sName);
+        }
+        T ref;
+        testRefUnpack(ref, aInit);
+        Q_ASSERT(testRefPack(ref) == aInit, std::string(sName) + ": testRefPack(testRefUnpack(pattern)) is not the pattern");
+        T b;
+        b.unpack(words);
+        if (!(b == ref)) {
+            cout << ref.prt() << endl << b.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": unpack() differs from the reference layout");
+        }
+        T c;
+        c.sc_unpack(aInit);
+        if (!(c == ref)) {
+            cout << ref.prt() << endl << c.prt() << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_unpack() differs from the reference layout");
+        }
+        P out;
+        ref.pack(out);
+        sc_bv<T::_bitWidth> outBits;
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t test;
-            memset(&test, pattern, 8);
-            b.pack(packed);
-            aTest = a.sc_pack();
-            if (!(aTest == aInit)) {;
-                cout << a.prt();
-                cout << aTest;
-                Q_ASSERT(false, sName);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << ref.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack() differs from the reference layout");
+        }
+        sc_bv<T::_bitWidth> scPacked = ref.sc_pack();
+        if (!(scPacked == aInit)) {
+            cout << ref.prt() << endl << scPacked << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": sc_pack() differs from the reference layout");
+        }
+        b.pack(out);
+        for (int i = 0; i < T::_bitWidth; i++) {
+            uint64_t word;
+            if constexpr (std::is_array_v<P>) {
+                word = out[i / 64];
+            } else {
+                word = (uint64_t)out;
             }
-            uint64_t *ptr = (uint64_t *)&packed;
-            uint16_t bitsLeft = T::_bitWidth;
-            do {
-                int bits = std::min((uint16_t)64, bitsLeft);
-                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-                if ((*ptr & mask) != (test & mask)) {;
-                    cout << a.prt();
-                    cout << b.prt();
-                    Q_ASSERT(false, sName);
-                }
-                bitsLeft -= bits;
-                ptr++;
-            } while(bitsLeft > 0);
+            outBits[i] = (bool)((word >> (i % 64)) & 1);
+        }
+        if (!(outBits == aInit)) {
+            cout << b.prt() << endl << outBits << endl << aInit << endl;
+            Q_ASSERT(false, std::string(sName) + ": pack(unpack(pattern)) is not the pattern");
         }
     }
 };
@@ -805,6 +1186,7 @@ void test_apbDecode_structs::test(void) {
     roundTrip<aRegSt>("aRegSt", patterns);
     roundTrip<un0BRegSt>("un0BRegSt", patterns);
     roundTrip<un0ARegSt>("un0ARegSt", patterns);
+    roundTrip<un0ExtRegSt>("un0ExtRegSt", patterns);
     roundTrip<aSizeRegSt>("aSizeRegSt", patterns);
     roundTrip<apbAddrSt>("apbAddrSt", patterns);
     roundTrip<apbDataSt>("apbDataSt", patterns);

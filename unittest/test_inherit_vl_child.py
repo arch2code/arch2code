@@ -10,6 +10,9 @@ resolves when the factory is asked. Exactly one instance is verilated per run
 (`--vlInst`), so the two container variants are two runs, in the manner of
 ip_test's `run-vl-ip0` / `run-vl-ip1`.
 
+A run with plusargs on its command line checks that the verilated leaf's
+`$test$plusargs` and `$value$plusargs` read them.
+
 Having verilated once, it also gates the verilate step's dependencies: an edit to
 design RTL must reach the Verilated object and the run, and a rebuild after no
 edit must verilate nothing.
@@ -24,6 +27,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'inherit-vl-child')
@@ -53,7 +57,10 @@ def copy_fixture(project):
 def toolchain_env():
     """The SystemC toolchain variables the arch2code makefiles require."""
     env = os.environ.copy()
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if env.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         if not env.get(var):
             raise RuntimeError(f"{var} is not set; the SystemC toolchain variables "
                                f"the arch2code makefiles require must be set to run "
@@ -172,7 +179,7 @@ def check_mixed_instance_orders(env):
                         print(f"  PASS ({name}): one registrar retains ordinary "
                               "variant solo")
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            remove_tree(tmp)
     return ok
 
 
@@ -285,11 +292,12 @@ def check_emitted(project):
     }
     for registration in inheritedView['verifRegistrations']:
         variant = registration['variant']
+        alias = f'using {registration["topModule"]}_dut_t = {registration["dutClass"]};'
         target = (
-            f'vliLeaf_hdl_sc_wrapper<{registration["dutClass"]}, '
+            f'vliLeaf_hdl_sc_wrapper<{registration["topModule"]}_dut_t, '
             f'{configs[variant]}>')
         key = f'"{variant}", "{registration["factoryProject"]}"'
-        if target in registrar and key in registrar:
+        if alias in registrar and target in registrar and key in registrar:
             print(f"  PASS: the aggregate trampoline registers '{variant}' as {target}")
         else:
             print(f"  FAIL: the aggregate trampoline has no '{variant}' registration "
@@ -317,6 +325,18 @@ def verilated_object_stamps(rundir):
             for o in glob.glob(pattern)}
 
 
+def verilate_run_stamps(rundir):
+    """Modification time of each top's V<top>__verFiles.dat, keyed by its Mdir.
+
+    Verilator rewrites that file on every run that verilates and leaves it
+    alone when --skip-identical finds nothing changed. The recipe touches the
+    archive after every run, so the archive's time does not show a verilate.
+    """
+    pattern = os.path.join(rundir, 'build', 'vl', 'obj_dir', '*', 'V*__verFiles.dat')
+    return {os.path.basename(os.path.dirname(o)): os.stat(o).st_mtime_ns
+            for o in glob.glob(pattern)}
+
+
 def check_rtl_edit_reverilates(project, rundir, env):
     """An edit to design RTL reaches the Verilated object and the run, and a
     rebuild after no edit verilates nothing. The pairing is the check.
@@ -324,6 +344,7 @@ def check_rtl_edit_reverilates(project, rundir, env):
     ok = True
     leaf = os.path.join(project, 'rtl', 'vliLeaf.sv')
     before = verilated_object_stamps(rundir)
+    runsBefore = verilate_run_stamps(rundir)
     if RUNTIME_MDIR not in before or len(before) < 2:
         print(f"  FAIL: expected {RUNTIME_MDIR} and at least one design top, "
               f"found {sorted(before)}")
@@ -367,7 +388,9 @@ def check_rtl_edit_reverilates(project, rundir, env):
         print(f"  FAIL: the set of Verilated tops changed across the edit: "
               f"{sorted(before)} -> {sorted(after)}")
         return False
-    stale = [t for t, m in after.items() if t != RUNTIME_MDIR and before[t] == m]
+    runsAfter = verilate_run_stamps(rundir)
+    stale = [t for t in after if t != RUNTIME_MDIR
+             and (t not in runsAfter or runsBefore.get(t) == runsAfter[t])]
     if stale:
         print(f"  FAIL: the RTL edit did not re-verilate {sorted(stale)}")
         ok = False
@@ -397,6 +420,25 @@ def check_rtl_edit_reverilates(project, rundir, env):
     return ok
 
 
+def check_plusargs(rundir, env):
+    """The verilated leaf reads the plusargs given on the run's command line."""
+    ran = subprocess.run(
+        ['./run', 'vliTop', '--vlInst', SWAPPED_LEAF['def'], '+vliGreet', '+vliBias=37'],
+        capture_output=True, text=True, timeout=600, env=env,
+        cwd=os.path.join(rundir, 'build'))
+    ok = ran.returncode == 0
+    for expected in ('vliLeaf plusarg vliGreet set', 'vliLeaf plusarg vliBias=37'):
+        ok = ok and expected in ran.stdout
+    if ok:
+        print("  PASS: the verilated leaf read +vliGreet and +vliBias=37")
+    else:
+        print(f"  FAIL: the run with plusargs (rc={ran.returncode}) did not echo "
+              f"+vliGreet and +vliBias=37 from the verilated leaf. A "
+              f"'Verilated::commandArgs' error means sc_main did not hand its "
+              f"arguments to Verilator:\n{ran.stdout}\n{ran.stderr}")
+    return ok
+
+
 def check_run(which, output):
     """The inherited and ordinary sites each constructed at their own Config."""
     ok = True
@@ -419,6 +461,10 @@ def check_run(which, output):
         else:
             print(f"  FAIL ({which}): run did not report '{expected}' ({what})")
             ok = False
+    if 'vliLeaf plusarg' in output:
+        print(f"  FAIL ({which}): the verilated leaf echoed a plusarg the run "
+              f"did not pass")
+        ok = False
     if f"{SWAPPED_LEAF[which]} forwarding" in output:
         print(f"  FAIL ({which}): {SWAPPED_LEAF[which]} still logged as a model; "
               f"the verilated wrapper was not swapped in")
@@ -441,6 +487,7 @@ def run_all_tests():
         ok = check_mixed_instance_orders(env)
         rundir = generate_and_build(project, env)
         ok = check_emitted(project) and ok
+        ok = check_plusargs(rundir, env) and ok
         for which in ('def', 'alt'):
             ran = make(f'run-vl-{which}', project, env, directory=rundir,
                        extra=('VL_DUT=1',))
@@ -453,7 +500,7 @@ def run_all_tests():
         # Runs last: it leaves the copy's RTL edited and its build stale.
         ok = check_rtl_edit_reverilates(project, rundir, env) and ok
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp)
 
     if ok:
         print("\nPASS: one parameterized leaf type builds and runs at its own "

@@ -51,6 +51,7 @@ from templates.systemc import includes, moduleScaffold, structures
 from templates.systemc.includes import includeTypes
 
 from _addrctl_helpers import build_database, cleanup, run_arch2code
+from _tmp_helpers import remove_tree
 
 CPP_AXIS_PROJECT = os.path.join(
     base_dir, 'examples', 'xprojParam', 'cppAxis', 'prj', 'yaml',
@@ -492,7 +493,7 @@ def test_two_param_field_constructor_avoids_comma_splice():
             else:
                 print("  PASS: rendered module compiles clean under clang++ -fsyntax-only")
         finally:
-            shutil.rmtree(workDir, ignore_errors=True)
+            remove_tree(workDir)
     finally:
         cleanup([project_path, db_path] + arch_paths)
     return ok
@@ -508,6 +509,8 @@ def test_two_param_field_constructor_avoids_comma_splice():
 # interface on the connection), so the bind goes through buildThunkerView.
 TYPE_PAIR_ARCH_YAML = """interface_defs:
   type_pair_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:

@@ -65,7 +65,7 @@ public:
 
 
     axi4s_m_drvChannels(std::string name, std::string srcName) :
-    axis4_t1(("axis4_t1"+name).c_str(), srcName, "api_list_size", 256, "")
+    axis4_t1(("axis4_t1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 256, "")
     {};
     void bind( axi4s_m_drvBase *a, axi4s_m_drvInverted *b)
     {

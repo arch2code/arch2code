@@ -61,12 +61,13 @@ public:
     rdy_vld_port_thunker( const char* name_,
                           rdy_vld_in<UpT>&   upPort,
                           rdy_vld_in<DownT>& downPort,
-                          std::string block_ )
+                          std::string block_,
+                          channelBackpressure backpressure_ )
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, backpressure_ )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkIn(); } );
@@ -76,12 +77,13 @@ public:
     rdy_vld_port_thunker( const char* name_,
                           rdy_vld_in_if<UpT>& upInIface,
                           rdy_vld_in<DownT>&           downPort,
-                          std::string block_ )
+                          std::string block_,
+                          channelBackpressure backpressure_ )
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, backpressure_ )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkIn(); } );
@@ -93,12 +95,13 @@ public:
     rdy_vld_port_thunker( const char* name_,
                           rdy_vld_out_if<UpT>& upOutIface,
                           rdy_vld_out<DownT>&           downPort,
-                          std::string block_ )
+                          std::string block_,
+                          channelBackpressure backpressure_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
         m_up_out_port( nullptr ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, backpressure_ )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
@@ -111,12 +114,13 @@ public:
     rdy_vld_port_thunker( const char* name_,
                           rdy_vld_out<UpT>&   upPort,
                           rdy_vld_out<DownT>& downPort,
-                          std::string block_ )
+                          std::string block_,
+                          channelBackpressure backpressure_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
         m_up_out_port( &upPort ),
-        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_, backpressure_ )
     {
         downPort( m_down_channel );
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );

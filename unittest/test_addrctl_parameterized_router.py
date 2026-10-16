@@ -127,7 +127,7 @@ blocks:
 instances:
     uTop:        { container: top, instanceType: top }
     uAPBDecode:  { container: top, instanceType: apbDecode }
-    uSub:        { container: top, instanceType: sub }
+    uSub:        { container: top, instanceType: sub, addressGroup: top }
     uSubDecode:  { container: sub, instanceType: paramSubDecode, variant: paramSubV0 }
     uSubLeaf:    { container: sub, instanceType: subLeaf, addressGroup: sub }
 

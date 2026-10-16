@@ -1,97 +1,102 @@
 ---
 name: systemc-synchronization
-description: Guide for using synchLock, events, and arbitration patterns in SystemC for concurrency and shared resources
+description: Guide for using shared events, synchLock and tandem-safe arbitration in SystemC models for concurrency and shared resources
 ---
-# Skill: SystemC Synchronization
+# Skill: SystemC synchronization
 
 ## Purpose
-Guide the user on using `synchLock`, events, and arbitration patterns in SystemC to model concurrency and shared resources correctly.
+Service several ports from one thread, record arbitration decisions so tandem can replay them, and guard state shared between threads.
 
-## Implementation Location
-All logic and member usage described below must be implemented in the user regions of the block's `model/<block>.cppm` module file, specifically **after** the `// GENERATED_CODE_END` markers.
+Where this code goes in `model/<block>.cppm` is in **systemc-core**. The calls on each port family are in **systemc-interfaces**.
 
-## Instructions
+## 1. One thread, several ports
+A thread hooks one `sc_event` to several dst-side ports with `setExternalEvent(&ev)`, waits on it, and asks each port `isActive()` to find work.
 
-1.  **Multi-Interface Arbitration Pattern:**
-    *   **Use Case:** When a thread needs to service multiple input interfaces.
-    *   **Family support:** `setExternalEvent`/`isActive`/`isNotActive` is available on every base channel family's receive side: `rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack`, `notify_ack`. On `axi_read` and `axi_write`, the trio is on the **dst modport** and reflects the address sub-channel (the arbitration decision an interconnect or multi-port subordinate makes); a single `SC_THREAD` can service N `axi_read`/`axi_write` dst ports via one shared event this way. `axi4_stream` forwards to its one data channel. `external_reg`, `raw`, and `status` only carry `setExternalEvent` (no `isActive`/`isNotActive`), predate this pattern, and do not support the scan-then-wait idiom below.
-    *   **Mechanism:**
-        1.  Create a shared `sc_event`.
-        2.  Bind interfaces to this event using `setExternalEvent(&event)`.
-        3.  Wait on the event in a loop.
-        4.  Check `isActive()` on interfaces to see which one woke the thread.
-        5.  Arbitrate if multiple are active.
+### Family support
+*   `setExternalEvent`, `isActive()` and `isNotActive()` exist on the dst side of `rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack` and `notify_ack`.
+*   On `axi_read` and `axi_write` they exist on the dst side and report the address channel, so one thread can serve several AXI subordinate ports. `axi4_stream` reports its one data channel.
+*   `status`, `external_reg` and `raw` have `setExternalEvent` but no `isActive()`, so they cannot join the scan below.
+    *   A `status` port fires the shared event on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`), even one that repeats the value. Compare `readNonBlocking()` with the last value the thread saw.
+    *   On an `external_reg` port the hooked event fires only on `write()`, from either side, and never on a firmware write (`reg_write_cmd`). A block that owns the register blocks in `read()` instead.
+    *   A `raw` port can share the event, but `read()` still blocks until a value arrives.
 
-    ```cpp
-    // 1. Setup (Constructor/Init)
-    sc_event commonEvent;
-    cmdFetchReq->setExternalEvent(&commonEvent);
-    dataResp->setExternalEvent(&commonEvent);
+### Pattern
+The channel keeps the event pointer, so the event must outlive the thread. Make it a member, or declare it at the top of a thread function that never returns. Hook the ports once, before the loop.
 
-    // 2. Loop
-    while(true) {
-        // Wait until at least one interface is active
-        while (cmdFetchReq->isNotActive() && dataResp->isNotActive()) {
-            wait(commonEvent);
+```cpp
+void blk::serviceThread(void)
+{
+    sc_event portEvent;
+    cmdIn->setExternalEvent(&portEvent);
+    dataIn->setExternalEvent(&portEvent);
+    while (true) {
+        while (cmdIn->isNotActive() && dataIn->isNotActive()) {
+            wait(portEvent);
         }
-
-        // 3. Check & Arbitrate
-        if (cmdFetchReq->isActive()) {
-            dmaReadRequestSt request;
-            cmdFetchReq->pushReceive(request);
-            // ... process ...
-            cmdFetchReq->ack();
-        } else if (dataResp->isActive()) {
-            // ... process ...
-        }
-    }
-    ```
-
-2.  **Arbitration with `synchLock`:**
-    *   **Do NOT** use simple `if/else` on ports for cycle-accurate modeling. Use `synchLockFactory` to create an arbiter that mimics RTL behavior.
-    *   **Pattern:**
-        1.  Determine purely local winner (priority encoder).
-        2.  Call `arbiter->arb(winner)` to handle cycle-accurate delays and fairness.
-        3.  Switch on result.
-        4.  Execute transaction.
-
-    ```cpp
-    // Example of arbitration pattern
-    _axiIdT arbResult = 0;
-
-    // 1. Determine local winner
-    if (cmdFetchReq->isActive()) {
-        arbResult = AXIRD_CMDFETCH_ID;
-    } else if (descFetchReq->isActive()) {
-        arbResult = AXIRD_PTRFETCH_ID;
-    } // ...
-
-    // 2. Synchronize with RTL/SystemC arbiter
-    arbResult = readAddressArbiter->arb(arbResult);
-
-    // 3. Process winner
-    switch (arbResult) {
-        case AXIRD_CMDFETCH_ID:
-            cmdFetchReq->pushReceive(request);
+        if (cmdIn->isActive()) {
+            cmdSt cmd;
+            cmdIn->pushReceive(cmd);
             // ...
-            break;
-        // ...
+            cmdIn->ack();
+        } else {
+            dataSt data;
+            dataIn->read(data);
+            // ...
+        }
     }
-    ```
+}
+```
 
-3.  **Locks/Mutexes:**
-    *   Use `synchLock` for mutual exclusion, especially when accessing shared data structures across threads.
-    *   Initialize using `synchLockFactory::getInstance().newLock(...)`.
-    *   Use `lock(state)` and `unlock(state)` or `RAII` pattern if available.
-    *   `state` parameter is useful for debugging/waveforms to indicate *why* the lock is held.
+Which ports are active when the thread wakes depends on timing. In a block that runs in tandem, pass the choice through `arb()` before servicing it, as in the `arb` example in section 2.
 
-    ```cpp
-    // Initialization
-    std::shared_ptr<synchLock<>> writeAccountingMutex;
-    writeAccountingMutex(synchLockFactory<>::getInstance().newLock(getAltName(), "writeAccountingMutex"));
+## 2. `synchLock`
+`synchLock<T>` (default `T = uint64_t`) is a mutex that also records decisions for tandem. Outside tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`. Tandem is an A2C Pro feature. There, two copies of a block run side by side. The first copy to create a lock records each `lock()` and `arb()` value, and the second copy replays them in the same order.
 
-    // Usage
-    writeAccountingMutex->lock(TAGSCHEDULER_WRITEACC_SCHEDULE);
-    writesInTransfer++;
-    writeAccountingMutex->unlock();
-    ```
+### Creating a lock
+Declare a member and initialize it in the constructor's initializer slot:
+
+```cpp
+// block implementation members
+std::shared_ptr<synchLock<>> stateLock;
+
+// constructor initializers
+        ,stateLock(synchLockFactory<>::getInstance().newLock(getAltName(), "stateLock"))
+```
+
+*   `getAltName()` is the instance's hierarchical name without the tandem level, so both tandem copies build the same key and the factory pairs them.
+*   Lock names must be unique within a block instance. In base a repeated name asserts. In A2C Pro it pairs the two locks as if they were tandem copies.
+*   For a non-integral `T`, the factory logs values with `T::prt()`, so `T` must have one.
+
+### `lock` and `unlock`
+*   `lock(v)` takes the mutex. In tandem, the second copy waits until the first copy's next recorded value equals `v`. The value is the match key, not a debug label, so give each call site its own value.
+*   `unlock()` takes no argument. There is no RAII guard, so unlock on every path out.
+
+```cpp
+stateLock->lock(LOCK_SITE_SCHEDULE);
+writesInFlight++;
+stateLock->unlock();
+```
+
+`LOCK_SITE_SCHEDULE` is a constant the block defines, one per call site.
+
+### `arb`
+*   `arb(v)` records the winner your code chose. It adds no fairness. Outside tandem it returns `v` at once. In tandem, the second copy waits for the first copy's value and returns it, so both copies take the same branch.
+*   Choose the winner with plain code that models the RTL policy, priority or round-robin, then pass it through `arb()` and branch on the result.
+*   Use `arb()` wherever the decision depends on timing.
+
+`srcArb` is a second `synchLock<>` created as above. Keep `arb()` and `lock()` on separate locks, because in tandem one lock's `lock()` and `arb()` calls share a single replay queue. `SRC_*` are constants the block defines.
+
+```cpp
+uint64_t winner = SRC_NONE;
+if (cmdIn->isActive()) {
+    winner = SRC_CMD;
+} else if (dataIn->isActive()) {
+    winner = SRC_DATA;
+}
+winner = srcArb->arb(winner);
+switch (winner) {
+    case SRC_CMD:  /* service cmdIn */  break;
+    case SRC_DATA: /* service dataIn */ break;
+    default: break;
+}
+```

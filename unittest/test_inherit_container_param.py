@@ -65,10 +65,7 @@ def _write_temp(content, suffix, prefix):
 def _cleanup(paths):
     for path in paths:
         if path and os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            os.unlink(path)
 
 
 def _make_project(arch_yaml, name, extra_files=()):
@@ -115,6 +112,8 @@ types:
 
 interface_defs:
   type_intf:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:

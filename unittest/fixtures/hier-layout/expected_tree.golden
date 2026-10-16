@@ -11,10 +11,8 @@ core/rtl/core_package.sv
 core/rtl/gen.sv
 core/rtl/rtl.f
 core/tb/core/coreConfig.cpp
-core/tb/core/coreExternal.cpp
-core/tb/core/coreExternal.h
-core/tb/core/coreTestbench.cpp
-core/tb/core/coreTestbench.h
+core/tb/core/coreExternal.cppm
+core/tb/core/coreTestbench.cppm
 leaf/base/leafBase.cppm
 leaf/model/leaf.cppm
 leaf/rtl/leaf.sv

@@ -543,6 +543,34 @@ def postProcess(prj):
         for routerInstRow in router_instance.values()
     }
 
+    # A second instance of a nested router's host block instantiates the
+    # router twice without adding a router instance row, so
+    # _resolveRouterInstances does not see it. The primary router is exempt.
+    # The limit comes from a parent router, which dispatches to one host
+    # instance, and the primary router has no parent.
+    for routerInstRow in router_instance.values():
+        if routerInstRow is primary_router:
+            continue
+        hostBlockKey = routerInstRow['containerKey']
+        hostInstances = [
+            row['instance'] for row in prj.flatData['instances'].values()
+            if row['instanceKey'] in reachable
+            and row['instanceTypeKey'] == hostBlockKey
+            and not prj.isComposedChildRootRow(row)
+        ]
+        if len(hostInstances) > 1:
+            names = ', '.join(f"'{name}'" for name in hostInstances)
+            _exit_with_error(
+                f"Block '{blockInfo[hostBlockKey]['block']}' hosts nested "
+                f"router '{routerInstRow['instance']}' (block "
+                f"'{routerInstRow['instanceType']}') and has "
+                f"{len(hostInstances)} instances: {names}. Multi-instance "
+                f"routers are not supported, so a block hosting a nested "
+                f"router may have one instance. Give each instance its own "
+                f"block, hosting its own router block with a distinct "
+                f"addressBlock.addressGroup."
+            )
+
     # ---- Per-owner-context emission buckets. Each owner block's
     # YAML file becomes the `_context` of the rows we feed back into
     # processSingleFile().
@@ -1009,6 +1037,88 @@ def postProcess(prj):
         _section(leafContext, 'connectionMaps').append(connection_map)
 
     # ---- Steps 5 & 6: emit router-to-leaf and router-to-router binds ----
+    # A group name belongs to the project owning the referring file, as in
+    # the projectOpen addressDecode view.
+    def _groupKey(context, addressGroup):
+        return (prj.contextOwningProject[context], addressGroup)
+
+    # Router instance keys that dispatch to at least one instance of their
+    # own group.
+    dispatchingRouters = set()
+
+    def _blocksAtOrBelow(blockKey):
+        found = {blockKey}
+        frontier = [blockKey]
+        while frontier:
+            containerKey = frontier.pop()
+            for row in prj.flatData['instances'].values():
+                if row['instanceKey'] in reachable \
+                        and row['containerKey'] == containerKey \
+                        and row['instanceTypeKey'] not in found:
+                    found.add(row['instanceTypeKey'])
+                    frontier.append(row['instanceTypeKey'])
+        return found
+
+    def _checkDispatchedGroup(instRow, role, parentRouter):
+        """Reject a dispatched instance that does not carry its router's
+        addressGroup. The router would allocate it no decode slot."""
+        routerBlock = routers[parentRouter['instanceTypeKey']]
+        routerAddressGroup = routerBlock['addressBlock']['addressGroup']
+        routerGroupKey = _groupKey(routerBlock['_context'], routerAddressGroup)
+        instGroupKey = _groupKey(instRow['_context'], instRow['addressGroup'])
+        if instGroupKey == routerGroupKey:
+            return
+        instName = instRow['instance']
+        instGroup = instRow['addressGroup']
+        head = (f"Instance '{instName}' (block '{instRow['instanceType']}') "
+                f"{role}, and router '{parentRouter['instance']}' (block "
+                f"'{routerBlock['block']}') in container "
+                f"'{parentRouter['container']}' dispatches to it")
+        instProject = instGroupKey[0]
+        routerProject = routerGroupKey[0]
+        if instProject != routerProject:
+            if instGroup is None:
+                groupClause = "Any addressGroup: set on it resolves"
+            else:
+                groupClause = f"Its addressGroup: {instGroup} resolves"
+            _exit_with_error(
+                f"{head}. {groupClause} in project '{instProject}', but the "
+                f"router serves group {routerAddressGroup} of project "
+                f"'{routerProject}'. Declare instance '{instName}', with "
+                f"addressGroup: {routerAddressGroup}, in a file project "
+                f"'{routerProject}' owns, or move it into a container that a "
+                f"router of project '{instProject}' serves and set "
+                f"addressGroup: to that router's group."
+            )
+        if instGroup is None:
+            _exit_with_error(
+                f"{head}, but it carries no addressGroup:. Set addressGroup: "
+                f"{routerAddressGroup} on instance '{instName}'; without it "
+                f"the router allocates it no decode slot."
+            )
+        if instGroup != routerAddressGroup:
+            fix = (f"Change addressGroup: {instGroup} to {routerAddressGroup} "
+                   f"on instance '{instName}'")
+            groupRouter = next(
+                (row for row in router_instance.values()
+                 if _groupKey(routers[row['instanceTypeKey']]['_context'],
+                              routers[row['instanceTypeKey']]['addressBlock']
+                              ['addressGroup']) == instGroupKey),
+                None)
+            if groupRouter is None:
+                fix += "."
+            elif groupRouter['containerKey'] in _blocksAtOrBelow(
+                    instRow['instanceTypeKey']):
+                fix += (f". Group {instGroup} belongs to router "
+                        f"'{groupRouter['instance']}' inside it; the instance "
+                        f"itself takes a slot in group {routerAddressGroup}.")
+            else:
+                fix += (f", or, if it belongs in group {instGroup}, move it "
+                        f"into container '{groupRouter['container']}', which "
+                        f"router '{groupRouter['instance']}' serves.")
+            _exit_with_error(f"{head}, but it carries addressGroup: "
+                             f"{instGroup}. {fix}")
+
     for instRow in prj.flatData['instances'].values():
         if instRow['instanceKey'] not in reachable:
             continue
@@ -1050,21 +1160,12 @@ def postProcess(prj):
             regDecoderPort = addressBlock['registerDecoderPort']
 
             if instanceTypeKey in passthroughConsumer:
-                # The container instance is the dispatched slot and must
-                # carry the router's addressGroup, or the router allocates
-                # it no slot.
-                routerAddressGroup = addressBlock['addressGroup']
-                if instRow['addressGroup'] != routerAddressGroup:
-                    innerRow = passthroughConsumer[instanceTypeKey]
-                    _exit_with_error(
-                        f"Instance '{instRow['instance']}' (block "
-                        f"'{instRow['instanceType']}') passes the register bus "
-                        f"from router '{parentRouter['instance']}' "
-                        f"(addressGroup '{routerAddressGroup}') to "
-                        f"'{innerRow['instance']}' and must carry "
-                        f"addressGroup: {routerAddressGroup}; without it "
-                        f"the router allocates it no decode slot."
-                    )
+                role = (f"passes the register bus to "
+                        f"'{passthroughConsumer[instanceTypeKey]['instance']}'")
+            else:
+                role = "has a register bus"
+            _checkDispatchedGroup(instRow, role, parentRouter)
+            dispatchingRouters.add(parentRouter['instanceKey'])
 
             routerInterface, _routerIfaceRow, _routerIfaceContext = \
                 _resolveRouterRegisterBusInterface(
@@ -1190,6 +1291,10 @@ def postProcess(prj):
             # convention so the constructor template emits a real
             # downstream port instead of nullptr.
             listOfInstances.append(containerSiblingInst['instanceKey'])
+            _checkDispatchedGroup(
+                containerSiblingInst,
+                f"hosts nested router '{instRow['instance']}'", parentRouter)
+            dispatchingRouters.add(parentRouter['instanceKey'])
             connection = {
                 'src': parentRouter['instance'],
                 'dst': siblingInstance,
@@ -1202,6 +1307,42 @@ def postProcess(prj):
             # the parent router instance, so it is the context that
             # can resolve both endpoints of this dispatch bind.
             _section(containerSiblingContext, 'connections').append(connection)
+
+    # Every router must dispatch to at least one member of its group.
+    for routerInstRow in router_instance.values():
+        if routerInstRow['instanceKey'] in dispatchingRouters:
+            continue
+        routerBlock = routers[routerInstRow['instanceTypeKey']]
+        routerAddressGroup = routerBlock['addressBlock']['addressGroup']
+        members = [
+            row for row in prj.flatData['instances'].values()
+            if row['instanceKey'] in reachable
+            and _groupKey(row['_context'], row['addressGroup'])
+            == _groupKey(routerBlock['_context'], routerAddressGroup)
+        ]
+        head = (f"Router '{routerInstRow['instance']}' (block "
+                f"'{routerBlock['block']}') serves addressGroup "
+                f"'{routerAddressGroup}', but")
+        if not members:
+            _exit_with_error(
+                f"{head} no instance in this build's design tree carries "
+                f"addressGroup: {routerAddressGroup}, so the router has "
+                f"nothing to dispatch to. Set addressGroup: "
+                f"{routerAddressGroup} on an instance in container "
+                f"'{routerInstRow['container']}' that has registers, a "
+                f"regAccess memory or a registerPorts: entry, or remove the "
+                f"addressBlock: from block '{routerBlock['block']}'."
+            )
+        memberList = ', '.join(
+            f"{row['instance']} (block '{row['instanceType']}')"
+            for row in members)
+        _exit_with_error(
+            f"{head} no instance carrying addressGroup: {routerAddressGroup} "
+            f"has a register bus for it to dispatch to: {memberList}. Give "
+            f"one of these blocks registers, a regAccess memory or a "
+            f"registerPorts: entry, or remove the addressBlock: from block "
+            f"'{routerBlock['block']}'."
+        )
 
     # ---- Intrinsic boundary map (container-fed nested router) ----
     # A router instantiated inside a container block is fed at that container's

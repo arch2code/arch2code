@@ -35,6 +35,7 @@ if base_dir not in sys.path:
 
 from _addrctl_helpers import APB_PREAMBLE, render_leaf, render_plain_block, render_router
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import remove_tree
 
 PROJECT_TAIL = """
 instanceGroups:
@@ -479,54 +480,58 @@ def _make_fixture(design, top_instance='uTop', child=None, files=None):
     Returns (fixture_dir, project_path, db_path).
     """
     fixture = tempfile.mkdtemp(prefix='regclk_')
-    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
-    os.makedirs(os.path.join(fixture, 'yaml'))
-    with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
-        f.write(APB_PREAMBLE)
-    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
-        f.write(design)
-    for name, content in (files or {}).items():
-        with open(os.path.join(fixture, 'yaml', name), 'w') as f:
-            f.write(content)
+    try:
+        os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+        os.makedirs(os.path.join(fixture, 'yaml'))
+        with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
+            f.write(APB_PREAMBLE)
+        with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+            f.write(design)
+        for name, content in (files or {}).items():
+            with open(os.path.join(fixture, 'yaml', name), 'w') as f:
+                f.write(content)
 
-    projectFiles = ['    - ../../yaml/shared.yaml\n', '    - ../../yaml/top.yaml\n']
-    if child is not None:
-        os.makedirs(os.path.join(fixture, 'ip', 'prj', 'yaml'))
-        os.makedirs(os.path.join(fixture, 'ip', 'yaml'))
-        with open(os.path.join(fixture, 'ip', 'yaml', 'childIp.yaml'), 'w') as f:
-            f.write(child)
-        with open(os.path.join(fixture, 'ip', 'prj', 'yaml', 'childProject.yaml'), 'w') as f:
+        projectFiles = ['    - ../../yaml/shared.yaml\n', '    - ../../yaml/top.yaml\n']
+        if child is not None:
+            os.makedirs(os.path.join(fixture, 'ip', 'prj', 'yaml'))
+            os.makedirs(os.path.join(fixture, 'ip', 'yaml'))
+            with open(os.path.join(fixture, 'ip', 'yaml', 'childIp.yaml'), 'w') as f:
+                f.write(child)
+            with open(os.path.join(fixture, 'ip', 'prj', 'yaml', 'childProject.yaml'), 'w') as f:
+                f.write("yamlFormat: 2\n"
+                        "projectName: childIp\n"
+                        "\n"
+                        "projectFiles:\n"
+                        "    - ../../yaml/childIp.yaml\n"
+                        "\n"
+                        "dirs:\n"
+                        "    root: ../..\n"
+                        "\n"
+                        # projectName + dirs + fileGeneration is the sentinel set that
+                        # classifies a referenced file as a child project file.
+                        "fileGeneration:\n"
+                        "    template: $a2c/templates/fileGen/fileGen.py\n"
+                        f"{PROJECT_TAIL}")
+            projectFiles.insert(0, '    - ../../ip/prj/yaml/childProject.yaml\n')
+
+        project_path = os.path.join(fixture, 'prj', 'yaml', 'project.yaml')
+        with open(project_path, 'w') as f:
             f.write("yamlFormat: 2\n"
-                    "projectName: childIp\n"
+                    "projectName: regClk\n"
+                    f"topInstance: {top_instance}\n"
                     "\n"
                     "projectFiles:\n"
-                    "    - ../../yaml/childIp.yaml\n"
+                    f"{''.join(projectFiles)}"
+                    "\n"
+                    f"{_deriveProjectDomains(design)}"
                     "\n"
                     "dirs:\n"
                     "    root: ../..\n"
-                    "\n"
-                    # projectName + dirs + fileGeneration is the sentinel set that
-                    # classifies a referenced file as a child project file.
-                    "fileGeneration:\n"
-                    "    template: $a2c/templates/fileGen/fileGen.py\n"
                     f"{PROJECT_TAIL}")
-        projectFiles.insert(0, '    - ../../ip/prj/yaml/childProject.yaml\n')
-
-    project_path = os.path.join(fixture, 'prj', 'yaml', 'project.yaml')
-    with open(project_path, 'w') as f:
-        f.write("yamlFormat: 2\n"
-                "projectName: regClk\n"
-                f"topInstance: {top_instance}\n"
-                "\n"
-                "projectFiles:\n"
-                f"{''.join(projectFiles)}"
-                "\n"
-                f"{_deriveProjectDomains(design)}"
-                "\n"
-                "dirs:\n"
-                "    root: ../..\n"
-                f"{PROJECT_TAIL}")
-    return fixture, project_path, os.path.join(fixture, 'project.db')
+        return fixture, project_path, os.path.join(fixture, 'project.db')
+    except BaseException:
+        remove_tree(fixture)
+        raise
 
 
 def _build(project_path, db_path):
@@ -632,7 +637,7 @@ def _case(label, design, expected, child=None):
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def _expect_diagnostic(label, design, needles, forbidden=(), files=None):
@@ -643,7 +648,7 @@ def _expect_diagnostic(label, design, needles, forbidden=(), files=None):
     try:
         code, output = _build(project_path, db_path)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     if code == 0:
         print(f"FAIL: {label}: build succeeded; it must fail.\n{output}")
         return False
@@ -780,7 +785,7 @@ def run_reusable_ip_register_port_clock_rename():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_object_access_keeps_its_own_domain():
@@ -834,7 +839,7 @@ def run_feed_at_container_instance():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 
@@ -1076,7 +1081,7 @@ def run_composed_child_respells_the_clock():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 # A never-instantiated harness container of the child project, holding a
@@ -1135,7 +1140,7 @@ def run_child_harness_accessor_domain_not_checked():
     try:
         code, output = _build(project_path, db_path)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     if code != 0:
         print(f"FAIL: {label}\n{output}")
         return False
@@ -1162,7 +1167,7 @@ def run_child_harness_accessor_without_default_clock_rejected():
     try:
         code, output = _build(project_path, db_path)
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     needles = ("Instance 'hAccessor' of block 'ipAccessor' accesses memory 'ipTbl' "
                "of block 'ipMemOwner', but 'ipAccessor' has no default clock (every "
                "declared clock is direction: output). A memory accessor takes its "
@@ -1432,7 +1437,7 @@ connections:
         print(f"{'FAIL' if bfmFailed else 'PASS'}: {bfmLabel}")
         return not failed and not bfmFailed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_reusable_ip_authored_reset_mismatch_rejected():
@@ -1584,7 +1589,7 @@ def run_passthrough_container_resolves_bus_clock():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_passthrough_inner_leaf_bus_mismatch_rejected():
@@ -1676,7 +1681,7 @@ def run_passthrough_reusable_ip_container_inner_leaf_port():
         print(f"{'FAIL' if failed else 'PASS'}: {label}")
         return not failed
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_passthrough_container_instances_disagree_rejected():
@@ -1803,7 +1808,7 @@ def _two_router_reuse_agreeing_builds(reuse_wrap, block):
         print(f"PASS: {label}")
         return True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
 
 
 def run_passthrough_reused_under_agreeing_routers_builds():
@@ -1911,7 +1916,7 @@ def _expect_register_bus_maps(label, design, maps, ports, files=None,
                       f"{gotConnections.get(dst)}, expected {expected}")
                 failed = True
     finally:
-        shutil.rmtree(fixture)
+        remove_tree(fixture)
     if swap is not None:
         fixture, project_path, db_path = _make_fixture(
             _swapInstanceLines(design, *swap), files=files)
@@ -1922,7 +1927,7 @@ def _expect_register_bus_maps(label, design, maps, ports, files=None,
                 return False
             swapped = _registerBusWiring(db_path)
         finally:
-            shutil.rmtree(fixture)
+            remove_tree(fixture)
         for name, got, expected in zip(
                 ('connections', 'connectionMaps', 'registerBusPort'), swapped, wiring):
             if got != expected:

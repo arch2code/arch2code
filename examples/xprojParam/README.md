@@ -39,7 +39,7 @@ several sub-project namespaces export the same payload spelling. The prefixed
 
 The upstream project's own block consumes `PIXEL_WIDTH`, because that block is
 what these chains configure; nothing in the generator requires it. Rule 1
-(design-parameter-inheritance.md) lets a declaration go unconsumed by its own
+(../../specs/spec-parameter-inheritance.md) lets a declaration go unconsumed by its own
 file, so an upstream project may publish a parameter purely for downstream
 projects to `include:`; see `cstShared` under the shared-constant family.
 
@@ -644,7 +644,7 @@ block that binds it?
 `CS_PIXEL_WIDTH: {value: 12, maxValue: 32}` in `ipParameters`, consumes it in
 its own `xpCstDut` block's `params:`, and binds its own default variant as
 `CS_PIXEL_WIDTH: CS_PIXEL_WIDTH`, the symbolic form, so the default value is
-stated once. Rule 1 (design-parameter-inheritance.md) does not require this
+stated once. Rule 1 (../../specs/spec-parameter-inheritance.md) does not require this
 same-file consumer: a declaration needs no consumer of its own, so a
 definitions-only file may declare one purely for downstream files to
 `include:`; see `cstShared` below.
@@ -714,11 +714,11 @@ does not.
 Both are exercised, and both work: a variant binding's value may be an ordinary
 `constants:` entry (`CS_USE_WIDTH`, cell B) or a parameterizable `ipParameters`
 constant reached through `include:` (`CS_PIXEL_WIDTH`, cell A). The schema types
-the field `value: const` (`config/schema.yaml:~326`), which resolves any
+the field `value: optionalConst` (variant `params:` in `config/schema.yaml`), which resolves any
 constant or enum visible in the binding row's own include scope; nothing
 restricts it to parameterizable ones. `CS_USE_WIDTH` is a plain constant here
 because it plays the peer-value-sharing role this design assigns a plain
-constant (design-parameter-inheritance.md §1): the assembler states a number
+constant (../../specs/spec-parameter-inheritance.md §1): the assembler states a number
 once and every binding names it, with no block treating it as a parameter of
 its own.
 
@@ -799,9 +799,11 @@ filed under the block's file, was never found, and the supporting blocks fell
 back to the constant's declared 12 while the same-file DUT resolved the bound
 20 — so the layout gate reported a genuine-looking width disagreement between
 two sides the author had bound identically, while the emitted C++ Config carried
-20 for all three. The two directions of that defect, a false rejection and a
-silent acceptance of a real divergence, are recorded in
-[`../../plans/plan-parameter-sharing.md`](../../plans/plan-parameter-sharing.md) §5 B1.
+20 for all three. The defect ran both ways, a false rejection and a silent
+acceptance of a real divergence, which is why every consumer now reads the
+backing constant through `paramSourceKey`. The rule is stated in
+[`../../specs/spec-parameter-inheritance.md`](../../specs/spec-parameter-inheritance.md),
+rules 1 and 2.
 
 A separate gap on the same path, met while shaping `cstBind`, is fixed. A
 structure declared in the *including* file whose width comes from the

@@ -7,8 +7,8 @@ module xviLeaf
 // Generated Import package statement(s)
 import xviLeaf_package::*;
 #(
-    parameter XVI_WIDTH,
-    parameter XVI_GAIN
+    parameter int unsigned XVI_WIDTH = 32'h0000_0008,
+    parameter int unsigned XVI_GAIN = 32'h0000_0001
 )
 (
     push_ack_if.dst in,

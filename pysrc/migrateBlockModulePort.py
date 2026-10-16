@@ -65,7 +65,8 @@ DETECT-and-FLAG (never ported) — left for an agent, legacy pair untouched:
   - a parameterized block (`hasOwnParams`): its templatization is semantic;
   - a module-hostile library (e.g. OpenCV) in any user slot: needs a design call;
   - non-boilerplate content in a top-of-file slot (anything that is not a
-    comment, blank, include guard, or `#include`): the port cannot place it.
+    comment, blank, include guard, or `#include`), or any declaration after the
+    header's class closer: the port cannot place it.
 
 Owner-gated (a composed build never ports a referenced child's block; the child
 ports it in its own tree) and idempotent (a block whose legacy pair is already
@@ -80,8 +81,8 @@ from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc, _regions,
                                  _find, _includeTarget, _importTarget,
                                  _noCodeMask, _stripBlankEnds, PARAM_MARKER,
                                  paramTail, paramVariant, replaceParamVariant,
-                                 restampParamLine)
-from pysrc.migrateOrphans import LEGACY_FILEMAP
+                                 restampParamLine, userRegionLines)
+from pysrc.migrateOrphans import LEGACY_FILEMAP, TODO_USER_INCLUDE
 from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
 
 
@@ -223,7 +224,7 @@ class LegacySlots:
     outOfLine: list = field(default_factory=list)     # trailing out-of-line def lines
     userIncludes: list = field(default_factory=list)  # external #includes -> GMF slot
     siblingImports: list = field(default_factory=list)  # sibling-block imports -> module purview
-    slot0Flags: list = field(default_factory=list)    # unplaceable top-of-file lines
+    slot0Flags: list = field(default_factory=list)    # unplaceable (tag, lineNo, text) lines
     hostileLib: str = None                            # first hostile-lib header seen
     # No-silent-loss accounting: the source lines and the 0-based line indices the
     # extraction accounted for (dropped generated region, slot0 the classifier
@@ -282,7 +283,7 @@ def _guardLineSet(lines):
     return guard
 
 
-def _classifyTopOfFile(topLines, dropIncludes, dropImports, guardSet,
+def _classifyTopOfFile(tag, topLines, dropIncludes, dropImports, guardSet,
                        siblingModules, childHeaders, slots):
     """Classify a top-of-file (slot-0) span: drop boilerplate (copyright/marker
     comments, the include guard, the framework prerequisites in `dropIncludes` and
@@ -290,9 +291,9 @@ def _classifyTopOfFile(topLines, dropIncludes, dropImports, guardSet,
     own header), convert a sibling-block header include to a module import
     (dropping it when the sibling is a contained instance the generator already
     auto-imports), collect a genuinely external `#include` for the GMF slot, and
-    record anything else as an unplaceable flag. `guardSet` carries the
-    file-absolute indices of the structural include guard; the top slice begins at
-    line 0, so its indices are file-absolute too."""
+    record anything else as an unplaceable flag under `tag`. `guardSet` carries
+    the file-absolute indices of the structural include guard; the top slice
+    begins at line 0, so its indices are file-absolute too."""
     for i, raw in enumerate(topLines):
         s = raw.strip()
         if s == "" or s.startswith("//"):
@@ -328,7 +329,7 @@ def _classifyTopOfFile(topLines, dropIncludes, dropImports, guardSet,
             continue
         if _importTarget(s) in dropImports:
             continue
-        slots.slot0Flags.append(s)
+        slots.slot0Flags.append((tag, i + 1, s))
 
 
 def _scanHostile(lines, slots):
@@ -360,7 +361,7 @@ def _extractSlots(hText, cppText, shape, dropIncludes, siblingModules, childHead
     slots.hAccounted.update(hGuard)
     cls = _find(hRegions, shape.classTemplate, shape.classSection)
     if cls is not None:
-        _classifyTopOfFile(hLines[:cls.begin], dropIncludes, shape.dropImports,
+        _classifyTopOfFile("h", hLines[:cls.begin], dropIncludes, shape.dropImports,
                            hGuard, siblingModules, childHeaders, slots)
         slots.hAccounted.update(range(0, cls.begin))   # slot0 (classifier-walked)
         classClose = _firstClosingBrace(hLines, cls.end + 1)
@@ -369,6 +370,13 @@ def _extractSlots(hText, cppText, shape, dropIncludes, siblingModules, childHead
         _scanHostile(slots.classBody, slots)
         if classClose is not None:                     # class-body span + `};` closer
             slots.hAccounted.update(range(cls.end + 1, classClose + 1))
+            # A declaration after the class closer (an `extern` global) has no slot
+            # in the target, so it is flagged with the top-of-file content.
+            noCode = _noCodeMask(hLines)
+            for i in range(classClose + 1, len(hLines)):
+                if i not in slots.hAccounted and not noCode[i]:
+                    slots.slot0Flags.append(("h", i + 1, hLines[i].strip()))
+            slots.hAccounted.update(range(classClose + 1, len(hLines)))
 
     # Source: init-list, ctor body, and out-of-line defs off the constructor
     # sections; the top-of-file span carries the external includes.
@@ -382,7 +390,7 @@ def _extractSlots(hText, cppText, shape, dropIncludes, siblingModules, childHead
     ini = _find(cRegions, shape.ctorTemplate, "init")
     bod = _find(cRegions, shape.ctorTemplate, "body")
     if ini is not None and bod is not None:
-        _classifyTopOfFile(cLines[:ini.begin], dropIncludes, shape.dropImports,
+        _classifyTopOfFile("cpp", cLines[:ini.begin], dropIncludes, shape.dropImports,
                            cGuard, siblingModules, childHeaders, slots)
         slots.cppAccounted.update(range(0, ini.begin))          # slot0 (classifier-walked)
         slots.ctorInit = _stripBlankEnds(cLines[ini.end + 1:bod.begin])
@@ -549,7 +557,7 @@ def portBlockModules(prj, write=False):
     for row in prj.data["blocks"].values():
         if prj.contextOwningProject[row["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(moduleDef, row):
+        if not fileMapCondMatch(moduleDef, prj.getBlockCondRow(row["blockKey"])):
             continue
         base = expandNewModulePath(legacyDef, row["dir"], row["block"],
                                    row["block"], layout, missingDirOk=True)
@@ -566,7 +574,7 @@ def portBlockModules(prj, write=False):
     # block-name-derived header name.
     allBlockHeaders = dict()    # block key -> legacy header basename
     for row in prj.data["blocks"].values():
-        if not fileMapCondMatch(moduleDef, row):
+        if not fileMapCondMatch(moduleDef, prj.getBlockCondRow(row["blockKey"])):
             continue
         base = expandNewModulePath(legacyDef, row["dir"], row["block"],
                                    row["block"], layout, missingDirOk=True)
@@ -583,7 +591,7 @@ def portBlockModules(prj, write=False):
     for blockRow in prj.data["blocks"].values():
         if prj.contextOwningProject[blockRow["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(moduleDef, blockRow):
+        if not fileMapCondMatch(moduleDef, prj.getBlockCondRow(blockRow["blockKey"])):
             continue
         legacyBase = expandNewModulePath(legacyDef, blockRow["dir"],
                                          blockRow["block"], blockRow["block"],
@@ -667,10 +675,12 @@ def portBlockModules(prj, write=False):
                 f"'{slots.hostileLib}'; confine it (pimpl / non-module) by hand"))
             continue
         if slots.slot0Flags:
-            report.manual.append(ReportItem(
-                TODO_PORT_SLOT0, location,
-                f"block '{blockName}' has non-boilerplate top-of-file content the "
-                f"port cannot place ({slots.slot0Flags[0]!r}); port it by hand"))
+            srcByTag = {"h": os.path.basename(hPath), "cpp": os.path.basename(cppPath)}
+            for tag, lineNo, text in slots.slot0Flags:
+                report.manual.append(ReportItem(
+                    TODO_PORT_SLOT0, _loc(srcByTag[tag], lineNo),
+                    f"block '{blockName}' has content outside its user slots the "
+                    f"port cannot place ({text!r}); port it by hand"))
             continue
 
         # No-silent-loss guard: prove the four-slot extraction placed every
@@ -752,19 +762,22 @@ def portTbExternals(prj, write=False):
     for blockRow in prj.data["blocks"].values():
         if prj.contextOwningProject[blockRow["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(moduleDef, blockRow):
+        if not fileMapCondMatch(moduleDef, prj.getBlockCondRow(blockRow["blockKey"])):
             continue
         blockName = blockRow["block"]
         legacyBase = expandNewModulePath(legacyDef, blockRow["dir"], blockName,
                                          blockName, layout, missingDirOk=True)
         hPath = legacyBase + ".h"
         cppPath = legacyBase + ".cpp"
+        cppmPath = expandNewModulePath(moduleDef, blockRow["dir"], blockName,
+                                       blockName, layout, missingDirOk=True) + ".cppm"
+        # Reported before the legacy-pair check so the item persists after the
+        # port has deleted the header, until the include itself is gone.
+        _reportExternalIncludeSites(prj, blockRow, hPath, cppPath, cppmPath, report)
         if not (os.path.exists(hPath) and os.path.exists(cppPath)):
             continue
 
         location = os.path.relpath(cppPath, layout["root"])
-        cppmPath = expandNewModulePath(moduleDef, blockRow["dir"], blockName,
-                                       blockName, layout, missingDirOk=True) + ".cppm"
         if not (os.path.exists(cppmPath) and _isGenerated(cppmPath)):
             report.manual.append(ReportItem(
                 TODO_PORT_NO_CPPM, location,
@@ -854,12 +867,14 @@ def portTbExternals(prj, write=False):
                 f"'{slots.hostileLib}'; confine it (pimpl / non-module) by hand"))
             continue
         if slots.slot0Flags:
-            report.manual.append(ReportItem(
-                TODO_PORT_SLOT0, location,
-                f"block '{blockName}' External has non-boilerplate top-of-file "
-                f"content the port cannot place ({slots.slot0Flags[0]!r}); a stray "
-                f"`import` has to go in the `// user imports here` slot and a "
-                f"declaration in the class or module purview — place it by hand"))
+            srcByTag = {"h": os.path.basename(hPath), "cpp": os.path.basename(cppPath)}
+            for tag, lineNo, text in slots.slot0Flags:
+                report.manual.append(ReportItem(
+                    TODO_PORT_SLOT0, _loc(srcByTag[tag], lineNo),
+                    f"block '{blockName}' External has content outside its user "
+                    f"slots the port cannot place ({text!r}); a stray `import` has "
+                    f"to go in the `// user imports here` slot and a declaration "
+                    f"in the class or module purview — place it by hand"))
             continue
 
         # No-silent-loss guard: prove the extraction placed every code-bearing line
@@ -898,6 +913,38 @@ def portTbExternals(prj, write=False):
 
     report.written = wrote
     return report
+
+
+def _reportExternalIncludeSites(prj, blockRow, hPath, cppPath, cppmPath, report):
+    """Report each sibling `.cpp` that `#include`s the legacy External header.
+
+    The port deletes that header. A sibling that defines External members out of
+    line cannot switch to `import`: members of a module-attached class can only
+    be defined in that module's own units, so the fix is a module implementation
+    unit."""
+    legacyDir = os.path.dirname(hPath)
+    if not os.path.isdir(legacyDir):
+        return
+    hName = os.path.basename(hPath)
+    for name in sorted(os.listdir(legacyDir)):
+        path = os.path.join(legacyDir, name)
+        if not name.endswith(".cpp") or path == cppPath:
+            continue
+        for i, line in userRegionLines(_read(path)):
+            header = _includeTarget(line.strip())
+            if header is None or os.path.basename(header) != hName:
+                continue
+            module = intf_gen_utils.cpp_tb_external_module_name(
+                prj.blockModuleName[blockRow["blockKey"]])
+            report.manual.append(ReportItem(
+                TODO_USER_INCLUDE, _loc(name, i + 1),
+                f"user code #includes {hName}, which the External port replaces "
+                f"with {os.path.basename(cppmPath)}. A file that defines "
+                f"{blockRow['block']}External members cannot import the module; "
+                f"make it a module implementation unit: replace the include with "
+                f"`module {module};` (other #includes go above it, after a "
+                f"`module;` line). Globals it shares with a plain .cpp need "
+                f"`extern \"C++\"` (see the migration skill)"))
 
 
 def _generatorValidatedVariants(prj, blockRow, tail):
@@ -967,7 +1014,7 @@ def portTbTops(prj, write=False):
     for blockRow in prj.data["blocks"].values():
         if prj.contextOwningProject[blockRow["_context"]] != projectName:
             continue
-        if not fileMapCondMatch(moduleDef, blockRow):
+        if not fileMapCondMatch(moduleDef, prj.getBlockCondRow(blockRow["blockKey"])):
             continue
         blockName = blockRow["block"]
         legacyBase = expandNewModulePath(legacyDef, blockRow["dir"], blockName,

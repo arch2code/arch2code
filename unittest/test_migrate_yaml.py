@@ -29,6 +29,7 @@ sys.path.insert(0, base_dir)
 
 from migrateYaml import migrateProject, renderReport, main
 from pysrc.processYaml import CURRENT_YAML_FORMAT
+from _tmp_helpers import remove_tree
 
 
 # A Python-syntax eval Phase A rewrites to the SV subset, and its converted form.
@@ -142,14 +143,18 @@ def _project(*, yaml_format=None):
 
 def _make(project, top, addr=_ADDR):
     d = tempfile.mkdtemp()
-    with open(os.path.join(d, "project.yaml"), "w") as fh:
-        fh.write(project)
-    with open(os.path.join(d, "top.yaml"), "w") as fh:
-        fh.write(top)
-    if addr is not None:
-        with open(os.path.join(d, "addressControl.yaml"), "w") as fh:
-            fh.write(addr)
-    return d
+    try:
+        with open(os.path.join(d, "project.yaml"), "w") as fh:
+            fh.write(project)
+        with open(os.path.join(d, "top.yaml"), "w") as fh:
+            fh.write(top)
+        if addr is not None:
+            with open(os.path.join(d, "addressControl.yaml"), "w") as fh:
+                fh.write(addr)
+        return d
+    except BaseException:
+        remove_tree(d)
+        raise
 
 
 def _read(d, name):
@@ -183,7 +188,7 @@ def test_clean_converts_both_and_stamps():
         rc = main(["--write", os.path.join(d, "project.yaml")])
         assert rc == 0
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -214,7 +219,7 @@ def test_addresscontrol_eval_converted_into_addressblock():
         assert _EVAL_PY not in top, "Python-syntax eval survived into addressBlock"
         assert not os.path.exists(os.path.join(d, "addressControl.yaml"))
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -240,7 +245,7 @@ def test_phase_a_real_eval_blocks_stamp():
         rc = main(["--write", os.path.join(d, "project.yaml")])
         assert rc == 1, "blocked --write run must return non-zero"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -262,7 +267,7 @@ def test_phase_b_todo_blocks_stamp():
         assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
             "legacy file stranded while the stamp is blocked"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
 
     # Structured assertions on a fresh project via dry-run (nothing mutated).
     d = _make(_project(), _DIRTY_TOP)
@@ -276,7 +281,7 @@ def test_phase_b_todo_blocks_stamp():
         assert "BLOCKED" in report
         assert "leafA" in report, "leaf TODO not named in checklist"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -305,7 +310,7 @@ def test_dry_run_changes_nothing_reports_all():
         for name, text in before.items():
             assert _read(d, name) == text, f"{name} changed by CLI dry-run"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -329,7 +334,7 @@ def test_already_migrated_short_circuits():
         rc = main(["--write", os.path.join(d, "project.yaml")])
         assert rc == 0, "already-migrated --write must succeed"
     finally:
-        shutil.rmtree(d)
+        remove_tree(d)
     return True
 
 
@@ -397,7 +402,7 @@ def test_unmigrated_child_project_blocks_stamp():
         assert main(["--write", topYaml]) == 1, \
             "already-stamped top with an un-migrated child must exit non-zero"
     finally:
-        shutil.rmtree(root)
+        remove_tree(root)
 
     root = tempfile.mkdtemp()
     try:
@@ -409,7 +414,7 @@ def test_unmigrated_child_project_blocks_stamp():
             "silent check still printed its section"
         assert main(["--write", topYaml]) == 0
     finally:
-        shutil.rmtree(root)
+        remove_tree(root)
     return True
 
 

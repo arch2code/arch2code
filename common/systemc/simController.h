@@ -19,6 +19,7 @@ public:
     static std::string vlType; // type of instance that is focus of the test
     static bool vlTandem; // is the instance in tandem mode
     static bool vlTrace; // enable VCD trace dump
+    static bool tandemStatusFatal; // a status tee data mismatch fails the run
     static sc_time scMaxRunTime;  
     static sc_time startupDelay;
     static uint64_t startupDelayns;

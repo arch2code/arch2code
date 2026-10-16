@@ -55,7 +55,11 @@ always_comb begin
     set_trans_active = 1'b0;
     if (apbReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        apbReg_uLeaf_next_psel = '1;
+        if (apb_addr >= apbAddrSt'(32'h10_0000)) begin
+            // unmapped, selects no child
+        end else begin
+            apbReg_uLeaf_next_psel = '1;
+        end
     end
 end
 
@@ -70,6 +74,9 @@ always_comb begin
         apbReg_next_pready  = apbReg_uLeaf.pready;
         apbReg_next_prdata  = apbReg_uLeaf.prdata;
         apbReg_next_pslverr = apbReg_uLeaf.pslverr;
+    end else if (trans_active & ~pready) begin
+        apbReg_next_pready  = 1'b1;
+        apbReg_next_prdata  = apbDataSt'(32'hBADD_C0DE);
     end
 end
 

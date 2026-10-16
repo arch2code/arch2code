@@ -26,8 +26,22 @@ from pysrc.memoryPortAccess import memoryRegisterPort
 # Current user-YAML authoring format. A migrated project carries a single
 # top-level `yamlFormat:` field in its project.yaml equal to this value; its
 # absence marks a pre-migration (legacy) project that projectCreate refuses to
-# build. See plan-yaml-migration.md.
+# build until `make migrate` (migrate-project skill) brings it current.
 CURRENT_YAML_FORMAT = 2
+
+# Bytes the register bus moves per access. The model's cpu_write is 32 bits wide
+# to match.
+REG_BUS_WIDTH_BYTES = 4
+
+def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
+    """Firmware reaches a register or memory row of every variant through one
+    address range, so the range is sized for the widest variant."""
+    return maxBitwidth if isParameterizable else width
+
+def rowFootprintBytes(bitwidth):
+    """Address stride between the rows of a memory whose rows are `bitwidth`
+    bits wide, as the address map allocates it."""
+    return roundup_pow2min4((bitwidth + 7) >> 3)
 
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
@@ -265,6 +279,16 @@ def getKeyPriority(data, prioritylist):
             return key, ret
     return None, None
 
+def connectionChannelName(row):
+    # The channel a connection between two children declares in their container.
+    _, name = getKeyPriority(row, ['interfaceName', 'srcport', 'name', 'interface'])
+    return name
+
+def memoryChannelName(memory, port):
+    # The channel a memory's owning block declares for one memory port; the
+    # register handler's port is 'reg'.
+    return f"{memory}_{port}"
+
 def getPortChannelName(row, portKeyName = 'port'):
     _, value = getKeyPriority(row, [portKeyName, 'name', 'interface'])
     return value
@@ -467,6 +491,40 @@ SC_WRAPPER_CLASS_SUFFIX = '_hdl_sc_wrapper'
 # it is used by the generators to access the data
 # it additionaly provides some helper functions to make the generators easier to write
 # the database contents are stored in the data dict in manner similar to the schema
+class intfEvalDSL:
+    # Receiver of an interface hdlparam `eval` expression (`<struct param>.<method>`),
+    # evaluated against the width of the structure bound to that parameter.
+
+    def __init__(self, width):
+        self.width = width
+
+    def to_bytes(self):
+        return self.width // 8 + (1 if self.width % 8 != 0 else 0)
+
+class intfEvalPayload:
+    # to_bytes names the payload it measures, because that payload's width
+    # differs per top.
+
+    def __init__(self, binding):
+        self.binding = binding
+
+    def to_bytes(self):
+        return {'kind': 'bytes', 'binding': self.binding}
+
+class intfEvalUnbound:
+    # Receiver for an unbound optional parameter, which has no width to measure.
+
+    def __init__(self, intfDef, hdlparam, param):
+        self.intfDef = intfDef
+        self.hdlparam = hdlparam
+        self.param = param
+
+    def __getattr__(self, method):
+        printError(f"Interface '{self.intfDef['interface_type']}' hdlparam '{self.hdlparam}' evaluates "
+                   f"optional parameter '{self.param}', which is unbound and does not name a "
+                   f"structure, so it supplies no width.")
+        exit(warningAndErrorReport())
+
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
     data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
@@ -513,6 +571,7 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.vlTops = self.config.getConfig('VLTOPS')
         self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
@@ -1111,6 +1170,15 @@ class projectOpen:
                 return None
             members.append((extent, storage))
         return ('struct', tuple(members))
+    def structureHasDatapath(self, structureKey):
+        """A structure carries a datapath field, directly or in a nested
+        structure, and so a uint8_t* backdoor in place of payload bits."""
+        for varData in self.data['structures'][structureKey]['vars'].values():
+            if varData['generator'] == 'datapath':
+                return True
+            if varData['entryType'] == 'NamedStruct' and self.structureHasDatapath(varData['subStructKey']):
+                return True
+        return False
     def datatypeRef(self, kind, key):
         """Dereference a `typeStruct` field's stored (kind, key) pair.
 
@@ -1457,6 +1525,8 @@ class projectOpen:
         self.getBDIncludes(ret)
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
+        # which generated channels ignore setTimed
+        self.getBDEffectiveBackpressure(ret)
         self.getBDConfigInfo(ret)
         # Surface the router block's authored addressBlock row on the view.
         self.getBDAddressBlockView(ret)
@@ -1665,6 +1735,14 @@ class projectOpen:
             'dutHeader': f'V{bodyModule}.h',
             'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
             'variantDutHeaders': {v: f'V{t}.h' for v, t in variantTops.items()},
+            # VCS `vlogan -sc_model <top>` names the SystemC shell class and its
+            # header after the SV top itself.
+            'vcsDutHeader': f'{bodyModule}.h',
+            'variantVcsDutHeaders': {v: f'{t}.h' for v, t in variantTops.items()},
+            # Xcelium foreign-module shell: class named after the SV top, header
+            # <top>_xcelium.h (a2c-owned name; Xcelium generates nothing here).
+            'xceliumDutHeader': f'{bodyModule}_xcelium.h',
+            'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
         }
 
     def getBDConfigInfo(self, ret):
@@ -2328,6 +2406,10 @@ class projectOpen:
                 if objInfo['blockKey'] == block:
                     data[obj] = dict(objInfo)
                     ret['temp']['structs'][objInfo['structureKey']] = 0
+                    struct = self.data['structures'][objInfo['structureKey']]
+                    data[obj]['worstBitwidth'] = worstCaseBitwidth(struct['width'], struct['maxBitwidth'], struct['isParameterizable'])
+                    if designObject == 'memories' or objInfo['regType'] == 'memory':
+                        data[obj]['rowBytes'] = rowFootprintBytes(data[obj]['worstBitwidth'])
                     # handle any object specific special cases
                     if (designObject == 'memories'):
                         ret['temp']['consts'][objInfo['wordLinesKey']] = 0
@@ -2349,13 +2431,7 @@ class projectOpen:
                                 data.pop(obj)
 
                     else:  # registers
-                        data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
-                        # Surface worst-case bytes alongside nominal bytes for parameterized structures.
-                        _struct = self.data['structures'][objInfo['structureKey']]
-                        if _struct.get('isParameterizable') and _struct.get('maxBitwidth'):
-                            data[obj]['maxBytes'] = (_struct['maxBitwidth'] + 7) >> 3
-                        else:
-                            data[obj]['maxBytes'] = data[obj]['bytes']
+                        data[obj]['bytes'] = (struct['width'] + 7) >> 3 # round up to whole byte
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             if objInfo.get('wordLinesKey'):
@@ -2407,14 +2483,7 @@ class projectOpen:
                            instanceData['addressGroup']) == groupKey]
             routed.sort(key=lambda instanceData: instanceData['addressID'])
             # A referenced child project's standalone harness router is outside
-            # this build's tree; its view still renders, with no channels.
-            if not routed and qualDecoder in self.reachableInstances:
-                printError(f"Router block '{blockRow['block']}' declares address group "
-                           f"'{addressGroupLabel(groupKey)}' but no instance in this "
-                           f"build's design tree is routed to it, so the decoder has no "
-                           f"channels to dispatch. Route at least one instance to the "
-                           f"group, or remove the addressBlock: declaration.")
-                exit(warningAndErrorReport())
+            # this build's tree; its view renders with no channels.
             ret['addressDecode']['routedInstances'] = routed
         ret['addressDecode']['isApbRouter'] = isApbRouter
 
@@ -2429,7 +2498,7 @@ class projectOpen:
             if val['blockKey'] == qualBlock and val['instanceKey'] in containedInstances:
                 # the connection is to a memory inside the target block so we will need a channel and bindings
                 ret['memoryConnections'][memConn] = dict(val)
-                ret['memoryConnections'][memConn]['interfaceName'] = val['memory']+'_'+val['port']
+                ret['memoryConnections'][memConn]['interfaceName'] = memoryChannelName(val['memory'], val['port'])
                 if (val['instance'] != ''):
                     # we are connecting to an instance so lets add the instance type for the template
                     ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
@@ -2455,7 +2524,7 @@ class projectOpen:
         for mem, memInfo in ret['memories'].items():
             # we also need to create a port for any memory that has regAccess as the register block will need to connect to it
             if memInfo['regAccess']:
-                interfaceName = memInfo['memory']+ '_reg'
+                interfaceName = memoryChannelName(memInfo['memory'], 'reg')
                 ret['temp']['structs'][memInfo['structureKey']] = 0
                 if isRegHandler:
                     ret['memoryPorts'][interfaceName] = dict(memInfo)
@@ -2620,6 +2689,7 @@ class projectOpen:
         excludeInstances = ret['excludedInstances']
         connections = dict()
         prunedConnections = dict()
+        excludedEnds = dict()
         for conn, connVal in self.data['connections'].items():
             connectionCount = 0
             isPort = False
@@ -2642,8 +2712,7 @@ class projectOpen:
                     # unresolved template parameter.
                     prunedConnections[conn] = excludeInstances[endVal['instanceKey']]['instanceConfigSelection']
             # filter out any excluded instances after looping
-            for end in pop_ends:
-                connVal['ends'].pop(end)
+            excludedEnds[conn] = {end: connVal['ends'].pop(end) for end in pop_ends}
             if isPort:
                 # shallow copy
                 ports[conn] = dict(connVal)
@@ -2662,7 +2731,7 @@ class projectOpen:
                 ret['interfaceTypes'][intf_type] = intfInfo['interfaceTypeKey']
         for conn, connVal in connections.items():
             # create jinja friendly names
-            _, connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
+            connVal['interfaceName'] = connectionChannelName(connVal)
             intfInfo = self.data['interfaces'][connVal['interfaceKey']]
             self.getBDGetIntfStructs(ret, intfData=intfInfo)
             connVal['interfaceType'] = intfInfo['interfaceType']
@@ -2673,6 +2742,7 @@ class projectOpen:
         for conn in prunedConnections:
             connMoved = connections.pop(conn)
             connMoved['excludedEndConfig'] = prunedConnections[conn]
+            connMoved['excludedEnds'] = excludedEnds[conn]
             ret['prunedConnections'][conn] = connMoved
 
         ret['connections'] = connections
@@ -3539,6 +3609,201 @@ class projectOpen:
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
 
+    def getBDEffectiveBackpressure(self, ret):
+        """Annotate every channel the block's generated code builds, and every
+        boundary port, with effectiveBackpressure: true when the interface is
+        elastic and every port the channel joins lets the consumer stall the
+        producer.
+
+        A boundary port's value, which the <block>Channels constructor uses,
+        sees only the block's own port. The peers a testbench or tandem shell
+        binds to the other side are not in this view. A pruned connection's
+        value counts the excluded DUT end as well as the surviving ends. A
+        connectionMap row describes the channel a thunker or a testbench
+        External builds between the child port and the parent port.
+        """
+        for group in ret['connectDouble'].values():
+            for connVal in group.values():
+                intfDef = self._viewInterfaceDef(ret, connVal)
+                # A register connection names an interface type alias and its
+                # ends declare no ports, so only the protocol decides.
+                endpoints = ([self._endEndpoint(connVal, end) for end in connVal['ends'].values()]
+                             if 'interfaceKey' in connVal else [])
+                connVal['effectiveBackpressure'] = self._channelBackpressure(intfDef, endpoints)
+        for connVal in ret['prunedConnections'].values():
+            endpoints = [self._endEndpoint(connVal, end)
+                         for end in [*connVal['ends'].values(), *connVal['excludedEnds'].values()]]
+            connVal['effectiveBackpressure'] = self._channelBackpressure(self._viewInterfaceDef(ret, connVal), endpoints)
+        for connMap in ret['connectionMaps'].values():
+            childBlockKey = self.data['instances'][connMap['instanceKey']]['instanceTypeKey']
+            connMap['effectiveBackpressure'] = self._channelBackpressure(
+                self._viewInterfaceDef(ret, connMap),
+                [(childBlockKey, connMap['instancePortName'], connMap['interfaceKey']),
+                 (connMap['blockKey'], connMap['portName'], connMap['interfaceKey'])])
+        for portGroup in ret['ports'].values():
+            for portName, portRow in portGroup.items():
+                conn = portRow['connection']
+                endpoints = [(ret['qualBlock'], portName, conn['interfaceKey'])] if 'interfaceKey' in conn else []
+                portRow['effectiveBackpressure'] = self._channelBackpressure(self._viewInterfaceDef(ret, conn), endpoints)
+
+    def _endEndpoint(self, connVal, end):
+        return (self.data['instances'][end['instanceKey']]['instanceTypeKey'], end['portName'], connVal['interfaceKey'])
+
+    def _channelBackpressure(self, intfDef, endpoints):
+        """endpoints lists (blockKey, portName, interfaceKey) per port the
+        channel joins. A fixed-timing interface has no handshake, and a port
+        may only lower the protocol default."""
+        if intfDef['timing'] == 'fixed' or not intfDef['backpressure']['default']:
+            return False
+        return all(self._endpointBackpressure(*endpoint) for endpoint in endpoints)
+
+    def _endpointBackpressure(self, blockKey, portName, interfaceKey):
+        """A port's effective backpressure: its ports: row value, else its
+        interfaces entry value, else the protocol default. A declared port is
+        typed by its own interfaces entry, which a cross-interface bind makes
+        differ from the connection's.
+
+        A container binds a same-interface connectionMap child port straight
+        to the channel outside it, so a container port is false when the child
+        port it maps to is false, at any depth."""
+        declaredPorts = self.data['blocks'][blockKey]['ports']
+        backpressure = ''
+        if declaredPorts and portName in declaredPorts:
+            backpressure = declaredPorts[portName]['backpressure']
+            interfaceKey = declaredPorts[portName]['interfaceKey']
+        if backpressure == '':
+            backpressure = self.data['interfaces'][interfaceKey]['backpressure']
+        if backpressure == '':
+            intfTypeKey = self.data['interfaces'][interfaceKey]['interfaceTypeKey']
+            backpressure = self.data['interface_defs'][intfTypeKey]['backpressure']['default']
+        if not backpressure:
+            return False
+        for connMap in self.data['connectionMaps'].values():
+            if connMap['blockKey'] == blockKey and connMap['portName'] == portName:
+                childBlockKey = self.data['instances'][connMap['instanceKey']]['instanceTypeKey']
+                if not self._endpointBackpressure(childBlockKey, connMap['instancePortName'], connMap['interfaceKey']):
+                    return False
+        return True
+
+    def _viewInterfaceDef(self, ret, row):
+        # Register and memory rows name their interface type, an alias such as
+        # reg_ro, instead of an interfaces row.
+        if 'interfaceKey' in row:
+            return self.data['interface_defs'][self.data['interfaces'][row['interfaceKey']]['interfaceTypeKey']]
+        intfType = row['interfaceType']
+        return ret['interface_defs'][ret['interface_type_mappings'].get(intfType, intfType)]
+
+    def evalHdlParam(self, intfDef, hdlparam, receivers):
+        # An eval hdlparam's DSL expression, with each struct parameter name
+        # bound to the receiver the caller supplies for it.
+        return eval(intfDef['hdlparams'][hdlparam]['value'], {'__builtins__': {}, **receivers})
+
+    def intfBindingClass(self, binding):
+        # getIntfSignals classification of a signal this payload binding types:
+        # the bound payload, or an unbound one at its defaultWidth.
+        if binding['isNull']:
+            width = binding['defaultWidth']
+            return {'kind': 'fixed', 'width': width, 'vector': width > 1}
+        ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+        return {'kind': 'payload', 'binding': binding,
+                'vector': bool(ref['isParameterizable']) or int(ref['width']) > 1}
+
+    def getIntfSignals(self, intfDef, structures, modport):
+        """Per-signal classification of one interface's HDL boundary, in signal
+        declaration order, from the given modport's point of view.
+
+        Every row carries signal, signalType, direction ('input' | 'output'),
+        kind and vector. vector is True for a signal typed by an eval hdlparam,
+        by a bound parameterizable payload, or wider than one bit; such a pin
+        stays a bit vector at width 1. kind adds:
+            'fixed'    width: the integer width (bool, a type-named signal, an
+                       unbound optional payload at its defaultWidth, or an
+                       hdlparam over fixed payloads)
+            'payload'  binding: the bound payload typing the signal
+            'bytes'    binding: the parameterizable payload whose byte count
+                       sizes the signal
+        """
+        bindings = {binding['structureType']: binding
+                    for binding in self.getIntfParamBindings(intfDef, structures)}
+        hdlparams = intfDef['hdlparams'] or {}
+        inputs = intfDef['modports'][modport]['modportGroups'] \
+            .get('inputs', {}).get('groups') or {}
+        rows = []
+        for signal, signalDef in intfDef['signals'].items():
+            signalType = signalDef['signalType']
+            row = {'signal': signal, 'signalType': signalType,
+                   'direction': 'input' if signal in inputs else 'output'}
+            if signalType in bindings:
+                row.update(self.intfBindingClass(bindings[signalType]))
+            elif signalType in hdlparams and hdlparams[signalType]['isEval']:
+                receivers = dict()
+                for param, binding in bindings.items():
+                    if binding['isNull']:
+                        receivers[param] = intfEvalUnbound(intfDef, signalType, param)
+                        continue
+                    ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+                    receivers[param] = intfEvalPayload(binding) if ref['isParameterizable'] \
+                        else intfEvalDSL(int(ref['width']))
+                measure = self.evalHdlParam(intfDef, signalType, receivers)
+                if isinstance(measure, int):
+                    row.update(kind='fixed', width=measure, vector=True)
+                else:
+                    row.update(measure, vector=True)
+            else:
+                width = 1 if signalType == 'bool' else self.signalTypeWidth(intfDef, signalType)
+                row.update(kind='fixed', width=width, vector=width > 1)
+            rows.append(row)
+        return rows
+
+    def signalTypeWidth(self, intfDef, signalType):
+        # Integer width of an interface signal whose signalType names a type,
+        # resolved in the interface definition's scope, then _a2csystem.
+        for qualification in self.yamlContext[intfDef['_context']]:
+            key = f"{signalType}/{qualification}"
+            if key in self.data['types']:
+                return self.datatypeRef('types', key)['width']
+        return self.datatypeRef('types', f"{signalType}/_a2csystem")['width']
+
+    def getVlTopBoundaryPins(self, ret, topModule):
+        # Pin list of the block's HDL verification wrapper with every width
+        # bound at the given top's parameter values: one pin per interface
+        # signal of each port, in port then signal order, then the block's
+        # clocks and resets in declaration order.
+        import pysrc.intf_gen_utils as intf_gen_utils
+        structWidths = self.vlTops[topModule]['structWidths']
+        typeWidths = self.vlTops[topModule]['typeWidths']
+
+        def payloadWidth(binding):
+            ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+            if not ref['isParameterizable']:
+                return int(ref['width'])
+            if binding['kind'] == 'structures':
+                return structWidths[binding['structureKey']]
+            return typeWidths[binding['structureKey']]
+
+        pins = list()
+        for portType in ret['ports']:
+            for portData in ret['ports'][portType].values():
+                intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
+                intfDef = ret['interface_defs'][intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)]
+                for row in self.getIntfSignals(intfDef, intfData['structures'], portData['direction']):
+                    match row['kind']:
+                        case 'fixed':
+                            width = row['width']
+                        case 'payload':
+                            width = payloadWidth(row['binding'])
+                        case 'bytes':
+                            binding = row['binding']
+                            width = self.evalHdlParam(
+                                intfDef, row['signalType'],
+                                {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
+                    pins.append({'pin': f"{portData['name']}_{row['signal']}",
+                                 'direction': row['direction'], 'width': width,
+                                 'vector': row['vector']})
+        for name, direction in intf_gen_utils.clock_reset_ports(ret):
+            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False})
+        return pins
+
     def extractContext(self, structs, consts):
         ret = dict()
         todo = structs
@@ -4149,7 +4414,8 @@ class projectCreate:
         # `.context` would be stale / wrong outside a processSingleFile frame.
         self._parserResolver = None
         # Parsed eval IR nodes by (yamlFile, constant name), populated when an
-        # eval constant is parsed in processSimple and consumed by _constants.
+        # eval constant is parsed in processSimple. Read by _constants,
+        # deriveParameterizedDeclSets and ValueResolver override evaluation.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
         # Blocks whose resets: was authored as an explicitly empty {} or [],
@@ -4330,6 +4596,10 @@ class projectCreate:
             self.flatData['memories'], self.flatData['registers'],
             self.flatData['memoryConnections'],
             self.flatData['registerConnections'], self.flatData['connectionMaps'],
+            {connKey: connectionChannelName(row) for connKey, row in self.flatData['connections'].items()},
+            {key: memoryChannelName(row['memory'], row['port'])
+             for key, row in self.flatData['memoryConnections'].items()},
+            {key: memoryChannelName(row['memory'], 'reg') for key, row in self.flatData['memories'].items()},
             registerBusPassthroughs,
             self._blocksDeclaringNoResets,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
@@ -4793,6 +5063,10 @@ class projectCreate:
                                 'topModule': topModule,
                                 'dutClass': f'V{topModule}',
                                 'dutHeader': f'V{topModule}.h',
+                                'vcsDutClass': topModule,
+                                'vcsDutHeader': f'{topModule}.h',
+                                'xceliumDutClass': topModule,
+                                'xceliumDutHeader': f'{topModule}_xcelium.h',
                             }, parent['block'], child['block'])
         for pair in pairs.values():
             pair['modelRegistrations'].sort(key=lambda entry: entry['variant'])
@@ -4818,6 +5092,76 @@ class projectCreate:
                 topOwners[top] = current
         self.config.setConfig('REGISTRARPAIRS', pairs, bin=True)
         self.config.setConfig('PAIRFACTORYPROJECTS', factoryProjects, bin=True)
+        self.calcVlTops(pairs, blocks, descriptors, paramsByBlock, foreignHeaders)
+
+    def calcVlTops(self, pairs, blocks, descriptors, paramsByBlock, foreignHeaders):
+        # Every HDL verification-wrapper top with the widths of its block's
+        # module-local parameterizable structures evaluated at that top's
+        # parameter values. The simulator boundary files (VCS port map, Xcelium
+        # foreign-module shell) need integer pin widths, which only the create-time
+        # resolver can produce; the read-only view pairs them with the pin list.
+        # The top set mirrors artifactPaths.artifactRows: pair registrations,
+        # the bare per-label tops, the owner-qualified foreign tops, and the
+        # single top of a block without params, named as SVWRAPPERNAMES names them.
+        vlTops = dict()
+        project = self.config.getConfig('PROJECTNAME')
+
+        def record(topModule, blockKey, values):
+            if topModule in vlTops:
+                return
+            # The resolver overrides constants by qualified key; registrations
+            # and descriptors carry values by the block's parameter name.
+            bindings = {row['paramSourceKey']: values[row['param']]
+                        for row in paramsByBlock.get(blockKey, [])}
+            resolver = ValueResolver(self, values=bindings, context=blocks[blockKey]['_context'])
+            g.cur.execute("SELECT declKind, declKey FROM blockParameterizedDecls "
+                          "WHERE blockKey = ? AND declKind IN ('structure', 'type') ORDER BY orderIndex",
+                          (blockKey,))
+            declKeys = {'structures': set(), 'types': set()}
+            for row in g.cur.fetchall():
+                declKeys['types' if row['declKind'] == 'type' else 'structures'].add(row['declKey'])
+            # getVlTopBoundaryPins sizes a pin for every declared port, so the
+            # widths also cover parameterizable payloads a port carries that
+            # the block does not declare itself.
+            for portRow in blocks[blockKey].get('ports', {}).values():
+                for structRow in self.flatData['interfaces'][portRow['interfaceKey']].get('structures', {}).values():
+                    kind = structRow['structureKind']
+                    if self.flatData[kind][structRow['structureKey']]['isParameterizable']:
+                        declKeys[kind].add(structRow['structureKey'])
+            vlTops[topModule] = {
+                'blockKey': blockKey,
+                'structWidths': {key: resolver.structureWidth(key) for key in declKeys['structures']},
+                'typeWidths': {key: resolver.typeWidth(key) for key in declKeys['types']},
+            }
+
+        def ownValues(blockKey, descriptor):
+            return {row['param']: descriptor['values'][row['param']]
+                    for row in paramsByBlock[blockKey]}
+
+        for pair in pairs.values():
+            for registration in pair['verifRegistrations']:
+                record(registration['topModule'], pair['childKey'], registration['values'])
+        for blockKey, block in blocks.items():
+            if not block['hasVl']:
+                continue
+            if not paramsByBlock.get(blockKey):
+                record(self.svWrapperNames[blockKey]['bodyModule'], blockKey, {})
+                continue
+            standalone = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            for variant, descriptor in standalone.items():
+                record(self.svWrapperNames[blockKey]['variantTops'][variant], blockKey,
+                       ownValues(blockKey, descriptor))
+            foreign = foreignHeaders.get((project, blockKey))
+            if foreign is None:
+                continue
+            for sourceBlock in self.variantSourceBlocks[blockKey]:
+                for descriptor in descriptors[sourceBlock]:
+                    if descriptor['declaringProject'] == project \
+                            and descriptor['variant'] in foreign['vlVariants']:
+                        record(self.svWrapperNames[blockKey]['foreignVariantTops'][project][
+                                   descriptor['variant']],
+                               blockKey, ownValues(blockKey, descriptor))
+        self.config.setConfig('VLTOPS', vlTops, bin=True)
 
     def declaredVariantLabels(self):
         # Per block, the variant labels the block itself declares, in the order
@@ -5826,9 +6170,8 @@ class projectCreate:
                     currentBlock = row['blockKey']
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
-                # Pick worst-case width when row is parameterizable.
                 isParam = bool(row['rowIsParam'])
-                width = row['maxBitwidth'] if (isParam and row['maxBitwidth']) else row['width']
+                width = worstCaseBitwidth(row['width'], row['maxBitwidth'], row['structIsParam'])
                 # for register memory type, use the memory objects alignment settings
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
@@ -5855,7 +6198,7 @@ class projectCreate:
                                    f"Address sizing requires a resolvable "
                                    f"wordLines value.")
                         exit(warningAndErrorReport())
-                    decodeSize = roundup_pow2min4((width + 7) >> 3) * wordLines
+                    decodeSize = rowFootprintBytes(width) * wordLines
                     size = decodeSize
                     if sizeRoundUpPowerOf2:
                         size = roundup_pow2min4(size)
@@ -5871,12 +6214,10 @@ class projectCreate:
                     # Decoded address footprint for a non-memory register: the
                     # SV decoder emits one exact-offset case arm per
                     # REG_BUS_WIDTH_BYTES-wide bus segment of the structure, so
-                    # the row occupies ceil(bytes / busWidth) * busWidth bytes
-                    # of address space (no power-of-2 rounding; that only
-                    # applies to memory range-match decode). busWidth matches
-                    # templates/systemVerilog/moduleRegs.py REG_BUS_WIDTH_BYTES.
-                    busWidth = 4
-                    decodeSize = ((bytesPerRow + busWidth - 1) // busWidth) * busWidth
+                    # the row occupies ceil(bytes / REG_BUS_WIDTH_BYTES) *
+                    # REG_BUS_WIDTH_BYTES bytes of address space (no power-of-2
+                    # rounding; that only applies to memory range-match decode).
+                    decodeSize = ((bytesPerRow + REG_BUS_WIDTH_BYTES - 1) // REG_BUS_WIDTH_BYTES) * REG_BUS_WIDTH_BYTES
                 else:
                     continue
                 allocateOrder[row[keyField]] = size
@@ -8243,7 +8584,7 @@ class projectCreate:
                         owningBase = self.childProjectRaw[owner]['projectFileDir']
                         self.yamlDir = os.path.dirname(
                             os.path.relpath(os.path.abspath(yamlFile), owningBase))
-        if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
+        if yamlFile not in self.includeValid and contextFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
@@ -8276,7 +8617,7 @@ class projectCreate:
                     printError(f"Unknown section: {section} found in "
                                f"{self.diagnosticLocation(yamlFile, sectionLc)}")
                     exit(warningAndErrorReport())
-                if section in self.includeSections:
+                if section in self.includeSections and contextFile not in self.specialContexts:
                     self.includeValid[yamlFile]["valid"] = True
 
     # A row of a project-scoped section is parsed with the declaring projectName
@@ -8987,7 +9328,7 @@ class projectCreate:
             self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
         return item
 
-    def _post_validate_interface_structures(self, itemkey, item, yamlFile):
+    def _validateInterfaceStructures(self, itemkey, item, yamlFile):
         """Validate that every required interface_defs parameter has a
         corresponding structureType.
 
@@ -9042,6 +9383,44 @@ class projectCreate:
                         f"Every required parameter from interface_defs must have a corresponding structure.")
 
         return item
+
+    def _post_validateInterface(self, itemkey, item, yamlFile):
+        item = self._validateInterfaceStructures(itemkey, item, yamlFile)
+        # A failed interfaceType foreign key has already been reported.
+        if item['backpressure'] != '' and 'interfaceTypeKey' in item:
+            self._validateBackpressureOverride(
+                f"interface '{itemkey}'", item, item['interfaceType'],
+                self.flatData['interface_defs'][item['interfaceTypeKey']], yamlFile)
+        return item
+
+    def _post_validatePortBackpressure(self, itemkey, item, yamlFile):
+        # A failed interface foreign key has already been reported.
+        if item['backpressure'] != '' and 'interfaceKey' in item:
+            intfInfo = self.flatData['interfaces'][item['interfaceKey']]
+            self._validateBackpressureOverride(
+                f"block '{item['block']}' port '{itemkey}'", item, intfInfo['interfaceType'],
+                self.flatData['interface_defs'][intfInfo['interfaceTypeKey']], yamlFile)
+        return item
+
+    def _validateBackpressureOverride(self, where, item, intfType, intfDef, yamlFile):
+        """A design may lower an interface's backpressure only where its
+        protocol lets the handshake go unused, and never above the protocol
+        default."""
+        value = item['backpressure']
+        location = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, {where} "
+                    f"sets backpressure: {str(value).lower()}")
+        if intfDef['timing'] == 'fixed':
+            self.logError(f"{location}, but interfaceType '{intfType}' has timing: fixed. "
+                          f"A fixed-timing interface has no handshake to apply backpressure "
+                          f"through. Remove backpressure:.")
+        elif not intfDef['backpressure']['overridable']:
+            self.logError(f"{location}, but interfaceType '{intfType}' declares backpressure "
+                          f"overridable: false, so its consumer always honors the handshake. "
+                          f"Remove backpressure:.")
+        elif value and not intfDef['backpressure']['default']:
+            self.logError(f"{location}, but interfaceType '{intfType}' defaults to backpressure: "
+                          f"false, and a design may only lower the protocol default. "
+                          f"Remove backpressure: or set it to false.")
 
     def _post_validateBlockAddressDecl(self, itemkey, item, yamlFile):
         """Validate block-level address/register declaration invariants
@@ -9113,6 +9492,19 @@ class projectCreate:
                 f"declaration within a project."
             )
             return item
+
+        # The model and RTL decoders select a slot from address bits, so a
+        # non-power-of-two value aliases or misroutes slots.
+        for field, fmt in (('maxAddressSpaces', str), ('addressIncrement', hex)):
+            value = item[field]
+            if value <= 0 or value & (value - 1):
+                suggest = f" Use {fmt(1 << (value - 1).bit_length())}." if value > 0 else ""
+                self.logError(
+                    f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, addressBlock: "
+                    f"of block '{itemkey}' (addressGroup '{group}') sets {field} "
+                    f"{fmt(value)}, which is not a power of two. The decoder selects "
+                    f"an address space from address bits.{suggest}"
+                )
 
         # varTypeContext = yamlFile scopes varType resolution to the
         # router block's own YAML file.
@@ -9799,16 +10191,18 @@ class projectCreate:
                 return True
         return structIsParam
 
+    def _regWorstWidth(self, structKey):
+        """Worst-case bit width of a register structure: maxBitwidth when parameterizable."""
+        sEntry = self._rowByQualifiedKey('structures', structKey)
+        return worstCaseBitwidth(sEntry['width'], sEntry['maxBitwidth'], sEntry['isParameterizable'])
+
     def _auto_regMaxBytes(self, section, itemkey, item, field, yamlFile, processed):
         # Worst-case byte size for a register, derived from its structure.
         # Hard-error on any failure path: a silent 0 propagates downstream as a
         # zero-sized register, corrupting address allocation without warning.
         structKey = processed['structureKey']
         sEntry = self._rowByQualifiedKey('structures', structKey)
-        if sEntry['isParameterizable'] and sEntry['maxBitwidth']:
-            width = sEntry['maxBitwidth']
-        else:
-            width = sEntry['width']
+        width = self._regWorstWidth(structKey)
         if not isinstance(width, int) or width <= 0:
             paramFlag = sEntry['isParameterizable']
             printError(f"Register '{itemkey}' in {yamlFile}: structure "
@@ -9837,6 +10231,13 @@ class projectCreate:
                 f"Change memoryType or regAccess.")
             return item
         listed = list(item.get('ports') or {})
+        if regPort is not None and 'reg' in listed:
+            # The register handler's port already takes the 'reg' channel name.
+            self.logError(
+                f"{where} lists port 'reg', but with regAccess the register "
+                f"handler's port is channel '{memoryChannelName(item['memory'], 'reg')}', "
+                f"so the two would share a name. Rename the port.")
+            return item
         available = len(portAccess) - (regPort is not None)
         if len(listed) > available:
             def ports(count):
@@ -9858,6 +10259,25 @@ class projectCreate:
         """Validate memory register constraints after processing"""
         regType = item.get('regType', None)
         registerName = item.get('register', itemkey)
+
+        if regType == 'ext':
+            # An ext register reaches its owner as one command, so it must fit one bus access.
+            width = self._regWorstWidth(item['structureKey'])
+            limit = REG_BUS_WIDTH_BYTES * 8
+            if width > limit:
+                where = (f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, ext register "
+                         f"'{registerName}' of block '{item['block']}'")
+                if item['isParameterizable']:
+                    self.logError(f"{where} can be up to {width} bits wide, the width of structure "
+                                  f"'{item['structure']}' with its parameterizable fields at their maximum, wider "
+                                  f"than the {limit}-bit register bus. Narrow its fixed fields, or lower the "
+                                  f"maxBitwidth of its field types and the maxValue of any parameterizable "
+                                  f"constant that sets their width, so the structure fits in {limit} bits.")
+                else:
+                    self.logError(f"{where} is {width} bits wide, wider than the {limit}-bit register bus. "
+                                  f"An ext register must fit one bus access, so narrow it to {limit} bits or "
+                                  f"split it into several ext registers.")
+                return item
 
         if regType == 'memory':
             # Memory registers must have non-empty wordLines
@@ -10240,6 +10660,14 @@ class projectCreate:
         return item
 
     def _post_validateInstanceParameterBinding(self, itemkey, item, yamlFile):
+        # The schema default is the string '1'; an authored count is a YAML int.
+        if item['count'] not in (1, '1'):
+            self.logError(
+                f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, instance "
+                f"'{itemkey}' sets count: {item['count']}. Instance replication is "
+                f"not supported, so the instance would be generated once. Remove "
+                f"count: and declare each instance separately.")
+            return item
         # A params-declaring block takes its Config from a variant selector or
         # from inheritContainerParam, and a top can use neither, so a top is
         # never parameterized. The instanceType foreign key orders the block row
