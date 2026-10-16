@@ -71,9 +71,18 @@ void ipExternal::stimulusThread(void)
 {
     wait(SC_ZERO_TIME);
 
+    // The payload must fit the variant's bound width: the HDL boundary's pack()
+    // asserts on any bit above it.
+    constexpr uint64_t dataWidth = ipVariant0Config::IP_DATA_WIDTH;
     ipDataT<ipVariant0Config> payload{};
-    payload.word[0] = 0xDEADBEEFCAFEBABEULL;
-    payload.word[1] = 0x2A;
+    if constexpr (dataWidth >= 64) {
+        payload.word[0] = 0xDEADBEEFCAFEBABEULL;
+    } else {
+        payload.word[0] = 0xDEADBEEFCAFEBABEULL & ((1ULL << dataWidth) - 1);
+    }
+    if constexpr (dataWidth > 64) {
+        payload.word[1] = 0x2A;
+    }
     ipDataSt<ipVariant0Config> data(payload, static_cast<enableT>(1));
 
     log_.logPrint(std::format("{} stimulusThread pushing data 0x{:x}{:016x} marker {}",
