@@ -2,214 +2,158 @@
 name: rtl-to-systemc
 description: Convert a SystemVerilog RTL implementation to a SystemC behavioral model. Use when creating a model from RTL or verifying logic in SystemC.
 ---
-# Skill: RTL to SystemC Conversion
+# Skill: RTL to SystemC conversion
 
 ## Purpose
-Guide the user in creating a behavioral SystemC model (`.cppm`) that matches the functionality of an existing SystemVerilog RTL block (`.sv`). The model is used for fast, functional simulation in the arch2code environment.
+Write a behavioral SystemC model (`model/<block>.cppm`) that matches an existing SystemVerilog block (`rtl/<block>.sv`). The model runs fast functional simulation, so it reproduces the block's function and transactions, not its pipeline.
 
 ## Prerequisites
-1. **Read the RTL**: Analyze `rtl/<block>.sv` to understand the pipeline depth, math, and logic.
-2. **Read the Model Skeleton**: Read `model/<block>.cppm`. It is the single C++20 module file, templated on `Config`, with the class structure and generated ports.
+1. Read `rtl/<block>.sv` for its pipeline depth, math and control.
+2. Read `model/<block>.cppm`. Its ports are declared in the generated `base/<block>Base.cppm`. The class is a `template<typename Config>` class only when the block declares its own `params:`. **systemc-core** covers the file layout and where hand-written code goes.
 
-## Conversion Workflow
+## Conversion workflow
 
-### 1. Identify the Model Structure
-- **Simple Blocks**: Use a single `SC_THREAD` (e.g., `run()` or `input_handler()`) with a `while(true)` loop.
-- **Complex Blocks (Buffering)**: Split into multiple threads (e.g., `input_handler` for writing, `data_reader` for reading) and synchronize them using `sc_event` and boolean flags/FIFOs.
+### 1. Choose the thread structure
+*   A simple block is one `SC_THREAD` with a `while (true)` loop.
+*   A buffering block splits into a writer thread and a reader thread. Hand work between them with a flag plus an event, or with an `sc_fifo`. See [Example: data buffer](#example-data-buffer).
 
-### 2. Map Interfaces
-- **Inputs**: `rtl_port.data` -> `port->read(var)` or `port->readClocked(var)`.
-- **Outputs**: `rtl_port.data` -> `port->write(var)`.
-- **Registers**: `rtl_reg.data` -> See [Register Listener Pattern](#register-listener-pattern) below.
-- **Memory**: See [Memory Interface Mapping](#memory-interface-mapping) below.
+### 2. Map interfaces
+*   RTL ports become port calls. **systemc-interfaces** gives the calls for each family.
+*   `readClocked` and `writeClocked` are only for `rdy_vld` multi-cycle bursts. See **systemc-patterns**.
+*   Registers: see [Registers](#registers).
+*   Memories: see [Memories](#memories).
 
-### 3. Implement Behavior
-Do not model pipeline stages cycle-by-cycle unless necessary for latency matching. Model the **function**.
+### 3. Model the function
+Do not model pipeline stages cycle by cycle unless latency matching needs it. An RTL FSM that walks `RDY` -> `CALC` -> `DONE` over 20 cycles becomes one C++ calculation at the batch boundary.
 
-**Example:**
-- **RTL**: FSM (`RDY` -> `CALC` -> `DONE`) over 20 cycles.
-- **SystemC**: Perform the entire calculation instantly in C++ at the batch boundary inside the loop.
+### 4. Match the math bit for bit
+*   Use the arch2code-generated types. The generated regions already import the context modules the ports use. **systemc-core** shows how to import a context only the body uses.
+*   Use `int64_t` for intermediates, and replicate shifts and masks exactly.
+*   Replace a parallel-lane partial-sum tree with a plain `for` loop sum.
+*   Clamp with an explicit type, because the literals are `int`: `std::clamp<int64_t>(val, 0, MAX)`. A floor clamp `(a > b) ? (a - b) : 0` stays as written.
+*   Match the RTL's rounding exactly. The `roundDiv4` in **rtl-patterns** rounds half to even:
 
-### 4. Handle Math (Bit-Accuracy)
-- **Types**: Use `int32_t`, `int64_t` for intermediates.
-- **Fixed-Point**: Replicate shifts (`>>>`) and bit-masks exactly.
-- **Rounding**: If RTL has `round_div4`, implement a matching C++ helper:
-  ```cpp
-  inline int round_div4(int sum) { ... }
-  ```
-- **Saturation**: Explicitly check range and clamp: `std::clamp(val, 0, MAX)`.
+    ```cpp
+    inline int64_t roundDiv4(int64_t sum)
+    {
+        int64_t q = sum >> 2;
+        int64_t r = sum & 3;
+        return (r == 3 || (r == 2 && (q & 1))) ? q + 1 : q;
+    }
+    ```
 
-### 5. Algorithm Selection
-If RTL uses `generate if (ALGO == 1)`, SystemC should use runtime checks:
-```cpp
-if (ALGO == 1) {
-    // Logic 1
-} else {
-    // Logic 2
-}
-```
+### 5. Algorithm selection
+RTL that picks logic with `generate if (ALGO == 1)` becomes a C++ branch on the same parameter. Use `if constexpr` when the parameter is a compile-time constant.
 
 ### 6. Logging
-Use `log_.logPrint` to aid debugging.
 ```cpp
-log_.logPrint(std::format("Input: {}, Result: {}", in_val, res), LOG_DEBUG);
+log_.logPrint(std::format("in {} result {}", inVal, res), LOG_DEBUG);
 ```
+Verbosity rules are in **systemc-core**.
 
-## Register Listener Pattern
+### 7. Verify
+Build and run the model with `make run` (see **manage-build**). With A2C Pro, prove equivalence against the RTL with **run-tandem**.
 
-RTL reads `status_if.data` combinationally (always valid). SystemC uses a dedicated listener thread with `setExternalEvent` to cache register values and react to changes:
+## Registers
+RTL reads a register's value combinationally. Check how the model receives it.
+*   An `hwRegister` member in the generated class region is a register the block owns. Read it as **systemc-core** section 3 describes.
+*   A `status_in` port in `base/<block>Base.cppm` carries a read-write register the register handler holds. Sample it once with `readNonBlocking()`, then loop on `read()`, which wakes on each firmware write.
+*   A `status_out` port carries a read-only register. The block drives the value firmware reads with `write(v)`.
+*   An `external_reg` port carries a register the block implements itself. The handler forwards firmware accesses to it. Wait for firmware writes with `read(v)` and publish the read-back value with `update_mirror(v)`.
+
+**systemc-interfaces** has the full call rules.
+
+A listener thread caches derived values in members, so the processing thread never blocks on configuration:
 
 ```cpp
-// Header: declare event and cached values
-sc_event m_config_change_event;
-bool mode_active = false;
-
-// Dedicated listener thread (registered in constructor as SC_THREAD)
-void block::config_listener(void) {
-    config_reg->setExternalEvent(&m_config_change_event);
+void blk::configListener(void)
+{
+    sc_event configEvent;
+    configReg.registerEvent(&configEvent);
     while (true) {
-        config_reg_t reg;
-        config_reg->readNonBlocking(reg);
-        mode_active = (reg.mode == ACTIVE);
-        wait(m_config_change_event);
+        modeActive = (configReg.read().mode == MODE_ACTIVE);
+        wait(configEvent);
     }
 }
 ```
 
-### Conversion Rules
-1. RTL `always_comb` reading `status_if.data` directly becomes a dedicated `SC_THREAD` with `setExternalEvent` + `readNonBlocking` + `wait(event)`.
-2. Cache derived values (e.g., `mode_active`) as class members so the main processing thread can use them without blocking.
-3. The listener thread runs independently, updating cached values whenever the register changes.
+An RTL write pulse on `external_reg_if` becomes a thread that blocks in `read()`:
 
-## Position/Counter Tracking
+```cpp
+void blk::cmdListener(void)
+{
+    while (true) {
+        cmdRegSt cmd;
+        cmdReg->read(cmd);
+        cmdPending = cmd.trigger;
+    }
+}
+```
 
-RTL uses bit-slicing for index decomposition (implicit division/modulo). SystemC uses equivalent shift/mask operations:
+## Memories
+A memory reached through a `memory` port (`memory_out`, `memory_if.src` in RTL) uses `port->request(isWrite, addr, data)`. A read returns the value in `data`. A write sends `data`.
 
-| RTL bit-slice | SystemC equivalent |
-|---------------|-------------------|
+An RTL FSM that sequences memory reads over several cycles becomes sequential calls in a helper:
+
+```cpp
+memAddrSt a0, a1;
+a0.index = (row << COL_BITS) | col;
+a1.index = (rowNext << COL_BITS) | col;
+memDataSt d0, d1;
+lineMem->request(false, a0, d0);
+lineMem->request(false, a1, d1);
+```
+
+Replicate the RTL address encoding exactly, so `{row, col}` becomes `(row << COL_BITS) | col`. The address and data field names come from the structures in the YAML.
+
+## Position and counter tracking
+RTL decomposes an index by bit slicing. The model uses the same shift and mask.
+
+| RTL bit slice | SystemC |
+| :--- | :--- |
 | `pos[MSB:LOG2]` (block index) | `pos >> LOG2` |
 | `pos[LOG2-1:0]` (offset in block) | `pos & (BLOCK_SIZE - 1)` |
 
-## Piecewise-Linear Interpolation (Slope-Accumulate to Compute-Once)
-
-RTL accumulates a slope per-cycle across a block region. SystemC computes the final value once per block boundary in a helper function, then steps through elements:
-
-```cpp
-// SystemC: compute factor and slope once per block
-load_block_factors(block_x, block_y, weight, factor, slope);
-// Then in the element loop:
-factor += slope;  // per ELEMENTS_PER_CYCLE step
-```
-
-## Memory Interface Mapping
-
-RTL uses `memory_if.src` ports with an FSM to sequence reads/writes over multiple cycles. In SystemC, replace the entire FSM with direct `mem->request()` calls.
-
-### RTL Pattern (Multi-Cycle FSM)
-RTL drives `memory_if` signals (`addr`, `enable`, `wr_en`, `write_data`) and reads `read_data` one cycle later. Multiple reads require an FSM to sequence addresses.
-
-### SystemC Pattern (Blocking Calls)
-Replace the entire FSM with sequential `mem->request()` calls:
+## Piecewise-linear interpolation
+RTL accumulates a slope every cycle across a block region. The model computes the start value and slope once per block boundary, then steps through the elements:
 
 ```cpp
-addr_t addr0, addr1;
-addr0.addr = (row << COL_BITS) | col;
-addr1.addr = (row_next << COL_BITS) | col;
-
-data_t d0, d1;
-mem->request(false, addr0, d0);  // false = read
-mem->request(false, addr1, d1);
-```
-
-### API Reference
-```cpp
-mem->request(bool isWrite, const addr_t& addr, data_t& data);
-```
-- **Read**: `isWrite = false`. After the call, `data` contains the value read.
-- **Write**: `isWrite = true`. `data` holds the value to write.
-
-### Conversion Rules
-1. **Collapse FSMs**: RTL memory read FSMs become sequential `request()` calls in a helper function.
-2. **Address construction**: Replicate the RTL address encoding exactly (e.g., `{row, col}` becomes `(row << COL_BITS) | col`).
-3. **Conditional access**: If RTL conditionally reads different memories, use an `if` statement:
-   ```cpp
-   if (select_a) {
-       mem_a->request(false, addr, data);
-   } else {
-       mem_b->request(false, addr, data);
-   }
-   ```
-4. **Helper functions**: Extract memory access + computation into a helper called from the main loop.
-5. **Types**: Use the same struct types as defined in the package. Access fields directly (e.g., `data.val`, `addr.addr`).
-
-## `external_reg_if` (Write-Pulse Commands)
-
-RTL uses `external_reg_if` for single-cycle write pulses (`|write`). SystemC uses `setExternalEvent` + `readNonBlocking` in a dedicated thread:
-
-```cpp
-void block::cmd_register_thread() {
-    cmd_reg->setExternalEvent(&m_cmd_event);
-    while (true) {
-        wait(m_cmd_event);
-        cmd_t data = cmd_reg->readNonBlocking();
-        cmd_flag = data.trigger;
-    }
+loadBlockFactors(blockX, blockY, weight, factor, slope);
+for (int i = 0; i < ELEMENTS_PER_CYCLE; i++) {
+    // use factor
+    factor += slope;
 }
 ```
 
-## LUT / Memory Replicas
-
-RTL uses `N` copies of `memory_dp` (for parallel reads). SystemC uses a single shadow `std::vector` with a `reqReceive`/`complete` thread per port:
+## Example: data buffer
+RTL writes a RAM at `wr_addr` and starts reading once `wr_addr` passes a threshold. An immediate `notify()` is lost when the other thread is not yet waiting, so pair the event with a flag:
 
 ```cpp
-std::vector<entry_t> lut_shadow_(LUT_DEPTH);
-
-void block::lut_model(void) {
+void blk::inputThread(void)
+{
     while (true) {
-        bool isWrite; addr_t addr; entry_t data;
-        lut_port->reqReceive(isWrite, addr, data);
-        if (isWrite) {
-            lut_shadow_[addr.value] = data;
-        } else {
-            lut_port->complete(lut_shadow_[addr.value]);
+        dataSt data;
+        dataIn->read(data);
+        store(data);
+        if (enoughData()) {
+            bufferReady = true;
+            bufferEvent.notify();
         }
     }
 }
-```
 
-## Accumulator / Rounding Simplification
-
-RTL uses lane-specific `generate if` blocks and bit-manipulation rounding functions. SystemC replaces these with simple arithmetic:
-
-| RTL | SystemC |
-|-----|---------|
-| Parallel-lane partial-sum tree with extra pipeline stage | Simple `for` loop sum |
-| `round_div4` (banker's rounding via bit ops) | Integer rounding helper function |
-| Manual bit checks for saturation | `std::clamp(val, 0, MAX)` |
-| `(a > b) ? (a - b) : 0` (floor-clamp) | Same pattern or `std::max(a - b, 0)` |
-
-## Critical Rules
-- **NEVER** edit `*Base.cppm` files.
-- **Match Types**: Use the arch2code-generated typedefs the model shares with `*_package.sv`. On the model side they arrive by importing the context modules (`import <ctx>;` from the generated `*Includes.cppm`) and are re-exported into the block through the `using <block>Base<Config>::...;` declarations — there is no `*_types.h` header.
-- **Events**: Use `wait(event)` to synchronize threads if buffering data.
-
-## Example: Data Buffer
-**RTL**:
-- Writes to RAM at `wr_addr`.
-- Reads from RAM when `wr_addr` > threshold.
-
-**SystemC**:
-```cpp
-// Thread 1: Input
-while(true) {
-    in->read(data);
-    buffer[row][col] = data;
-    if (enough_data) event.notify();
-}
-
-// Thread 2: Process
-while(true) {
-    wait(event);
-    // Process buffered data
+void blk::processThread(void)
+{
+    while (true) {
+        while (!bufferReady) {
+            wait(bufferEvent);
+        }
+        bufferReady = false;
+        // process buffered data
+    }
 }
 ```
+
+## Rules
+*   Never edit `*Base.cppm` files or generated regions.
+*   Reuse the generated types. Do not redefine a type the YAML already defines.

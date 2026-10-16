@@ -112,6 +112,8 @@ types:
 
 interface_defs:
   type_intf:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:

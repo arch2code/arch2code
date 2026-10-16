@@ -25,6 +25,11 @@ header first carries user code in its end_ctor_init() body: newmodule keeps
 and reports it while still removing the untouched stale files and the stale
 registrar files. Once the header is restored to its scaffold text, newmodule
 removes it.
+
+Turning the leaf's `hasVl` off makes the same files stale without a rename:
+`make newmodule` removes the vl_wrap files and the Verilator registrar, keeps
+the model registrar, and the rundir build stops compiling the Verilator
+registrar.
 """
 
 import os
@@ -307,10 +312,73 @@ def _run_block_rename():
         remove_tree(tmp)
 
 
+def systemc_sources(project, e):
+    # The rundir build compiles every registrar/*.cpp it finds, so CPP_SRC is
+    # what a stale Verilator registrar would be compiled from.
+    cmd = ['make', '-C', os.path.join(project, 'rundir'), '--no-print-directory',
+           f'REPO_ROOT={project}', f'A2C_ROOT={base_dir}',
+           '--eval', 'a2cPrintCppSrc: ; @echo CPP_SRC=$(CPP_SRC)', 'a2cPrintCppSrc']
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=e)
+    if result.returncode != 0:
+        raise RuntimeError(f"CPP_SRC probe failed:\n{result.stdout}{result.stderr}")
+    lines = [line for line in result.stdout.splitlines() if line.startswith('CPP_SRC=')]
+    return lines[-1].split()
+
+
+def _run_hasvl_flip():
+    tmp = tempfile.mkdtemp(prefix='stale_vl_wrap_hasvl_', dir=test_dir)
+    try:
+        project, e, vlWrapDir, dummy, expected = _prepare_project(tmp, 'vliFlip')
+        registrarDir = os.path.join(project, 'registrar')
+        vlRegistrar = os.path.join(registrarDir, 'vliLeafVlRegistrar.cpp')
+        modelRegistrar = os.path.join(registrarDir, 'vliLeafRegistrar.cppm')
+        for path in (vlRegistrar, modelRegistrar):
+            if not os.path.exists(path):
+                print(f"FAIL: expected baseline registrar file {path}")
+                return False
+        if vlRegistrar not in systemc_sources(project, e):
+            print(f"FAIL: the baseline build does not compile {vlRegistrar}, so the "
+                  f"probe cannot show it dropping out")
+            return False
+
+        yamlPath = os.path.join(project, 'yaml', 'vliCont.yaml')
+        with open(yamlPath) as f:
+            text = f.read()
+        if text.count('hasVl: true') != 1:
+            print("FAIL: expected vliLeaf to be the fixture's only hasVl: true block")
+            return False
+        with open(yamlPath, 'w') as f:
+            f.write(text.replace('hasVl: true', 'hasVl: false'))
+
+        require_make(['db', 'newmodule', 'gen'], project, e)
+        for path in list(expected.values()) + [vlRegistrar]:
+            if os.path.exists(path):
+                print(f"FAIL: newmodule left {path} after hasVl was turned off")
+                return False
+        if not os.path.exists(modelRegistrar):
+            print(f"FAIL: newmodule removed the model registrar {modelRegistrar}, "
+                  f"which hasVl does not govern")
+            return False
+        if vlRegistrar in systemc_sources(project, e):
+            print(f"FAIL: the build still compiles {vlRegistrar}")
+            return False
+        if not os.path.exists(dummy):
+            print(f"FAIL: hand-authored {dummy} did not survive the hasVl flip")
+            return False
+
+        print("PASS: turning hasVl off and running newmodule removes the leaf's "
+              "vl_wrap files and Verilator registrar, the build no longer compiles "
+              "the registrar, and the model registrar and hand-authored file stay")
+        return True
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def run_all_tests():
     variant = _run_variant_rename()
     block = _run_block_rename()
-    return 0 if variant and block else 1
+    flip = _run_hasvl_flip()
+    return 0 if variant and block and flip else 1
 
 
 if __name__ == '__main__':

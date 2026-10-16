@@ -36,7 +36,7 @@ module blockARegs
     logic nxt_blockATableLocal_rd_enable, blockATableLocal_rd_enable, blockATableLocal_rd_capture;
     logic blockATableLocal_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, blockATableLocal_addr, bSizeSt'((apb_addr - REG_BLOCKA_BLOCKATABLELOCAL) >> 2))
     `DFF_DOM(clk, rst_n, blockATableLocal_wr_enable, blockATableLocal_update_0)
     `DFF_DOM(clk, rst_n, blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
     `DFF_DOM(clk, rst_n, blockATableLocal_rd_capture, blockATableLocal_rd_enable)
@@ -57,7 +57,7 @@ module blockARegs
     logic nxt_blockATable37Bit_rd_enable, blockATable37Bit_rd_enable, blockATable37Bit_rd_capture;
     logic blockATable37Bit_wr_enable;
 
-    `DFF_DOM(clk, rst_n, blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, blockATable37Bit_addr, bSizeSt'((apb_addr - REG_BLOCKA_BLOCKATABLE37BIT) >> 3))
     `DFF_DOM(clk, rst_n, blockATable37Bit_wr_enable, blockATable37Bit_update_1)
     `DFF_DOM(clk, rst_n, blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
     `DFF_DOM(clk, rst_n, blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
@@ -86,7 +86,7 @@ module blockARegs
         if (wr_select) begin
             case (apb_addr) inside
                 [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
-                    case (apb_addr[2-1:0])
+                    case (2'(apb_addr - REG_BLOCKA_BLOCKATABLELOCAL))
                         2'h0: begin
                             blockATableLocal_update_0 = 1'b1;
                             nxt_blockATableLocal_data[6:0] = apbReg.pwdata[6:0];
@@ -95,7 +95,7 @@ module blockARegs
                     endcase
                 end
                 [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
-                    case (apb_addr[3-1:0])
+                    case (3'(apb_addr - REG_BLOCKA_BLOCKATABLE37BIT))
                         3'h0: begin
                             blockATable37Bit_update_0 = 1'b1;
                             nxt_blockATable37Bit_data[31:0] = apbReg.pwdata[31:0];
@@ -127,7 +127,7 @@ module blockARegs
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end
                 [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
-                    case (apb_addr[2-1:0])
+                    case (2'(apb_addr - REG_BLOCKA_BLOCKATABLELOCAL))
                         2'h0: begin
                             if (blockATableLocal_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -139,10 +139,10 @@ module blockARegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockATableLocal_rd_enable = (apb_addr[2-1:0] inside {2'h0}) & ~blockATableLocal_rd_capture;
+                    nxt_blockATableLocal_rd_enable = (2'(apb_addr - REG_BLOCKA_BLOCKATABLELOCAL) inside {2'h0}) & ~blockATableLocal_rd_capture;
                 end
                 [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
-                    case (apb_addr[3-1:0])
+                    case (3'(apb_addr - REG_BLOCKA_BLOCKATABLE37BIT))
                         3'h0: begin
                             if (blockATable37Bit_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -160,18 +160,19 @@ module blockARegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_blockATable37Bit_rd_enable = (apb_addr[3-1:0] inside {3'h0, 3'h4}) & ~blockATable37Bit_rd_capture;
+                    nxt_blockATable37Bit_rd_enable = (3'(apb_addr - REG_BLOCKA_BLOCKATABLE37BIT) inside {3'h0, 3'h4}) & ~blockATable37Bit_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

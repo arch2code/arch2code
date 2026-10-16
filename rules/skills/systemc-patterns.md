@@ -1,42 +1,34 @@
 ---
 name: systemc-patterns
-description: Reference for common SystemC implementation patterns including producer-consumer, register handler, and multi-interface handling
+description: Reference for common SystemC implementation patterns including producer-consumer, register access, multi-interface handling, multi-cycle bursts and resource tracking
 ---
-# Skill: SystemC Patterns
+# Skill: SystemC patterns
 
 ## Purpose
-Reference common SystemC implementation patterns to solve frequent design problems efficiently and consistently.
+Pick the established pattern for a common modelling problem, and find the skill that owns its details.
 
-## References
-*   **API Reference:** `SYSTEMC_API_USER_REFERENCE.md` (See "Common Implementation Patterns" section)
+## 1. Producer-consumer
+The producer calls `port->write(v)` and the consumer calls `port->read(v)` on a `rdy_vld` port. Both calls block, so neither loop needs its own `wait()`. Calls for the other families are in **systemc-interfaces**.
 
-## 1. Producer-Consumer
-Basic data movement model.
-*   **Producer:** Generates data, calls `port->write(data)`.
-*   **Consumer:** Processes data, calls `port->read(data)`.
-*   **Ref:** `systemc-interfaces.md`
+## 2. Register access
+The generated register handler, owned registers and memories, and the one allowed hand-written register thread are in **systemc-core** section 3.
 
-## 2. Register Handler
-Handling CPU register access.
-*   **Pattern:** Use `registerHandler` template or implement a thread waiting on `apbPort->reqReceive`.
-*   **Logic:** Decode address -> Read/Write internal storage -> Respond.
-*   **Ref:** `systemc-interfaces.md` (Section 8.5)
+## 3. One thread, several ports
+Hook one event to several ports with `setExternalEvent` and wait on it. After a wake-up, check `isActive()` on the handshake ports.
 
-## 3. Multi-Interface Handling
-Thread servicing multiple inputs.
-*   **Mechanism:** `setExternalEvent` + `wait(event)` + `isActive()`.
-*   **Flow:** Wait for shared event -> Check all ports for activity -> Process active ones (Arbitrate if needed).
-*   **Family support:** available on every base family's receive side (`rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack`, `notify_ack`), and on `axi_read`/`axi_write` dst ports (address sub-channel) and `axi4_stream`. Not on `external_reg`/`raw`/`status`, which predate this pattern.
-*   **Ref:** `systemc-synchronization.md`
+`status`, `external_reg` and `raw` ports can share the event but have no `isActive()`. A `status` port fires it on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`). To tell whether it changed, compare `readNonBlocking()` with the last value the thread saw.
 
-## 4. Multi-Cycle Burst
-Transferring large data structures over narrow interfaces.
-*   **Writer:** Loop `writeClocked(beat)`.
-*   **Reader:** Loop `readClocked(beat)`.
-*   **Optimization:** Use `getReadPtr()`/`getWritePtr()` for zero-copy buffer access.
-*   **Ref:** `systemc-interfaces.md` (Section 8.6)
+**systemc-synchronization** lists the families, the full pattern and tandem-safe arbitration.
 
-## 5. Resource Tracking
-Debugging complex flows.
-*   **Pattern:** Alloc tracker tag at entry -> Pass tag with data -> Log progress with `prt(tag)` -> Dealloc at exit.
-*   **Ref:** `debug.md`
+## 4. Multi-cycle burst
+A burst moves one large structure over a narrow interface as several beats.
+*   The interface's YAML entry must set `multiCycleMode`, plus `maxTransferSize` where the mode needs it. Without it, `writeClocked` sends each beat as a full transaction.
+*   On `rdy_vld`, the writer loops on `writeClocked(beat)` and the reader on `readClocked(beat)`.
+*   On AXI, the side sending data loops on `sendDataCycle(beat)` and the receiving side on `receiveDataCycle(beat)`.
+*   Do not mix beat calls and whole-transaction calls on one interface.
+*   On `rdy_vld`, `getWritePtr()` and `getReadPtr()` give zero-copy access to the burst buffer. They assert when the interface has a tracker.
+
+The `multiCycleMode` values are in `builder/base/config/schema.yaml`.
+
+## 5. Resource tracking
+A tracker tags a transaction from entry to exit and logs its progress. Allocation, logging, deallocation and tandem reference counting are in **debug**.

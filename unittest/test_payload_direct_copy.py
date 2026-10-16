@@ -509,6 +509,8 @@ def test_two_param_field_constructor_avoids_comma_splice():
 # interface on the connection), so the bind goes through buildThunkerView.
 TYPE_PAIR_ARCH_YAML = """interface_defs:
   type_pair_proto:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
     parameters:
       p_ty: {datatype: type}
     signals:

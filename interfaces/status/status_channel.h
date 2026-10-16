@@ -79,7 +79,7 @@ public:
                              INTERFACE_AUTO_MODE autoMode,
                              const typename T::_packedSt& initialValue)
       : sc_prim_channel( name_ ),
-        interfaceBase(name_, block_, autoMode),
+        interfaceBase(name_, block_, autoMode, TIMED_DELAY_FIXED_TIMING),
         m_channel_update_event( (std::string(name_) + "m_channel_update_event").c_str() ),
         m_channel_update_event_ptr(&m_channel_update_event),
         m_reader(nullptr),

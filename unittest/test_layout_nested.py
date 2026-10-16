@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Hierarchical layout sign-off vehicle: migrated `examples/nested`
-(plan-decomp-functional-layout.md T4.6 sign-off).
+"""Hierarchical layout sign-off vehicle: migrated `examples/nested`.
 
 `nested` is the real build+run example converted in place from functional to
 hierarchical (via `make migrate-hierarchical`): its project file lives in the

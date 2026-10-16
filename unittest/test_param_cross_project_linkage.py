@@ -427,6 +427,8 @@ def test_one_interface_at_equal_valued_configs_binds_directly_type_payload():
             'ipParameters:\n    constants:',
             'interface_defs:\n'
             '    push_ack_typed:\n'
+            '        timing: elastic\n'
+            '        backpressure: {default: true, overridable: false}\n'
             '        parameters:\n'
             '            data_t: { datatype: type }\n'
             '        signals:\n'

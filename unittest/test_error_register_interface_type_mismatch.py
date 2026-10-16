@@ -14,6 +14,8 @@ from _addrctl_helpers import (
 
 ALT_APB_DEF = """interface_defs:
     alt_apb:
+        timing: elastic
+        backpressure: {default: true, overridable: false}
         addressBus: true
         parameters:
             addr_t: { datatype: struct }

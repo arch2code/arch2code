@@ -16,9 +16,9 @@ The projectFiles setting allows for list of yaml files to be specified that will
 
 The dbSchema allows the specification of objects captured by the architecture (see Schema section for more details)
 
-=== addressControl
+=== instanceGroups and addressObjects
 
-Address control provides configuration necessary for address generation
+The instanceGroups and addressObjects sections provide the address policy used for address generation. The address decoders themselves are declared per block with addressBlock
 
 === topInstance
 

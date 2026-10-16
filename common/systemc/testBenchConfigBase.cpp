@@ -16,6 +16,10 @@ void testBenchConfigBase::addParam(const std::initializer_list<std::pair<std::st
         getParamMap().emplace(p.first, p.second);
     }
 }
+void testBenchConfigBase::setParam(std::string name, uint64_t value)
+{
+    getParamMap().insert_or_assign(name, value);
+}
 uint64_t testBenchConfigBase::getParam(std::string name, uint64_t defaultValue)
 {
     auto it = getParamMap().find(name);
@@ -44,4 +48,13 @@ bool testBenchConfigBase::isValidParam(std::string name)
 {
     auto it = getParamMap().find(name);
     return it != getParamMap().end();
+}
+
+std::vector<std::string> testBenchConfigBase::getParamNames()
+{
+    std::vector<std::string> names;
+    for (const auto &p : getParamMap()) {
+        names.push_back(p.first);
+    }
+    return names;
 }

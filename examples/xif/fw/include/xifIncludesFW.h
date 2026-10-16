@@ -51,14 +51,14 @@ struct streamSt_v {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamSt_v<DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, DATA_WIDTH);
         _pos += DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (streamDataT_v<DATA_WIDTH>)((_src) & ((1ULL << (DATA_WIDTH)) - 1));
+        data = (streamDataT_v<DATA_WIDTH>)((_src) & (~0ULL >> (64 - (DATA_WIDTH))));
     }
     explicit streamSt_v(
         streamDataT_v<DATA_WIDTH> data_) :
@@ -68,7 +68,7 @@ struct streamSt_v {
 };
 template<typename Config> using streamSt = streamSt_v<Config::DATA_WIDTH>;
 struct streamBndrySt {
-    streamBndryDataT data; //Boundary payload; packed layout matches streamSt<dutV0>
+    streamBndryDataT data; /* [15:0] */ //Boundary payload; packed layout matches streamSt<dutV0>
 
     streamBndrySt() { memset(this, 0, sizeof(streamBndrySt)); }
 
@@ -77,7 +77,7 @@ struct streamBndrySt {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamBndrySt::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)

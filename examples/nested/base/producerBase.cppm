@@ -125,12 +125,12 @@ public:
 
 
     producerChannels(std::string name, std::string srcName) :
-    src_trans_dest_trans_rv_tracker(("src_trans_dest_trans_rv_tracker"+name).c_str(), srcName, "api_list_tracker", 2048, "tracker:cmdid")
-    ,src_clock_dest_trans_rv_tracker(("src_clock_dest_trans_rv_tracker"+name).c_str(), srcName, "api_list_tracker", 2048, "tracker:cmdid")
-    ,src_trans_dest_clock_rv_tracker(("src_trans_dest_clock_rv_tracker"+name).c_str(), srcName, "api_list_tracker", 2048, "tracker:cmdid")
-    ,src_trans_dest_trans_rv_size(("src_trans_dest_trans_rv_size"+name).c_str(), srcName, "api_list_size", 2048, "")
-    ,src_clock_dest_trans_rv_size(("src_clock_dest_trans_rv_size"+name).c_str(), srcName, "api_list_size", 2048, "")
-    ,src_trans_dest_clock_rv_size(("src_trans_dest_clock_rv_size"+name).c_str(), srcName, "api_list_size", 2048, "")
+    src_trans_dest_trans_rv_tracker(("src_trans_dest_trans_rv_tracker"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_tracker", 2048, "tracker:cmdid")
+    ,src_clock_dest_trans_rv_tracker(("src_clock_dest_trans_rv_tracker"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_tracker", 2048, "tracker:cmdid")
+    ,src_trans_dest_clock_rv_tracker(("src_trans_dest_clock_rv_tracker"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_tracker", 2048, "tracker:cmdid")
+    ,src_trans_dest_trans_rv_size(("src_trans_dest_trans_rv_size"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 2048, "")
+    ,src_clock_dest_trans_rv_size(("src_clock_dest_trans_rv_size"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 2048, "")
+    ,src_trans_dest_clock_rv_size(("src_trans_dest_clock_rv_size"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 2048, "")
     {};
     void bind( producerBase *a, producerInverted *b)
     {

@@ -2,250 +2,126 @@
 name: systemc-to-rtl
 description: Convert a SystemC behavioral model to a SystemVerilog RTL implementation following arch2code patterns. Use when implementing RTL from a model or converting C++ to SV.
 ---
-# Skill: SystemC to RTL Conversion
+# Skill: SystemC to RTL conversion
 
 ## Purpose
-Guide the user in converting a high-level SystemC model (`.cppm`) to a synthesizable SystemVerilog implementation (`.sv`) within the arch2code framework.
+Convert a SystemC model (`model/<block>.cppm`) into synthesizable SystemVerilog (`rtl/<block>.sv`) within arch2code.
+
+## References
+*   `rtl-core.md` owns flop macros, clock domains, FSMs, naming and package imports. Follow it for every flop and FSM you write.
+*   `rtl-interfaces.md` covers the interface signals and the generated memory instances.
+*   `rtl-patterns.md` has the pipeline, interpolation, saturation, rounding and memory-sequencing patterns this skill points to.
+*   `rtl-registers.md` covers register ports.
 
 ## Prerequisites
-1. **Read the SystemC Model**: Analyze `model/<block>.cppm` to understand the algorithm, math (fixed-point), and control flow.
-2. **Read the RTL Skeleton**: Read `rtl/<block>.sv`. It will have generated ports and imports.
-3. **Identify Interfaces**:
-   - **Stream Inputs**: `rdy_vld_if.dst` (SystemC: `port->read()`)
-   - **Stream Outputs**: `rdy_vld_if.src` (SystemC: `port->write()`)
-   - **Registers**: `status_if.dst` (SystemC: `reg->readNonBlocking()`)
-   - **Memory**: `memory_if.src` (SystemC: `mem->request()`)
+1.  Read `model/<block>.cppm` for the algorithm, the fixed-point math and the control flow.
+2.  Read `rtl/<block>.sv`. Its generated region already has the ports, package imports, interface instances and memory instances. If the file is missing, create it with `make newmodule` (`manage-build.md`).
+3.  Map each model port or member to its RTL counterpart:
 
-## Conversion Workflow
+| Model | RTL |
+| :--- | :--- |
+| `rdy_vld` input, `port->read()` | `rdy_vld_if.dst` |
+| `rdy_vld` output, `port->write()` | `rdy_vld_if.src` |
+| `status` input, `readNonBlocking()` | `status_if.dst`, read `.data` |
+| Owned `rw` register, `reg.read()` | `status_if` instance, read `<reg>.data` |
+| Owned memory, `hwMemory` `read(i)` / `write(i, v)` | generated `memory_if` instance named after the memory |
+| `memory` port, `port->request(isWrite, addr, data)` | `memory_if.src` port |
 
-### 1. Plan the Pipeline
-SystemC often processes one transaction per loop iteration. RTL requires pipelining to meet timing.
-- **Deep Pipelines**: Break complex math (e.g., `(a+b+c+d)/4`) into multiple stages:
-    - Stage 1: `sum1 = a+b`, `sum2 = c+d`
-    - Stage 2: `total = sum1 + sum2`
-    - Stage 3: `result = total >> 2`
-- **FSMs**: If the SystemC model performs a heavy calculation at a batch boundary (e.g., end-of-transaction, end-of-frame), it CANNOT be done in one cycle. Use a **State Machine** to serialize the math (e.g., `RDY` -> `CALC_STEP_1` -> `CALC_STEP_2` -> `DONE`).
+## Conversion workflow
 
-### 2. Declare Pipeline Registers (`DFF_INST`)
-Use `DFF_INST(type, name)` which creates:
-- `name`: The register output (current state).
-- `n_name`: The register input (next state, you must drive this).
+### 1. Plan the pipeline
+A model often handles one transaction per loop iteration in zero time. RTL has to spread the work over cycles.
+*   Break deep math into stages. `(a+b+c+d)/4` becomes `sum1 = a+b` and `sum2 = c+d`, then `total = sum1 + sum2`, then the divide (see step 5 for signed values).
+*   A heavy calculation at a batch boundary, such as end of frame, cannot finish in one cycle. Serialize it with an FSM (`rtl-core.md`), for example `RDY`, `CALC1`, `CALC2`, `DONE`.
+
+### 2. Declare pipeline registers
+Use the `_INST` flop macros. `` `DFF_INST(type, name) `` declares `name`, the flop output, and `n_name`, which you drive.
 
 ```systemverilog
-`DFF_INST(data_t, stg1_data)
-`DFF_INST(logic, stg1_vld)
+`DFF_INST(logic,   stg1Vld)
+`DFF_INST(dataT,   stg1Data)
+`DFF_INST(resultT, stg2Result)
 ```
 
-### 3. Implement Logic (`always_comb`)
-Write combinational logic to calculate next states (`n_*`).
+### 3. Write the next-state logic
+Give every `n_*` signal a default at the top of the `always_comb`, then override it:
 
 ```systemverilog
 always_comb begin
-    n_stg1_vld = 1'b0;
-    if (in_port.vld) begin
-        n_stg1_data = in_port.data;
-        n_stg1_vld = 1'b1;
+    n_stg1Vld  = inPort.vld;
+    n_stg1Data = stg1Data;
+    if (inPort.vld) begin
+        n_stg1Data = inPort.data;
     end
-    n_stg2_result = stg1_data * coeff;
+    n_stg2Result = stg1Data * coeff;
 end
 ```
 
-### 4. Memory Interface Conversion
-
-SystemC `mem->request()` calls are blocking and instant. RTL must drive `memory_if` signals across clock cycles with an FSM.
-
-#### SystemC Pattern (Instant Reads)
-```cpp
-mem->request(false, addr0, data0);  // blocking, data in data0 immediately
-mem->request(false, addr1, data1);
-```
-
-#### RTL Pattern (FSM-Sequenced Reads)
-Each `request()` becomes one FSM state. Drive `addr` and `enable` in one cycle; `read_data` is valid the next cycle.
+### 4. Memory access
+A model's `request()` or `read(i)` returns at once. In RTL a read drives `addr` and `enable` in one cycle, and `read_data` is valid the next.
+*   Make each sequential read one FSM state, and consume its data one cycle later. `rtl-patterns.md` (FSM-sequenced memory reads) has the paired-FSM pattern.
+*   If the model reads one of two memories depending on a condition, drive both ports with the same address and select with `enable`:
 
 ```systemverilog
-if (1) begin: mem_read_fsm
-    typedef enum logic [1:0] {RD0, RD1, RD2, RD3} statesT;
-    `include "fsmDefs.svh"
-    always_comb begin
-        nState = state;
-        mem.write_data = '0;
-        mem.wr_en = 1'b0;
-        mem.addr = base_addr;
-        mem.enable = 1'b0;
-
-        `fsmCase
-            `fsmState(RD0) begin
-                if (trigger_condition) begin
-                    mem.addr = addr0;
-                    mem.enable = 1'b1;
-                    `nxtState(RD1)
-                end
-            end
-            `fsmState(RD1) begin
-                mem.addr = addr1;
-                mem.enable = 1'b1;
-                `nxtState(RD2)
-            end
-            // ... RD2, RD3 follow same pattern
-        `fsmEndCase
-    end
-end: mem_read_fsm
+memA.addr   = targetAddr;
+memA.enable = selectA;
+memB.addr   = targetAddr;
+memB.enable = ~selectA;
+// one cycle later, with selectA delayed to match:
+result = selectAD1 ? memA.read_data.val : memB.read_data.val;
 ```
 
-#### Consuming Read Data
-Read data from cycle N is available in cycle N+1. Use a **second FSM** or pipeline stage to consume `mem.read_data` one cycle after the address was driven. See `rtl-patterns.md` (Paired FSMs).
+The generator instantiates the memories from YAML, including `memory_dp_2clk` for a memory whose ports run on two clocks. Never hand-write a memory instance. `rtl-interfaces.md` explains how the YAML picks it.
 
-#### Conditional Memory Access
-If SystemC conditionally reads from different memories, RTL drives all memory ports in parallel with conditional `enable`:
+### 5. Types and math
+*   Use the types from the generated package imports. Never write a package import by hand. If a name your logic uses is not imported, add `--importPackages` (`rtl-core.md`).
+*   Convert C++ `int64_t` fixed-point math to explicit `logic signed [W-1:0]` types.
+*   C++ `>>` on a signed type keeps the sign. Use `>>>` on signed values and `>>` on unsigned ones.
+*   C++ `/` truncates toward zero. `>>>` rounds toward minus infinity, so the two differ for negative values. For a power-of-two divide of a value that can be negative, match what the model does. If the model divides, add `2**N - 1` to a negative value before shifting.
+*   If the model uses rounding or saturation helpers, write equivalent SV functions (`rtl-patterns.md`, "Saturation and clipping" and "Rounding functions").
+*   If the model picks an algorithm from a parameter, use `generate if`. If it switches at run time on a register value, use a mux in `always_comb`.
+*   Replace a division by a constant with a multiply by a precomputed reciprocal:
 
 ```systemverilog
-mem_a.addr = target_addr;
-mem_a.enable = select_a;
-mem_b.addr = target_addr;
-mem_b.enable = ~select_a;
-result = select_a ? mem_a.read_data.val : mem_b.read_data.val;
+// value is 18 bits
+typedef logic [17:0] multInT;
+typedef logic [35:0] multOutT;
+typedef logic [16:0] resultT;  // value/3 needs 17 bits
+localparam int RECIP_SHIFT = 19;  // input width + 1
+localparam multInT RECIP_THIRD = multInT'((2**RECIP_SHIFT + 2) / 3);  // rounded up
+multOutT product;  // full product width, so the multiply does not truncate
+assign product = value * RECIP_THIRD;
+assign result  = resultT'(product >> RECIP_SHIFT);
 ```
 
-#### Scoped FSMs with `if (1) begin: label`
-Use `if (1) begin: <label>` blocks to scope each FSM. This allows multiple FSMs in the same module, each with their own `statesT` enum and `state`/`nState` signals.
+Round the reciprocal up and shift by at least the input width plus one. A larger divisor can need a bigger shift. Check the result against `/` over the whole input range.
 
-### 5. Handle Types and Math
-- **Typedefs**: Use `import <block>_package::*;` types.
-- **Fixed-Point**: Convert C++ `int64_t` math to explicit SV `logic signed [W:0]`.
-- **Arithmetic Shift Right**: C++ `>> N` on signed types preserves sign. In RTL, use `>>>` for signed values (arithmetic shift) vs `>>` (logical shift, zero-fills MSBs):
-  ```systemverilog
-  n_result = result_t'(signed_value >>> SHIFT_AMOUNT);
-  ```
-- **Rounding/Saturation**: If C++ uses rounding or saturation helpers, implement equivalent SystemVerilog functions. See `rtl-patterns.md` (Saturation/Clipping, Rounding).
-- **Generators**: If the SystemC model switches algorithms based on config, use RTL `generate if` blocks.
+*   Replace a division by a variable with a reciprocal lookup table in a `case` statement.
+*   Model index arithmetic with shift and mask becomes bit slicing: `pos >> LOG2` is `pos[MSB:LOG2]`, and `pos & (SIZE-1)` is `pos[LOG2-1:0]`. Declare these as combinational intermediates.
+*   A model that computes an interpolation once per region becomes a per-cycle slope accumulator in RTL (`rtl-patterns.md`, "Piecewise-linear interpolation").
+*   Several sequential multiplies can share one registered multiplier, with an FSM loading new operands each cycle (`rtl-patterns.md`, "FSM-sequenced memory reads").
+*   A model `for` loop that sums parallel values becomes a lane-reduction tree: sum the lanes, then add to the accumulator (`rtl-patterns.md`, "Parallel-lane reduction").
 
-### 5a. Bit-Slicing for Division/Modulo
-SystemC uses shift/mask for index decomposition. RTL uses bit-slicing (zero cost in hardware):
-
-| SystemC | RTL |
-|---------|-----|
-| `idx = pos >> BLOCK_SIZE_LOG2` | `idx = pos[MSB:BLOCK_SIZE_LOG2]` |
-| `offset = pos & (BLOCK_SIZE - 1)` | `offset = {1'b0, pos[BLOCK_SIZE_LOG2-1:0]}` |
-
-Declare these as combinational intermediate signals (no flop needed).
-
-### 5b. Piecewise-Linear Interpolation
-SystemC computes interpolation results once per block. RTL must accumulate a slope per-cycle:
-
-**SystemC** (instant):
-```cpp
-left_val  = (corner00 * weight_inv + corner01 * weight) >> WEIGHT_BITS;
-right_val = (corner10 * weight_inv + corner11 * weight) >> WEIGHT_BITS;
-slope = (right_val - left_val) >> DIVISIONS_LOG2;
-// per element step: left_val += slope;
-```
-
-**RTL** (per-cycle accumulation):
-```systemverilog
-if (boundary_start) begin
-    n_factor = start_value;
-    n_slope = (new_end_value - start_value) >>> DIVISIONS_LOG2;
-end else begin
-    n_factor = factor + slope;  // accumulate each cycle
-    n_slope = slope;            // hold slope
-end
-```
-
-### 5c. Register Interface Conversion
-SystemC uses `setExternalEvent` + `readNonBlocking` in a listener thread. RTL reads `status_if.data` directly in `always_comb`:
+### 6. Registers
+The model reacts to register writes with events: `setExternalEvent` and `readNonBlocking()` on a `status` port, or `registerEvent` and `read()` on an owned `hwRegister`. RTL reads `<reg>.data` combinationally every cycle:
 
 ```systemverilog
-`DFF_INST(logic, mode_active)
+`DFF_INST(logic, modeActive)
 always_comb begin
-    n_mode_active = (config_reg.data.mode == ACTIVE) ? 1'b1 : 1'b0;
+    n_modeActive = (cfgReg.data.mode == ACTIVE);
 end
 ```
 
-### 5d. Division and Reciprocals
-
-C++ division (`/`) does not synthesize efficiently. Replace with:
-- **Power-of-2 division**: Use arithmetic shift right `>>>`
-- **Constant reciprocal**: Pre-compute `(2^N)/divisor` as a localparam and multiply:
-  ```systemverilog
-  localparam RECIP_WIDTH = 18;
-  mult_in_t recip_third = (2**RECIP_WIDTH) / 3;
-  result = (value * recip_third) >> RECIP_WIDTH;
-  ```
-- **Variable reciprocal**: Use a case-statement LUT:
-  ```systemverilog
-  case (divisor_in)
-      8'h01: n_recip_out = 18'h20000;
-      8'h02: n_recip_out = 18'h10000;
-      // ... generated entries
-  endcase
-  ```
-
-### 5e. Shared Multiplier via FSM
-
-When SystemC performs multiple sequential multiplications, RTL can time-share a single DSP multiplier by loading different operands each FSM cycle. See `rtl-patterns.md` (Shared Multiplier).
-
-### 5f. Parallel-Lane Reduction
-
-SystemC `for` loops summing `N` parallel values become `generate if` blocks in RTL with lane-specific partial sum trees. High lane counts need an extra pipeline stage. See `rtl-patterns.md` (Parallel-Lane Reduction Trees).
-
-### 6. Memory Instantiation (Container Level)
-Memories are instantiated at the **container** module, not inside the core. The container connects `memory_dp` between the core and regs:
+### 7. Drive the outputs
 
 ```systemverilog
-memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_core();
-memory_if #(.data_t(mem_data_t), .addr_t(mem_addr_t)) mem_reg();
-
-memory_dp #(.DEPTH(MEM_DEPTH), .data_t(mem_data_t)) uMem (
-    .mem_portA (mem_core),
-    .mem_portB (mem_reg),
-    .clk (clk)
-);
+assign outPort.vld  = finalStageVld;
+assign outPort.data = finalStageData;
 ```
 
-When the register clock differs from the memory's clock, the generator emits `memory_dp_2clk` with `.clkA` and `.clkB` instead.
+When `outPort.rdy` is low, the last stage cannot hand off its data. Either hold every stage while `outPort.rdy` is low and drive `inPort.rdy` from it, or tie `inPort.rdy = 1'b1` only when the downstream block accepts every cycle.
 
-### 7. Connect Outputs
-Assign the output ports to the final pipeline stage signals.
-
-```systemverilog
-assign out_port.vld = final_stage_vld;
-assign out_port.data = final_stage_data;
-assign in_port.rdy = 1'b1; // No backpressure
-```
-
-## Critical Rules
-- **NEVER** edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`.
-- **ALWAYS** use a DFF macro for sequential logic -- `DFF_INST` and friends, or their `_CLK` form when the module's clock port is not named `clk` (see `rtl-core.md`).
-- **ALWAYS** use `logic` and `always_comb`.
-- **ALWAYS** import the block package.
-- **Parallel Accumulation**: If summing parallel lanes, sum them first then add to the main accumulator.
-
-## Example: Pipeline vs FSM Decision
-
-**Pipeline (per-element processing):**
-```systemverilog
-`DFF_INST(result_t, prod)
-always_comb n_prod = input_val * coeff;
-```
-
-**FSM (batch-boundary calculation):**
-```systemverilog
-typedef enum logic [1:0] {IDLE, CALC, DONE} statesT;
-`include "fsmDefs.svh"
-always_comb begin
-    nState = state;
-    `fsmCase
-        `fsmState(IDLE) begin
-            if (batch_done) `nxtState(CALC)
-        end
-        `fsmState(CALC) begin
-            // multi-cycle computation...
-            `nxtState(DONE)
-        end
-        `fsmState(DONE) begin
-            `nxtState(IDLE)
-        end
-    `fsmEndCase
-end
-```
+## Rules
+*   Never edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`.
+*   Use a flop macro for every flop. Use the bare form on the default clock and `_DOM` on any other clock (`rtl-core.md`).
+*   Use `logic` and `always_comb`.

@@ -82,8 +82,8 @@ public:
     // constructor const char * module, std::string block
     explicit apb_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoModeReq=INTERFACE_AUTO_OFF, INTERFACE_AUTO_MODE autoModeData=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq),
-        data_interfaceBase((std::string(name_) + "_data").c_str(), block_, autoModeData),
+        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq, TIMED_DELAY_APPLIES),
+        data_interfaceBase((std::string(name_) + "_data").c_str(), block_, autoModeData, TIMED_DELAY_APPLIES),
         m_channel_req_event( (std::string(name_) + "m_channel_req_event").c_str() ),
         m_channel_comp_event( (std::string(name_) + "m_channel_comp_event").c_str() ),
         m_reader(nullptr),

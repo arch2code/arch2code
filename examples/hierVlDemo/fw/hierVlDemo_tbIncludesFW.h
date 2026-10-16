@@ -44,7 +44,7 @@ namespace fw_ns::hierVlDemo_tb {
 namespace fw_ns::hierVlDemo_tb {
 // structures
 struct data_t1_t {
-    bv256_t data; //
+    bv256_t data; /* [255:0] */ //
 
     data_t1_t() { memset(this, 0, sizeof(data_t1_t)); }
 
@@ -53,7 +53,7 @@ struct data_t1_t {
     typedef uint64_t _packedSt[4];
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 256);
     }
     inline void unpack(const _packedSt &_src)
@@ -74,7 +74,7 @@ struct data_t1_t {
 
 };
 struct tid_t1_t {
-    bv4_t tid; //
+    bv4_t tid; /* [3:0] */ //
 
     tid_t1_t() { memset(this, 0, sizeof(tid_t1_t)); }
 
@@ -83,7 +83,7 @@ struct tid_t1_t {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tid_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -97,7 +97,7 @@ struct tid_t1_t {
 
 };
 struct tdest_t1_t {
-    bv4_t tid; //
+    bv4_t tid; /* [3:0] */ //
 
     tdest_t1_t() { memset(this, 0, sizeof(tdest_t1_t)); }
 
@@ -106,7 +106,7 @@ struct tdest_t1_t {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tdest_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -120,7 +120,7 @@ struct tdest_t1_t {
 
 };
 struct tuser_t1_t {
-    bv16_t parity; //
+    bv16_t parity; /* [15:0] */ //
 
     tuser_t1_t() { memset(this, 0, sizeof(tuser_t1_t)); }
 
@@ -129,7 +129,7 @@ struct tuser_t1_t {
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tuser_t1_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = parity;
     }
     inline void unpack(const _packedSt &_src)
@@ -143,7 +143,7 @@ struct tuser_t1_t {
 
 };
 struct data_t2_t {
-    bv64_t data; //
+    bv64_t data; /* [63:0] */ //
 
     data_t2_t() { memset(this, 0, sizeof(data_t2_t)); }
 
@@ -152,7 +152,7 @@ struct data_t2_t {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, data_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = data;
     }
     inline void unpack(const _packedSt &_src)
@@ -166,7 +166,7 @@ struct data_t2_t {
 
 };
 struct tid_t2_t {
-    bv4_t tid; //
+    bv4_t tid; /* [3:0] */ //
 
     tid_t2_t() { memset(this, 0, sizeof(tid_t2_t)); }
 
@@ -175,7 +175,7 @@ struct tid_t2_t {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tid_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -189,7 +189,7 @@ struct tid_t2_t {
 
 };
 struct tdest_t2_t {
-    bv4_t tid; //
+    bv4_t tid; /* [3:0] */ //
 
     tdest_t2_t() { memset(this, 0, sizeof(tdest_t2_t)); }
 
@@ -198,7 +198,7 @@ struct tdest_t2_t {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tdest_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = tid;
     }
     inline void unpack(const _packedSt &_src)
@@ -212,7 +212,7 @@ struct tdest_t2_t {
 
 };
 struct tuser_t2_t {
-    bv4_t parity; //
+    bv4_t parity; /* [3:0] */ //
 
     tuser_t2_t() { memset(this, 0, sizeof(tuser_t2_t)); }
 
@@ -221,7 +221,7 @@ struct tuser_t2_t {
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tuser_t2_t::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         _ret = parity;
     }
     inline void unpack(const _packedSt &_src)

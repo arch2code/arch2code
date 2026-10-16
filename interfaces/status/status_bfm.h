@@ -56,12 +56,13 @@ public:
         SC_THREAD(bfm_driver_thread);
     }
 
+    // No wait after the drive: the thread must be waiting on the channel when
+    // the model writes, or a second change in one clock never reaches the pin.
     void bfm_driver_thread() {
         while (true) {
             DATA_T data;
             if_p->read(data);
             hdl_if_p->data = data.sc_pack();
-            wait(clk.posedge_event());
         }
     }
 

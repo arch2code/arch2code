@@ -23,21 +23,23 @@ pip3 install -r builder/requirements.txt
 
 This is the one command that is run directly rather than through `make`, because at project-creation time no makefile exists yet. Every later operation uses `make` targets, such as `make db`, `make gen` and `make newmodule`.
 
-## Recommended next step for AI agent users
+## AI agents
 
-`--newproject` does not install any agent configuration. Users working with an AI coding agent are recommended to run:
+If you use an AI coding agent, run:
 
 ```
 make agents-setup
 ```
 
-This creates `AGENTS.md` from the template, symlinks `CLAUDE.md`, `GEMINI.md` and `ARCH2CODE_AI_RULES.md` at the repository root, and deploys the Arch2Code skill files into the agent skill directories, for example `.claude/skills/`. The target is available only after project creation, because it depends on the scaffolded makefiles.
+This installs the Arch2Code rules and skills for Claude Code, Gemini CLI, OpenCode and Cursor.
 
 ## Build and run
 
 ```
 make -C rundir run
 ```
+
+The first run does not finish. The scaffolded `tb/<name>/<name>External.cppm` has its first test and its end-of-test voter commented out, so nothing can end the run, and after about a second of wall-clock time the watchdog stops it with `No end-of-test voter is registered and no --scTimeLimit is set, so this run can never terminate`. Write the test and the voter as the comments in that file describe, and rename the `test_replace_me` placeholder in `tb/<name>/<name>Config.cpp` to match.
 
 When RTL was selected, the RTL may also be linted:
 
@@ -57,11 +59,9 @@ LICENSE                 = license file
 |
 |-- pu_jar              = Directory containing plant UML jar file, used for .pu file processing and flows
 |
-|-- pu_out              = Directory holding output files for both .pu (plant uml files) files and resulting .svg (images) files
-|
-|-- gv_out              = Directory holding output files for both .gv (graphviz dot files) files and resulting .gv.svg (images) files
-|
 |-- templates           = Input templates for SystemC and SystemVerilog generated output
+|
+|-- specs               = Normative specifications of generator features
 |
 |-- examples            = directory with all the example projects
   |
@@ -69,16 +69,18 @@ LICENSE                 = license file
     |
     |-- arch            = directory with yaml files
     |
-    |-- systemVerilog   = directory with systemVerilog files
+    |-- rtl             = directory with systemVerilog files
     |
     |-- model           = directory with systemC file
   |
   |-- tests               = Contains pipeline golden results for sanity tests
 ```
 
+`--flows` writes PlantUML output to `pu_out/`, and `--diagram` and `--drawStructure` write graphviz output to `gv_out/` by default, both in the directory `arch2code.py` runs from.
+
 # YAML input and project setup
 
-see `mixed/readme.md`
+See `ARCH2CODE_AI_RULES.md` for the YAML sections and the project file, and `rules/skills/setup-project.md` for the directory layout.
 
-## SystemVerilog Generated output
-see `systemVerilog/readme.md`
+## Simulators
+`specs/SIMULATOR_INTEGRATION.md` covers building and running under VCS and Xcelium.

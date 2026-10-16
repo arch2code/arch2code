@@ -36,7 +36,7 @@ module twoClkTableRegs
     logic nxt_tbl_rd_enable, tbl_rd_enable, tbl_rd_capture;
     logic tbl_wr_enable;
 
-    `DFF_DOM(clk, rst_n, tbl_addr, twoClkTblAddrSt'(apb_addr[31:3]))
+    `DFF_DOM(clk, rst_n, tbl_addr, twoClkTblAddrSt'((apb_addr - REG_TWOCLKTABLE_TBL) >> 3))
     `DFF_DOM(clk, rst_n, tbl_wr_enable, tbl_update_1)
     `DFF_DOM(clk, rst_n, tbl_rd_enable, nxt_tbl_rd_enable)
     `DFF_DOM(clk, rst_n, tbl_rd_capture, tbl_rd_enable)
@@ -56,7 +56,7 @@ module twoClkTableRegs
     logic lut_update_0;
     logic lut_wr_enable;
 
-    `DFF_DOM(clk, rst_n, lut_addr, twoClkLutAddrSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, lut_addr, twoClkLutAddrSt'((apb_addr - REG_TWOCLKTABLE_LUT) >> 2))
     `DFF_DOM(clk, rst_n, lut_wr_enable, lut_update_0)
 
     `DFFEN_DOM(clk, rst_n, lut_data[15:0], nxt_lut_data[15:0], lut_update_0)
@@ -71,7 +71,7 @@ module twoClkTableRegs
 
     logic nxt_stats_rd_enable, stats_rd_enable, stats_rd_capture;
 
-    `DFF_DOM(clk, rst_n, stats_addr, twoClkLutAddrSt'(apb_addr[31:2]))
+    `DFF_DOM(clk, rst_n, stats_addr, twoClkLutAddrSt'((apb_addr - REG_TWOCLKTABLE_STATS) >> 2))
     `DFF_DOM(clk, rst_n, stats_rd_enable, nxt_stats_rd_enable)
     `DFF_DOM(clk, rst_n, stats_rd_capture, stats_rd_enable)
 
@@ -96,7 +96,7 @@ module twoClkTableRegs
         if (wr_select) begin
             case (apb_addr) inside
                 [REG_TWOCLKTABLE_TBL:REG_TWOCLKTABLE_TBL + REG_TWOCLKTABLE_TBL_SIZE - 32'd4]: begin
-                    case (apb_addr[2:0])
+                    case (3'(apb_addr - REG_TWOCLKTABLE_TBL))
                         3'h0: begin
                             tbl_update_0 = 1'b1;
                             nxt_tbl_data[31:0] = twoClkReg.pwdata[31:0];
@@ -109,7 +109,7 @@ module twoClkTableRegs
                     endcase
                 end
                 [REG_TWOCLKTABLE_LUT:REG_TWOCLKTABLE_LUT + REG_TWOCLKTABLE_LUT_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_TWOCLKTABLE_LUT))
                         2'h0: begin
                             lut_update_0 = 1'b1;
                             nxt_lut_data[15:0] = twoClkReg.pwdata[15:0];
@@ -134,7 +134,7 @@ module twoClkTableRegs
         if (rd_select) begin
             case (apb_addr) inside
                 [REG_TWOCLKTABLE_TBL:REG_TWOCLKTABLE_TBL + REG_TWOCLKTABLE_TBL_SIZE - 32'd4]: begin
-                    case (apb_addr[2:0])
+                    case (3'(apb_addr - REG_TWOCLKTABLE_TBL))
                         3'h0: begin
                             if (tbl_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -152,14 +152,14 @@ module twoClkTableRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_tbl_rd_enable = (apb_addr[2:0] inside {3'h0, 3'h4}) & ~tbl_rd_capture;
+                    nxt_tbl_rd_enable = (3'(apb_addr - REG_TWOCLKTABLE_TBL) inside {3'h0, 3'h4}) & ~tbl_rd_capture;
                 end
                 [REG_TWOCLKTABLE_LUT:REG_TWOCLKTABLE_LUT + REG_TWOCLKTABLE_LUT_SIZE - 32'd4]: begin // write-only to firmware: reads return 0
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = '0;
                 end
                 [REG_TWOCLKTABLE_STATS:REG_TWOCLKTABLE_STATS + REG_TWOCLKTABLE_STATS_SIZE - 32'd4]: begin
-                    case (apb_addr[1:0])
+                    case (2'(apb_addr - REG_TWOCLKTABLE_STATS))
                         2'h0: begin
                             if (stats_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
@@ -171,18 +171,19 @@ module twoClkTableRegs
                             nxt_rd_data = '0;
                         end
                     endcase
-                    nxt_stats_rd_enable = (apb_addr[1:0] inside {2'h0}) & ~stats_rd_capture;
+                    nxt_stats_rd_enable = (2'(apb_addr - REG_TWOCLKTABLE_STATS) inside {2'h0}) & ~stats_rd_capture;
                 end
-                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = '0;
+                    nxt_rd_data = twoClkRegDataSt'(32'hBADD_C0DE);
                 end
             endcase
         end
     end
 
     // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return 0.
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)

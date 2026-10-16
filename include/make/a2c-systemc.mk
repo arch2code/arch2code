@@ -29,13 +29,17 @@ endif
 ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
-# LD_BOOST is only needed by the BOOST_LIBS default below (the static site
-# Boost's directory); a caller that sets BOOST_LIBS itself (linking a shared
-# Boost) does not need it.
-ifeq ($(origin BOOST_LIBS),undefined)
+# A non-empty BOOST_LIBS is the whole Boost link line, which lets a site or a
+# farm layer link a shared Boost. An empty one, from the command line too,
+# counts as unset, and the default links the site Boost in LD_BOOST.
+# Boost.System is header-only, and the stacktrace in q_assert.cpp uses the
+# header-only backend, which needs only -ldl, so the default links
+# program_options alone.
+ifeq ($(strip $(BOOST_LIBS)),)
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
+override BOOST_LIBS = -lboost_program_options -L$(LD_BOOST)
 endif
 
 ifndef VERILATOR_ROOT
@@ -62,14 +66,6 @@ VL_DUT ?= 1
 endif
 
 CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
-# Boost.System is header-only since 1.69, and a2c's stacktrace use
-# (q_assert.cpp) runs on the header-only backend (no BOOST_STACKTRACE_LINK)
-# with identical output, needing only -ldl (already in LD_FLAGS below); Boost
-# program_options is therefore the only Boost library actually linked.
-# BOOST_LIBS names that link input; the container default below links the
-# static site Boost in LD_BOOST, and a builder layer such as pro can set
-# BOOST_LIBS to link a shared Boost instead (see the LD_BOOST check above).
-BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)
 LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 # The native C++ link recipe passes LD_FLAGS, never CXX_FLAGS, so -pthread is
 # repeated here whether or not a Verilated library is linked: the runtime's
@@ -276,6 +272,9 @@ ifdef VL_DUT
 ifndef USE_VCS
 ifndef USE_XCELIUM
 CXX_FLAGS += -DVERILATOR
+ifdef VL_COV
+CXX_FLAGS += -DVL_COV
+endif
 LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 # The linked-in verilated library is a build output of the vl sub-make, so name it
 # as a prerequisite: a re-verilate that leaves every generated V<top>.h alone
@@ -303,16 +302,17 @@ CPP_MODULE_OBJ_FLAGS := $(filter-out -I%,$(CXX_FLAGS))
 
 # Build-flavor stamp. The model and VL (VL_DUT=1) builds share the same
 # BIN/BUILD_DIR paths and the same object files; toggling VL_DUT only changes the
-# compile/link flags (adds -DVERILATOR and the vl wrapper lib). Timestamps cannot
-# see that flag flip, so `make all` after `make all VL_DUT=1` (or the reverse)
-# would otherwise reuse objects built for the other flavor and run a mismatched
-# binary (e.g. a model binary against a verif DUT -> unregistered <block>_verif).
+# compile/link flags (adds -DVERILATOR and the vl wrapper lib), and VL_COV adds
+# -DVL_COV the same way. Timestamps cannot see that flag flip, so `make all`
+# after `make all VL_DUT=1` (or the reverse) would otherwise reuse objects built
+# for the other flavor and run a mismatched binary (e.g. a model binary against
+# a verif DUT -> unregistered <block>_verif).
 # This stamp records the current flavor; the parse-time shell rewrites it only on
 # a mismatch, so its mtime bumps only on an actual flip. Listing it as a
 # prerequisite of every flag-carrying compile rule forces just the affected
 # objects to recompile (and the binary to relink) on a flip, without changing any
 # output path that downstream consumers of build/run depend on.
-BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl,model)
+BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl$(if $(VL_COV),-cov,),model)
 FLAVOR_STAMP := $(BUILD_DIR)/.build_flavor
 $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUILD_FLAVOR)" ] || printf '%s\n' "$(BUILD_FLAVOR)" > $(FLAVOR_STAMP))
 
@@ -322,9 +322,21 @@ $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUIL
 
 # main receipe to build the binary
 
-# All .o files go to build dir.
-OBJ = $(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)
-OBJ += $(CPP_MODULE_OBJ)
+# Optimization per object. The user's model code, meaning the block modules and
+# every .cpp outside the manifest and the builder source dirs, builds at -O0 to
+# stay debuggable. The generated context code builds at -O3 and everything else
+# at -O2. The level precedes CXX_FLAGS, so an -O in EXTRA_CXX_FLAGS wins.
+CXX_OPT = -O2
+MODEL_CPP_SRC := $(filter-out $(A2C_SC_GEN_SRC_FILES) $(O3_CPP_SRC) \
+	$(foreach dir,$(A2C_SRC_DIRS),$(dir)/%),$(CPP_SRC))
+CPP_BLOCK_MODULE_OBJ := $(foreach src,$(filter $(A2C_CPP_BLOCK_MODULE_FILES),$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
+MODEL_OBJ := $(MODEL_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o) $(CPP_BLOCK_MODULE_OBJ)
+$(MODEL_OBJ): private CXX_OPT := -O0
+
+# All .o files go to build dir. Every TU emits its own weak copy of the inline
+# and template code it uses (pack, unpack, the BFMs) and the linker keeps the
+# first, so the -O0 model objects link last.
+OBJ = $(filter-out $(MODEL_OBJ),$(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o) $(CPP_MODULE_OBJ)) $(MODEL_OBJ)
 # Gcc/Clang will create these .d files containing dependencies.
 DEP = $(OBJ:%.o=%.d)
 # Clang emits a .d beside each PCM; GCC's module .d comes from the .module.o and
@@ -364,7 +376,7 @@ $(sort $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODU
 # after `clean`, a deleted source) does not stop the build.
 $(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -MP -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CXX_FLAGS) -MMD -MP -c $< -o $@
 
 # Rules to build generated C++20 module interfaces to linkable objects. Clang
 # precompiles each interface to a PCM and then compiles that PCM to an object;
@@ -396,11 +408,11 @@ $(foreach src,$(filter-out $(A2C_CPP_CONTEXT_MODULE_FILES),$(CPP_MODULE_SRC)),$(
 
 $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
 	mkdir -p $(@D)
-	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
 
-# The context modules' code generation runs at -O3. Their PCMs keep the common
-# flags, so importers load a PCM built as before.
-$(CPP_CONTEXT_MODULE_OBJ): private CPP_MODULE_OBJ_FLAGS := -O3 $(CPP_MODULE_OBJ_FLAGS)
+# The context modules' code generation runs at -O3. The optimization level
+# applies only to the object, so every PCM carries the same flags.
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_OPT := -O3
 
 else
 
@@ -409,10 +421,10 @@ else
 # interface's global module fragment includes headers (e.g. `<block>Base.h`).
 $(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
+	$(CXX) $(CXX_OPT) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
 
 # The context modules compile at -O3. Their CMIs come from this same compile.
-$(CPP_CONTEXT_MODULE_OBJ): private CXX_FLAGS := -O3 $(CXX_FLAGS)
+$(CPP_CONTEXT_MODULE_OBJ): private CXX_OPT := -O3
 
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.
@@ -459,6 +471,7 @@ help::
 	@echo "  clangd  	- Generate .clangd configuration for IDE"
 	@echo "Makefile Runtime Variables:"
 	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
+	@echo "  VL_TIMING=1	- Verilate and lint with --timing (Verilator 5.053, currently master at or after ea536a5)"
 	@echo "  USE_VCS=1	- Compile for VCS and link with vcs (with VL_DUT=1: RTL DUT elaborated by VCS)"
 	@echo "  USE_XCELIUM=1	- Compile for Xcelium and build its snapshot with xrun (with VL_DUT=1: RTL DUT elaborated by Xcelium)"
 
@@ -492,7 +505,7 @@ compdb:
 	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
 		$(COMPDB_MAKE_N_FILES) \
 		$(REPO_ROOT)/compile_commands.json \
-		--directory $(PROJECT_RUNDIR) >/dev/null
+		--directory $(PROJECT_RUNDIR) --compiler $(CXX) >/dev/null
 	@echo "Generated $(REPO_ROOT)/compile_commands.json"
 
 #------------------------------------------------------------------------
@@ -513,7 +526,7 @@ clangd: compdb
 		for inc in $(CPP_INCLUDES); do \
 			echo "    - $$inc"; \
 		done; \
-		echo "  Compiler: clang++"; \
+		echo "  Compiler: $(CXX)"; \
 		echo "  Remove:"; \
 		echo "    - -m*"; \
 		echo "    - -W*fatal-errors"; \

@@ -12,6 +12,11 @@ def render(args, prj, data):
         case _ : return render_default(args, prj, data)
 
 
+def rowBytesArg(row, prj):
+    rowBytes = intf_gen_utils.sc_explicit_row_bytes(row, prj)
+    return f', {rowBytes}' if rowBytes else ''
+
+
 def render_default(args, prj, data):
     out = list()
     className = f'{ data["blockName"] }'
@@ -186,9 +191,10 @@ def render_default(args, prj, data):
             out.append( indent + f'//registers')
             first = False
         # Register data size from cpu is always 4-bytes aligned
-        size = roundup_multiple(regData.get("maxBytes", regData["bytes"]), 4)
+        size = roundup_multiple(regData["maxBytes"], 4)
         regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
-        out.append( indent + f'hwRegister< { regType }, {size} > { regData["register"] }; // { regData["desc"] }')
+        ro = ', true' if regData['regType'] == 'ro' else ''
+        out.append( indent + f'hwRegister< { regType }, {size}{ro} > { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):
         out.append('')
@@ -201,17 +207,17 @@ def render_default(args, prj, data):
         for mem, memData in mems.items():
             addrType = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
             dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
-            out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { memData["memory"] }_adapter;')
+            out.append( indent + f'hwMemoryPort< { addrType }, { dataType }{ rowBytesArg(memData, prj) } > { memData["memory"] }_adapter;')
         # Also handle memory registers
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
                 addrType = intf_gen_utils.sc_structure_field_type(regData, 'addressStruct', 'addressStructKey', prj)
                 dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
-                out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
+                out.append( indent + f'hwMemoryPort< { addrType }, { dataType }{ rowBytesArg(regData, prj) } > { regData["register"] }_adapter;')
     else:
         for mem, memData in data["memories"].items():
             dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
-            out.append( indent + f'hwMemory< { dataType } > { memData["memory"] };')
+            out.append( indent + f'hwMemory< { dataType }{ rowBytesArg(memData, prj) } > { memData["memory"] };')
         
         # Handle LOCAL memory registers (block has registerDecode but not isRegHandler)
         if registerDecode:
@@ -227,7 +233,7 @@ def render_default(args, prj, data):
                     dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
                     out.append( indent + f'memory_channel< { addrType }, { dataType } > { regData["register"] }_channel;')
                     out.append( indent + f'memory_out< { addrType }, { dataType } > { regData["register"] }_port;')
-                    out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
+                    out.append( indent + f'hwMemoryPort< { addrType }, { dataType }{ rowBytesArg(regData, prj) } > { regData["register"] }_adapter;')
 
     # Memory connections (channel declarations)
     if 'memoryConnections' in data:

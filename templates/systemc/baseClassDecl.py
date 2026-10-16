@@ -283,7 +283,7 @@ def renderChannels(args, prj, data, isParameterizable=False):
                 if mp_sig[port]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) )
+                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types'], mp_sig[port]['backpressure_arg']) )
                     comma = ','
     out.append( indent + '{};')
     cfg = '<Config>' if isParameterizable else ''
@@ -312,7 +312,7 @@ autoModeMapping = {
     "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
 }
 
-def channelConstructor(args, prj, data, line, multicycle_types):
+def channelConstructor(args, prj, data, line, multicycle_types, backpressure_arg):
     extra = ''
 
     # we may have a multicycle interface
@@ -341,4 +341,4 @@ def channelConstructor(args, prj, data, line, multicycle_types):
             if interface_size != "0" or tracker_type:
                 print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
-    return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{extra}{auto_mode})')
+    return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{backpressure_arg}{extra}{auto_mode})')

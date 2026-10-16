@@ -110,7 +110,6 @@ class genSystemC:
                 datapathVar = ""
                 nextVar = ""
                 register = False
-                offset = 0
                 for var, varData in structData['vars'].items():
                     # much of the customization of the output is controlled through the generator key
                     if varData['generator']:
@@ -166,14 +165,15 @@ class genSystemC:
                         bitwidth = prj.getConst( bitwidth )
                     varData['bitwidth'] = bitwidth
                     varData['arraywidth'] = bitwidth * arraySize if varData['isArray'] else bitwidth
-                    varData['bitshift'] = offset
-                    offset = offset + varData['arraywidth']
+                    # Above one, the field's C++ member is word[]. A parameterizable
+                    # type is declared for its maxBitwidth, whatever its default width.
+                    paramType = varData['entryType'] in ('NamedVar', 'NamedType') and typeInfo['isParameterizable']
+                    storageWidth = typeInfo['maxBitwidth'] if paramType else bitwidth
+                    varData['varLoopCount'] = (storageWidth + 63) // 64
 
                     # build a format string here to avoid doing it in jinja
                     if arraySize :
                         varData['format'] = f"Array:{varData['variable']}:NotShown "
-                        varloopCount = (bitwidth + 63) // 64  #16hex digits per 64bit value
-                        varData['varLoopCount'] = varloopCount
                     else:
                         if varData["entryType"]=="NamedStruct":
                             varData['format'] = f"{varData['variable']}:[%s]"
@@ -192,12 +192,16 @@ class genSystemC:
 
                                         # convert to closest hex width
                                         hexwidth = ( bitwidth + 3 ) // 4      #4 bits per hex digit
-                                        varloopCount = (bitwidth + 63) // 64  #16hex digits per 64bit value
-                                        varData['varLoopCount'] = varloopCount
 
                                         varData['format'] = f"{varData['variable']}:"
                                         varData['hexwidth'] = hexwidth
 
+                # The first YAML field is the MSB, as in pack() and the SV packed
+                # struct, so the last field sits at bit 0.
+                offset = 0
+                for varData in reversed(structData['vars'].values()):
+                    varData['bitshift'] = offset
+                    offset = offset + varData['arraywidth']
                 # remove space from the end of format string
                 structData['trackerValid'] = tracker
                 structData['trackerVar'] = trackerVar

@@ -69,7 +69,9 @@ always_comb begin
     set_trans_active = 1'b0;
     if (cpu_main.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        if (apb_addr >= apbAddrSt'(32'h200_0000)) begin
+        if (apb_addr >= apbAddrSt'(32'h300_0000)) begin
+            // unmapped, selects no child
+        end else if (apb_addr >= apbAddrSt'(32'h200_0000)) begin
             apbReg_uBlockG_next_psel = '1;
         end else if (apb_addr >= apbAddrSt'(32'h100_0000)) begin
             apbReg_uBlockB_next_psel = '1;
@@ -98,6 +100,9 @@ always_comb begin
         cpu_main_next_pready  = apbReg_uBlockA.pready;
         cpu_main_next_prdata  = apbReg_uBlockA.prdata;
         cpu_main_next_pslverr = apbReg_uBlockA.pslverr;
+    end else if (trans_active & ~pready) begin
+        cpu_main_next_pready  = 1'b1;
+        cpu_main_next_prdata  = apbDataSt'(32'hBADD_C0DE);
     end
 end
 

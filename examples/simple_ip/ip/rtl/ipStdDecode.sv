@@ -45,7 +45,11 @@ always_comb begin
     set_trans_active = 1'b0;
     if (ipReg.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        ipReg_uIp_next_psel = '1;
+        if (apb_addr >= ipRegAddrSt'(32'h100_0000)) begin
+            // unmapped, selects no child
+        end else begin
+            ipReg_uIp_next_psel = '1;
+        end
     end
 end
 
@@ -60,6 +64,9 @@ always_comb begin
         ipReg_next_pready  = ipReg_uIp.pready;
         ipReg_next_prdata  = ipReg_uIp.prdata;
         ipReg_next_pslverr = ipReg_uIp.pslverr;
+    end else if (trans_active & ~pready) begin
+        ipReg_next_pready  = 1'b1;
+        ipReg_next_prdata  = ipRegDataSt'(32'hBADD_C0DE);
     end
 end
 

@@ -53,14 +53,14 @@ struct ipLeafMemSt_v {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipLeafMemSt_v<LEAF_DATA_WIDTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, data, LEAF_DATA_WIDTH);
         _pos += LEAF_DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (ipLeafDataT_v<LEAF_DATA_WIDTH>)((_src) & ((1ULL << (LEAF_DATA_WIDTH)) - 1));
+        data = (ipLeafDataT_v<LEAF_DATA_WIDTH>)((_src) & (~0ULL >> (64 - (LEAF_DATA_WIDTH))));
     }
     explicit ipLeafMemSt_v(
         ipLeafDataT_v<LEAF_DATA_WIDTH> data_) :
@@ -80,14 +80,14 @@ struct ipLeafMemAddrSt_v {
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, address, clog2(LEAF_MEM_DEPTH));
         _pos += clog2(LEAF_MEM_DEPTH);
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipLeafMemAddrT_v<LEAF_MEM_DEPTH>)((_src) & ((1ULL << (clog2(LEAF_MEM_DEPTH))) - 1));
+        address = (ipLeafMemAddrT_v<LEAF_MEM_DEPTH>)((_src) & (~0ULL >> (64 - (clog2(LEAF_MEM_DEPTH)))));
     }
     explicit ipLeafMemAddrSt_v(
         ipLeafMemAddrT_v<LEAF_MEM_DEPTH> address_) :

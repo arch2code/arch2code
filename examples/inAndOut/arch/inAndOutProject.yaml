@@ -12,7 +12,6 @@ topInstance: uTop
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   root: ..    # project root directory relative to project file - required  
-  model: $root/systemVerilog/simInAndOut
   rtl: $root/systemVerilog
   
 # information about project directory structure to enable simplified maintenance

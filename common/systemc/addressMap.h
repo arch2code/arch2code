@@ -128,12 +128,20 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
     {
         apbIn->reqReceive(isWrite, addr, data);
         uint64_t address = addr._getAddress() & (addressMask);
-        // Unmapped: ACK, PRDATA=0, write ignored.
+        // An address no register or memory occupies drops the write and reads 0xBADDC0DE,
+        // as an empty decoder slot and the generated RTL do
         if (!regs.contains(address))
         {
-            if (!isWrite)
+            if (isWrite)
             {
-                data._setData(0);
+                logging::GetInstance().logDirect(std::format("{}: firmware write to unmapped address 0x{:x} dropped",
+                                                             apbIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
+            } else {
+                logging::GetInstance().logDirect(std::format("{}: firmware read of unmapped address 0x{:x} returns 0xBADDC0DE",
+                                                             apbIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
+                // truncated to a data bus narrower than 32 bits
+                constexpr uint64_t dataMask = DATA::_bitWidth >= 32 ? 0xFFFFFFFFull : (1ull << DATA::_bitWidth) - 1;
+                data._setData(0xBADDC0DEull & dataMask);
                 apbIn->complete(data);
             }
             continue;

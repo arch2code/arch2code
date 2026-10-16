@@ -143,7 +143,7 @@ def _arch_yaml(router_instance_line, router_parameters, apb_width,
 instances:
     uTop:          {{ container: top, instanceType: top }}
     uAPBDecode:    {{ container: top, instanceType: apbDecode, variant: apbV0 }}
-    uMid:          {{ container: top, instanceType: mid, variant: midV0 }}
+    uMid:          {{ container: top, instanceType: mid, addressGroup: top, variant: midV0 }}
     {router_instance_line}
     uMidLeaf:      {{ container: mid, instanceType: midLeaf, addressGroup: mid, variant: midLeafV0 }}
 

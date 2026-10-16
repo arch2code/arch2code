@@ -1,6 +1,8 @@
 
 interface_defs:
   apb :
+    timing: elastic
+    backpressure: { default: true, overridable: false }
     addressBus : true
     parameters :
       addr_t : { datatype : struct }

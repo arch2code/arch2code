@@ -108,8 +108,8 @@ public:
     // constructor const char * module, std::string block
     explicit memory_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoModeReq=INTERFACE_AUTO_OFF, INTERFACE_AUTO_MODE autoModeData=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq),
-        data_interfaceBase((std::string(name_) + "_data").c_str(), block_, autoModeData),
+        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq, TIMED_DELAY_FIXED_TIMING),
+        data_interfaceBase((std::string(name_) + "_data").c_str(), block_, autoModeData, TIMED_DELAY_FIXED_TIMING),
         m_channel_req_event( (std::string(name_) + "m_channel_req_event").c_str() ),
         m_channel_comp_event( (std::string(name_) + "m_channel_comp_event").c_str() ),
         m_reader(nullptr),
@@ -161,7 +161,8 @@ public:
     virtual void setTeeBusy(bool busy) override { req_interfaceBase.teeBusy_ = busy; data_interfaceBase.teeBusy_ = busy;}
     virtual void setTandem(void) override { req_interfaceBase.setTandem(); data_interfaceBase.setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { req_interfaceBase.setLogging(verbosity); data_interfaceBase.setLogging(verbosity); }
-    virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); data_interfaceBase.setTimed(nsec, mode); }
+    // Both bases ignore setTimed, so telling one logs the drop once per channel.
+    virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); }
     virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:

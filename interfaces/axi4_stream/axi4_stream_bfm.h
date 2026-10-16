@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "axi4_stream_channel.h"
+#include "bfmContractCheck.h"
 #include "optionalPayload.h"
 
 // The TUSER sideband is optional, so both of its template arguments sit in the
@@ -42,13 +43,25 @@ public:
 
     SC_HAS_PROCESS (axi4_stream_src_bfm);
 
-    axi4_stream_src_bfm(sc_module_name modulename) {
+    axi4_stream_src_bfm(sc_module_name modulename) :
+        m_lostBeats(name(), "HDL transferred a beat the BFM did not sample", "beats"),
+        m_scStalls(name(), "SystemC stalled a backpressure: false producer", "clock edges") {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(transfer_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> *>(if_p.get_interface());
+        m_noBackpressure = bfmNoBackpressure(m_chnl->m_tx_out.get_interface(), name());
         if_p->setCycleTransaction(PORTTYPE_OUT);
+    }
+
+    virtual void end_of_simulation() {
+        checkLostBeats(m_sampledBeats);
+        m_lostBeats.report();
+        m_scStalls.report();
     }
 
     void bfm_driver_thread() {
@@ -56,10 +69,18 @@ public:
         wait(SC_ZERO_TIME);
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
-            hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
+            bool tready = m_chnl->m_tx_out->get_rdy();
+            hdl_if_p->tready = tready;
             while (!(hdl_if_p->tvalid && hdl_if_p->tready)) {
                 wait(clk.posedge_event());
-                hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
+                tready = m_chnl->m_tx_out->get_rdy();
+                hdl_if_p->tready = tready;
+            }
+            // A beat sampled in reset is still delivered, but the monitor
+            // counts only transfers out of reset.
+            if (rst_n) {
+                m_sampledBeats++;
+                m_lastSampleTime = sc_time_stamp();
             }
             tinfo.tdata.sc_unpack(hdl_if_p->tdata);
             tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
@@ -68,14 +89,47 @@ public:
             tinfo.tid.sc_unpack(hdl_if_p->tid);
             tinfo.tdest.sc_unpack(hdl_if_p->tdest);
             if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
+            // A delayed write blocks across clock edges, and the HDL must not
+            // transfer on them. A write that returns in this timestep leaves
+            // the next edge the tready it would have seen without the write.
+            hdl_if_p->tready = false;
             if_p->sendInfo(tinfo);
+            hdl_if_p->tready = tready;
             wait(clk.posedge_event());
+        }
+    }
+
+    // The driver wakes on the same edge in either order, so this checks the
+    // beats sampled up to the previous edge before counting this edge.
+    void transfer_monitor() {
+        checkLostBeats(m_sampledBeats - (m_lastSampleTime == sc_time_stamp() ? 1 : 0));
+        m_lastEdge = sc_time_stamp();
+        if (!rst_n || !hdl_if_p->tvalid) {
+            return;
+        }
+        if (hdl_if_p->tready) {
+            m_hdlBeats++;
+        } else if (m_noBackpressure) {
+            m_scStalls.fail(sc_time_stamp());
         }
     }
 
 private:
 
+    void checkLostBeats(uint64_t sampledBeats) {
+        while (m_hdlBeats > sampledBeats + m_lostBeats.count_) {
+            m_lostBeats.fail(m_lastEdge);
+        }
+    }
+
     axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> * m_chnl;
+    bool m_noBackpressure = false;
+    uint64_t m_hdlBeats = 0;
+    uint64_t m_sampledBeats = 0;
+    sc_time m_lastSampleTime;
+    sc_time m_lastEdge;
+    bfmContractCheck m_lostBeats;
+    bfmContractCheck m_scStalls;
 
 };
 
@@ -94,13 +148,19 @@ public:
 
     SC_HAS_PROCESS (axi4_stream_dst_bfm);
 
-    axi4_stream_dst_bfm(sc_module_name modulename) {
+    axi4_stream_dst_bfm(sc_module_name modulename) :
+        m_stalls(name(), "HDL stalled a backpressure: false interface", "clock edges") {
         SC_THREAD(bfm_driver_thread);
     }
 
     virtual void end_of_elaboration() {
         m_chnl = dynamic_cast<axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> *>(if_p.get_interface());
+        m_noBackpressure = bfmNoBackpressure(m_chnl->m_tx_out.get_interface(), name());
         if_p->setCycleTransaction(PORTTYPE_IN);
+    }
+
+    virtual void end_of_simulation() {
+        m_stalls.report();
     }
 
     void bfm_driver_thread() {
@@ -127,6 +187,9 @@ public:
             if constexpr (hasOptionalPayload<TUSER_T>) { hdl_if_p->tuser = tinfo.tuser.sc_pack(); }
             do {
                 wait(clk.posedge_event());
+                if (m_noBackpressure && rst_n && !hdl_if_p->tready) {
+                    m_stalls.fail(sc_time_stamp());
+                }
             } while (!hdl_if_p->tready);
         }
     }
@@ -134,6 +197,8 @@ public:
 private:
 
     axi4_stream_channel<TDATA_T, TID_T, TDEST_T, TUSER_T> * m_chnl;
+    bool m_noBackpressure = false;
+    bfmContractCheck m_stalls;
 
 };
 #endif /* AXI4_STREAM_BFM_H_ */

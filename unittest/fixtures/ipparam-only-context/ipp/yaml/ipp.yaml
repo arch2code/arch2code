@@ -1,0 +1,33 @@
+# The context's only content section is ipParameters:, so it emits no package.
+# The RTL container ipp instantiates the parameterized leaf, so ipp lists this
+# context in its includeContext.
+
+ipParameters:
+    constants:
+        LEAF_W: { value: 8, maxValue: 16, desc: "leaf width" }
+
+blocks:
+    ipp_tb:
+        desc: "Testbench container for ipp"
+        hasRtl: false
+        hasMdl: false
+        hasVl: false
+    leaf:
+        desc: "Parameterized leaf"
+        params: [LEAF_W]
+        hasVl: false
+    ipp:
+        desc: "RTL container of the parameterized leaf"
+        hasRtl: true
+        hasVl: true
+        hasTb: true
+
+instances:
+    ipp_tb: { container: ipp_tb, instanceType: ipp_tb, instGroup: top }
+    u_ipp:  { container: ipp_tb, instanceType: ipp,    instGroup: top }
+    u_leaf: { container: ipp,    instanceType: leaf,   instGroup: top, variant: v0 }
+
+parameters:
+    leaf:
+        v0:
+            LEAF_W: 8

@@ -18,8 +18,8 @@ Unlike readRaw() this scanner:
     projectName stays a provider so its members can be enumerated with
     copy-local paths and reattributed to the copy's declaring projectName.
 
-It is NOT wired into projectCreate/readRaw and does not mutate the database; it
-returns a ScanResult. Path identity is the whole root-relative context key (no
+projectCreate runs it before readRaw, which parses only the master copies it
+selects. It does not mutate the database; it returns a ScanResult. Path identity is the whole root-relative context key (no
 basename, no dir-nesting, no realpath): distinct physical copies keep distinct
 physical keys while sharing one logical key.
 """
@@ -214,6 +214,12 @@ class ProjectScanner:
                 self._seen.add(f)
                 if depth > self._maxDepth:
                     self._maxDepth = depth
+                if not os.path.exists(os.path.join(g.yamlBasePath, f)):
+                    includers = sorted(k for k, refs in self.yamlReferences.items() if f in refs)
+                    if f in self.rootReferences:
+                        includers.insert(0, os.path.relpath(self.projFile, g.yamlBasePath))
+                    printError(f"YAML file {f} does not exist; it is named by {', '.join(includers)}.")
+                    exit(warningAndErrorReport())
                 raw = self._fastLoad(os.path.join(g.yamlBasePath, f))
                 nextOverrides = inherited
                 # A projectFiles-slot file carrying the project sentinel set

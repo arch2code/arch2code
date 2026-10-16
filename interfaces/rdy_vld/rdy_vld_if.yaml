@@ -1,6 +1,8 @@
 
 interface_defs:
   rdy_vld : 
+    timing: elastic
+    backpressure: { default: true, overridable: true }
     parameters : 
       data_t : { datatype : struct }
     signals: 

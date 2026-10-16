@@ -91,9 +91,9 @@ class rdy_vld_channel
 {
 public:
     // constructor const char * module, std::string block
-    explicit rdy_vld_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit rdy_vld_channel( const char* name_, std::string block_, channelBackpressure backpressure_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        interfaceBase(name_, block_, autoMode),
+        interfaceBase(name_, block_, autoMode, backpressure_ == BACKPRESSURE_NONE ? TIMED_DELAY_NO_BACKPRESSURE : TIMED_DELAY_APPLIES),
         m_channel_sync_event( (std::string(name_) + "m_channel_sync_event").c_str() ),
         m_reader(nullptr),
         m_writer(nullptr),
@@ -104,9 +104,9 @@ public:
             logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
         }
 
-    explicit rdy_vld_channel( const char* name_, std::string block_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit rdy_vld_channel( const char* name_, std::string block_, channelBackpressure backpressure_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        interfaceBase(name_, block_, autoMode),
+        interfaceBase(name_, block_, autoMode, backpressure_ == BACKPRESSURE_NONE ? TIMED_DELAY_NO_BACKPRESSURE : TIMED_DELAY_APPLIES),
         m_channel_sync_event( (std::string(name_) + "m_channel_sync_event").c_str() ),
         m_reader(nullptr),
         m_writer(nullptr),

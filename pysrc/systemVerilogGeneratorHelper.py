@@ -18,7 +18,8 @@ def importPackages(args, prj, sc, data, excludeSelf=False):
         fileMapKey = 'package_sv'
 
     for context in data['includeContext']:
-        if context in data['includeFiles'][fileMapKey]:
+        # INCLUDEFILES carries no key for a file type that no context emits.
+        if context in data['includeFiles'].get(fileMapKey, {}):
             # excludeSelf drops the starting context's own package when a
             # package imports its sibling packages.
             if excludeSelf and context == sc:

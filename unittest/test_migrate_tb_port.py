@@ -149,6 +149,9 @@ class _FakePrj:
     def getBlockConfigView(self, qualBlock):
         return {"hasOwnParams": self.hasOwnParams}
 
+    def getBlockCondRow(self, qualBlock):
+        return dict(self.data["blocks"][qualBlock], hasOwnParams=int(self.hasOwnParams))
+
 
 def _paths(root):
     tb = os.path.join(root, "tb", BLOCK)

@@ -4,6 +4,8 @@
 
 interface_defs:
   idt :
+    timing: elastic
+    backpressure: { default: true, overridable: true }
     parameters :
       s_t  : { datatype : struct }
       ty_t : { datatype : type }
@@ -31,6 +33,8 @@ interface_defs:
       type : 'idt'
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
   idth :
+    timing: elastic
+    backpressure: { default: true, overridable: true }
     parameters :
       s_t  : { datatype : struct }
       ts_t : { datatype : typeStruct }

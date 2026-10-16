@@ -471,8 +471,10 @@ def run_container_slot_must_carry_router_address_group():
         "router's addressGroup:",
         CONTAINER_MISSING_ADDRESS_GROUP,
         [
-            "'uIsolated' (block 'unservedContainer')",
-            "must carry addressGroup: top",
+            "Instance 'uIsolated' (block 'unservedContainer') passes the "
+            "register bus to 'uLeafLost', and router 'uAPBDecode' (block "
+            "'apbDecode') in container 'top' dispatches to it, but it carries "
+            "no addressGroup:. Set addressGroup: top on instance 'uIsolated'",
         ],
     )
 
@@ -524,10 +526,11 @@ def run_direct_leaf_missing_address_group_rejected():
         "entirely is rejected",
         DIRECT_LEAF_MISSING_ADDRESS_GROUP,
         [
-            "'uLeaf'",
-            "'leaf'",
-            "carries no addressGroup:",
-            "not fed through a single-consumer container",
+            "Instance 'uLeaf' (block 'leaf') has a register bus, and router "
+            "'uAPBDecode' (block 'apbDecode') in container 'top' dispatches "
+            "to it, but it carries no addressGroup:. Set addressGroup: top on "
+            "instance 'uLeaf'; without it the router allocates it no decode "
+            "slot.",
         ],
     )
 

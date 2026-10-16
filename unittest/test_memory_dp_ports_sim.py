@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Simulation tests for common/systemVerilog/memory_dp.sv and memory_dp_2clk.sv.
+"""Simulation tests for common/systemVerilog/memory_dp.sv and memory_dp_2clk.sv,
+with a multi-dimensional packed data check that also covers memory_sp.sv,
+memory_sp_ext.sv and memory_dp_ext.sv.
 
 Builds unittest/fixtures/memory_dp_ports_tb.sv with Verilator
 `--binary --timing` and runs it at several port A / port B clock ratios, in a
@@ -20,6 +22,9 @@ base_dir = os.path.dirname(test_dir)
 
 MEMORY_DP_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_dp.sv')
 MEMORY_DP_2CLK_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_dp_2clk.sv')
+MEMORY_DP_EXT_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_dp_ext.sv')
+MEMORY_SP_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_sp.sv')
+MEMORY_SP_EXT_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'memory_sp_ext.sv')
 MEMORY_IF_DIR = os.path.join(base_dir, 'interfaces', 'memory')
 TB_SV = os.path.join(test_dir, 'fixtures', 'memory_dp_ports_tb.sv')
 
@@ -46,7 +51,8 @@ def run_one(a_half, b_half):
                'memory_dp_ports_tb', '-Mdir', obj_dir, '+libext+.sv',
                '-y', MEMORY_IF_DIR, f'+incdir+{MEMORY_IF_DIR}',
                f'-GA_HALF_PERIOD={a_half}', f'-GB_HALF_PERIOD={b_half}',
-               MEMORY_DP_SV, MEMORY_DP_2CLK_SV, TB_SV]
+               MEMORY_DP_SV, MEMORY_DP_2CLK_SV, MEMORY_DP_EXT_SV, MEMORY_SP_SV,
+               MEMORY_SP_EXT_SV, TB_SV]
         # Timed binaries built through Verilator's ccache wrapper in a fresh
         # temporary directory abort at startup; build without the cache.
         build_env = dict(os.environ, CCACHE_DISABLE='1')

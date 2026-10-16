@@ -379,6 +379,7 @@ def test_teststructs_parameterizable_sample_points():
         prj = projectOpen(db_path)
         ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
         data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
+        genSystemC.calcStructure(genSystemC, data, prj)
 
         hdr = structures.render(
             SimpleNamespace(mode='module', section='testStructsHeader',

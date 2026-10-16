@@ -56,10 +56,15 @@ enum hwMemoryType {HWMEMORYTYPE_NORMAL, HWMEMORYTYPE_LOCAL};
 // access the mode forbids is no bus error: a write is dropped and a read
 // returns 0, each logged.
 enum hwMemoryFwAccess {HWMEMORYFWACCESS_RW, HWMEMORYFWACCESS_RO, HWMEMORYFWACCESS_WO};
-// N is power of 2 number of bytes with minimum of 4
-template <class MEM_DATA>
+// ROW_BYTES is the address stride between rows, a power of 2 of at least 4.
+// It is the address map's row footprint, which for a parameterizable structure
+// is sized for the widest variant. Bytes of a row past the structure's width
+// read 0 and drop writes.
+template <class MEM_DATA, int ROW_BYTES = nextPowerOf2min4(MEM_DATA::_byteWidth)>
 class hwMemory : public memBase
 {
+    static_assert(ROW_BYTES >= nextPowerOf2min4(MEM_DATA::_byteWidth) && (ROW_BYTES & (ROW_BYTES - 1)) == 0,
+                  "ROW_BYTES must be a power of 2 that holds a whole row");
 public:
     hwMemory(const char * hierarchicalName_, const char * memName_, memories &memories_, uint64_t rows_, hwMemoryType memType_ = HWMEMORYTYPE_NORMAL,
              hwMemoryFwAccess fwAccess_ = HWMEMORYFWACCESS_RW)
@@ -97,7 +102,7 @@ public:
         return (uint32_t) m_val_sc.range(8*n+31, 8*n).to_uint64();
     }
     constexpr int _size(void) {
-        return nextPowerOf2min4(MEM_DATA::_byteWidth);
+        return ROW_BYTES;
     }
     // direct access for compatability and backdoor uses such as logging
     MEM_DATA& operator[] (uint64_t index) {
@@ -229,7 +234,7 @@ public:
 private:
     std::vector<MEM_DATA> m_mem;
     uint64_t rows;
-    sc_bv<nextPowerOf2min4(MEM_DATA::_byteWidth) * 8> m_val_sc;
+    sc_bv<ROW_BYTES * 8> m_val_sc;
     std::string m_name = "";
     std::string m_memName = "";
     timedDelay m_delay;
@@ -239,9 +244,12 @@ private:
     hwMemoryFwAccess m_fwAccess;
 };
 
-template <class ADDR, class DATA>
+// ROW_BYTES is the address stride between rows, as for hwMemory.
+template <class ADDR, class DATA, int ROW_BYTES = nextPowerOf2min4(DATA::_byteWidth)>
 class hwMemoryPort : public memBase
 {
+    static_assert(ROW_BYTES >= nextPowerOf2min4(DATA::_byteWidth) && (ROW_BYTES & (ROW_BYTES - 1)) == 0,
+                  "ROW_BYTES must be a power of 2 that holds a whole row");
 public:
     // name is logged when the mode drops an access, so it is required for ro and wo.
     hwMemoryPort(memory_out<ADDR, DATA> &port, hwMemoryFwAccess fwAccess_ = HWMEMORYFWACCESS_RW, std::string name_ = "")
@@ -285,7 +293,7 @@ public:
     }
     
     constexpr int _size(void) {
-        return nextPowerOf2min4(DATA::_byteWidth);
+        return ROW_BYTES;
     }
 
     void setTimed(uint64_t nsec, timedDelayMode mode) override
@@ -294,7 +302,7 @@ public:
 
 private:
     memory_out<ADDR, DATA> &m_port;
-    sc_bv<nextPowerOf2min4(DATA::_byteWidth) * 8> m_val_sc;
+    sc_bv<ROW_BYTES * 8> m_val_sc;
     hwMemoryFwAccess m_fwAccess;
     std::string m_name;
 };

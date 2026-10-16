@@ -116,14 +116,14 @@ struct axi4StreamInfoSt
 
     inline friend bool operator == ( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & a, axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & b ) {
         if constexpr (hasOptionalPayload<TUSER>) {
-            if (!(a.tuser.getStructValue() == b.tuser.getStructValue())) { return false; }
+            if (!(a.tuser == b.tuser)) { return false; }
         }
-        return (a.tdata.getStructValue() == b.tdata.getStructValue() &&
+        return (a.tdata == b.tdata &&
                 a.tstrb.sc_pack() == b.tstrb.sc_pack() &&
                 a.tkeep.sc_pack() == b.tkeep.sc_pack() &&
-                a.tid.getStructValue() == b.tid.getStructValue() &&
+                a.tid == b.tid &&
                 a.tlast == b.tlast &&
-                a.tdest.getStructValue() == b.tdest.getStructValue());
+                a.tdest == b.tdest);
     }
 
 };
@@ -189,9 +189,9 @@ class axi4_stream_channel
 {
 public:
     // constructor const char * module, std::string block
-    explicit axi4_stream_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit axi4_stream_channel( const char* name_, std::string block_, channelBackpressure backpressure_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
-        m_tx_channel((std::string(name_) + "tx").c_str(), block_),
+        m_tx_channel((std::string(name_) + "tx").c_str(), block_, backpressure_),
         m_tx_out((std::string(name_) + "txOut").c_str()),
         m_tx_in((std::string(name_) + "txIn").c_str()),
         m_reader(nullptr),
@@ -203,9 +203,9 @@ public:
             m_tx_channel.setLogQueue(m_logQueue);
         }
 
-    explicit axi4_stream_channel( const char* name_, std::string block_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit axi4_stream_channel( const char* name_, std::string block_, channelBackpressure backpressure_, std::string multiCycleType_, int pingpong_size_, std::string trackerName_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
         : sc_prim_channel( name_ ),
-        m_tx_channel((std::string(name_) + "tx").c_str(), block_),
+        m_tx_channel((std::string(name_) + "tx").c_str(), block_, backpressure_),
         m_tx_out((std::string(name_) + "txOut").c_str()),
         m_tx_in((std::string(name_) + "txIn").c_str()),
         m_reader(nullptr),

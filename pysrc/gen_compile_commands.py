@@ -102,7 +102,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     directory = args.directory or os.getcwd()
-    compilers = set(args.compiler)
+    compilers = {os.path.basename(c) for c in args.compiler}
 
     candidates_by_file: dict[str, list[dict[str, str]]] = {}
     seen: set[tuple[str, str]] = set()
@@ -112,15 +112,12 @@ def main(argv: list[str]) -> int:
             line = line.strip()
             if not line:
                 continue
-            # Only compile steps; ignore mkdir/touch/arch2code invocations.
-            if " -c " not in line and not line.startswith(("clang++ ", "g++ ")):
-                continue
-
             try:
                 tokens = shlex.split(line)
             except ValueError:
                 continue
 
+            # Only compile steps; ignore mkdir/touch/arch2code invocations.
             if not _looks_like_compile(tokens, compilers):
                 continue
 

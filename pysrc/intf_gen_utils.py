@@ -194,7 +194,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         is_input = row['direction'] == 'input'
         assign_lhs = f"{intf_name}.{intf_sig}" if is_input else f"{intf_name}_{intf_sig}"
         assign_rhs = f"{intf_name}_{intf_sig}" if is_input else f"{intf_name}.{intf_sig}"
-        out['assign'].append(f"assign #0 {assign_lhs} = {assign_rhs};")
+        out['assign'].append(f"assign `A2C_HDL_BOUNDARY_DLY {assign_lhs} = {assign_rhs};")
 
     return out
 
@@ -883,6 +883,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out['is_skip'] = intf_def.get('skip', False)
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
+    out['backpressure_arg'] = sc_backpressure_arg(intf_def, port_data)
     out['description'] = intf_data['desc']
     out['intf_name'] = intf_name
 
@@ -1076,6 +1077,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
 
     out['is_skip'] = intf_def.get('skip', False)
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
+    out['backpressure_arg'] = sc_backpressure_arg(intf_def, conn_data)
     out['intf_name'] = chnl_name
     out['chnl_name'] = chnl_name
     out['desc'] = intf_data['desc']
@@ -1242,6 +1244,22 @@ def sc_declare_thunkers(data, prj, indent, block_data):
     return out
 
 
+def sc_backpressure_arg(intf_def, conn_data):
+    # A definition whose backpressure a design may lower declares channels and
+    # thunkers that take the row's effective value as a constructor argument.
+    # Every other definition's channel class fixes its own setTimed behaviour.
+    if intf_def['timing'] == 'elastic' and intf_def['backpressure']['overridable']:
+        return ', BACKPRESSURE_ALLOWED' if conn_data['effectiveBackpressure'] else ', BACKPRESSURE_NONE'
+    return ''
+
+
+def sc_thunker_backpressure_arg(conn_data, prj):
+    # The thunker's owned channel carries the traffic of the connection or
+    # connectionMap row that flags it.
+    intf_def = prj.data['interface_defs'][prj.data['interfaces'][conn_data['interfaceKey']]['interfaceTypeKey']]
+    return sc_backpressure_arg(intf_def, conn_data)
+
+
 def sc_thunker_protocols(data, prj):
     # Return the set of SystemC channel type stems (e.g. 'rdy_vld',
     # 'req_ack') for which this container emits at least one thunker. Callers
@@ -1270,6 +1288,17 @@ def get_struct_width(struct_key, struct_dict):
                    f"project database, so it supplies no width.")
         exit(warningAndErrorReport())
     return struct['width']
+
+def sc_explicit_row_bytes(row, prj):
+    """Address stride between rows that the model spells out for a memory or
+    memory register, or None when the structure is not parameterizable.
+
+    hwMemory, hwMemoryPort and addMemory derive a stride from the bound
+    variant's width. That matches the address map only when the structure has
+    one width."""
+    if prj.data['structures'][row['structureKey']]['isParameterizable']:
+        return row['rowBytes']
+    return None
 
 def get_sorted_memories(data):
     if 'memoriesParent' in data:

@@ -83,8 +83,8 @@ public:
 
 
     secondBlockChannels(std::string name, std::string srcName) :
-    beta(("beta"+name).c_str(), srcName)
-    ,primary(("primary"+name).c_str(), srcName)
+    beta(("beta"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,primary(("primary"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( secondBlockBase *a, secondBlockInverted *b)
     {

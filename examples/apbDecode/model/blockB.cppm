@@ -30,8 +30,8 @@ private:
 public:
 
     //registers
-    hwRegister< un0BRegSt, 4 > rwUn0B; // A unaligned four bytes Read Write register
-    hwRegister< aSizeRegSt, 4 > roB; // A Read Only register
+    hwRegister< un0BRegSt, 4 > rwUn0B; // A unaligned three bytes Read Write register
+    hwRegister< aSizeRegSt, 4, true > roB; // A Read Only register
 
     memories mems;
     //memories

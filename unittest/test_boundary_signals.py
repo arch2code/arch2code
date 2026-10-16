@@ -125,6 +125,8 @@ def test_src(proj):
 BYTE_MASK_ARCH = """
 interface_defs:
     byte_mask:
+        timing: elastic
+        backpressure: {default: true, overridable: false}
         parameters:
             payload_t: { datatype: struct }
         hdlparams:

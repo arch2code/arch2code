@@ -67,6 +67,19 @@ _Avoid_: "interface" for the protocol itself
 An interface type with concrete structures bound to it. Interface type is
 `push_ack`. Interface is push_ack carrying `videoSt`.
 
+**Timing**:
+Whether an interface type is `fixed` or `elastic` (`timing:` in its
+`interface_defs` entry). A fixed type's receiver reads each value in a set cycle
+and cannot wait, so its channel ignores setTimed. An elastic type paces each
+transfer with a handshake.
+
+**Backpressure**:
+Whether the consumer may stall the producer. The `backpressure:` key on an
+interface type sets the default and whether a design may lower it. The same key
+on an interface or a port turns backpressure off. A channel with backpressure
+off on any port it joins ignores setTimed.
+_Avoid_: "ready", "flow control" for this setting
+
 **Connection**:
 A point-to-point or multi-ended link on an interface (`connections:`). Only
 between instances in the same container.

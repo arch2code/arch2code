@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # functional_layout_regression.sh — byte-identical regression gate for the
-# project layout-mode work (plan-decomp-functional-layout.md, T0.1).
+# project layout-mode work (functional vs hierarchical layout).
 #
 # Generation is in-place and idempotent, so the safety net for the L1
 # config-normalization refactor (T1.2) is simple: capture the generated output

@@ -1,6 +1,8 @@
 
 interface_defs:
   axi_write : 
+    timing: elastic
+    backpressure: { default: true, overridable: false }
     parameters : 
       addr_t : { datatype : struct }
       data_t : { datatype : struct }

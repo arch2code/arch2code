@@ -65,7 +65,7 @@ public:
 
 
     nestedL2Channels(std::string name, std::string srcName) :
-    nested2(("nested2"+name).c_str(), srcName)
+    nested2(("nested2"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( nestedL2Base *a, nestedL2Inverted *b)
     {

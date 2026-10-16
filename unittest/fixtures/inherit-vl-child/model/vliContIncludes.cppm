@@ -24,7 +24,8 @@ export namespace vlInh_vliCont_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace vlInh_vliCont_ns {
 // types
-template<typename Config> using vliPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t VLI_WIDTH> using vliPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using vliPixelT = vliPixelT_v<Config::VLI_WIDTH>;
 typedef uint8_t vliTagT; // [8] Sample sequence tag; lowest packed position
 typedef uint8_t vliAlgoT; // [8] Algorithm the leaf instance resolved, stamped into the payload
 typedef uint8_t vliWidT; // [8] VLI_WIDTH the leaf instance elaborated at, stamped into the payload
@@ -41,20 +42,20 @@ export namespace vlInh_vliCont_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace vlInh_vliCont_ns {
 // structures
-template<typename Config>
-struct vliSt {
+template<uint32_t VLI_WIDTH>
+struct vliSt_v {
     vliMarkT mark; //Trailing marker
-    vliPixelT<Config> data; //Parameterizable pixel payload
+    vliPixelT_v<VLI_WIDTH> data; //Parameterizable pixel payload
     vliWidT wid; //VLI_WIDTH the leaf instance resolved
     vliAlgoT algo; //VLI_ALGO the leaf instance resolved
     vliTagT tag; //Sample sequence tag
 
-    vliSt() {}
+    vliSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::VLI_WIDTH + 8 + 8 + 8;
+    static constexpr uint16_t _bitWidth = 8 + VLI_WIDTH + 8 + 8 + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const vliSt<Config> & rhs) const {
+    inline bool operator == (const vliSt_v<VLI_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (algo == rhs.algo);
@@ -63,14 +64,14 @@ struct vliSt {
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const vliSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const vliSt_v<VLI_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.algo, NAME + ".algo");
         sc_trace(tf,v.wid, NAME + ".wid");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  vliSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  vliSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -88,12 +89,12 @@ struct vliSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, vliSt<Config>::_byteWidth);
+        memset(&_ret, 0, sizeof(_ret));
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::VLI_WIDTH);
-        _pos += Config::VLI_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, VLI_WIDTH);
+        _pos += VLI_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, wid, 8);
         _pos += 8;
         pack_bits((uint64_t *)&_ret, _pos, algo, 8);
@@ -104,24 +105,24 @@ struct vliSt {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        mark = (vliMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        mark = (vliMarkT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        data = (vliPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::VLI_WIDTH)) - 1));
-        _pos += Config::VLI_WIDTH;
-        wid = (vliWidT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        data = (vliPixelT_v<VLI_WIDTH>)((_src >> (_pos & 63)) & (~0ULL >> (64 - (VLI_WIDTH))));
+        _pos += VLI_WIDTH;
+        wid = (vliWidT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        algo = (vliAlgoT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        algo = (vliAlgoT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
         _pos += 8;
-        tag = (vliTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        tag = (vliTagT)((_src >> (_pos & 63)) & (~0ULL >> (64 - (8))));
     }
-    inline sc_bv<vliSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<vliSt_v<VLI_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<vliSt<Config>::_bitWidth> packed_data;
+        sc_bv<vliSt_v<VLI_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::VLI_WIDTH-1, _pos) = data;
-        _pos += Config::VLI_WIDTH;
+        packed_data.range(_pos+VLI_WIDTH-1, _pos) = data;
+        _pos += VLI_WIDTH;
         packed_data.range(_pos+8-1, _pos) = wid;
         _pos += 8;
         packed_data.range(_pos+8-1, _pos) = algo;
@@ -130,13 +131,13 @@ struct vliSt {
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<vliSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<vliSt_v<VLI_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (vliMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (vliPixelT<Config>) packed_data.range(_pos+Config::VLI_WIDTH-1, _pos).to_uint64();
-        _pos += Config::VLI_WIDTH;
+        data = (vliPixelT_v<VLI_WIDTH>) packed_data.range(_pos+VLI_WIDTH-1, _pos).to_uint64();
+        _pos += VLI_WIDTH;
         wid = (vliWidT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
         algo = (vliAlgoT) packed_data.range(_pos+8-1, _pos).to_uint64();
@@ -144,10 +145,10 @@ struct vliSt {
         tag = (vliTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit vliSt(sc_bv<vliSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit vliSt(
+    explicit vliSt_v(sc_bv<vliSt_v<VLI_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit vliSt_v(
         vliMarkT mark_,
-        vliPixelT<Config> data_,
+        vliPixelT_v<VLI_WIDTH> data_,
         vliWidT wid_,
         vliAlgoT algo_,
         vliTagT tag_) :
@@ -157,9 +158,10 @@ struct vliSt {
         algo(algo_),
         tag(tag_)
     {}
-    explicit vliSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit vliSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using vliSt = vliSt_v<Config::VLI_WIDTH>;
 } // namespace vlInh_vliCont_ns
 
 // GENERATED_CODE_END

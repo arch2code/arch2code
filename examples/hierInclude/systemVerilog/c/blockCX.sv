@@ -78,7 +78,7 @@ always_ff @(posedge clk or negedge rst_n) begin
         ack     <= 1'b0;
     end else begin
         if (b2C.req) begin
-            d         <= b2C.data[$size(dSt)-1:0];
+            d         <= b2C.data[$bits(dSt)-1:0];
             secondD.d <= d;
             thirdD    <= secondD;
             ack       <= 1'b1;

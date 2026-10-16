@@ -1,6 +1,8 @@
 
 interface_defs:
   req_ack : 
+    timing: elastic
+    backpressure: { default: true, overridable: false }
     parameters : 
       data_t : { datatype : struct }
       rdata_t : { datatype : struct }

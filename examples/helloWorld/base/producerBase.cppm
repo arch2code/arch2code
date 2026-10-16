@@ -128,12 +128,12 @@ public:
 
 
     producerChannels(std::string name, std::string srcName) :
-    test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName)
+    test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,test_req_ack(("test_req_ack"+name).c_str(), srcName)
     ,test_push_ack(("test_push_ack"+name).c_str(), srcName)
     ,test_pop_ack(("test_pop_ack"+name).c_str(), srcName)
-    ,test_rdy_vld_arb0(("test_rdy_vld_arb0"+name).c_str(), srcName)
-    ,test_rdy_vld_arb1(("test_rdy_vld_arb1"+name).c_str(), srcName)
+    ,test_rdy_vld_arb0(("test_rdy_vld_arb0"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,test_rdy_vld_arb1(("test_rdy_vld_arb1"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     {};
     void bind( producerBase *a, producerInverted *b)
     {

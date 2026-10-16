@@ -13,7 +13,7 @@ $(error XRUN_GCC_VERS is not set - set it to the Xcelium -gcc_vers release match
 endif
 
 XRUN ?= xrun
-XRUN_OPTS ?= -64bit -sv -sysc -sc_main -timescale 1ns/1ps -warn_multiple_driver
+XRUN_OPTS ?= -64bit -sv -sysc -sc_main -timescale 1ns/1ps
 XRUN_OPTS += -gcc_vers $(XRUN_GCC_VERS)
 # Per-simulation options; -nolog so concurrent runs do not fight over xrun.log.
 XRUN_R_OPTS ?= -64bit -nolog

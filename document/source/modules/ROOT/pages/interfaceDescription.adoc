@@ -66,6 +66,17 @@ image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/rdyVldBurst.js
 
 - The status interface is used to provide status information from a *source* module to *destination* module. The `status` data is continuously valid.
 
+[IMPORTANT]
+====
+The status interface carries state, never control. It keeps only the latest value and has no queue and no handshake. Several writes in one delta cycle reach the reader as one change, a write that repeats the value is not a change, and RTL sees only a value that holds across a clock edge.
+
+Use it only for values whose consumers need the current value, never every change: configuration, mode, enables, lock and lifecycle state, register mirrors, monitoring, and pin levels at a design boundary. Such a value may gate a decision.
+
+Never use it to tell another module when to act. That rules out busy, done, valid, start, acknowledge and per-request grant flags, interrupt or event pulses, counts or credits encoded as a level, and toggle bits added to force a change.
+
+The test is whether the consumer must observe every change. If missing a change, or seeing two changes as one, would be wrong, the information is a transaction. Use a request/acknowledge, notify/acknowledge, push/acknowledge or ready/valid interface instead.
+====
+
 image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/status.json5[width=3072]
 
 

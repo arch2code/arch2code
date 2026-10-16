@@ -10,13 +10,13 @@ module memory_dp_ext #(
 (
     memory_if.dst mem_portA,
     memory_if.dst mem_portB,
-    output logic [$size(data_t)-1:0] mem [DEPTH-1:0],
+    output logic [$bits(data_t)-1:0] mem [DEPTH-1:0],
     input clk
 );
 
-    typedef logic [$size(mem_portA.addr)-1:0] _addrA_t;
-    typedef logic [$size(mem_portB.addr)-1:0] _addrB_t;
-    typedef logic [$size(data_t)-1:0] _data_t;
+    typedef logic [$bits(mem_portA.addr)-1:0] _addrA_t;
+    typedef logic [$bits(mem_portB.addr)-1:0] _addrB_t;
+    typedef logic [$bits(data_t)-1:0] _data_t;
 
     _addrA_t addrA;
     _addrB_t addrB;

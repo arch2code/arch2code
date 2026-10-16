@@ -225,14 +225,14 @@ public:
     ,test_push_ack(("test_push_ack"+name).c_str(), srcName)
     ,test_pop_ack(("test_pop_ack"+name).c_str(), srcName)
     ,test_notify_ack(("test_notify_ack"+name).c_str(), srcName)
-    ,test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName)
-    ,test_axi4_stream(("test_axi4_stream"+name).c_str(), srcName, "api_list_size", 16, "")
+    ,test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,test_axi4_stream(("test_axi4_stream"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 16, "")
     ,dut2Python_req_ack(("dut2Python_req_ack"+name).c_str(), srcName)
     ,dut2Python_push_ack(("dut2Python_push_ack"+name).c_str(), srcName)
     ,dut2Python_pop_ack(("dut2Python_pop_ack"+name).c_str(), srcName)
     ,dut2Python_notify_ack(("dut2Python_notify_ack"+name).c_str(), srcName)
-    ,dut2Python_rdy_vld(("dut2Python_rdy_vld"+name).c_str(), srcName)
-    ,dut2Python_axi4_stream(("dut2Python_axi4_stream"+name).c_str(), srcName, "api_list_size", 16, "")
+    ,dut2Python_rdy_vld(("dut2Python_rdy_vld"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
+    ,dut2Python_axi4_stream(("dut2Python_axi4_stream"+name).c_str(), srcName, BACKPRESSURE_ALLOWED, "api_list_size", 16, "")
     {};
     void bind( pySocketBase *a, pySocketInverted *b)
     {

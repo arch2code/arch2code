@@ -1,0 +1,40 @@
+# A Verilated leaf whose RTL runs a delay, built with VL_TIMING=1.
+
+yamlFormat: 2
+projectName: vlTiming
+
+topInstance: vltTop_tb
+
+projectFiles:
+    - ../../yaml/vlt.yaml
+
+# The first clock edge comes half a period after time 0, well after the leaf's
+# delay ends.
+clocks:
+    clk:
+        desc: "testbench clock"
+        default: true
+        period: 10
+        timeUnit: ns
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""
