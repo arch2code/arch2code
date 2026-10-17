@@ -140,6 +140,9 @@ interface_defs:
   interface_type: key
   # marks an interface_def as a register-bus / address-bus meta-protocol
   addressBus: optional(false)
+  # the type ships its UVM agent, <type>_uvm_pkg.sv, so a hasUvm block's
+  # boundary port may use it
+  uvmAgent: optional(false)
   parameters:
     _attribs: [optional, multiple]
     param: key
@@ -322,6 +325,7 @@ blocks:
   hasMdl: optional(true)
   hasRtl: optional(true)
   hasSkt: optional(false)
+  hasUvm: optional(false)
   isRegHandler: optional(false) # this is used to indicate that this block handles registers
   mdlLeafNode: optional(false)
   dir: auto(blockDir)

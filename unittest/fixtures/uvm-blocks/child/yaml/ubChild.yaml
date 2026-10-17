@@ -1,0 +1,28 @@
+# A hasUvm DUT owned by a referenced project, so the root build skips the
+# hasVl clock and reset checks that run on its own blocks.
+
+types:
+    ubChildDataT: { width: 8, desc: "Stream payload" }
+
+structures:
+    ubChildSt:
+        data: { varType: ubChildDataT, desc: "Stream payload" }
+
+interfaces:
+    ubChildStream:
+        desc: "Stream through the child DUT"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: ubChildSt, structureType: data_t }
+
+blocks:
+    ubChildDut:
+        desc: "DUT owned by the child project"
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        hasVl: true
+        hasUvm: true
+        ports:
+            in:  { interface: ubChildStream, direction: dst }
+            out: { interface: ubChildStream, direction: src }

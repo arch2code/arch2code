@@ -34,8 +34,10 @@ fragment, the block and context module units' global module fragments, and the
 """
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # builder/base
@@ -431,8 +433,91 @@ def check_hierarchical_vl_wrap_path():
             layout['segments']['model']['path'] == 'model')
 
 
+UVM_FIXTURE = os.path.join(BASE_DIR, 'unittest', 'fixtures', 'uvm-blocks')
+
+
+def uvm_manifest(project, projectYaml):
+    # The manifest of a fixture copy after db and newmodule, or None on failure.
+    shutil.copytree(UVM_FIXTURE, project)
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    for tgt in ('db', 'newmodule'):
+        r = subprocess.run(['make', '-C', project, f'REPO_ROOT={project}', f'A2C_ROOT={BASE_DIR}',
+                            f'A2C_PRJ_YAML={os.path.join(project, projectYaml)}', tgt],
+                           capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            print(r.stdout + r.stderr)
+            return None
+    return parse_manifest(os.path.join(project, '.gen', 'build.mk'))
+
+
+def check_uvm_manifest():
+    # The uvm buildGroup reaches only the A2C_UVM_* variables and the gen-target
+    # lists: no UVM file may enter a model, Verilator or RTL compile. The child
+    # arm's hasUvm block belongs to a referenced project, so the composing
+    # build lists none of its UVM files.
+    problems = []
+    tmp = tempfile.mkdtemp(prefix='uvm_manifest_')
+    try:
+        root = os.path.join(tmp, 'root')
+        man = uvm_manifest(root, os.path.join('prj', 'yaml', 'uvmBlocksProject.yaml'))
+        if man is None:
+            return ['uvm-blocks root: db or newmodule failed']
+        uvmDir = os.path.join(root, 'uvm')
+        top = 'ubDut_uvm_tb'
+        expected = {
+            'A2C_UVM_SRC_DIRS': [uvmDir],
+            'A2C_UVM_TOPS': [top],
+            f'A2C_UVM_PKG_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_pkg.sv')],
+            f'A2C_UVM_TB_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_tb.sv')],
+            f'A2C_UVM_PORTMAP_{top}': [os.path.join(root, '.gen', 'vl', top + '.portmap')],
+        }
+        for key, value in expected.items():
+            if man.get(key) != value:
+                problems.append(f'uvm-blocks root: {key} is {man.get(key)}, expected {value}')
+        uvmFiles = [os.path.join(uvmDir, name) for name in
+                    ('ubDut_uvm_pkg.sv', 'ubDut_uvm_tb.sv', 'ubDut_uvm_sc_wrapper.h',
+                     'ubDutUvmConfig.cpp', 'ubDutUvmRegistrar.cpp')]
+        for path in uvmFiles:
+            if not os.path.isfile(path):
+                problems.append(f'uvm-blocks root: newmodule did not scaffold {path}')
+        genFiles = set(man.get('A2C_SV_GEN_FILES', []) + man.get('A2C_SC_GEN_FILES', []))
+        for path in uvmFiles:
+            if path not in genFiles:
+                problems.append(f'uvm-blocks root: {path} is not a gen target')
+        for key in ('A2C_SC_SRC_DIRS', 'A2C_SV_SRC_DIRS', 'A2C_VL_WRAP_DIRS', 'A2C_SV_FILES',
+                    'A2C_SV_DEP_FILES', 'A2C_VL_TOPS', 'A2C_CPP_MODULE_FILES',
+                    'A2C_SC_GEN_SRC_FILES'):
+            leaked = [v for v in man.get(key, []) if v == uvmDir or v.startswith(uvmDir + os.sep)
+                      or v == top]
+            if leaked:
+                problems.append(f'uvm-blocks root: {key} lists UVM entries {leaked}')
+
+        child = os.path.join(tmp, 'child')
+        man = uvm_manifest(child, os.path.join('prj', 'yaml', 'uvmBlocksChildProject.yaml'))
+        if man is None:
+            return problems + ['uvm-blocks child: db or newmodule failed']
+        for key in ('A2C_UVM_SRC_DIRS', 'A2C_UVM_TOPS'):
+            if man.get(key):
+                problems.append(f'uvm-blocks child: {key} lists {man[key]}')
+        uvmAny = [v for values in man.values() for v in values if '_uvm_' in v or 'Uvm' in v]
+        if uvmAny:
+            problems.append(f'uvm-blocks child: the manifest lists UVM files {uvmAny}')
+    finally:
+        shutil.rmtree(tmp)
+    return problems
+
+
 def main():
     failures = []
+    uvmProblems = check_uvm_manifest()
+    if uvmProblems:
+        print('  [FAIL ] uvm manifest')
+        for p in uvmProblems:
+            print(f'           - {p}')
+        failures.append('uvm manifest')
+    else:
+        print('  [OK   ] uvm manifest')
     if not check_hierarchical_vl_wrap_path():
         print('  [FAIL ] hierarchical-vl path')
         print('           - vl_wrap source segment must be node-relative "verif" (build dir is make infra, not manifest)')

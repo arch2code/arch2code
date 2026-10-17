@@ -1,0 +1,11 @@
+# The IP project owning ubChildDut, which the uvmBlocksChild root instantiates.
+projectName: ubChild
+
+projectFiles:
+    - ../../yaml/ubChild.yaml
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    template: none

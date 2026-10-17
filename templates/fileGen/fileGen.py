@@ -92,6 +92,16 @@ def render(args, prj, data):
             return(testBench_cppm(args, prj, data))
         case 'tbExternal_cppm':
             return(tbExternal_cppm(args, prj, data))
+        case 'uvmPkg_sv':
+            return(uvmPkg_sv(args, prj, data))
+        case 'uvmTb_sv':
+            return(uvmTb_sv(args, prj, data))
+        case 'uvmScWrap_hdr':
+            return(uvmScWrap_hdr(args, prj, data))
+        case 'uvmTbConfig_src':
+            return(uvmTbConfig_src(args, prj, data))
+        case 'uvmRegistrar_src':
+            return(uvmRegistrar_src(args, prj, data))
         case 'include_cppm':
             return(include_cppm(args, prj, data))
         case 'includeFW_src':
@@ -622,6 +632,67 @@ def tbConfig(args, prj, data):
     subst = _tb_subst(data)
     t = TemplateCustom(tbConfigTemplate)
     return(t.substitute(subst))
+
+# The UVM testbench scaffolds. The generated sections own every design-unit
+# and class boundary (package/endpackage, module/endmodule, the class), so
+# the user regions sit between sections and stay inside the unit.
+def _uvm_param_line(data):
+    return f'// GENERATED_CODE_PARAM --block={data["block"]}{_tb_variant_param(data)}\n'
+
+def uvmPkg_sv(args, prj, data):
+    out = list()
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(_uvm_param_line(data))
+    out.append('// GENERATED_CODE_BEGIN --template=uvmPkg --section=header\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmPkg --section=items\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('// user package items here\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmPkg --section=footer\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+def uvmTb_sv(args, prj, data):
+    out = list()
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(_uvm_param_line(data))
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=header\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('// user imports here\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=body\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('// user module body here\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=footer\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+def uvmScWrap_hdr(args, prj, data):
+    guard = f'{data["block"].upper()}_UVM_SC_WRAPPER_H_'
+    out = list()
+    out.append(f'#ifndef {guard}\n')
+    out.append(f'#define {guard}\n')
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=module_uvm_sc_wrapper --section=class\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'#endif // {guard}\n')
+    return("".join(out))
+
+def uvmTbConfig_src(args, prj, data):
+    out = list()
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(_uvm_param_line(data))
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTbConfig\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+def uvmRegistrar_src(args, prj, data):
+    out = list()
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmRegistrar\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
 
 # The GENERATED_CODE_PARAM line of a testbench-family module unit. `--mode=module`
 # routes the testbench templates to their module-mode branches. `--block` seeds the

@@ -1,0 +1,32 @@
+include:
+    - ../child/yaml/ubChild.yaml
+
+blocks:
+    ubChildTb:
+        desc: "Testbench container"
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubChildSrc:
+        desc: "Stream source"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubChildSink:
+        desc: "Stream sink"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+
+instances:
+    ubChildTb: { container: ubChildTb, instanceType: ubChildTb,   instGroup: top }
+    uSrc:      { container: ubChildTb, instanceType: ubChildSrc,  instGroup: top }
+    uDut:      { container: ubChildTb, instanceType: ubChildDut,  instGroup: top }
+    uSink:     { container: ubChildTb, instanceType: ubChildSink, instGroup: top }
+
+connections:
+    - { interface: ubChildStream, src: uSrc, srcport: out, dst: uDut, dstport: in, name: inLink }
+    - { interface: ubChildStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }

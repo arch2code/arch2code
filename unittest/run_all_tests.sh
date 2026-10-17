@@ -693,6 +693,12 @@ python3 test_bfm_backpressure_checks.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: raw_src_bfm fails the run when SystemC misses a clock's word"
+echo "------------------------------------------------------------------------"
+python3 test_raw_src_bfm_missed_edges.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1
@@ -843,6 +849,12 @@ python3 test_regr_rules_path.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: uvm.json fails a run on UVM error reports and a missing or non-zero summary"
+echo "------------------------------------------------------------------------"
+python3 test_regr_rules_uvm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: combo-source diagnostics (missing/empty combo sources)"
 echo "------------------------------------------------------------------------"
 python3 test_error_combo_sources.py || FAILED=1
@@ -864,6 +876,18 @@ echo ""
 echo "Test Suite ${idx}: socket shell on a parameterizable block without a model is rejected"
 echo "------------------------------------------------------------------------"
 python3 test_error_socket_parameterized_no_model.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: hasUvm blocks the UVM testbench cannot drive are rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_uvm_blocks.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: interface types flagged uvmAgent ship their agent package"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_agent_companions.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -1098,6 +1122,12 @@ echo ""
 echo "Test Suite ${idx}: boundary files and Verilated pins agree for every fixture top"
 echo "------------------------------------------------------------------------"
 python3 test_vl_boundary_widths_build.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM testbench top boundary files mirror their HDL tops"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_boundary_pins.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+"""A UVM testbench top's boundary files match the HDL top it instantiates.
+
+The testbench top drives what the DUT samples and samples what it drives, takes
+the DUT's clocks and resets as inputs, and adds three completion outputs:
+uvm_done, uvm_errors and rtl_dut. The VCS port map and the Xcelium shell
+`--vlBoundary` writes for it must say so with the DUT's widths at each variant,
+or the SystemC side binds mis-sized or mis-directed ports.
+
+A copy of `fixtures/vl-boundary-widths` gains two hasUvm blocks. dutU has an
+rdy_vld port each way over the parameterizable pst_a, and a third over the
+fixed st_a timed by a second clock, clkB, with its own reset. It is
+instantiated at two variants that size pst_a differently. dutV has no model.
+The expected pins are computed from the fixture YAML, independently of the
+generator, for each HDL top and UVM top. The build manifest must list every
+UVM top with its files.
+
+Each variant package must bind that variant's parameter values, declare pst_a
+from them, and type every port's agent and virtual interface by its payload.
+
+Each testbench module must declare exactly those pins, sizing each payload by
+`$bits` of its type in the package that declares it, type its interfaces by
+the same types, give each clock an a2c_clk_if released by that clock's reset,
+bind the HDL top with the pins toward SystemC tied off, and publish every port
+and clock in the config_db. A block with a model holds the RTL only under
+A2C_UVM_RTL_DUT and otherwise carries each signal across in the direction the
+DUT sees it. A block without a model always holds the RTL.
+"""
+
+import os
+import re
+import shutil
+import sys
+import tempfile
+from collections import Counter
+
+from _addrctl_helpers import test_dir
+from _tmp_helpers import remove_tree
+from test_build_manifest import parse_manifest
+from test_vl_boundary_widths_build import (
+    FIXTURE, PORTMAP_TYPES, V0, V1, Design, compare, generate, pin_type, read_portmap,
+    read_xcelium)
+
+
+WORK_PREFIX = 'uvm_boundary_pins_'
+TOP_YAML = os.path.join('top', 'yaml', 'vbwTop.yaml')
+VARIANTS = {'v0': V0, 'v1': V1}
+
+EDITS = [
+    ('interfaces:\n',
+     'interfaces:\n'
+     '  iu:\n'
+     '    interfaceType: rdy_vld\n'
+     '    desc: "Stream over a parameterizable payload"\n'
+     '    structures:\n'
+     '      - {structureType: data_t, structure: pst_a}\n'
+     '  iuf:\n'
+     '    interfaceType: rdy_vld\n'
+     '    desc: "Stream over a fixed payload"\n'
+     '    structures:\n'
+     '      - {structureType: data_t, structure: st_a}\n'),
+    ('blocks:\n',
+     'blocks:\n'
+     '  dutU:\n'
+     '    desc: "DUT under a UVM testbench"\n'
+     '    params: [P_W, P_N]\n'
+     '    hasVl: true\n'
+     '    hasRtl: true\n'
+     '    hasMdl: true\n'
+     '    hasUvm: true\n'
+     '    clocks:\n'
+     '      clk: {default: true, period: 10}\n'
+     '      clkB: {period: 20}\n'
+     '    resets:\n'
+     '      rst_n: {clock: clk}\n'
+     '      rstB_n: {clock: clkB}\n'
+     '    ports:\n'
+     '      in: {interface: iu, direction: dst}\n'
+     '      out: {interface: iu, direction: src}\n'
+     '      side: {interface: iuf, direction: src, clock: clkB}\n'
+     '  pU:\n'
+     '    desc: "Peer of dutU"\n'
+     '    params: [P_W, P_N]\n'
+     '    hasRtl: false\n'
+     '    hasMdl: true\n'
+     '    clocks:\n'
+     '      clk: {default: true, period: 10}\n'
+     '      clkB: {period: 20}\n'
+     '    resets:\n'
+     '      rst_n: {clock: clk}\n'
+     '      rstB_n: {clock: clkB}\n'
+     '    ports:\n'
+     '      out: {interface: iu, direction: src}\n'
+     '      in: {interface: iu, direction: dst}\n'
+     '      side: {interface: iuf, direction: dst, clock: clkB}\n'
+     '  dutV:\n'
+     '    desc: "UVM DUT with no model"\n'
+     '    hasVl: true\n'
+     '    hasRtl: true\n'
+     '    hasMdl: false\n'
+     '    hasUvm: true\n'
+     '    ports:\n'
+     '      vin: {interface: iuf, direction: dst}\n'
+     '      vout: {interface: iuf, direction: src}\n'
+     '  pV:\n'
+     '    desc: "Peer of dutV"\n'
+     '    hasRtl: false\n'
+     '    hasMdl: true\n'
+     '    ports:\n'
+     '      vout: {interface: iuf, direction: src}\n'
+     '      vin: {interface: iuf, direction: dst}\n'),
+    ('instances:\n',
+     'instances:\n'
+     '  uDutU0: {container: vbwTop, instanceType: dutU, instGroup: top, variant: v0}\n'
+     '  uPU0:   {container: vbwTop, instanceType: pU, instGroup: top, variant: v0}\n'
+     '  uDutU1: {container: vbwTop, instanceType: dutU, instGroup: top, variant: v1}\n'
+     '  uPU1:   {container: vbwTop, instanceType: pU, instGroup: top, variant: v1}\n'
+     '  uDutV:  {container: vbwTop, instanceType: dutV, instGroup: top}\n'
+     '  uPV:    {container: vbwTop, instanceType: pV, instGroup: top}\n'),
+    ('connections:\n',
+     'connections:\n'
+     '  - {src: uPU0, srcport: out, dst: uDutU0, dstport: in, interface: iu, name: iuIn0}\n'
+     '  - {src: uDutU0, srcport: out, dst: uPU0, dstport: in, interface: iu, name: iuOut0}\n'
+     '  - {src: uDutU0, srcport: side, dst: uPU0, dstport: side, interface: iuf, name: iuSide0}\n'
+     '  - {src: uPU1, srcport: out, dst: uDutU1, dstport: in, interface: iu, name: iuIn1}\n'
+     '  - {src: uDutU1, srcport: out, dst: uPU1, dstport: in, interface: iu, name: iuOut1}\n'
+     '  - {src: uDutU1, srcport: side, dst: uPU1, dstport: side, interface: iuf, name: iuSide1}\n'
+     '  - {src: uPV, srcport: vout, dst: uDutV, dstport: vin, interface: iuf, name: ivIn}\n'
+     '  - {src: uDutV, srcport: vout, dst: uPV, dstport: vin, interface: iuf, name: ivOut}\n'),
+    ('parameters:\n',
+     'parameters:\n'
+     '  dutU:\n'
+     '    v0: {P_W: 5, P_N: 16}\n'
+     '    v1: {P_W: 12, P_N: 40}\n'
+     '  pU:\n'
+     '    v0: {P_W: 5, P_N: 16}\n'
+     '    v1: {P_W: 12, P_N: 40}\n'),
+]
+
+INVERSE = {'input': 'output', 'output': 'input'}
+# Each UVM top by its name stem, with its block and parameter values.
+UVM_TOPS = {'dutU_v0': ('dutU', V0), 'dutU_v1': ('dutU', V1), 'dutV': ('dutV', {})}
+# Each block's rdy_vld ports in boundary order, with the side the block takes
+# and the payload.
+UVM_PORTS = {'dutU': [('in', 'dst', 'pst_a'), ('out', 'src', 'pst_a'), ('side', 'src', 'st_a')],
+             'dutV': [('vin', 'dst', 'st_a'), ('vout', 'src', 'st_a')]}
+HAS_MDL = {'dutU': True, 'dutV': False}
+# The package of vbwTop.yaml, which declares st_a.
+TOP_PKG = 'vbwTop_package'
+# What a clock with no reset port releases its a2c_clk_if with.
+NO_RESET = "1'b1"
+RDY_VLD = (('vld', 'src'), ('data', 'src'), ('rdy', 'dst'))
+COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
+                   ('rtl_dut', 'output', 1, False)]
+
+
+def edit_fixture(work):
+    path = os.path.join(work, TOP_YAML)
+    with open(path) as f:
+        text = f.read()
+    for anchor, replacement in EDITS:
+        if text.count(anchor) != 1:
+            raise RuntimeError(f"fixture no longer carries the single anchor {anchor!r}")
+        text = text.replace(anchor, replacement)
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def port_pins(design, block, values):
+    """[(pin, direction, width, vector, port, signal, payload)] of a block's
+    HDL top ports: per port vld, data and rdy, where the dst side drives only
+    rdy."""
+    pins = []
+    for port, side, payload in UVM_PORTS[block]:
+        for signal, driver in RDY_VLD:
+            direction = 'output' if driver == side else 'input'
+            width = design.width(payload, values) if signal == 'data' else 1
+            pins.append((f'{port}_{signal}', direction, width, signal == 'data', port, signal, payload))
+    return pins
+
+
+def hdl_pins(design, block, values):
+    return ([pin[:4] for pin in port_pins(design, block, values)]
+            + design.clock_reset_pins(block))
+
+
+def uvm_pins(design, block, values):
+    return ([(pin, INVERSE[direction], width, vector)
+             for pin, direction, width, vector, *_ in port_pins(design, block, values)]
+            + design.clock_reset_pins(block) + COMPLETION_PINS)
+
+
+def clock_domains(design, block):
+    """[(clock, reset)] of a block, each reset the one declared on its clock.
+    An omitted clocks: is the implicit clk with rst_n."""
+    row = design.blocks[block]
+    if 'clocks' not in row:
+        return [('clk', 'rst_n')]
+    resets = row.get('resets') or {}
+    return [(clock, next((reset for reset, attrs in resets.items() if attrs['clock'] == clock), None))
+            for clock in row['clocks']]
+
+
+def check_top(vl, top, expected):
+    problems = []
+    portmap = os.path.join(vl, f'{top}.portmap')
+    if not os.path.exists(portmap):
+        return [f"{top}: no boundary files under {vl}"]
+    problems += compare(top, 'portmap',
+                        [(pin, str(width), *PORTMAP_TYPES[vector])
+                         for pin, _, width, vector in expected],
+                        read_portmap(portmap))
+    problems += compare(top, 'Xcelium shell',
+                        [(pin, direction, pin_type(vector, width))
+                         for pin, direction, width, vector in expected],
+                        read_xcelium(os.path.join(vl, f'{top}_xcelium.h')))
+    return problems
+
+
+def check_boundary_files(work, design):
+    vl = os.path.join(work, 'top', '.gen', 'vl')
+    problems = []
+    for stem, (block, values) in UVM_TOPS.items():
+        problems += check_top(vl, f'{stem}_hdl_sv_wrapper', hdl_pins(design, block, values))
+        problems += check_top(vl, f'{stem}_uvm_tb', uvm_pins(design, block, values))
+    return problems
+
+
+def check_variant_packages(work):
+    problems = []
+    for stem, (block, values) in UVM_TOPS.items():
+        pkg = f'{stem}_uvm_pkg'
+        with open(os.path.join(work, 'top', 'uvm', f'{pkg}.sv')) as f:
+            lines = [line.strip() for line in f]
+        expected = [f'package {pkg};', f'endpackage : {pkg}', 'import rdy_vld_uvm_pkg::*;']
+        for port, _, payload in UVM_PORTS[block]:
+            expected += [f'typedef rdy_vld_agent #(.data_t({payload})) {port}_agent_t;',
+                         f'typedef {port}_agent_t::item_t {port}_item_t;',
+                         f'typedef {port}_agent_t::config_t {port}_config_t;',
+                         f'typedef virtual rdy_vld_if #(.data_t({payload})) {port}_vif_t;']
+        problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
+        localparams = [line for line in lines if line.startswith('localparam ')]
+        expectedParams = [f'localparam {param} = {value};' for param, value in values.items()]
+        if localparams != expectedParams:
+            problems.append(f"{pkg}.sv binds {localparams}, expected {expectedParams}")
+        if values:
+            if not any(re.match(r'typedef logic\s*\[P_W-1:0\] pty_w;', line) for line in lines):
+                problems.append(f"{pkg}.sv does not declare pty_w from P_W")
+            if 'pty_w x; //Parameter-width field' not in lines:
+                problems.append(f"{pkg}.sv does not type pst_a's field x by pty_w")
+            if not any(line.endswith('} pst_a;') for line in lines):
+                problems.append(f"{pkg}.sv does not declare pst_a")
+    return problems
+
+
+def match(tb, what, actual, expected):
+    if actual == expected:
+        return []
+    return [f"{tb}.sv {what} are {actual}, expected {expected}"]
+
+
+def check_testbenches(work, design):
+    problems = []
+    for stem, (block, values) in UVM_TOPS.items():
+        tb = f'{stem}_uvm_tb'
+        pkg = f'{stem}_uvm_pkg'
+        hdl = f'{stem}_hdl_sv_wrapper'
+        with open(os.path.join(work, 'top', 'uvm', f'{tb}.sv')) as f:
+            lines = [line.strip().rstrip(',') for line in f]
+        payloadPkg = {payload: pkg if design.parameterizable(payload) else TOP_PKG
+                      for *_, payload in UVM_PORTS[block]}
+        portPins = port_pins(design, block, values)
+
+        decls = []
+        clockResets = {pin for pin, *_ in design.clock_reset_pins(block)}
+        for pin, direction, width, vector in uvm_pins(design, block, values):
+            if pin in clockResets:
+                decls.append(f'{direction} {pin}')
+                continue
+            spelled = f' [{width - 1}:0]' if vector else ''
+            decls.append(f'{direction.ljust(6)} bit{spelled} {pin}')
+        for i, (pin, direction, _, _, _, signal, payload) in enumerate(portPins):
+            if signal == 'data':
+                decls[i] = f'{INVERSE[direction].ljust(6)} bit [$bits({payloadPkg[payload]}::{payload})-1:0] {pin}'
+        problems += match(tb, 'port declarations',
+                          [line for line in lines if re.match(r'(input|output)\b', line)], decls)
+
+        binds = [f'.{pin}({port}.{signal})' for pin, _, _, _, port, signal, _ in portPins]
+        binds += [f'.{pin}({pin})' for pin, *_ in design.clock_reset_pins(block)]
+        problems += match(tb, 'DUT binds', [line for line in lines if line.startswith('.')], binds)
+
+        rtlAssigns = []
+        mdlAssigns = []
+        for pin, direction, _, vector, port, signal, _ in portPins:
+            if direction == 'input':
+                tie = "'0" if vector else "1'b0"
+                rtlAssigns.append(f'assign {pin} = {tie};')
+                mdlAssigns.append(f'assign {pin} = {port}.{signal};')
+            else:
+                mdlAssigns.append(f'assign {port}.{signal} = {pin};')
+        rtlAssigns.append("assign rtl_dut = 1'b1;")
+        mdlAssigns.append("assign rtl_dut = 1'b0;")
+        assigns = rtlAssigns + (mdlAssigns if HAS_MDL[block] else [])
+        problems += match(tb, 'assigns', Counter(line for line in lines if line.startswith('assign ')),
+                          Counter(assigns))
+        ifdefs = lines.count('`ifdef A2C_UVM_RTL_DUT')
+        if ifdefs != int(HAS_MDL[block]):
+            problems.append(f"{tb}.sv has {ifdefs} `ifdef A2C_UVM_RTL_DUT, expected {int(HAS_MDL[block])}")
+
+        intfs = [f'rdy_vld_if #(.data_t({payloadPkg[payload]}::{payload})) {port}();'
+                 for port, _, payload in UVM_PORTS[block]]
+        domains = clock_domains(design, block)
+        intfs += [f"a2c_clk_if {clock}_if(.clk({clock}), .rst_n({reset or NO_RESET}));"
+                  for clock, reset in domains]
+        problems += match(tb, 'interface instances',
+                          [line for line in lines if line.startswith(('rdy_vld_if', 'a2c_clk_if'))], intfs)
+
+        sets = [f'uvm_config_db#({pkg}::{port}_vif_t)::set(null, "uvm_test_top.*", "{port}", {port});'
+                for port, *_ in UVM_PORTS[block]]
+        sets += [f'uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top.*", "{clock}", {clock}_if);'
+                 for clock, _ in domains]
+        problems += match(tb, 'config_db sets',
+                          [line for line in lines if line.startswith('uvm_config_db#')], sets)
+
+        expected = [f'module {tb}', f'endmodule : {tb}', f'{hdl} dut (', 'run_test();',
+                    'uvm_root::get().finish_on_completion = 0;']
+        problems += [f"{tb}.sv lacks the line {line!r}" for line in expected if line not in lines]
+    return problems
+
+
+def check_manifest(work):
+    root = os.path.join(work, 'top')
+    man = parse_manifest(os.path.join(root, '.gen', 'build.mk'))
+    uvmDir = os.path.join(root, 'uvm')
+    tops = [f'{stem}_uvm_tb' for stem in UVM_TOPS]
+    expected = {'A2C_UVM_TOPS': tops, 'A2C_UVM_SRC_DIRS': [uvmDir]}
+    for stem, top in zip(UVM_TOPS, tops):
+        expected[f'A2C_UVM_PKG_SV_{top}'] = [os.path.join(uvmDir, f'{stem}_uvm_pkg.sv')]
+        expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]
+        expected[f'A2C_UVM_PORTMAP_{top}'] = [os.path.join(root, '.gen', 'vl', f'{top}.portmap')]
+    problems = [f"{key} is {man.get(key)}, expected {value}"
+                for key, value in expected.items() if man.get(key) != value]
+    problems += [f"newmodule did not scaffold {paths[0]}" for key, paths in expected.items()
+                 if key.startswith(('A2C_UVM_PKG_SV_', 'A2C_UVM_TB_SV_'))
+                 and not os.path.isfile(paths[0])]
+    return problems
+
+
+def run_all_tests():
+    print("\n" + "=" * 70)
+    print("UVM TESTBENCH TOP BOUNDARY PINS")
+    print("=" * 70)
+    work = tempfile.mkdtemp(prefix=WORK_PREFIX, dir=test_dir)
+    ok = True
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+        edit_fixture(work)
+        failure = generate(work)
+        if failure:
+            print(f"  FAIL: {failure}")
+            ok = False
+        else:
+            design = Design(work)
+            for name, problems in (('boundary files', check_boundary_files(work, design)),
+                                   ('build manifest', check_manifest(work)),
+                                   ('variant packages', check_variant_packages(work)),
+                                   ('testbench modules', check_testbenches(work, design))):
+                for problem in problems:
+                    print(f"  FAIL: {name}: {problem}")
+                if not problems:
+                    print(f"  PASS: {name}")
+                ok = ok and not problems
+    finally:
+        remove_tree(work)
+    if ok:
+        print("\nPASS: UVM testbench tops mirror their HDL tops at every variant")
+        return 0
+    print("\nFAIL")
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(run_all_tests())

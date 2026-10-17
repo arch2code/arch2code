@@ -1,0 +1,95 @@
+# ubDut has the shape a UVM testbench accepts: a declared rdy_vld boundary, an
+# APB register bus, and only input clocks and resets.
+
+types:
+    ubDataT: { width: 8, desc: "Stream payload" }
+    ubWordT: { width: 32, desc: "APB address and data word" }
+
+structures:
+    ubSt:
+        data: { varType: ubDataT, desc: "Stream payload" }
+    ubAddrSt:
+        address: { varType: ubWordT, generator: address }
+    ubWordSt:
+        data: { varType: ubWordT, generator: data }
+
+interfaces:
+    ubStream:
+        desc: "Stream through the DUT"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: ubSt, structureType: data_t }
+    ubRegs:
+        desc: "Register bus"
+        interfaceType: apb
+        structures:
+            - { structure: ubAddrSt, structureType: addr_t }
+            - { structure: ubWordSt, structureType: data_t }
+
+blocks:
+    ubTb:
+        desc: "Testbench container"
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubSrc:
+        desc: "Stream source"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubSink:
+        desc: "Stream sink"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubCpu:
+        desc: "Register bus master"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ubRouter:
+        desc: "APB register decoder"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x00010000
+            maxAddressSpaces: 16
+            varType: addr_id_ub
+            enumPrefix: ADDR_ID_UB_
+            upstreamPort: ubRegs
+            registerDecoderPort: ubRegs
+    ubDut:
+        desc: "DUT under the UVM testbench"
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+        hasVl: true
+        hasUvm: true
+        ports:
+            in:  { interface: ubStream, direction: dst }
+            out: { interface: ubStream, direction: src }
+        registerPorts:
+            ubRegs: { interface: ubRegs }
+
+instances:
+    ubTb:    { container: ubTb, instanceType: ubTb,     instGroup: top }
+    uSrc:    { container: ubTb, instanceType: ubSrc,    instGroup: top }
+    uDut:    { container: ubTb, instanceType: ubDut,    instGroup: top, addressGroup: top }
+    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }
+    uCpu:    { container: ubTb, instanceType: ubCpu,    instGroup: top }
+    uRouter: { container: ubTb, instanceType: ubRouter, instGroup: top }
+
+connections:
+    - { interface: ubStream, src: uSrc, srcport: out, dst: uDut, dstport: in, name: inLink }
+    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }
+    - { interface: ubRegs, src: uCpu, dst: uRouter }
+
+registers:
+    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }

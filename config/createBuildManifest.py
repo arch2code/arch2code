@@ -74,6 +74,15 @@ def _writeBuildManifestMk(rootDir, manifest):
     # The compiled registration TUs that include the per-top DUT headers, so
     # the VCS and Xcelium flows can order them after shell generation.
     lines.append(f"A2C_VL_REGISTRAR_SRC := {asList(manifest['vlRegistrarFiles'])}")
+    # UVM testbench tops of the harness owner's hasUvm blocks. Only the UVM flow
+    # reads these; each top's port map sits beside the RTL tops' under .gen/vl.
+    lines.append(f"A2C_UVM_SRC_DIRS := {asList(manifest['uvmDirs'])}")
+    lines.append(f"A2C_UVM_TOPS := {asList([t['qualifiedTop'] for t in manifest['uvmTops']])}")
+    for top in manifest['uvmTops']:
+        name = top['qualifiedTop']
+        lines.append(f"A2C_UVM_PKG_SV_{name} := {top['pkgSv']}")
+        lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
+        lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
     lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
         f.write('\n'.join(lines))
@@ -161,8 +170,9 @@ def create(prj):
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
-        scGenSrcFiles.update(filePath + '.' + extVal for extVal in fileDef['ext'].values()
-                             if extVal == 'cpp')
+        if role != 'uvm':
+            scGenSrcFiles.update(filePath + '.' + extVal for extVal in fileDef['ext'].values()
+                                 if extVal == 'cpp')
         # Managed SV modules: role 'sv' selects rtlModule (vl wrappers and
         # packages are listed elsewhere); svCompile drops blocks outside this
         # build's hierarchy.
@@ -173,10 +183,16 @@ def create(prj):
 
     # block mode: one artifact per block per matching block-mode entry, one
     # per variant stem when the entry varies per variant.
+    def isUvmRow(row):
+        return row['layout']['segments'][row['fileDef']['basePath']]['buildGroup'] == 'uvm'
+
     for row in rows:
         if row['mode'] != 'block':
             continue
         if row['fileDef'].get('dutVariant', False) and row['owner'] != harnessOwner:
+            continue
+        # A reused child's UVM testbench belongs to the child's own build.
+        if isUvmRow(row) and row['owner'] != harnessOwner:
             continue
         record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
                svCompile=row['blockKey'] in reachableBlockKeys)
@@ -354,6 +370,27 @@ def create(prj):
         if row['mode'] == 'block' and dutTopVariantByBlock.get(row['blockKey']) == row['variant']:
             dutTops[blockByKey[row['blockKey']]['block']] = topName
 
+    # One record per UVM testbench top, pairing the tb module's file with its
+    # variant package. Named as UVMNAMES names them.
+    uvmNames = prj.config.getConfig('UVMNAMES')
+    uvmFiles = dict()
+    for row in rows:
+        if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner \
+                and row['fileType'] in ('uvmTb', 'uvmPkg'):
+            uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
+    uvmTops = list()
+    for blockKey, tops in uvmNames.items():
+        if prj.contextOwningProject[blockByKey[blockKey]['_context']] != harnessOwner:
+            continue
+        for variant, top in tops.items():
+            uvmTops.append({
+                'qualifiedTop': top['tbModule'],
+                'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
+                'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
+                'portmap':      top['portmap'],
+                'hdlTop':       top['hdlTop'],
+            })
+
     # The SV a verilate run reads, as distinct from the modules named on its
     # command line. Project-wide: every top is verilated against the same rtl.f
     # and module set, and A2C_VL_SV_<top> names the one file that differs.
@@ -394,6 +431,8 @@ def create(prj):
         'cppExcludeFiles': sorted(cppExcludeFiles),
         'dutTops':       dutTops,
         'vlRegistrarFiles': sorted(vlRegistrarFiles),
+        'uvmTops':       sorted(uvmTops, key=lambda t: t['qualifiedTop']),
+        'uvmDirs':       sorted(dirs['uvm']),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)
 

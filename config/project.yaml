@@ -40,6 +40,9 @@ templates:
   tbExternal: $a2c/templates/systemc/testbench.py
   tbConfig: $a2c/templates/systemc/testbench.py
   testbench: $a2c/templates/systemc/testbench.py
+  module_uvm_sc_wrapper: $a2c/templates/systemc/module_uvm_sc_wrapper.py
+  uvmTbConfig: $a2c/templates/systemc/uvmTbConfig.py
+  uvmRegistrar: $a2c/templates/systemc/uvmRegistrar.py
   # SystemVerilog templates
   moduleInterfacesInstances: $a2c/templates/systemVerilog/moduleInterfacesInstances.py
   apbDecodeModule: $a2c/templates/systemVerilog/apbDecodeModule.py
@@ -49,6 +52,8 @@ templates:
   module_hdl_sv_wrapper: $a2c/templates/systemVerilog/module_hdl_wrapper.py
   encoder: $a2c/templates/systemVerilog/encoder.py
   rtlDotF: $a2c/templates/systemVerilog/rtldotf.py
+  uvmPkg: $a2c/templates/systemVerilog/uvmPkg.py
+  uvmTb: $a2c/templates/systemVerilog/uvmTb.py
   # Documentation templates
   blockHeader: $a2c/templates/doc/blockHeader.j2
   block: $a2c/templates/doc/block.j2
@@ -71,6 +76,7 @@ dirs: # this is list of locations that can be referenced as base path in fileMap
   vl_wrap: $root/verif/vl_wrap # rtl wrapper files
   tb: $root/tb                 # testbench definition files
   fwInc: $root/fw/include      # firmware include files
+  uvm: $root/uvm               # UVM testbench files
 
 # Generated file placement. The directory structure mirrors the architecture yaml hierarchy.
 fileGeneration:
@@ -91,6 +97,7 @@ fileGeneration:
     tb: tb
     vl_wrap: verif      # flattened (functional: $root/verif/vl_wrap)
     fwInc: fw           # flattened (functional: $root/fw/include)
+    uvm: uvm
     yaml: yaml
     prj: $root/prj
     rundir: $root/rundir
@@ -105,6 +112,9 @@ fileGeneration:
     fwInc: sc
     rtl: sv
     vl_wrap: vl
+    # Only the UVM flow builds this group, so no UVM file reaches the model,
+    # Verilator or RTL compile lists.
+    uvm: uvm
   fileMap:
     # mode: the iteration domain - block (per design block), context (per yaml
     #   file, typically includes/packages), registrar (per assembler x
@@ -166,6 +176,13 @@ fileGeneration:
     testBench   : { name : "Testbench",       ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench top module interface unit"}
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench external module interface unit"}
+    # The UVM testbench of a hasUvm block: per standalone variant a package and
+    # a tb module, and per block the SystemC wrapper and its registrar.
+    uvmPkg      : { name : "_uvm_pkg",        ext: {sv: "sv"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sv, variant: true, desc: "UVM testbench variant package"}
+    uvmTb       : { name : "_uvm_tb",         ext: {sv: "sv"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sv, variant: true, desc: "UVM testbench top module"}
+    uvmScWrap   : { name : "_uvm_sc_wrapper", ext: {hdr: "h"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, desc: "SystemC wrapper of the UVM testbench top"}
+    uvmTbConfig : { name : "UvmConfig",       ext: {src: "cpp"},           cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, dutVariant: true, desc: "UVM testbench config file"}
+    uvmRegistrar: { name : "UvmRegistrar",    ext: {src: "cpp"},           cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, desc: "UVM testbench top registrar TU"}
     include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   langDomain: sc, desc: "yaml based include module interface"}
     #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   langDomain: fw, desc: "yaml based fw include file"}
     # Address defines for the whole product, one file per project, so a project

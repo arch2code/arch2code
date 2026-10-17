@@ -4,6 +4,7 @@ interface_defs:
     timing: elastic
     backpressure: { default: true, overridable: false }
     addressBus : true
+    uvmAgent: true
     parameters :
       addr_t : { datatype : struct }
       data_t : { datatype : struct }

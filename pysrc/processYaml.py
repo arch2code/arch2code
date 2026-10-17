@@ -580,6 +580,7 @@ class projectOpen:
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.blockSvModuleName = self.config.getConfig('BLOCKSVMODULENAME')
         self.svWrapperNames = self.config.getConfig('SVWRAPPERNAMES')
+        self.uvmNames = self.config.getConfig('UVMNAMES')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
@@ -1532,6 +1533,7 @@ class projectOpen:
         self.getBDAddressBlockView(ret)
         # Verilated SV wrapper design-unit names, single-sourced from the fileMap.
         self.getBDSvWrapperNames(ret)
+        self.getBDUvm(ret)
         ret.pop('temp') # remove temp data
 
         return ret
@@ -1744,6 +1746,48 @@ class projectOpen:
             'xceliumDutHeader': f'{bodyModule}_xcelium.h',
             'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
         }
+
+    def getBDUvm(self, ret):
+        # The UVM testbench of a hasUvm block, None for any other block: its
+        # tops keyed by variant, as projectCreate.deriveUvmNames names them,
+        # and one agent per boundary port in port order. Each agent class is
+        # parameterized by its interface's payload parameters, by name.
+        import pysrc.intf_gen_utils as intf_gen_utils
+        if ret['qualBlock'] not in self.uvmNames:
+            ret['uvm'] = None
+            return
+        ports = list()
+        for portGroup in ret['ports'].values():
+            for portData in portGroup.values():
+                intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
+                intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
+                paramBindings = self.getIntfParamBindings(ret['interface_defs'][intfType], intfData['structures'])
+                ports.append({
+                    'name': portData['name'],
+                    'interfaceType': intfType,
+                    'role': portData['direction'],
+                    'paramBindings': paramBindings,
+                    # Per variant, the bound payloads with their declaring
+                    # packages, for package-scoped references.
+                    'paramTypes': {variant: [{'param': b['structureType'], 'type': self.uvmTypeRef(b, top['pkgName'])}
+                                             for b in paramBindings if not b['isNull']]
+                                   for variant, top in self.uvmNames[ret['qualBlock']].items()},
+                })
+        # One a2c_clk_if per clock, released by the clock's selected reset
+        # when that reset is a port of the block, else never held in reset.
+        resetPorts = {row['reset'] for row in ret['resets']}
+        clocks = [{'clock': row['clock'],
+                   'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
+                  for row in ret['clocks']]
+        ret['uvm'] = {'tops': self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks}
+
+    def uvmTypeRef(self, binding, variantPkg):
+        # A payload type as the UVM testbench names it: the variant package
+        # declares the block's parameterizable types, and the type's own file
+        # package every other one.
+        ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+        pkg = variantPkg if ref['isParameterizable'] else self.contextSvPackageName[ref['context']]
+        return {'name': binding['structure'], 'pkg': pkg}
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
@@ -3768,7 +3812,8 @@ class projectOpen:
         # Pin list of the block's HDL verification wrapper with every width
         # bound at the given top's parameter values: one pin per interface
         # signal of each port, in port then signal order, then the block's
-        # clocks and resets in declaration order.
+        # clocks and resets in declaration order. A port pin names its port and
+        # signal, and payload is the binding that types it, None otherwise.
         import pysrc.intf_gen_utils as intf_gen_utils
         structWidths = self.vlTops[topModule]['structWidths']
         typeWidths = self.vlTops[topModule]['typeWidths']
@@ -3799,10 +3844,40 @@ class projectOpen:
                                 {binding['structureType']: intfEvalDSL(payloadWidth(binding))})
                     pins.append({'pin': f"{portData['name']}_{row['signal']}",
                                  'direction': row['direction'], 'width': width,
-                                 'vector': row['vector']})
+                                 'vector': row['vector'], 'port': portData['name'],
+                                 'signal': row['signal'],
+                                 'payload': row['binding'] if row['kind'] == 'payload' else None})
         for name, direction in intf_gen_utils.clock_reset_ports(ret):
-            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False})
+            pins.append({'pin': name, 'direction': direction, 'width': 1, 'vector': False,
+                         'port': None, 'signal': None, 'payload': None})
         return pins
+
+    def getUvmTopBoundaryPins(self, ret, hdlTop):
+        # Pin list of the UVM testbench top around the given HDL top. The
+        # testbench drives what the DUT samples and samples what it drives,
+        # while the SystemC side drives the clocks and resets into both. The
+        # completion pins the SystemC wrapper watches come last. kind is port,
+        # clockReset or completion. A port pin carries its port's interface
+        # type and DUT-side role, and a pin typed by a payload carries the type
+        # as uvmTypeRef names it.
+        inverse = {'input': 'output', 'output': 'input'}
+        variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']].values()}[hdlTop]
+        uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
+        pins = list()
+        for pin in self.getVlTopBoundaryPins(ret, hdlTop):
+            pinType = self.uvmTypeRef(pin['payload'], variantPkg) if pin['payload'] else None
+            if pin['port'] is None:
+                pins.append(dict(pin, kind='clockReset', type=pinType))
+                continue
+            port = uvmPorts[pin['port']]
+            pins.append(dict(pin, kind='port', direction=inverse[pin['direction']], type=pinType,
+                             interfaceType=port['interfaceType'], role=port['role']))
+        completion = {'kind': 'completion', 'port': None, 'signal': None, 'payload': None, 'type': None}
+        return pins + [
+            {'pin': 'uvm_done', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'uvm_errors', 'direction': 'output', 'width': 32, 'vector': True, **completion},
+            {'pin': 'rtl_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+        ]
 
     def extractContext(self, structs, consts):
         ret = dict()
@@ -4627,8 +4702,11 @@ class projectCreate:
         self.validateVariantSourceLabelCollision()
         # reject a parameterizable socket shell that no registrar would register
         self.validateParameterizedSocketHasModel()
+        # reject a hasUvm block the UVM testbench cannot drive
+        self.validateUvmBlocks(tree)
         self.calcForeignConfigHeaders()
         self.deriveSvWrapperNames()
+        self.deriveUvmNames()
         self.calcRegistrarPairs()
         # reject address-enum identity collisions before the enums are emitted
         self.validateAddressGroupEnumIdentity()
@@ -5258,6 +5336,96 @@ class projectCreate:
                 f"registered. Set hasMdl: true on '{blockRow['block']}' or clear hasSkt.")
             exit(warningAndErrorReport())
 
+    def validateUvmBlocks(self, tree):
+        """Rejects a hasUvm block whose boundary the UVM testbench cannot drive.
+
+        The testbench instantiates the block's HDL verification wrapper and
+        gives each of its ports an agent of the port's interface type. The
+        wrapper has a port for each ports: row, and also for rows ports: does
+        not list: each connectionMaps boundary row, the registerPorts: bus, and
+        each memoryConnections or registerConnections row naming an instance
+        of the block. The testbench drives every clock and reset, and has one
+        top per standalone variant. tree is the project's clockTree.
+        """
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        failed = False
+        for blockRow in self.flatData['blocks'].values():
+            if not blockRow['hasUvm']:
+                continue
+            block = blockRow['block']
+            blockKey = blockRow['blockKey']
+            where = f"Block '{block}' (file {blockRow['_context']}) declares hasUvm: true"
+            if not blockRow['hasVl']:
+                printError(
+                    f"{where} but has hasVl: false. The UVM testbench drives the "
+                    f"block's HDL verification wrapper, which only a hasVl block "
+                    f"has. Set hasVl: true on '{block}' or clear hasUvm.")
+                failed = True
+                continue
+            if blockKey in blocksWithParams and \
+                    not variantSelection.standaloneVariantDescriptors(self.config, blockKey):
+                printError(
+                    f"{where} but has no standalone variant, so it would get no UVM "
+                    f"testbench top. Each of its variants takes its parameter values "
+                    f"from a container or from another project. Declare a variant of "
+                    f"'{block}' under parameters: in its own project, or clear hasUvm.")
+                failed = True
+            if 'ports' not in blockRow:
+                printError(
+                    f"{where} but declares no ports:. The UVM testbench gives every "
+                    f"boundary port an agent, and a hasUvm block declares its boundary "
+                    f"so that make db can check each one. Declare every interface port "
+                    f"of '{block}' in ports:, and its register bus in registerPorts:.")
+                failed = True
+                continue
+            domain = tree.blocks[blockKey]
+            outputs = ([f"clock '{name}'" for name, decl in domain.clocks.items() if decl.direction == 'output']
+                       + [f"reset '{name}'" for name, decl in domain.resets.items() if decl.direction == 'output'])
+            if outputs:
+                printError(
+                    f"{where} but has output {', '.join(outputs)}. The UVM testbench "
+                    f"drives every clock and reset of the block and samples none. "
+                    f"Make them inputs of '{block}', or clear hasUvm.")
+                failed = True
+            blockInstances = {key: row['instance'] for key, row in self.flatData['instances'].items()
+                              if row['instanceTypeKey'] == blockKey}
+            for row in self.flatData['memoryConnections'].values():
+                if row['instanceKey'] in blockInstances:
+                    printError(
+                        f"{where} but has port '{row['memory']}', which the memoryConnections "
+                        f"row giving instance '{blockInstances[row['instanceKey']]}' access to "
+                        f"memory '{row['memory']}' creates. A memory port has no UVM agent. "
+                        f"Remove that row, or clear hasUvm.")
+                    failed = True
+            for row in self.flatData['registerConnections'].values():
+                if row['instanceKey'] in blockInstances:
+                    printError(
+                        f"{where} but has port '{row['register']}', which the registerConnections "
+                        f"row giving instance '{blockInstances[row['instanceKey']]}' access to "
+                        f"register '{row['register']}' creates. A register connection port has "
+                        f"no UVM agent. Remove that row, or clear hasUvm.")
+                    failed = True
+            # The interface of each remaining boundary port, keyed by port name.
+            boundary = {name: row['interfaceKey'] for name, row in blockRow['ports'].items()}
+            for row in self.flatData['connectionMaps'].values():
+                if row['blockKey'] == blockKey:
+                    boundary.setdefault(row['portName'], row['interfaceKey'])
+            for name, row in blockRow.get('registerPorts', {}).items():
+                boundary.setdefault(name, row['interfaceKey'])
+            for portName, interfaceKey in boundary.items():
+                interfaceRow = self.flatData['interfaces'][interfaceKey]
+                typeRow = self.flatData['interface_defs'][interfaceRow['interfaceTypeKey']]
+                if not typeRow['uvmAgent']:
+                    printError(
+                        f"{where} but its port '{portName}' has interface "
+                        f"'{interfaceRow['interface']}' of type '{typeRow['interface_type']}', "
+                        f"which has no UVM agent: its interface definition does not "
+                        f"declare uvmAgent: true. Use an interface type with an agent "
+                        f"for '{portName}', or clear hasUvm.")
+                    failed = True
+        if failed:
+            exit(warningAndErrorReport())
+
     def deriveModuleIdentities(self):
         # Two identities per context and per block. The C++ one (module and
         # namespace names) is project-qualified so same-named blocks and contexts
@@ -5332,6 +5500,39 @@ class projectCreate:
                 for v in entry['vlVariants']}
         self.config.setConfig('SVWRAPPERNAMES', self.svWrapperNames, bin=True)
 
+    def deriveUvmNames(self):
+        # The UVM testbench tops of every hasUvm block, named like the files
+        # that hold them: one per standalone variant, or one variantless top
+        # for a block without params (validateUvmBlocks rejects a block with
+        # params and no standalone variant). Each top's port map is written
+        # under this build's .gen/vl.
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        genVlDir = os.path.join(self.config.getConfig('DIRS')['root'], '.gen', 'vl')
+        self.uvmNames = dict()
+        for row in self.flatData['blocks'].values():
+            layout = self.projectLayout[self.contextOwningProject[row['_context']]]
+            fileMap = layout['fileMap']
+            condRow = artifactPaths.blockCondRow(row, blocksWithParams)
+            if not artifactPaths.fileMapCondMatch(fileMap['uvmTb'], condRow):
+                continue
+            wrapperNames = self.svWrapperNames[row['blockKey']]
+            variants = sorted(variantSelection.standaloneVariantDescriptors(self.config, row['blockKey']))
+            if variants:
+                stems = [(v, f"{row['block']}_{v}", wrapperNames['variantTops'][v]) for v in variants]
+            else:
+                stems = [('', row['block'], wrapperNames['bodyModule'])]
+            tops = dict()
+            for variant, stem, hdlTop in stems:
+                tbModule = artifactPaths.fileStem(fileMap['uvmTb'], stem, layout)
+                tops[variant] = {
+                    'tbModule':     tbModule,
+                    'pkgName':      artifactPaths.fileStem(fileMap['uvmPkg'], stem, layout),
+                    'hdlTop':       hdlTop,
+                    'portmap':      os.path.join(genVlDir, tbModule + '.portmap'),
+                }
+            self.uvmNames[row['blockKey']] = tops
+        self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
+
     def validateSvDesignUnitNames(self):
         # Every SV module and package a build emits. Verilator keeps modules
         # and packages in one namespace, and each name is also its file's stem,
@@ -5372,6 +5573,11 @@ class projectCreate:
                     for context in self.includeValid
                     if self.contextFileEmitted(projectFileMap(self.contextOwningProject[context])['package'],
                                                context)}
+        uvmPackages = dict()
+        for blockKey, tops in self.uvmNames.items():
+            for v, top in tops.items():
+                modules[('uvmTb', blockKey, v)] = top['tbModule']
+                uvmPackages[('uvmPkg', blockKey, v)] = top['pkgName']
 
         def describeBlock(blockKey):
             row = blockByKey[blockKey]
@@ -5386,8 +5592,14 @@ class projectCreate:
             if key[0] == 'foreignTop':
                 return (f"the variant '{key[3]}' Verilated top project '{key[1]}' declares "
                         f"of {describeBlock(key[2])}")
+            if key[0] == 'uvmTb':
+                return f"the {describeUvmVariant(key)} UVM testbench of {describeBlock(key[1])}"
             return (f"the variant '{key[3]}' pair top of {describeBlock(key[1])} "
                     f"containing {describeBlock(key[2])}")
+        def describeUvmVariant(key):
+            return f"variant '{key[2]}'" if key[2] else "default"
+        def describeUvmPackage(key):
+            return f"the {describeUvmVariant(key)} UVM package of {describeBlock(key[1])}"
         def describeContextFile(key):
             owner = self.contextOwningProject[key[1]]
             prefix = self.projectLayout[owner]['filePrefix']['sv']
@@ -5397,12 +5609,16 @@ class projectCreate:
             if key[0] == 'package':
                 return (f"the package of context '{key[1]}' "
                         f"(project '{self.contextOwningProject[key[1]]}')")
+            if key[0] == 'uvmPkg':
+                return describeUvmPackage(key)
             return f"the module of {describeModule(key)}"
         rejectIllegalSvName(modules, "module", describeModule,
                             "rename the block or change its project's svFilePrefix")
         rejectIllegalSvName(packages, "package", describeContextFile,
                             "set includeName in that file or rename the file")
-        rejectSharedName(modules | packages, "SystemVerilog module or package name",
+        rejectIllegalSvName(uvmPackages, "package", describeUvmPackage,
+                            "rename the block or change its project's svFilePrefix")
+        rejectSharedName(modules | packages | uvmPackages, "SystemVerilog module or package name",
                          "design units", describe,
                          "rename one block, give one context a distinct includeName, or "
                          "give one project a distinct svFilePrefix")
