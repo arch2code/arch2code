@@ -4,15 +4,14 @@
 `unittest/fixtures/vl-timing` has one Verilated leaf, `vltSrc`. Its RTL waits
 2ns in an initial block, stamps `$time` and then pushes the stamp to a model
 checker, which asserts it is 2000ps. The delay ends before the first clock
-edge at 5ns, so no input clock edge arrives while it is pending. Verilator
-before 5.053 hides those edges from a --sc model.
+edge at 5ns, so no input clock edge arrives while it is pending. A pending
+delay can hide those edges from a --sc model (verilator/verilator#8394).
 
 Checks:
 - lint takes the switch: with VL_TIMING=1 it passes, without it Verilator
   rejects the delay (STMTDLY);
 - `make VL_DUT=1 VL_TIMING=1` links with no EXTRA_VL_LIB_OBJS, and the
   library carries the timing runtime built in the shared vl_dummy Mdir;
-- the build warns about the Verilator version exactly when it is below 5.053;
 - the model run and the Verilated run both read back the 2000ps stamp. The
   stamp leaves the RTL combinationally, so a delay in the generated wrapper
   assigns makes the checker read 0;
@@ -39,8 +38,6 @@ BUILD_JOBS = '8'
 VL_INST = 'tb.vltTop.uSrc'
 STAMP_LINE = 'received stamp {}'
 LIBRARY = 'libvlTimingvl_s_wrap.a'
-VERSION_WARNING = 'VL_TIMING=1 with Verilator'
-FIXED_VERSION = (5, 53)
 
 
 def make(project, *args, directory=None):
@@ -60,13 +57,6 @@ def require(result, what):
 def run(rundir, *args):
     return subprocess.run(['./run', 'vltTop', *args], capture_output=True,
                           text=True, timeout=300, cwd=os.path.join(rundir, 'build'))
-
-
-def verilator_version():
-    # `Verilator 5.052 2026-09-05 rev v5.052` -> (5, 52)
-    word = subprocess.run(['verilator', '--version'], capture_output=True,
-                          text=True, check=True).stdout.split()[1]
-    return tuple(int(part) for part in word.split('.'))
 
 
 def verilate_lines(output):
@@ -127,10 +117,6 @@ def main():
         verilates = verilate_lines(out)
         check(verilates and all(' --timing ' in v for v in verilates),
               f"every verilate runs with --timing ({len(verilates)} verilates)", out)
-        version = verilator_version()
-        warns = version < FIXED_VERSION
-        check((VERSION_WARNING in out) == warns,
-              f"Verilator {version} {'warns' if warns else 'does not warn'} under VL_TIMING=1", out)
         members = subprocess.run(['ar', 't', os.path.join(rundir, 'build', 'vl', LIBRARY)],
                                  capture_output=True, text=True).stdout.split()
         check('verilated_timing.o' in members,
@@ -155,7 +141,7 @@ def main():
                       "make all VL_DUT=1 VL_TIMING=0")
         verilates = verilate_lines(out)
         check(verilates and all(' --no-timing ' in v for v in verilates)
-              and 'verilated_timing.o' not in out and VERSION_WARNING not in out,
+              and 'verilated_timing.o' not in out,
               f"VL_TIMING=0 re-verilates every top with --no-timing ({len(verilates)} verilates)",
               out)
         verilated = run(rundir, '--vlInst', VL_INST)
