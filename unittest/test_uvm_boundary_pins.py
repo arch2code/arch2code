@@ -18,8 +18,13 @@ UVM top with its files.
 Each variant package must bind that variant's parameter values, declare pst_a
 from them, and type every port's agent and virtual interface by its payload.
 Its env must give each agent its port's clock handle and role, count every
-output with a transaction counter, and hold no register model, because neither block
-has registers.
+output with a transaction counter, and hold no register model, because
+neither block has registers.
+
+Each block has one test package for all its variants, which every one of its
+tops lists in the manifest. Its base test waits for every clock's reset
+release, and waits for each output's transactions on that output's own clock,
+all outputs at once.
 
 Each testbench module must declare exactly those pins, sizing each payload by
 `$bits` of its type in the package that declares it, type its interfaces by
@@ -271,7 +276,7 @@ def check_variant_packages(work, design):
                          f'{port}_agent = {port}_agent_t::type_id::create("{port}_agent", this);']
             if side == 'src':
                 expected += [f'a2c_uvm_pkg::a2c_txn_counter #({port}_item_t) {port}_counter;',
-                             f'{port}_agent.mon.ap.connect({port}_counter.imp);']
+                             f'{port}_agent.mon.ap.connect({port}_counter.analysis_export);']
         problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
         counters = [line for line in lines if re.match(r'a2c_uvm_pkg::a2c_txn_counter #', line)]
         outputs = [port for port, side, _ in UVM_PORTS[block] if side == 'src']
@@ -291,6 +296,26 @@ def check_variant_packages(work, design):
                 problems.append(f"{pkg}.sv does not type pst_a's field x by pty_w")
             if not any(line.endswith('} pst_a;') for line in lines):
                 problems.append(f"{pkg}.sv does not declare pst_a")
+    return problems
+
+
+def check_test_packages(work, design):
+    problems = []
+    for block in UVM_PORTS:
+        name = f'{block}_uvm_test_pkg.sv'
+        with open(os.path.join(work, 'top', 'uvm', name)) as f:
+            lines = [line.strip() for line in f]
+        waits = [line for line in lines if line.endswith('.wait_reset_release();')]
+        expected = [f'env.{clock}_vif.wait_reset_release();' for clock, _ in clock_domains(design, block)]
+        problems += match(name, 'reset waits', waits, expected)
+        counts = [line for line in lines if '.wait_for_count(' in line]
+        expected = [f'env.{port}_counter.wait_for_count(env.{PORT_DOMAIN.get((block, port), ("clk",))[0]}_vif, '
+                    f'output_deadline_cycles, quiet_cycles);'
+                    for port, side, _ in UVM_PORTS[block] if side == 'src']
+        problems += match(name, 'output waits', counts, expected)
+        # The waits run in one fork, so the outputs are waited on at once.
+        if counts and lines[lines.index(counts[0]) - 1] != 'fork':
+            problems.append(f"{name} does not fork its output waits")
     return problems
 
 
@@ -475,12 +500,13 @@ def check_manifest(work):
     expected = {'A2C_UVM_TOPS': tops, 'A2C_UVM_SRC_DIRS': [uvmDir]}
     for stem, top in zip(UVM_TOPS, tops):
         expected[f'A2C_UVM_PKG_SV_{top}'] = [os.path.join(uvmDir, f'{stem}_uvm_pkg.sv')]
+        expected[f'A2C_UVM_TEST_SV_{top}'] = [os.path.join(uvmDir, f'{UVM_TOPS[stem][0]}_uvm_test_pkg.sv')]
         expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]
         expected[f'A2C_UVM_PORTMAP_{top}'] = [os.path.join(root, '.gen', 'vl', f'{top}.portmap')]
     problems = [f"{key} is {man.get(key)}, expected {value}"
                 for key, value in expected.items() if man.get(key) != value]
     problems += [f"newmodule did not scaffold {paths[0]}" for key, paths in expected.items()
-                 if key.startswith(('A2C_UVM_PKG_SV_', 'A2C_UVM_TB_SV_'))
+                 if key.startswith(('A2C_UVM_PKG_SV_', 'A2C_UVM_TEST_SV_', 'A2C_UVM_TB_SV_'))
                  and not os.path.isfile(paths[0])]
     return problems
 
@@ -503,6 +529,7 @@ def run_all_tests():
             for name, problems in (('boundary files', check_boundary_files(work, design)),
                                    ('build manifest', check_manifest(work)),
                                    ('variant packages', check_variant_packages(work, design)),
+                                   ('test packages', check_test_packages(work, design)),
                                    ('testbench modules', check_testbenches(work, design)),
                                    ('SystemC wrapper, config and registrar', check_sc_files(work, design))):
                 for problem in problems:

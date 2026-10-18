@@ -54,6 +54,7 @@ templates:
   rtlDotF: $a2c/templates/systemVerilog/rtldotf.py
   uvmPkg: $a2c/templates/systemVerilog/uvmPkg.py
   uvmTb: $a2c/templates/systemVerilog/uvmTb.py
+  uvmTest: $a2c/templates/systemVerilog/uvmTest.py
   # Documentation templates
   blockHeader: $a2c/templates/doc/blockHeader.j2
   block: $a2c/templates/doc/block.j2
@@ -177,9 +178,11 @@ fileGeneration:
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    langDomain: sc, dutVariant: true, desc: "Testbench external module interface unit"}
     # The UVM testbench of a hasUvm block: per standalone variant a package and
-    # a tb module, and per block the SystemC wrapper and its registrar.
+    # a tb module, and per block the test package, the SystemC wrapper and its
+    # registrar.
     uvmPkg      : { name : "_uvm_pkg",        ext: {sv: "sv"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sv, variant: true, desc: "UVM testbench variant package"}
     uvmTb       : { name : "_uvm_tb",         ext: {sv: "sv"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sv, variant: true, desc: "UVM testbench top module"}
+    uvmTest     : { name : "_uvm_test_pkg",   ext: {sv: "sv"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sv, desc: "UVM test package"}
     uvmScWrap   : { name : "_uvm_sc_wrapper", ext: {hdr: "h"},             cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, desc: "SystemC wrapper of the UVM testbench top"}
     uvmTbConfig : { name : "UvmConfig",       ext: {src: "cpp"},           cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, dutVariant: true, desc: "UVM testbench config file"}
     uvmRegistrar: { name : "UvmRegistrar",    ext: {src: "cpp"},           cond: {hasUvm: true},                mode: block,   basePath: uvm,   langDomain: sc, desc: "UVM testbench top registrar TU"}

@@ -27,26 +27,33 @@ package a2c_uvm_pkg;
     // arrived and then for a quiet window, so an extra one from the DUT
     // arrives inside the test, and reports a shortfall or an excess.
     // check_phase() reports what no wait_for_count() has. Every report is an
-    // A2C_TXN_COUNT UVM_ERROR naming the port.
-    class a2c_txn_counter #(type T = uvm_sequence_item) extends uvm_component;
-        uvm_analysis_imp #(T, a2c_txn_counter#(T)) imp;
+    // A2C_TXN_COUNT UVM_ERROR naming the port. A transaction that arrives
+    // after its shortfall was reported is logged as late, not counted again.
+    class a2c_txn_counter #(type T = uvm_sequence_item) extends uvm_subscriber #(T);
         string port_name = "";
 
         protected int unsigned expected;
         protected int unsigned received;
+        // Reported missing and not yet arrived.
+        protected int unsigned missing;
 
         `uvm_component_param_utils(a2c_txn_counter#(T))
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            imp = new("imp", this);
         endfunction
 
         virtual function void write(T t);
+            if (missing > 0) begin
+                missing--;
+                `uvm_info("A2C_TXN_COUNT", $sformatf("%s: late transaction, reported missing earlier; %0d still missing",
+                                                 port_name, missing), UVM_LOW)
+                return;
+            end
             received++;
         endfunction
 
-        function void expect_beats(int unsigned n);
+        function void expect_count(int unsigned n);
             expected += n;
         endfunction
 
@@ -56,7 +63,7 @@ package a2c_uvm_pkg;
 
         // After a report the expected count is set to the received count, so
         // a later wait_for_count() or check_phase does not report the same
-        // beats again.
+        // transactions again.
         task wait_for_count(virtual a2c_clk_if clk_vif, int unsigned deadline_cycles, int unsigned quiet_cycles);
             int unsigned cycles = 0;
             while (received < expected && cycles < deadline_cycles) begin
@@ -64,28 +71,29 @@ package a2c_uvm_pkg;
                 cycles++;
             end
             if (received < expected) begin
-                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: deadline of %0d clocks passed: expected %0d beats, received %0d (%0d missing)",
+                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: deadline of %0d clocks passed: expected %0d transactions, received %0d (%0d missing)",
                                                   port_name, deadline_cycles, expected, received, expected - received))
+                missing += expected - received;
                 expected = received;
                 return;
             end
             repeat (quiet_cycles) clk_vif.sample_edge();
             if (received > expected) begin
-                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: by the end of the quiet window received %0d beats, expected %0d (%0d extra)",
+                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: by the end of the quiet window received %0d transactions, expected %0d (%0d extra)",
                                                   port_name, received, expected, received - expected))
                 expected = received;
                 return;
             end
-            `uvm_info("A2C_TXN_COUNT", $sformatf("%s: received the %0d expected beats", port_name, received), UVM_LOW)
+            `uvm_info("A2C_TXN_COUNT", $sformatf("%s: received the %0d expected transactions", port_name, received), UVM_LOW)
         endtask
 
         virtual function void check_phase(uvm_phase phase);
             if (received < expected) begin
-                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test with %0d of %0d expected beats outstanding, which no wait_for_count covered",
+                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test with %0d of %0d expected transactions outstanding, which no wait_for_count covered",
                                                   port_name, outstanding(), expected))
             end
             if (received > expected) begin
-                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test: received %0d beats, expected %0d (%0d extra)",
+                `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test: received %0d transactions, expected %0d (%0d extra)",
                                                   port_name, received, expected, received - expected))
             end
         endfunction

@@ -730,13 +730,14 @@ package a2c_uvm_loopback_pkg;
     endclass : status_test
 
     // A rdy_vld src agent drives a dst agent whose monitor feeds an
-    // a2c_txn_counter. The test sends n_items beats and waits for
-    // n_items + expect_delta, unless skip_wait is set. With second_wait set
-    // it then sends n_items more and waits for them with the count right. An
-    // a2c_error_demoter catches every A2C_TXN_COUNT, and the test checks how
-    // many the counter raised by the end of the first wait, by the end of the
-    // last wait and by the end of check_phase. With the expected count
-    // right, none is raised.
+    // a2c_txn_counter. The test sends n_items - late transactions and waits
+    // for n_items + expect_delta, unless skip_wait is set. With second_wait
+    // set it then sends n_items more and waits for them with the count
+    // right. With late set it sends the late transactions after the first
+    // wait and waits again with nothing more expected. An a2c_error_demoter
+    // catches every A2C_TXN_COUNT, and the test checks how many the counter
+    // raised by the end of the first wait, by the end of the last wait and by
+    // the end of check_phase. With the expected count right, none is raised.
     class txn_count_clean_test extends lb_base_test;
         rv_agent_t                     src;
         rv_agent_t                     dst;
@@ -746,6 +747,7 @@ package a2c_uvm_loopback_pkg;
         int                            expect_delta = 0;
         bit                            skip_wait = 0;
         bit                            second_wait = 0;
+        int unsigned                   late = 0;
         int unsigned                   want[3] = '{0, 0, 0};
         int unsigned                   got[3];
 
@@ -786,15 +788,15 @@ package a2c_uvm_loopback_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             dst.mon.ap.connect(sb.imp);
-            dst.mon.ap.connect(counter.imp);
+            dst.mon.ap.connect(counter.analysis_export);
         endfunction
 
-        task send_and_wait(int unsigned expected);
+        task send_and_wait(int unsigned n_send, int unsigned expected);
             rv_seq seq = rv_seq::type_id::create("seq");
-            seq.n       = n_items;
+            seq.n       = n_send;
             seq.max_gap = 2;
             seq.sb      = sb;
-            counter.expect_beats(expected);
+            counter.expect_count(expected);
             seq.start(src.sqr);
             if (!skip_wait) counter.wait_for_count(clk_vif, 20 * n_items, 50);
         endtask
@@ -802,11 +804,12 @@ package a2c_uvm_loopback_pkg;
         virtual task run_phase(uvm_phase phase);
             phase.raise_objection(this);
             clk_vif.wait_reset_release();
-            send_and_wait(n_items + expect_delta);
+            send_and_wait(n_items - late, n_items + expect_delta);
             got[0] = demoter.demoted;
-            if (second_wait) send_and_wait(n_items);
+            if (second_wait) send_and_wait(n_items, n_items);
+            if (late) send_and_wait(late, 0);
             got[1] = demoter.demoted;
-            // Lets a beat still in flight arrive before check_phase.
+            // Lets a transaction still in flight arrive before check_phase.
             repeat (50) clk_vif.sample_edge();
             phase.drop_objection(this);
         endtask
@@ -815,7 +818,7 @@ package a2c_uvm_loopback_pkg;
         // check_phase reports are counted by now.
         virtual function void report_phase(uvm_phase phase);
             got[2] = demoter.demoted;
-            `uvm_info("LB_STATS", $sformatf("%0d beats, first wait expected %0d; A2C_TXN_COUNT by the first wait %0d, by the last %0d, by check_phase %0d",
+            `uvm_info("LB_STATS", $sformatf("%0d transactions, first wait expected %0d; A2C_TXN_COUNT by the first wait %0d, by the last %0d, by check_phase %0d",
                                             sb.matched, int'(n_items) + expect_delta, got[0], got[1], got[2]), UVM_NONE)
             if (got != want) begin
                 `uvm_error("LB_TXN_COUNT", $sformatf("expected %0d, %0d and %0d A2C_TXN_COUNT by the first wait, the last wait and check_phase",
@@ -825,7 +828,7 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : txn_count_clean_test
 
-    // Two beats more expected than sent: the wait reports them at its
+    // Two transactions more expected than sent: the wait reports them at its
     // deadline, and check_phase does not report them again.
     class txn_count_missing_test extends txn_count_clean_test;
         `uvm_component_utils(txn_count_missing_test)
@@ -837,9 +840,9 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : txn_count_missing_test
 
-    // One beat fewer expected than sent: the wait reports the extra beat
-    // at the end of its quiet window, and check_phase does not report it
-    // again.
+    // One transaction fewer expected than sent: the wait reports the extra
+    // transaction at the end of its quiet window, and check_phase does not
+    // report it again.
     class txn_count_extra_test extends txn_count_clean_test;
         `uvm_component_utils(txn_count_extra_test)
 
@@ -850,8 +853,8 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : txn_count_extra_test
 
-    // One beat fewer expected than sent and no wait: check_phase reports
-    // the extra beat.
+    // One transaction fewer expected than sent and no wait: check_phase
+    // reports the extra transaction.
     class txn_count_unwaited_extra_test extends txn_count_clean_test;
         `uvm_component_utils(txn_count_unwaited_extra_test)
 
@@ -863,18 +866,32 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : txn_count_unwaited_extra_test
 
-    // A failing wait, two beats short, then a passing one on the same
-    // counter: only the first reports.
+    // A failing wait, one transaction extra, then a passing one on the same
+    // counter: only the first reports. A shortfall would not do here, because
+    // the second batch would pay off the transactions reported missing.
     class txn_count_twice_test extends txn_count_clean_test;
         `uvm_component_utils(txn_count_twice_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            expect_delta = 2;
+            expect_delta = -1;
             second_wait  = 1;
             want         = '{1, 1, 1};
         endfunction
     endclass : txn_count_twice_test
+
+    // The last transaction arrives after the first wait's deadline: the
+    // wait reports it missing, and when it arrives it is late, not extra, so
+    // neither the second wait nor check_phase reports it again.
+    class txn_count_late_test extends txn_count_clean_test;
+        `uvm_component_utils(txn_count_late_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            late = 1;
+            want = '{1, 1, 1};
+        endfunction
+    endclass : txn_count_late_test
 
 endpackage : a2c_uvm_loopback_pkg
 

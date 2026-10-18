@@ -469,6 +469,7 @@ def check_uvm_manifest():
             'A2C_UVM_SRC_DIRS': [uvmDir],
             'A2C_UVM_TOPS': [top],
             f'A2C_UVM_PKG_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_pkg.sv')],
+            f'A2C_UVM_TEST_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_test_pkg.sv')],
             f'A2C_UVM_TB_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_tb.sv')],
             f'A2C_UVM_PORTMAP_{top}': [os.path.join(root, '.gen', 'vl', top + '.portmap')],
         }
@@ -476,7 +477,7 @@ def check_uvm_manifest():
             if man.get(key) != value:
                 problems.append(f'uvm-blocks root: {key} is {man.get(key)}, expected {value}')
         uvmFiles = [os.path.join(uvmDir, name) for name in
-                    ('ubDut_uvm_pkg.sv', 'ubDut_uvm_tb.sv', 'ubDut_uvm_sc_wrapper.h',
+                    ('ubDut_uvm_pkg.sv', 'ubDut_uvm_tb.sv', 'ubDut_uvm_test_pkg.sv', 'ubDut_uvm_sc_wrapper.h',
                      'ubDutUvmConfig.cpp', 'ubDutUvmRegistrar.cpp')]
         for path in uvmFiles:
             if not os.path.isfile(path):

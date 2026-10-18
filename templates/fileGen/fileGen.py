@@ -96,6 +96,8 @@ def render(args, prj, data):
             return(uvmPkg_sv(args, prj, data))
         case 'uvmTb_sv':
             return(uvmTb_sv(args, prj, data))
+        case 'uvmTest_sv':
+            return(uvmTest_sv(args, prj, data))
         case 'uvmScWrap_hdr':
             return(uvmScWrap_hdr(args, prj, data))
         case 'uvmTbConfig_src':
@@ -663,6 +665,40 @@ def uvmTb_sv(args, prj, data):
     out.append('// GENERATED_CODE_END\n\n')
     out.append('// user module body here\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=footer\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+# The two user spans start as a working env and smoke test, so the generated
+# base and fail tests compile and pass before any user code is written.
+def uvmTest_sv(args, prj, data):
+    names = data['uvmNames']
+    tbEnv = names['tbEnvClass']
+    smoke = names['smokeTestClass']
+    out = list()
+    out.append(f'{_copyright_comment(data)}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTest --section=header\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('    // Scoreboards and sequences go here, or in this env.\n')
+    out.append(f'    class {tbEnv} extends {names["envClass"]};\n')
+    out.append(f'        `uvm_component_utils({tbEnv})\n\n')
+    out.append('        function new(string name, uvm_component parent);\n')
+    out.append('            super.new(name, parent);\n')
+    out.append('        endfunction\n')
+    out.append(f'    endclass : {tbEnv}\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTest --section=tests\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'    class {smoke} extends {names["baseTestClass"]};\n')
+    out.append(f'        `uvm_component_utils({smoke})\n\n')
+    out.append('        function new(string name, uvm_component parent);\n')
+    out.append('            super.new(name, parent);\n')
+    out.append('        endfunction\n\n')
+    out.append('        // Start the sequences here. Before they run, set each output\n')
+    out.append('        // counter\'s expected count with env.<port>_counter.expect_count(n).\n')
+    out.append('        virtual task run_body();\n')
+    out.append('        endtask\n')
+    out.append(f'    endclass : {smoke}\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=uvmTest --section=footer\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 

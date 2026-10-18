@@ -81,6 +81,7 @@ def _writeBuildManifestMk(rootDir, manifest):
     for top in manifest['uvmTops']:
         name = top['qualifiedTop']
         lines.append(f"A2C_UVM_PKG_SV_{name} := {top['pkgSv']}")
+        lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
         lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
         lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
     lines.append("")
@@ -371,12 +372,13 @@ def create(prj):
             dutTops[blockByKey[row['blockKey']]['block']] = topName
 
     # One record per UVM testbench top, pairing the tb module's file with its
-    # variant package. Named as UVMNAMES names them.
+    # variant package and its block's test package. Named as UVMNAMES names
+    # them.
     uvmNames = prj.config.getConfig('UVMNAMES')
     uvmFiles = dict()
     for row in rows:
         if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner \
-                and row['fileType'] in ('uvmTb', 'uvmPkg'):
+                and row['fileType'] in ('uvmTb', 'uvmPkg', 'uvmTest'):
             uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
     uvmTops = list()
     for blockKey, names in uvmNames.items():
@@ -387,6 +389,7 @@ def create(prj):
                 'qualifiedTop': top['tbModule'],
                 'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
                 'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
+                'testSv':       uvmFiles[('uvmTest', blockKey, '')],
                 'portmap':      top['portmap'],
                 'xceliumShell': top['xceliumShell'],
                 'hdlTop':       top['hdlTop'],

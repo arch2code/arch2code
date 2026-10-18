@@ -1142,6 +1142,18 @@ python3 test_uvm_register_view.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: UVM variant packages hold the register model and the env"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_pkg_regmodel.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM test package scaffold has its layout and working defaults"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_test_pkg.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
 echo "------------------------------------------------------------------------"
 python3 test_vl_timing.py || FAILED=1

@@ -14,8 +14,13 @@ instance `dut`, the completion pins, the report server `srv` and one
 port, clock or reset named like one of them is rejected. A UVM register or
 memory row holds at most 64 bits, so a register, or a memory whose rows the
 register model pads to its decoder stride, over 64 bits at any standalone
-variant is rejected. A register, memory or field named like a member of the
-UVM register classes would shadow it in the register model, so it is rejected.
+variant is rejected, and the padded case names the parameter maxValue that
+sets the stride. A field is a member of its uvm_reg subclass and a register or
+memory a member of the uvm_reg_block subclass, so a name that would hide a
+member of that class or of uvm_object is rejected, once per block whatever
+the number of variants. A memory's structure members become no fields, so
+their names are not checked, and a name is checked only against its own
+class.
 
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus. Each negative arm edits one rule's violation
@@ -218,13 +223,47 @@ REJECTED = [
                '    - { memory: tbl, block: ubDut, structure: ubBigSt, wordLines: 4, addressStruct: ubIdxSt, '
                'regAccess: rw, desc: "Table" }\n')])],
      [WHERE, "its memory 'tbl' has 40-bit rows at variant 'v0', which the register model pads to 97 bits",
-      "by the decoder's row stride", "UVM_REG_DATA_WIDTH"]),
-    ('a register named like a UVM register class member', ROOT_PROJECT,
+      "by the decoder's row stride", "the widest row of any variant, 96 bits with UB_W at its maxValue 64",
+      "Lower the maxValue of UB_W, narrow its structure", "UVM_REG_DATA_WIDTH"]),
+    ('a fixed memory row over 64 bits', ROOT_PROJECT,
+     [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
+              ('\nstructures:\n',
+               '\nstructures:\n'
+               '    ubIdxSt:\n'
+               '        idx: { varType: ubIdxT, desc: "Table index" }\n'
+               '    ubRowSt:\n'
+               '        lo: { varType: ubWordT, desc: "Low word" }\n'
+               '        hi: { varType: ubWordT, desc: "High word" }\n'
+               '        tag: { varType: ubDataT, desc: "Tag" }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n\n'
+               'memories:\n'
+               '    - { memory: rows, block: ubDut, structure: ubRowSt, wordLines: 4, addressStruct: ubIdxSt, '
+               'regAccess: rw, desc: "Table" }\n')])],
+     [WHERE, "its memory 'rows' is 72 bits wide.", "Narrow its structure, or clear hasUvm."]),
+    ('a register named like a uvm_reg_block member', ROOT_PROJECT,
      [(ARCH, [('{ register: ctrl,', '{ register: mirror,')])],
-     [WHERE, "its register 'mirror' has the name of a member of the UVM register classes"]),
-    ('a field named like a UVM register class member', ROOT_PROJECT,
+     [WHERE, "its register 'mirror' has the name of a member of uvm_reg_block"]),
+    ('a memory named like a uvm_reg_block member', ROOT_PROJECT,
+     [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
+              ('\nstructures:\n',
+               '\nstructures:\n'
+               '    ubIdxSt:\n'
+               '        idx: { varType: ubIdxT, desc: "Table index" }\n'
+               '    ubMemSt:\n'
+               '        predict: { varType: ubDataT, desc: "Row named like a uvm_reg member" }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n\n'
+               'memories:\n'
+               '    - { memory: get_registers, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
+               'regAccess: rw, desc: "Table" }\n')])],
+     [WHERE, "its memory 'get_registers' has the name of a member of uvm_reg_block"]),
+    ('a field named like a uvm_reg member', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        predict: {')])],
-     [WHERE, "its register 'ctrl' field 'predict' has the name of a member of the UVM register classes"]),
+     [WHERE, "its register 'ctrl' field 'predict' has the name of a member of uvm_reg"]),
+    ('a field named like a uvm_object method', ROOT_PROJECT,
+     [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        print: {')])],
+     [WHERE, "its register 'ctrl' field 'print' has the name of a member of uvm_reg"]),
     ('only variants another project declares', CHILD_ROOT_PROJECT,
      [(CHILD_ARCH,
        [('types:\n',
@@ -242,9 +281,45 @@ REJECTED = [
       "Declare a variant of 'ubChildDut' under parameters: in its own project"]),
 ]
 
+# (name, project file, [(yaml file, edits)])
 ACCEPTED = [
-    ('rdy_vld ports and an apb register bus', ROOT_PROJECT),
-    ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT),
+    ('rdy_vld ports and an apb register bus', ROOT_PROJECT, []),
+    ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT, []),
+    ('a field named like a uvm_reg_block-only member', ROOT_PROJECT,
+     [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        get_registers: {')])]),
+    ('a register named like a uvm_reg-only member', ROOT_PROJECT,
+     [(ARCH, [('{ register: ctrl,', '{ register: get_offset,')])]),
+    ('a memory structure member named like a uvm_reg member', ROOT_PROJECT,
+     [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
+              ('\nstructures:\n',
+               '\nstructures:\n'
+               '    ubIdxSt:\n'
+               '        idx: { varType: ubIdxT, desc: "Table index" }\n'
+               '    ubMemSt:\n'
+               '        predict: { varType: ubDataT, desc: "Row named like a uvm_reg member" }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n\n'
+               'memories:\n'
+               '    - { memory: tbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
+               'regAccess: rw, desc: "Table" }\n')])]),
+]
+
+# A name that breaks the rule at every variant is reported once:
+# (name, project file, [(yaml file, edits)], substring)
+REPORTED_ONCE = [
+    ('a field named like a uvm_reg member at two variants', ROOT_PROJECT,
+     [(ARCH, [('\ntypes:\n',
+               '\nipParameters:\n'
+               '    constants:\n'
+               '        UB_W: { value: 8, maxValue: 16, desc: "Width knob" }\n\n'
+               'types:\n'),
+              ('    ubSt:\n        data: {', '    ubSt:\n        copy: {'),
+              ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W]\n'),
+              ('instGroup: top, addressGroup: top }', 'instGroup: top, addressGroup: top, variant: v0 }'),
+              ('\nconnections:\n',
+               '\nparameters:\n    ubDut:\n        v0: { UB_W: 8 }\n        v1: { UB_W: 12 }\n\n'
+               'connections:\n')])],
+     "its register 'ctrl' field 'copy' has the name of a member of uvm_reg"),
 ]
 
 
@@ -291,8 +366,10 @@ def check_rejected(project, name, projectYaml, fileEdits, required):
     return True
 
 
-def check_accepted(project, name, projectYaml):
+def check_accepted(project, name, projectYaml, fileEdits):
     shutil.copytree(FIXTURE, project)
+    for yamlFile, edits in fileEdits:
+        edit_yaml(project, yamlFile, edits)
     rc, output = make_db(project, projectYaml)
     if rc != 0:
         print(f"  FAIL: {name}: make db rejected the block (rc={rc})")
@@ -302,12 +379,29 @@ def check_accepted(project, name, projectYaml):
     return True
 
 
+def check_reported_once(project, name, projectYaml, fileEdits, message):
+    shutil.copytree(FIXTURE, project)
+    for yamlFile, edits in fileEdits:
+        edit_yaml(project, yamlFile, edits)
+    rc, output = make_db(project, projectYaml)
+    if rc == 0 or output.count(message) != 1:
+        print(f"  FAIL: {name}: make db exited {rc} and reported {message!r} "
+              f"{output.count(message)} times, expected a rejection reporting it once")
+        print(output)
+        return False
+    print(f"  PASS: {name} is reported once")
+    return True
+
+
 def run_all_tests():
     tmp = tempfile.mkdtemp(prefix='uvm_blocks_', dir=test_dir)
     ok = True
     try:
-        for index, (name, projectYaml) in enumerate(ACCEPTED):
-            ok = check_accepted(os.path.join(tmp, f'accept{index}'), name, projectYaml) and ok
+        for index, (name, projectYaml, fileEdits) in enumerate(ACCEPTED):
+            ok = check_accepted(os.path.join(tmp, f'accept{index}'), name, projectYaml, fileEdits) and ok
+        for index, (name, projectYaml, fileEdits, message) in enumerate(REPORTED_ONCE):
+            ok = check_reported_once(os.path.join(tmp, f'once{index}'), name, projectYaml,
+                                     fileEdits, message) and ok
         for index, (name, projectYaml, fileEdits, required) in enumerate(REJECTED):
             ok = check_rejected(os.path.join(tmp, f'reject{index}'), name, projectYaml,
                                 fileEdits, required) and ok

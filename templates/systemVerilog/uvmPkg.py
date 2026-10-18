@@ -29,10 +29,9 @@ def render(args, prj, data):
 
 
 def render_header(args, prj, data, top):
-    intfTypes = dict.fromkeys(port['interfaceType'] for port in data['uvm']['ports'])
     out = f"\npackage {top['pkgName']};\n"
     lines = ['import uvm_pkg::*;', '`include "uvm_macros.svh"']
-    lines += [f'import {intfType}_uvm_pkg::*;' for intfType in intfTypes]
+    lines += [f'import {pkg}::*;' for pkg in data['uvm']['agentPackages']]
     lines.append(importPackages(args, prj, data['blockInfo']['_context'], data))
     out += textwrap.indent('\n'.join(lines), ' '*4) + '\n'
     return out
@@ -70,11 +69,6 @@ def render_items(prj, data, variant):
     return '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
 
 
-REG_ACCESS = {'rw': 'RW', 'ext': 'RW', 'ro': 'RO'}
-# The design drives an ro or ext register's value, so a mirror check skips it.
-REG_VOLATILE = {'rw': 0, 'ext': 1, 'ro': 1}
-
-
 def reg_class(reg, variant):
     cls = reg['className']
     fields = reg['fields'][variant]
@@ -88,8 +82,8 @@ def reg_class(reg, variant):
               '    endfunction',
               '',
               '    virtual function void build();']
-    access = REG_ACCESS[reg['regType']]
-    volatile = REG_VOLATILE[reg['regType']]
+    access = reg['uvmAccess']
+    volatile = int(reg['volatile'])
     isRand = int(access == 'RW')
     for f in fields:
         lines.append(f'        {f["name"]} = uvm_reg_field::type_id::create("{f["name"]}");')
@@ -122,16 +116,16 @@ def reg_block_class(uvm, variant):
                   "        // bus words is the decoder's row stride."]
     for mem in uvm['memories']:
         name = mem['name']
-        # uvm_mem takes only RW or RO; a wo memory is RW with WO map rights.
-        memAccess = 'RO' if mem['access'] == 'ro' else 'RW'
         lines += [f'        {name} = new("{name}", {mem["count"][variant]}, {mem["nBits"][variant]}, '
-                  f'"{memAccess}", UVM_NO_COVERAGE);',
+                  f'"{mem["uvmAccess"]}", UVM_NO_COVERAGE);',
                   f"        {name}.configure(this);"]
+        lines += [f'        uvm_resource_db#(bit)::set({{"REG::", {name}.get_full_name()}}, "{resource}", 1, this);'
+                  for resource in mem['excludeTests'][variant]]
     lines.append("        default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);")
     for reg in uvm['registers']:
-        lines.append(f'        default_map.add_reg({reg["name"]}, \'h{reg["offset"]:x}, "{REG_ACCESS[reg["regType"]]}");')
+        lines.append(f'        default_map.add_reg({reg["name"]}, \'h{reg["offset"]:x}, "{reg["uvmAccess"]}");')
     for mem in uvm['memories']:
-        lines.append(f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["access"].upper()}");')
+        lines.append(f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["mapRights"]}");')
     lines += ['        lock_model();', '    endfunction', f"endclass : {cls}"]
     return lines
 
@@ -139,11 +133,11 @@ def reg_block_class(uvm, variant):
 def env_class(uvm, hasRegModel):
     cls = uvm['envClass']
     ports = uvm['ports']
-    counters = [port for port in ports if port['txnCounter']]
+    counters = [port for port in ports if port['counter']]
     lines = [f"class {cls} extends uvm_env;"]
     lines += [f"    {port['name']}_agent_t {port['agent']};" for port in ports]
-    lines += [f"    a2c_uvm_pkg::a2c_txn_counter #({port['name']}_item_t) {port['name']}_counter;" for port in counters]
-    lines += [f"    virtual a2c_clk_if {clock['clock']}_vif;" for clock in uvm['clocks']]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_counter #({port['name']}_item_t) {port['counter']};" for port in counters]
+    lines += [f"    virtual a2c_clk_if {clock['vif']};" for clock in uvm['clocks']]
     bus = uvm['registerBus']
     if hasRegModel:
         lines += [f"    {uvm['regBlockClass']} regmodel;",
@@ -161,7 +155,7 @@ def env_class(uvm, hasRegModel):
     lines.append('        super.build_phase(phase);')
     for clock in uvm['clocks']:
         name = clock['clock']
-        lines += [f'        if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "{name}", {name}_vif)) begin',
+        lines += [f'        if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "{name}", {clock["vif"]})) begin',
                   f'            `uvm_fatal("A2C_CFG", "no virtual a2c_clk_if \'{name}\'")',
                   '        end']
     for port in ports:
@@ -170,6 +164,7 @@ def env_class(uvm, hasRegModel):
         lines += ['',
                   f'        regmodel = {uvm["regBlockClass"]}::type_id::create("regmodel");',
                   '        regmodel.build();',
+                  '        regmodel.reset();',
                   f'        adapter = {bus["adapterClass"]}::type_id::create("adapter");',
                   f'        predictor = uvm_reg_predictor#({bus["port"]}_item_t)::type_id::create("predictor", this);']
     lines += ['    endfunction']
@@ -179,7 +174,7 @@ def env_class(uvm, hasRegModel):
             lines += ["    // The register model's mirror follows the bus through the explicit",
                       "    // predictor, not the register calls' own prediction."]
         lines.append('    virtual function void connect_phase(uvm_phase phase);')
-        lines += [f"        {port['agent']}.mon.ap.connect({port['name']}_counter.imp);" for port in counters]
+        lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
         if hasRegModel:
             agent = bus['agent']
             lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
@@ -200,17 +195,19 @@ def agent_build(port):
              f'        if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
              f'            `uvm_fatal("A2C_CFG", "no virtual {port["interfaceType"]}_if \'{name}\'")',
              '        end',
-             f"        {cfg}.clk_vif = {port['clock']}_vif;"]
+             f"        {cfg}.clk_vif = {port['clockVif']};"]
     if port['hasRole']:
         lines.append(f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};")
     lines.append(f'        {cfg}.port_name = "{name}";')
+    if port['passive']:
+        lines.append(f"        {cfg}.is_active = UVM_PASSIVE;")
     if port['backpressureOverridable']:
         lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
     agent = port['agent']
     lines += [f'        uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
               f'        {agent} = {name}_agent_t::type_id::create("{agent}", this);']
-    if port['txnCounter']:
-        counter = f"{name}_counter"
+    if port['counter']:
+        counter = port['counter']
         lines += [f'        {counter} = a2c_uvm_pkg::a2c_txn_counter#({name}_item_t)::type_id::create("{counter}", this);',
                   f'        {counter}.port_name = "{name}";']
     return lines

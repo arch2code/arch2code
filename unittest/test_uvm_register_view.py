@@ -3,17 +3,24 @@
 register model its rows, at every variant.
 
 The generated environment picks each agent's clock interface and its
-backpressure setting from the port entries, and builds the register model from
-the registers and memories entries, on the agent and adapter registerBus names. A register model whose offsets or fields
-disagree with the RTL decoder reads the wrong bits. Each offset must be the
-one fw/<block>RegAddresses.h defines and the address map allocates, each memory
-must step by the decoder's row stride, and each field must sit at its packed
-position: the first declared member is the most significant, as in an SV
-`typedef struct packed`. The decoder flops a padding member that alignment
-adds like any other, so it is a field too. Each field carries its share of the register's defaultValue as its
-reset, and each memory the n_bits that makes UVM step it by the decoder's row
-stride. A parameter can size a field or a memory depth, so widths and depths
-are checked at each variant.
+backpressure setting from the port entries. It builds the register model from
+the registers and memories entries, and drives it through the register-bus
+port's agent and adapter class, which the registerBus entry names. A register
+model whose offsets or fields disagree with the RTL decoder reads the wrong
+bits. Each offset must be the one fw/<block>RegAddresses.h defines and the
+address map allocates, each memory must step by the decoder's row stride, and
+each field must sit at its packed position: the first declared member is the
+most significant, as in an SV `typedef struct packed`. The decoder flops a
+padding member that alignment adds like any other, so it is a field too. Each
+field carries its share of the register's defaultValue as its reset, and each
+memory the n_bits that makes UVM step it by the decoder's row stride. A
+parameter can size a field or a memory depth, so widths and depths are checked
+at each variant.
+
+The view also carries the UVM spelling of each row's access: an ro register
+is RO and volatile, an rw register RW and not volatile, and a memory's
+uvm_mem access is RO or RW with its map rights as declared. None of these
+memories is write-only or padded, so none is kept off a built-in memory test.
 
 A copy of `fixtures/uvm-blocks` gains params UB_W and UB_D on ubDut and two
 variants that bind them differently. ubDut gets a register whose low field is
@@ -97,17 +104,21 @@ UB_W = {'v0': 4, 'v1': 12}
 UB_D = {'v0': 16, 'v1': 32}
 
 # hasRole and backpressureOverridable say which config fields the port's agent
-# has, and txnCounter whether the env counts the port's output beats.
+# has, passive whether the agent only watches, and counter the env's
+# transaction counter for the port's output, if it has one.
 PORTS = [
-    {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': True, 'backpressureOverridable': True, 'txnCounter': False},
-    {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': True, 'backpressureOverridable': True, 'txnCounter': True},
-    {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': False, 'backpressureOverridable': False, 'txnCounter': False},
+    {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'hasRole': True, 'backpressureOverridable': True, 'passive': False, 'counter': None},
+    {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'hasRole': True, 'backpressureOverridable': True, 'passive': False, 'counter': 'out_counter'},
+    {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'hasRole': False, 'backpressureOverridable': False, 'passive': False, 'counter': None},
 ]
 REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
-CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_regs'}
+CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}
 
 
 def each(value):
@@ -121,16 +132,20 @@ def field(name, width, lsb, reset=0):
 def expected_registers():
     return [
         {'name': 'ctrl', 'className': 'ubDut_reg_ctrl', 'offset': 0x120, 'bytes': 1, 'regType': 'rw',
+         'uvmAccess': 'RW', 'volatile': False,
          'defaultValue': 0, 'type': each(lambda v: {'name': 'ubSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 8), 'fields': each(lambda v: [field('data', 8, 0)])},
         {'name': 'cfg', 'className': 'ubDut_reg_cfg', 'offset': 0x128, 'bytes': 2, 'regType': 'rw',
+         'uvmAccess': 'RW', 'volatile': False,
          'defaultValue': 5, 'type': each(lambda v: {'name': 'ubPSt', 'pkg': PKG[v]}),
          'width': each(lambda v: 8 + UB_W[v]),
          'fields': each(lambda v: [field('hi', 8, UB_W[v]), field('lo', UB_W[v], 0, reset=5)])},
         {'name': 'wide', 'className': 'ubDut_reg_wide', 'offset': 0x130, 'bytes': 5, 'regType': 'ro',
+         'uvmAccess': 'RO', 'volatile': True,
          'defaultValue': 0, 'type': each(lambda v: {'name': 'ubWideSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 40), 'fields': each(lambda v: [field('word', 32, 8), field('tag', 8, 0)])},
         {'name': 'aligned', 'className': 'ubDut_reg_aligned', 'offset': 0x138, 'bytes': 3, 'regType': 'rw',
+         'uvmAccess': 'RW', 'volatile': False,
          'defaultValue': 0, 'type': each(lambda v: {'name': 'ubAlignSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 24),
          'fields': each(lambda v: [field('a', 8, 16), field('reserved0', 8, 8), field('b', 8, 0)])},
@@ -143,12 +158,13 @@ def expected_memories():
     # 4-byte row needs no padding to step by one bus word, so nBits is the
     # row width.
     return [
-        {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'access': 'rw',
+        {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'access': 'rw', 'uvmAccess': 'RW', 'mapRights': 'RW',
          'count': each(lambda v: 8), 'width': each(lambda v: 8), 'nBits': each(lambda v: 8),
+         'excludeTests': each(lambda v: []),
          'type': each(lambda v: {'name': 'ubSt', 'pkg': FILE_PKG})},
-        {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'access': 'ro',
+        {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'access': 'ro', 'uvmAccess': 'RO', 'mapRights': 'RO',
          'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]),
-         'nBits': each(lambda v: 8 + UB_W[v]),
+         'nBits': each(lambda v: 8 + UB_W[v]), 'excludeTests': each(lambda v: []),
          'type': each(lambda v: {'name': 'ubPSt', 'pkg': PKG[v]})},
     ]
 

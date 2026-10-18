@@ -24,7 +24,7 @@ BASE=$(cd "$HERE/../../../.." && pwd)
 OUT=$PWD/loopback_$SIM
 TESTS="rdy_vld_random_test rdy_vld_burst_test axi4_stream_test raw_test status_test
        no_backpressure_test monitor_checks_test txn_count_clean_test txn_count_missing_test
-       txn_count_extra_test txn_count_unwaited_extra_test txn_count_twice_test"
+       txn_count_extra_test txn_count_unwaited_extra_test txn_count_twice_test txn_count_late_test"
 # a2c_uvm.f lists every agent package, so every interface they name is compiled.
 SRCS="$BASE/interfaces/rdy_vld/rdy_vld_if.sv $BASE/interfaces/apb/apb_if.sv
       $BASE/interfaces/axi4_stream/axi4_stream_if.sv $BASE/interfaces/raw/raw_if.sv

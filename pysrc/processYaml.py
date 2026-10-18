@@ -37,12 +37,46 @@ REG_BUS_WIDTH_BYTES = 4
 # memory row a UVM register model holds.
 UVM_REG_DATA_WIDTH = 64
 
-# Members of uvm_reg, uvm_reg_block, uvm_reg_field and uvm_mem that a
-# register, memory or field of the same name would shadow in the register model.
-UVM_REG_MEMBER_NAMES = frozenset((
-    'reset', 'build', 'configure', 'read', 'write', 'peek', 'poke', 'mirror', 'update',
-    'predict', 'get', 'set', 'get_name', 'get_parent', 'needs_update', 'randomize',
-    'sample', 'default_map', 'lock_model'))
+# Names a register, memory or field of the generated register model cannot
+# take. A field is a member of its uvm_reg subclass, and a register or memory a
+# member of the uvm_reg_block subclass, so each would hide the base class
+# member of the same name. Both classes are uvm_objects, and the generated
+# class adds build() and the utils macro's type_id and type_name.
+UVM_OBJECT_MEMBER_NAMES = frozenset((
+    'build', 'type_id', 'type_name', 'get_name', 'set_name', 'get_full_name', 'get_inst_id',
+    'get_inst_count', 'get_type', 'get_object_type', 'get_type_name', 'create', 'clone',
+    'print', 'sprint', 'convert2string', 'record', 'copy', 'compare', 'pack', 'pack_bytes',
+    'pack_ints', 'unpack', 'unpack_bytes', 'unpack_ints', 'do_print', 'do_record', 'do_copy',
+    'do_compare', 'do_pack', 'do_unpack', 'set_int_local', 'set_string_local',
+    'set_object_local', 'reseed', 'get_uvm_seeding', 'set_uvm_seeding', 'randomize',
+    'srandom', 'get_randstate', 'set_randstate', 'pre_randomize', 'post_randomize',
+    'rand_mode', 'constraint_mode'))
+UVM_REG_MEMBER_NAMES = UVM_OBJECT_MEMBER_NAMES | frozenset((
+    'configure', 'set_offset', 'set_parent', 'add_field', 'add_map', 'get_parent', 'get_regfile',
+    'get_block', 'get_n_maps', 'is_in_map', 'get_maps', 'get_local_map', 'get_default_map',
+    'get_rights', 'get_access', 'get_n_bits', 'get_n_bytes', 'get_max_size', 'get_fields',
+    'get_field_by_name', 'get_offset', 'get_address', 'get_addresses', 'set_frontdoor',
+    'get_frontdoor', 'set_backdoor', 'get_backdoor', 'clear_hdl_path', 'add_hdl_path',
+    'add_hdl_path_slice', 'has_hdl_path', 'get_hdl_path', 'get_hdl_path_kinds',
+    'get_full_hdl_path', 'backdoor_read', 'backdoor_write', 'backdoor_read_func',
+    'backdoor_watch', 'set', 'get', 'get_mirrored_value', 'needs_update', 'reset', 'get_reset',
+    'has_reset', 'set_reset', 'write', 'read', 'poke', 'peek', 'update', 'mirror', 'predict',
+    'do_predict', 'is_busy', 'include_coverage', 'build_coverage', 'add_coverage',
+    'has_coverage', 'set_coverage', 'get_coverage', 'sample', 'sample_values', 'pre_write',
+    'post_write', 'pre_read', 'post_read', 'do_write', 'do_read'))
+UVM_REG_BLOCK_MEMBER_NAMES = UVM_OBJECT_MEMBER_NAMES | frozenset((
+    'configure', 'create_map', 'set_default_map', 'get_default_map', 'default_map',
+    'default_path', 'lock_model', 'is_locked', 'get_parent', 'get_root_blocks', 'find_blocks',
+    'find_block', 'get_blocks', 'get_maps', 'get_registers', 'get_fields', 'get_memories',
+    'get_virtual_registers', 'get_virtual_fields', 'get_block_by_name', 'get_map_by_name',
+    'get_reg_by_name', 'get_field_by_name', 'get_mem_by_name', 'get_vreg_by_name',
+    'get_vfield_by_name', 'include_coverage', 'build_coverage', 'add_coverage', 'has_coverage',
+    'set_coverage', 'get_coverage', 'sample', 'sample_values', 'get_default_path', 'reset',
+    'needs_update', 'update', 'mirror', 'write_reg_by_name', 'read_reg_by_name',
+    'write_mem_by_name', 'read_mem_by_name', 'readmemh', 'writememh', 'set_backdoor',
+    'get_backdoor', 'clear_hdl_path', 'add_hdl_path', 'has_hdl_path', 'get_hdl_path',
+    'get_full_hdl_path', 'set_default_hdl_path', 'get_default_hdl_path', 'set_hdl_path_root',
+    'is_hdl_path_root', 'set_lock', 'add_block', 'add_reg', 'add_vreg', 'add_mem', 'add_map'))
 
 def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
     """Firmware reaches a register or memory row of every variant through one
@@ -1783,12 +1817,14 @@ class projectOpen:
                 intfDef = ret['interface_defs'][intfType]
                 paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
                 elastic = intfDef['timing'] == 'elastic'
+                isOutput = portData['direction'] == 'src'
                 ports.append({
                     'name': portData['name'],
                     'agent': f"{portData['name']}_agent",
                     'interfaceType': intfType,
                     'role': portData['direction'],
                     'clock': portData['domainClock'],
+                    'clockVif': f"{portData['domainClock']}_vif",
                     'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
                     'backpressure': portData['effectiveBackpressure'],
                     # The agent config carries a role unless the type is a
@@ -1796,9 +1832,13 @@ class projectOpen:
                     # no_backpressure knob when a port may lower the default.
                     'hasRole': not intfDef['addressBus'],
                     'backpressureOverridable': elastic and intfDef['backpressure']['overridable'],
+                    # A master-only agent can only watch a DUT register-bus
+                    # master.
+                    'passive': intfDef['addressBus'] and isOutput,
                     # A DUT data output with a handshake delivers a countable
-                    # number of beats, so the env counts them.
-                    'txnCounter': portData['direction'] == 'src' and elastic and not intfDef['addressBus'],
+                    # number of transactions, so the env counts them.
+                    'counter': f"{portData['name']}_counter"
+                               if isOutput and elastic and not intfDef['addressBus'] else None,
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.
@@ -1809,7 +1849,7 @@ class projectOpen:
                 })
         # One a2c_clk_if per clock, released by the clock's selected reset
         # when that reset is a port of the block, else never held in reset.
-        clocks = [{'clock': row['clock'],
+        clocks = [{'clock': row['clock'], 'vif': f"{row['clock']}_vif",
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
         registers, memories = self.getUvmRegisterModel(ret, tops)
@@ -1820,10 +1860,15 @@ class projectOpen:
             (busPort,) = [port for port in ports if port['name'] == ret['registerBusPort']]
             registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
                            'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
-        block = ret['blockInfo']['block']
-        ret['uvm'] = {**self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks,
+        names = self.uvmNames[ret['qualBlock']]
+        # The fail test under-delivers on the first counted output, so a block
+        # with none has no fail test.
+        counters = [port['counter'] for port in ports if port['counter']]
+        failTest = {'className': names['failTestClass'], 'counter': counters[0]} if counters else None
+        ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
+                      'agentPackages': list(dict.fromkeys(f"{port['interfaceType']}_uvm_pkg" for port in ports)),
                       'registers': registers, 'memories': memories, 'registerBus': registerBus,
-                      'envClass': f"{block}_env", 'regBlockClass': f"{block}_regs"}
+                      'failTest': failTest}
 
     def getUvmRegisterModel(self, ret, tops):
         """The block's firmware-visible registers and memories at the
@@ -1838,6 +1883,10 @@ class projectOpen:
         the decoder's stride between rows, and nBits the row size
         resolveUvmRegisterWidths gives the model. Widths, depths and type
         packages are keyed by variant like paramTypes.
+
+        uvm_mem takes only RW or RO, so a wo memory is RW with WO map rights,
+        which UVM reports as RW when there is one map. excludeTests keeps the
+        built-in memory sequences off it, and the walk off padded rows.
         """
         widths = {variant: top['registerWidths'] for variant, top in tops.items()}
 
@@ -1862,11 +1911,16 @@ class projectOpen:
             return perVariant
 
         def memory(section, key, row, name, access):
+            rowWidth = width(section, key)
+            nBits = {variant: layout[section][key]['nBits'] for variant, layout in widths.items()}
+            excludeTests = {variant: ['NO_MEM_TESTS'] if access == 'wo'
+                            else ['NO_MEM_WALK_TEST'] if nBits[variant] > rowWidth[variant] else []
+                            for variant in widths}
             return {'name': name, 'offset': int(row['offset']), 'access': access,
+                    'uvmAccess': 'RO' if access == 'ro' else 'RW', 'mapRights': access.upper(),
                     'rowBytes': row['rowBytes'],
                     'count': {variant: layout[section][key]['wordLines'] for variant, layout in widths.items()},
-                    'width': width(section, key),
-                    'nBits': {variant: layout[section][key]['nBits'] for variant, layout in widths.items()},
+                    'width': rowWidth, 'nBits': nBits, 'excludeTests': excludeTests,
                     'type': typeRefs(row['structureKey'])}
 
         block = ret['blockInfo']['block']
@@ -1881,6 +1935,9 @@ class projectOpen:
             registers.append({'name': row['register'], 'className': f"{block}_reg_{row['register']}",
                               'offset': int(row['offset']),
                               'bytes': row['bytes'], 'regType': row['regType'],
+                              'uvmAccess': 'RO' if row['regType'] == 'ro' else 'RW',
+                              # The design drives an ro or ext register.
+                              'volatile': row['regType'] != 'rw',
                               'defaultValue': defaultValue,
                               'type': typeRefs(row['structureKey']),
                               'width': width('registers', key),
@@ -5458,6 +5515,7 @@ class projectCreate:
         top per standalone variant. tree is the project's clockTree.
         """
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.uvmRegisterWidths = dict()
         failed = False
         for blockRow in self.flatData['blocks'].values():
@@ -5559,6 +5617,34 @@ class projectCreate:
                         f"in its UVM testbench module, so the simulator rejects the "
                         f"testbench. Rename the {kind}, or clear hasUvm.")
                     failed = True
+            # Names do not vary by variant, so they are checked once per block.
+            # A memory's structure members become no fields.
+            modelNames = list()
+            for row in self.flatData['registers'].values():
+                if row['blockKey'] != blockKey:
+                    continue
+                if row['regType'] == 'memory':
+                    modelNames.append(('memory', row['register'], None))
+                    continue
+                modelNames.append(('register', row['register'], None))
+                modelNames += [('field', name, row['register'])
+                               for name in self.flatData['structures'][row['structureKey']]['vars']]
+            modelNames += [('memory', row['memory'], None) for row in self.flatData['memories'].values()
+                           if row['blockKey'] == blockKey and row['regAccess']]
+            for kind, name, register in modelNames:
+                if kind == 'field':
+                    if name in UVM_REG_MEMBER_NAMES:
+                        printError(
+                            f"{where} but its register '{register}' field '{name}' has the name of "
+                            f"a member of uvm_reg, which the field would hide in the generated "
+                            f"register class. Rename it, or clear hasUvm.")
+                        failed = True
+                elif name in UVM_REG_BLOCK_MEMBER_NAMES:
+                    printError(
+                        f"{where} but its {kind} '{name}' has the name of a member of "
+                        f"uvm_reg_block, which the {kind} would hide in the generated register "
+                        f"block. Rename it, or clear hasUvm.")
+                    failed = True
             # One resolution per testbench top: each standalone variant, or the
             # parameter defaults for a block without params.
             descriptors = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
@@ -5573,27 +5659,32 @@ class projectCreate:
                 for section, kind, nameField in (('registers', 'register', 'register'),
                                                  ('memories', 'memory', 'memory')):
                     for key, entry in widths[section].items():
-                        name = self.flatData[section][key][nameField]
+                        if entry['nBits'] <= UVM_REG_DATA_WIDTH:
+                            continue
+                        objRow = self.flatData[section][key]
                         width = sum(member['width'] for member in entry['fields'])
-                        if entry['nBits'] > UVM_REG_DATA_WIDTH:
-                            size = f"is {width} bits wide{atVariant}"
-                            if entry['nBits'] > width:
-                                size = (f"has {width}-bit rows{atVariant}, which the register model "
-                                        f"pads to {entry['nBits']} bits so that UVM steps through "
-                                        f"them by the decoder's row stride")
-                            printError(
-                                f"{where} but its {kind} '{name}' {size}. A UVM register model "
-                                f"holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a "
-                                f"register or memory row. Narrow its structure, or clear hasUvm.")
-                            failed = True
-                        for fieldName in [name] + [field['name'] for field in entry['fields']]:
-                            if fieldName in UVM_REG_MEMBER_NAMES:
-                                what = kind if fieldName == name else f"{kind} '{name}' field"
-                                printError(
-                                    f"{where} but its {what} '{fieldName}' has the name of a member "
-                                    f"of the UVM register classes, which the generated register "
-                                    f"model would shadow. Rename it, or clear hasUvm.")
-                                failed = True
+                        size = f"is {width} bits wide{atVariant}"
+                        fix = "Narrow its structure"
+                        # A row within the limit exceeds it only through a
+                        # stride sized for a wider variant.
+                        if width <= UVM_REG_DATA_WIDTH:
+                            struct = self.flatData['structures'][objRow['structureKey']]
+                            params = [self.flatData['constants'][constKey]
+                                      for constKey in structureParamDeps[objRow['structureKey']]]
+                            drivers = ', '.join(f"{param['constant']} at its maxValue {param['maxValue']}"
+                                                for param in params)
+                            size = (f"has {width}-bit rows{atVariant}, which the register model "
+                                    f"pads to {entry['nBits']} bits so that UVM steps through "
+                                    f"them by the decoder's row stride. The decoder sizes that "
+                                    f"stride for the widest row of any variant, "
+                                    f"{struct['maxBitwidth']} bits with {drivers}")
+                            fix = (f"Lower the maxValue of {', '.join(param['constant'] for param in params)}, "
+                                   f"narrow its structure")
+                        printError(
+                            f"{where} but its {kind} '{objRow[nameField]}' {size}. A UVM register "
+                            f"model holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a "
+                            f"register or memory row. {fix}, or clear hasUvm.")
+                        failed = True
         if failed:
             exit(warningAndErrorReport())
 
@@ -5677,8 +5768,9 @@ class projectCreate:
         # for a block without params (validateUvmBlocks rejects a block with
         # params and no standalone variant). Each top's port map and Xcelium
         # shell are written under this build's .gen/vl, and VCS names its
-        # shell header after the top. The SystemC wrapper, its run state and
-        # the testbench name are one per block.
+        # shell header after the top. The SystemC wrapper, its run state, the
+        # testbench name, the test package and the env and test classes are
+        # one per block.
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         genVlDir = os.path.join(self.config.getConfig('DIRS')['root'], '.gen', 'vl')
         self.uvmNames = dict()
@@ -5709,12 +5801,22 @@ class projectCreate:
                     'registerWidths':     self.uvmRegisterWidths[row['blockKey']][variant],
                 }
             scWrapper = artifactPaths.fileStem(fileMap['uvmScWrap'], row['block'], layout)
+            testPkg = artifactPaths.fileStem(fileMap['uvmTest'], row['block'], layout)
+            block = row['block']
             self.uvmNames[row['blockKey']] = {
                 'scWrapperClass':  scWrapper,
                 'scWrapperHeader': f"{scWrapper}.{fileMap['uvmScWrap']['ext']['hdr']}",
-                'runClass':        f"{row['block']}_uvm_run",
-                'testbenchName':   f"{row['block']}_uvm",
+                'runClass':        f"{block}_uvm_run",
+                'testbenchName':   f"{block}_uvm",
                 'tops':            tops,
+                'envClass':        f"{block}_env",
+                'regBlockClass':   f"{block}_reg_block",
+                'testPkgName':     testPkg,
+                'testPkgGuard':    f"{testPkg.upper()}_SV",
+                'tbEnvClass':      f"{block}_tb_env",
+                'baseTestClass':   f"{block}_base_test",
+                'smokeTestClass':  f"{block}_smoke_test",
+                'failTestClass':   f"{block}_fail_test",
             }
         self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
 
@@ -5799,6 +5901,7 @@ class projectCreate:
             for v, top in names['tops'].items():
                 modules[('uvmTb', blockKey, v)] = top['tbModule']
                 uvmPackages[('uvmPkg', blockKey, v)] = top['pkgName']
+            uvmPackages[('uvmTest', blockKey)] = names['testPkgName']
 
         def describeBlock(blockKey):
             row = blockByKey[blockKey]
@@ -5820,6 +5923,8 @@ class projectCreate:
         def describeUvmVariant(key):
             return f"variant '{key[2]}'" if key[2] else "default"
         def describeUvmPackage(key):
+            if key[0] == 'uvmTest':
+                return f"the UVM test package of {describeBlock(key[1])}"
             return f"the {describeUvmVariant(key)} UVM package of {describeBlock(key[1])}"
         def describeContextFile(key):
             owner = self.contextOwningProject[key[1]]
@@ -5830,7 +5935,7 @@ class projectCreate:
             if key[0] == 'package':
                 return (f"the package of context '{key[1]}' "
                         f"(project '{self.contextOwningProject[key[1]]}')")
-            if key[0] == 'uvmPkg':
+            if key[0] in ('uvmPkg', 'uvmTest'):
                 return describeUvmPackage(key)
             return f"the module of {describeModule(key)}"
         rejectIllegalSvName(modules, "module", describeModule,

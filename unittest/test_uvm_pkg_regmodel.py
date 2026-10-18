@@ -6,20 +6,30 @@ A register class that disagrees with the decoder on its width, a field's
 position or its access fails every register test against the RTL, and a
 uvm_mem that steps by a different stride from the decoder reads the wrong row.
 UVM steps a memory by ceil(n_bits / 32) bus words, so a row whose stride is 8
-bytes needs n_bits over 32 even when the row is narrower. uvm_mem accepts only
-RW or RO, so a write-only memory is RW with WO map rights. The decoder flops
+bytes needs n_bits over 32 even when the row is narrower. The decoder flops
 padding like any field, so padding fields are modelled with the register's
 access and reset. The design drives ro and ext registers, so both are volatile.
 
+uvm_mem accepts only RW or RO, so a write-only memory is RW with WO map
+rights. With one map UVM reports its access as RW, and the built-in memory
+sequences would read it back, so the register block must set NO_MEM_TESTS on
+it. A padded row holds bits the decoder does not store, so a padded memory
+that is not write-only must get NO_MEM_WALK_TEST.
+
 The fixture is the two-variant register fixture of test_uvm_register_view.py,
 plus a default value on the padded register, an ext register with a default
-value, and a write-only memory whose worst-case row is 40 bits, so its stride
-is 8 bytes, while both variants' rows are at most 32 bits. Offsets come from the view, which test_uvm_register_view.py checks
-against the firmware header. Everything else is worked out here from the YAML.
+value, and two memories whose worst-case row is 40 bits, so their stride is 8
+bytes while both variants' rows are at most 32 bits: wtbl is write-only and
+ptbl is rw. ubDut also masters a second APB bus through port mst. Offsets
+come from the view, which test_uvm_register_view.py checks against the
+firmware header. Everything else is worked out here from the YAML.
 
-The env must create one agent per port with its config, one transaction counter for
-the DUT stream output and none for the input or the register bus, and an
-explicit predictor on the register bus agent's monitor with auto-predict off.
+The env must create one agent per port with its config, one transaction
+counter for the DUT stream output and none for the input or either APB port,
+and an explicit predictor on the register bus agent's monitor with
+auto-predict off. Its register model starts at its reset values. The apb
+agent has only a master driver, so the agent on mst, where the DUT is the
+master, must be passive, and the register bus agent active.
 """
 
 import os
@@ -48,7 +58,26 @@ EXTRA_EDITS = [
      '    - { register: ext, regType: ext, block: ubDut, structure: ubSt, defaultValue: 3, desc: "External" }\n'
      '\nmemories:\n'
      '    - { memory: wtbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
-     'regAccess: wo, desc: "Write-only table on an 8-byte stride" }\n'),
+     'regAccess: wo, desc: "Write-only table on an 8-byte stride" }\n'
+     '    - { memory: ptbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
+     'regAccess: rw, desc: "Padded table on an 8-byte stride" }\n'),
+    ('            out: { interface: ubStream, direction: src }\n',
+     '            out: { interface: ubStream, direction: src }\n'
+     '            mst: { interface: ubRegs, direction: src }\n'),
+    ('    ubRouter:\n        desc: "APB register decoder"',
+     '    ubSlave:\n'
+     '        desc: "APB slave the DUT masters"\n'
+     '        hasMdl: true\n'
+     '        hasTb: false\n'
+     '        hasRtl: false\n'
+     '        hasVl: false\n'
+     '    ubRouter:\n        desc: "APB register decoder"'),
+    ('    uRouter: { container: ubTb',
+     '    uSlave:  { container: ubTb, instanceType: ubSlave,  instGroup: top }\n'
+     '    uRouter: { container: ubTb'),
+    ('    - { interface: ubRegs, src: uCpu, dst: uRouter }',
+     '    - { interface: ubRegs, src: uCpu, dst: uRouter }\n'
+     '    - { interface: ubRegs, src: uDut, srcport: mst, dst: uSlave, name: mstLink }'),
 ]
 
 UB_W = regView.UB_W
@@ -103,17 +132,21 @@ def expected_regmodel(variant, offsets):
         'class ubDut_reg_ext extends uvm_reg;',
         'super.new(name, 8, UVM_NO_COVERAGE);',
         configure('data', 8, 0, 'RW', 1, 3, 1),
-        'class ubDut_regs extends uvm_reg_block;',
+        'class ubDut_reg_block extends uvm_reg_block;',
         'lut = new("lut", 8, 8, "RW", UVM_NO_COVERAGE);',
         f'tbl = new("tbl", {UB_D[variant]}, {8 + w}, "RO", UVM_NO_COVERAGE);',
         # Rows of 2 * UB_W + 8 bits, at most 32, on an 8-byte stride. uvm_mem
-        # takes no WO, so only the map rights say write-only.
+        # takes no WO, so the map rights say write-only and NO_MEM_TESTS keeps
+        # the memory sequences off it. ptbl's padding keeps the walk off it.
         'wtbl = new("wtbl", 4, 33, "RW", UVM_NO_COVERAGE);',
+        'uvm_resource_db#(bit)::set({"REG::", wtbl.get_full_name()}, "NO_MEM_TESTS", 1, this);',
+        'ptbl = new("ptbl", 4, 33, "RW", UVM_NO_COVERAGE);',
+        'uvm_resource_db#(bit)::set({"REG::", ptbl.get_full_name()}, "NO_MEM_WALK_TEST", 1, this);',
         "default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
     ]
     for name, rights in (('ctrl', 'RW'), ('cfg', 'RW'), ('wide', 'RO'), ('aligned', 'RW'), ('ext', 'RW')):
         lines.append(f"default_map.add_reg({name}, 'h{offsets[name]:x}, \"{rights}\");")
-    for name, rights in (('lut', 'RW'), ('tbl', 'RO'), ('wtbl', 'WO')):
+    for name, rights in (('lut', 'RW'), ('tbl', 'RO'), ('wtbl', 'WO'), ('ptbl', 'RW')):
         lines.append(f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");")
     return lines
 
@@ -125,7 +158,8 @@ ENV_LINES = [
     'ubRegs_agent_t ubRegs_agent;',
     'a2c_uvm_pkg::a2c_txn_counter #(out_item_t) out_counter;',
     'virtual a2c_clk_if clk_vif;',
-    'ubDut_regs regmodel;',
+    'mst_agent_t mst_agent;',
+    'ubDut_reg_block regmodel;',
     'apb_reg_adapter adapter;',
     'uvm_reg_predictor #(ubRegs_item_t) predictor;',
     'if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk", clk_vif)) begin',
@@ -139,10 +173,12 @@ ENV_LINES = [
     'out_counter = a2c_uvm_pkg::a2c_txn_counter#(out_item_t)::type_id::create("out_counter", this);',
     'out_counter.port_name = "out";',
     'ubRegs_cfg.port_name = "ubRegs";',
-    'regmodel = ubDut_regs::type_id::create("regmodel");',
+    'mst_cfg.is_active = UVM_PASSIVE;',
+    'regmodel = ubDut_reg_block::type_id::create("regmodel");',
     'regmodel.build();',
+    'regmodel.reset();',
     'predictor = uvm_reg_predictor#(ubRegs_item_t)::type_id::create("predictor", this);',
-    'out_agent.mon.ap.connect(out_counter.imp);',
+    'out_agent.mon.ap.connect(out_counter.analysis_export);',
     'regmodel.default_map.set_sequencer(ubRegs_agent.sqr, adapter);',
     'regmodel.default_map.set_auto_predict(0);',
     'ubRegs_agent.mon.ap.connect(predictor.bus_in);',
@@ -165,9 +201,20 @@ def check(project):
         expected = expected_regmodel(variant, offsets) + ENV_LINES
         problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
         unexpected = [line for line in lines
-                      if re.match(r'(in|ubRegs)_counter\b|.*_cfg\.ready_pct\b|ubRegs_cfg\.(role|no_backpressure)\b',
-                                  line)]
+                      if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.(role|no_backpressure)\b'
+                                  r'|(in|out|ubRegs)_cfg\.is_active\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
+        # The resources come after their memory's configure() call, which
+        # gives the memory the full name they are keyed by.
+        for mem in ('wtbl', 'ptbl'):
+            configured = lines.index(f'{mem}.configure(this);')
+            resource = [i for i, line in enumerate(lines) if line.startswith('uvm_resource_db') and f' {mem}.' in line]
+            if resource != [configured + 1]:
+                problems.append(f"{pkg}.sv sets {mem}'s resource at lines {resource}, expected just after "
+                                f"its configure() at line {configured}")
+        resources = [line for line in lines if line.startswith('uvm_resource_db')]
+        if len(resources) != 2:
+            problems.append(f"{pkg}.sv sets {len(resources)} resources, expected 2: {resources}")
         # The fields' configure calls sit in their own register's build(), in
         # declaration order.
         configures = [line for line in lines if '.configure(this, ' in line]
@@ -201,7 +248,8 @@ def run_all_tests():
         print("\nFAIL: a variant package's register model or env disagrees with the block")
         return 1
     print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
-    print("  PASS: env agents, the output transaction counter and the register predictor")
+    print("  PASS: NO_MEM_TESTS on the write-only memory, NO_MEM_WALK_TEST on the padded one")
+    print("  PASS: env agents, the passive apb src agent, the output transaction counter and the register predictor")
     print("\nPASS: the variant packages hold the register model and the env")
     return 0
 
