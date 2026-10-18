@@ -26,6 +26,7 @@
    - [axi_write_channel](#411-axi_write_channel---axi-write)
    - [axi4_stream_channel](#412-axi4_stream_channel---axi4-stream)
    - [external_reg_channel](#413-external_reg_channel---register-owned-by-another-block)
+   - [ahb_channel](#414-ahb_channel---ahb-lite)
 5. [Transaction Tracking](#5-transaction-tracking-user-api)
 6. [Framework Reference](#6-framework-reference-minimal-documentation)
 7. [Advanced Topics](#7-advanced-topics-power-users)
@@ -431,6 +432,7 @@ All channels are created and connected in generated code. Users call methods on 
 | `axi_read` | AXI read | Burst read transactions |
 | `axi_write` | AXI write | Burst write transactions |
 | `axi4_stream` | AXI4-Stream | High-speed streaming |
+| `ahb` | AHB-Lite, one manager | Memory-mapped access to AHB IP |
 | `external_reg` | Firmware register owned by another block | Register whose storage lives outside the register handler |
 
 ### 4.1 rdy_vld_channel - Ready/Valid Handshake
@@ -1026,6 +1028,26 @@ void myBlock::ctrlThread(void)
 }
 ```
 
+### 4.14 ahb_channel - AHB-Lite
+
+AHB-Lite between one manager and one subordinate, with an address phase (`ahbAddrSt`: `haddr`, `htrans`, `hwrite`, `hsize`, `hburst`, `hprot`, `hmastlock`), write data, and a response (`ahbRespSt`: `hrdata`, `hresp`). `hresp` true is ERROR. Each phase has its own sub-channel, so a manager that sends addresses from one thread and data and responses from another overlaps the address of transfer N+1 with the data phase of transfer N. `rules/skills/systemc-interfaces.md` has a two-thread example.
+
+#### Source side (manager)
+
+**API:**
+- `myPort->sendAddr(addr)` - Send an address phase. `addr.htrans` must be `AHBTRANS_NONSEQ` or `AHBTRANS_SEQ`
+- `myPort->sendData(data)` - Send the write data, once per write, in address order
+- `myPort->receiveResp(resp)` - Blocking read of the response to the oldest transfer
+
+#### Sink side (subordinate)
+
+**API:**
+- `myPort->receiveAddr(addr)` - Blocking wait for an address phase
+- `myPort->receiveData(data)` - Blocking read of the write data, writes only
+- `myPort->sendResp(resp)` - Complete the oldest transfer
+- `myPort->isActive()` / `myPort->isNotActive()` - Whether an address phase is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` to the address sub-channel
+
 ### Channel Selection Guide
 
 | Need | Use Channel |
@@ -1040,6 +1062,7 @@ void myBlock::ctrlThread(void)
 | Status broadcasting | `status` |
 | Burst read/write | `axi_read`/`axi_write` |
 | High-speed streaming | `axi4_stream` |
+| AHB-Lite manager or subordinate | `ahb` |
 | Firmware register stored in the block that owns it | `external_reg` |
 | External handshake-less boundary only | `raw` (**last resort**) |
 

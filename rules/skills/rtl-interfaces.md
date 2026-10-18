@@ -1,6 +1,6 @@
 ---
 name: rtl-interfaces
-description: Guide for using standard interface protocols (rdy_vld, push_ack, req_ack, pop_ack, notify_ack, status, external_reg, memory, apb, axi, axi4_stream, raw) in SystemVerilog RTL
+description: Guide for using standard interface protocols (rdy_vld, push_ack, req_ack, pop_ack, notify_ack, status, external_reg, memory, apb, axi, axi4_stream, ahb, raw) in SystemVerilog RTL
 ---
 # Skill: RTL interfaces
 
@@ -35,6 +35,7 @@ Every interface has two modports and no others:
 | `apb_if` | Register bus | `psel`, `penable`, `pwrite`, `paddr`, `pwdata` from src; `pready`, `prdata`, `pslverr` from dst |
 | `axi_read_if`, `axi_write_if` | AXI4 | standard AXI4 channel signals |
 | `axi4_stream_if` | AXI4-Stream | `tvalid`, `tdata`, `tstrb`, `tkeep`, `tlast`, `tid`, `tdest`, `tuser`; `tready` from dst |
+| `ahb_if` | AHB-Lite, one manager, point to point | `haddr`, `hsel`, `htrans`, `hwrite`, `hsize`, `hburst`, `hprot`, `hmastlock`, `hwdata` from src; `hready`, `hrdata`, `hresp` from dst |
 | `raw_if` | Last resort, no handshake | `data` |
 
 The SV definitions are in `builder/base/interfaces/<name>/<name>_if.sv`.
@@ -128,4 +129,22 @@ Drive the channel signals directly. `rdata` is the interface's `data_t`, and `br
 assign axiRd.arvalid = startRead;
 assign axiRd.araddr  = targetAddr;
 // address accepted in a cycle where axiRd.arvalid && axiRd.arready
+```
+
+### 10. `ahb_if`
+AHB-Lite between one manager (`.src`) and one subordinate (`.dst`). It is not an address bus, so it cannot feed a generated `apbDecode` router.
+*   An address phase starts a transfer at a clock edge where `hsel`, `hready` and `htrans[1]` are high. `htrans[1]` is high for NONSEQ and SEQ.
+*   The subordinate holds `hready` low for wait states and drives `hrdata` and `hresp` in the cycle it raises `hready`. The manager holds the next address phase and `hwdata` while `hready` is low.
+*   `hresp` is one bit, high for ERROR. An ERROR response takes two cycles, the first with `hready` low.
+*   No SV package ships the `AHBTRANS_*` and `AHBBURST_*` names. To compare `htrans` or `hburst` by name, a project restates them in its own YAML types, for example an `ahbStd.yaml` with the same names and encodings.
+
+```systemverilog
+assign xferStart = ahbIn.hsel && ahbIn.hready && ahbIn.htrans[1];
+```
+
+The interface has a single `hready`, which the subordinate drives. A subordinate IP with separate `HREADY` and `HREADYOUT` pins connects both to it:
+
+```systemverilog
+.HREADYOUT (ahbIn.hready),
+.HREADY    (ahbIn.hready),   // one manager, so HREADY is the subordinate's own HREADYOUT
 ```

@@ -1,0 +1,31 @@
+
+interface_defs:
+  ahb :
+    timing: elastic
+    backpressure: { default: true, overridable: false }
+    parameters :
+      addr_t : { datatype : struct }
+      data_t : { datatype : struct }
+    signals:
+      haddr : addr_t
+      hsel : bool
+      htrans : _ahbTransT
+      hwrite : bool
+      hsize : _ahbSizeT
+      hburst : _ahbBurstT
+      hprot : _ahbProtT
+      hmastlock : bool
+      hwdata : data_t
+      hready : bool
+      hrdata : data_t
+      hresp : bool
+    modports :
+      src :
+        inputs : ['hready', 'hrdata', 'hresp']
+        outputs: ['haddr', 'hsel', 'htrans', 'hwrite', 'hsize', 'hburst', 'hprot', 'hmastlock', 'hwdata']
+      dst :
+        inputs : ['haddr', 'hsel', 'htrans', 'hwrite', 'hsize', 'hburst', 'hprot', 'hmastlock', 'hwdata']
+        outputs: ['hready', 'hrdata', 'hresp']
+    sc_channel :
+      type : 'ahb'
+      multicycle_types : []

@@ -18,6 +18,8 @@ systemFiles:
   - $a2c/interfaces/axi_write/axi_write_if.yaml
   - $a2c/interfaces/axi4_stream/axi4_stream_if.yaml
   - $a2c/interfaces/raw/raw_if.yaml
+  - $a2c/interfaces/ahb/ahb_types.yaml
+  - $a2c/interfaces/ahb/ahb_if.yaml
 
 templates:
   # SystemC/C++ templates

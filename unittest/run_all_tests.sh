@@ -126,6 +126,12 @@ echo "Test Suite 13c: Thunker Runtime Bridge"
 echo "------------------------------------------------------------------------"
 python3 test_thunker_runtime.py || FAILED=1
 
+# Test 13c2: the AHB-Lite BFMs and channel put the right cycles on the pins
+echo ""
+echo "Test Suite 13c2: AHB BFM Pin-Level Protocol"
+echo "------------------------------------------------------------------------"
+python3 test_ahb_bfm.py || FAILED=1
+
 # Test 13d: the power-of-two helpers obey their contracts across the 64-bit domain
 echo ""
 echo "Test Suite 13d: Bit Twiddling Runtime Contract"

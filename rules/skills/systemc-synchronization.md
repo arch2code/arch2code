@@ -14,7 +14,7 @@ A thread hooks one `sc_event` to several dst-side ports with `setExternalEvent(&
 
 ### Family support
 *   `setExternalEvent`, `isActive()` and `isNotActive()` exist on the dst side of `rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack` and `notify_ack`.
-*   On `axi_read` and `axi_write` they exist on the dst side and report the address channel, so one thread can serve several AXI subordinate ports. `axi4_stream` reports its one data channel.
+*   On `axi_read`, `axi_write` and `ahb` they exist on the dst side and report the address channel, so one thread can serve several AXI or AHB subordinate ports. `axi4_stream` reports its one data channel.
 *   `status`, `external_reg` and `raw` have `setExternalEvent` but no `isActive()`, so they cannot join the scan below.
     *   A `status` port fires the shared event on its first `write()`, on each later `write()` that changes the value, and on every firmware write (`reg_write_cmd`), even one that repeats the value. Compare `readNonBlocking()` with the last value the thread saw.
     *   On an `external_reg` port the hooked event fires only on `write()`, from either side, and never on a firmware write (`reg_write_cmd`). A block that owns the register blocks in `read()` instead.

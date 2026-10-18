@@ -1,7 +1,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 //
 // Runtime acceptance harness for the payload-carrying protocol port thunkers:
-// apb, axi_read, axi_write, axi4_stream, external_reg, memory, pop_ack, raw and
+// ahb, apb, axi_read, axi_write, axi4_stream, external_reg, memory, pop_ack, raw and
 // status. Driven by unittest/test_thunker_runtime.py.
 //
 // Every template here is explicitly instantiated AND run under the SystemC
@@ -21,10 +21,10 @@
 //     above _bitWidth; the direct arm bit_casts the whole object and keeps
 //     them. Sending a value with both halves set therefore says which arm ran.
 //     A real payload's arms agree; this pair is built so they do not.
-//  2. WHICH SLOT EACH FLAG DRIVES. The two multi-payload protocols are
+//  2. WHICH SLOT EACH FLAG DRIVES. The multi-payload protocols are
 //     instantiated at complementary verdict subsets - axi4_stream at
-//     (tdata, tdest) and then (tid, tuser), memory at (addr) and then (data) -
-//     so a flag wired to the wrong payload slot fails.
+//     (tdata, tdest) and then (tid, tuser), memory and ahb at (addr) and then
+//     (data) - so a flag wired to the wrong payload slot fails.
 //  3. BOTH FORWARDING DIRECTIONS. Each protocol except axi_read and axi_write
 //     is run in the consumer-child shape, which runs thunkIn(), and in the
 //     producer-child shape, which runs thunkOut() - separate code in every
@@ -45,6 +45,7 @@
 // legs, the external_reg owner as sole mirror publisher in all four shapes,
 // and memory/apb read data that reqReceive() never fills.
 
+#include "ahb_port_thunker.h"
 #include "apb_port_thunker.h"
 #include "axi4_stream_port_thunker.h"
 #include "axi_read_port_thunker.h"
@@ -56,6 +57,7 @@
 #include "status_port_thunker.h"
 
 #include <cstdint>
+#include <deque>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -1763,8 +1765,181 @@ struct axiWriteConsumerHarness : sc_core::sc_module
 };
 
 // ===========================================================================
+// ahb - manager and subordinate each run one thread per phase. The subordinate
+// answers transfer N only after it has taken the address of transfer N+1, so
+// the two overlap across the adapter. The manager's data thread starts first,
+// so write data reaches the channel before its address. data_t crosses as
+// write data toward the subordinate and as read data back.
+// ===========================================================================
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+struct ahbChecks
+{
+    static bool write( int t ) { return ( t % 2 ) == 0; }
+    static bool error( int t ) { return ( t % 4 ) == 3; }
+
+    template <class Addr>
+    static Addr addrOf( int t )
+    {
+        Addr a;
+        a.haddr.value = addrVal( t / 2 );
+        a.htrans = ( t % 2 ) ? AHBTRANS_SEQ : AHBTRANS_NONSEQ;
+        a.hwrite = write( t );
+        a.hsize = 2;
+        a.hburst = AHBBURST_INCR4;
+        a.hprot = (_ahbProtT)( t & 0xF );
+        a.hmastlock = ( t == 1 );
+        return a;
+    }
+
+    template <class Addr>
+    static void checkAddr( const char* label, const Addr& a, int t )
+    {
+        expectEqual( label, a.haddr.value, bridged( addrVal( t / 2 ), DirectAddr ) );
+        expectEqual( label, a.htrans, ( t % 2 ) ? AHBTRANS_SEQ : AHBTRANS_NONSEQ );
+        expectEqual( label, a.hwrite ? 1u : 0u, write( t ) ? 1u : 0u );
+        expectEqual( label, a.hsize, 2u );
+        expectEqual( label, a.hburst, AHBBURST_INCR4 );
+        expectEqual( label, a.hprot, (std::uint32_t)( t & 0xF ) );
+        expectEqual( label, a.hmastlock ? 1u : 0u, t == 1 ? 1u : 0u );
+    }
+
+    // Manager data phases: write data, then the response, in address order.
+    template <class Out, class D, class Resp>
+    static void managerData( const char* label, Out& out )
+    {
+        for (int t = 0; t < 2 * TRANSFERS; ++t) {
+            if (write( t )) {
+                D d;
+                d.value = dataVal( t / 2 );
+                out.sendData( d );
+            }
+            Resp r;
+            out.receiveResp( r );
+            expectEqual( label, r.hresp ? 1u : 0u, error( t ) ? 1u : 0u );
+            if (!write( t )) expectEqual( label, r.hrdata.value, bridged( dataVal( t / 2 ), DirectData ) );
+        }
+    }
+
+    // Subordinate address phases, counted for the beat total.
+    template <class In, class Addr>
+    static void subordinateAddr( const char* label, In& in, std::deque<Addr>& pending, sc_core::sc_event& taken, int& beats )
+    {
+        for (int t = 0;; ++t) {
+            Addr a;
+            in.receiveAddr( a );
+            ++beats;
+            if (t < 2 * TRANSFERS) checkAddr( label, a, t );
+            pending.push_back( a );
+            taken.notify( SC_ZERO_TIME );
+        }
+    }
+
+    // Subordinate data phases, in address order. Each response but the last
+    // goes out only once the next address has been taken.
+    template <class In, class Addr, class D, class Resp>
+    static void subordinateData( const char* label, In& in, std::deque<Addr>& pending, sc_core::sc_event& taken, const int& beats )
+    {
+        for (int t = 0;; ++t) {
+            while (pending.empty()) wait( taken );
+            const Addr a = pending.front();
+            pending.pop_front();
+            if (a.hwrite) {
+                D d;
+                in.receiveData( d );
+                if (t < 2 * TRANSFERS) expectEqual( label, d.value, bridged( dataVal( t / 2 ), DirectData ) );
+            }
+            pace();
+            if (t < 2 * TRANSFERS - 1) expectEqual( label, beats >= t + 2 ? 1u : 0u, 1u );
+            Resp r;
+            r.hresp = error( t );
+            if (!a.hwrite) r.hrdata.value = dataVal( t / 2 );
+            in.sendResp( r );
+        }
+    }
+};
+
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+struct ahbConsumerHarness : sc_core::sc_module
+{
+    using C = ahbChecks<UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+    ahb_channel<UpA, UpD> upChan;
+    ahb_in<DownA, DownD> childPort;
+    ahb_port_thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
+    const char* label;
+    int beats = 0;
+    std::deque<ahbAddrSt<DownA>> pending;
+    sc_core::sc_event taken;
+
+    ahbConsumerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( ahbConsumerHarness );
+        SC_THREAD( driveData );
+        SC_THREAD( driveAddr );
+        SC_THREAD( sinkAddr );
+        SC_THREAD( sinkData );
+    }
+
+    void driveAddr()
+    {
+        for (int t = 0; t < 2 * TRANSFERS; ++t) {
+            upChan.sendAddr( C::template addrOf<ahbAddrSt<UpA>>( t ), std::nullopt );
+        }
+    }
+    void driveData() { C::template managerData<ahb_channel<UpA, UpD>, UpD, ahbRespSt<UpD>>( label, upChan ); }
+    void sinkAddr() { C::subordinateAddr( label, *childPort.operator->(), pending, taken, beats ); }
+    void sinkData()
+    {
+        C::template subordinateData<ahb_in_if<DownA, DownD>, ahbAddrSt<DownA>, DownD, ahbRespSt<DownD>>(
+            label, *childPort.operator->(), pending, taken, beats );
+    }
+};
+
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+struct ahbProducerHarness : sc_core::sc_module
+{
+    using C = ahbChecks<UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+    ahb_channel<UpA, UpD> upChan;
+    ahb_out<DownA, DownD> childPort;
+    ahb_port_thunker<UpA, UpD, DownA, DownD, DirectAddr, DirectData> thunker;
+    const char* label;
+    int beats = 0;
+    std::deque<ahbAddrSt<UpA>> pending;
+    sc_core::sc_event taken;
+
+    ahbProducerHarness( sc_core::sc_module_name n, const char* label_ )
+      : sc_core::sc_module( n ), upChan( "upChan", "tb" ), childPort( "childPort" ),
+        thunker( "thunker", upChan, childPort, "tb" ), label( label_ )
+    {
+        SC_HAS_PROCESS( ahbProducerHarness );
+        SC_THREAD( driveData );
+        SC_THREAD( driveAddr );
+        SC_THREAD( sinkAddr );
+        SC_THREAD( sinkData );
+    }
+
+    void driveAddr()
+    {
+        for (int t = 0; t < 2 * TRANSFERS; ++t) {
+            childPort->sendAddr( C::template addrOf<ahbAddrSt<DownA>>( t ), std::nullopt );
+        }
+    }
+    void driveData()
+    {
+        C::template managerData<ahb_out_if<DownA, DownD>, DownD, ahbRespSt<DownD>>( label, *childPort.operator->() );
+    }
+    void sinkAddr() { C::subordinateAddr( label, upChan, pending, taken, beats ); }
+    void sinkData()
+    {
+        C::template subordinateData<ahb_channel<UpA, UpD>, ahbAddrSt<UpA>, UpD, ahbRespSt<UpD>>(
+            label, upChan, pending, taken, beats );
+    }
+};
+
+// ===========================================================================
 // Explicit instantiation of every new template, at both verdict settings and,
-// for the two multi-payload protocols, at complementary verdict subsets.
+// for the multi-payload protocols, at complementary verdict subsets.
 // ===========================================================================
 template class raw_port_thunker<maskASt, maskBSt, false>;
 template class raw_port_thunker<maskASt, maskBSt, true>;
@@ -1779,6 +1954,8 @@ template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, tru
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, false>;
 template class memory_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, true>;
 template class apb_port_thunker<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>;
+template class ahb_port_thunker<maskASt, maskASt, maskBSt, maskBSt, true, false>;
+template class ahb_port_thunker<maskASt, maskASt, maskBSt, maskBSt, false, true>;
 template class axi4_stream_port_thunker<maskASt, maskASt, maskASt,
                                         maskBSt, maskBSt, maskBSt,
                                         true, false, true, maskASt, maskBSt>;
@@ -1820,6 +1997,10 @@ int sc_main( int, char*[] )
     axi4StreamConsumerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
                               false, true, false> streamC1( "streamC1", "axi4_stream in tid direct" );
+    ahbConsumerHarness<maskASt, maskASt, maskBSt, maskBSt, true, false>
+        ahbC0( "ahbC0", "ahb in addr-only direct" );
+    ahbConsumerHarness<maskASt, maskASt, maskBSt, maskBSt, false, true>
+        ahbC1( "ahbC1", "ahb in data-only direct" );
 
     // -- producer-child shape: thunkOut() -----------------------------------
     rawProducerHarness<maskASt, maskBSt, false> rawP0( "rawP0", "raw out packed" );
@@ -1840,6 +2021,10 @@ int sc_main( int, char*[] )
     axi4StreamProducerHarness<maskASt, maskASt, maskASt, maskASt,
                               maskBSt, maskBSt, maskBSt, maskBSt,
                               false, true, false> streamP1( "streamP1", "axi4_stream out tid direct" );
+    ahbProducerHarness<maskASt, maskASt, maskBSt, maskBSt, true, false>
+        ahbP0( "ahbP0", "ahb out addr-only direct" );
+    ahbProducerHarness<maskASt, maskASt, maskBSt, maskBSt, false, true>
+        ahbP1( "ahbP1", "ahb out data-only direct" );
 
     // -- notification and leg semantics, both shapes, both verdicts ---------
     statusCommandConsumerHarness<maskASt, maskBSt, false> statusCmdC0( "statusCmdC0", "status cmd in packed" );
@@ -1926,6 +2111,10 @@ int sc_main( int, char*[] )
     expectEqual( "memP1 beats", memP1.beats, 2 * TRANSFERS );
     expectEqual( "streamP0 beats", streamP0.beats, TRANSFERS );
     expectEqual( "streamP1 beats", streamP1.beats, TRANSFERS );
+    expectEqual( "ahbC0 beats", ahbC0.beats, 2 * TRANSFERS );
+    expectEqual( "ahbC1 beats", ahbC1.beats, 2 * TRANSFERS );
+    expectEqual( "ahbP0 beats", ahbP0.beats, 2 * TRANSFERS );
+    expectEqual( "ahbP1 beats", ahbP1.beats, 2 * TRANSFERS );
     expectEqual( "rawUpC beats", rawUpC.beats, TRANSFERS );
     expectEqual( "rawUpP beats", rawUpP.beats, TRANSFERS );
     expectEqual( "statusCmdC0 reference", statusCmdC0.refBeats, STATUS_SEQUENCE_NOTIFICATIONS );

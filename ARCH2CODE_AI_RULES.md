@@ -605,6 +605,7 @@ Based on the `builder/base/interfaces/` directory (`lmmi` is in `builder/pro/int
 | `axi4_stream` | AXI4-Stream | High-performance streaming |
 | `axi_read` | AXI4 read channel | Memory read transactions |
 | `axi_write` | AXI4 write channel | Memory write transactions |
+| `ahb` | AMBA AHB-Lite, one manager, point to point | Memory-mapped access to AHB IP. Cannot feed `apbDecode` |
 | `status` | Status signal (no handshake) | State only (config, mode, enable, lock, lifecycle, register mirrors, monitoring, boundary pin levels). Never control |
 | `notify_ack` | Notify-acknowledge | Event notifications |
 | `memory` | Memory interface | SRAM/ROM access |
@@ -3436,6 +3437,7 @@ registers:
 | `axi4_stream` | TVALID/TREADY | Unidirectional | High-speed streaming | `tdata_t`, `tid_t`, `tdest_t` (optional `tuser_t`) |
 | `axi_read` | AXI4 | Bidirectional | Memory read | `addr_t`, `data_t` (optional `aruser_t`, `ruser_t`, `id_t`) |
 | `axi_write` | AXI4 | Bidirectional | Memory write | `addr_t`, `data_t`, `strb_t` (optional `awuser_t`, `wuser_t`, `buser_t`, `id_t`) |
+| `ahb` | AHB-Lite | Bidirectional | Memory-mapped access | `addr_t`, `data_t` |
 | `status` | None | Unidirectional | State only, never control | `data_t` |
 | `notify_ack` | notify/ack | Unidirectional | Event notification | None |
 | `external_reg` | `write` | Bidirectional | Register owned outside the handler | `data_t` |
@@ -3451,7 +3453,7 @@ Each interface directory contains:
 - `<type>_if.sv`: SystemVerilog interface
 - `<type>_channel.h`: SystemC channel
 - `<type>_bfm.h`: Bus functional model
-- `<type>_port_thunker.h` and `<type>_port_socket.h`: thunker and socket support, where the interface has them. `notify_ack` has no thunker. `external_reg`, `memory`, `raw` and `lmmi` have no socket
+- `<type>_port_thunker.h` and `<type>_port_socket.h`: thunker and socket support, where the interface has them. `notify_ack` has no thunker. `external_reg`, `memory`, `raw`, `ahb` and `lmmi` have no socket
 
 ### B. Built-in Types
 

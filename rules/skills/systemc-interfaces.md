@@ -1,6 +1,6 @@
 ---
 name: systemc-interfaces
-description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, memory, axi_read, axi_write, axi4_stream, status, external_reg, raw) in SystemC models, and for which ports a --delay run delays
+description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, memory, axi_read, axi_write, axi4_stream, ahb, status, external_reg, raw) in SystemC models, and for which ports a --delay run delays
 ---
 # Skill: SystemC interfaces
 
@@ -31,6 +31,7 @@ Pick the right port call for each interface family in a SystemC model.
 | `axi_read` | `sendAddr(a)`, `receiveData(r)` | `receiveAddr(a)`, `sendData(r)` |
 | `axi_write` | `sendAddr(a)`, `sendData(d)`, `receiveResp(b)` | `receiveAddr(a)`, `receiveData(d)`, `sendResp(b)` |
 | `axi4_stream` | `sendInfo(i)` | `receiveInfo(i)` |
+| `ahb` | `sendAddr(a)`, `sendData(d)` on writes only, `receiveResp(r)` | `receiveAddr(a)`, `receiveData(d)` on writes only, `sendResp(r)` |
 | `status` | `write(v)` | `readNonBlocking()` or `read()`, see below |
 | `external_reg` | `reg_write_cmd(v)`, `readNonBlocking()`, see below | `read(v)`, `update_mirror(v)`, see below |
 | `raw` | `write(v)` | `read(v)` |
@@ -52,6 +53,67 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 
 ### `raw`
 `raw` is a last resort. `read()` blocks until a value arrives, and `write()` blocks until the reader takes the value. Use it only at a design boundary to legacy or external IP that has a free-running data bus and no ready, valid or ack wires. Between arch2code blocks, use a handshaked family, and confirm with the user before proposing `raw`. The `raw` entry under "Interfaces & Interface Types" in `ARCH2CODE_AI_RULES.md` explains why.
+
+### `ahb`
+`ahb` is AHB-Lite with one manager and one subordinate. The manager is the src side, with port type `ahb_out<A, D>`. The subordinate is the dst side, `ahb_in<A, D>`.
+*   `ahbAddrSt<A>` carries `haddr`, `htrans`, `hwrite`, `hsize`, `hburst` (`AHBBURST_*`), `hprot` and `hmastlock`. `htrans` must be `AHBTRANS_NONSEQ` or `AHBTRANS_SEQ`, because IDLE and BUSY carry no transfer. `sendAddr` asserts on any other value.
+*   `ahbRespSt<D>` carries `hrdata` and `hresp`. `hresp` true is ERROR.
+*   Call `sendData` once per write, in address order, and `receiveResp` once per transfer. The subordinate mirrors this with `receiveData` and `sendResp`.
+*   The address and data phases run on separate sub-channels. A manager that calls `sendAddr` from one thread and `sendData` and `receiveResp` from another can send the address of transfer N+1 while transfer N is in its data phase.
+
+The address thread tells the data thread which transfers are writes. Here `m_inFlight` is an `sc_fifo<bool>` member, and `busAddrSt` and `busDataSt` are the structures the interface binds:
+
+```cpp
+void blk::addrThread(void)
+{
+    ahbAddrSt<busAddrSt> a;
+    a.htrans = AHBTRANS_NONSEQ;
+    a.hsize = 2;                    // 4 bytes
+    for (uint32_t i = 0; i < 4; i++) {
+        a.haddr.addr = 0x100 + 4 * i;
+        a.hwrite = (i < 2);
+        ahbOut->sendAddr(a);
+        m_inFlight.write(a.hwrite);
+    }
+}
+
+void blk::dataThread(void)
+{
+    while (true) {
+        if (m_inFlight.read()) {
+            busDataSt d;
+            d.data = 0xA5;
+            ahbOut->sendData(d);
+        }
+        ahbRespSt<busDataSt> r;
+        ahbOut->receiveResp(r);
+        Q_ASSERT(!r.hresp, "ahb ERROR response");
+    }
+}
+```
+
+A subordinate takes one transfer at a time:
+
+```cpp
+void blk::subThread(void)
+{
+    while (true) {
+        ahbAddrSt<busAddrSt> a;
+        ahbIn->receiveAddr(a);
+        ahbRespSt<busDataSt> r;
+        if (a.hwrite) {
+            busDataSt d;
+            ahbIn->receiveData(d);
+            // store d at a.haddr
+        } else {
+            // fill r.hrdata from a.haddr
+        }
+        ahbIn->sendResp(r);
+    }
+}
+```
+
+`ahb` has no Python socket.
 
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
 

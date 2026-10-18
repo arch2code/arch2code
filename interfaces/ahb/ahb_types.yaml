@@ -1,0 +1,30 @@
+# AHB-Lite field types named by the ahb interface signals. common/systemc/ahbCommon.h
+# mirrors them for C++ and ahb_if.sv spells their widths.
+
+types:
+  _ahbTransT:
+    width: 2
+    desc: "Transfer type of the current address phase"
+    enum:
+      - {enumName: AHBTRANS_IDLE,   desc: IDLE,   value: 0 }
+      - {enumName: AHBTRANS_BUSY,   desc: BUSY,   value: 1 }
+      - {enumName: AHBTRANS_NONSEQ, desc: NONSEQ, value: 2 }
+      - {enumName: AHBTRANS_SEQ,    desc: SEQ,    value: 3 }
+  _ahbSizeT:
+    width: 3
+    desc: "Bytes in transfer encoded 0=1, 1=2, 2=4, 3=8, 4=16, 5=32, 6=64, 7=128"
+  _ahbBurstT:
+    width: 3
+    desc: "Burst type and length"
+    enum:
+      - {enumName: AHBBURST_SINGLE, desc: SINGLE, value: 0 }
+      - {enumName: AHBBURST_INCR,   desc: INCR,   value: 1 }
+      - {enumName: AHBBURST_WRAP4,  desc: WRAP4,  value: 2 }
+      - {enumName: AHBBURST_INCR4,  desc: INCR4,  value: 3 }
+      - {enumName: AHBBURST_WRAP8,  desc: WRAP8,  value: 4 }
+      - {enumName: AHBBURST_INCR8,  desc: INCR8,  value: 5 }
+      - {enumName: AHBBURST_WRAP16, desc: WRAP16, value: 6 }
+      - {enumName: AHBBURST_INCR16, desc: INCR16, value: 7 }
+  _ahbProtT:
+    width: 4
+    desc: "Protection control: bit 0 data/opcode, bit 1 privileged, bit 2 bufferable, bit 3 cacheable"

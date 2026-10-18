@@ -67,7 +67,7 @@ def check(condition, message):
 # setExternalEvent and never trip that check, but they also never claimed
 # full trio support).
 REQUIRED_FAMILIES = {
-    'rdy_vld', 'axi_read', 'axi_write', 'axi4_stream', 'apb', 'memory',
+    'rdy_vld', 'axi_read', 'axi_write', 'axi4_stream', 'apb', 'memory', 'ahb',
 }
 
 PURE_VIRTUAL_RE = {
@@ -137,7 +137,7 @@ def test_required_families_are_trio_complete(trio_complete_families):
           f"every family that must support the arbitration trio still does "
           f"(missing: {sorted(missing)})" if missing else
           "every family that must support the arbitration trio (rdy_vld, "
-          "axi_read, axi_write, axi4_stream, apb, memory) still does")
+          "axi_read, axi_write, axi4_stream, apb, memory, ahb) still does")
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +152,8 @@ def test_required_families_are_trio_complete(trio_complete_families):
 # trio-complete family, cribbed from real instantiations in the shipped
 # examples (axiDemo for axi_read/axi_write/axi4_stream, helloWorld for
 # rdy_vld, apbDecode for apb, mixed for memory) or, where no example
-# instantiates the family, from its own channel header (notify_ack, pop_ack,
-# push_ack, req_ack). A family that reaches trio-complete status without an
+# instantiates the family, from its own channel header (ahb, notify_ack,
+# pop_ack, push_ack, req_ack). A family that reaches trio-complete status without an
 # entry here fails loudly below instead of silently skipping its compile
 # check, so a new family cannot join the trio without also joining the real
 # compile contract. ctor_args holds any required constructor arguments after
@@ -191,6 +191,11 @@ FAMILY_COMPILE_SPECS = {
         'channel': 'axi_write_channel<dummyPayload<32>, dummyPayload<32>, dummyPayload<4>>',
         'ctor_args': '',
         'in_if': 'axi_write_in_if<dummyPayload<32>, dummyPayload<32>, dummyPayload<4>>',
+    },
+    'ahb': {
+        'channel': 'ahb_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
+        'in_if': 'ahb_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
     'axi4_stream': {
         'channel': 'axi4_stream_channel<dummyPayload<32>, dummyPayload<8>, dummyPayload<8>>',

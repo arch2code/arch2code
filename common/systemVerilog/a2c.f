@@ -25,6 +25,8 @@
 -y ../../interfaces/axi4_stream
 +incdir+../../interfaces/raw
 -y ../../interfaces/raw
++incdir+../../interfaces/ahb
+-y ../../interfaces/ahb
 +incdir+.
 -y .
 flops.sv
