@@ -5777,8 +5777,9 @@ class projectCreate:
         # params and no standalone variant). Each top's port map and Xcelium
         # shell are written under this build's .gen/vl, and VCS names its
         # shell header after the top. The SystemC wrapper, its run state, the
-        # testbench name, the test package and the env and test classes are
-        # one per block.
+        # testbench name, the test package, the env and test classes, and the
+        # DUTs a top's snapshots can hold are one per block. The first DUT is
+        # the default.
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         genVlDir = os.path.join(self.config.getConfig('DIRS')['root'], '.gen', 'vl')
         self.uvmNames = dict()
@@ -5819,6 +5820,7 @@ class projectCreate:
                 'runClass':        f"{block}_uvm_run",
                 'testbenchName':   f"{block}_uvm",
                 'tops':            tops,
+                'duts':            ['model', 'rtl'] if row['hasMdl'] else ['rtl'],
                 'envClass':        f"{block}_env",
                 'regBlockClass':   f"{block}_reg_block",
                 'testPkgName':     testPkg,

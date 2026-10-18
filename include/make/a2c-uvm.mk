@@ -29,7 +29,6 @@ ifeq ($(UVM_DUT),both)
 $(error UVM_DUT=both, the model and the RTL in one snapshot, is not supported yet; use model or rtl)
 endif
 UVM_TEST ?=
-space := $(subst ,, )
 UVM_TOPOLOGIES ?= $(UVM_TOP):$(subst $(space),$(comma),$(A2C_UVM_DUTS_$(UVM_TB_TOP)))
 
 # Checked when gen runs rather than at parse time, because a missing or stale
@@ -46,8 +45,8 @@ DUT_ELAB_ARGS := $(A2C_UVM_TESTBENCH_$(UVM_TB_TOP)) --uvmDut $(UVM_DUT) --uvmTop
 
 # The clock interface, a2c_uvm_pkg and the agent packages, then the top's
 # variant package, the test package that imports it, and the testbench
-# module, whose generated header imports the test package. A2C_SV_FILES follows rtl.f, so they
-# compile after the project packages they import.
+# module, whose generated header imports the test package. A2C_SV_FILES
+# follows rtl.f, so they compile after the project packages they import.
 A2C_UVM_F := $(A2C_ROOT)/common/systemVerilog/uvm/a2c_uvm.f
 A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)
 A2C_UVM_SV_FILES := $(A2C_UVM_PKG_SV_$(UVM_TB_TOP)) $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)) $(A2C_UVM_TB_SV_$(UVM_TB_TOP))

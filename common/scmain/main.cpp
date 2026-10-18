@@ -33,12 +33,15 @@ import a2c.endOfTest;
 extern "C" void VcsSetExitFunc(int (*)(int));
 
 // A $finish during simulation exits through this handler without returning
-// from sc_start, so final() never passes or fails the run.
+// from sc_start, so final() never passes or fails the run and the summary
+// never prints the reason. The handler logs it, its own or an earlier one.
 static bool vcsSimRunning = false;
 
 [[noreturn]] int exit_handler(int flag) {
-    if (vcsSimRunning && errorCode::getExitCode() < 0) {
-        errorCode::fail("simulation ended by $finish before the end of test");
+    if (vcsSimRunning && errorCode::getExitCode() != 0) {
+        if (errorCode::getExitCode() < 0) {
+            errorCode::fail("simulation ended by $finish before the end of test");
+        }
         logging::GetInstance().logPrintDirect(errorCode::getErrorString());
     }
     exit(errorCode::getExitCode());

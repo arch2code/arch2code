@@ -7,9 +7,9 @@ the simulator snapshot <base>_<topology> it runs on. --vlInst, --vlType and
 test without --vlInst runs on `model`. A UVM test carries --uvmDut <dut> and
 --uvmTop <top> and runs on uvm_<top>_<dut>, which uvm_snapshots builds;
 --uvmDut without --uvmTop, or --uvmTop without --uvmDut, names no snapshot
-and stops the run. Each case runs
-dutRun.py over a directory of stand-in snapshots that print the arguments
-they were given, and checks which snapshot ran with which arguments.
+and stops the run. Each case runs dutRun.py over a directory of stand-in
+snapshots that print the arguments they were given, and checks which
+snapshot ran with which arguments.
 """
 
 import os

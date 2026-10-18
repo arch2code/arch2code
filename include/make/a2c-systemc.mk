@@ -242,6 +242,7 @@ DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $
 # instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
 DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif,verif:tandem
 comma := ,
+space := $(subst ,, )
 dut_topology_inst = $(firstword $(subst :, ,$(1)))
 dut_topology_expand = $(addprefix $(call dut_topology_inst,$(1)):,$(subst $(comma), ,$(patsubst $(call dut_topology_inst,$(1)):%,%,$(1))))
 DUT_TOPOLOGY_LIST = $(foreach t,$(DUT_TOPOLOGIES),$(call dut_topology_expand,$(t)))

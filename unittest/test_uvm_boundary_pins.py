@@ -46,10 +46,17 @@ through a BFM of the swapped role on the port's clock domain. Its config must
 create the wrapper under the block's name at the scaffolded variant, and its
 registrar must register one wrapper per variant over that variant's shell and
 Config.
+
+Under VCS every top's shell is analyzed, whichever top is selected, and each
+testbench module imports its block's test package. A dry run at each selected
+top must analyze another block's test package before that block's shells,
+once per top with A2C_UVM_PKG naming that top's variant package, and must
+leave the selected block's test package to the RTL analysis.
 """
 
 import os
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -59,7 +66,7 @@ from _addrctl_helpers import test_dir
 from _tmp_helpers import remove_tree
 from test_build_manifest import parse_manifest
 from test_vl_boundary_widths_build import (
-    FIXTURE, PORTMAP_TYPES, V0, V1, Design, compare, generate, pin_type, read_portmap,
+    FIXTURE, PORTMAP_TYPES, V0, V1, Design, compare, generate, make, pin_type, read_portmap,
     read_xcelium)
 
 
@@ -180,6 +187,8 @@ PROJECT = 'vbwTop'
 CONFIGS = {'dutU': {'v0': 'vbwTop_dutUV0Config', 'v1': 'vbwTop_dutUV1Config'}, 'dutV': {'': None}}
 # A port timed by a clock other than the block default, with that clock's reset.
 PORT_DOMAIN = {('dutU', 'side'): ('clkB', 'rstB_n')}
+# A dry run needs the tool variables, not the tool.
+VCS_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_VCS=1', 'VCS_HOME=/placeholder/vcs')
 COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
                    ('rtl_dut', 'output', 1, False)]
 
@@ -503,6 +512,44 @@ def check_sc_files(work, design):
     return problems
 
 
+def check_vcs_shells(work):
+    """The -sc_model recipe of a VCS dry run at each selected top: each
+    vlogan as (sv files, A2C_UVM_PKG define, -sc_model top), in order."""
+    problems = []
+    uvmDir = os.path.join(work, 'top', 'uvm')
+    testSv = {block: os.path.join(uvmDir, f'{block}_uvm_test_pkg.sv') for block in CONFIGS}
+    for selected, (selectedBlock, _) in UVM_TOPS.items():
+        result = make(work, 'all', os.path.join('top', 'rundir'), extra=(*VCS_DRY_RUN, f'UVM_TOP={selected}'))
+        if result.returncode != 0:
+            problems.append(f"UVM_TOP={selected}: make -n failed (rc={result.returncode})\n{result.stderr}")
+            continue
+        recipes = [line for line in result.stdout.replace('\\\n', ' ').splitlines() if f' -sc_model {selected}_uvm_tb ' in line]
+        if len(recipes) != 1:
+            problems.append(f"UVM_TOP={selected}: {len(recipes)} -sc_model recipe lines, expected 1")
+            continue
+        steps = []
+        for command in recipes[0].split('&&'):
+            tokens = shlex.split(command)
+            if not tokens or os.path.basename(tokens[0]) != 'vlogan':
+                continue
+            define = [t.split('=', 1)[1] for t in tokens if t.startswith('+define+A2C_UVM_PKG=')]
+            model = tokens[tokens.index('-sc_model') + 1] if '-sc_model' in tokens else None
+            steps.append(([t for t in tokens if t.endswith('.sv')], define, model))
+        if any(testSv[selectedBlock] in svs for svs, _, _ in steps):
+            problems.append(f"UVM_TOP={selected}: the shell step re-analyzes {selectedBlock}'s own test package")
+        for stem, (block, _) in UVM_TOPS.items():
+            if block == selectedBlock:
+                continue
+            shell = [i for i, (_, _, model) in enumerate(steps) if model == f'{stem}_uvm_tb']
+            ahead = [define for svs, define, _ in steps[:shell[0]] if testSv[block] in svs] if shell else []
+            if not shell:
+                problems.append(f"UVM_TOP={selected}: no -sc_model shell for {stem}_uvm_tb")
+            elif [f'{stem}_uvm_pkg'] not in ahead:
+                problems.append(f"UVM_TOP={selected}: {block}'s test package is not analyzed with "
+                                f"A2C_UVM_PKG={stem}_uvm_pkg before the {stem}_uvm_tb shell; analyses: {ahead}")
+    return problems
+
+
 def check_manifest(work):
     root = os.path.join(work, 'top')
     man = parse_manifest(os.path.join(root, '.gen', 'build.mk'))
@@ -549,7 +596,8 @@ def run_all_tests():
                                    ('variant packages', check_variant_packages(work, design)),
                                    ('test packages', check_test_packages(work, design)),
                                    ('testbench modules', check_testbenches(work, design)),
-                                   ('SystemC wrapper, config and registrar', check_sc_files(work, design))):
+                                   ('SystemC wrapper, config and registrar', check_sc_files(work, design)),
+                                   ('VCS shell analysis', check_vcs_shells(work))):
                 for problem in problems:
                     print(f"  FAIL: {name}: {problem}")
                 if not problems:

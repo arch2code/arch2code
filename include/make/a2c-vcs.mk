@@ -120,16 +120,22 @@ $(VCS_UVM_PKG_STAMP): $(VCS_UVM_PKG_OPTS)
 
 # One shell per UVM top, because the registrar includes them all, made after
 # the wrapper tops' in the same AN.DB. Another top's variant package is
-# analyzed before its testbench module, whose pin widths come from it. The
-# HDL defines are repeated because vlogan re-analyzes the source it is given,
-# and A2C_UVM_RTL_DUT changes the testbench module's body.
+# analyzed before its testbench module, whose pin widths come from it, and so
+# is another block's test package, which the testbench module imports, with
+# A2C_UVM_PKG naming that top's variant package. Only the selected top is
+# elaborated, so the other tops' packages need only analyze. The HDL defines
+# are repeated because vlogan re-analyzes the source it is given, and
+# A2C_UVM_RTL_DUT changes the testbench module's body.
 VCS_UVM_SHELL_STAMP = $(VCS_STAMP_DIR)/uvm_sc_model.vlogan
 VCS_UVM_PORTMAPS = $(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PORTMAP_$(t)))
 VCS_UVM_OTHER_TOPS = $(filter-out $(UVM_TB_TOP),$(A2C_UVM_TOPS))
+VCS_UVM_OTHER_BLOCK_TOPS = $(foreach t,$(VCS_UVM_OTHER_TOPS),$(if $(filter $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)),$(A2C_UVM_TEST_SV_$(t))),,$(t)))
 VCS_UVM_VLOGAN = $(VLOGAN) $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) $(addprefix +define+,$(EXTRA_HDL_DEFINES) $(A2C_UVM_HDL_DEFINES))
+vcs_uvm_test_vlogan = $(VLOGAN) $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) $(addprefix +define+,$(EXTRA_HDL_DEFINES) A2C_UVM_PKG=$(A2C_UVM_PKG_$(1)))
 $(VCS_UVM_SHELL_STAMP): $(VCS_SC_MODEL_STAMP) $(VCS_UVM_PORTMAPS) \
-	$(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PKG_SV_$(t)) $(A2C_UVM_TB_SV_$(t)))
+	$(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PKG_SV_$(t)) $(A2C_UVM_TEST_SV_$(t)) $(A2C_UVM_TB_SV_$(t)))
 	cd $(VCS_RUNDIR) && $(foreach t,$(VCS_UVM_OTHER_TOPS),$(VCS_UVM_VLOGAN) $(A2C_UVM_PKG_SV_$(t)) -l vlogan_$(t)_pkg.log &&) \
+		$(foreach t,$(VCS_UVM_OTHER_BLOCK_TOPS),$(call vcs_uvm_test_vlogan,$(t)) $(A2C_UVM_TEST_SV_$(t)) -l vlogan_$(t)_test_pkg.log &&) \
 		$(foreach t,$(VCS_UVM_OTHER_TOPS) $(UVM_TB_TOP),$(VCS_UVM_VLOGAN) -sc_model $(t) -sc_portmap $(A2C_UVM_PORTMAP_$(t)) $(VCS_INCDIRS) $(A2C_UVM_TB_SV_$(t)) -l vlogan_$(t).log &&) true
 	touch $@
 $(VCS_UVM_PORTMAPS): $(VL_BOUNDARY_STAMP) ;
@@ -139,7 +145,9 @@ $(VCS_SIMV): $(OBJ)
 
 # The run script hands the simv its arguments with the seed made decimal for
 # both sides: --seed N for sc_main and +ntb_random_seed=N for the SV solver,
-# which reads only decimal. A seed of random draws a 32-bit value. UVM_TEST
+# which reads only decimal. A leading 0 is octal, as sc_main's std::stoul reads
+# it. The digit count is checked before the bash arithmetic, which wraps past
+# 64 bits. A seed of random draws a 32-bit value. UVM_TEST
 # gives the +UVM_TESTNAME of a run that names none. The default test is
 # recorded so a change rewrites the script.
 VCS_RUN_SCRIPT_STAMP = $(VCS_STAMP_DIR)/$(BIN).run_script
@@ -149,12 +157,13 @@ $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 		'dec() {' \
 		'    case "$$1" in' \
 		'        random) od -An -tu4 -N4 /dev/urandom | tr -d " "; return ;;' \
-		'        0[xX]*) b=16; d=$${1#??}; case "$$d" in ""|*[!0-9a-fA-F]*) d= ;; esac ;;' \
-		'        *) b=10; d=$$1; case "$$d" in *[!0-9]*) d= ;; esac ;;' \
+		'        0[xX]*) b=16; n=8; d=$${1#??}; case "$$d" in ""|*[!0-9a-fA-F]*) d= ;; esac ;;' \
+		'        0*) b=8; n=11; d=$$1; case "$$d" in *[!0-7]*) d= ;; esac ;;' \
+		'        *) b=10; n=10; d=$$1; case "$$d" in *[!0-9]*) d= ;; esac ;;' \
 		'    esac' \
-		'    [ -n "$$d" ] || { echo "$$0: --seed must be decimal, 0x hex or random, not $$1" >&2; exit 2; }' \
-		'    v=$$(($$b#$$d))' \
-		'    [ "$$v" -le 4294967295 ] || { echo "$$0: --seed $$1 does not fit in 32 bits" >&2; exit 2; }' \
+		'    [ -n "$$d" ] || { echo "$$0: --seed must be decimal, 0x hex, 0 octal or random, not $$1" >&2; exit 2; }' \
+		'    d=$${d#"$${d%%[!0]*}"}' \
+		'    [ $${#d} -le $$n ] && v=$$(($$b#$${d:-0})) && [ "$$v" -le 4294967295 ] || { echo "$$0: --seed $$1 does not fit in 32 bits" >&2; exit 2; }' \
 		'    echo "$$v"' \
 		'}' \
 		's=; t=' \

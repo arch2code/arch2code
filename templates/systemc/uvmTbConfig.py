@@ -1,10 +1,14 @@
 # The UVM testbench config of a hasUvm block. It creates the SystemC wrapper
 # through the instanceFactory under the block's own name, at the variant of
 # the top --uvmTop names and with the DUT --uvmDut picks. The wrapper fails
-# the run for UVM errors, and final() fails it if UVM never finished. Both
-# options are elaboration arguments of the snapshot, so a run repeats them. Only the Xcelium and VCS
-# builds compile it, because it selects the <block>_uvm factory entry that
-# only the registrar registers, and the registrar is built only there.
+# the run for UVM errors. When UVM never finishes, as when a UVM_FATAL calls
+# $finish, final() fails the run under Xcelium, where sc_start returns. Under
+# VCS the $finish skips final(), and main.cpp's exit_handler fails the run.
+# Both options are elaboration arguments of the snapshot, so a run repeats
+# them.
+# Only the Xcelium and VCS builds compile it, because it selects the
+# <block>_uvm factory entry that only the registrar registers, and the
+# registrar is built only there.
 def render(args, prj, data):
     uvm = data['uvm']
     blockName = data['blockName']
@@ -12,24 +16,18 @@ def render(args, prj, data):
     project = prj.config.getConfig('PROJECTNAME')
     topVariants = [f'{{"{top["stem"]}", "{variant}"}}' for variant, top in uvm['tops'].items()]
     topNames = ', '.join(top['stem'] for top in uvm['tops'].values())
-    if data['blockInfo']['hasMdl']:
-        dutCheck = [
-            '        if (m_uvmDut != "model" && m_uvmDut != "rtl") {',
-            '            std::cerr << "--uvmDut must be model or rtl, not " << m_uvmDut << std::endl;',
-            '            return false;',
-            '        }',
-        ]
-        defaultDut = 'model'
-        dutHelp = 'DUT behind the UVM testbench: model or rtl; must match the snapshot'
-    else:
-        dutCheck = [
-            '        if (m_uvmDut != "rtl") {',
-            f'            std::cerr << "--uvmDut must be rtl, because {blockName} has no model, not " << m_uvmDut << std::endl;',
-            '            return false;',
-            '        }',
-        ]
-        defaultDut = 'rtl'
-        dutHelp = f'DUT behind the UVM testbench: rtl, because {blockName} has no model'
+    duts = uvm['duts']
+    defaultDut = duts[0]
+    choices = ' or '.join(duts)
+    why = '' if 'model' in duts else f', because {blockName} has no model'
+    mismatch = ' && '.join(f'm_uvmDut != "{dut}"' for dut in duts)
+    dutCheck = [
+        f'        if ({mismatch}) {{',
+        f'            std::cerr << "--uvmDut must be {choices}{why}, not " << m_uvmDut << std::endl;',
+        '            return false;',
+        '        }',
+    ]
+    dutHelp = f'DUT behind the UVM testbench: {choices}{why}' + ('' if why else '; must match the snapshot')
     out = [
         '#if defined(XCELIUM) || defined(VCS)',
         '#include <iostream>',

@@ -415,7 +415,7 @@ def create(prj):
                 'portmap':      top['portmap'],
                 'xceliumShell': top['xceliumShell'],
                 'hdlTop':       top['hdlTop'],
-                'duts':         ['model', 'rtl'] if blockByKey[blockKey]['hasMdl'] else ['rtl'],
+                'duts':         names['duts'],
             })
 
     # The SV a verilate run reads, as distinct from the modules named on its
