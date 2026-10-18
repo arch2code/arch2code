@@ -17,6 +17,9 @@ UVM top with its files.
 
 Each variant package must bind that variant's parameter values, declare pst_a
 from them, and type every port's agent and virtual interface by its payload.
+Its env must give each agent its port's clock handle and role, count every
+output with a transaction counter, and hold no register model, because neither block
+has registers.
 
 Each testbench module must declare exactly those pins, sizing each payload by
 `$bits` of its type in the package that declares it, type its interfaces by
@@ -242,7 +245,7 @@ def check_boundary_files(work, design):
     return problems
 
 
-def check_variant_packages(work):
+def check_variant_packages(work, design):
     problems = []
     for stem, (block, values) in UVM_TOPS.items():
         pkg = f'{stem}_uvm_pkg'
@@ -254,7 +257,29 @@ def check_variant_packages(work):
                          f'typedef {port}_agent_t::item_t {port}_item_t;',
                          f'typedef {port}_agent_t::config_t {port}_config_t;',
                          f'typedef virtual rdy_vld_if #(.data_t({payload})) {port}_vif_t;']
+        # The env: one agent per port on its own clock domain's handle, and a
+        # transaction counter on every output. Neither block has registers, so
+        # neither gets a register model.
+        expected += [f'class {block}_env extends uvm_env;']
+        for clock, _ in clock_domains(design, block):
+            expected.append(f'if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "{clock}", {clock}_vif)) begin')
+        for port, side, _ in UVM_PORTS[block]:
+            clock = PORT_DOMAIN.get((block, port), ('clk',))[0]
+            expected += [f'{port}_agent_t {port}_agent;',
+                         f'{port}_cfg.clk_vif = {clock}_vif;',
+                         f"{port}_cfg.role = a2c_uvm_pkg::{'A2C_SRC' if side == 'dst' else 'A2C_DST'};",
+                         f'{port}_agent = {port}_agent_t::type_id::create("{port}_agent", this);']
+            if side == 'src':
+                expected += [f'a2c_uvm_pkg::a2c_txn_counter #({port}_item_t) {port}_counter;',
+                             f'{port}_agent.mon.ap.connect({port}_counter.imp);']
         problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
+        counters = [line for line in lines if re.match(r'a2c_uvm_pkg::a2c_txn_counter #', line)]
+        outputs = [port for port, side, _ in UVM_PORTS[block] if side == 'src']
+        if len(counters) != len(outputs):
+            problems.append(f"{pkg}.sv declares {len(counters)} transaction counters, expected one per output {outputs}")
+        regModel = [line for line in lines if re.search(r'\b(uvm_reg_block|uvm_reg_predictor|regmodel)\b', line)]
+        if regModel:
+            problems.append(f"{pkg}.sv has a register model for a block without registers: {regModel}")
         localparams = [line for line in lines if line.startswith('localparam ')]
         expectedParams = [f'localparam {param} = {value};' for param, value in values.items()]
         if localparams != expectedParams:
@@ -477,7 +502,7 @@ def run_all_tests():
             design = Design(work)
             for name, problems in (('boundary files', check_boundary_files(work, design)),
                                    ('build manifest', check_manifest(work)),
-                                   ('variant packages', check_variant_packages(work)),
+                                   ('variant packages', check_variant_packages(work, design)),
                                    ('testbench modules', check_testbenches(work, design)),
                                    ('SystemC wrapper, config and registrar', check_sc_files(work, design))):
                 for problem in problems:

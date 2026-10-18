@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Each variant package holds a register model that reads and writes the bits
+the RTL decoder serves, and an env that wires every port's agent.
+
+A register class that disagrees with the decoder on its width, a field's
+position or its access fails every register test against the RTL, and a
+uvm_mem that steps by a different stride from the decoder reads the wrong row.
+UVM steps a memory by ceil(n_bits / 32) bus words, so a row whose stride is 8
+bytes needs n_bits over 32 even when the row is narrower. uvm_mem accepts only
+RW or RO, so a write-only memory is RW with WO map rights. The decoder flops
+padding like any field, so padding fields are modelled with the register's
+access and reset. The design drives ro and ext registers, so both are volatile.
+
+The fixture is the two-variant register fixture of test_uvm_register_view.py,
+plus a default value on the padded register, an ext register with a default
+value, and a write-only memory whose worst-case row is 40 bits, so its stride
+is 8 bytes, while both variants' rows are at most 32 bits. Offsets come from the view, which test_uvm_register_view.py checks
+against the firmware header. Everything else is worked out here from the YAML.
+
+The env must create one agent per port with its config, one transaction counter for
+the DUT stream output and none for the input or the register bus, and an
+explicit predictor on the register bus agent's monitor with auto-predict off.
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from _addrctl_helpers import base_dir, test_dir
+from _tmp_helpers import remove_tree
+from pysrc.processYaml import projectOpen
+import test_uvm_register_view as regView
+
+
+EXTRA_EDITS = [
+    ('    ubAlignBaseSt:\n',
+     '    ubMemSt:\n'
+     '        x: { varType: ubPT, desc: "First parameter-width member" }\n'
+     '        y: { varType: ubPT, desc: "Second parameter-width member" }\n'
+     '        z: { varType: ubDataT, desc: "Fixed member" }\n'
+     '    ubAlignBaseSt:\n'),
+    ('register: aligned, regType: rw, block: ubDut, structure: ubAlignSt,',
+     'register: aligned, regType: rw, block: ubDut, structure: ubAlignSt, defaultValue: 0x030201,'),
+    ('\nmemories:\n',
+     '    - { register: ext, regType: ext, block: ubDut, structure: ubSt, defaultValue: 3, desc: "External" }\n'
+     '\nmemories:\n'
+     '    - { memory: wtbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
+     'regAccess: wo, desc: "Write-only table on an 8-byte stride" }\n'),
+]
+
+UB_W = regView.UB_W
+UB_D = regView.UB_D
+
+
+def edit_fixture(project):
+    regView.edit_fixture(project)
+    path = os.path.join(project, regView.ARCH)
+    with open(path) as f:
+        text = f.read()
+    for old, new in EXTRA_EDITS:
+        if text.count(old) != 1:
+            raise RuntimeError(f"fixture no longer carries the single anchor {old!r}")
+        text = text.replace(old, new)
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def make(project, target):
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    cmd = ['make', '-j8', '-C', project, f'REPO_ROOT={project}', f'A2C_ROOT={base_dir}',
+           f'A2C_PRJ_YAML={os.path.join(project, regView.PROJECT)}', target]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env)
+
+
+def configure(field, width, lsb, access, volatile, reset, isRand):
+    return (f'{field}.configure(this, {width}, {lsb}, "{access}", {volatile}, '
+            f"{width}'h{reset:x}, 1, {isRand}, 0);")
+
+
+def expected_regmodel(variant, offsets):
+    w = UB_W[variant]
+    lines = [
+        'class ubDut_reg_ctrl extends uvm_reg;',
+        'super.new(name, 8, UVM_NO_COVERAGE);',
+        configure('data', 8, 0, 'RW', 0, 0, 1),
+        'class ubDut_reg_cfg extends uvm_reg;',
+        f'super.new(name, {8 + w}, UVM_NO_COVERAGE);',
+        configure('hi', 8, w, 'RW', 0, 0, 1),
+        configure('lo', w, 0, 'RW', 0, 5, 1),
+        'class ubDut_reg_wide extends uvm_reg;',
+        'super.new(name, 40, UVM_NO_COVERAGE);',
+        configure('word', 32, 8, 'RO', 1, 0, 0),
+        configure('tag', 8, 0, 'RO', 1, 0, 0),
+        'class ubDut_reg_aligned extends uvm_reg;',
+        'super.new(name, 24, UVM_NO_COVERAGE);',
+        configure('a', 8, 16, 'RW', 0, 3, 1),
+        configure('reserved0', 8, 8, 'RW', 0, 2, 1),
+        configure('b', 8, 0, 'RW', 0, 1, 1),
+        'class ubDut_reg_ext extends uvm_reg;',
+        'super.new(name, 8, UVM_NO_COVERAGE);',
+        configure('data', 8, 0, 'RW', 1, 3, 1),
+        'class ubDut_regs extends uvm_reg_block;',
+        'lut = new("lut", 8, 8, "RW", UVM_NO_COVERAGE);',
+        f'tbl = new("tbl", {UB_D[variant]}, {8 + w}, "RO", UVM_NO_COVERAGE);',
+        # Rows of 2 * UB_W + 8 bits, at most 32, on an 8-byte stride. uvm_mem
+        # takes no WO, so only the map rights say write-only.
+        'wtbl = new("wtbl", 4, 33, "RW", UVM_NO_COVERAGE);',
+        "default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+    ]
+    for name, rights in (('ctrl', 'RW'), ('cfg', 'RW'), ('wide', 'RO'), ('aligned', 'RW'), ('ext', 'RW')):
+        lines.append(f"default_map.add_reg({name}, 'h{offsets[name]:x}, \"{rights}\");")
+    for name, rights in (('lut', 'RW'), ('tbl', 'RO'), ('wtbl', 'WO')):
+        lines.append(f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");")
+    return lines
+
+
+ENV_LINES = [
+    'class ubDut_env extends uvm_env;',
+    'in_agent_t in_agent;',
+    'out_agent_t out_agent;',
+    'ubRegs_agent_t ubRegs_agent;',
+    'a2c_uvm_pkg::a2c_txn_counter #(out_item_t) out_counter;',
+    'virtual a2c_clk_if clk_vif;',
+    'ubDut_regs regmodel;',
+    'apb_reg_adapter adapter;',
+    'uvm_reg_predictor #(ubRegs_item_t) predictor;',
+    'if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk", clk_vif)) begin',
+    'if (!uvm_config_db#(in_vif_t)::get(this, "", "in", in_cfg.vif)) begin',
+    'in_cfg.clk_vif = clk_vif;',
+    'in_cfg.role = a2c_uvm_pkg::A2C_SRC;',
+    'in_cfg.no_backpressure = 0;',
+    'uvm_config_db#(in_config_t)::set(this, "in_agent", "cfg", in_cfg);',
+    'in_agent = in_agent_t::type_id::create("in_agent", this);',
+    'out_cfg.role = a2c_uvm_pkg::A2C_DST;',
+    'out_counter = a2c_uvm_pkg::a2c_txn_counter#(out_item_t)::type_id::create("out_counter", this);',
+    'out_counter.port_name = "out";',
+    'ubRegs_cfg.port_name = "ubRegs";',
+    'regmodel = ubDut_regs::type_id::create("regmodel");',
+    'regmodel.build();',
+    'predictor = uvm_reg_predictor#(ubRegs_item_t)::type_id::create("predictor", this);',
+    'out_agent.mon.ap.connect(out_counter.imp);',
+    'regmodel.default_map.set_sequencer(ubRegs_agent.sqr, adapter);',
+    'regmodel.default_map.set_auto_predict(0);',
+    'ubRegs_agent.mon.ap.connect(predictor.bus_in);',
+]
+
+
+def check(project):
+    prj = projectOpen(os.path.join(project, regView.DB))
+    (qualBlock,) = [key for key, row in prj.data['blocks'].items() if row['block'] == 'ubDut']
+    uvm = prj.getBlockData(qualBlock)['uvm']
+    offsets = {row['name']: row['offset'] for row in uvm['registers'] + uvm['memories']}
+    (wtbl,) = [row for row in uvm['memories'] if row['name'] == 'wtbl']
+    problems = []
+    if wtbl['rowBytes'] != 8:
+        problems.append(f"wtbl's decoder stride is {wtbl['rowBytes']} bytes, the fixture means it to be 8")
+    for variant, pkg in regView.PKG.items():
+        path = os.path.join(project, 'uvm', f'{pkg}.sv')
+        with open(path) as f:
+            lines = [line.strip() for line in f]
+        expected = expected_regmodel(variant, offsets) + ENV_LINES
+        problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
+        unexpected = [line for line in lines
+                      if re.match(r'(in|ubRegs)_counter\b|.*_cfg\.ready_pct\b|ubRegs_cfg\.(role|no_backpressure)\b',
+                                  line)]
+        problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
+        # The fields' configure calls sit in their own register's build(), in
+        # declaration order.
+        configures = [line for line in lines if '.configure(this, ' in line]
+        wantConfigures = [line for line in expected if '.configure(this, ' in line]
+        if configures != wantConfigures:
+            problems.append(f"{pkg}.sv configures fields\n    {configures}\n  expected\n    {wantConfigures}")
+    return problems
+
+
+def run_all_tests():
+    print("\n" + "=" * 70)
+    print("UVM VARIANT PACKAGE REGISTER MODEL AND ENV")
+    print("=" * 70)
+    tmp = tempfile.mkdtemp(prefix='uvm_pkg_regmodel_', dir=test_dir)
+    try:
+        project = os.path.join(tmp, 'prj')
+        shutil.copytree(regView.FIXTURE, project)
+        edit_fixture(project)
+        for target in ('db', 'newmodule', 'gen'):
+            result = make(project, target)
+            if result.returncode != 0:
+                print(f"FAIL: make {target} rejected the fixture (rc={result.returncode})")
+                print(result.stdout + result.stderr)
+                return 1
+        problems = check(project)
+    finally:
+        remove_tree(tmp)
+    if problems:
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        print("\nFAIL: a variant package's register model or env disagrees with the block")
+        return 1
+    print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
+    print("  PASS: env agents, the output transaction counter and the register predictor")
+    print("\nPASS: the variant packages hold the register model and the env")
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(run_all_tests())
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

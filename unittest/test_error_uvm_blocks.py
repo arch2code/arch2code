@@ -12,8 +12,10 @@ group for each. The testbench module also declares names of its own: the DUT
 instance `dut`, the completion pins, the report server `srv` and one
 `<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal, so a
 port, clock or reset named like one of them is rejected. A UVM register or
-memory row holds at most 64 bits, so a register or memory wider than that at
-any standalone variant is rejected.
+memory row holds at most 64 bits, so a register, or a memory whose rows the
+register model pads to its decoder stride, over 64 bits at any standalone
+variant is rejected. A register, memory or field named like a member of the
+UVM register classes would shadow it in the register model, so it is rejected.
 
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus. Each negative arm edits one rule's violation
@@ -190,6 +192,39 @@ REJECTED = [
                '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
                '    - { register: big, regType: rw, block: ubDut, structure: ubBigSt, desc: "Wide config" }\n')])],
      [WHERE, "its register 'big' is 72 bits wide at variant 'v1'", "UVM_REG_DATA_WIDTH"]),
+    ('a memory padded past 64 bits by its row stride', ROOT_PROJECT,
+     [(ARCH, [('\ntypes:\n',
+               '\nipParameters:\n'
+               '    constants:\n'
+               '        UB_W: { value: 8, maxValue: 64, desc: "Width knob" }\n\n'
+               'types:\n'
+               '    ubPT: { width: UB_W, desc: "Parameter-width field" }\n'
+               '    ubIdxT: { width: 4, desc: "Table index" }\n'),
+              ('\nstructures:\n',
+               '\nstructures:\n'
+               '    ubBigSt:\n'
+               '        word: { varType: ubWordT, desc: "Low word" }\n'
+               '        ext: { varType: ubPT, desc: "Parameter-width extension" }\n'
+               '    ubIdxSt:\n'
+               '        idx: { varType: ubIdxT, desc: "Table index" }\n'),
+              ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W]\n'),
+              ('instGroup: top, addressGroup: top }', 'instGroup: top, addressGroup: top, variant: v0 }'),
+              ('\nconnections:\n',
+               '\nparameters:\n    ubDut:\n        v0: { UB_W: 8 }\n\n'
+               'connections:\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n\n'
+               'memories:\n'
+               '    - { memory: tbl, block: ubDut, structure: ubBigSt, wordLines: 4, addressStruct: ubIdxSt, '
+               'regAccess: rw, desc: "Table" }\n')])],
+     [WHERE, "its memory 'tbl' has 40-bit rows at variant 'v0', which the register model pads to 97 bits",
+      "by the decoder's row stride", "UVM_REG_DATA_WIDTH"]),
+    ('a register named like a UVM register class member', ROOT_PROJECT,
+     [(ARCH, [('{ register: ctrl,', '{ register: mirror,')])],
+     [WHERE, "its register 'mirror' has the name of a member of the UVM register classes"]),
+    ('a field named like a UVM register class member', ROOT_PROJECT,
+     [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        predict: {')])],
+     [WHERE, "its register 'ctrl' field 'predict' has the name of a member of the UVM register classes"]),
     ('only variants another project declares', CHILD_ROOT_PROJECT,
      [(CHILD_ARCH,
        [('types:\n',

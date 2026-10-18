@@ -37,6 +37,13 @@ REG_BUS_WIDTH_BYTES = 4
 # memory row a UVM register model holds.
 UVM_REG_DATA_WIDTH = 64
 
+# Members of uvm_reg, uvm_reg_block, uvm_reg_field and uvm_mem that a
+# register, memory or field of the same name would shadow in the register model.
+UVM_REG_MEMBER_NAMES = frozenset((
+    'reset', 'build', 'configure', 'read', 'write', 'peek', 'poke', 'mirror', 'update',
+    'predict', 'get', 'set', 'get_name', 'get_parent', 'needs_update', 'randomize',
+    'sample', 'default_map', 'lock_model'))
+
 def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
     """Firmware reaches a register or memory row of every variant through one
     address range, so the range is sized for the widest variant."""
@@ -1773,14 +1780,25 @@ class projectOpen:
             for portData in portGroup.values():
                 intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
                 intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
-                paramBindings = self.getIntfParamBindings(ret['interface_defs'][intfType], intfData['structures'])
+                intfDef = ret['interface_defs'][intfType]
+                paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
+                elastic = intfDef['timing'] == 'elastic'
                 ports.append({
                     'name': portData['name'],
+                    'agent': f"{portData['name']}_agent",
                     'interfaceType': intfType,
                     'role': portData['direction'],
                     'clock': portData['domainClock'],
                     'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
                     'backpressure': portData['effectiveBackpressure'],
+                    # The agent config carries a role unless the type is a
+                    # register bus, whose agent is master-only, and a
+                    # no_backpressure knob when a port may lower the default.
+                    'hasRole': not intfDef['addressBus'],
+                    'backpressureOverridable': elastic and intfDef['backpressure']['overridable'],
+                    # A DUT data output with a handshake delivers a countable
+                    # number of beats, so the env counts them.
+                    'txnCounter': portData['direction'] == 'src' and elastic and not intfDef['addressBus'],
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.
@@ -1795,8 +1813,17 @@ class projectOpen:
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
         registers, memories = self.getUvmRegisterModel(ret, tops)
+        # The register model's bus: the block's register-bus port, whose
+        # interface package ships the <type>_reg_adapter.
+        registerBus = None
+        if registers or memories:
+            (busPort,) = [port for port in ports if port['name'] == ret['registerBusPort']]
+            registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
+                           'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
+        block = ret['blockInfo']['block']
         ret['uvm'] = {**self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks,
-                      'registers': registers, 'memories': memories}
+                      'registers': registers, 'memories': memories, 'registerBus': registerBus,
+                      'envClass': f"{block}_env", 'regBlockClass': f"{block}_regs"}
 
     def getUvmRegisterModel(self, ret, tops):
         """The block's firmware-visible registers and memories at the
@@ -1804,11 +1831,13 @@ class projectOpen:
 
         registers: one per registers: row other than regType memory, with its
         structure's members as fields, the first declared member most
-        significant, and reserved true on the padding members alignment adds.
-        memories: one per memories: row with regAccess, and one rw memory per
-        regType memory register. rowBytes is the decoder's stride between
-        rows. Widths, depths and type packages are keyed by variant like
-        paramTypes.
+        significant. The decoder flops the padding members alignment adds
+        like any other, so they are fields too. Each field carries its share
+        of defaultValue as reset. memories: one per memories: row with
+        regAccess, and one rw memory per regType memory register. rowBytes is
+        the decoder's stride between rows, and nBits the row size
+        resolveUvmRegisterWidths gives the model. Widths, depths and type
+        packages are keyed by variant like paramTypes.
         """
         widths = {variant: top['registerWidths'] for variant, top in tops.items()}
 
@@ -1816,7 +1845,11 @@ class projectOpen:
             return {variant: self.uvmTypeRef('structures', structKey, top['pkgName'])
                     for variant, top in tops.items()}
 
-        def fields(key):
+        def width(section, key):
+            return {variant: sum(member['width'] for member in layout[section][key]['fields'])
+                    for variant, layout in widths.items()}
+
+        def fields(key, defaultValue):
             perVariant = dict()
             for variant, layout in widths.items():
                 members = layout['registers'][key]['fields']
@@ -1824,29 +1857,34 @@ class projectOpen:
                 perVariant[variant] = list()
                 for member in members:
                     lsb -= member['width']
-                    perVariant[variant].append({**member, 'lsb': lsb})
+                    reset = (defaultValue >> lsb) & ((1 << member['width']) - 1)
+                    perVariant[variant].append({**member, 'lsb': lsb, 'reset': reset})
             return perVariant
 
         def memory(section, key, row, name, access):
             return {'name': name, 'offset': int(row['offset']), 'access': access,
                     'rowBytes': row['rowBytes'],
                     'count': {variant: layout[section][key]['wordLines'] for variant, layout in widths.items()},
-                    'width': {variant: sum(member['width'] for member in layout[section][key]['fields'])
-                              for variant, layout in widths.items()},
+                    'width': width(section, key),
+                    'nBits': {variant: layout[section][key]['nBits'] for variant, layout in widths.items()},
                     'type': typeRefs(row['structureKey'])}
 
+        block = ret['blockInfo']['block']
         registers = list()
         memories = list()
         for key, row in ret['temp']['blockRegisters'].items():
             if row['regType'] == 'memory':
                 memories.append(memory('registers', key, row, row['register'], 'rw'))
                 continue
-            registers.append({'name': row['register'], 'offset': int(row['offset']),
+            defaultValue = self.getConst(row['defaultValue'], require_int=True,
+                                         context_msg="a register defaultValue")
+            registers.append({'name': row['register'], 'className': f"{block}_reg_{row['register']}",
+                              'offset': int(row['offset']),
                               'bytes': row['bytes'], 'regType': row['regType'],
-                              'defaultValue': self.getConst(row['defaultValue'], require_int=True,
-                                                            context_msg="a register defaultValue"),
+                              'defaultValue': defaultValue,
                               'type': typeRefs(row['structureKey']),
-                              'fields': fields(key)})
+                              'width': width('registers', key),
+                              'fields': fields(key, defaultValue)})
         for key, row in ret['memories'].items():
             if row['regAccess']:
                 memories.append(memory('memories', key, row, row['memory'], row['regAccess']))
@@ -5535,14 +5573,27 @@ class projectCreate:
                 for section, kind, nameField in (('registers', 'register', 'register'),
                                                  ('memories', 'memory', 'memory')):
                     for key, entry in widths[section].items():
+                        name = self.flatData[section][key][nameField]
                         width = sum(member['width'] for member in entry['fields'])
-                        if width > UVM_REG_DATA_WIDTH:
+                        if entry['nBits'] > UVM_REG_DATA_WIDTH:
+                            size = f"is {width} bits wide{atVariant}"
+                            if entry['nBits'] > width:
+                                size = (f"has {width}-bit rows{atVariant}, which the register model "
+                                        f"pads to {entry['nBits']} bits so that UVM steps through "
+                                        f"them by the decoder's row stride")
                             printError(
-                                f"{where} but its {kind} '{self.flatData[section][key][nameField]}' "
-                                f"is {width} bits wide{atVariant}. A UVM register model holds at "
-                                f"most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a register "
-                                f"or memory row. Narrow its structure, or clear hasUvm.")
+                                f"{where} but its {kind} '{name}' {size}. A UVM register model "
+                                f"holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a "
+                                f"register or memory row. Narrow its structure, or clear hasUvm.")
                             failed = True
+                        for fieldName in [name] + [field['name'] for field in entry['fields']]:
+                            if fieldName in UVM_REG_MEMBER_NAMES:
+                                what = kind if fieldName == name else f"{kind} '{name}' field"
+                                printError(
+                                    f"{where} but its {what} '{fieldName}' has the name of a member "
+                                    f"of the UVM register classes, which the generated register "
+                                    f"model would shadow. Rename it, or clear hasUvm.")
+                                failed = True
         if failed:
             exit(warningAndErrorReport())
 
@@ -5674,7 +5725,10 @@ class projectCreate:
         # structure member in declaration order, and the depth of a memory or
         # regType memory register. Members come from flatData, which holds
         # the padding a specialStructures entry adds beside the members it
-        # copies from its base structure.
+        # copies from its base structure. nBits is the n_bits the register
+        # model gives the row: a register's width, and for a memory the row
+        # width raised to the least value whose uvm_mem stride of
+        # ceil(n_bits / 32) bus words is the decoder's row stride.
         widths = {'registers': dict(), 'memories': dict()}
         for section, rows in widths.items():
             for key, objRow in self.flatData[section].items():
@@ -5684,13 +5738,20 @@ class projectCreate:
                 # A bare block param name resolves through the block's own
                 # include chain, which is where its backing constant lives.
                 isMemory = section == 'memories' or objRow['regType'] == 'memory'
+                fields = [{'name': name, 'width': resolver.varWidth(varRow, field_name=name)}
+                          for name, varRow in structVars.items()]
+                width = sum(field['width'] for field in fields)
                 rows[key] = {
-                    'fields': [{'name': name, 'width': resolver.varWidth(varRow, field_name=name),
-                                'reserved': varRow['entryType'] == 'Reserved'}
-                               for name, varRow in structVars.items()],
+                    'fields': fields,
                     'wordLines': resolver.value(objRow['wordLinesKey'] or objRow['wordLines'],
                                                 label=f"wordLines of '{key}'") if isMemory else None,
+                    'nBits': width,
                 }
+                if isMemory:
+                    struct = self.flatData['structures'][objRow['structureKey']]
+                    rowBytes = rowFootprintBytes(worstCaseBitwidth(
+                        struct['width'], struct['maxBitwidth'], struct['isParameterizable']))
+                    rows[key]['nBits'] = max(width, rowBytes * 8 - 31)
         return widths
 
     def validateSvDesignUnitNames(self):
