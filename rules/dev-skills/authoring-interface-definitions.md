@@ -36,6 +36,7 @@ The entry key is the interface type name. The sections are:
 - `multiDst: true` allows a connection of this type to have more than two ends.
 - `addressBus: true` marks a register or address bus meta-protocol.
 - `mappedFrom:` lists the register and memory type aliases, such as `reg_ro` and `reg_rw`, that resolve to this definition.
+- `uvmAgent: true` says the type ships a UVM agent and an X/Z checker, described under "UVM agent and X/Z checker" below. A `hasUvm` block may use only flagged types on its boundary, and `make db` names the port and type that break this. The HDL wrapper of every `hasVl` block, `hasUvm` or not, instantiates the checker on each port of a flagged type. `rdy_vld`, `apb`, `axi4_stream`, `raw` and `status` carry the flag.
 
 ## Companion files
 
@@ -61,6 +62,65 @@ The channel class carries the interface type's timing. Every class that construc
 The generator spells a thunker as `<type>_port_thunker<up required payloads, down required payloads, one bool per required payload, up optional payloads, down optional payloads>`, each group in declaration order. Declare one `bool` per required parameter, defaulted to `false`, in that position, and pass it to `copyPayload<Flag>` at every copy site of that payload. `true` means the two sides emit identical member storage, so the payload is copied whole. `interfaces/rdy_vld/rdy_vld_port_thunker.h` is the smallest example. A protocol with no parameters, such as `notify_ack`, needs no thunker.
 
 Every shipped definition sets `sc_channel.type` equal to its key. Keep them equal. A definition that points `sc_channel.type` at another protocol mixes two sets of names.
+
+## UVM agent and X/Z checker
+
+A definition with `uvmAgent: true` ships two more files beside it and adds a line to two file lists. For key `myproto`:
+
+| File or entry | Contents |
+| :--- | :--- |
+| `myproto_uvm_pkg.sv` | package `myproto_uvm_pkg` with class `myproto_agent`, which exports the typedefs `item_t` and `config_t` |
+| a line in `common/systemVerilog/uvm/a2c_uvm.f` | the package's path, after `a2c_clk_if.sv` and `a2c_uvm_pkg.sv`. Every agent imports `a2c_uvm_pkg` and reaches the clock through a `virtual a2c_clk_if`, so both come first. The simulators compile the agents from this list |
+| `myproto_xcheck.sv` | exactly one module, `myproto_xcheck` |
+| a `-y` line in `common/systemVerilog/a2c.f` | the definition's directory. Xcelium finds the checker through it, by file name. VCS ignores `-y` and analyses every `interfaces/*/*_xcheck.sv` through the wildcard in `VCS_LIB_SV_FILES` (`include/make/a2c-vcs.mk`) |
+
+`interfaces/rdy_vld/rdy_vld_uvm_pkg.sv` and `interfaces/rdy_vld/rdy_vld_xcheck.sv` are the smallest complete pair.
+
+### The agent package
+
+- The agent's type parameters are the definition's `parameters:`, under the same names: `data_t` for `rdy_vld`, `addr_t` and `data_t` for `apb`, `tdata_t`, `tid_t`, `tdest_t` and `tuser_t` for `axi4_stream`. The generated variant package writes `typedef myproto_agent #(.<parameter>(<type>), ...) <port>_agent_t;` with the port's bound parameters only, and the same list on `virtual myproto_if`. An unbound optional parameter keeps the class default, so give it the default `myproto_if.sv` gives it.
+- An agent that can play either side of the interface takes a role, `a2c_role_e` from `a2c_uvm_pkg`, in its config. The role is the opposite of the DUT port's modport, so a DUT `dst` port gets an `A2C_SRC` agent. `rdy_vld`, `axi4_stream`, `raw` and `status` take one. `apb_config` has no role, and the apb agent has only a master driver.
+- Drivers drive at `clk_vif.drive_edge()` and monitors sample at `clk_vif.sample_edge()`, both defined in `common/systemVerilog/uvm/a2c_clk_if.sv`. Each monitor logs every transaction through `a2c_txn()` with id `A2C_TXN`.
+- Add a test to `common/systemVerilog/uvm/loopback/a2c_uvm_loopback_tb.sv` and its name to `TESTS` in `run_loopback.sh`. The loopback runs on Xcelium and VCS only, as `run_loopback.sh xcelium|vcs [seed]`.
+
+The test does not check the agent's content. A wrong class name or typedef passes `make db` and `make gen` and fails when a simulator compiles the UVM testbench.
+
+### The X/Z checker
+
+The HDL wrapper's boundary pins are two-state `bit`, so an X the RTL drives reaches SystemC as 0 and the run passes. The checker sits inside the SV wrapper, on the four-state interface the wrapper rebuilds from the pins, and fails the run on the first X or Z. Its rules:
+
+- **Ports.** `input logic clk, input logic rst_n, myproto_if intf`. The wrapper connects the port's own domain clock and reset and the rebuilt interface instance.
+- **Shared body.** `` `include "a2c_xcheck.svh" `` after the port list. It declares the DPI import, the arming process, `xzCheckEnabled()` and `xzFail(signal)`.
+- **Sampling.** One `always @(negedge clk)` block, guarded by `xzCheckEnabled()`, with one `if`/`else if` chain that calls `xzFail("<signal>")` for the first unknown signal it finds.
+- **Control signals are always checked.** For `rdy_vld` that is `vld` and `rdy`, for `axi4_stream` `tvalid` and `tready`, for `apb` `psel`, `penable` and `pready`.
+- **Payload is checked only while the protocol's valid signals say it is defined.** `rdy_vld` checks `data` while `vld` is high, and `axi4_stream` checks every other signal while `tvalid` is high. `apb` checks `paddr` and `pwrite` while `psel` is high, and `pwdata` while `psel && pwrite`, because a read leaves it undefined. The completing cycle, `psel && penable && pready`, qualifies `pslverr`, and `prdata` on a read. `raw` and `status` have no qualifier, so their checkers test `data` on every clock.
+- **Arming.** Checking starts once reset has been asserted and released. The HDL wrapper starts with reset released, and the DUT's outputs are X until its first reset. The checker arms when it starts with `rst_n` at 0, or on a falling edge of `rst_n` that does not end at X or Z, so a power-on X never arms it. It watches reset rather than a clock edge, because the socket lockstep wrapper can assert and release reset in delta cycles at time 0. It checks only while `rst_n === 1`, so a later reset pauses the check.
+- **Reporting.** Each instance reports once, on its first X or Z. `xzFail` prints `A2C_XZ <time> <path>: <signal> is X or Z` and calls the DPI function `a2c_xz_fail` in `common/systemc/xzCheck.cpp`, which calls `errorCode::fail` with an `A2C_XZ` line. The run then exits non-zero. Base does not scaffold a rule for that. By convention each project's `rundir/default.json` carries an `exit_code` filter, and that filter fails the run on both vendors.
+- **Four-state simulators only.** The wrapper places the instances inside `` `ifndef VERILATOR ``, because Verilator is two-state. Verilator builds still compile `xzCheck.cpp`, from the `common/systemc` wildcard, and never call it.
+
+A src block leaves the placeholder signals of an unbound optional payload undriven, and the checker never checks them. For each signal typed by an optional parameter, the wrapper template passes `CHECK_<SIGNAL>`, the signal name in upper case, set to `1'b1` when the port binds that parameter and `1'b0` when it does not. The template reads the optional parameters from `getIntfParamBindings`, so it names no type. Declare `parameter bit CHECK_<SIGNAL> = 1'b0` for each such signal and test it before checking the signal, so a checker instantiated without the parameter never fails on a placeholder. `axi4_stream`'s `tuser`, typed by the optional `tuser_t`, is the only shipped case. `tid_t` and `tdest_t` are required, and `tstrb` and `tkeep` take their width from `tdata_t`, so the checker always tests those signals under `tvalid`.
+
+### raw has limited UVM support
+
+`raw` keeps `uvmAgent: true`, with limited support. Against the RTL DUT support is complete, because the agent drives and samples the pins on every clock. Against the model DUT it is best effort, because `raw_src_bfm` is not transactional. The BFM blocks in `if_p->write()`, and a word presented while it blocks is lost. It counts each clock edge whose word SystemC did not take, from the reader's first read on, and reports the count through `bfmContractCheck`, as one line at the first miss and the total at the end of simulation. That is a warning and never `errorCode::fail`. The note is in the header of `interfaces/raw/raw_uvm_pkg.sv`.
+
+### What the test enforces
+
+`builder/base/unittest/test_uvm_agent_companions.py` walks every definition under `builder/base/interfaces/` and `builder/pro/interfaces/` and finds the flagged ones, so it checks a newly flagged type without anyone adding it to a list. For each, it checks that:
+
+1. `<type>_uvm_pkg.sv` exists beside the definition;
+2. `a2c_uvm.f` lists that package, and lists `a2c_clk_if.sv` and `a2c_uvm_pkg.sv` before every agent package;
+3. `<type>_xcheck.sv` exists beside the definition, declares exactly one module, `<type>_xcheck`, and sits in a directory that a `-y` line of `a2c.f` names.
+
+It fails when it finds no flagged definition at all. Run it after you flag a type or move its files:
+
+```bash
+python3 builder/base/unittest/test_uvm_agent_companions.py
+```
+
+The test checks names and places, not behaviour. `common/systemVerilog/xcheck_test/` checks behaviour. Its `run_xcheck_test.sh xcelium|vcs` builds `xcheck_tb.sv` with the checkers, and `xz_count.c` stands in for `a2c_xz_fail` and counts each checker's reports. Its 46 cases cover each shipped type. For a new type, add it to `TYPES` in the script, add its cases to `xcheck_tb.sv` and raise `CASES`. Verilator cannot run it.
+
+A Pro definition cannot carry the flag today. `a2c.f` has no `-y` line for `builder/pro/interfaces`, so the test fails, and the VCS wildcard does not reach Pro either.
 
 ## Declaration rules
 

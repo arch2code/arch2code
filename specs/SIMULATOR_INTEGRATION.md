@@ -1,6 +1,6 @@
 # VCS and Xcelium integration specification
 
-This document specifies how Arch2Code builds and runs a project under Synopsys VCS and Cadence Xcelium, and what a site must install and set to bring both flows up. It covers the make interface, the generated files, the environment, and the known failure modes. The make targets and hooks are summarised here. The full hook table and the general build workflow are in the `manage-build` skill (`rules/skills/manage-build.md`), and the regression file format is in `run-regression-tests` (`rules/skills/run-regression-tests.md`).
+This document specifies how Arch2Code builds and runs a project under Synopsys VCS and Cadence Xcelium, and what a site must install and set to bring both flows up. It covers the make interface, the generated files, the environment, and the known failure modes. The make targets and hooks are summarised here. The full hook table and the general build workflow are in the `manage-build` skill (`rules/skills/manage-build.md`), and the regression file format is in `run-regression-tests` (`rules/skills/run-regression-tests.md`). Section 9 covers the UVM testbench flow, which runs on both simulators.
 
 ## 1. Scope and architecture
 
@@ -29,6 +29,8 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | `XCELIUM_DUT` | `USE_XCELIUM` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_xcelium.h` |
 | `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
 | `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1` | the HDL wrapper calls `$fsdbDumpvars` when the run passes `+fsdbTrace` |
+| `VERILATOR` (SystemVerilog) | Verilator, set by the tool | the HDL wrapper leaves out its X/Z checker instances (section 9.4) |
+| `A2C_UVM_RTL_DUT` (SystemVerilog) | the project's UVM make glue, for the RTL snapshot (section 9.5) | the generated UVM testbench module holds the RTL wrapper and ties off its pins toward SystemC |
 
 ### 1.3 DUT topologies and snapshots
 
@@ -83,6 +85,7 @@ The RTL top of each DUT is the generated HDL verification wrapper (`<block>[_<va
 | `.gen/vl/<top>_xcelium.h` | the registrar under `XCELIUM_DUT` | `class <top> : public xmsc_foreign_module` with one `sc_in<...>` or `sc_out<...>` per pin, typed `bool` or `sc_bv<W>`, and `hdl_name()` returning `<top>` |
 
 - The VCS SystemC shells themselves (`<top>.h`) are written by `vlogan` into `$(VCS_RUNDIR)/csrc/sysc/include`.
+- The same run writes both files for each UVM testbench top, at the paths the manifest records (section 9.3).
 
 ## 2. Prerequisites
 
@@ -196,7 +199,7 @@ The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in secti
 | `VLOGAN_OPTS` | optional | `+vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps` | `vlogan` options, both stages | |
 | `VCS_ELAB_OPTS` | optional | `-sysc=234` | `vcs` elaboration options | |
 | `VCS_DEBUG` | optional | unset | `1` adds `-kdb -debug_access` to the link and `+define+VCS_DEBUG` to `vlogan`, for FSDB dumps with `+fsdbTrace` at run time | `1` |
-| `VCS_LIB_SV_FILES` | optional | every `interfaces/*/*_if.sv` and `common/systemVerilog/*.sv` except `flops.sv` | units `vlogan` analyses explicitly because it does not search `-y` directories | |
+| `VCS_LIB_SV_FILES` | optional | every `interfaces/*/*_if.sv`, every `interfaces/*/*_xcheck.sv` and every `common/systemVerilog/*.sv` except `flops.sv` | units `vlogan` analyses explicitly because it does not search `-y` directories | |
 | `VCS_RUNDIR` | optional | `$(PROJECT_RUNDIR)` | working directory of `vlogan` and `vcs` | |
 | `SNPSLMD_LICENSE_FILE` | tool | | Synopsys licence servers | `27000@<license-server>` |
 | `VG_GNU_PACKAGE` | tool | | Synopsys GNU toolchain selection, where the VCS release uses it | `<vcs-gnu-install>` |
@@ -458,6 +461,8 @@ Harmless warnings: Xcelium `*W,SCK910` on `sc_start(0)`, `SPDUSD` and `LIBNOU` f
 ### 7.3 Behaviour to know
 
 - Under Xcelium, `sc_main` runs twice: once under xmelab during the snapshot build, up to the first `sc_start`, and again under xmsim for each run. Code before `sc_start` runs in both, so side effects such as file writes happen at build time too.
+- The HDL wrappers fail a run on an X or Z at a port whose interface type has a UVM agent (section 9.4). That applies to every VCS and Xcelium run with an RTL DUT, not only to UVM runs.
+- `xrun_snapshots` runs each topology's testbench while it builds the snapshot, so an X or Z in that run fails the snapshot build, before any regression test starts.
 - `--vlTrace` has no effect under VCS or Xcelium. Under VCS, build with `VCS_DEBUG=1` and run with `+fsdbTrace` for FSDB waveforms. This needs Verdi's FSDB support in the VCS install. The Xcelium flow has no built-in waveform switch; pass the site's probe options through `EXTRA_XRUN_R_OPTS` or `EXTRA_XRUN_OPTS`.
 
 ## 8. Verification
@@ -494,7 +499,132 @@ make -j8 USE_VCS=1 VL_DUT= all
 - Tested with: this example under Xcelium 26.03, `No error`. The VCS flow and both snapshot sets were tested on a larger multi-block design (a 44-test regression passing under each simulator), not on this example.
 - If a run fails to start, check `ldd build/run_<topology>` (VCS) for unresolved libraries, and the log files of section 5.4.
 
-## 9. Open items
+## 9. UVM testbenches
+
+A block with `hasUvm: true` gets a generated SystemVerilog UVM testbench that drives either its SystemC model or its RTL, under Xcelium or VCS. SystemC stays on top, and `sc_main` and `main.cpp` run unchanged. SystemC instantiates the UVM testbench module the way it instantiates an HDL wrapper top, through the `vlogan -sc_model` shell under VCS and an `xmsc_foreign_module` shell under Xcelium. Base generates the per-block files described here. Each project still writes its make glue, its UVM environment and its tests (section 9.5).
+
+### 9.1 Opting a block in
+
+`hasUvm: optional(false)` is a block flag beside `hasVl`, independent of `hasTb`. `projectCreate.validateUvmBlocks` stops `make db` when a `hasUvm` block:
+
+- has `hasVl: false`, because the testbench drives the block's HDL wrapper;
+- has params but no standalone variant, so it would get no testbench top;
+- declares no `ports:`;
+- has an output clock or reset, because the testbench drives every clock and reset and samples none;
+- has a port created by a `memoryConnections` or `registerConnections` row;
+- has a boundary port, from `ports:`, a `connectionMaps` boundary row or `registerPorts:`, whose interface type lacks `uvmAgent: true`. The error names the port, its interface and the type. The flagged types are `rdy_vld`, `apb`, `axi4_stream`, `raw` and `status`.
+
+`raw` has limited support. It is complete against the RTL DUT and best effort against the model DUT, because the SystemC raw BFM is not transactional and can lose a word. `rules/dev-skills/authoring-interface-definitions.md` has the details.
+
+### 9.2 Generated files
+
+The files go in the `uvm` segment, `$root/uvm` in the functional layout and `<node>/uvm` in the hierarchical one. Its buildGroup is also `uvm`, which no base flow builds, so no UVM file reaches the model, Verilator or RTL compile lists. `<stem>` is `<block>_<variant>` for each standalone variant of a block with params, and `<block>` for a block without params, which has one top.
+
+| fileMap entry | File | Per | Content | Template |
+| :--- | :--- | :--- | :--- | :--- |
+| `uvmPkg` | `<stem>_uvm_pkg.sv` | standalone variant | package `<stem>_uvm_pkg`, holding the variant's parameter values as localparams, the block's parameterized types, and per port the typedefs `<port>_agent_t`, `<port>_item_t`, `<port>_config_t` and `<port>_vif_t`. A user region follows the items | `templates/systemVerilog/uvmPkg.py` |
+| `uvmTb` | `<stem>_uvm_tb.sv` | standalone variant | module `<stem>_uvm_tb`. Its ports are the HDL top's pins with port directions inverted, then the clocks and resets as inputs, then the completion outputs `uvm_done`, the 32-bit `uvm_errors` and `rtl_dut`. Payload widths are `$bits` of the package-qualified type. It holds one `<type>_if` per port, one `a2c_clk_if` per clock, the RTL wrapper as instance `dut` under `` `ifdef A2C_UVM_RTL_DUT `` with the pins toward SystemC tied off, the `uvm_config_db` keys and `run_test()`. User regions take imports and module body | `templates/systemVerilog/uvmTb.py` |
+| `uvmScWrap` | `<block>_uvm_sc_wrapper.h` | block | class template `<block>_uvm_sc_wrapper<TB_T, Config>` over the simulator shell `TB_T`, or `<TB_T>` alone for a block without params. It drives the clocks and resets into the shell, with resets born low. With the model DUT it also holds the model, its channels and the BFMs in the DUT's swapped roles. It waits for `uvm_done` and ends the run | `templates/systemc/module_uvm_sc_wrapper.py` |
+| `uvmTbConfig` | `<block>UvmConfig.cpp` | block, at the variant its `GENERATED_CODE_PARAM` names | testbench config `uvmTbConfig`, registered under the testbench name `<block>_uvm`, with option `--uvmDut model\|rtl` | `templates/systemc/uvmTbConfig.py` |
+| `uvmRegistrar` | `<block>UvmRegistrar.cpp` | block | registers the wrapper as `<block>_uvm` once per standalone variant, over that variant's shell and Config | `templates/systemc/uvmRegistrar.py` |
+
+The templates guard two of these files with `#if defined(XCELIUM) || defined(VCS)`, each for its own reason:
+
+- `<block>UvmRegistrar.cpp` includes the simulator shells, `<tbModule>_xcelium.h` under `XCELIUM` and the `vlogan` shell `<tbModule>.h` otherwise, and only those two builds write them.
+- `<block>UvmConfig.cpp` includes no shell. It creates the wrapper through the factory key `<block>_uvm`, and only the guarded registrar registers that key. Unguarded, it would offer a `<block>_uvm` testbench in a build that cannot create its wrapper.
+
+A block with `hasMdl: false` gets the RTL DUT only. Its testbench module holds the RTL with no `A2C_UVM_RTL_DUT` branch, its wrapper has no model, channels or BFMs, and its config accepts only `--uvmDut rtl`, the default.
+
+`make gen` under `USE_VCS` or `USE_XCELIUM` also writes two boundary files per testbench top, in the same `--vlBoundary` run as the HDL tops' (section 1.5):
+
+| File | Content |
+| :--- | :--- |
+| `.gen/vl/<tbModule>.portmap` | the VCS port map for `vlogan -sc_model <tbModule>` |
+| `.gen/vl/<tbModule>_xcelium.h` | `class <tbModule> : public xmsc_foreign_module`, which the registrar includes under Xcelium |
+
+Both come from `projectOpen.getUvmTopBoundaryPins`. It takes the HDL top's pins from `getVlTopBoundaryPins`, inverts the port directions, leaves clocks and resets as inputs, and adds the three completion pins.
+
+### 9.3 Names and manifest records
+
+`projectCreate.deriveUvmNames` persists every name as the `UVMNAMES` config, keyed by block. Templates and the manifest read it and never derive a name from a file name.
+
+| Field | Value |
+| :--- | :--- |
+| `scWrapperClass`, `scWrapperHeader` | `<block>_uvm_sc_wrapper`, `<block>_uvm_sc_wrapper.h` |
+| `runClass` | `<block>_uvm_run`, the static run state the config and the wrapper share |
+| `testbenchName` | `<block>_uvm` |
+| `tops[<variant>]` | one row per standalone variant, or one row under `''` for a block without params. Each row holds `tbModule`, `pkgName`, `hdlTop`, `portmap`, `xceliumShell`, `xceliumShellHeader` and `vcsShellHeader`. `hdlTop` is the HDL wrapper top the testbench instantiates, and `portmap` and `xceliumShell` are paths under `.gen/vl` |
+
+The config creates the wrapper with `instanceFactory::createInstance("", "<block>", "<block>", <variant>, <project>)` after `registerInstance("<block>", "uvm")`. The wrapper instance therefore takes the block's name, and the model under it sits at `<block>.<block>`. Log paths and any `--vlInst` value use that path.
+
+`config/createBuildManifest.py` records one `uvmTops` entry per testbench top of the harness owner's `hasUvm` blocks, with `qualifiedTop`, `pkgSv`, `tbSv`, `portmap`, `hdlTop` and `xceliumShell`, plus `uvmDirs`. A reused child's UVM files belong to the child's own build. `.gen/build.mk` carries:
+
+| Variable | Content |
+| :--- | :--- |
+| `A2C_UVM_TOPS` | every testbench module name |
+| `A2C_UVM_PKG_SV_<top>` | that top's variant package |
+| `A2C_UVM_TB_SV_<top>` | that top's testbench module file |
+| `A2C_UVM_PORTMAP_<top>` | `.gen/vl/<top>.portmap` |
+| `A2C_UVM_SRC_DIRS` | the `uvm` segment directories, which hold the generated C++ |
+
+No base makefile reads these variables. The manifest leaves the `uvm` rows' `.cpp` files out of the SystemC source list, so a project compiles them only by adding `$(A2C_UVM_SRC_DIRS)` to its source directories under its UVM switch. The only prerequisite of `VL_BOUNDARY_STAMP` is the database (`include/make/a2c-common.mk`). `A2C_VL_TOPS` decides only whether the stamp joins `GEN_DEPS`, and it is never empty for a `hasUvm` block, because it holds each testbench's HDL top.
+
+### 9.4 X and Z checks on four-state simulators
+
+The HDL wrapper's pins and the testbench module's pins are two-state `bit`, so an X from the RTL reaches the UVM monitors and the SystemC BFMs as 0. Every generated HDL wrapper therefore instantiates a `<type>_xcheck` module on each port of a flagged type, on the port's own clock and reset, as `specs/spec-verilated-wrappers.md` section 9 describes. A checker fails the run on its first X or Z once reset has been asserted and released. It always checks the control signals, and checks the payload only while the protocol's valid signals qualify it. It prints `A2C_XZ <time> <path>: <signal> is X or Z` and calls `errorCode::fail` through the DPI function `a2c_xz_fail` in `common/systemc/xzCheck.cpp`. The run exits non-zero, and the `exit_code` filter that projects keep in their `default.json` fails it. The full rules are in `rules/dev-skills/authoring-interface-definitions.md`.
+
+- The checks run in every VCS and Xcelium run with an RTL DUT, UVM or not.
+- Verilator never compiles them. The instances sit inside `` `ifndef VERILATOR ``.
+- Under Xcelium, `xrun_snapshots` runs each topology's testbench once while it builds the snapshot, so a real X fails the snapshot build itself.
+- The run's summary line does not show the `A2C_XZ` text, because `try_sc_start` in `common/scmain/main.cpp` replaces the `errorCode` string after the run. The `A2C_XZ` `$display` in the log names the port and signal.
+
+Tested with: the SystemC regressions of a ten-block image pipeline, run with the checkers elaborated under Xcelium and VCS. The checkers found no X or Z.
+
+### 9.5 Building and running
+
+Base has no UVM make switch yet, so each project writes its own glue. Under its UVM switch and `USE_XCELIUM=1` or `USE_VCS=1`, the glue must:
+
+- add `common/systemVerilog/uvm/a2c_uvm.f` to `EXTRA_HDL_F_FILES`, which compiles `a2c_clk_if.sv`, `a2c_uvm_pkg.sv` and the five agent packages;
+- append `$(A2C_UVM_PKG_SV_<top>)`, its own UVM package and `$(A2C_UVM_TB_SV_<top>)` to `A2C_SV_FILES`, in that order, and make them prerequisites of the xrun stamp or the VCS RTL analysis stamp;
+- add `$(A2C_UVM_SRC_DIRS)` and a VCS discovery stub to `EXTRA_PRJ_SRC_DIRS`;
+- set `VL_INST` empty, `DUT_TOPOLOGY` to one name per DUT choice, `DUT_ELAB_ARGS` to `<block>_uvm --uvmDut <dut>`, and `A2C_UVM_RTL_DUT` in `EXTRA_HDL_DEFINES` for the RTL snapshot;
+- on Xcelium, add `-uvm -uvmhome CDNS-1.2 -elaborate` to `EXTRA_XRUN_OPTS`. Without `-uvmhome`, xrun picks UVM 1.1d, and without `-elaborate` the snapshot build runs a test with no `+UVM_TESTNAME`, which ends in a `UVM_FATAL`;
+- on VCS, add `-ntb_opts uvm-1.2` to `EXTRA_VLOGAN_OPTS` and `EXTRA_VCS_OPTS`, analyse `uvm_pkg` with a `vlogan` run that has no source files, and run `vlogan -sc_model` for the testbench module after the base step, with the HDL defines repeated.
+
+Build the model and RTL snapshots one after the other, because they link the same C++ objects and, under VCS, share `AN.DB`. The base `run_<topology>` entry cannot run a UVM test, so the project needs its own run script. The script passes `+` arguments to the simulator, the a2c options to `sc_main` and the seed to both. `--uvmDut` must match the snapshot, and the wrapper fails the run if the snapshot holds the other DUT.
+
+Each project also writes the package that holds its register model, scoreboard, environment, sequences and tests, and imports the variant package. The generated and project-written halves meet at these points:
+
+- the `uvm_config_db` scope is `uvm_test_top.*`;
+- each port has one key, equal to the port name, holding a `virtual <type>_if` with the port's types;
+- each clock has one key, equal to the clock pin name, holding a `virtual a2c_clk_if`;
+- the per-port typedefs live in the variant package;
+- the testbench name is `<block>_uvm`, and the instance name is the block name.
+
+A regression lists `config/regrRules/uvm.json` first, by its relative path from the rundir, then any project rule file, then `default.json` and the vendor file. The file ships in base, and projects reference it in place. It fails a run on a `UVM_ERROR` or `UVM_FATAL` report, a non-zero summary count, or a log with no UVM report summary.
+
+### 9.6 Farm-only tests in base
+
+Two tests need a four-state simulator with UVM and run only on the farm. Source the simulator setup, then run from any scratch directory:
+
+| Command | Builds | Passes when |
+| :--- | :--- | :--- |
+| `common/systemVerilog/xcheck_test/run_xcheck_test.sh xcelium\|vcs` | `xcheck_tb.sv` with the five checkers into `./xcheck_<sim>`. `xz_count.c` stands in for `a2c_xz_fail` and counts each checker's reports | all 46 cases log `XC_PASS`. They cover qualified and unqualified X per type, every control signal, X before arming and during a later reset, a power-on X reset, one report per instance, the apb completion qualifiers, bound and unbound `tuser`, and a reset released in delta cycles before the first edge |
+| `common/systemVerilog/uvm/loopback/run_loopback.sh xcelium\|vcs [seed]` | `a2c_uvm_loopback_tb.sv` with every agent package into `./loopback_<sim>` | every test in `TESTS` logs `LB_PASS` with zero `UVM_ERROR` and `UVM_FATAL`. `monitor_checks_test` drives the pins by hand and expects exactly six `A2C_STALL` and four `A2C_HOLD` reports. No test exercises the apb agent |
+
+The loopback does not run on Verilator, because 5.052 and master stop with an internal error on `typedef <agent>::item_t`.
+
+These unit tests cover the generator side without a simulator:
+
+- `test_error_uvm_blocks.py`, the validation;
+- `test_uvm_boundary_pins.py`, the pins, port maps, shells and generated files, on two variants and a block without a model;
+- `test_build_manifest.py`, the manifest records;
+- `test_uvm_agent_companions.py`, the agent and checker files;
+- `test_hdl_wrapper_xcheck.py`, the checker instances;
+- `test_regr_rules_uvm.py`, the `uvm.json` filters;
+- `test_raw_src_bfm_missed_edges.py`, the raw BFM's missed-edge warning.
+
+## 10. Open items
 
 - Under Xcelium every uninstantiated HDL wrapper top is elaborated as an idle top-level. That is harmless at the tested size, but its memory cost on a large SoC is unmeasured.
 - SystemC 3.0.1 is untested in both flows (VCS `-sysc=301` with a GCC 13 build, Xcelium `-sc_301`). The default `VCS_ELAB_OPTS` selects 2.3.4.
@@ -503,3 +633,19 @@ make -j8 USE_VCS=1 VL_DUT= all
 - The Xcelium documentation reviewed during testing states that a snapshot records `LD_LIBRARY_PATH` and rejects a different value at simulation time. The builder does not record it. Keep `LD_LIBRARY_PATH` the same for the build and every run.
 - An exported `XRUN_OPTS` or `VCS_LIB_SV_FILES`, or under `VCS_DEBUG` an exported `VLOGAN_OPTS` or `VCS_ELAB_OPTS`, is appended to again in each sub-make, so the builder's additions appear twice (section 3).
 - The builder default `DUT_TOPOLOGIES` includes `verif:tandem`, which needs a builder layer that registers tandem blocks (section 1.3).
+- UVM: the Xcelium snapshot recipe has no `-elaborate`, so it simulates after elaborating. The project glue adds it.
+- UVM: the Xcelium run script wraps every argument in `+systemc_args+`, so `+UVM_TESTNAME` and `-svseed` never reach UVM. The project's run script works around it.
+- UVM: files appended to `A2C_SV_FILES` are not prerequisites of the xrun stamp or the VCS RTL analysis stamp.
+- UVM: the VCS flow has no `vlogan` step for `uvm_pkg` and no `-sc_model` run for the testbench module, and its `-syscelab` discovery link needs a stub for the SV export `m__uvm_report_dpi`.
+- UVM: without `--vlTandem`, `dutRun.py` maps every `--vlType` other than `verif` to the model snapshot, so there is no `--vlType uvm`.
+- UVM: the testbench has no External, so the generated wrapper owns the `sc_stop` thread.
+- UVM: `try_sc_start` overwrites the `errorCode` string after the run. The generated config's `final()` sets the failure again, and an `A2C_XZ` reason never reaches the summary line.
+- UVM: under VCS a `$finish` exits through `main.cpp`'s `VcsSetExitFunc` handler with an unset exit code, so the generated wrapper registers its own handler.
+- UVM: the `.gen/vl/*.portmap` files stay older than `.gen/vl/.boundary`, so every `make USE_VCS=1` reruns the `-sc_model` steps and relinks.
+- UVM: `bfmContractCheck` only logs. If a later change makes contract breaks fail the run, the raw missed-edge count must stay a warning.
+- UVM: the JUnit report of `regrLauncher.py` records only the first failure (`regrLauncher/report.py`), so the order of the rule files decides which failure it shows.
+- UVM: the registrar includes every variant's VCS shell in one translation unit. A VCS build of a block with two standalone variants, or of a project with two `hasUvm` blocks, needs the `vlogan -sc_model` header of every UVM top before the registrar compiles.
+- UVM: the generator's view does not carry each port's clock domain or effective backpressure. The project's environment picks each agent's `clk_vif` and sets `no_backpressure`, so a multi-clock `hasUvm` block needs that done by hand.
+- UVM: no farm run has exercised a non-default variant. The unit tests generate two variants.
+- UVM: `make db` does not check a port or clock name that collides with another name in the testbench module, such as `dut` or `<clock>_if`. The simulator rejects it at elaboration.
+- UVM: a Pro interface definition cannot carry `uvmAgent` yet.

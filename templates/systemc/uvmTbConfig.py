@@ -2,7 +2,9 @@
 # GENERATED_CODE_PARAM line names. It creates the SystemC wrapper through the
 # instanceFactory under the block's own name, with the DUT --uvmDut picks,
 # and fails the run in final() unless UVM finished with no error. Only the
-# Xcelium and VCS builds compile it: the wrapper's shell exists only there.
+# Xcelium and VCS builds compile it, because it selects the <block>_uvm
+# factory entry that only the registrar registers, and the registrar is built
+# only there.
 from pysrc.intf_gen_utils import resolve_dut_variant_selection
 
 

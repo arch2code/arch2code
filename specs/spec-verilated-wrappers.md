@@ -11,7 +11,8 @@ factory as `<block>_verif`, so `--vlInst` can swap it in for the model at run
 time. A parameterized block has one shared parameterized wrapper body and one
 small concrete top per parameter set. Each top has fixed integer pin widths.
 The build manifest names every top explicitly, and every simulator flow
-compiles from those records.
+compiles from those records. On VCS and Xcelium the SV wrapper also fails the
+run on an X or Z at a port of a type with a UVM agent (section 9).
 
 Scope: this spec covers the generated wrapper files, their names and owners,
 pin widths, the manifest records and the make rules that consume them. It does
@@ -96,6 +97,30 @@ is the block's single top. The wrapper holds the hdl_if bridges, the BFMs, the
 clock and reset drivers, and the user region `end_ctor_init()`. It names no
 concrete Config and registers nothing.
 
+Clocks and resets:
+
+- Each input clock is a gated `sc_signal<bool>`, not an `sc_clock`, toggled by
+  its own `clock_gen_<clock>` thread at half its declared period. Under socket
+  lockstep every clock must stop while the Python partner holds the quantum,
+  and an `sc_clock` cannot pause.
+- Each reset signal starts released, at `true`. Its `reset_driver_<reset>`
+  thread writes it low at time 0 and high after the reset's `releaseCycles`
+  rising edges of its own clock. The first write is therefore a real falling
+  edge, which Verilator's asynchronous reset processes need to see. Under
+  socket lockstep the thread follows the partner's reset instead.
+- The wrapper observes an output clock or reset and never drives it. It
+  counts the edges and warns at the end of the run if a clock never toggled
+  or a reset never released.
+- The clock and reset sections, `sec_clock_*` and `sec_reset_*`, are
+  module-level functions, because `templates/systemc/module_uvm_sc_wrapper.py`
+  imports them for the UVM SystemC wrapper. That wrapper reuses the
+  declarations, half periods, threads and thunks. It writes its own reset
+  initialiser, born low, and its own `clock_gen` and `reset_driver` bodies
+  without the lockstep paths.
+- Because the HDL wrapper's reset starts released, the DUT's outputs are X
+  until the driver's first falling edge. The X/Z checkers of section 9 arm
+  only once reset has been asserted and released.
+
 ### Registrar
 
 `templates/systemc/vlRegistrar.py` fills `<child>VlRegistrar.cpp` from
@@ -128,7 +153,8 @@ concrete Config and registers nothing.
 - The ports are the flattened pins with symbolic widths (section 5), then the
   block's clocks and resets in declaration order.
 - After the ports come the module-local parameterized typedefs, interface
-  reconstruction, and the DUT instance with every parameter passed by name.
+  reconstruction, the DUT instance with every parameter passed by name, and
+  the X/Z checker instances (section 9).
 - The scaffold wraps the region in an include guard. Each top `` `include ``s
   the body inside its own generated region, so the body is read once per
   compilation however many tops name it.
@@ -139,7 +165,8 @@ concrete Config and registers nothing.
   child's body through that path.
 
 A block without params gets no `.svh`. Its single `.sv` holds the whole
-wrapper and is its only top (`render_non_parameterizable`).
+wrapper, checker instances included, and is its only top
+(`render_non_parameterizable`).
 
 ## 4. Trampolines
 
@@ -157,6 +184,7 @@ foreign and pair tops alike.
 - It imports the block's packages, so a constant named in a width or binding
   resolves.
 - It instantiates the body with every parameter and pin wired by name.
+- It carries no X/Z checker. The body it instantiates holds them.
 
 ## 5. Boundary widths
 
@@ -328,6 +356,49 @@ command line recorded in `VL_OPTS_STAMP` (`include/make/a2c-vl-wrap.mk`).
   `dut` both have `hasVl`, so the manifest carries `A2C_VL_TOP_pySocket` and
   `A2C_VL_TOP_dut`, and `HDL_TOP_MODULE` picks one.
 
+## 9. X and Z checkers
+
+The wrapper's pins are two-state `bit`, so an X the RTL drives on an output
+reaches SystemC, or a UVM testbench, as 0. The SV wrapper therefore checks the
+four-state interfaces it rebuilds from the pins. The template function is
+`templates/systemVerilog/module_hdl_wrapper.py::xcheck_instances`.
+
+- Every port whose interface type declares `uvmAgent: true` gets one
+  `<type>_xcheck` instance named `<port>_xcheck`. The template reads the flag
+  from `interface_defs`, so the types with a UVM agent and the checked types
+  are one set: `rdy_vld`, `apb`, `axi4_stream`, `raw` and `status`. Register
+  ports count, so an `apb` register bus gets a checker. Ports of other types
+  get none.
+- Each instance takes the port's own clock and reset, `domainClock` and
+  `domainReset`, and the rebuilt interface instance, as in
+  `rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));`.
+- For each signal typed by an optional interface parameter, the instance
+  passes `CHECK_<SIGNAL>`, the signal name in upper case. It is `1'b1` when
+  the port binds that parameter and `1'b0` when it leaves it unbound, so an
+  undriven placeholder never fails the run. The template takes the optional
+  set from `getIntfParamBindings`. `axi4_stream` `tuser` is the one shipped
+  case. `examples/axi4sDemo` and `examples/hierVlDemo` bind it and pass
+  `1'b1`, and `examples/pySocket` does not and passes `1'b0`.
+- All instances of one wrapper sit in one `` `ifndef VERILATOR `` block after
+  the DUT instance and its `VCS_DEBUG` block. That is the `.svh` body of a
+  parameterized block, or the single `.sv` of a block without params. A
+  wrapper with no checked port has no block.
+- Verilator is two-state and never compiles the instances. VCS analyses the
+  checkers through the `interfaces/*/*_xcheck.sv` wildcard in
+  `VCS_LIB_SV_FILES` (`include/make/a2c-vcs.mk`), and Xcelium finds them
+  through the `-y` directories in `common/systemVerilog/a2c.f`. The `vlogan`
+  RTL analysis stamp and the xrun snapshot both depend on the checkers and
+  on their shared include, `common/systemVerilog/a2c_xcheck.svh`.
+- A checker reports the first X or Z of its instance with an `A2C_XZ`
+  `$display` and the DPI call `a2c_xz_fail` in `common/systemc/xzCheck.cpp`,
+  which calls `errorCode::fail`. The qualifiers and the arming rule are in the
+  `authoring-interface-definitions` dev skill,
+  `rules/dev-skills/authoring-interface-definitions.md`.
+
+`examples/pySocket`'s `dut` RTL drives none of its outputs, so its wrapper
+would fail the check on a four-state simulator. That example runs on Verilator
+only.
+
 ## Reference fixtures
 
 | Fixture | Shows |
@@ -339,3 +410,5 @@ command line recorded in `VL_OPTS_STAMP` (`include/make/a2c-vl-wrap.mk`).
 | `examples/pySocket` | Two `A2C_VL_TOP_<block>` entries, functional layout (`verif/vl_wrap/`) |
 | `examples/xprojParam/rtInh`, `builder/pro/examples/inhTandem` | Pair tops sharing a file with the bare top |
 | `unittest/fixtures/vl-boundary-widths` | Every top shape and signal form (`test_vl_boundary_widths_build.py`) |
+| `unittest/test_hdl_wrapper_xcheck.py`, with its fixture inline | Checkers on two clock domains, a type without an agent, checkers in a parameterized body, and bound and unbound `tuser` |
+| `examples/mixed/verif/vl_wrap/blockF_hdl_sv_wrapper.svh` | Checkers in a parameterized body |
