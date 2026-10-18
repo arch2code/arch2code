@@ -1136,6 +1136,12 @@ python3 test_uvm_boundary_pins.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: UVM view carries port domains and the register model per variant"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_register_view.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
 echo "------------------------------------------------------------------------"
 python3 test_vl_timing.py || FAILED=1

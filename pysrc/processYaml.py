@@ -33,6 +33,10 @@ CURRENT_YAML_FORMAT = 2
 # to match.
 REG_BUS_WIDTH_BYTES = 4
 
+# uvm_reg_data_t's width in a default UVM build, the widest register or
+# memory row a UVM register model holds.
+UVM_REG_DATA_WIDTH = 64
+
 def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
     """Firmware reaches a register or memory row of every variant through one
     address range, so the range is sized for the widest variant."""
@@ -1483,6 +1487,9 @@ class projectOpen:
         self.getBDInstances(qualBlock, ret, trimRegLeafInstance, excludeInstances)
         # get all the register and memory information
         self.getBDRegistersMemories(qualBlock, ret)
+        # getBDUvm models the block's own register rows, which the register
+        # connections below clear from ret['registers'].
+        ret['temp']['blockRegisters'] = ret['registers']
         # based on memories and registers, do we need address decoding etc
         self.getBDAddressDecode(ret)
         # address bus info
@@ -1750,12 +1757,17 @@ class projectOpen:
     def getBDUvm(self, ret):
         # The UVM testbench of a hasUvm block, None for any other block: the
         # names projectCreate.deriveUvmNames gives it, with its tops keyed by
-        # variant, and one agent per boundary port in port order. Each agent
-        # class is parameterized by its interface's payload parameters, by name.
+        # variant, one agent per boundary port in port order, and the register
+        # model rows. Each agent class is parameterized by its interface's
+        # payload parameters, by name.
         import pysrc.intf_gen_utils as intf_gen_utils
         if ret['qualBlock'] not in self.uvmNames:
             ret['uvm'] = None
             return
+        tops = self.uvmNames[ret['qualBlock']]['tops']
+        # A port's reset, like a clock's below, is None when it is not a
+        # port of the block.
+        resetPorts = {row['reset'] for row in ret['resets']}
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
@@ -1766,28 +1778,87 @@ class projectOpen:
                     'name': portData['name'],
                     'interfaceType': intfType,
                     'role': portData['direction'],
+                    'clock': portData['domainClock'],
+                    'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
+                    'backpressure': portData['effectiveBackpressure'],
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.
-                    'paramTypes': {variant: [{'param': b['structureType'], 'type': self.uvmTypeRef(b, top['pkgName'])}
+                    'paramTypes': {variant: [{'param': b['structureType'],
+                                              'type': self.uvmTypeRef(b['kind'], b['structureKey'], top['pkgName'])}
                                              for b in paramBindings if not b['isNull']]
-                                   for variant, top in self.uvmNames[ret['qualBlock']]['tops'].items()},
+                                   for variant, top in tops.items()},
                 })
         # One a2c_clk_if per clock, released by the clock's selected reset
         # when that reset is a port of the block, else never held in reset.
-        resetPorts = {row['reset'] for row in ret['resets']}
         clocks = [{'clock': row['clock'],
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
-        ret['uvm'] = {**self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks}
+        registers, memories = self.getUvmRegisterModel(ret, tops)
+        ret['uvm'] = {**self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks,
+                      'registers': registers, 'memories': memories}
 
-    def uvmTypeRef(self, binding, variantPkg):
-        # A payload type as the UVM testbench names it: the variant package
-        # declares the block's parameterizable types, and the type's own file
-        # package every other one.
-        ref = self.datatypeRef(binding['kind'], binding['structureKey'])
+    def getUvmRegisterModel(self, ret, tops):
+        """The block's firmware-visible registers and memories at the
+        addresses fw/<block>RegAddresses.h gives them, for the register model.
+
+        registers: one per registers: row other than regType memory, with its
+        structure's members as fields, the first declared member most
+        significant, and reserved true on the padding members alignment adds.
+        memories: one per memories: row with regAccess, and one rw memory per
+        regType memory register. rowBytes is the decoder's stride between
+        rows. Widths, depths and type packages are keyed by variant like
+        paramTypes.
+        """
+        widths = {variant: top['registerWidths'] for variant, top in tops.items()}
+
+        def typeRefs(structKey):
+            return {variant: self.uvmTypeRef('structures', structKey, top['pkgName'])
+                    for variant, top in tops.items()}
+
+        def fields(key):
+            perVariant = dict()
+            for variant, layout in widths.items():
+                members = layout['registers'][key]['fields']
+                lsb = sum(member['width'] for member in members)
+                perVariant[variant] = list()
+                for member in members:
+                    lsb -= member['width']
+                    perVariant[variant].append({**member, 'lsb': lsb})
+            return perVariant
+
+        def memory(section, key, row, name, access):
+            return {'name': name, 'offset': int(row['offset']), 'access': access,
+                    'rowBytes': row['rowBytes'],
+                    'count': {variant: layout[section][key]['wordLines'] for variant, layout in widths.items()},
+                    'width': {variant: sum(member['width'] for member in layout[section][key]['fields'])
+                              for variant, layout in widths.items()},
+                    'type': typeRefs(row['structureKey'])}
+
+        registers = list()
+        memories = list()
+        for key, row in ret['temp']['blockRegisters'].items():
+            if row['regType'] == 'memory':
+                memories.append(memory('registers', key, row, row['register'], 'rw'))
+                continue
+            registers.append({'name': row['register'], 'offset': int(row['offset']),
+                              'bytes': row['bytes'], 'regType': row['regType'],
+                              'defaultValue': self.getConst(row['defaultValue'], require_int=True,
+                                                            context_msg="a register defaultValue"),
+                              'type': typeRefs(row['structureKey']),
+                              'fields': fields(key)})
+        for key, row in ret['memories'].items():
+            if row['regAccess']:
+                memories.append(memory('memories', key, row, row['memory'], row['regAccess']))
+        return registers, memories
+
+    def uvmTypeRef(self, kind, key, variantPkg):
+        # A type or structure as the UVM testbench names it: the variant
+        # package declares the block's parameterizable types, and the type's
+        # own file package every other one.
+        ref = self.datatypeRef(kind, key)
         pkg = variantPkg if ref['isParameterizable'] else self.contextSvPackageName[ref['context']]
-        return {'name': binding['structure'], 'pkg': pkg}
+        return {'name': ref['name'], 'pkg': pkg}
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
@@ -3865,7 +3936,8 @@ class projectOpen:
         uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
         pins = list()
         for pin in self.getVlTopBoundaryPins(ret, hdlTop):
-            pinType = self.uvmTypeRef(pin['payload'], variantPkg) if pin['payload'] else None
+            pinType = self.uvmTypeRef(pin['payload']['kind'], pin['payload']['structureKey'], variantPkg) \
+                if pin['payload'] else None
             if pin['port'] is None:
                 pins.append(dict(pin, kind='clockReset', type=pinType))
                 continue
@@ -5348,6 +5420,7 @@ class projectCreate:
         top per standalone variant. tree is the project's clockTree.
         """
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        self.uvmRegisterWidths = dict()
         failed = False
         for blockRow in self.flatData['blocks'].values():
             if not blockRow['hasUvm']:
@@ -5423,6 +5496,53 @@ class projectCreate:
                         f"declare uvmAgent: true. Use an interface type with an agent "
                         f"for '{portName}', or clear hasUvm.")
                     failed = True
+            # The testbench module names an interface instance after each
+            # port and a pin after each clock and reset, beside these names.
+            # srv is the report server the initial block declares, where it
+            # would hide a port or the default clock of the same name.
+            tbNames = {'dut': "the DUT instance 'dut'",
+                       'uvm_done': "the completion pin 'uvm_done'",
+                       'uvm_errors': "the completion pin 'uvm_errors'",
+                       'rtl_dut': "the completion pin 'rtl_dut'",
+                       'srv': "the report server variable 'srv'"}
+            tbNames.update({f"{clock}_if": f"the a2c_clk_if instance '{clock}_if' of clock '{clock}'"
+                            for clock in domain.clocks})
+            for portName, interfaceKey in boundary.items():
+                typeKey = self.flatData['interfaces'][interfaceKey]['interfaceTypeKey']
+                tbNames.update({f"{portName}_{signal}": f"the pin '{portName}_{signal}' of port '{portName}'"
+                                for signal in self.flatData['interface_defs'][typeKey]['signals']})
+            named = ([('port', name) for name in boundary]
+                     + [('clock', name) for name in domain.clocks]
+                     + [('reset', name) for name in domain.resets])
+            for kind, name in named:
+                if name in tbNames:
+                    printError(
+                        f"{where} but its {kind} '{name}' has the name of {tbNames[name]} "
+                        f"in its UVM testbench module, so the simulator rejects the "
+                        f"testbench. Rename the {kind}, or clear hasUvm.")
+                    failed = True
+            # One resolution per testbench top: each standalone variant, or the
+            # parameter defaults for a block without params.
+            descriptors = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            variantValues = {variant: {d['paramSourceKeys'][name]: value for name, value in d['values'].items()}
+                             for variant, d in descriptors.items()} or {'': {}}
+            self.uvmRegisterWidths[blockKey] = dict()
+            for variant, values in variantValues.items():
+                widths = self.resolveUvmRegisterWidths(
+                    blockKey, ValueResolver(self, values=values, context=blockRow['_context']))
+                self.uvmRegisterWidths[blockKey][variant] = widths
+                atVariant = f" at variant '{variant}'" if variant else ''
+                for section, kind, nameField in (('registers', 'register', 'register'),
+                                                 ('memories', 'memory', 'memory')):
+                    for key, entry in widths[section].items():
+                        width = sum(member['width'] for member in entry['fields'])
+                        if width > UVM_REG_DATA_WIDTH:
+                            printError(
+                                f"{where} but its {kind} '{self.flatData[section][key][nameField]}' "
+                                f"is {width} bits wide{atVariant}. A UVM register model holds at "
+                                f"most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a register "
+                                f"or memory row. Narrow its structure, or clear hasUvm.")
+                            failed = True
         if failed:
             exit(warningAndErrorReport())
 
@@ -5535,6 +5655,7 @@ class projectCreate:
                     'xceliumShell':       os.path.join(genVlDir, xceliumShellHeader),
                     'xceliumShellHeader': xceliumShellHeader,
                     'vcsShellHeader':     tbModule + '.h',
+                    'registerWidths':     self.uvmRegisterWidths[row['blockKey']][variant],
                 }
             scWrapper = artifactPaths.fileStem(fileMap['uvmScWrap'], row['block'], layout)
             self.uvmNames[row['blockKey']] = {
@@ -5545,6 +5666,32 @@ class projectCreate:
                 'tops':            tops,
             }
         self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
+
+    def resolveUvmRegisterWidths(self, blockKey, resolver):
+        # A parameter can size a register field or a memory depth, and only
+        # the create-time resolver evaluates one at a variant's values. Per
+        # register and per memory with regAccess, by qualified key: each
+        # structure member in declaration order, and the depth of a memory or
+        # regType memory register. Members come from flatData, which holds
+        # the padding a specialStructures entry adds beside the members it
+        # copies from its base structure.
+        widths = {'registers': dict(), 'memories': dict()}
+        for section, rows in widths.items():
+            for key, objRow in self.flatData[section].items():
+                if objRow['blockKey'] != blockKey or (section == 'memories' and not objRow['regAccess']):
+                    continue
+                structVars = self.flatData['structures'][objRow['structureKey']]['vars']
+                # A bare block param name resolves through the block's own
+                # include chain, which is where its backing constant lives.
+                isMemory = section == 'memories' or objRow['regType'] == 'memory'
+                rows[key] = {
+                    'fields': [{'name': name, 'width': resolver.varWidth(varRow, field_name=name),
+                                'reserved': varRow['entryType'] == 'Reserved'}
+                               for name, varRow in structVars.items()],
+                    'wordLines': resolver.value(objRow['wordLinesKey'] or objRow['wordLines'],
+                                                label=f"wordLines of '{key}'") if isMemory else None,
+                }
+        return widths
 
     def validateSvDesignUnitNames(self):
         # Every SV module and package a build emits. Verilator keeps modules

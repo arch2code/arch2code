@@ -8,7 +8,12 @@ that breaks one of those assumptions, naming the block and, where one is at
 fault, the port and its interface type. The boundary covers more than ports:.
 A connectionMaps boundary port, a memoryConnections port and a
 registerConnections port need no ports: row, and the wrapper still has a pin
-group for each.
+group for each. The testbench module also declares names of its own: the DUT
+instance `dut`, the completion pins, the report server `srv` and one
+`<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal, so a
+port, clock or reset named like one of them is rejected. A UVM register or
+memory row holds at most 64 bits, so a register or memory wider than that at
+any standalone variant is rejected.
 
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus. Each negative arm edits one rule's violation
@@ -131,6 +136,60 @@ REJECTED = [
                '    ubDut:\n')])],
      ["ubDut_uvm_tb", "the default UVM testbench of block 'ubDut'",
       "block 'ubDut_uvm_tb'"]),
+    ('a port named like the DUT instance', ROOT_PROJECT,
+     [(ARCH, [('            in:  {', '            dut: {'), ('dstport: in,', 'dstport: dut,')])],
+     [WHERE, "its port 'dut' has the name of the DUT instance 'dut' in its UVM testbench module"]),
+    ('a port named like a completion pin', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            uvm_done: {'), ('srcport: out,', 'srcport: uvm_done,')])],
+     [WHERE, "its port 'uvm_done' has the name of the completion pin 'uvm_done'"]),
+    ('a clock named like a completion pin', ROOT_PROJECT,
+     [(ARCH, [('        hasUvm: true\n',
+               '        hasUvm: true\n'
+               '        clocks:\n'
+               '            clk: { default: true }\n'
+               '            uvm_errors: {}\n'),
+              ('addressGroup: top }', 'addressGroup: top, clocks: { uvm_errors: clk } }')])],
+     [WHERE, "its clock 'uvm_errors' has the name of the completion pin 'uvm_errors'"]),
+    ('a reset named like a completion pin', ROOT_PROJECT,
+     [(ARCH, [('        hasUvm: true\n',
+               '        hasUvm: true\n'
+               '        clocks:\n'
+               '            clk: { default: true }\n'
+               '        resets:\n'
+               '            rst_n: { clock: clk, default: true }\n'
+               '            rtl_dut: { clock: clk }\n'),
+              ('addressGroup: top }', 'addressGroup: top, resets: { rtl_dut: rst_n } }')])],
+     [WHERE, "its reset 'rtl_dut' has the name of the completion pin 'rtl_dut'"]),
+    ('a port named like the report server variable', ROOT_PROJECT,
+     [(ARCH, [('            in:  {', '            srv: {'), ('dstport: in,', 'dstport: srv,')])],
+     [WHERE, "its port 'srv' has the name of the report server variable 'srv'"]),
+    ('a port named like a clock interface instance', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            clk_if: {'), ('srcport: out,', 'srcport: clk_if,')])],
+     [WHERE, "its port 'clk_if' has the name of the a2c_clk_if instance 'clk_if' of clock 'clk'"]),
+    ('a port named like another port\'s pin', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            in_vld: {'), ('srcport: out,', 'srcport: in_vld,')])],
+     [WHERE, "its port 'in_vld' has the name of the pin 'in_vld' of port 'in'"]),
+    ('a register wider than 64 bits at one variant', ROOT_PROJECT,
+     [(ARCH, [('\ntypes:\n',
+               '\nipParameters:\n'
+               '    constants:\n'
+               '        UB_W: { value: 8, maxValue: 64, desc: "Width knob" }\n\n'
+               'types:\n'
+               '    ubPT: { width: UB_W, desc: "Parameter-width field" }\n'),
+              ('\nstructures:\n',
+               '\nstructures:\n'
+               '    ubBigSt:\n'
+               '        word: { varType: ubWordT, desc: "Low word" }\n'
+               '        ext: { varType: ubPT, desc: "Parameter-width extension" }\n'),
+              ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W]\n'),
+              ('instGroup: top, addressGroup: top }', 'instGroup: top, addressGroup: top, variant: v0 }'),
+              ('\nconnections:\n',
+               '\nparameters:\n    ubDut:\n        v0: { UB_W: 8 }\n        v1: { UB_W: 40 }\n\n'
+               'connections:\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: big, regType: rw, block: ubDut, structure: ubBigSt, desc: "Wide config" }\n')])],
+     [WHERE, "its register 'big' is 72 bits wide at variant 'v1'", "UVM_REG_DATA_WIDTH"]),
     ('only variants another project declares', CHILD_ROOT_PROJECT,
      [(CHILD_ARCH,
        [('types:\n',
