@@ -18,7 +18,9 @@ variant is rejected, and the padded case names the parameter maxValue that
 sets the stride. A field is a member of its uvm_reg subclass and a register or
 memory a member of the uvm_reg_block subclass, so a name that would hide a
 member of that class or of uvm_object is rejected, once per block whatever
-the number of variants. A memory's structure members become no fields, so
+the number of variants. A register's class is `<block>_reg_<register>`, so a
+register named `block` would take the register block's class name and is
+rejected. A memory's structure members become no fields, so
 their names are not checked, and a name is checked only against its own
 class.
 
@@ -244,6 +246,10 @@ REJECTED = [
     ('a register named like a uvm_reg_block member', ROOT_PROJECT,
      [(ARCH, [('{ register: ctrl,', '{ register: mirror,')])],
      [WHERE, "its register 'mirror' has the name of a member of uvm_reg_block"]),
+    ('a register whose class is the register block class', ROOT_PROJECT,
+     [(ARCH, [('{ register: ctrl,', '{ register: block,')])],
+     [WHERE, "has a register named 'block', whose generated class would be 'ubDut_reg_block'",
+      "Rename the register, or clear hasUvm."]),
     ('a memory named like a uvm_reg_block member', ROOT_PROJECT,
      [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
               ('\nstructures:\n',

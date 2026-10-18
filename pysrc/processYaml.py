@@ -1806,9 +1806,15 @@ class projectOpen:
             ret['uvm'] = None
             return
         tops = self.uvmNames[ret['qualBlock']]['tops']
-        # A port's reset, like a clock's below, is None when it is not a
-        # port of the block.
+        # A port's reset, like a clock's, is None when it is not a port of
+        # the block.
         resetPorts = {row['reset'] for row in ret['resets']}
+        # One a2c_clk_if per clock, released by the clock's selected reset
+        # when that reset is a port of the block, else never held in reset.
+        clocks = [{'clock': row['clock'], 'vif': f"{row['clock']}_vif",
+                   'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
+                  for row in ret['clocks']]
+        clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
@@ -1824,7 +1830,7 @@ class projectOpen:
                     'interfaceType': intfType,
                     'role': portData['direction'],
                     'clock': portData['domainClock'],
-                    'clockVif': f"{portData['domainClock']}_vif",
+                    'clockVif': clockVifs[portData['domainClock']],
                     'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
                     'backpressure': portData['effectiveBackpressure'],
                     # The agent config carries a role unless the type is a
@@ -1847,11 +1853,6 @@ class projectOpen:
                                              for b in paramBindings if not b['isNull']]
                                    for variant, top in tops.items()},
                 })
-        # One a2c_clk_if per clock, released by the clock's selected reset
-        # when that reset is a port of the block, else never held in reset.
-        clocks = [{'clock': row['clock'], 'vif': f"{row['clock']}_vif",
-                   'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
-                  for row in ret['clocks']]
         registers, memories = self.getUvmRegisterModel(ret, tops)
         # The register model's bus: the block's register-bus port, whose
         # interface package ships the <type>_reg_adapter.
@@ -1861,8 +1862,8 @@ class projectOpen:
             registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
                            'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
         names = self.uvmNames[ret['qualBlock']]
-        # The fail test under-delivers on the first counted output, so a block
-        # with none has no fail test.
+        # The fail test expects more transactions than the first counted
+        # output delivers, so a block with none has no fail test.
         counters = [port['counter'] for port in ports if port['counter']]
         failTest = {'className': names['failTestClass'], 'counter': counters[0]} if counters else None
         ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
@@ -5632,6 +5633,13 @@ class projectCreate:
             modelNames += [('memory', row['memory'], None) for row in self.flatData['memories'].values()
                            if row['blockKey'] == blockKey and row['regAccess']]
             for kind, name, register in modelNames:
+                # A register's class is <block>_reg_<register>.
+                if kind == 'register' and name == 'block':
+                    printError(
+                        f"{where} but has a register named 'block', whose generated class "
+                        f"would be '{block}_reg_block', the name of the register block class. "
+                        f"Rename the register, or clear hasUvm.")
+                    failed = True
                 if kind == 'field':
                     if name in UVM_REG_MEMBER_NAMES:
                         printError(
@@ -5791,6 +5799,8 @@ class projectCreate:
                 tbModule = artifactPaths.fileStem(fileMap['uvmTb'], stem, layout)
                 xceliumShellHeader = tbModule + '_xcelium.h'
                 tops[variant] = {
+                    # UVM_TOP and --uvmTop name the top by its stem.
+                    'stem':         stem,
                     'tbModule':     tbModule,
                     'pkgName':      artifactPaths.fileStem(fileMap['uvmPkg'], stem, layout),
                     'hdlTop':       hdlTop,

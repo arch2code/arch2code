@@ -12,7 +12,7 @@ an empty run_body(); and the generated footer with `<block>_fail_test`. The
 base test creates the env through the factory as `<block>_tb_env`, waits for
 reset, runs run_body() and then waits for every counted output under one
 objection. The fail test adds the missing transactions to the first counted
-output before the smoke stimulus, and passes only on exactly one
+output after the smoke stimulus, and passes only on exactly one
 A2C_TXN_COUNT error. make gen rewrites only the generated sections, so a user
 edit in either span survives it.
 
@@ -99,12 +99,12 @@ SPAN_2 = [
 FAIL_TEST = [
     'class ubDut_fail_test extends ubDut_smoke_test;',
     'a2c_error_demoter demoter;',
-    'int unsigned missing_beats = 1;',
-    'void\'($value$plusargs("a2c_fail_missing_beats=%d", missing_beats));',
+    'int unsigned missing_count = 1;',
+    'void\'($value$plusargs("a2c_fail_missing_count=%d", missing_count));',
     'demoter.demote_id = "A2C_TXN_COUNT";',
     'uvm_report_cb::add(null, demoter);',
-    'env.out_counter.expect_count(missing_beats);',
     'super.run_body();',
+    'env.out_counter.expect_count(missing_count);',
     'if (demoter.demoted != 1 || others != 0) begin',
     'endclass : ubDut_fail_test',
 ]

@@ -734,7 +734,7 @@ package a2c_uvm_loopback_pkg;
     // for n_items + expect_delta, unless skip_wait is set. With second_wait
     // set it then sends n_items more and waits for them with the count
     // right. With late set it sends the late transactions after the first
-    // wait and waits again with nothing more expected. An a2c_error_demoter
+    // wait and waits again with no expect_count(). An a2c_error_demoter
     // catches every A2C_TXN_COUNT, and the test checks how many the counter
     // raised by the end of the first wait, by the end of the last wait and by
     // the end of check_phase. With the expected count right, none is raised.
@@ -796,7 +796,7 @@ package a2c_uvm_loopback_pkg;
             seq.n       = n_send;
             seq.max_gap = 2;
             seq.sb      = sb;
-            counter.expect_count(expected);
+            if (expected > 0) counter.expect_count(expected);
             seq.start(src.sqr);
             if (!skip_wait) counter.wait_for_count(clk_vif, 20 * n_items, 50);
         endtask
@@ -867,8 +867,7 @@ package a2c_uvm_loopback_pkg;
     endclass : txn_count_unwaited_extra_test
 
     // A failing wait, one transaction extra, then a passing one on the same
-    // counter: only the first reports. A shortfall would not do here, because
-    // the second batch would pay off the transactions reported missing.
+    // counter: only the first reports.
     class txn_count_twice_test extends txn_count_clean_test;
         `uvm_component_utils(txn_count_twice_test)
 
@@ -879,6 +878,20 @@ package a2c_uvm_loopback_pkg;
             want         = '{1, 1, 1};
         endfunction
     endclass : txn_count_twice_test
+
+    // One transaction short in the first of two waited batches, as when the
+    // DUT drops one in frame 1: the first wait reports it, and the second
+    // batch's expect_count() writes it off, so the second batch counts whole.
+    class txn_count_dropped_test extends txn_count_clean_test;
+        `uvm_component_utils(txn_count_dropped_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            expect_delta = 1;
+            second_wait  = 1;
+            want         = '{1, 1, 1};
+        endfunction
+    endclass : txn_count_dropped_test
 
     // The last transaction arrives after the first wait's deadline: the
     // wait reports it missing, and when it arrives it is late, not extra, so

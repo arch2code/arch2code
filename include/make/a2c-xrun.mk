@@ -15,6 +15,13 @@ endif
 XRUN ?= xrun
 XRUN_OPTS ?= -64bit -sv -sysc -sc_main -timescale 1ns/1ps
 XRUN_OPTS += -gcc_vers $(XRUN_GCC_VERS)
+# UVM 1.2; without -uvmhome xrun picks CDNS-1.1d. A UVM snapshot stops at
+# elaboration, because simulating with no +UVM_TESTNAME ends in a UVM_FATAL.
+ifdef USE_UVM
+XRUN_OPTS += -uvm -uvmhome CDNS-1.2 -elaborate
+# The registrar includes every UVM top's shell from .gen/vl.
+$(A2C_UVM_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
+endif
 # Per-simulation options; -nolog so concurrent runs do not fight over xrun.log.
 XRUN_R_OPTS ?= -64bit -nolog
 
@@ -62,17 +69,32 @@ $(XRUN_STAMP): $(OBJ) $(XRUN_HDL_DEPS) $(XRUN_OPTS_STAMP)
 	cd $(XRUN_RUNDIR) && $(XRUN) $(XRUN_OPTS) -clean -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(EXTRA_XRUN_OPTS) $(XRUN_HDL) $(OBJ) $(XRUN_LD_LIBS) $(addprefix +systemc_args+,$(DUT_ELAB_ARGS)) -l xrun_$(XRUN_SNAPSHOT_DIR:%.d=%).log
 	touch $@
 
-# The script carries the licence setting the build ran with, so a test launched
-# outside this make environment finds the same servers. Its per-simulation
-# options and licence list are recorded so a change rewrites the script.
+# The script passes + arguments to the simulator and the rest to sc_main as
+# +systemc_args+; --seed N also goes to the SV solver as -svseed N. Under
+# USE_UVM, UVM_TEST is the +UVM_TESTNAME of a run that names none. The
+# build's licence setting goes in too, so a test launched outside make finds
+# the same servers. What the script holds is recorded so a change rewrites it.
+XRUN_R_OPTS_TEXT = $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE) $(UVM_TEST)
 XRUN_R_OPTS_STAMP = $(XRUN_STAMP_DIR)/r_opts
-$(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE)" ] || printf '%s\n' "$(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE)" > $(XRUN_R_OPTS_STAMP))
+$(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS_TEXT)" ] || printf '%s\n' "$(XRUN_R_OPTS_TEXT)" > $(XRUN_R_OPTS_STAMP))
 
 $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 	mkdir -p $(@D)
 	printf '%s\n' '#!/bin/sh' \
 		$(if $(LM_LICENSE_FILE),'export LM_LICENSE_FILE="$(LM_LICENSE_FILE)"') \
-		'for a; do set -- "$$@" "+systemc_args+$$a"; shift; done' \
+		's=; t=' \
+		'for a; do' \
+		'    shift' \
+		'    if [ -n "$$s" ]; then s=; set -- "$$@" "+systemc_args+$$a" -svseed "$$a"; continue; fi' \
+		'    case "$$a" in' \
+		'        +UVM_TESTNAME=*) t=1; set -- "$$@" "$$a" ;;' \
+		'        +*) set -- "$$@" "$$a" ;;' \
+		'        --seed) s=1; set -- "$$@" "+systemc_args+$$a" ;;' \
+		'        --seed=*) set -- "$$@" "+systemc_args+$$a" -svseed "$${a#--seed=}" ;;' \
+		'        *) set -- "$$@" "+systemc_args+$$a" ;;' \
+		'    esac' \
+		'done' \
+		$(if $(and $(USE_UVM),$(UVM_TEST)),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
 		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) "$$@"' > $@
 	chmod +x $@
 

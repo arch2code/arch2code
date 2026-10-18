@@ -87,6 +87,12 @@ A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $
 # per-dir file wildcards below pick up every .cpp within them.
 PRJ_SRC_DIRS = $(A2C_SC_SRC_DIRS)
 
+# The UVM flow names the snapshot and adds sources, so it comes before both
+# are derived below.
+ifdef USE_UVM
+include $(A2C_ROOT)/include/make/a2c-uvm.mk
+endif
+
 ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
 else

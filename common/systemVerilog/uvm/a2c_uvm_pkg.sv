@@ -28,7 +28,8 @@ package a2c_uvm_pkg;
     // arrives inside the test, and reports a shortfall or an excess.
     // check_phase() reports what no wait_for_count() has. Every report is an
     // A2C_TXN_COUNT UVM_ERROR naming the port. A transaction that arrives
-    // after its shortfall was reported is logged as late, not counted again.
+    // after its shortfall was reported is logged as late, not counted again,
+    // until the next expect_count() declares new traffic.
     class a2c_txn_counter #(type T = uvm_sequence_item) extends uvm_subscriber #(T);
         string port_name = "";
 
@@ -55,6 +56,7 @@ package a2c_uvm_pkg;
 
         function void expect_count(int unsigned n);
             expected += n;
+            missing = 0;
         endfunction
 
         function int unsigned outstanding();

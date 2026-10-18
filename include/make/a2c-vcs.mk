@@ -21,6 +21,12 @@ ifdef VCS_DEBUG
 VCS_ELAB_OPTS += -kdb -debug_access
 VLOGAN_OPTS += +define+VCS_DEBUG
 endif
+# UVM 1.2 from VCS_HOME/etc/uvm-1.2: vlogan needs it to analyze the packages
+# that import uvm_pkg, and vcs to link the UVM DPI library.
+ifdef USE_UVM
+VLOGAN_OPTS += -ntb_opts uvm-1.2
+VCS_OPTS += -ntb_opts uvm-1.2
+endif
 
 # Design units a2c.f offers through -y search dirs. vcs does not consult those
 # at elaboration in the vlogan flow, so they are analyzed explicitly with the
@@ -82,6 +88,9 @@ VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(EXTRA_VCS_OPTS) $(VCS_LD_FLAGS) $
 VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/$(BIN).elab_args
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "$(VCS_LINK_OPTS)" ] || printf '%s\n' "$(VCS_LINK_OPTS)" > $(VCS_ELAB_STAMP))
 
+# A UVM snapshot's simv sits beside the run script that carries its name.
+VCS_SIMV = $(BIN_DIR)/$(BIN)$(if $(USE_UVM),.simv)
+
 # VCS reuses the per-binary topology (csrc/sysc/<binary>/sysc_skeleton.v) it
 # discovered on an earlier link, so those caches are dropped before linking; a
 # fresh discovery run costs a few seconds.
@@ -89,11 +98,76 @@ $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "
 # so both analysis steps are redone after a failure.
 # VCS's own internal make must not inherit this make's jobserver fds, so they
 # are cleared from its environment before invoking vcs.
-$(BIN_DIR)/$(BIN): $(VCS_LINK_DEPS) $(VCS_ELAB_STAMP)
+$(VCS_SIMV): $(VCS_LINK_DEPS) $(VCS_ELAB_STAMP)
 	mkdir -p $(@D)
 	cd $(VCS_RUNDIR) || exit 1; for skel in csrc/sysc/*/sysc_skeleton.v; do [ -e "$$skel" ] && $(RM) -r "$${skel%/*}"; done; \
 		MAKEFLAGS= MFLAGS= $(VCS) $(VCS_OPTS) $(VCS_ELAB_OPTS) $(addprefix -syscelab ,$(DUT_ELAB_ARGS)) $(EXTRA_VCS_OPTS) -l vcs.log $(VCS_LD_FLAGS) $(OBJ) sc_main -o $@ \
 		|| { $(RM) -rf csrc AN.DB $(VCS_RTL_STAMP) $(VCS_SC_MODEL_STAMP); exit 1; }
+
+ifdef USE_UVM
+# In the vlogan flow -ntb_opts uvm-1.2 only adds the UVM include dirs, so
+# uvm_pkg itself is analyzed first, by a vlogan run with no source files. Its
+# stamp sits in AN.DB, which a failed link deletes. The options file
+# re-analyzes it when the vlogan options or the VCS install change.
+VCS_UVM_PKG_STAMP = $(VCS_RUNDIR)/AN.DB/uvm_pkg.a2c_stamp
+VCS_UVM_PKG_OPTS = $(VCS_STAMP_DIR)/uvm_pkg_opts
+VCS_UVM_PKG_OPTS_TEXT = $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) VCS_HOME=$(VCS_HOME)
+$(shell [ "$$(cat $(VCS_UVM_PKG_OPTS) 2>/dev/null)" = "$(VCS_UVM_PKG_OPTS_TEXT)" ] || printf '%s\n' "$(VCS_UVM_PKG_OPTS_TEXT)" > $(VCS_UVM_PKG_OPTS))
+$(VCS_RTL_STAMP): $(VCS_UVM_PKG_STAMP)
+$(VCS_UVM_PKG_STAMP): $(VCS_UVM_PKG_OPTS)
+	cd $(VCS_RUNDIR) && $(VLOGAN) $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) -l vlogan_uvm_pkg.log
+	touch $@
+
+# One shell per UVM top, because the registrar includes them all, made after
+# the wrapper tops' in the same AN.DB. Another top's variant package is
+# analyzed before its testbench module, and the selected top comes last. The
+# HDL defines are repeated because vlogan re-analyzes the source it is given,
+# and A2C_UVM_RTL_DUT changes the testbench module's body.
+VCS_UVM_SHELL_STAMP = $(VCS_STAMP_DIR)/uvm_sc_model.vlogan
+VCS_UVM_PORTMAPS = $(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PORTMAP_$(t)))
+VCS_UVM_OTHER_TOPS = $(filter-out $(UVM_TB_TOP),$(A2C_UVM_TOPS))
+VCS_UVM_VLOGAN = $(VLOGAN) $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) $(addprefix +define+,$(EXTRA_HDL_DEFINES) $(A2C_UVM_HDL_DEFINES))
+$(VCS_UVM_SHELL_STAMP): $(VCS_SC_MODEL_STAMP) $(VCS_UVM_PORTMAPS) \
+	$(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PKG_SV_$(t)) $(A2C_UVM_TB_SV_$(t)))
+	cd $(VCS_RUNDIR) && $(foreach t,$(VCS_UVM_OTHER_TOPS),$(VCS_UVM_VLOGAN) $(A2C_UVM_PKG_SV_$(t)) -l vlogan_$(t)_pkg.log &&) \
+		$(foreach t,$(VCS_UVM_OTHER_TOPS) $(UVM_TB_TOP),$(VCS_UVM_VLOGAN) -sc_model $(t) -sc_portmap $(A2C_UVM_PORTMAP_$(t)) $(VCS_INCDIRS) $(A2C_UVM_TB_SV_$(t)) -l vlogan_$(t).log &&) true
+	touch $@
+$(VCS_UVM_PORTMAPS): $(VL_BOUNDARY_STAMP) ;
+
+$(A2C_UVM_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o) $(VCS_SIMV): $(VCS_UVM_SHELL_STAMP)
+$(VCS_SIMV): $(OBJ)
+
+# The run script hands the simv its arguments with the seed made decimal for
+# both sides: --seed N for sc_main and +ntb_random_seed=N for the SV solver,
+# which reads only decimal. UVM_TEST gives the +UVM_TESTNAME of a run that
+# names none. The default test is recorded so a change rewrites the script.
+VCS_RUN_SCRIPT_STAMP = $(VCS_STAMP_DIR)/$(BIN).run_script
+$(shell [ -e $(VCS_RUN_SCRIPT_STAMP) ] && [ "$$(cat $(VCS_RUN_SCRIPT_STAMP))" = "$(UVM_TEST)" ] || printf '%s\n' "$(UVM_TEST)" > $(VCS_RUN_SCRIPT_STAMP))
+$(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
+	printf '%s\n' '#!/bin/bash' 'set -e' \
+		'dec() {' \
+		'    case "$$1" in' \
+		'        0[xX]*) v=$$((16#$${1#??})) ;;' \
+		'        *) v=$$((10#$$1)) ;;' \
+		'    esac' \
+		'    [ "$$v" -le 4294967295 ] || { echo "$$0: --seed $$1 does not fit in 32 bits" >&2; exit 2; }' \
+		'    echo "$$v"' \
+		'}' \
+		's=; t=' \
+		'for a; do' \
+		'    shift' \
+		'    if [ -n "$$s" ]; then s=; v=$$(dec "$$a"); set -- "$$@" "$$v" "+ntb_random_seed=$$v"; continue; fi' \
+		'    case "$$a" in' \
+		'        --seed) s=1; set -- "$$@" "$$a" ;;' \
+		'        --seed=*) v=$$(dec "$${a#--seed=}"); set -- "$$@" "--seed=$$v" "+ntb_random_seed=$$v" ;;' \
+		'        +UVM_TESTNAME=*) t=1; set -- "$$@" "$$a" ;;' \
+		'        *) set -- "$$@" "$$a" ;;' \
+		'    esac' \
+		'done' \
+		$(if $(UVM_TEST),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		'exec $(VCS_SIMV) "$$@"' > $@
+	chmod +x $@
+endif
 
 help::
 	@echo "  VCS_DEBUG=1                      - link with -kdb -debug_access and enable \$$fsdbDumpvars (+fsdbTrace)"

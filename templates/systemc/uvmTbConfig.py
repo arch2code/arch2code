@@ -1,19 +1,17 @@
-# The UVM testbench config of a hasUvm block at the variant its
-# GENERATED_CODE_PARAM line names. It creates the SystemC wrapper through the
-# instanceFactory under the block's own name, with the DUT --uvmDut picks,
-# and fails the run in final() unless UVM finished with no error. Only the
-# Xcelium and VCS builds compile it, because it selects the <block>_uvm
-# factory entry that only the registrar registers, and the registrar is built
-# only there.
-from pysrc.intf_gen_utils import resolve_dut_variant_selection
-
-
+# The UVM testbench config of a hasUvm block. It creates the SystemC wrapper
+# through the instanceFactory under the block's own name, at the variant of
+# the top --uvmTop names and with the DUT --uvmDut picks, and fails the run in
+# final() unless UVM finished with no error. Both options are elaboration
+# arguments of the snapshot, so a run repeats them. Only the Xcelium and VCS
+# builds compile it, because it selects the <block>_uvm factory entry that
+# only the registrar registers, and the registrar is built only there.
 def render(args, prj, data):
     uvm = data['uvm']
     blockName = data['blockName']
     run = uvm['runClass']
-    variant = resolve_dut_variant_selection(data, args.variant)['factoryVariant']
     project = prj.config.getConfig('PROJECTNAME')
+    topVariants = [f'{{"{top["stem"]}", "{variant}"}}' for variant, top in uvm['tops'].items()]
+    topNames = ', '.join(top['stem'] for top in uvm['tops'].values())
     if data['blockInfo']['hasMdl']:
         dutCheck = [
             '        if (m_uvmDut != "model" && m_uvmDut != "rtl") {',
@@ -35,6 +33,7 @@ def render(args, prj, data):
     out = [
         '#if defined(XCELIUM) || defined(VCS)',
         '#include <iostream>',
+        '#include <map>',
         '#include <memory>',
         '#include <string>',
         '#include "instanceFactory.h"',
@@ -49,12 +48,19 @@ def render(args, prj, data):
         '    void addProgramOptions(po::options_description &options) override',
         '    {',
         '        options.add_options()',
-        f'        ("uvmDut", po::value<std::string>(&m_uvmDut)->default_value("{defaultDut}"), "{dutHelp}");',
+        f'        ("uvmDut", po::value<std::string>(&m_uvmDut)->default_value("{defaultDut}"), "{dutHelp}")',
+        f'        ("uvmTop", po::value<std::string>(&m_uvmTop), "UVM testbench top: {topNames}; must match the snapshot");',
         '    }',
         '',
         '    bool handleProgramOptions(po::variables_map &vm) override',
         '    {',
         *dutCheck,
+        '        auto top = s_topVariants.find(m_uvmTop);',
+        '        if (top == s_topVariants.end()) {',
+        f'            std::cerr << "--uvmTop must name one of the UVM testbench tops {topNames}, not \\"" << m_uvmTop << "\\"" << std::endl;',
+        '            return false;',
+        '        }',
+        '        m_variant = top->second;',
         '        return true;',
         '    }',
         '',
@@ -63,7 +69,7 @@ def render(args, prj, data):
         '    {',
         f'        {run}::rtlDut = m_uvmDut == "rtl";',
         f'        instanceFactory::registerInstance("{blockName}", "uvm");',
-        f'        instanceFactory::createInstance("", "{blockName}", "{blockName}", "{variant}", "{project}");',
+        f'        instanceFactory::createInstance("", "{blockName}", "{blockName}", m_variant.c_str(), "{project}");',
         '        return true;',
         '    }',
         '',
@@ -82,6 +88,9 @@ def render(args, prj, data):
         '',
         'private:',
         f'    std::string m_uvmDut = "{defaultDut}";',
+        '    std::string m_uvmTop;',
+        '    std::string m_variant;',
+        f'    inline static const std::map<std::string, std::string> s_topVariants = {{{", ".join(topVariants)}}};',
         '};',
         '',
         f'[[maybe_unused]] A2C_REGISTRATION_RETAIN int uvmTbConfigRegistered = (testBenchConfigFactory::registerTestBenchConfig(',

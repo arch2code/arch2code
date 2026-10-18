@@ -466,9 +466,11 @@ def check_sc_files(work, design):
         expected = ['#if defined(XCELIUM) || defined(VCS)', f'#include "{block}_uvm_sc_wrapper.h"',
                     f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl";',
                     f'instanceFactory::registerInstance("{block}", "uvm");',
-                    f'instanceFactory::createInstance("", "{block}", "{block}", "{next(iter(configs))}", "{PROJECT}");',
+                    f'instanceFactory::createInstance("", "{block}", "{block}", m_variant.c_str(), "{PROJECT}");',
                     f'"{block}_uvm",',
-                    f'std::string m_uvmDut = "{"model" if HAS_MDL[block] else "rtl"}";']
+                    f'std::string m_uvmDut = "{"model" if HAS_MDL[block] else "rtl"}";',
+                    'inline static const std::map<std::string, std::string> s_topVariants = {'
+                    + ', '.join('{"%s", "%s"}' % (f'{block}_{v}' if v else block, v) for v in configs) + '};']
         problems += [f"{configFile} lacks the line {line!r}" for line in expected if line not in lines]
 
         registrarFile = f'{block}UvmRegistrar.cpp'
@@ -497,8 +499,12 @@ def check_manifest(work):
     man = parse_manifest(os.path.join(root, '.gen', 'build.mk'))
     uvmDir = os.path.join(root, 'uvm')
     tops = [f'{stem}_uvm_tb' for stem in UVM_TOPS]
-    expected = {'A2C_UVM_TOPS': tops, 'A2C_UVM_SRC_DIRS': [uvmDir]}
+    expected = {'A2C_UVM_TOPS': tops, 'A2C_UVM_SRC_DIRS': [uvmDir], 'A2C_UVM_TOP_STEMS': list(UVM_TOPS),
+                'A2C_UVM_REGISTRAR_SRC': [os.path.join(uvmDir, f'{block}UvmRegistrar.cpp') for block in CONFIGS]}
     for stem, top in zip(UVM_TOPS, tops):
+        expected[f'A2C_UVM_TB_TOP_{stem}'] = [top]
+        expected[f'A2C_UVM_PKG_{top}'] = [f'{stem}_uvm_pkg']
+        expected[f'A2C_UVM_TESTBENCH_{top}'] = [f'{UVM_TOPS[stem][0]}_uvm']
         expected[f'A2C_UVM_PKG_SV_{top}'] = [os.path.join(uvmDir, f'{stem}_uvm_pkg.sv')]
         expected[f'A2C_UVM_TEST_SV_{top}'] = [os.path.join(uvmDir, f'{UVM_TOPS[stem][0]}_uvm_test_pkg.sv')]
         expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]

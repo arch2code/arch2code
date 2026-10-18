@@ -78,8 +78,17 @@ def _writeBuildManifestMk(rootDir, manifest):
     # reads these; each top's port map sits beside the RTL tops' under .gen/vl.
     lines.append(f"A2C_UVM_SRC_DIRS := {asList(manifest['uvmDirs'])}")
     lines.append(f"A2C_UVM_TOPS := {asList([t['qualifiedTop'] for t in manifest['uvmTops']])}")
+    lines.append(f"A2C_UVM_REGISTRAR_SRC := {asList(manifest['uvmRegistrarFiles'])}")
+    # UVM_TOP names a top by its stem; a2c-uvm.mk maps it to the testbench
+    # module and defines A2C_UVM_PKG as the module's variant package.
+    lines.append(f"A2C_UVM_TOP_STEMS := {asList([t['stem'] for t in manifest['uvmTops']])}")
+    for block in sorted(manifest['uvmDefaultTops']):
+        lines.append(f"A2C_UVM_DEFAULT_TOP_{block} := {manifest['uvmDefaultTops'][block]}")
     for top in manifest['uvmTops']:
         name = top['qualifiedTop']
+        lines.append(f"A2C_UVM_TB_TOP_{top['stem']} := {name}")
+        lines.append(f"A2C_UVM_PKG_{name} := {top['pkgName']}")
+        lines.append(f"A2C_UVM_TESTBENCH_{name} := {top['testbench']}")
         lines.append(f"A2C_UVM_PKG_SV_{name} := {top['pkgSv']}")
         lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
         lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
@@ -376,16 +385,27 @@ def create(prj):
     # them.
     uvmNames = prj.config.getConfig('UVMNAMES')
     uvmFiles = dict()
+    uvmRegistrarFiles = list()
     for row in rows:
-        if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner \
-                and row['fileType'] in ('uvmTb', 'uvmPkg', 'uvmTest'):
-            uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
+        if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner:
+            if row['fileType'] in ('uvmTb', 'uvmPkg', 'uvmTest'):
+                uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
+            elif row['fileType'] == 'uvmRegistrar':
+                uvmRegistrarFiles.append(row['files']['src'])
     uvmTops = list()
+    # A block's default UVM top is the one at the variant of its DUT-top
+    # wrapper, A2C_VL_TOP_<block>.
+    uvmDefaultTops = dict()
     for blockKey, names in uvmNames.items():
         if prj.contextOwningProject[blockByKey[blockKey]['_context']] != harnessOwner:
             continue
+        if dutTopVariantByBlock.get(blockKey) in names['tops']:
+            uvmDefaultTops[blockByKey[blockKey]['block']] = names['tops'][dutTopVariantByBlock[blockKey]]['stem']
         for variant, top in names['tops'].items():
             uvmTops.append({
+                'stem':         top['stem'],
+                'pkgName':      top['pkgName'],
+                'testbench':    names['testbenchName'],
                 'qualifiedTop': top['tbModule'],
                 'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
                 'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
@@ -436,6 +456,8 @@ def create(prj):
         'dutTops':       dutTops,
         'vlRegistrarFiles': sorted(vlRegistrarFiles),
         'uvmTops':       sorted(uvmTops, key=lambda t: t['qualifiedTop']),
+        'uvmDefaultTops': uvmDefaultTops,
+        'uvmRegistrarFiles': sorted(uvmRegistrarFiles),
         'uvmDirs':       sorted(dirs['uvm']),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)

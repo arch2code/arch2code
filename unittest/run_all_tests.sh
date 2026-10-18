@@ -1154,6 +1154,12 @@ python3 test_uvm_test_pkg.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: dutRun.py runs each test on the snapshot its arguments name"
+echo "------------------------------------------------------------------------"
+python3 test_dut_run.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
 echo "------------------------------------------------------------------------"
 python3 test_vl_timing.py || FAILED=1
