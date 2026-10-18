@@ -49,6 +49,10 @@ module simple_ip_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck cpu_main_xcheck (.clk(clk), .rst_n(rst_n), .intf(cpu_main));
+    `endif
+
 endmodule : simple_ip_hdl_sv_wrapper
 
 // GENERATED_CODE_END

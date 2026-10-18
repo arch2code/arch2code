@@ -78,6 +78,11 @@ module xpRtNestDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uLeaf_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uLeaf));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
+    `endif
+
 endmodule : xpRtNestDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

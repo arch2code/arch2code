@@ -89,6 +89,14 @@ module blockF_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    rdy_vld_xcheck dStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(dStuffIf));
+    rdy_vld_xcheck dSin_xcheck (.clk(clk), .rst_n(rst_n), .intf(dSin));
+    rdy_vld_xcheck dSout_xcheck (.clk(clk), .rst_n(rst_n), .intf(dSout));
+    status_xcheck rwD_xcheck (.clk(clk), .rst_n(rst_n), .intf(rwD));
+    `endif
+
 endmodule : blockF_hdl_sv_wrapper
 
 // GENERATED_CODE_END

@@ -98,6 +98,10 @@ module ip_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck regs_xcheck (.clk(clk), .rst_n(rst_n), .intf(regs));
+    `endif
+
 endmodule : ip_hdl_sv_wrapper
 
 // GENERATED_CODE_END

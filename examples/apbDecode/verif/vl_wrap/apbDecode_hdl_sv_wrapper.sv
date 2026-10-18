@@ -93,6 +93,12 @@ module apbDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uBlockA_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBlockA));
+    apb_xcheck apbReg_uBlockB_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBlockB));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
+    `endif
+
 endmodule : apbDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

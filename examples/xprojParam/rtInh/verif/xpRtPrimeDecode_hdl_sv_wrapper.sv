@@ -70,6 +70,11 @@ module xpRtPrimeDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uWrap_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uWrap));
+    apb_xcheck cpu_main_xcheck (.clk(clk), .rst_n(rst_n), .intf(cpu_main));
+    `endif
+
 endmodule : xpRtPrimeDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

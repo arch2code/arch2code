@@ -74,6 +74,11 @@ module axi4sDemo_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    axi4_stream_xcheck #(.CHECK_TUSER(1'b1)) axis4_t1_xcheck (.clk(clk), .rst_n(rst_n), .intf(axis4_t1));
+    axi4_stream_xcheck #(.CHECK_TUSER(1'b1)) axis4_t2_xcheck (.clk(clk), .rst_n(rst_n), .intf(axis4_t2));
+    `endif
+
 endmodule : axi4sDemo_hdl_sv_wrapper
 
 // GENERATED_CODE_END

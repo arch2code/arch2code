@@ -26,6 +26,7 @@ endif
 # at elaboration in the vlogan flow, so they are analyzed explicitly with the
 # design. a2c.f already names flops.sv and asserts.svh.
 VCS_LIB_SV_FILES ?= $(wildcard $(A2C_ROOT)/interfaces/*/*_if.sv) \
+	$(wildcard $(A2C_ROOT)/interfaces/*/*_xcheck.sv) \
 	$(filter-out %/flops.sv,$(wildcard $(A2C_ROOT)/common/systemVerilog/*.sv))
 VCS_LIB_SV_FILES += $(A2C_LAYER_VCS_LIB_SV_FILES) $(EXTRA_VCS_LIB_SV_FILES)
 
@@ -50,7 +51,9 @@ VCS_ANALYSIS_OPTS = $(VLOGAN_OPTS) $(EXTRA_VLOGAN_OPTS) -F $(A2C_ROOT)/common/sy
 VCS_VLOGAN_STAMP = $(VCS_STAMP_DIR)/vlogan_opts
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_VLOGAN_STAMP) 2>/dev/null)" = "$(VCS_ANALYSIS_OPTS)" ] || printf '%s\n' "$(VCS_ANALYSIS_OPTS)" > $(VCS_VLOGAN_STAMP))
 
-$(VCS_RTL_STAMP): $(VCS_SV_DEPS) $(VCS_LIB_SV_FILES) $(A2C_HDL_DEPS) $(VCS_VLOGAN_STAMP)
+# The X/Z checkers in VCS_LIB_SV_FILES include a2c_xcheck.svh.
+$(VCS_RTL_STAMP): $(VCS_SV_DEPS) $(VCS_LIB_SV_FILES) $(A2C_ROOT)/common/systemVerilog/a2c_xcheck.svh \
+	$(A2C_HDL_DEPS) $(VCS_VLOGAN_STAMP)
 	mkdir -p $(@D)
 	cd $(VCS_RUNDIR) && $(VLOGAN) $(VCS_ANALYSIS_OPTS) -l vlogan_rtl.log
 	touch $@

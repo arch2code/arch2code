@@ -70,6 +70,11 @@ module apbDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uIp_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uIp));
+    apb_xcheck cpu_main_xcheck (.clk(clk), .rst_n(rst_n), .intf(cpu_main));
+    `endif
+
 endmodule : apbDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

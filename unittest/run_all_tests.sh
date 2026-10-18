@@ -198,6 +198,11 @@ echo "------------------------------------------------------------------------"
 python3 test_hdl_wrapper_member_names.py || FAILED=1
 
 echo ""
+echo "Test Suite 19b3: HDL Wrapper X/Z Checkers"
+echo "------------------------------------------------------------------------"
+python3 test_hdl_wrapper_xcheck.py || FAILED=1
+
+echo ""
 echo "Test Suite 19c: Eval Expression Parser"
 echo "------------------------------------------------------------------------"
 python3 test_eval_expr_parser.py || FAILED=1

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Every interface type flagged `uvmAgent: true` ships its UVM agent package.
+"""Every interface type flagged `uvmAgent: true` ships its UVM agent package
+and its X/Z checker.
 
 A hasUvm block may use only interface types that carry the flag
 (`validateUvmBlocks` in pysrc/processYaml.py), and the UVM testbench imports
 `<type>_uvm_pkg` for each of them. The package is a hand-written companion in
 the definition's own directory, so a flag without one passes `make db` and
 fails only when a simulator compiles the testbench.
+
+The HDL wrapper instantiates `<type>_xcheck` for every port of a flagged type.
+VCS analyses it from the `interfaces/*/*_xcheck.sv` wildcard in a2c-vcs.mk and
+Xcelium finds it through the `-y` directories in a2c.f, which match a module
+to its file by name. A checker in a misnamed file, or in a directory a2c.f does
+not search, fails only when a simulator elaborates the wrapper.
 
 The simulators compile the agents from common/systemVerilog/uvm/a2c_uvm.f, so
 that file must list every flagged type's package, after a2c_clk_if.sv and
@@ -16,6 +23,7 @@ flagged type is checked without anyone adding it to a list.
 """
 
 import os
+import re
 import sys
 
 import yaml
@@ -25,6 +33,7 @@ test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 
 UVM_DOT_F = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'a2c_uvm.f')
+A2C_DOT_F = os.path.join(base_dir, 'common', 'systemVerilog', 'a2c.f')
 # Every agent package imports these, so they come before the first agent.
 SHARED = ('a2c_clk_if.sv', 'a2c_uvm_pkg.sv')
 
@@ -77,7 +86,7 @@ def run_all_tests():
         print(f"\nFAIL: {len(missing)} flagged interface type(s) without an agent package")
         return 1
     print(f"\nPASS: all {len(flagged)} flagged interface types ship their agent package")
-    return check_dot_f(flagged)
+    return check_dot_f(flagged) | check_xcheck(flagged)
 
 
 def check_dot_f(flagged):
@@ -109,6 +118,41 @@ def check_dot_f(flagged):
         print(f"\nFAIL: a2c_uvm.f is missing or misorders {len(problems)} file(s)")
         return 1
     print(f"PASS: a2c_uvm.f lists {', '.join(SHARED)} and then all {len(flagged)} agent packages")
+    return 0
+
+
+def check_xcheck(flagged):
+    """Each flagged type ships <type>_xcheck.sv declaring module <type>_xcheck,
+    in a directory a2c.f searches with -y."""
+    fDir = os.path.dirname(A2C_DOT_F)
+    with open(A2C_DOT_F) as f:
+        searched = [os.path.realpath(os.path.join(fDir, line.split(None, 1)[1].strip()))
+                    for line in f if line.startswith('-y ')]
+    problems = list()
+    for intfType, path in flagged:
+        module = f'{intfType}_xcheck'
+        checker = os.path.join(os.path.dirname(path), f'{module}.sv')
+        if not os.path.isfile(checker):
+            problems.append(f"interface type '{intfType}' ({path}) declares uvmAgent: true "
+                            f"but {checker} does not exist. The HDL wrapper instantiates "
+                            f"{module} for every port of this type. Add the checker beside "
+                            f"the definition, or remove the flag.")
+            continue
+        with open(checker) as f:
+            declared = re.findall(r'^\s*module\s+(\w+)', f.read(), re.MULTILINE)
+        if declared != [module]:
+            problems.append(f"{checker} declares {declared or 'no module'}, not exactly "
+                            f"'{module}'. Xcelium finds the checker by its file name, so "
+                            f"the file must declare that one module.")
+        if os.path.realpath(os.path.dirname(checker)) not in searched:
+            problems.append(f"{A2C_DOT_F} has no -y for {os.path.dirname(checker)}, so "
+                            f"Xcelium cannot find {module}. Add the directory to it.")
+    for problem in problems:
+        print(f"  FAIL: {problem}")
+    if problems:
+        print(f"\nFAIL: {len(problems)} X/Z checker problem(s)")
+        return 1
+    print(f"PASS: all {len(flagged)} flagged interface types ship an X/Z checker a2c.f can find")
     return 0
 
 

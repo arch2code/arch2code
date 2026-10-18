@@ -116,6 +116,13 @@ module apbDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uBridge_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridge));
+    apb_xcheck apbReg_uIp0_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uIp0));
+    apb_xcheck apbReg_uIp1_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uIp1));
+    apb_xcheck cpu_main_xcheck (.clk(clk), .rst_n(rst_n), .intf(cpu_main));
+    `endif
+
 endmodule : apbDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

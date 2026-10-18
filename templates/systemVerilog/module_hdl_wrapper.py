@@ -111,15 +111,19 @@ def sc_bv_pins(prj, data, top_module):
     return {pin['pin'] for pin in prj.getVlTopBoundaryPins(data, top_module)
             if pin['vector'] and pin['width'] == 1}
 
+def port_intf(prj, data, port_data):
+    # The port's interfaces row and its interface type, with register aliases
+    # such as reg_ro resolved to the type they map to.
+    intf_data = intf_gen_utils.get_intf_data(port_data['connection'], prj)
+    return intf_data, intf_gen_utils.get_intf_type(intf_data['interfaceType'], data)
+
 def port_decl_block(prj, data, mp_sig, sc_bv):
     # ANSI flattened port list shared by the canonical body and the Verilated
     # tops; pins named in sc_bv carry the marker.
     s = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
-            connectionData = port_data.get('connection', {})
-            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
+            intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
             s += f'// {intf_type}.{intf_dir}\n'
             s += ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
@@ -140,9 +144,7 @@ def intf_reconstruction(prj, data, mp_sig):
     s = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
-            connectionData = port_data.get('connection', {})
-            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
+            intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
             s += f'// {intf_type}.{intf_dir}\n'
             s += mp_sig[port]['intf_decl'] + '\n'*2
@@ -157,9 +159,7 @@ def dut_instantiation(prj, data, blk_name, blk_param):
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
             intf_name = port_data['name']
-            connectionData = port_data.get('connection', {})
-            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
+            intf_type = port_intf(prj, data, port_data)[1] + '_if'
             intf_dir = port_data['direction']
             s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
     s_1 += ',\n'.join(intf_gen_utils.sv_clock_reset_binds(data)) + '\n'
@@ -173,6 +173,33 @@ initial if ($test$plusargs("fsdbTrace")) begin
 end
 `endif'''
     return s
+
+def xcheck_instances(prj, data):
+    # One X/Z checker per port whose interface type ships a UVM agent, on the
+    # port's own clock and reset. A signal typed by an optional payload gets a
+    # CHECK_<SIGNAL> parameter, on only when the port binds that payload: an
+    # unbound one is an undriven placeholder. The checkers use four-state
+    # values, so the Verilated wrapper leaves them out.
+    lines = []
+    for port_type in data['ports']:
+        for port_data in data['ports'][port_type].values():
+            intf_data, intf_type = port_intf(prj, data, port_data)
+            intf_def = data['interface_defs'][intf_type]
+            if not intf_def['uvmAgent']:
+                continue
+            bound = {binding['structureType']: not binding['isNull']
+                     for binding in prj.getIntfParamBindings(intf_def, intf_data['structures'])
+                     if binding['isOptional']}
+            checks = [f".CHECK_{signal.upper()}(1'b{int(bound[signalDef['signalType']])})"
+                      for signal, signalDef in intf_def['signals'].items()
+                      if signalDef['signalType'] in bound]
+            intf_name = port_data['name']
+            params = f" #({', '.join(checks)})" if checks else ''
+            lines.append(f"{intf_type}_xcheck{params} {intf_name}_xcheck (.clk({port_data['domainClock']}), "
+                         f".rst_n({port_data['domainReset']}), .intf({intf_name}));")
+    if not lines:
+        return ''
+    return '\n`ifndef VERILATOR\n' + '\n'.join(lines) + '\n`endif\n'
 
 def render_body(args, prj, data, mp_sig, blk_name):
     # Canonical default-less parameterized wrapper body (include-only .svh). The
@@ -215,6 +242,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
 
     blk_param = ' #(' + ", ".join([f".{p}({p})" for p in params]) + ')'
     out += textwrap.indent(dut_instantiation(prj, data, blk_name, blk_param), ' '*4) + '\n'
+    out += textwrap.indent(xcheck_instances(prj, data), ' '*4)
 
     out += f'\nendmodule : {module_name}\n'
     return out
@@ -309,6 +337,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
 
     out += textwrap.indent(dut_instantiation(prj, data, blk_name, ''), ' '*4) + '\n'
+    out += textwrap.indent(xcheck_instances(prj, data), ' '*4)
 
     out += f'\nendmodule : {module_name}\n'
     return out

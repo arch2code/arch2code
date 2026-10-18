@@ -93,6 +93,12 @@ module bridgeApbDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_uBridgeIp0_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridgeIp0));
+    apb_xcheck apbReg_uBridgeIp1_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg_uBridgeIp1));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
+    `endif
+
 endmodule : bridgeApbDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

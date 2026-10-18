@@ -70,6 +70,11 @@ module twoClkDecode_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck twoClkReg_uTable_xcheck (.clk(clk), .rst_n(rst_n), .intf(twoClkReg_uTable));
+    apb_xcheck twoClkReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(twoClkReg));
+    `endif
+
 endmodule : twoClkDecode_hdl_sv_wrapper
 
 // GENERATED_CODE_END

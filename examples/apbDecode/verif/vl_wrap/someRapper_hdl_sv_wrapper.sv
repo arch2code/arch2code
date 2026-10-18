@@ -47,6 +47,10 @@ module someRapper_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
+    `endif
+
 endmodule : someRapper_hdl_sv_wrapper
 
 // GENERATED_CODE_END

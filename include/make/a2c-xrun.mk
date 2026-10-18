@@ -38,7 +38,10 @@ ifdef VL_DUT
 XRUN_HDL = -makelib $(XRUN_DUT_LIB) -F $(A2C_ROOT)/common/systemVerilog/a2c.f \
 	$(A2C_HDL_ARGS) $(EXTRA_XRUN_LIB_OPTS) \
 	-F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(XRUN_INCDIRS) $(XRUN_TOP_SV) -endlib
-XRUN_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(XRUN_TOP_SV) $(A2C_HDL_DEPS)
+# xrun reaches the X/Z checkers through a2c.f's -y dirs, which no prerequisite
+# names, so they and their shared include are listed here.
+XRUN_HDL_DEPS = $(wildcard $(A2C_SV_DEP_FILES) $(EXTRA_SV_GEN_FILES)) $(A2C_RTL_DOT_F) $(XRUN_TOP_SV) $(A2C_HDL_DEPS) \
+	$(wildcard $(A2C_ROOT)/interfaces/*/*_xcheck.sv) $(A2C_ROOT)/common/systemVerilog/a2c_xcheck.svh
 # The foreign-module shells the registrars include are generated under .gen/vl.
 $(A2C_VL_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
 endif

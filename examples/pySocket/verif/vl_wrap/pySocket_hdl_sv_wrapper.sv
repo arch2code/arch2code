@@ -219,6 +219,13 @@ module pySocket_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    rdy_vld_xcheck test_rdy_vld_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_rdy_vld));
+    rdy_vld_xcheck dut2Python_rdy_vld_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_rdy_vld));
+    axi4_stream_xcheck #(.CHECK_TUSER(1'b0)) test_axi4_stream_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_axi4_stream));
+    axi4_stream_xcheck #(.CHECK_TUSER(1'b0)) dut2Python_axi4_stream_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_axi4_stream));
+    `endif
+
 endmodule : pySocket_hdl_sv_wrapper
 
 // GENERATED_CODE_END

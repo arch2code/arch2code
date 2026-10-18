@@ -101,6 +101,12 @@ module blockA_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    rdy_vld_xcheck dupIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(dupIf));
+    apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
+    `endif
+
 endmodule : blockA_hdl_sv_wrapper
 
 // GENERATED_CODE_END
