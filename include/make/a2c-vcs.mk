@@ -120,7 +120,7 @@ $(VCS_UVM_PKG_STAMP): $(VCS_UVM_PKG_OPTS)
 
 # One shell per UVM top, because the registrar includes them all, made after
 # the wrapper tops' in the same AN.DB. Another top's variant package is
-# analyzed before its testbench module, and the selected top comes last. The
+# analyzed before its testbench module, whose pin widths come from it. The
 # HDL defines are repeated because vlogan re-analyzes the source it is given,
 # and A2C_UVM_RTL_DUT changes the testbench module's body.
 VCS_UVM_SHELL_STAMP = $(VCS_STAMP_DIR)/uvm_sc_model.vlogan
@@ -139,17 +139,21 @@ $(VCS_SIMV): $(OBJ)
 
 # The run script hands the simv its arguments with the seed made decimal for
 # both sides: --seed N for sc_main and +ntb_random_seed=N for the SV solver,
-# which reads only decimal. UVM_TEST gives the +UVM_TESTNAME of a run that
-# names none. The default test is recorded so a change rewrites the script.
+# which reads only decimal. A seed of random draws a 32-bit value. UVM_TEST
+# gives the +UVM_TESTNAME of a run that names none. The default test is
+# recorded so a change rewrites the script.
 VCS_RUN_SCRIPT_STAMP = $(VCS_STAMP_DIR)/$(BIN).run_script
 $(shell [ -e $(VCS_RUN_SCRIPT_STAMP) ] && [ "$$(cat $(VCS_RUN_SCRIPT_STAMP))" = "$(UVM_TEST)" ] || printf '%s\n' "$(UVM_TEST)" > $(VCS_RUN_SCRIPT_STAMP))
 $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 	printf '%s\n' '#!/bin/bash' 'set -e' \
 		'dec() {' \
 		'    case "$$1" in' \
-		'        0[xX]*) v=$$((16#$${1#??})) ;;' \
-		'        *) v=$$((10#$$1)) ;;' \
+		'        random) od -An -tu4 -N4 /dev/urandom | tr -d " "; return ;;' \
+		'        0[xX]*) b=16; d=$${1#??}; case "$$d" in ""|*[!0-9a-fA-F]*) d= ;; esac ;;' \
+		'        *) b=10; d=$$1; case "$$d" in *[!0-9]*) d= ;; esac ;;' \
 		'    esac' \
+		'    [ -n "$$d" ] || { echo "$$0: --seed must be decimal, 0x hex or random, not $$1" >&2; exit 2; }' \
+		'    v=$$(($$b#$$d))' \
 		'    [ "$$v" -le 4294967295 ] || { echo "$$0: --seed $$1 does not fit in 32 bits" >&2; exit 2; }' \
 		'    echo "$$v"' \
 		'}' \

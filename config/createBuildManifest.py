@@ -93,6 +93,8 @@ def _writeBuildManifestMk(rootDir, manifest):
         lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
         lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
         lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
+        # The first is UVM_DUT's default.
+        lines.append(f"A2C_UVM_DUTS_{name} := {asList(top['duts'])}")
     lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
         f.write('\n'.join(lines))
@@ -413,6 +415,7 @@ def create(prj):
                 'portmap':      top['portmap'],
                 'xceliumShell': top['xceliumShell'],
                 'hdlTop':       top['hdlTop'],
+                'duts':         ['model', 'rtl'] if blockByKey[blockKey]['hasMdl'] else ['rtl'],
             })
 
     # The SV a verilate run reads, as distinct from the modules named on its

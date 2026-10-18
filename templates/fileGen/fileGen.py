@@ -660,7 +660,7 @@ def uvmTb_sv(args, prj, data):
     out.append(_uvm_param_line(data))
     out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=header\n')
     out.append('// GENERATED_CODE_END\n\n')
-    out.append('// user imports here\n\n')
+    out.append('// further package imports here\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=uvmTb --section=body\n')
     out.append('// GENERATED_CODE_END\n\n')
     out.append('// user module body here\n\n')

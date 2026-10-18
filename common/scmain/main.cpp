@@ -32,7 +32,15 @@ import a2c.endOfTest;
 #ifdef VCS
 extern "C" void VcsSetExitFunc(int (*)(int));
 
+// A $finish during simulation exits through this handler without returning
+// from sc_start, so final() never passes or fails the run.
+static bool vcsSimRunning = false;
+
 [[noreturn]] int exit_handler(int flag) {
+    if (vcsSimRunning && errorCode::getExitCode() < 0) {
+        errorCode::fail("simulation ended by $finish before the end of test");
+        logging::GetInstance().logPrintDirect(errorCode::getErrorString());
+    }
     exit(errorCode::getExitCode());
 }
 #endif
@@ -358,6 +366,9 @@ int sc_main(int argc, char* argv[])
         exitMsg << errorCode::getErrorString() << endl;
         goto exit_goto;
     }
+#ifdef VCS
+    vcsSimRunning = true;
+#endif
     if (try_sc_start(false, SC_ZERO_TIME) != 0) {
         goto exit_goto;
     }
@@ -393,6 +404,9 @@ int sc_main(int argc, char* argv[])
     } else {
         try_sc_start(true, SC_ZERO_TIME);
     }
+#ifdef VCS
+    vcsSimRunning = false;
+#endif
 #if defined(VERILATOR)
     if(simController::vlTrace) {
         vlTracer->close_trace();
@@ -499,6 +513,9 @@ int try_sc_start(bool noLimit, const sc_time scMaxRunTime)
         auto end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds = end - start;
         std::stringstream exitMsg;
+        if (errorCode::getExitCode() > 0) {
+            exitMsg << errorCode::getErrorString() << "; ";
+        }
         exitMsg << "elapsed time: " << elapsed_seconds.count() << "s " << "sc_timestamp: " << sc_time_stamp();
         errorCode::setErrorString(exitMsg.str());
     }

@@ -8,10 +8,12 @@
 #
 #   UVM_TOP         the top's stem, <block>_<variant>; defaults to the top at
 #                   the variant of HDL_TOP_MODULE's DUT-top wrapper
-#   UVM_DUT         model (default) or rtl
+#   UVM_DUT         model or rtl; defaults to model, or to rtl for a block
+#                   with no model
 #   UVM_TEST        the +UVM_TESTNAME the run script passes when the test
 #                   names none
-#   UVM_TOPOLOGIES  what uvm_snapshots builds, <top>:<dut>[,<dut>]... per top
+#   UVM_TOPOLOGIES  what uvm_snapshots builds, <top>:<dut>[,<dut>]... per top;
+#                   defaults to UVM_TOP with each DUT its block has
 
 ifeq ($(USE_VCS)$(USE_XCELIUM),)
 $(error USE_UVM=1 needs USE_VCS=1 or USE_XCELIUM=1: the UVM flow runs on VCS and Xcelium only)
@@ -20,18 +22,15 @@ ifeq ($(VL_DUT),)
 $(error USE_UVM=1 needs VL_DUT=1: every UVM snapshot holds the RTL its rtl DUT elaborates)
 endif
 
-UVM_DUT ?= model
-ifeq ($(UVM_DUT),both)
-$(error UVM_DUT=both, the model and the RTL in one snapshot, is not built yet (#160 package 6); use model or rtl)
-endif
-ifeq ($(filter $(UVM_DUT),model rtl),)
-$(error UVM_DUT must be model or rtl, not '$(UVM_DUT)')
-endif
-
 UVM_TOP ?= $(A2C_UVM_DEFAULT_TOP_$(HDL_TOP_MODULE))
-UVM_TEST ?=
-UVM_TOPOLOGIES ?= $(UVM_TOP):model,rtl
 UVM_TB_TOP := $(A2C_UVM_TB_TOP_$(UVM_TOP))
+UVM_DUT ?= $(firstword $(A2C_UVM_DUTS_$(UVM_TB_TOP)))
+ifeq ($(UVM_DUT),both)
+$(error UVM_DUT=both, the model and the RTL in one snapshot, is not supported yet; use model or rtl)
+endif
+UVM_TEST ?=
+space := $(subst ,, )
+UVM_TOPOLOGIES ?= $(UVM_TOP):$(subst $(space),$(comma),$(A2C_UVM_DUTS_$(UVM_TB_TOP)))
 
 # Checked when gen runs rather than at parse time, because a missing or stale
 # manifest is rebuilt only after the first parse.
@@ -39,6 +38,7 @@ gen: uvm-top-check
 .PHONY: uvm-top-check
 uvm-top-check:
 	$(if $(UVM_TB_TOP),,$(error UVM_TOP '$(UVM_TOP)' names no UVM testbench top; set it to one of: $(A2C_UVM_TOP_STEMS)))
+	$(if $(filter $(UVM_DUT),$(A2C_UVM_DUTS_$(UVM_TB_TOP))),,$(error UVM_DUT must be one of $(A2C_UVM_DUTS_$(UVM_TB_TOP)) for UVM_TOP $(UVM_TOP), not '$(UVM_DUT)'))
 
 VL_INST :=
 DUT_TOPOLOGY := uvm_$(UVM_TOP)_$(UVM_DUT)
@@ -46,7 +46,7 @@ DUT_ELAB_ARGS := $(A2C_UVM_TESTBENCH_$(UVM_TB_TOP)) --uvmDut $(UVM_DUT) --uvmTop
 
 # The clock interface, a2c_uvm_pkg and the agent packages, then the top's
 # variant package, the test package that imports it, and the testbench
-# module that imports the test package. A2C_SV_FILES follows rtl.f, so they
+# module, whose generated header imports the test package. A2C_SV_FILES follows rtl.f, so they
 # compile after the project packages they import.
 A2C_UVM_F := $(A2C_ROOT)/common/systemVerilog/uvm/a2c_uvm.f
 A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)

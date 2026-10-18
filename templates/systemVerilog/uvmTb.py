@@ -16,7 +16,9 @@ def render(args, prj, data):
     top = data['uvm']['tops'][variant]
     match args.section:
         case 'header':
-            out = f"\n`timescale 1ns/1ps\n\nmodule {top['tbModule']}\n    import uvm_pkg::*;\n"
+            # The factory registers only the tests of an elaborated package.
+            out = (f"\n`timescale 1ns/1ps\n\nmodule {top['tbModule']}\n    import uvm_pkg::*;\n"
+                   f"    import {data['uvm']['testPkgName']}::*;\n")
         case 'body':
             out = render_body(prj, data, variant, top)
         case 'footer':

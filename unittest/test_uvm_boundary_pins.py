@@ -13,7 +13,9 @@ fixed st_a timed by a second clock, clkB, with its own reset. It is
 instantiated at two variants that size pst_a differently. dutV has no model.
 The expected pins are computed from the fixture YAML, independently of the
 generator, for each HDL top and UVM top. The build manifest must list every
-UVM top with its files.
+UVM top with its files and the DUTs it can hold, model and rtl or, for dutV,
+rtl only. dutV sits directly under the top instance, so its top is its
+block's default; dutU, under vbwTop, has no default.
 
 Each variant package must bind that variant's parameter values, declare pst_a
 from them, and type every port's agent and virtual interface by its payload.
@@ -26,7 +28,8 @@ tops lists in the manifest. Its base test waits for every clock's reset
 release, and waits for each output's transactions on that output's own clock,
 all outputs at once.
 
-Each testbench module must declare exactly those pins, sizing each payload by
+Each testbench module must import the block's test package, so the factory
+registers its tests, and declare exactly those pins, sizing each payload by
 `$bits` of its type in the package that declares it, type its interfaces by
 the same types, give each clock an a2c_clk_if released by that clock's reset,
 bind the HDL top with the pins toward SystemC tied off, and publish every port
@@ -133,8 +136,8 @@ EDITS = [
      '  uPU0:   {container: vbwTop, instanceType: pU, instGroup: top, variant: v0}\n'
      '  uDutU1: {container: vbwTop, instanceType: dutU, instGroup: top, variant: v1}\n'
      '  uPU1:   {container: vbwTop, instanceType: pU, instGroup: top, variant: v1}\n'
-     '  uDutV:  {container: vbwTop, instanceType: dutV, instGroup: top}\n'
-     '  uPV:    {container: vbwTop, instanceType: pV, instGroup: top}\n'),
+     '  uDutV:  {container: topTb, instanceType: dutV, instGroup: top}\n'
+     '  uPV:    {container: topTb, instanceType: pV, instGroup: top}\n'),
     ('connections:\n',
      'connections:\n'
      '  - {src: uPU0, srcport: out, dst: uDutU0, dstport: in, interface: iu, name: iuIn0}\n'
@@ -163,6 +166,9 @@ UVM_TOPS = {'dutU_v0': ('dutU', V0), 'dutU_v1': ('dutU', V1), 'dutV': ('dutV', {
 UVM_PORTS = {'dutU': [('in', 'dst', 'pst_a'), ('out', 'src', 'pst_a'), ('side', 'src', 'st_a')],
              'dutV': [('vin', 'dst', 'st_a'), ('vout', 'src', 'st_a')]}
 HAS_MDL = {'dutU': True, 'dutV': False}
+# Each block's default UVM top. uDutV sits directly under the top instance,
+# so dutV's wrapper is a DUT top; dutU sits under vbwTop and has none.
+DEFAULT_TOPS = {'dutU': None, 'dutV': ['dutV']}
 # The package of vbwTop.yaml, which declares st_a.
 TOP_PKG = 'vbwTop_package'
 # What a clock with no reset port releases its a2c_clk_if with.
@@ -337,6 +343,9 @@ def check_testbenches(work, design):
                       for *_, payload in UVM_PORTS[block]}
         portPins = port_pins(design, block, values)
 
+        problems += match(f'{tb}.sv', 'imports', [line for line in lines if line.startswith('import ')],
+                          ['import uvm_pkg::*;', f'import {block}_uvm_test_pkg::*;'])
+
         decls = []
         clockResets = {pin for pin, *_ in design.clock_reset_pins(block)}
         for pin, direction, width, vector in uvm_pins(design, block, values):
@@ -509,6 +518,9 @@ def check_manifest(work):
         expected[f'A2C_UVM_TEST_SV_{top}'] = [os.path.join(uvmDir, f'{UVM_TOPS[stem][0]}_uvm_test_pkg.sv')]
         expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]
         expected[f'A2C_UVM_PORTMAP_{top}'] = [os.path.join(root, '.gen', 'vl', f'{top}.portmap')]
+        expected[f'A2C_UVM_DUTS_{top}'] = ['model', 'rtl'] if HAS_MDL[UVM_TOPS[stem][0]] else ['rtl']
+    for block, stems in DEFAULT_TOPS.items():
+        expected[f'A2C_UVM_DEFAULT_TOP_{block}'] = stems
     problems = [f"{key} is {man.get(key)}, expected {value}"
                 for key, value in expected.items() if man.get(key) != value]
     problems += [f"newmodule did not scaffold {paths[0]}" for key, paths in expected.items()

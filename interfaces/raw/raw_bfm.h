@@ -25,8 +25,11 @@ public:
 
     SC_HAS_PROCESS (raw_src_bfm);
 
+    // raw has no handshake, so a SystemC reader keeps up with the HDL only on
+    // a best-effort basis and a missed edge never fails the run.
     raw_src_bfm(sc_module_name modulename) :
-        m_missed(name(), "SystemC had not taken the previous raw word at a clock edge, so the word on that edge was lost", "clock edges") {
+        m_missed(name(), "SystemC had not taken the previous raw word at a clock edge, so the word on that edge was lost", "clock edges",
+                 true) {
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();

@@ -10,7 +10,8 @@ the test's own --vlInst/--vlType/--vlTandem arguments select the snapshot
 names, and `model` for a test without --vlInst. A model test with --vlInst and
 without --vlTandem is not a listed topology and runs on `model` as well. A UVM
 test carries --uvmDut <dut> and --uvmTop <top> and runs on uvm_<top>_<dut>,
-the snapshot uvm_snapshots builds.
+the snapshot uvm_snapshots builds; either option without the other is an
+error.
 
 usage: dutRun.py <base binary> <simulation arguments...>
 """
@@ -29,11 +30,13 @@ def option(args, name):
 
 def topology(args):
     uvmDut = option(args, '--uvmDut')
+    uvmTop = option(args, '--uvmTop')
     if uvmDut is not None:
-        uvmTop = option(args, '--uvmTop')
         if uvmTop is None:
             sys.exit(f'dutRun: --uvmDut {uvmDut} needs --uvmTop <top> to pick the UVM snapshot')
         return f'uvm_{uvmTop}_{uvmDut}'
+    if uvmTop is not None:
+        sys.exit(f'dutRun: --uvmTop {uvmTop} needs --uvmDut <dut> to pick the UVM snapshot')
     inst = option(args, '--vlInst')
     vlType = option(args, '--vlType') or 'verif'
     tandem = '--vlTandem' in args

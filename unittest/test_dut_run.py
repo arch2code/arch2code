@@ -6,7 +6,8 @@ the simulator snapshot <base>_<topology> it runs on. --vlInst, --vlType and
 --vlTandem give the DUT topologies of vcs_snapshots and xrun_snapshots, and a
 test without --vlInst runs on `model`. A UVM test carries --uvmDut <dut> and
 --uvmTop <top> and runs on uvm_<top>_<dut>, which uvm_snapshots builds;
---uvmDut without --uvmTop names no snapshot and stops the run. Each case runs
+--uvmDut without --uvmTop, or --uvmTop without --uvmDut, names no snapshot
+and stops the run. Each case runs
 dutRun.py over a directory of stand-in snapshots that print the arguments
 they were given, and checks which snapshot ran with which arguments.
 """
@@ -45,6 +46,8 @@ RUNS = [
 REJECTED = [
     ('--uvmDut without --uvmTop', ['top_uvm', '--uvmDut', 'model'],
      'dutRun: --uvmDut model needs --uvmTop <top> to pick the UVM snapshot'),
+    ('--uvmTop without --uvmDut', ['top_uvm', '--uvmTop', 'top_default', '+UVM_TESTNAME=t'],
+     'dutRun: --uvmTop top_default needs --uvmDut <dut> to pick the UVM snapshot'),
     ('a UVM top with no snapshot', ['top_uvm', '--uvmDut', 'model', '--uvmTop', 'top_wide'],
      'no snapshot'),
     ('an instance with no snapshot', ['top', '--vlInst', 'other'], 'no snapshot'),

@@ -36,7 +36,7 @@ def render_class(args, prj, data):
              for portGroup in data['ports'].values() for portData in portGroup.values()]
     pins = [pin for _, sig in ports for pin in sig['hdl_pins']]
 
-    out = ['#include <cstdlib>', '#include <format>', '#include <memory>', '#include <string>',
+    out = ['#include <format>', '#include <memory>', '#include <string>',
            '#include <type_traits>', '#include "systemc.h"', '#include "blockBase.h"',
            '#include "instanceFactory.h"', '#include "q_assert.h"']
     # The BFM headers also declare the <type>_hdl_if bridges the pins bind to.
@@ -47,7 +47,7 @@ def render_class(args, prj, data):
     out += intf_gen_utils.cpp_block_context_include_lines(prj, data)
     out += intf_gen_utils.cpp_own_config_import(data)
     out.append('import a2c.endOfTest;')
-    out += ['', '#ifdef VCS', 'extern "C" void VcsSetExitFunc(int (*)(int));', '#endif', '']
+    out.append('')
 
     out += [
         "// The testbench config creates the wrapper through the instanceFactory,",
@@ -57,21 +57,6 @@ def render_class(args, prj, data):
         '    static constexpr const char *notFinished = "UVM testbench did not finish: uvm_done never rose";',
         '    static inline bool rtlDut = false;',
         '    static inline bool completed = false;',
-        '    static inline std::string failure;',
-        '#ifdef VCS',
-        "    // A UVM_FATAL ends the run with $finish inside run_test(). Under VCS that",
-        "    // exits through the VcsSetExitFunc handler without returning from",
-        "    // sc_start, so final() never runs and main.cpp's handler would exit with",
-        "    // the unset error code, -1. This one fails the run as final() does.",
-        '    [[noreturn]] static int vcsExit(int)',
-        '    {',
-        '        if (!completed) {',
-        '            logging::GetInstance().logPrintDirect(notFinished);',
-        '            errorCode::fail(notFinished);',
-        '        }',
-        '        std::exit(errorCode::getExitCode());',
-        '    }',
-        '#endif',
         '};',
         '',
     ]
@@ -181,12 +166,6 @@ def render_class(args, prj, data):
             indented(sec_reset_drivers(args, prj, data), 4),
             '',
             '    void uvm_watch(void) {',
-            '#ifdef VCS',
-            '        // Registered here, not in the constructor, because VCS also runs',
-            '        // sc_main to the first sc_start in the -syscelab discovery executable,',
-            '        // where no thread runs and uvm_done can never rise.',
-            f'        VcsSetExitFunc({run}::vcsExit);',
-            '#endif',
             '        while (!uvm_done.read()) {',
             '            wait(uvm_done.value_changed_event());',
             '        }',
@@ -194,16 +173,17 @@ def render_class(args, prj, data):
             '        const uint32_t errors = uvm_errors.read().to_uint();',
             '        log_.logPrint(std::format("UVM finished with {} UVM_ERROR/UVM_FATAL; the SV testbench was built with the {} DUT",',
             '                                  errors, svRtl ? "RTL" : "model"), LOG_ALWAYS);',
+            '        std::string failure;',
             f'        if (svRtl != {run}::rtlDut) {{',
-            f'            {run}::failure = std::format(',
+            '            failure = std::format(',
             '                "--uvmDut {} does not match the snapshot, whose SV testbench holds the {} DUT",',
             f'                {run}::rtlDut ? "rtl" : "model", svRtl ? "RTL" : "model");',
             '        } else if (errors != 0) {',
-            f'            {run}::failure = std::format("UVM reported {{}} UVM_ERROR/UVM_FATAL", errors);',
+            '            failure = std::format("UVM reported {} UVM_ERROR/UVM_FATAL", errors);',
             '        }',
-            f'        if (!{run}::failure.empty()) {{',
-            f'            log_.logPrint({run}::failure, LOG_ALWAYS);',
-            f'            errorCode::fail({run}::failure);',
+            '        if (!failure.empty()) {',
+            '            log_.logPrint(failure, LOG_ALWAYS);',
+            '            errorCode::fail(failure);',
             '        }',
             f'        {run}::completed = true;',
             '        m_eot.setEndOfTest(true);',

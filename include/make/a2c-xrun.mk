@@ -2,8 +2,8 @@
 # into its shared library, elaborates and writes one snapshot per DUT topology in
 # XRUN_RUNDIR. Xcelium fixes the SystemC topology at elaboration, so the snapshot
 # is elaborated with the topology's testbench arguments and build/run_<topology>
-# is a script that re-simulates it with the test's arguments passed through as
-# +systemc_args+; the command line matches the other flows.
+# is a script that re-simulates it with the test's arguments, so the command
+# line matches the other flows.
 
 # xrun links the SystemC objects with the GCC release named by -gcc_vers, which
 # must match the libstdc++ they were compiled against; the install-specific
