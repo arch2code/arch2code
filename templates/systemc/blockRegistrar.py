@@ -67,7 +67,7 @@ def render_default(args, prj, data):
     for registration in registrarConfig['modelRegistrations']:
         perVariantConfig = intf_gen_utils.cpp_config_expression_name(
             registration['config'])
-        registrations.extend(_emit_register_call(
+        registrations.extend(emit_register_call(
             suffix='model',
             blockName=blockName,
             targetClass=f'{blockName}<{perVariantConfig}>',
@@ -78,7 +78,7 @@ def render_default(args, prj, data):
     for registration in socketRegistrations:
         perVariantConfig = intf_gen_utils.cpp_config_expression_name(
             registration['config'])
-        registrations.extend(_emit_register_call(
+        registrations.extend(emit_register_call(
             suffix='socket',
             blockName=blockName,
             targetClass=f'{blockName}Socket<{perVariantConfig}>',
@@ -104,7 +104,7 @@ def render_default(args, prj, data):
     return '\n'.join(out)
 
 
-def _emit_register_call(*, suffix, blockName, targetClass, variant, projectName, indent):
+def emit_register_call(*, suffix, blockName, targetClass, variant, projectName, indent):
     """Emit a single instanceFactory::registerBlock(...) call."""
     return [
         f'{indent}instanceFactory::registerBlock(',

@@ -1748,10 +1748,10 @@ class projectOpen:
         }
 
     def getBDUvm(self, ret):
-        # The UVM testbench of a hasUvm block, None for any other block: its
-        # tops keyed by variant, as projectCreate.deriveUvmNames names them,
-        # and one agent per boundary port in port order. Each agent class is
-        # parameterized by its interface's payload parameters, by name.
+        # The UVM testbench of a hasUvm block, None for any other block: the
+        # names projectCreate.deriveUvmNames gives it, with its tops keyed by
+        # variant, and one agent per boundary port in port order. Each agent
+        # class is parameterized by its interface's payload parameters, by name.
         import pysrc.intf_gen_utils as intf_gen_utils
         if ret['qualBlock'] not in self.uvmNames:
             ret['uvm'] = None
@@ -1771,7 +1771,7 @@ class projectOpen:
                     # packages, for package-scoped references.
                     'paramTypes': {variant: [{'param': b['structureType'], 'type': self.uvmTypeRef(b, top['pkgName'])}
                                              for b in paramBindings if not b['isNull']]
-                                   for variant, top in self.uvmNames[ret['qualBlock']].items()},
+                                   for variant, top in self.uvmNames[ret['qualBlock']]['tops'].items()},
                 })
         # One a2c_clk_if per clock, released by the clock's selected reset
         # when that reset is a port of the block, else never held in reset.
@@ -1779,7 +1779,7 @@ class projectOpen:
         clocks = [{'clock': row['clock'],
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
-        ret['uvm'] = {'tops': self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks}
+        ret['uvm'] = {**self.uvmNames[ret['qualBlock']], 'ports': ports, 'clocks': clocks}
 
     def uvmTypeRef(self, binding, variantPkg):
         # A payload type as the UVM testbench names it: the variant package
@@ -3861,7 +3861,7 @@ class projectOpen:
         # type and DUT-side role, and a pin typed by a payload carries the type
         # as uvmTypeRef names it.
         inverse = {'input': 'output', 'output': 'input'}
-        variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']].values()}[hdlTop]
+        variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']]['tops'].values()}[hdlTop]
         uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
         pins = list()
         for pin in self.getVlTopBoundaryPins(ret, hdlTop):
@@ -5504,8 +5504,10 @@ class projectCreate:
         # The UVM testbench tops of every hasUvm block, named like the files
         # that hold them: one per standalone variant, or one variantless top
         # for a block without params (validateUvmBlocks rejects a block with
-        # params and no standalone variant). Each top's port map is written
-        # under this build's .gen/vl.
+        # params and no standalone variant). Each top's port map and Xcelium
+        # shell are written under this build's .gen/vl, and VCS names its
+        # shell header after the top. The SystemC wrapper, its run state and
+        # the testbench name are one per block.
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         genVlDir = os.path.join(self.config.getConfig('DIRS')['root'], '.gen', 'vl')
         self.uvmNames = dict()
@@ -5524,13 +5526,24 @@ class projectCreate:
             tops = dict()
             for variant, stem, hdlTop in stems:
                 tbModule = artifactPaths.fileStem(fileMap['uvmTb'], stem, layout)
+                xceliumShellHeader = tbModule + '_xcelium.h'
                 tops[variant] = {
                     'tbModule':     tbModule,
                     'pkgName':      artifactPaths.fileStem(fileMap['uvmPkg'], stem, layout),
                     'hdlTop':       hdlTop,
                     'portmap':      os.path.join(genVlDir, tbModule + '.portmap'),
+                    'xceliumShell':       os.path.join(genVlDir, xceliumShellHeader),
+                    'xceliumShellHeader': xceliumShellHeader,
+                    'vcsShellHeader':     tbModule + '.h',
                 }
-            self.uvmNames[row['blockKey']] = tops
+            scWrapper = artifactPaths.fileStem(fileMap['uvmScWrap'], row['block'], layout)
+            self.uvmNames[row['blockKey']] = {
+                'scWrapperClass':  scWrapper,
+                'scWrapperHeader': f"{scWrapper}.{fileMap['uvmScWrap']['ext']['hdr']}",
+                'runClass':        f"{row['block']}_uvm_run",
+                'testbenchName':   f"{row['block']}_uvm",
+                'tops':            tops,
+            }
         self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
 
     def validateSvDesignUnitNames(self):
@@ -5574,8 +5587,8 @@ class projectCreate:
                     if self.contextFileEmitted(projectFileMap(self.contextOwningProject[context])['package'],
                                                context)}
         uvmPackages = dict()
-        for blockKey, tops in self.uvmNames.items():
-            for v, top in tops.items():
+        for blockKey, names in self.uvmNames.items():
+            for v, top in names['tops'].items():
                 modules[('uvmTb', blockKey, v)] = top['tbModule']
                 uvmPackages[('uvmPkg', blockKey, v)] = top['pkgName']
 

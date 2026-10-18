@@ -679,6 +679,15 @@ def cpp_context_include_lines(prj, context):
     return [f'import {moduleName};',
             f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
 
+def cpp_block_context_include_lines(prj, block_data):
+    # The import and using lines for every context module the block's types
+    # come from, for a header that names those types unqualified.
+    lines = []
+    for context in block_data['includeContext']:
+        if context in block_data['includeFiles'].get('include_cppm', {}):
+            lines.extend(cpp_context_include_lines(prj, context))
+    return lines
+
 def sc_channel_header_includes(intf_types, block_data):
     # `#include "<chnl>_channel.h"` for each interface type's channel. Shared by
     # the block Base/class dependency sets and the testbench External, which each
@@ -970,7 +979,8 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     chnl_dir = intf_modp
     chnl_type = intf_def['sc_channel']['type'] + '_' + chnl_dir + '_bfm'
 
-    out['bfm_decl'] = f"{chnl_type}<{chnl_params}> {bfm_name};"
+    out['bfm_type'] = f"{chnl_type}<{chnl_params}>"
+    out['bfm_decl'] = f"{out['bfm_type']} {bfm_name};"
     out['bfm_ctor_init'] = f"{bfm_name}(\"" + bfm_name + "\")"
 
     out['intf_modp'] = intf_modp
@@ -981,6 +991,13 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         dut_port_name = f"{intf_name}_{intf_sig}"
         hdl_if_sig_name = f"{hdl_intf_name}.{intf_sig}"
         out['dut_ports_decl'].append(f"dut_hdl->{dut_port_name}({hdl_if_sig_name});")
+
+    # The SystemC port each boundary pin has on the HDL module that takes this
+    # modport, with the bridge type it carries.
+    out['hdl_pins'] = [{'pin': f"{intf_name}_{row['signal']}", 'signal': row['signal'], 'kind': row['kind'],
+                        'scPort': 'sc_in' if row['direction'] == 'input' else 'sc_out',
+                        'type': sc_hdl_bridge_type(row, prj)}
+                       for row in rows]
 
     # Assignment port <-> interface
     out['assign'] = []

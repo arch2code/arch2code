@@ -379,15 +379,16 @@ def create(prj):
                 and row['fileType'] in ('uvmTb', 'uvmPkg'):
             uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
     uvmTops = list()
-    for blockKey, tops in uvmNames.items():
+    for blockKey, names in uvmNames.items():
         if prj.contextOwningProject[blockByKey[blockKey]['_context']] != harnessOwner:
             continue
-        for variant, top in tops.items():
+        for variant, top in names['tops'].items():
             uvmTops.append({
                 'qualifiedTop': top['tbModule'],
                 'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
                 'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
                 'portmap':      top['portmap'],
+                'xceliumShell': top['xceliumShell'],
                 'hdlTop':       top['hdlTop'],
             })
 

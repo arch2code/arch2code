@@ -14,10 +14,10 @@ def vlBoundaryGen(prj, args):
     outDir = os.path.join(prj.config.getConfig('DIRS')['root'], '.gen', 'vl')
     os.makedirs(outDir, exist_ok=True)
 
-    def write(name, pins):
-        with open(os.path.join(outDir, f'{name}.portmap'), 'w') as f:
+    def write(name, pins, portmapPath, xceliumPath):
+        with open(portmapPath, 'w') as f:
             f.write(portmap(name, pins))
-        with open(os.path.join(outDir, f'{name}_xcelium.h'), 'w') as f:
+        with open(xceliumPath, 'w') as f:
             f.write(xceliumShell(name, pins))
 
     blockKeys = [prj.vlTops[top['qualifiedTop']]['blockKey'] for top in manifest['vlTops']]
@@ -25,11 +25,15 @@ def vlBoundaryGen(prj, args):
     blockData = {key: prj.getBlockData(key, trimRegLeafInstance=True) for key in dict.fromkeys(blockKeys)}
     for top in manifest['vlTops']:
         name = top['qualifiedTop']
-        write(name, prj.getVlTopBoundaryPins(blockData[prj.vlTops[name]['blockKey']], name))
-    # A UVM testbench top takes its widths from the HDL top it instantiates.
+        write(name, prj.getVlTopBoundaryPins(blockData[prj.vlTops[name]['blockKey']], name),
+              os.path.join(outDir, f'{name}.portmap'), os.path.join(outDir, f'{name}_xcelium.h'))
+    # A UVM testbench top takes its widths from the HDL top it instantiates,
+    # and its file paths from the database, which also names the shell its
+    # registrar includes.
     for top in manifest['uvmTops']:
         data = blockData[prj.vlTops[top['hdlTop']]['blockKey']]
-        write(top['qualifiedTop'], prj.getUvmTopBoundaryPins(data, top['hdlTop']))
+        write(top['qualifiedTop'], prj.getUvmTopBoundaryPins(data, top['hdlTop']),
+              top['portmap'], top['xceliumShell'])
 
 
 def portmap(top, pins):

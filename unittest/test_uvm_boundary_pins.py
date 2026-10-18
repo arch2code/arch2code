@@ -25,6 +25,16 @@ bind the HDL top with the pins toward SystemC tied off, and publish every port
 and clock in the config_db. A block with a model holds the RTL only under
 A2C_UVM_RTL_DUT and otherwise carries each signal across in the direction the
 DUT sees it. A block without a model always holds the RTL.
+
+Each block's SystemC wrapper must include the BFM header that declares its
+pin bridges, bind every testbench pin, check the shell's payload pin types,
+drive each clock at its period and hold each reset low from time 0 until its
+own clock releases it. It imports the block's base module only when the block
+has a model. With a model it carries each port
+through a BFM of the swapped role on the port's clock domain. Its config must
+create the wrapper under the block's name at the scaffolded variant, and its
+registrar must register one wrapper per variant over that variant's shell and
+Config.
 """
 
 import os
@@ -150,6 +160,12 @@ TOP_PKG = 'vbwTop_package'
 # What a clock with no reset port releases its a2c_clk_if with.
 NO_RESET = "1'b1"
 RDY_VLD = (('vld', 'src'), ('data', 'src'), ('rdy', 'dst'))
+PROJECT = 'vbwTop'
+# Each block's variant labels and Config structs, in declaration order; '' is
+# the variantless top of a block without params.
+CONFIGS = {'dutU': {'v0': 'vbwTop_dutUV0Config', 'v1': 'vbwTop_dutUV1Config'}, 'dutV': {'': None}}
+# A port timed by a clock other than the block default, with that clock's reset.
+PORT_DOMAIN = {('dutU', 'side'): ('clkB', 'rstB_n')}
 COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
                    ('rtl_dut', 'output', 1, False)]
 
@@ -253,10 +269,10 @@ def check_variant_packages(work):
     return problems
 
 
-def match(tb, what, actual, expected):
+def match(fileName, what, actual, expected):
     if actual == expected:
         return []
-    return [f"{tb}.sv {what} are {actual}, expected {expected}"]
+    return [f"{fileName} {what} are {actual}, expected {expected}"]
 
 
 def check_testbenches(work, design):
@@ -282,12 +298,12 @@ def check_testbenches(work, design):
         for i, (pin, direction, _, _, _, signal, payload) in enumerate(portPins):
             if signal == 'data':
                 decls[i] = f'{INVERSE[direction].ljust(6)} bit [$bits({payloadPkg[payload]}::{payload})-1:0] {pin}'
-        problems += match(tb, 'port declarations',
+        problems += match(f'{tb}.sv', 'port declarations',
                           [line for line in lines if re.match(r'(input|output)\b', line)], decls)
 
         binds = [f'.{pin}({port}.{signal})' for pin, _, _, _, port, signal, _ in portPins]
         binds += [f'.{pin}({pin})' for pin, *_ in design.clock_reset_pins(block)]
-        problems += match(tb, 'DUT binds', [line for line in lines if line.startswith('.')], binds)
+        problems += match(f'{tb}.sv', 'DUT binds', [line for line in lines if line.startswith('.')], binds)
 
         rtlAssigns = []
         mdlAssigns = []
@@ -301,7 +317,7 @@ def check_testbenches(work, design):
         rtlAssigns.append("assign rtl_dut = 1'b1;")
         mdlAssigns.append("assign rtl_dut = 1'b0;")
         assigns = rtlAssigns + (mdlAssigns if HAS_MDL[block] else [])
-        problems += match(tb, 'assigns', Counter(line for line in lines if line.startswith('assign ')),
+        problems += match(f'{tb}.sv', 'assigns', Counter(line for line in lines if line.startswith('assign ')),
                           Counter(assigns))
         ifdefs = lines.count('`ifdef A2C_UVM_RTL_DUT')
         if ifdefs != int(HAS_MDL[block]):
@@ -312,19 +328,117 @@ def check_testbenches(work, design):
         domains = clock_domains(design, block)
         intfs += [f"a2c_clk_if {clock}_if(.clk({clock}), .rst_n({reset or NO_RESET}));"
                   for clock, reset in domains]
-        problems += match(tb, 'interface instances',
+        problems += match(f'{tb}.sv', 'interface instances',
                           [line for line in lines if line.startswith(('rdy_vld_if', 'a2c_clk_if'))], intfs)
 
         sets = [f'uvm_config_db#({pkg}::{port}_vif_t)::set(null, "uvm_test_top.*", "{port}", {port});'
                 for port, *_ in UVM_PORTS[block]]
         sets += [f'uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top.*", "{clock}", {clock}_if);'
                  for clock, _ in domains]
-        problems += match(tb, 'config_db sets',
+        problems += match(f'{tb}.sv', 'config_db sets',
                           [line for line in lines if line.startswith('uvm_config_db#')], sets)
 
         expected = [f'module {tb}', f'endmodule : {tb}', f'{hdl} dut (', 'run_test();',
                     'uvm_root::get().finish_on_completion = 0;']
         problems += [f"{tb}.sv lacks the line {line!r}" for line in expected if line not in lines]
+    return problems
+
+
+def check_sc_files(work, design):
+    problems = []
+    uvmDir = os.path.join(work, 'top', 'uvm')
+    for block, configs in CONFIGS.items():
+        values = VARIANTS.get(next(iter(configs)), {})
+        hasParams = block in ('dutU',)
+        domains = clock_domains(design, block)
+
+        wrapperFile = f'{block}_uvm_sc_wrapper.h'
+        with open(os.path.join(uvmDir, wrapperFile)) as f:
+            text = f.read()
+        lines = [line.strip() for line in text.splitlines()]
+        templateHead = 'template <typename TB_T, typename Config>' if hasParams else 'template <typename TB_T>'
+        expected = [templateHead, f'class {block}_uvm_sc_wrapper : public sc_module, public blockBase {{',
+                    f'struct {block}_uvm_run {{', 'static inline bool rtlDut = false;',
+                    '#include "rdy_vld_bfm.h"']
+        problems += [f"{wrapperFile} lacks the line {line!r}" for line in expected if line not in lines]
+        if bool(re.search(r'^import \S+\.base;$', text, re.M)) != HAS_MDL[block]:
+            problems.append(f"{wrapperFile} imports the base module: {not HAS_MDL[block]}, "
+                            f"but the block has a model: {HAS_MDL[block]}")
+
+        problems += match(wrapperFile, 'shell binds',
+                          re.findall(r'^\s*tb_hdl\.(\w+)\(', text, re.M),
+                          [pin for pin, *_ in uvm_pins(design, block, values)])
+
+        asserts = re.findall(r'decltype\(TB_T::(\w+)\), (\S+)>,$', text, re.M)
+        expectedAsserts = []
+        for pin, direction, width, vector, _, signal, payload in port_pins(design, block, values):
+            if signal != 'data':
+                continue
+            port = 'sc_in' if INVERSE[direction] == 'input' else 'sc_out'
+            bridge = f'sc_bv<{payload}<Config>::_bitWidth>' if design.parameterizable(payload) \
+                else pin_type(vector, width)
+            expectedAsserts.append((pin, f'{port}<{bridge}>'))
+        problems += match(wrapperFile, 'shell pin type checks', asserts, expectedAsserts)
+
+        for clock, reset in domains:
+            expected = [f'void clock_gen_{clock}() {{ clock_gen({clock}, {clock}_half_); }}',
+                        f'SC_THREAD(clock_gen_{clock});']
+            period = (design.blocks[block].get('clocks') or {}).get(clock, {}).get('period')
+            if period is not None:
+                expected.append(f'{clock}_half_(sc_time({period}, SC_NS) / 2),')
+            if reset is not None:
+                expected += [f'{reset}("{reset}", false),', f'SC_THREAD(reset_driver_{reset});']
+                if not any(line.startswith(f'void reset_driver_{reset}() {{ reset_driver({reset}, {clock}, ')
+                           for line in lines):
+                    problems.append(f"{wrapperFile} does not release {reset} on {clock}")
+            problems += [f"{wrapperFile} lacks the line {line!r}" for line in expected if line not in lines]
+        if 'rst.write(false);' in lines or re.search(r'_n\("\w+", true\)', text):
+            problems.append(f"{wrapperFile} releases a reset at time 0 or asserts it after construction")
+
+        bfmRoles = re.findall(r'^\s*(\w+)_bfm_inst = std::make_unique<rdy_vld_(src|dst)_bfm<', text, re.M)
+        bfmDomains = re.findall(r'^\s*(\w+)_bfm_inst->clk\((\w+)\);\s*\n\s*\1_bfm_inst->rst_n\((\w+)\);',
+                                text, re.M)
+        if HAS_MDL[block]:
+            problems += match(wrapperFile, 'BFM roles', bfmRoles,
+                              [(port, 'src' if side == 'dst' else 'dst') for port, side, _ in UVM_PORTS[block]])
+            problems += match(wrapperFile, 'BFM clock domains', bfmDomains,
+                              [(port, *PORT_DOMAIN.get((block, port), ('clk', 'rst_n')))
+                               for port, *_ in UVM_PORTS[block]])
+            createModel = (f'instanceFactory::createInstance(name(), "{block}", "{block}", variant, "{PROJECT}"));')
+            if createModel not in lines:
+                problems.append(f"{wrapperFile} does not create the {block} model")
+        elif bfmRoles or 'createInstance' in text:
+            problems.append(f"{wrapperFile} creates a model or BFMs for a block without a model")
+
+        configFile = f'{block}UvmConfig.cpp'
+        with open(os.path.join(uvmDir, configFile)) as f:
+            lines = [line.strip() for line in f]
+        expected = ['#if defined(XCELIUM) || defined(VCS)', f'#include "{block}_uvm_sc_wrapper.h"',
+                    f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl";',
+                    f'instanceFactory::registerInstance("{block}", "uvm");',
+                    f'instanceFactory::createInstance("", "{block}", "{block}", "{next(iter(configs))}", "{PROJECT}");',
+                    f'"{block}_uvm",',
+                    f'std::string m_uvmDut = "{"model" if HAS_MDL[block] else "rtl"}";']
+        problems += [f"{configFile} lacks the line {line!r}" for line in expected if line not in lines]
+
+        registrarFile = f'{block}UvmRegistrar.cpp'
+        with open(os.path.join(uvmDir, registrarFile)) as f:
+            text = f.read()
+        lines = [line.strip() for line in text.splitlines()]
+        stems = [f'{block}_{v}' if v else block for v in configs]
+        expected = [f'#include "{stem}_uvm_tb_xcelium.h"' for stem in stems]
+        expected += [f'#include "{stem}_uvm_tb.h"' for stem in stems]
+        problems += [f"{registrarFile} lacks the line {line!r}" for line in expected if line not in lines]
+        registrations = [(blockType, target, *key) for blockType, target, key in zip(
+            re.findall(r'registerBlock\(\s*"(\w+)",', text),
+            re.findall(r'std::make_shared<(.+)>\(blockName, variant, bbMode\)', text),
+            re.findall(r'^\s*"(\w*)", "(\w+)"\);$', text, re.M))]
+        problems += match(registrarFile, 'registrations', registrations,
+                          [(f'{block}_uvm',
+                            f'{block}_uvm_sc_wrapper<{stem}_uvm_tb, {config}>' if config
+                            else f'{block}_uvm_sc_wrapper<{stem}_uvm_tb>',
+                            variant, PROJECT)
+                           for stem, (variant, config) in zip(stems, configs.items())])
     return problems
 
 
@@ -364,7 +478,8 @@ def run_all_tests():
             for name, problems in (('boundary files', check_boundary_files(work, design)),
                                    ('build manifest', check_manifest(work)),
                                    ('variant packages', check_variant_packages(work)),
-                                   ('testbench modules', check_testbenches(work, design))):
+                                   ('testbench modules', check_testbenches(work, design)),
+                                   ('SystemC wrapper, config and registrar', check_sc_files(work, design))):
                 for problem in problems:
                     print(f"  FAIL: {name}: {problem}")
                 if not problems:
