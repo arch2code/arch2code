@@ -19,7 +19,7 @@ ifeq ($(USE_VCS)$(USE_XCELIUM),)
 $(error USE_UVM=1 needs USE_VCS=1 or USE_XCELIUM=1: the UVM flow runs on VCS and Xcelium only)
 endif
 ifeq ($(VL_DUT),)
-$(error USE_UVM=1 needs VL_DUT=1: every UVM snapshot holds the RTL its rtl DUT elaborates)
+$(error USE_UVM=1 needs VL_DUT=1: VL_DUT compiles the RTL, which every UVM snapshot needs for its rtl DUT)
 endif
 
 UVM_TOP ?= $(A2C_UVM_DEFAULT_TOP_$(HDL_TOP_MODULE))
@@ -61,9 +61,9 @@ ifdef USE_VCS
 A2C_SRC_DIRS += $(A2C_ROOT)/common/systemc/uvm
 endif
 
-# One build per entry, in turn: the snapshots link the same C++ objects, which
-# the first builds, and under VCS they also share AN.DB, which each analyzes
-# with its own top and DUT.
+# One build per top and DUT, in turn: the snapshots link the same C++ objects,
+# which the first builds, and under VCS they also share AN.DB, which each
+# analyzes with its own top and DUT.
 UVM_TOPOLOGY_LIST = $(foreach t,$(UVM_TOPOLOGIES),$(addprefix $(firstword $(subst :, ,$(t))):,$(subst $(comma), ,$(word 2,$(subst :, ,$(t))))))
 
 .PHONY: uvm_snapshots
@@ -73,4 +73,4 @@ uvm_snapshots: gen
 help::
 	@echo "  USE_UVM=1                        - build the UVM snapshot run_uvm_<UVM_TOP>_<UVM_DUT> (needs USE_VCS=1 or USE_XCELIUM=1)"
 	@echo "  UVM_TOP / UVM_DUT / UVM_TEST     - UVM testbench top stem, model or rtl DUT, default +UVM_TESTNAME"
-	@echo "  uvm_snapshots                    - build one UVM snapshot per UVM_TOPOLOGIES entry (<top>:<dut>[,<dut>]...)"
+	@echo "  uvm_snapshots                    - build one UVM snapshot per top and DUT in UVM_TOPOLOGIES (<top>:<dut>[,<dut>]...)"

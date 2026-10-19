@@ -123,10 +123,10 @@ $(VCS_UVM_PKG_STAMP): $(VCS_UVM_PKG_OPTS)
 # analyzed before its testbench module, whose pin widths come from it. So is
 # another block's test package, which the testbench module imports, once per
 # block with A2C_UVM_PKG naming any one of its variant packages; the other
-# tops are never elaborated. These steps take the RTL analysis's command line,
-# sources included, with A2C_UVM_PKG dropped or naming the other block's
-# package. No library unit reads it, so the units they re-analyze into AN.DB
-# match the RTL analysis. The shells repeat the defines because
+# tops are never elaborated. These steps take the RTL analysis's options,
+# defines and library files, with A2C_UVM_PKG dropped or naming the other
+# block's package. No library unit reads it, so the units they re-analyze into
+# AN.DB match the RTL analysis. The shells repeat the defines because
 # A2C_UVM_RTL_DUT changes the testbench module's body.
 VCS_UVM_SHELL_STAMP = $(VCS_STAMP_DIR)/uvm_sc_model.vlogan
 VCS_UVM_PORTMAPS = $(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PORTMAP_$(t)))

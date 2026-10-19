@@ -79,11 +79,26 @@ A definition with `uvmAgent: true` ships two more files beside it and adds a lin
 ### The agent package
 
 - The agent's type parameters are the definition's `parameters:`, under the same names: `data_t` for `rdy_vld`, `addr_t` and `data_t` for `apb`, `tdata_t`, `tid_t`, `tdest_t` and `tuser_t` for `axi4_stream`. The generated variant package writes `typedef myproto_agent #(.<parameter>(<type>), ...) <port>_agent_t;` with the port's bound parameters only, and the same list on `virtual myproto_if`. An unbound optional parameter keeps the class default, so give it the default `myproto_if.sv` gives it.
-- An agent that can play either side of the interface takes a role, `a2c_role_e` from `a2c_uvm_pkg`, in its config. The role is the opposite of the DUT port's modport, so a DUT `dst` port gets an `A2C_SRC` agent. `rdy_vld`, `axi4_stream`, `raw` and `status` take one. `apb_config` has no role, and the apb agent has only a master driver.
+- An agent provides drivers for both roles. It takes a role, `a2c_role_e` from `a2c_uvm_pkg`, in its config. The role is the opposite of the DUT port's modport, so a DUT `dst` port gets an `A2C_SRC` agent. `rdy_vld`, `axi4_stream`, `raw` and `status` meet the rule.
+- `apb` does not meet it yet. `apb_config` has no role and the agent has only a master driver, so the generated env makes the agent of a DUT apb `src` port passive. The slave driver is still to be written.
 - Drivers drive at `clk_vif.drive_edge()` and monitors sample at `clk_vif.sample_edge()`, both defined in `common/systemVerilog/uvm/a2c_clk_if.sv`. Each monitor logs every transaction through `a2c_txn()` with id `A2C_TXN`.
 - Add a test to `common/systemVerilog/uvm/loopback/a2c_uvm_loopback_tb.sv` and its name to `TESTS` in `run_loopback.sh`. The loopback runs on Xcelium and VCS only, as `run_loopback.sh xcelium|vcs [seed]`.
 
-The test does not check the agent's content. A wrong class name or typedef passes `make db` and `make gen` and fails when a simulator compiles the UVM testbench.
+The generated env (`templates/systemVerilog/uvmPkg.py`) uses these names, so an agent package must provide all of them:
+
+| Name | Used for |
+| :--- | :--- |
+| config fields `vif`, `clk_vif`, `port_name` | set for every port; `clk_vif` is the port's own clock domain |
+| config field `is_active`, default `UVM_ACTIVE` | set to `UVM_PASSIVE` only on a DUT `src` port of a definition with `addressBus: true`; every other port keeps the default |
+| config field `role` | set unless the definition has `addressBus: true` |
+| config field `no_backpressure` | set when the definition is elastic with `backpressure.overridable: true` |
+| agent member `mon`, with a `uvm_analysis_port` named `ap` | feeds the output counter and, on a register bus, the register predictor |
+| agent member `sqr` | the register model's sequencer, on a register bus |
+| class `myproto_reg_adapter` | a definition with `addressBus: true` only; the env creates it as the register model's adapter |
+
+The env gives an `a2c_txn_counter` to each DUT `src` port of an elastic type without `addressBus: true`. Its monitor must therefore write one item per completed handshake, because the counter counts items.
+
+The loopback test does not check the agent's content. A wrong class name or typedef passes `make db` and `make gen` and fails when a simulator compiles the UVM testbench.
 
 ### The X/Z checker
 
@@ -102,7 +117,7 @@ A src block leaves the placeholder signals of an unbound optional payload undriv
 
 ### raw has limited UVM support
 
-`raw` keeps `uvmAgent: true`, with limited support. Against the RTL DUT support is complete, because the agent drives and samples the pins on every clock. Against the model DUT it is best effort, because `raw_src_bfm` is not transactional. The BFM blocks in `if_p->write()`, and a word presented while it blocks is lost. It counts each clock edge whose word SystemC did not take, from the reader's first read on, and reports the count through `bfmContractCheck`, as one line at the first miss and the total at the end of simulation. That is a warning and never `errorCode::fail`. The note is in the header of `interfaces/raw/raw_uvm_pkg.sv`.
+`raw` keeps `uvmAgent: true`, with limited support. Against the RTL DUT support is complete, because the agent drives and samples the pins on every clock. Against the model DUT it is best effort, because `raw_src_bfm` is not transactional. The BFM blocks in `if_p->write()`, and a word presented while it blocks is lost. It counts each clock edge whose word SystemC did not take, from the reader's first read on, and reports the count through `bfmContractCheck`, as one line at the first miss and the total at the end of simulation. The check is built warn-only, so it never calls `errorCode::fail`, even in a UVM run, where `bfmContractCheck::failOnBreak` turns the other BFM contract checks into failures. The note is in the header of `interfaces/raw/raw_uvm_pkg.sv`.
 
 ### What the test enforces
 
