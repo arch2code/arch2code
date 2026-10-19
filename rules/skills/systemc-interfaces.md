@@ -59,9 +59,9 @@ Multi-cycle bursts (`writeClocked`, `readClocked`, `sendDataCycle`) are in **sys
 *   `ahbAddrSt<A>` carries `haddr`, `htrans`, `hwrite`, `hsize`, `hburst` (`AHBBURST_*`), `hprot` and `hmastlock`. `htrans` must be `AHBTRANS_NONSEQ` or `AHBTRANS_SEQ`, because IDLE and BUSY carry no transfer. `sendAddr` asserts on any other value.
 *   `ahbRespSt<D>` carries `hrdata` and `hresp`. `hresp` true is ERROR.
 *   Call `sendData` once per write, in address order, and `receiveResp` once per transfer. The subordinate mirrors this with `receiveData` and `sendResp`.
-*   The address and data phases run on separate sub-channels. A manager that calls `sendAddr` from one thread and `sendData` and `receiveResp` from another can send the address of transfer N+1 while transfer N is in its data phase.
+*   The address and data phases run on separate sub-channels. A manager that calls `sendAddr`, and `sendData` for a write, from one thread and `receiveResp` from another can send the address of transfer N+1 while transfer N is in its data phase. Do not send write data from the response thread. `ahb_dst_bfm` drives a write's address only once it has the data, so data that waits for the previous response serializes back-to-back writes.
 
-The address thread tells the data thread which transfers are writes. Here `m_inFlight` is an `sc_fifo<bool>` member, and `busAddrSt` and `busDataSt` are the structures the interface binds:
+Here `busAddrSt` and `busDataSt` are the structures the interface binds:
 
 ```cpp
 void blk::addrThread(void)
@@ -73,18 +73,17 @@ void blk::addrThread(void)
         a.haddr.addr = 0x100 + 4 * i;
         a.hwrite = (i < 2);
         ahbOut->sendAddr(a);
-        m_inFlight.write(a.hwrite);
-    }
-}
-
-void blk::dataThread(void)
-{
-    while (true) {
-        if (m_inFlight.read()) {
+        if (a.hwrite) {
             busDataSt d;
             d.data = 0xA5;
             ahbOut->sendData(d);
         }
+    }
+}
+
+void blk::respThread(void)
+{
+    while (true) {
         ahbRespSt<busDataSt> r;
         ahbOut->receiveResp(r);
         Q_ASSERT(!r.hresp, "ahb ERROR response");
@@ -113,7 +112,7 @@ void blk::subThread(void)
 }
 ```
 
-`ahb` has no Python socket.
+`ahb` has no Python socket. `ahb_dst_bfm`, which drives an RTL subordinate, does not support reset after start-up and asserts if `rst_n` is low at a clock edge while a transfer is in its address or data phase.
 
 Interfaces outside this table come from A2C Pro (`builder/pro/interfaces/`) or the user. Read their channel header for the calls.
 

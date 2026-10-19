@@ -39,6 +39,21 @@ The scenarios:
 - `selfTest`: scripted illegal traffic. The monitor must report exactly one
   violation of each rule it enforces, so a monitor that stopped detecting
   fails here.
+- `errCancel` and `errContinue`: an INCR4 read whose first beat answers ERROR.
+  The manager either cancels the burst with IDLE in the second ERROR cycle or
+  carries on with the remaining beats. Both are legal, so the monitor must
+  report nothing.
+- `docWrites` and `docMixed`: a model manager written as the two-thread example
+  in `rules/skills/systemc-interfaces.md`, with four writes and with two writes
+  then two reads, through `ahb_dst_bfm` into a zero-wait pin subordinate. Each
+  address phase must be taken at the edge after the one before.
+- `resetAssert`, run on its own because its assert stops the simulation: reset
+  asserted while a write waits in its data phase. `ahb_dst_bfm` must assert
+  rather than return OKAY for a write the subordinate dropped.
+
+Before the scenarios run, the fixture builds an `ahbRespSt` in storage full of
+0xff and checks `hrdata` packs to zero, for generated-style payloads with an
+array `_packedSt` (over 64 bits) and a scalar `_packedSt`.
 
 The fixture also pins, edge by edge, that the address phase of transfer N+1 is
 taken at the edge that ends the data phase of transfer N, that each data phase
@@ -51,6 +66,7 @@ that trips a warning the real model build rejects fails here.
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -62,14 +78,21 @@ FIXTURE = os.path.join(test_dir, 'fixtures', 'ahb-bfm', 'ahb_bfm_runtime.cpp')
 
 # The fixture's own accounting, pinned so a scenario or check that stopped
 # running fails here instead of shrinking the evidence silently.
-EXPECTED_CHECKS = 1480
+EXPECTED_CHECKS = 1540
 EXPECTED_SCENARIOS = [
     'scenario loopback transfers:23 pipelined:22 waitCycles:12 errors:2 violations:0',
     'scenario srcBfm transfers:23 pipelined:18 waitCycles:12 errors:2 busy:2 violations:0',
     'scenario dstBfm transfers:23 pipelined:22 waitCycles:12 errors:2 violations:0',
     'scenario slowMgr transfers:16 busy:36 busyZeroWait:36 violations:0',
-    'scenario selfTest violations:STABLE,WDATA,ERR1,SEQ,WRAP,CTRL,LEN,BURSTIDLE,LOCK',
+    'scenario selfTest violations:STABLE,WDATA,ERR1,SEQ,WRAP,CTRL,LEN,BURSTIDLE,LOCK,ERR2,ERRIDLE,ZEROWAIT,BUSY,STABLE,WRAP',
+    'scenario errCancel transfers:1 errors:1 violations:0',
+    'scenario errContinue transfers:4 errors:1 violations:0',
+    'scenario docWrites edges:3,4,5,6 violations:0',
+    'scenario docMixed edges:3,4,5,6 violations:0',
 ]
+RESET_ASSERT = '[Q_ASSERT][reset.bfm] ahb reset during a transfer is not supported'
+RESET_SCENARIO = 'scenario resetAssert responses:0 exitCode:1'
+RESET_SUMMARY = 'checks:3 failures:0'
 
 
 def test_ahb_bfms_drive_and_answer_the_pins_correctly():
@@ -78,7 +101,8 @@ def test_ahb_bfms_drive_and_answer_the_pins_correctly():
     assert shutil.which(thunker_runtime.CXX), f"{thunker_runtime.CXX} not found on PATH"
     build_dir = tempfile.mkdtemp(prefix='a2c_ahb_bfm_')
     try:
-        result = thunker_runtime.build_and_run(build_dir, env, FIXTURE)
+        result, binary = thunker_runtime.build_and_run(build_dir, env, FIXTURE)
+        reset = subprocess.run([binary, 'resetAssert'], capture_output=True, text=True, timeout=300)
     finally:
         remove_tree(build_dir)
 
@@ -95,7 +119,16 @@ def test_ahb_bfms_drive_and_answer_the_pins_correctly():
     assert failed == 'failures:0', output
     count = int(checks.split(':')[1])
     assert count == EXPECTED_CHECKS, f"expected {EXPECTED_CHECKS} checks, got {count}:\n{output}"
-    print(f"  {count} pin, cycle and data checks across 5 scenarios, 0 failures, 0 protocol violations")
+    print(f"  {count} pin, cycle and data checks across 9 scenarios, 0 failures, 0 protocol violations")
+
+    reset_output = reset.stdout + reset.stderr
+    reset_lines = reset_output.splitlines()
+    assert any(line.startswith(RESET_ASSERT) for line in reset_lines), \
+        f"ahb_dst_bfm did not assert on reset during a transfer:\n{reset_output}"
+    for expected in (RESET_SCENARIO, RESET_SUMMARY):
+        assert expected in reset_lines, f"missing line {expected!r}:\n{reset_output}"
+    assert reset.returncode == 0, f"resetAssert exited {reset.returncode}:\n{reset_output}"
+    print("  reset during a transfer asserts and returns no response")
 
 
 def run_all_tests():

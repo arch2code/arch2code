@@ -1,22 +1,31 @@
 // AHB-Lite BFM and channel runtime check, built and run by unittest/test_ahb_bfm.py.
 //
-// Five scenarios share one pin-level protocol monitor (ahbPinMonitor) that
+// The scenarios share one pin-level protocol monitor (ahbPinMonitor) that
 // samples the pins at every clock edge:
 //
-//   loopback   model manager -> ahb_dst_bfm -> pins -> ahb_src_bfm -> model subordinate
-//   srcBfm     scripted pin manager (IDLE, BUSY, bursts) -> ahb_src_bfm -> model subordinate
-//   dstBfm     model manager -> ahb_dst_bfm -> scripted pin subordinate
-//   slowMgr    slow single-thread model manager (locked and wrapping bursts,
-//              an INCR ending at a 1KB boundary) -> ahb_dst_bfm -> scripted pin subordinate
-//   selfTest   scripted illegal pin traffic, to show the monitor reports each rule
+//   loopback     model manager -> ahb_dst_bfm -> pins -> ahb_src_bfm -> model subordinate
+//   srcBfm       scripted pin manager (IDLE, BUSY, bursts) -> ahb_src_bfm -> model subordinate
+//   dstBfm       model manager -> ahb_dst_bfm -> scripted pin subordinate
+//   slowMgr      slow single-thread model manager (locked and wrapping bursts,
+//                an INCR ending at a 1KB boundary) -> ahb_dst_bfm -> scripted pin subordinate
+//   selfTest     scripted illegal pin traffic, to show the monitor reports each rule
+//   errCancel    an ERROR inside a burst, after which the manager cancels the burst
+//   errContinue  the same ERROR, after which the manager finishes the burst
+//   docWrites    the documented two-thread manager -> ahb_dst_bfm -> zero-wait pin subordinate
+//   docMixed     the same with two writes then two reads
+//
+// `ahb_bfm_runtime resetAssert` runs only resetMidTransfer, reset during a
+// write's wait states, which ends the simulation with an assert.
 //
 // The script tables below are the pinned expectations. Every check goes through
 // expect(), and the summary line carries the check count so a skipped scenario
 // shows up as a changed total.
 #include "ahb_bfm.h"
 #include <cstdio>
+#include <cstring>
 #include <format>
 #include <map>
+#include <new>
 #include <string>
 #include <systemc.h>
 #include <vector>
@@ -340,7 +349,9 @@ private:
             }
             return;
         }
-        if (b.active && b.left > 0) {
+        // A manager may cancel the rest of a burst with IDLE in the second
+        // cycle of an ERROR response.
+        if (b.active && b.left > 0 && !s.resp) {
             flag("BURSTIDLE", std::format("IDLE with {} beats of a fixed-length burst left", b.left), edge);
         }
         b.active = false;
@@ -402,12 +413,15 @@ private:
                 }
             }
             // Nothing in a data phase, or IDLE/BUSY there, means hready high and OKAY.
+            // ERRIDLE above covers hresp.
             if (dp != DP_XFER && !s.rdy) flag("ZEROWAIT", "hready low with no transfer in its data phase", edge);
-            if (dp != DP_XFER && s.resp) flag("ZEROWAIT", "hresp ERROR with no transfer in its data phase", edge);
 
-            // While hready is low a NONSEQ/SEQ address phase and the write data hold.
+            // While hready is low a NONSEQ/SEQ address phase and the write data
+            // hold, except that the manager may change htrans to IDLE in the
+            // second ERROR cycle.
             if (havePrev && !prev.rdy) {
-                if (prev.sel && isXferTrans(prev.trans) && !sameAddrPhase(prev, s)) {
+                const bool errorCancel = prev.resp && s.trans == AHBTRANS_IDLE;
+                if (prev.sel && isXferTrans(prev.trans) && !sameAddrPhase(prev, s) && !errorCancel) {
                     flag("STABLE", std::format("address phase changed while hready was low: haddr 0x{:x} -> 0x{:x}",
                                                prev.addr, s.addr),
                          edge);
@@ -999,9 +1013,33 @@ public:
     }
 };
 
-// Illegal pin traffic, one violation per row group. The monitor must report
-// each, and nothing else, so a monitor that went quiet fails here.
-class selfTest : public sc_module
+// One cycle of pin values.
+struct pinRow
+{
+    bool sel;
+    _ahbTransT trans;
+    uint32_t addr;
+    bool write;
+    _ahbBurstT burst;
+    uint32_t wdata;
+    bool rdy, resp;
+    _ahbProtT prot;
+    bool lock = false;
+};
+
+static constexpr auto N = AHBTRANS_NONSEQ;
+static constexpr auto S = AHBTRANS_SEQ;
+static constexpr auto I = AHBTRANS_IDLE;
+static constexpr auto B = AHBTRANS_BUSY;
+static constexpr auto SG = AHBBURST_SINGLE;
+static constexpr auto WR = AHBBURST_WRAP4;
+static constexpr auto I4 = AHBBURST_INCR4;
+static const pinRow idleRow{false, I, 0, false, SG, 0, true, false, 0};
+
+// Drives one row of pin values per clock cycle after reset, with the monitor
+// watching. The scenarios below use it for illegal traffic and for ERROR
+// responses inside a burst.
+class pinScript : public sc_module
 {
 public:
     sc_clock clk{"clk", 10, SC_NS};
@@ -1009,20 +1047,8 @@ public:
     pins_t pins;
     ahbPinMonitor mon{"mon", pins};
 
-    struct row
-    {
-        bool sel;
-        _ahbTransT trans;
-        uint32_t addr;
-        bool write;
-        _ahbBurstT burst;
-        uint32_t wdata;
-        bool rdy, resp;
-        _ahbProtT prot;
-        bool lock = false;
-    };
-
-    SC_CTOR(selfTest)
+    SC_HAS_PROCESS(pinScript);
+    pinScript(sc_module_name n, std::vector<pinRow> r) : sc_module(n), rows(std::move(r))
     {
         mon.clk(clk);
         mon.rst_n(rst_n);
@@ -1030,13 +1056,24 @@ public:
         SC_THREAD(reset);
         SC_THREAD(drive);
     }
+
+    std::string tagList() const
+    {
+        std::string all;
+        for (const std::string &t : mon.tags) all += (all.empty() ? "" : ",") + t;
+        return all;
+    }
+
+private:
+    const std::vector<pinRow> rows;
+
     void reset()
     {
         rst_n = false;
         wait(35, SC_NS);
         rst_n = true;
     }
-    void put(const row &r)
+    void put(const pinRow &r)
     {
         pins.hsel = r.sel;
         pins.htrans = r.trans;
@@ -1053,78 +1090,397 @@ public:
     }
     void drive()
     {
-        const row idleRow{false, AHBTRANS_IDLE, 0, false, AHBBURST_SINGLE, 0, true, false, 0};
-        const auto N = AHBTRANS_NONSEQ;
-        const auto S = AHBTRANS_SEQ;
-        const auto I = AHBTRANS_IDLE;
-        const auto SG = AHBBURST_SINGLE;
-        const auto WR = AHBBURST_WRAP4;
-        const auto I4 = AHBBURST_INCR4;
-        // sel, trans, addr, write, burst, wdata, hready, hresp, prot
-        const std::vector<row> rows = {
-            {true, N, 0x100, true, SG, 0, true, false, 0},      // write accepted
-            {true, N, 0x200, false, SG, 0xAA, false, false, 0}, // wait state
-            {true, N, 0x204, false, SG, 0xAA, true, false, 0},  // STABLE: haddr moved while hready was low
-            idleRow,
-            {true, N, 0x300, true, SG, 0, true, false, 0},
-            {false, I, 0, false, SG, 0x55, false, false, 0},    // wait state
-            {false, I, 0, false, SG, 0x56, true, false, 0},     // WDATA: hwdata moved while hready was low
-            {true, N, 0x400, false, SG, 0, true, false, 0},
-            {false, I, 0, false, SG, 0, true, true, 0},         // ERR1: one-cycle ERROR
-            {true, S, 0x500, false, SG, 0, true, false, 0},     // SEQ: no burst in progress
-            {true, N, 0x608, false, WR, 0, true, false, 0},
-            {true, S, 0x60c, false, WR, 0, true, false, 0},
-            {true, S, 0x610, false, WR, 0, true, false, 0},     // WRAP: should be 0x600
-            {true, S, 0x604, false, WR, 0, true, false, 7},     // CTRL: hprot differs from the NONSEQ
-            {true, S, 0x608, false, WR, 0, true, false, 0},     // LEN: fifth beat of a four-beat burst
-            idleRow,
-            {true, N, 0x700, false, I4, 0, true, false, 0},
-            {true, I, 0, false, SG, 0, true, false, 0},         // BURSTIDLE: IDLE with three beats left
-            idleRow,
-            {true, N, 0x800, false, SG, 0, true, false, 0, true},
-            idleRow,                                            // hmastlock dropped
-            {true, N, 0x804, false, SG, 0, true, false, 0, true}, // LOCK: locked again
-            idleRow,
-        };
         put(idleRow);
         do { wait(clk.posedge_event()); } while (!rst_n);
-        for (const row &r : rows) {
+        for (const pinRow &r : rows) {
             put(r);
             wait(clk.posedge_event());
         }
         put(idleRow);
     }
-    void verify()
+};
+
+// Illegal pin traffic, one violation per row group. The monitor must report
+// each, and nothing else, so a monitor that went quiet fails here.
+static std::vector<pinRow> selfTestRows()
+{
+    // sel, trans, addr, write, burst, wdata, hready, hresp, prot
+    return {
+        {true, N, 0x100, true, SG, 0, true, false, 0},      // write accepted
+        {true, N, 0x200, false, SG, 0xAA, false, false, 0}, // wait state
+        {true, N, 0x204, false, SG, 0xAA, true, false, 0},  // STABLE: haddr moved while hready was low
+        idleRow,
+        {true, N, 0x300, true, SG, 0, true, false, 0},
+        {false, I, 0, false, SG, 0x55, false, false, 0},    // wait state
+        {false, I, 0, false, SG, 0x56, true, false, 0},     // WDATA: hwdata moved while hready was low
+        {true, N, 0x400, false, SG, 0, true, false, 0},
+        {false, I, 0, false, SG, 0, true, true, 0},         // ERR1: one-cycle ERROR
+        {true, S, 0x500, false, SG, 0, true, false, 0},     // SEQ: no burst in progress
+        {true, N, 0x608, false, WR, 0, true, false, 0},
+        {true, S, 0x60c, false, WR, 0, true, false, 0},
+        {true, S, 0x610, false, WR, 0, true, false, 0},     // WRAP: should be 0x600
+        {true, S, 0x604, false, WR, 0, true, false, 7},     // CTRL: hprot differs from the NONSEQ
+        {true, S, 0x608, false, WR, 0, true, false, 0},     // LEN: fifth beat of a four-beat burst
+        idleRow,
+        {true, N, 0x700, false, I4, 0, true, false, 0},
+        {true, I, 0, false, SG, 0, true, false, 0},         // BURSTIDLE: IDLE with three beats left
+        idleRow,
+        {true, N, 0x800, false, SG, 0, true, false, 0, true},
+        idleRow,                                            // hmastlock dropped
+        {true, N, 0x804, false, SG, 0, true, false, 0, true}, // LOCK: locked again
+        idleRow,
+        {true, N, 0x900, false, SG, 0, true, false, 0},
+        {false, I, 0, false, SG, 0, false, true, 0},        // first ERROR cycle
+        {false, I, 0, false, SG, 0, false, false, 0},       // ERR2: second ERROR cycle with hready and hresp low
+        idleRow,                                            // the read ends OKAY
+        {false, I, 0, false, SG, 0, false, true, 0},        // ERRIDLE and ZEROWAIT: ERROR with no transfer
+        {false, I, 0, false, SG, 0, true, true, 0},         // its second cycle
+        idleRow,
+        {true, B, 0xa00, false, SG, 0, true, false, 0},     // BUSY: no burst in progress
+        idleRow,
+        {true, N, 0xb00, false, I4, 0, true, false, 0},
+        {true, S, 0xb04, false, I4, 0, false, true, 0},     // first ERROR cycle
+        {true, S, 0xb08, false, I4, 0, true, true, 0},      // STABLE: only IDLE may replace the pending SEQ,
+                                                            // and WRAP: the beat after 0xb00 is 0xb04
+        {true, S, 0xb08, false, I4, 0, true, false, 0},     // the monitor counts on from 0xb04
+        {true, S, 0xb0c, false, I4, 0, true, false, 0},
+        {true, I, 0, false, SG, 0, true, false, 0},
+        idleRow,
+    };
+}
+static const std::vector<std::string> SELF_TEST_TAGS = {"STABLE", "WDATA", "ERR1",  "SEQ",     "WRAP",
+                                                        "CTRL",   "LEN",   "BURSTIDLE", "LOCK", "ERR2",
+                                                        "ERRIDLE", "ZEROWAIT", "BUSY", "STABLE", "WRAP"};
+
+// An INCR4 read whose first beat answers ERROR. The manager drives the second
+// beat during the first ERROR cycle, then cancels it with IDLE in the second.
+static std::vector<pinRow> errorCancelRows()
+{
+    return {
+        {true, N, 0x200, false, I4, 0, true, false, PROT},
+        {true, S, 0x204, false, I4, 0, false, true, PROT}, // first ERROR cycle
+        {true, I, 0x204, false, I4, 0, true, true, PROT},  // second ERROR cycle, burst cancelled
+        {true, I, 0x204, false, I4, 0, true, false, PROT},
+    };
+}
+
+// The same ERROR, after which the manager carries on with the rest of the burst.
+static std::vector<pinRow> errorContinueRows()
+{
+    return {
+        {true, N, 0x200, false, I4, 0, true, false, PROT},
+        {true, S, 0x204, false, I4, 0, false, true, PROT}, // first ERROR cycle
+        {true, S, 0x204, false, I4, 0, true, true, PROT},  // second ERROR cycle, 0x204 accepted
+        {true, S, 0x208, false, I4, 0, true, false, PROT},
+        {true, S, 0x20c, false, I4, 0, true, false, PROT},
+        {true, I, 0, false, SG, 0, true, false, PROT},
+    };
+}
+
+static void verifySelfTest(const pinScript &st)
+{
+    for (const std::string &note : st.mon.notes) std::printf("  selfTest reported: %s\n", note.c_str());
+    expect("selfTest violations reported", st.mon.tags.size(), SELF_TEST_TAGS.size());
+    for (size_t i = 0; i < SELF_TEST_TAGS.size() && i < st.mon.tags.size(); ++i) {
+        ++g_checks;
+        if (st.mon.tags[i] != SELF_TEST_TAGS[i]) {
+            ++g_fail;
+            std::printf("FAIL selfTest violation %zu is %s, want %s\n", i, st.mon.tags[i].c_str(),
+                        SELF_TEST_TAGS[i].c_str());
+        }
+    }
+    std::printf("scenario selfTest violations:%s\n", st.tagList().c_str());
+}
+
+// A legal ERROR inside a burst: one two-cycle ERROR, `xfers` completed data
+// phases and no violation.
+static void verifyBurstError(const std::string &name, const pinScript &sc, size_t xfers)
+{
+    checkMonitorClean(name, sc.mon);
+    expect(name + " ERROR responses", sc.mon.errorResponses, 1);
+    expect(name + " data phases", sc.mon.dn.size(), xfers);
+    std::printf("scenario %s transfers:%zu errors:%u violations:%zu\n", name.c_str(), sc.mon.dn.size(),
+                sc.mon.errorResponses, sc.mon.tags.size());
+}
+
+// A model manager written exactly as the two-thread example in
+// rules/skills/systemc-interfaces.md: the address thread sends each address
+// and, for a write, its data, and the second thread takes the responses. The
+// first `writes` of the four transfers are writes.
+class docMgr : public sc_module
+{
+public:
+    ahb_out<A, D> ahbOut;
+    unsigned responses = 0;
+    SC_HAS_PROCESS(docMgr);
+    docMgr(sc_module_name n, unsigned w) : sc_module(n), writes(w)
     {
-        const std::vector<std::string> want = {"STABLE", "WDATA", "ERR1", "SEQ", "WRAP", "CTRL", "LEN", "BURSTIDLE", "LOCK"};
-        for (const std::string &note : mon.notes) std::printf("  selfTest reported: %s\n", note.c_str());
-        expect("selfTest violations reported", mon.tags.size(), want.size());
-        for (size_t i = 0; i < want.size() && i < mon.tags.size(); ++i) {
-            ++g_checks;
-            if (mon.tags[i] != want[i]) {
-                ++g_fail;
-                std::printf("FAIL selfTest violation %zu is %s, want %s\n", i, mon.tags[i].c_str(), want[i].c_str());
+        SC_THREAD(addrThread);
+        SC_THREAD(respThread);
+    }
+
+private:
+    const unsigned writes;
+
+    void addrThread()
+    {
+        ahbAddrSt<A> a;
+        a.htrans = AHBTRANS_NONSEQ;
+        a.hsize = SIZE;
+        a.hprot = PROT;
+        for (uint32_t i = 0; i < 4; i++) {
+            a.haddr.value = 0x100 + 4 * i;
+            a.hwrite = (i < writes);
+            ahbOut->sendAddr(a);
+            if (a.hwrite) {
+                D d;
+                d.value = 0xA5000000 + i;
+                ahbOut->sendData(d);
             }
         }
-        std::string all;
-        for (const std::string &t : mon.tags) all += (all.empty() ? "" : ",") + t;
-        std::printf("scenario selfTest violations:%s\n", all.c_str());
+    }
+    void respThread()
+    {
+        while (true) {
+            ahbRespSt<D> r;
+            ahbOut->receiveResp(r);
+            expect(std::format("{} response {} hresp", name(), responses), r.hresp, 0);
+            ++responses;
+        }
     }
 };
 
-int sc_main(int, char *[])
+// docMgr through ahb_dst_bfm into a zero-wait pin subordinate. Each address
+// phase must be taken at the edge after the one before, while the previous
+// transfer is in its data phase.
+class docMgrScenario : public sc_module
 {
+public:
+    sc_clock clk{"clk", 10, SC_NS};
+    sc_signal<bool> rst_n{"rst_n"};
+    ahb_channel<A, D> chan{"chan", "tb"};
+    pins_t pins;
+    ahb_dst_bfm<A, D, VA, VD> bfm{"bfm"};
+    docMgr mgr;
+    pinSub sub;
+    ahbPinMonitor mon{"mon", pins};
+
+    SC_HAS_PROCESS(docMgrScenario);
+    docMgrScenario(sc_module_name n, unsigned writes)
+        : sc_module(n), mgr("mgr", writes), sub("sub", pins, script(writes)), nWrites(writes)
+    {
+        mgr.ahbOut(chan);
+        bfm.if_p(chan);
+        bfm.hdl_if_p(pins);
+        bfm.clk(clk);
+        bfm.rst_n(rst_n);
+        sub.clk(clk);
+        sub.rst_n(rst_n);
+        mon.clk(clk);
+        mon.rst_n(rst_n);
+        SC_THREAD(reset);
+    }
+    void reset()
+    {
+        rst_n = false;
+        wait(35, SC_NS);
+        rst_n = true;
+    }
+    void verify()
+    {
+        const std::string nm = name();
+        expect(nm + " manager responses", mgr.responses, 4);
+        expect(nm + " subordinate transfers", sub.log.size(), 4);
+        for (size_t i = 0; i < sub.log.size(); ++i) {
+            expect(std::format("{} transfer {} haddr", nm, i), sub.log[i].addr, 0x100 + 4 * i);
+            expect(std::format("{} transfer {} write", nm, i), sub.log[i].write, i < nWrites);
+            if (i < nWrites) expect(std::format("{} transfer {} hwdata", nm, i), sub.log[i].wdata, 0xA5000000 + i);
+        }
+        std::vector<uint64_t> edges;
+        for (const ahbPinMonitor::accepted &a : mon.acc) {
+            if (a.sel && isXferTrans(a.trans)) edges.push_back(a.edge);
+        }
+        expect(nm + " address phases", edges.size(), 4);
+        std::string list;
+        for (size_t i = 0; i < edges.size(); ++i) {
+            list += (i ? "," : "") + std::to_string(edges[i]);
+            if (i) expect(std::format("{} address phase {} one edge after the one before", nm, i), edges[i] - edges[i - 1], 1);
+        }
+        checkMonitorClean(nm, mon);
+        std::printf("scenario %s edges:%s violations:%zu\n", nm.c_str(), list.c_str(), mon.tags.size());
+    }
+
+private:
+    const unsigned nWrites;
+
+    static std::vector<beat> script(unsigned writes)
+    {
+        std::vector<beat> s;
+        for (unsigned i = 0; i < 4; ++i) {
+            s.push_back(i < writes ? wr(0x100 + 4 * i, 0xA5000000 + i, N, SG) : rd(0x100 + 4 * i, 0, N, SG));
+        }
+        return s;
+    }
+};
+
+// Generated structures have an empty constructor, so a field starts with
+// whatever its storage held. These two mimic them, one with the array
+// _packedSt of a structure over 64 bits and one with a scalar _packedSt.
+struct genArrayPayload
+{
+    static constexpr unsigned _bitWidth = 32;
+    typedef uint64_t _packedSt[1];
+    uint64_t value;
+    genArrayPayload() {}
+    void pack(_packedSt &v) const { v[0] = value; }
+    void unpack(const _packedSt &v) { value = v[0]; }
+    static uint64_t word(const _packedSt &v) { return v[0]; }
+};
+struct genScalarPayload
+{
+    static constexpr unsigned _bitWidth = 32;
+    typedef uint64_t _packedSt;
+    uint64_t value;
+    genScalarPayload() {}
+    void pack(_packedSt &v) const { v = value; }
+    void unpack(const _packedSt &v) { value = v; }
+    static uint64_t word(const _packedSt &v) { return v; }
+};
+
+// A response built in storage full of 0xff has hrdata zero, so a write
+// response logs and converts a defined value.
+template <typename P>
+static void checkRespDataDefined(const std::string &what)
+{
+    alignas(ahbRespSt<P>) unsigned char storage[sizeof(ahbRespSt<P>)];
+    std::memset(storage, 0xff, sizeof(storage));
+    const ahbRespSt<P> *r = new (storage) ahbRespSt<P>();
+    typename P::_packedSt packed{};
+    r->hrdata.pack(packed);
+    expect(what + " response hrdata packs to zero", P::word(packed), 0);
+    expect(what + " response hresp OKAY", r->hresp, 0);
+    r->~ahbRespSt<P>();
+}
+
+// A subordinate that holds hready low for ten cycles after it takes a write,
+// with reset asserted during those cycles. The subordinate drives hready high
+// in reset, so ahb_dst_bfm must assert rather than complete the write.
+class resetMidTransfer : public sc_module
+{
+public:
+    sc_clock clk{"clk", 10, SC_NS};
+    sc_signal<bool> rst_n{"rst_n"};
+    ahb_channel<A, D> chan{"chan", "tb"};
+    pins_t pins;
+    ahb_dst_bfm<A, D, VA, VD> bfm{"bfm"};
+    unsigned responses = 0;
+
+    SC_CTOR(resetMidTransfer)
+    {
+        bfm.if_p(chan);
+        bfm.hdl_if_p(pins);
+        bfm.clk(clk);
+        bfm.rst_n(rst_n);
+        SC_THREAD(reset);
+        SC_THREAD(manager);
+        SC_THREAD(subordinate);
+    }
+    void verify()
+    {
+        expect("resetAssert responses", responses, 0);
+        expect("resetAssert exit code", errorCode::getExitCode(), 1);
+        expect("resetAssert message",
+               errorCode::getErrorString().find("reset during a transfer is not supported") != std::string::npos, 1);
+        std::printf("scenario resetAssert responses:%u exitCode:%d\n", responses, errorCode::getExitCode());
+    }
+
+private:
+    sc_event accepted;
+
+    void reset()
+    {
+        rst_n = false;
+        wait(35, SC_NS);
+        rst_n = true;
+        wait(accepted);
+        wait(clk.negedge_event());
+        rst_n = false;
+        wait(30, SC_NS);
+        rst_n = true;
+    }
+    void manager()
+    {
+        ahbAddrSt<A> a;
+        a.haddr.value = 0x100;
+        a.hsize = SIZE;
+        a.hwrite = true;
+        chan.sendAddr(a, std::nullopt);
+        D d;
+        d.value = 0x12345678;
+        chan.sendData(d);
+        ahbRespSt<D> r;
+        chan.receiveResp(r);
+        ++responses;
+        std::printf("resetAssert response at %s rst_n=%d hresp=%d\n", sc_time_stamp().to_string().c_str(),
+                    int(rst_n.read()), int(r.hresp));
+    }
+    void subordinate()
+    {
+        pins.hready = true;
+        pins.hresp = false;
+        pins.hrdata = VD(0);
+        bool pending = false;
+        unsigned waits = 0;
+        while (true) {
+            wait(clk.posedge_event());
+            if (!rst_n.read()) {
+                pending = false;
+                pins.hready = true;
+                continue;
+            }
+            if (pending && ++waits == 10) {
+                pins.hready = true;
+                pending = false;
+            } else if (!pending && pins.hsel.read() && isXferTrans(pins.htrans.read().to_uint())) {
+                pending = true;
+                waits = 0;
+                pins.hready = false;
+                accepted.notify(SC_ZERO_TIME);
+            }
+        }
+    }
+};
+
+int sc_main(int argc, char *argv[])
+{
+    if (argc > 1 && std::string(argv[1]) == "resetAssert") {
+        resetMidTransfer rm("reset");
+        sc_start(1, SC_US);
+        rm.verify();
+        std::printf("checks:%d failures:%d\n", g_checks, g_fail);
+        return g_fail ? 1 : 0;
+    }
+    checkRespDataDefined<genArrayPayload>("array _packedSt");
+    checkRespDataDefined<genScalarPayload>("scalar _packedSt");
     loopback lb("lb");
     srcBfmScenario src("src");
     dstBfmScenario dst("dst");
     slowMgrScenario slow("slow");
-    selfTest st("st");
+    pinScript st("st", selfTestRows());
+    pinScript cancel("errCancel", errorCancelRows());
+    pinScript cont("errContinue", errorContinueRows());
+    docMgrScenario docWrites("docWrites", 4);
+    docMgrScenario docMixed("docMixed", 2);
     sc_start(5, SC_US);
     lb.verify();
     src.verify();
     dst.verify();
     slow.verify();
-    st.verify();
+    verifySelfTest(st);
+    verifyBurstError("errCancel", cancel, 1);
+    verifyBurstError("errContinue", cont, 4);
+    docWrites.verify();
+    docMixed.verify();
     std::printf("checks:%d failures:%d\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

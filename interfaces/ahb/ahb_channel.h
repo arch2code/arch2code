@@ -163,7 +163,13 @@ struct ahbRespSt
 
     typedef uint64_t _packedSt[_packedSize];
 
-    ahbRespSt() : hresp(false) {}
+    // A generated payload's constructor leaves its fields unset, and a write
+    // response carries no read data, so hrdata starts at zero.
+    ahbRespSt() : hresp(false)
+    {
+        typename D::_packedSt zero{};
+        hrdata.unpack(zero);
+    }
 
     inline bool operator == (const ahbRespSt< D > & rhs) const {
         return (

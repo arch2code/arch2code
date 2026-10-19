@@ -143,7 +143,8 @@ def run(cmd, what):
 
 
 def build_and_run(build_dir, env, fixture):
-    """Compile the endOfTest module, the runtime and the harness; link and run."""
+    """Compile the endOfTest module, the runtime and the harness; link and run.
+    Returns the run's result and the binary path."""
     common = [STD] + WARNINGS + DEFINES + include_flags(env)
 
     # `q_assert.cpp` and its neighbours import the a2c.endOfTest module, so the
@@ -172,7 +173,7 @@ def build_and_run(build_dir, env, fixture):
     run([CXX, STD, '-o', binary] + objects +
         env['BOOST_LIBS'] + ['-L' + env['SYSTEMC_LIBDIR']] + LIBS, 'link')
 
-    return subprocess.run([binary], capture_output=True, text=True, timeout=300)
+    return subprocess.run([binary], capture_output=True, text=True, timeout=300), binary
 
 
 def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
@@ -181,7 +182,7 @@ def test_thunkers_bridge_payloads_in_both_directions_at_both_verdicts():
     assert shutil.which(CXX), f"{CXX} not found on PATH"
     build_dir = tempfile.mkdtemp(prefix='a2c_thunker_rt_')
     try:
-        result = build_and_run(build_dir, env, FIXTURE)
+        result, _ = build_and_run(build_dir, env, FIXTURE)
     finally:
         remove_tree(build_dir)
 
@@ -204,7 +205,7 @@ def test_axi_thunkers_match_a_direct_connection():
     assert shutil.which(CXX), f"{CXX} not found on PATH"
     build_dir = tempfile.mkdtemp(prefix='a2c_axi_thunker_rt_')
     try:
-        result = build_and_run(build_dir, env, AXI_FIXTURE)
+        result, _ = build_and_run(build_dir, env, AXI_FIXTURE)
     finally:
         remove_tree(build_dir)
 

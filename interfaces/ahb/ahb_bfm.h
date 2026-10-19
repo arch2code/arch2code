@@ -254,6 +254,7 @@ private:
                 hdl_if_p->hwdata = VL_DATA_T(0);
             }
             wait(clk.posedge_event());
+            Q_ASSERT(rst_n || (!ap && !dp), "ahb reset during a transfer is not supported");
             if (!hdl_if_p->hready) {
                 // Wait state, or the first cycle of an ERROR response.
                 continue;

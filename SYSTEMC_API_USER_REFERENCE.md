@@ -1030,7 +1030,7 @@ void myBlock::ctrlThread(void)
 
 ### 4.14 ahb_channel - AHB-Lite
 
-AHB-Lite between one manager and one subordinate, with an address phase (`ahbAddrSt`: `haddr`, `htrans`, `hwrite`, `hsize`, `hburst`, `hprot`, `hmastlock`), write data, and a response (`ahbRespSt`: `hrdata`, `hresp`). `hresp` true is ERROR. Each phase has its own sub-channel, so a manager that sends addresses from one thread and data and responses from another overlaps the address of transfer N+1 with the data phase of transfer N. `rules/skills/systemc-interfaces.md` has a two-thread example.
+AHB-Lite between one manager and one subordinate, with an address phase (`ahbAddrSt`: `haddr`, `htrans`, `hwrite`, `hsize`, `hburst`, `hprot`, `hmastlock`), write data, and a response (`ahbRespSt`: `hrdata`, `hresp`). `hresp` true is ERROR. Each phase has its own sub-channel, so a manager that sends addresses and write data from one thread and takes responses from another overlaps the address of transfer N+1 with the data phase of transfer N. Sending write data from the response thread serializes back-to-back writes, because `ahb_dst_bfm` drives a write's address only once it has the data. `rules/skills/systemc-interfaces.md` has a two-thread example. `ahb_dst_bfm` does not support reset after start-up and asserts if `rst_n` is low at a clock edge while a transfer is in its address or data phase.
 
 #### Source side (manager)
 
