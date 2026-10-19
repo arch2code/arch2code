@@ -220,8 +220,13 @@ module dut_hdl_sv_wrapper
     `endif
 
     `ifndef VERILATOR
+    req_ack_xcheck test_req_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_req_ack));
+    req_ack_xcheck test2Python_req_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test2Python_req_ack));
+    req_ack_xcheck dut2Python_req_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_req_ack));
     push_ack_xcheck test_push_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_push_ack));
+    pop_ack_xcheck test_pop_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_pop_ack));
     push_ack_xcheck dut2Python_push_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_push_ack));
+    pop_ack_xcheck dut2Python_pop_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_pop_ack));
     notify_ack_xcheck test_notify_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_notify_ack));
     notify_ack_xcheck dut2Python_notify_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_notify_ack));
     rdy_vld_xcheck test_rdy_vld_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_rdy_vld));

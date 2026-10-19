@@ -3,6 +3,7 @@ interface_defs:
   pop_ack : 
     timing: elastic
     backpressure: { default: true, overridable: false }
+    uvmAgent: true
     parameters : 
       rdata_t : { datatype : struct }
     signals: 

@@ -61,7 +61,11 @@ public:
         return m_declared_test_names;
     }
     void register_test_name(std::string test_name) {
-        // check if test name is valid
+        if (m_test_name_registration_count.empty()) {
+            std::cout << "ERROR: test name " << test_name << " is not valid: the test list is empty. "
+                      << "Call set_test_names before register_test_name." << std::endl;
+            exit(1);
+        }
         if (m_test_name_registration_count.find(test_name) == m_test_name_registration_count.end()) {
             std::cout << "ERROR: test name " << test_name << " is not valid" << '\n';
             exit(1);

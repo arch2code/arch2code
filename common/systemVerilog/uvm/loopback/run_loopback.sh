@@ -34,11 +34,12 @@ for f in "$HERE"/*_lb_tests.svh; do
     fi
     TESTS="$TESTS $FILE_TESTS"
 done
-# a2c_uvm.f lists every agent package, so every interface they name is compiled.
-SRCS="$BASE/interfaces/rdy_vld/rdy_vld_if.sv $BASE/interfaces/apb/apb_if.sv
-      $BASE/interfaces/axi4_stream/axi4_stream_if.sv $BASE/interfaces/raw/raw_if.sv
-      $BASE/interfaces/status/status_if.sv $BASE/interfaces/push_ack/push_ack_if.sv
-      $BASE/interfaces/notify_ack/notify_ack_if.sv -F $HERE/../a2c_uvm.f $HERE/a2c_uvm_loopback_tb.sv"
+# Each agent package a2c_uvm.f lists has its interface, <type>_if.sv, beside it.
+SRCS=""
+for t in $(sed -n 's#^\.\./\.\./\.\./interfaces/\([^/]*\)/.*_uvm_pkg\.sv$#\1#p' "$HERE/../a2c_uvm.f"); do
+    SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv"
+done
+SRCS="$SRCS -F $HERE/../a2c_uvm.f $HERE/a2c_uvm_loopback_tb.sv"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"

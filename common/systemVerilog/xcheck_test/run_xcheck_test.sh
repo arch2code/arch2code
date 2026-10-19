@@ -1,8 +1,9 @@
 #!/bin/bash
-# Builds xcheck_tb.sv with the seven <type>_xcheck modules on Xcelium or VCS
-# and runs it. xz_count.c replaces the a2c_xz_fail of common/systemc and counts
-# each checker's reports, and every case compares its count and first signal
-# with what it expects. Exits 0 only when every case logs XC_PASS.
+# Builds xcheck_tb.sv with the <type>_xcheck module of each type in TYPES on
+# Xcelium or VCS and runs it. xz_count.c replaces the a2c_xz_fail of
+# common/systemc and counts each checker's reports, and every case compares
+# its count and first signal with what it expects. Exits 0 only when every
+# case logs XC_PASS.
 #
 #   run_xcheck_test.sh xcelium|vcs
 #
@@ -23,7 +24,7 @@ SIM=$1
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=$(cd "$HERE/../../.." && pwd)
 OUT=$PWD/xcheck_$SIM
-TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack"
+TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack req_ack pop_ack"
 SRCS=""
 for t in $TYPES; do
     SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv $BASE/interfaces/$t/${t}_xcheck.sv"

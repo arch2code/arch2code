@@ -7,3 +7,5 @@ a2c_uvm_pkg.sv
 ../../../interfaces/status/status_uvm_pkg.sv
 ../../../interfaces/push_ack/push_ack_uvm_pkg.sv
 ../../../interfaces/notify_ack/notify_ack_uvm_pkg.sv
+../../../interfaces/req_ack/req_ack_uvm_pkg.sv
+../../../interfaces/pop_ack/pop_ack_uvm_pkg.sv

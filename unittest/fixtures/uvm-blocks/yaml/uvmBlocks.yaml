@@ -1,6 +1,9 @@
 # ubDut has the shape a UVM testbench accepts: a declared rdy_vld boundary, an
 # APB register bus, and only input clocks and resets.
 
+include:
+    - ubIf.yaml
+
 types:
     ubDataT: { width: 8, desc: "Stream payload" }
     ubWordT: { width: 32, desc: "APB address and data word" }

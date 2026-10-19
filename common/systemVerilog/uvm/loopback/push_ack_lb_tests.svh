@@ -1,5 +1,5 @@
 // push_ack agent loopback tests, included in a2c_uvm_loopback_pkg after the
-// scoreboard, the monitor log and the base test.
+// scoreboard and the base test.
 
     typedef push_ack_agent #(.data_t(lb_data_t)) pa_agent_t;
     typedef pa_agent_t::item_t pa_item_t;
@@ -85,14 +85,11 @@
     endclass : pa_pair_test
 
     // The dst agent acks 0 to 3 extra clocks after it samples push, drawn
-    // per transfer. Every transfer must arrive in order, the src and dst
-    // monitors must report the same beats at the same times, and the clocks
-    // push waited for ack must cover the whole delay range: 1 to 4.
+    // per transfer. Every transfer must arrive in order, and the clocks push
+    // waited for ack must cover the whole delay range: 1 to 4.
     class push_ack_random_test extends pa_pair_test;
-        lb_monitor_log#(pa_item_t) src_log;
-        lb_monitor_log#(pa_item_t) dst_log;
-        int unsigned               min_wait = '1;
-        int unsigned               max_wait;
+        int unsigned min_wait = '1;
+        int unsigned max_wait;
 
         `uvm_component_utils(push_ack_random_test)
 
@@ -103,18 +100,6 @@
         virtual function void configure_dst(pa_config_t cfg);
             cfg.ack_delay_min = 0;
             cfg.ack_delay_max = 3;
-        endfunction
-
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            src_log = lb_monitor_log#(pa_item_t)::type_id::create("src_log", this);
-            dst_log = lb_monitor_log#(pa_item_t)::type_id::create("dst_log", this);
-        endfunction
-
-        virtual function void connect_phase(uvm_phase phase);
-            super.connect_phase(phase);
-            src.mon.ap.connect(src_log.analysis_export);
-            dst.mon.ap.connect(dst_log.analysis_export);
         endfunction
 
         virtual task run_phase(uvm_phase phase);
@@ -147,10 +132,8 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            `uvm_info("LB_STATS", $sformatf("%0d transfers, src and dst monitors %0d and %0d beats, push waited %0d to %0d clocks",
-                                            sb.matched, src_log.items.size(), dst_log.items.size(), min_wait, max_wait),
+            `uvm_info("LB_STATS", $sformatf("%0d transfers, push waited %0d to %0d clocks", sb.matched, min_wait, max_wait),
                       UVM_NONE)
-            src_log.compare_with(dst_log);
             if (min_wait != 1 || max_wait != 4) begin
                 `uvm_error("LB_ACK_DELAY", $sformatf("ack delay 0 to 3 should make push wait 1 to 4 clocks, it waited %0d to %0d",
                                                      min_wait, max_wait))

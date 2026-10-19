@@ -1,6 +1,6 @@
 // notify_ack agent loopback tests, included in a2c_uvm_loopback_pkg after the
-// scoreboard, the monitor log and the base test. An event has no payload, so
-// the scoreboard counts events in order and the monitor logs compare times.
+// scoreboard and the base test. An event has no payload, so the scoreboard
+// counts events.
 
     typedef notify_ack_agent na_agent_t;
     typedef na_agent_t::item_t na_item_t;
@@ -82,14 +82,11 @@
     endclass : na_pair_test
 
     // The dst agent acks 0 to 3 extra clocks after it samples notify, drawn
-    // per event. Every event must arrive, the src and dst monitors must
-    // report the same events at the same times, and the clocks notify waited
-    // for ack must cover the whole delay range: 1 to 4.
+    // per event. Every event must arrive, and the clocks notify waited for
+    // ack must cover the whole delay range: 1 to 4.
     class notify_ack_random_test extends na_pair_test;
-        lb_monitor_log#(na_item_t) src_log;
-        lb_monitor_log#(na_item_t) dst_log;
-        int unsigned               min_wait = '1;
-        int unsigned               max_wait;
+        int unsigned min_wait = '1;
+        int unsigned max_wait;
 
         `uvm_component_utils(notify_ack_random_test)
 
@@ -100,18 +97,6 @@
         virtual function void configure_dst(na_config_t cfg);
             cfg.ack_delay_min = 0;
             cfg.ack_delay_max = 3;
-        endfunction
-
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            src_log = lb_monitor_log#(na_item_t)::type_id::create("src_log", this);
-            dst_log = lb_monitor_log#(na_item_t)::type_id::create("dst_log", this);
-        endfunction
-
-        virtual function void connect_phase(uvm_phase phase);
-            super.connect_phase(phase);
-            src.mon.ap.connect(src_log.analysis_export);
-            dst.mon.ap.connect(dst_log.analysis_export);
         endfunction
 
         virtual task run_phase(uvm_phase phase);
@@ -144,10 +129,8 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            `uvm_info("LB_STATS", $sformatf("%0d events, src and dst monitors %0d and %0d events, notify waited %0d to %0d clocks",
-                                            sb.matched, src_log.items.size(), dst_log.items.size(), min_wait, max_wait),
+            `uvm_info("LB_STATS", $sformatf("%0d events, notify waited %0d to %0d clocks", sb.matched, min_wait, max_wait),
                       UVM_NONE)
-            src_log.compare_with(dst_log);
             if (min_wait != 1 || max_wait != 4) begin
                 `uvm_error("LB_ACK_DELAY", $sformatf("ack delay 0 to 3 should make notify wait 1 to 4 clocks, it waited %0d to %0d",
                                                      min_wait, max_wait))

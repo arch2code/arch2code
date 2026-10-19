@@ -15,9 +15,9 @@ names every test that will run without an ADD_TEST, because the run never
 completes any of them that no old-style thread runs either. --test leaves the
 unselected tests out of the warning. A testbench that never uses ADD_TEST gets
 no warning. A name run both ways exits with status 1 before either body prints,
-whether register_test_name or ADD_TEST comes first. ADD_TEST before
-set_test_names, and set_test_names after ADD_TEST, exit with status 1 and say
-so.
+whether register_test_name or ADD_TEST comes first. ADD_TEST or
+register_test_name before set_test_names, and set_test_names after ADD_TEST,
+exit with status 1 and say so.
 
 The probe runs the shipped sc_main with the testbenches described in
 fixtures/testbench-cli/add_test_probe.cpp.
@@ -43,6 +43,8 @@ MIXED_NAMES = WARNING + 'oldStyle. '
 MIXED_SAME = 'ERROR: test alpha runs with add_test or ADD_TEST and also calls register_test_name'
 RELIST = 'ERROR: set_test_names runs after add_test or ADD_TEST registered a test.'
 UNLISTED = 'ERROR: test name alpha is not valid: the test list is empty. Call set_test_names before ADD_TEST'
+UNLISTED_OLD = ('ERROR: test name oldStyle is not valid: the test list is empty. '
+                'Call set_test_names before register_test_name')
 TIME_LIMIT = 'Simulation has reached the maximum'
 
 # (testbench, args) -> (exit status, output lines in this order, output that must be absent)
@@ -60,6 +62,7 @@ SCENARIOS = {
     ('oldFormProbe', ()): (0, ('ran oldStyle old style',), (WARNING, TIME_LIMIT)),
     ('relistProbe', ()): (1, (RELIST,), ('ran ', TIME_LIMIT)),
     ('unlistedProbe', ()): (1, (UNLISTED,), ('ran ', TIME_LIMIT)),
+    ('unlistedOldFormProbe', ()): (1, (UNLISTED_OLD,), ('ran ', TIME_LIMIT)),
 }
 
 FAILURES = []

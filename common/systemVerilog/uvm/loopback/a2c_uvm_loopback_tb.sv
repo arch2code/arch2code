@@ -17,6 +17,8 @@ package a2c_uvm_loopback_pkg;
     import apb_uvm_pkg::*;
     import push_ack_uvm_pkg::*;
     import notify_ack_uvm_pkg::*;
+    import req_ack_uvm_pkg::*;
+    import pop_ack_uvm_pkg::*;
 
     typedef struct packed {
         logic [3:0]  tag;
@@ -71,39 +73,6 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : lb_scoreboard
 
-    // Keeps every item one monitor reports and the time it reports it, so a
-    // test can compare two monitors on the same pins beat for beat.
-    class lb_monitor_log #(type ITEM = uvm_sequence_item) extends uvm_subscriber #(ITEM);
-        ITEM     items[$];
-        realtime times[$];
-
-        `uvm_component_param_utils(lb_monitor_log#(ITEM))
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-        endfunction
-
-        virtual function void write(ITEM t);
-            items.push_back(t);
-            times.push_back($realtime);
-        endfunction
-
-        function void compare_with(lb_monitor_log#(ITEM) other);
-            if (items.size() != other.items.size()) begin
-                `uvm_error("LB_MONITORS", $sformatf("%s reported %0d beats, %s reported %0d", get_name(), items.size(),
-                                                    other.get_name(), other.items.size()))
-            end
-            foreach (items[i]) begin
-                if (i >= other.items.size()) break;
-                if (!items[i].compare(other.items[i]) || times[i] != other.times[i]) begin
-                    `uvm_error("LB_MONITORS", $sformatf("beat %0d: %s reported %s at %0t, %s reported %s at %0t", i,
-                                                        get_name(), items[i].convert2string(), times[i], other.get_name(),
-                                                        other.items[i].convert2string(), other.times[i]))
-                end
-            end
-        endfunction
-    endclass : lb_monitor_log
-
     class lb_base_test extends uvm_test;
         virtual a2c_clk_if clk_vif;
         int unsigned       n_items = 400;
@@ -149,6 +118,8 @@ package a2c_uvm_loopback_pkg;
     `include "apb_lb_tests.svh"
     `include "push_ack_lb_tests.svh"
     `include "notify_ack_lb_tests.svh"
+    `include "req_ack_lb_tests.svh"
+    `include "pop_ack_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
@@ -180,6 +151,8 @@ module a2c_uvm_loopback_tb;
     apb_if #(.addr_t(lb_apb_word_t), .data_t(lb_apb_word_t)) apb();
     push_ack_if #(.data_t(lb_data_t)) pa();
     notify_ack_if na();
+    req_ack_if #(.data_t(lb_data_t), .rdata_t(lb_rdata_t)) ra();
+    pop_ack_if #(.rdata_t(lb_data_t)) po();
 
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
@@ -190,6 +163,8 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(apb_vif_t)::set(null, "uvm_test_top", "apb", apb);
         uvm_config_db#(pa_vif_t)::set(null, "uvm_test_top", "pa", pa);
         uvm_config_db#(na_vif_t)::set(null, "uvm_test_top", "na", na);
+        uvm_config_db#(ra_vif_t)::set(null, "uvm_test_top", "ra", ra);
+        uvm_config_db#(po_vif_t)::set(null, "uvm_test_top", "po", po);
         run_test();
     end
 

@@ -188,7 +188,8 @@ package apb_uvm_pkg;
         // clock with psel and penable high is an A2C_PROTO; penable with psel
         // low is not, because a completer that is not selected ignores it.
         // Within a transfer, each clock that changes paddr, pwrite, or a
-        // write's pwdata gives one A2C_HOLD.
+        // write's pwdata gives one A2C_HOLD, and so does psel dropping before
+        // pready ends the transfer.
         virtual task run_phase(uvm_phase phase);
             apb_item item;
             bit      setup;
@@ -202,6 +203,10 @@ package apb_uvm_pkg;
                 cfg.clk_vif.sample_edge();
                 setup  = (cfg.vif.psel === 1'b1 && cfg.vif.penable !== 1'b1);
                 access = (cfg.vif.psel === 1'b1 && cfg.vif.penable === 1'b1);
+                if (in_transfer && cfg.vif.psel !== 1'b1) begin
+                    `uvm_error("A2C_HOLD", $sformatf("%s: psel dropped before pready ended the transfer at paddr %h",
+                                                     cfg.port_name, held_addr))
+                end
                 if (access && !in_transfer) begin
                     `uvm_error("A2C_PROTO", $sformatf("%s: psel and penable are high with no setup phase on the clock before",
                                                       cfg.port_name))

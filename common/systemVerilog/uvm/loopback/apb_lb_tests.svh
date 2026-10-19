@@ -197,15 +197,16 @@
         endfunction
     endclass : apb_wait_error_test
 
-    // The test drives the master's pins by hand against a slave agent with
-    // max_wait 0, whose monitor checks them: a clean write and a read back,
-    // psel and penable from idle, penable with psel low, which a completer
-    // that is not selected ignores, and three transfers that change paddr,
-    // pwrite and pwdata between the setup and access phases. Expects exactly
-    // one A2C_PROTO and three A2C_HOLD reports, demoted to info, and the five
-    // completed transfers reported.
+    // A passive monitor watches pins the test drives by hand, both master
+    // and slave: a clean write and a read back, psel and penable from idle,
+    // completed in that clock, penable with psel low, which a completer that
+    // is not selected ignores, three transfers that change paddr, pwrite and
+    // pwdata between the setup and access phases, and a transfer whose psel
+    // drops while pready is low. Expects exactly one A2C_PROTO and four
+    // A2C_HOLD reports, demoted to info, and the six completed transfers
+    // reported.
     class apb_monitor_checks_test extends lb_base_test;
-        apb_agent_t                slave;
+        apb_agent_t                obs;
         lb_scoreboard#(apb_item_t) sb;
         apb_vif_t                  vif;
 
@@ -222,27 +223,31 @@
             cfg = apb_config_t::type_id::create("cfg");
             cfg.vif       = vif;
             cfg.clk_vif   = clk_vif;
+            cfg.is_active = UVM_PASSIVE;
             cfg.role      = A2C_DST;
             cfg.port_name = "apb";
-            uvm_config_db#(apb_config_t)::set(this, "slave", "cfg", cfg);
-            slave = apb_agent_t::type_id::create("slave", this);
-            sb    = lb_scoreboard#(apb_item_t)::type_id::create("sb", this);
+            uvm_config_db#(apb_config_t)::set(this, "obs", "cfg", cfg);
+            obs = apb_agent_t::type_id::create("obs", this);
+            sb  = lb_scoreboard#(apb_item_t)::type_id::create("sb", this);
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
-            slave.mon.ap.connect(sb.imp);
-            slave.mon.set_report_severity_id_override(UVM_ERROR, "A2C_PROTO", UVM_INFO);
-            slave.mon.set_report_severity_id_override(UVM_ERROR, "A2C_HOLD", UVM_INFO);
+            obs.mon.ap.connect(sb.imp);
+            obs.mon.set_report_severity_id_override(UVM_ERROR, "A2C_PROTO", UVM_INFO);
+            obs.mon.set_report_severity_id_override(UVM_ERROR, "A2C_HOLD", UVM_INFO);
         endfunction
 
-        // One clock per call: the master's pins as the next rising edge sees
-        // them.
-        task drive(bit sel, bit enable, bit write, bit [31:0] addr, bit [31:0] wdata);
+        // One clock per call: the pins as the next rising edge sees them.
+        task drive(bit sel, bit enable, bit write, bit [31:0] addr, bit [31:0] wdata, bit ready,
+                   bit [31:0] rdata = 0);
             vif.psel    <= sel;
             vif.penable <= enable;
             vif.pwrite  <= write;
             vif.paddr   <= addr;
             vif.pwdata  <= wdata;
+            vif.pready  <= ready;
+            vif.prdata  <= rdata;
+            vif.pslverr <= 1'b0;
             clk_vif.drive_edge();
         endtask
 
@@ -257,32 +262,36 @@
 
         virtual task run_phase(uvm_phase phase);
             phase.raise_objection(this);
-            drive(0, 0, 0, 0, 0);
+            drive(0, 0, 0, 0, 0, 0);
             clk_vif.wait_reset_release();
             clk_vif.drive_edge();
             expect_transfer(1, 32'h40, 32'hA5A5_5A5A);
             expect_transfer(0, 32'h40, 32'hA5A5_5A5A);
+            expect_transfer(0, 32'h50, 32'h0);
             expect_transfer(1, 32'h14, 32'h1);
             expect_transfer(1, 32'h20, 32'h2);
             expect_transfer(1, 32'h30, 32'h6);
-            drive(1, 0, 1, 32'h40, 32'hA5A5_5A5A);  // clean write
-            drive(1, 1, 1, 32'h40, 32'hA5A5_5A5A);
-            drive(1, 0, 0, 32'h40, 32'h0);          // clean read, back to back
-            drive(1, 1, 0, 32'h40, 32'h0);
-            drive(0, 0, 0, 32'h0, 32'h0);
-            drive(1, 1, 0, 32'h50, 32'h0);          // penable with no setup phase
-            drive(0, 0, 0, 32'h0, 32'h0);
-            drive(0, 1, 0, 32'h50, 32'h0);          // penable without psel, not a report
-            drive(0, 0, 0, 32'h0, 32'h0);
-            drive(1, 0, 1, 32'h10, 32'h1);          // paddr changes
-            drive(1, 1, 1, 32'h14, 32'h1);
-            drive(0, 0, 0, 32'h0, 32'h0);
-            drive(1, 0, 0, 32'h20, 32'h2);          // pwrite changes
-            drive(1, 1, 1, 32'h20, 32'h2);
-            drive(0, 0, 0, 32'h0, 32'h0);
-            drive(1, 0, 1, 32'h30, 32'h5);          // pwdata changes
-            drive(1, 1, 1, 32'h30, 32'h6);
-            drive(0, 0, 0, 32'h0, 32'h0);
+            drive(1, 0, 1, 32'h40, 32'hA5A5_5A5A, 0);  // clean write
+            drive(1, 1, 1, 32'h40, 32'hA5A5_5A5A, 1);
+            drive(1, 0, 0, 32'h40, 32'h0, 0);          // clean read, back to back
+            drive(1, 1, 0, 32'h40, 32'h0, 1, 32'hA5A5_5A5A);
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 1, 0, 32'h50, 32'h0, 1);          // penable with no setup phase
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(0, 1, 0, 32'h50, 32'h0, 0);          // penable without psel, not a report
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 0, 1, 32'h10, 32'h1, 0);          // paddr changes
+            drive(1, 1, 1, 32'h14, 32'h1, 1);
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 0, 0, 32'h20, 32'h2, 0);          // pwrite changes
+            drive(1, 1, 1, 32'h20, 32'h2, 1);
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 0, 1, 32'h30, 32'h5, 0);          // pwdata changes
+            drive(1, 1, 1, 32'h30, 32'h6, 1);
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 0, 1, 32'h60, 32'h7, 0);          // psel drops while pready is low
+            drive(1, 1, 1, 32'h60, 32'h7, 0);
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
             repeat (2) clk_vif.drive_edge();
             phase.drop_objection(this);
         endtask
@@ -295,7 +304,7 @@
             `uvm_info("LB_STATS", $sformatf("%0d A2C_PROTO, %0d A2C_HOLD, %0d transfers reported", proto, hold, sb.matched),
                       UVM_NONE)
             if (proto != 1) `uvm_error("LB_CHECKS", $sformatf("expected 1 A2C_PROTO report, got %0d", proto))
-            if (hold != 3) `uvm_error("LB_CHECKS", $sformatf("expected 3 A2C_HOLD reports, got %0d", hold))
-            if (sb.matched != 5) `uvm_error("LB_CHECKS", $sformatf("expected 5 transfers reported, got %0d", sb.matched))
+            if (hold != 4) `uvm_error("LB_CHECKS", $sformatf("expected 4 A2C_HOLD reports, got %0d", hold))
+            if (sb.matched != 6) `uvm_error("LB_CHECKS", $sformatf("expected 6 transfers reported, got %0d", sb.matched))
         endfunction
     endclass : apb_monitor_checks_test

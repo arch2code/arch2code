@@ -31,7 +31,8 @@ structure members become no fields, so their names are not checked, and a name
 is checked only against its own class.
 
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
-ports and an apb register bus. Each negative arm edits one rule's violation
+ports and an apb register bus, and declares ub_no_agent, an interface type of
+its own with no agent, for the agent check. Each negative arm edits one rule's violation
 into a copy. A block with params whose only variants another project declares
 has no standalone variant, so the testbench would have no top for it.
 """
@@ -68,9 +69,9 @@ REJECTED = [
        '            out: { interface: ubStream, direction: src }\n', '')])],
      [WHERE, "declares no ports:"]),
     ('port type without an agent', ROOT_PROJECT,
-     [(ARCH, [('interfaceType: rdy_vld', 'interfaceType: pop_ack'),
+     [(ARCH, [('interfaceType: rdy_vld', 'interfaceType: ub_no_agent'),
               ('{ structure: ubSt, structureType: data_t }', '{ structure: ubSt, structureType: rdata_t }')])],
-     [WHERE, "its port 'in' has interface 'ubStream' of type 'pop_ack'",
+     [WHERE, "its port 'in' has interface 'ubStream' of type 'ub_no_agent'",
       "does not declare uvmAgent: true"]),
     ('output clock', ROOT_PROJECT,
      [(ARCH, [('        hasUvm: true\n',
@@ -118,7 +119,7 @@ REJECTED = [
      [(ARCH, [('blocks:\n',
                '    ubSide:\n'
                '        desc: "Side channel"\n'
-               '        interfaceType: pop_ack\n'
+               '        interfaceType: ub_no_agent\n'
                '        structures:\n'
                '            - { structure: ubSt, structureType: rdata_t }\n\n'
                'blocks:\n'),
@@ -143,7 +144,7 @@ REJECTED = [
                '    - { interface: ubStream, block: ubDut, port: in, direction: dst, instance: uCore, instancePort: in }\n'
                '    - { interface: ubStream, block: ubDut, port: out, direction: src, instance: uCore, instancePort: out }\n'
                '    - { interface: ubSide, block: ubDut, port: side, direction: dst, instance: uCore, instancePort: side }\n')])],
-     [WHERE, "its port 'side' has interface 'ubSide' of type 'pop_ack'",
+     [WHERE, "its port 'side' has interface 'ubSide' of type 'ub_no_agent'",
       "does not declare uvmAgent: true"]),
     ('a block module named like the UVM testbench', ROOT_PROJECT,
      [(ARCH, [('    ubDut:\n',

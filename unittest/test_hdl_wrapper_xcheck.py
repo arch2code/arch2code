@@ -13,8 +13,9 @@ when the port binds that payload, through the checker's CHECK_<SIGNAL>
 parameter: an unbound one is an undriven placeholder.
 
 The plain fixture block has an rdy_vld port on its default clock, a status
-port on a second clock with its own reset, and a pop_ack port, whose type has
-no agent and so gets no checker. The parameterized block's checkers are in the
+port on a second clock with its own reset, and a port of xc_no_agent, an
+interface type the fixture project declares with no agent, which gets no
+checker. The parameterized block's checkers are in the
 wrapper body, and it has one axi4_stream port that binds tuser_t and one that
 does not.
 """
@@ -35,7 +36,34 @@ from templates.systemVerilog import module_hdl_wrapper
 from _tmp_helpers import remove_tree
 
 
-ARCH_YAML = """ipParameters:
+# A pop_ack-shaped protocol without uvmAgent. The test builds only the
+# database and renders the wrapper, so it needs no companion files.
+NO_AGENT_IF_YAML = """interface_defs:
+  xc_no_agent:
+    timing: elastic
+    backpressure: {default: true, overridable: false}
+    parameters:
+      rdata_t: {datatype: struct}
+    signals:
+      pop: bool
+      ack: bool
+      rdata: rdata_t
+    modports:
+      src:
+        inputs: ['ack', 'rdata']
+        outputs: ['pop']
+      dst:
+        inputs: ['pop']
+        outputs: ['ack', 'rdata']
+    sc_channel:
+      type: 'xc_no_agent'
+      multicycle_types: []
+"""
+
+ARCH_YAML = """include:
+  - noAgentIf.yaml
+
+ipParameters:
   constants:
     XC_W: {value: 8, maxValue: 16, desc: "Width knob of pdut"}
 
@@ -66,7 +94,7 @@ interfaces:
     structures:
       - {structure: dataSt, structureType: data_t}
   popIf:
-    interfaceType: pop_ack
+    interfaceType: xc_no_agent
     desc: "Pop"
     structures:
       - {structure: dataSt, structureType: rdata_t}
@@ -204,6 +232,8 @@ def build_database():
         os.makedirs(projDir)
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
             f.write(ARCH_YAML)
+        with open(os.path.join(projDir, 'noAgentIf.yaml'), 'w') as f:
+            f.write(NO_AGENT_IF_YAML)
         projectPath = os.path.join(projDir, 'hdlXcheckProject.yaml')
         with open(projectPath, 'w') as f:
             f.write(PROJECT_YAML)
@@ -242,7 +272,7 @@ def test_wrapper_instances(proj, dut):
         'status_xcheck statusOut_xcheck (.clk(clkSlow), .rst_n(rstSlow_n), .intf(statusOut));'],
         "the rdy_vld port is checked on clk/rst_n and the status port on clkSlow/rstSlow_n")
     check(not any('popOut' in line for line in instances),
-          "the pop_ack port, whose type has no agent, has no checker")
+          "the xc_no_agent port, whose type has no agent, has no checker")
     if instances:
         first = lines.index(instances[0])
         last = lines.index(instances[-1])

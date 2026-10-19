@@ -15,6 +15,7 @@
 // oldFormProbe runs oldStyle the old way only.
 // relistProbe calls set_test_names again after ADD_TEST.
 // unlistedProbe runs ADD_TEST before set_test_names.
+// unlistedOldFormProbe calls register_test_name with no set_test_names.
 // The probes that should finish stop the simulation once every test completes,
 // so a run that hangs reaches --scTimeLimit instead.
 
@@ -214,6 +215,16 @@ struct unlistedProbeConfig : public testBenchConfigBase
     }
 };
 
+struct unlistedOldFormProbeConfig : public testBenchConfigBase
+{
+    std::unique_ptr<oldStyleHarness> oldStyle;
+    bool createTestBench( void ) override
+    {
+        oldStyle = std::make_unique<oldStyleHarness>( "oldStyle", "oldStyle" );
+        return true;
+    }
+};
+
 static int registerAddTestProbeConfigs()
 {
     testBenchConfigFactory::registerTestBenchConfig( "addTestProbe", []( std::string ) -> std::shared_ptr<testBenchConfigBase> {
@@ -232,6 +243,8 @@ static int registerAddTestProbeConfigs()
         return std::make_shared<relistProbeConfig>(); } );
     testBenchConfigFactory::registerTestBenchConfig( "unlistedProbe", []( std::string ) -> std::shared_ptr<testBenchConfigBase> {
         return std::make_shared<unlistedProbeConfig>(); } );
+    testBenchConfigFactory::registerTestBenchConfig( "unlistedOldFormProbe", []( std::string ) -> std::shared_ptr<testBenchConfigBase> {
+        return std::make_shared<unlistedOldFormProbeConfig>(); } );
     return 0;
 }
 [[maybe_unused]] static int addTestProbeConfigsRegistered = registerAddTestProbeConfigs();
