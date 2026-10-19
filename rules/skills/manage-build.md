@@ -81,10 +81,11 @@ The synthesis project adds the rest itself:
 
 ## User hooks
 *   The project appends to the `EXTRA_*` hooks with `+=` in `include/make/shared.mk`. Base and the a2cPro layer read them and never assign them, so a hook set on the make command line replaces only the project's value.
-*   A builder layer such as a2cPro adds its arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS`, `A2C_LAYER_RULES_DIRS`, `A2C_LAYER_HDL_F_FILES` and `A2C_LAYER_VCS_LIB_SV_FILES`. Most of these go after the builder's own arguments and before the project's hooks. Three go in earlier:
+*   A builder layer such as a2cPro adds its arguments through `A2C_LAYER_CXX_FLAGS`, `A2C_LAYER_CPP_INCLUDES`, `A2C_LAYER_LD_FLAGS`, `A2C_LAYER_SRC_DIRS`, `A2C_LAYER_RULES_DIRS`, `A2C_LAYER_HDL_F_FILES`, `A2C_LAYER_VCS_LIB_SV_FILES` and `A2C_LAYER_UVM_F_FILES`. Most of these go after the builder's own arguments and before the project's hooks. Three go in earlier:
     *   `A2C_LAYER_CXX_FLAGS` follows the builder's base compile flags but precedes its C++ module, include-path, simulator and `VL_DUT=1` flags.
     *   `A2C_LAYER_LD_FLAGS` precedes the Verilator library flags.
     *   `A2C_LAYER_CPP_INCLUDES` follows the Boost and SystemC include paths but precedes the builder's Verilator, simulator and source-directory paths, so a layer header directory is searched ahead of those.
+*   `A2C_LAYER_UVM_F_FILES` goes in later than the project's hooks. It names `-F` lists of UVM agent packages. Under `USE_UVM=1` they compile after the builder's `a2c_uvm.f`, which follows the project's `EXTRA_HDL_*` hooks, and before the generated UVM packages. Each list holds file paths relative to its own directory, and make tracks the lists and the files they name.
 *   `EXTRA_CXX_FLAGS` and `EXTRA_LD_FLAGS` come after every builder flag, so a project flag can override a builder flag, for example `EXTRA_CXX_FLAGS += -Wsign-compare` under `VL_DUT=1`. `EXTRA_CPP_INCLUDES` follows `A2C_LAYER_CPP_INCLUDES` directly, ahead of the same builder paths.
 *   The HDL hooks (`A2C_LAYER_HDL_F_FILES`, then the `EXTRA_HDL_*` hooks) go after the builder's `a2c.f` and before the project's `rtl.f`. `EXTRA_XRUN_LIB_OPTS` follows them inside the xrun DUT library.
 *   These commands take no hook: the `migrateYaml.py` calls of `make migrate` and `make migrate-hierarchical`, the C++ module scanner (`gen_cpp_module_map.py`), `gen_compile_commands.py` (it reads the compile commands, hooks included, from a `make -n` run), and `ar -s` on the Verilator library.

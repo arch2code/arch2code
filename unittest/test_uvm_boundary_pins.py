@@ -56,8 +56,15 @@ shells and after the variant package its A2C_UVM_PKG names, one of that
 block's, and must leave the selected block's test package to the RTL
 analysis. Those steps, and each other top's variant package step, carry the
 RTL analysis's defines without the selected top's A2C_UVM_PKG.
+
+A builder layer's A2C_LAYER_UVM_F_FILES reaches the VCS RTL analysis and the
+Xcelium DUT library, each list behind -F, after a2c_uvm.f and before the
+top's variant package, test package and testbench module. Each list, and
+each file it names relative to its own directory, is a prerequisite of both
+steps.
 """
 
+import glob
 import os
 import re
 import shlex
@@ -66,7 +73,7 @@ import sys
 import tempfile
 from collections import Counter
 
-from _addrctl_helpers import test_dir
+from _addrctl_helpers import base_dir, test_dir
 from _tmp_helpers import remove_tree
 from test_build_manifest import parse_manifest
 from test_vl_boundary_widths_build import (
@@ -193,6 +200,7 @@ CONFIGS = {'dutU': {'v0': 'vbwTop_dutUV0Config', 'v1': 'vbwTop_dutUV1Config'}, '
 PORT_DOMAIN = {('dutU', 'side'): ('clkB', 'rstB_n')}
 # A dry run needs the tool variables, not the tool.
 VCS_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_VCS=1', 'VCS_HOME=/placeholder/vcs')
+XRUN_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_XCELIUM=1', 'XCELIUM_TOOLS=/placeholder/xcelium', 'XRUN_GCC_VERS=placeholder')
 COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
                    ('rtl_dut', 'output', 1, False)]
 
@@ -591,6 +599,77 @@ def check_vcs_shells(work):
     return problems
 
 
+def check_layer_uvm_lists(work):
+    """Two layer lists on A2C_LAYER_UVM_F_FILES, at the top dutV: their place
+    in the vlogan RTL analysis and the xrun DUT library, and their place, with
+    the package each names, among the prerequisites of each step's stamp."""
+    problems = []
+    layerLists = []
+    layerPkgs = []
+    for layer in ('layerA', 'layerB'):
+        listPath = os.path.join(work, f'{layer}_uvm.f')
+        pkgPath = os.path.join(work, layer, f'{layer}_uvm_pkg.sv')
+        os.makedirs(os.path.dirname(pkgPath), exist_ok=True)
+        open(pkgPath, 'w').close()
+        with open(listPath, 'w') as f:
+            f.write(f'{layer}/{layer}_uvm_pkg.sv\n')
+        layerLists.append(listPath)
+        layerPkgs.append(pkgPath)
+    a2cUvmF = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'a2c_uvm.f')
+    uvmDir = os.path.join(work, 'top', 'uvm')
+    generated = [os.path.join(uvmDir, name) for name in
+                 ('dutV_uvm_pkg.sv', 'dutV_uvm_test_pkg.sv', 'dutV_uvm_tb.sv')]
+    order = [a2cUvmF, *layerLists, *generated]
+    hook = (f"A2C_LAYER_UVM_F_FILES={' '.join(layerLists)}", 'UVM_TOP=dutV')
+    rundir = os.path.join(work, 'top', 'rundir')
+    for flow, dryRun, tool, isStep in (
+            ('VCS', VCS_DRY_RUN, 'vlogan', lambda t: 'vlogan_rtl.log' in t),
+            ('Xcelium', XRUN_DRY_RUN, 'xrun', lambda t: '-makelib' in t)):
+        result = make(work, 'all', os.path.join('top', 'rundir'), extra=(*dryRun, *hook))
+        if result.returncode != 0:
+            problems.append(f"{flow}: make -n failed (rc={result.returncode})\n{result.stderr}")
+            continue
+        steps = []
+        for command in result.stdout.replace('\\\n', ' ').splitlines():
+            for part in command.split('&&'):
+                words = part.split()
+                if not words or os.path.basename(words[0]) != tool:
+                    continue
+                tokens = shlex.split(part)
+                if isStep(tokens):
+                    steps.append(tokens)
+        if len(steps) != 1:
+            problems.append(f"{flow}: {len(steps)} {tool} RTL steps, expected 1")
+            continue
+        tokens = steps[0]
+        found = [tokens.index(t) if tokens.count(t) == 1 else None for t in order]
+        if None in found or found != sorted(found):
+            problems.append(f"{flow}: {tool} should name {order} once each in this order, "
+                            f"got {[t for t in tokens if t in order]}")
+        problems += [f"{flow}: {tool} names {path} without -F before it" for path in layerLists
+                     if path in tokens and tokens[tokens.index(path) - 1] != '-F']
+        # The parse writes each step's options file beside its stamp.
+        stamp = ([os.path.join(os.path.dirname(p), 'rtl.vlogan') for p in
+                  glob.glob(os.path.join(rundir, 'build*', '**', 'vcs', 'vlogan_opts'), recursive=True)]
+                 if flow == 'VCS' else
+                 [os.path.join(os.path.dirname(p), 'snapshot') for p in
+                  glob.glob(os.path.join(rundir, 'build*', '**', 'xrun', 'xcelium_uvm_dutV_*.d', 'opts'),
+                            recursive=True)])
+        if len(stamp) != 1:
+            problems.append(f"{flow}: expected one {tool} stamp, found {stamp}")
+            continue
+        database = make(work, stamp[0], os.path.join('top', 'rundir'),
+                        extra=('-pq', *dryRun[1:], *hook)).stdout
+        rules = [line for line in database.splitlines() if line.startswith(f'{stamp[0]}:')
+                 and not re.match(r'\s*[\w.]+\s*[:+?]?=', line[len(stamp[0]) + 1:])]
+        if len(rules) != 1:
+            problems.append(f"{flow}: expected one rule for {stamp[0]}, found {len(rules)}")
+            continue
+        problems += [f"{flow}: {stamp[0]} does not depend on {path}" for path in (*layerLists, *layerPkgs)
+                     if path not in rules[0].split()]
+    return problems
+
+
 def check_manifest(work):
     root = os.path.join(work, 'top')
     man = parse_manifest(os.path.join(root, '.gen', 'build.mk'))
@@ -638,7 +717,8 @@ def run_all_tests():
                                    ('test packages', check_test_packages(work, design)),
                                    ('testbench modules', check_testbenches(work, design)),
                                    ('SystemC wrapper, config and registrar', check_sc_files(work, design)),
-                                   ('VCS shell analysis', check_vcs_shells(work))):
+                                   ('VCS shell analysis', check_vcs_shells(work)),
+                                   ('layer agent lists', check_layer_uvm_lists(work))):
                 for problem in problems:
                     print(f"  FAIL: {name}: {problem}")
                 if not problems:

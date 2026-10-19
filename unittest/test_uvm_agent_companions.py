@@ -18,6 +18,11 @@ The simulators compile the agents from common/systemVerilog/uvm/a2c_uvm.f, so
 that file must list every flagged type's package, after a2c_clk_if.sv and
 a2c_uvm_pkg.sv, which the agents import.
 
+A Pro type takes the same checks against Pro's lists: a2cPro.mk adds
+pro/common/systemVerilog/uvm/a2cPro_uvm.f to A2C_LAYER_UVM_F_FILES, which
+compiles after a2c_uvm.f, and pro/common/systemVerilog/a2cPro.f, whose -y
+directories Xcelium searches, to A2C_LAYER_HDL_F_FILES.
+
 Definitions are discovered by walking the shipped interface trees, so a newly
 flagged type is checked without anyone adding it to a list.
 """
@@ -37,17 +42,23 @@ A2C_DOT_F = os.path.join(base_dir, 'common', 'systemVerilog', 'a2c.f')
 # Every agent package imports these, so they come before the first agent.
 SHARED = ('a2c_clk_if.sv', 'a2c_uvm_pkg.sv')
 
-# pro is a separate repository, absent from a base-only checkout.
+pro_dir = os.path.join(os.path.dirname(base_dir), 'pro')
+# Each shipped interface tree, with the list its agent packages compile from
+# and the list whose -y directories reach its checkers. pro is a separate
+# repository, absent from a base-only checkout.
 INTERFACE_ROOTS = (
-    os.path.join(base_dir, 'interfaces'),
-    os.path.join(os.path.dirname(base_dir), 'pro', 'interfaces'),
+    (os.path.join(base_dir, 'interfaces'), UVM_DOT_F, A2C_DOT_F),
+    (os.path.join(pro_dir, 'interfaces'),
+     os.path.join(pro_dir, 'common', 'systemVerilog', 'uvm', 'a2cPro_uvm.f'),
+     os.path.join(pro_dir, 'common', 'systemVerilog', 'a2cPro.f')),
 )
 
 
 def flagged_definitions():
-    """(interface type, definition file) for every flagged shipped type."""
+    """(interface type, definition file, agent list, checker list) for every
+    flagged shipped type."""
     found = list()
-    for root in INTERFACE_ROOTS:
+    for root, uvmDotF, hdlDotF in INTERFACE_ROOTS:
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
@@ -60,7 +71,7 @@ def flagged_definitions():
                     content = yaml.safe_load(f)
                 for intfType, definition in (content.get('interface_defs') or {}).items():
                     if definition.get('uvmAgent'):
-                        found.append((intfType, path))
+                        found.append((intfType, path, uvmDotF, hdlDotF))
     return found
 
 
@@ -71,7 +82,7 @@ def run_all_tests():
               "the discovery walk found nothing to check")
         return 1
     missing = list()
-    for intfType, path in flagged:
+    for intfType, path, _uvmDotF, _hdlDotF in flagged:
         pkg = os.path.join(os.path.dirname(path), f'{intfType}_uvm_pkg.sv')
         if os.path.isfile(pkg):
             print(f"  PASS: {intfType} ({os.path.relpath(path, base_dir)}) ships {os.path.basename(pkg)}")
@@ -86,27 +97,43 @@ def run_all_tests():
         print(f"\nFAIL: {len(missing)} flagged interface type(s) without an agent package")
         return 1
     print(f"\nPASS: all {len(flagged)} flagged interface types ship their agent package")
+    absent = sorted({(dotF, intfType, role) for intfType, _path, uvmDotF, hdlDotF in flagged
+                     for dotF, role in ((uvmDotF, 'agent package'), (hdlDotF, 'X/Z checker directory'))
+                     if not os.path.isfile(dotF)})
+    for dotF, intfType, role in absent:
+        print(f"  FAIL: {dotF} does not exist. A flagged type's {role} must be named in its "
+              f"interface root's list, and '{intfType}' is flagged. Restore the list, or "
+              f"remove the flag.")
+    if absent:
+        print(f"\nFAIL: {len(absent)} list(s) for flagged interface types are missing")
+        return 1
     return check_dot_f(flagged) | check_xcheck(flagged)
 
 
+def dot_f_entries(dotF):
+    """The resolved paths a .f list names, relative to its own directory."""
+    fDir = os.path.dirname(dotF)
+    with open(dotF) as f:
+        return [os.path.realpath(os.path.join(fDir, line.strip())) for line in f if line.strip()]
+
+
 def check_dot_f(flagged):
-    """a2c_uvm.f lists the shared files, then every flagged type's package."""
-    fDir = os.path.dirname(UVM_DOT_F)
-    with open(UVM_DOT_F) as f:
-        entries = [os.path.realpath(os.path.join(fDir, line.strip()))
-                   for line in f if line.strip()]
+    """Each flagged type's agent list names its package, and a2c_uvm.f lists
+    the shared files before every agent package it names."""
     problems = list()
     agentPositions = list()
-    for intfType, path in flagged:
+    for intfType, path, uvmDotF, _hdlDotF in flagged:
+        entries = dot_f_entries(uvmDotF)
         pkg = os.path.realpath(os.path.join(os.path.dirname(path), f'{intfType}_uvm_pkg.sv'))
-        if pkg in entries:
-            agentPositions.append(entries.index(pkg))
-        else:
-            problems.append(f"{UVM_DOT_F} does not list {pkg}. The simulators compile the "
+        if pkg not in entries:
+            problems.append(f"{uvmDotF} does not list {pkg}. The simulators compile the "
                             f"agents from this file, so a testbench with a '{intfType}' port "
                             f"would not find {intfType}_uvm_pkg. Add the package to it.")
+        elif uvmDotF == UVM_DOT_F:
+            agentPositions.append(entries.index(pkg))
+    entries = dot_f_entries(UVM_DOT_F)
     for name in SHARED:
-        shared = os.path.realpath(os.path.join(fDir, name))
+        shared = os.path.realpath(os.path.join(os.path.dirname(UVM_DOT_F), name))
         if shared not in entries:
             problems.append(f"{UVM_DOT_F} does not list {name}, which every agent imports.")
         elif agentPositions and entries.index(shared) > min(agentPositions):
@@ -115,21 +142,22 @@ def check_dot_f(flagged):
     for problem in problems:
         print(f"  FAIL: {problem}")
     if problems:
-        print(f"\nFAIL: a2c_uvm.f is missing or misorders {len(problems)} file(s)")
+        print(f"\nFAIL: the agent lists are missing or misorder {len(problems)} file(s)")
         return 1
-    print(f"PASS: a2c_uvm.f lists {', '.join(SHARED)} and then all {len(flagged)} agent packages")
+    print(f"PASS: a2c_uvm.f lists {', '.join(SHARED)} first, and the agent lists name "
+          f"all {len(flagged)} agent packages")
     return 0
 
 
 def check_xcheck(flagged):
     """Each flagged type ships <type>_xcheck.sv declaring module <type>_xcheck,
-    in a directory a2c.f searches with -y."""
-    fDir = os.path.dirname(A2C_DOT_F)
-    with open(A2C_DOT_F) as f:
-        searched = [os.path.realpath(os.path.join(fDir, line.split(None, 1)[1].strip()))
-                    for line in f if line.startswith('-y ')]
+    in a directory its checker list searches with -y."""
     problems = list()
-    for intfType, path in flagged:
+    for intfType, path, _uvmDotF, hdlDotF in flagged:
+        fDir = os.path.dirname(hdlDotF)
+        with open(hdlDotF) as f:
+            searched = [os.path.realpath(os.path.join(fDir, line.split(None, 1)[1].strip()))
+                        for line in f if line.startswith('-y ')]
         module = f'{intfType}_xcheck'
         checker = os.path.join(os.path.dirname(path), f'{module}.sv')
         if not os.path.isfile(checker):
@@ -145,14 +173,14 @@ def check_xcheck(flagged):
                             f"'{module}'. Xcelium finds the checker by its file name, so "
                             f"the file must declare that one module.")
         if os.path.realpath(os.path.dirname(checker)) not in searched:
-            problems.append(f"{A2C_DOT_F} has no -y for {os.path.dirname(checker)}, so "
+            problems.append(f"{hdlDotF} has no -y for {os.path.dirname(checker)}, so "
                             f"Xcelium cannot find {module}. Add the directory to it.")
     for problem in problems:
         print(f"  FAIL: {problem}")
     if problems:
         print(f"\nFAIL: {len(problems)} X/Z checker problem(s)")
         return 1
-    print(f"PASS: all {len(flagged)} flagged interface types ship an X/Z checker a2c.f can find")
+    print(f"PASS: all {len(flagged)} flagged interface types ship an X/Z checker their list's -y can find")
     return 0
 
 

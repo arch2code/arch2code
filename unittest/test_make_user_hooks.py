@@ -33,7 +33,8 @@ appends one distinct value to every tool hook. Checks:
   link flags on the link, EXTRA_XRUN_R_OPTS in the run script;
 - each hook's value in the parse-time stamp that records its command, and the
   HDL files and lists as prerequisites of the verilate, the vlogan analysis and
-  the xrun snapshot;
+  the xrun snapshot, and the layer's VCS library files, which xrun reaches
+  through the layer's -y directories, as prerequisites of the xrun snapshot;
 - make help-hooks prints every value and lists every EXTRA_* variable the
   builder makefiles read.
 
@@ -416,7 +417,7 @@ def main():
         failures += checkStamp('xrun -R', os.path.join(xrunStampDir, 'r_opts'), ['+hook_r'])
         snapshot = os.path.join(xrunStampDir, 'snapshot')
         xrunDatabase = run(['make', '-C', rundir, '-pq', *XRUN_ARGS, snapshot]).stdout
-        failures += checkPrereqs('xrun', xrunDatabase, snapshot, [layerF, vipSv, vipF])
+        failures += checkPrereqs('xrun', xrunDatabase, snapshot, [layerF, vipSv, vipF, layerLib])
 
         hooks = run(['make', '-C', rundir, '--no-print-directory', 'help-hooks']).stdout
         shownValues = {**HOOK_VALUES, **{name: hookFiles[name] for name in HOOK_FILES}}

@@ -43,17 +43,20 @@ VL_INST :=
 DUT_TOPOLOGY := uvm_$(UVM_TOP)_$(UVM_DUT)
 DUT_ELAB_ARGS := $(A2C_UVM_TESTBENCH_$(UVM_TB_TOP)) --uvmDut $(UVM_DUT) --uvmTop $(UVM_TOP)
 
-# The clock interface, a2c_uvm_pkg and the agent packages, then the top's
-# variant package, the test package that imports it, and the testbench
-# module, whose generated header imports the test package. A2C_SV_FILES
-# follows rtl.f, so they compile after the project packages they import.
+# The clock interface, a2c_uvm_pkg and the agent packages, then a builder
+# layer's agent packages from A2C_LAYER_UVM_F_FILES, then the top's variant
+# package, the test package that imports it, and the testbench module, whose
+# generated header imports the test package. A2C_SV_FILES follows rtl.f, so
+# they compile after the project packages they import. A layer list holds
+# file paths only, each relative to the list's own directory.
 A2C_UVM_F := $(A2C_ROOT)/common/systemVerilog/uvm/a2c_uvm.f
 A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)
+A2C_LAYER_UVM_SV := $(foreach f,$(A2C_LAYER_UVM_F_FILES),$(addprefix $(dir $(f)),$(file < $(f))))
 A2C_UVM_SV_FILES := $(A2C_UVM_PKG_SV_$(UVM_TB_TOP)) $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)) $(A2C_UVM_TB_SV_$(UVM_TB_TOP))
 A2C_UVM_HDL_DEFINES := A2C_UVM_PKG=$(A2C_UVM_PKG_$(UVM_TB_TOP)) $(if $(filter rtl,$(UVM_DUT)),A2C_UVM_RTL_DUT)
 A2C_SV_FILES += $(A2C_UVM_SV_FILES)
-A2C_HDL_ARGS += -F $(A2C_UVM_F) $(addprefix +define+,$(A2C_UVM_HDL_DEFINES))
-A2C_HDL_DEPS += $(A2C_UVM_F) $(A2C_UVM_LIB_SV) $(A2C_UVM_SV_FILES)
+A2C_HDL_ARGS += -F $(A2C_UVM_F) $(addprefix -F ,$(A2C_LAYER_UVM_F_FILES)) $(addprefix +define+,$(A2C_UVM_HDL_DEFINES))
+A2C_HDL_DEPS += $(A2C_UVM_F) $(A2C_LAYER_UVM_F_FILES) $(A2C_LAYER_UVM_SV) $(A2C_UVM_LIB_SV) $(A2C_UVM_SV_FILES)
 
 # The generated wrapper, testbench config and registrar.
 PRJ_SRC_DIRS += $(A2C_UVM_SRC_DIRS)

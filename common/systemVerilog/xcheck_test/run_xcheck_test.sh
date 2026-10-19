@@ -5,7 +5,11 @@
 # its count and first signal with what it expects. Exits 0 only when every
 # case logs XC_PASS.
 #
-#   run_xcheck_test.sh xcelium|vcs
+#   run_xcheck_test.sh xcelium|vcs [<tb.sv> <source>...]
+#
+# Given a testbench file, the script builds it instead, with the same
+# harness. The sources that follow it compile first. The top module is the
+# testbench file's stem. A builder layer tests its own checkers this way.
 #
 # The build and the log go to ./xcheck_<sim> under the current directory,
 # which the script empties first. The simulator setup must already be sourced.
@@ -14,22 +18,33 @@
 set -u
 
 usage() {
-    echo "usage: $0 xcelium|vcs" >&2
+    echo "usage: $0 xcelium|vcs [<tb.sv> <source>...]" >&2
     exit 2
 }
 
-[ $# -eq 1 ] || usage
+[ $# -ge 1 ] || usage
 SIM=$1
+shift
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=$(cd "$HERE/../../.." && pwd)
 OUT=$PWD/xcheck_$SIM
-TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack req_ack pop_ack memory external_reg axi_read axi_write"
 SRCS=""
-for t in $TYPES; do
-    SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv $BASE/interfaces/$t/${t}_xcheck.sv"
-done
-SRCS="$SRCS $HERE/xcheck_tb.sv $HERE/xz_count.c"
+if [ $# -eq 0 ]; then
+    TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack req_ack pop_ack memory external_reg axi_read axi_write"
+    for t in $TYPES; do
+        SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv $BASE/interfaces/$t/${t}_xcheck.sv"
+    done
+    TB=$HERE/xcheck_tb.sv
+else
+    TB=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+    shift
+    for f in "$@"; do
+        SRCS="$SRCS $(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+    done
+fi
+TOP=$(basename "$TB" .sv)
+SRCS="$SRCS $TB $HERE/xz_count.c"
 INCDIRS="+incdir+$BASE/common/systemVerilog +incdir+$HERE"
 
 rm -rf "$OUT"
@@ -38,12 +53,12 @@ cd "$OUT" || exit 1
 
 case $SIM in
     xcelium)
-        xrun -64bit -sv -timescale 1ns/1ps $INCDIRS $SRCS -top xcheck_tb -l run.log > /dev/null
+        xrun -64bit -sv -timescale 1ns/1ps $INCDIRS $SRCS -top $TOP -l run.log > /dev/null
         STATUS=$?
         ;;
     vcs)
         # +vcs+lic+wait queues for a runtime licence instead of exiting.
-        vcs +vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps $INCDIRS $SRCS -top xcheck_tb -o simv \
+        vcs +vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps $INCDIRS $SRCS -top $TOP -o simv \
             -l build.log > /dev/null && ./simv +vcs+lic+wait -l run.log > /dev/null
         STATUS=$?
         ;;
