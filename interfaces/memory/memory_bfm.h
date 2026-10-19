@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "memory_channel.h"
+#include "bfmContractCheck.h"
 
 template<typename VL_ADDR_T, typename VL_DATA_T>
 struct memory_hdl_if: public sc_interface {
@@ -28,8 +29,17 @@ public:
 
     SC_HAS_PROCESS (memory_src_bfm);
 
-    memory_src_bfm(sc_module_name modulename) {
+    memory_src_bfm(sc_module_name modulename) :
+        m_skipped(name(), "HDL made a memory access while SystemC was still serving the previous one, so the BFM did not take it",
+                  "accesses") {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+    }
+
+    virtual void end_of_simulation() {
+        m_skipped.report();
     }
 
     // One access per rising edge with enable high, as on memory_sp/memory_dp. Read
@@ -37,8 +47,9 @@ public:
     // read. The Verilated model is an SC_METHOD woken by the same edge, so the RTL
     // evaluates that edge with the old read_data and sees the new value after it,
     // like a flop output.
-    // request() must not consume simulated time. Edges that pass while it waits,
-    // such as a tandem memory tee waiting for the model side, are not sampled.
+    // request() must not consume simulated time. An enabled edge that passes while
+    // it waits, such as a tandem memory tee waiting for the model side, is never
+    // served, and m_skipped counts it.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         hdl_if_p->read_data = VL_DATA_T(0);
@@ -51,14 +62,41 @@ public:
                 if (is_write) {
                     data.sc_unpack(hdl_if_p->write_data);
                 }
+                m_sampleTime = sc_time_stamp();
+                m_requesting = true;
                 if_p->request(is_write, addr, data);
+                m_requesting = false;
                 if (!is_write) {
                     hdl_if_p->read_data = VL_DATA_T(data.sc_pack());
+                }
+                // The next wait cannot see an edge in this delta. edge_monitor has
+                // counted that edge only if it ran first.
+                if (clk.posedge() && sc_time_stamp() > m_sampleTime && hdl_if_p->enable &&
+                    m_lastSkip != sc_time_stamp()) {
+                    skipped();
                 }
             }
             wait(clk.posedge_event());
         }
     }
+
+    void edge_monitor() {
+        if (m_requesting && sc_time_stamp() > m_sampleTime && hdl_if_p->enable) {
+            skipped();
+        }
+    }
+
+private:
+
+    void skipped() {
+        m_lastSkip = sc_time_stamp();
+        m_skipped.fail(m_lastSkip);
+    }
+
+    bool m_requesting = false;
+    sc_time m_sampleTime;
+    sc_time m_lastSkip;
+    bfmContractCheck m_skipped;
 
 };
 
@@ -95,17 +133,22 @@ public:
                 hdl_if_p->wr_en = false;
             }
             wait(clk.posedge_event());
-            if (!is_write) {
-                // The RTL's registered read_data updates one delta after the edge,
-                // so sampling at the edge returns the previous read's word.
-                wait(SC_ZERO_TIME);
-                data.sc_unpack(hdl_if_p->read_data);
-            }
             hdl_if_p->enable = false;
-            if (!is_write) if_p->complete(data);
             hdl_if_p->addr = VL_ADDR_T(0);
             hdl_if_p->wr_en = false;
             hdl_if_p->write_data = VL_DATA_T(0);
+            if (!is_write) {
+                // read_data changes after the access edge: deltas later from RTL,
+                // one drive skew later from a UVM agent. It is stable by the
+                // falling edge, before the next access edge.
+                wait(clk.negedge_event());
+                data.sc_unpack(hdl_if_p->read_data);
+                // The model resumes at the next rising edge, so the pins it
+                // drives next change after a posedge, never at the falling edge
+                // where UVM monitors sample. A read takes two edges.
+                wait(clk.posedge_event());
+                if_p->complete(data);
+            }
         }
     }
 

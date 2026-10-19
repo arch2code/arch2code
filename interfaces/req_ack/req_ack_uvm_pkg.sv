@@ -85,6 +85,17 @@ package req_ack_uvm_pkg;
             super.new(name, parent);
             request_fifo = new("request_fifo", this);
         endfunction
+
+        // A responder takes one request per transfer, so more than one left
+        // at the end means the responder sequence does not drain the fifo,
+        // which then grows for the whole run.
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (request_fifo.used() > 1) begin
+                `uvm_error("A2C_RESPONDER", $sformatf("request_fifo holds %0d requests at the end of the test: the responder sequence must take one per request",
+                                                      request_fifo.used()))
+            end
+        endfunction
     endclass : req_ack_sequencer
 
     // The default A2C_DST responder: one item per request in request_fifo,

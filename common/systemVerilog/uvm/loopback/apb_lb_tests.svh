@@ -201,10 +201,10 @@
     // and slave: a clean write and a read back, psel and penable from idle,
     // completed in that clock, penable with psel low, which a completer that
     // is not selected ignores, three transfers that change paddr, pwrite and
-    // pwdata between the setup and access phases, and a transfer whose psel
-    // drops while pready is low. Expects exactly one A2C_PROTO and four
-    // A2C_HOLD reports, demoted to info, and the six completed transfers
-    // reported.
+    // pwdata between the setup and access phases, a transfer whose psel
+    // drops while pready is low, and one whose psel drops straight after the
+    // setup phase. Expects exactly one A2C_PROTO and five A2C_HOLD reports,
+    // demoted to info, and the six completed transfers reported.
     class apb_monitor_checks_test extends lb_base_test;
         apb_agent_t                obs;
         lb_scoreboard#(apb_item_t) sb;
@@ -292,6 +292,8 @@
             drive(1, 0, 1, 32'h60, 32'h7, 0);          // psel drops while pready is low
             drive(1, 1, 1, 32'h60, 32'h7, 0);
             drive(0, 0, 0, 32'h0, 32'h0, 0);
+            drive(1, 0, 0, 32'h70, 32'h0, 0);          // psel drops after the setup phase
+            drive(0, 0, 0, 32'h0, 32'h0, 0);
             repeat (2) clk_vif.drive_edge();
             phase.drop_objection(this);
         endtask
@@ -304,7 +306,7 @@
             `uvm_info("LB_STATS", $sformatf("%0d A2C_PROTO, %0d A2C_HOLD, %0d transfers reported", proto, hold, sb.matched),
                       UVM_NONE)
             if (proto != 1) `uvm_error("LB_CHECKS", $sformatf("expected 1 A2C_PROTO report, got %0d", proto))
-            if (hold != 4) `uvm_error("LB_CHECKS", $sformatf("expected 4 A2C_HOLD reports, got %0d", hold))
+            if (hold != 5) `uvm_error("LB_CHECKS", $sformatf("expected 5 A2C_HOLD reports, got %0d", hold))
             if (sb.matched != 6) `uvm_error("LB_CHECKS", $sformatf("expected 6 transfers reported, got %0d", sb.matched))
         endfunction
     endclass : apb_monitor_checks_test

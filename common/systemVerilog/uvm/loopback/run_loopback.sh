@@ -23,7 +23,6 @@ SIM=$1
 SEED=${2:-1}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-BASE=$(cd "$HERE/../../../.." && pwd)
 OUT=$PWD/loopback_$SIM
 TESTS=""
 for f in "$HERE"/*_lb_tests.svh; do
@@ -34,10 +33,11 @@ for f in "$HERE"/*_lb_tests.svh; do
     fi
     TESTS="$TESTS $FILE_TESTS"
 done
-# Each agent package a2c_uvm.f lists has its interface, <type>_if.sv, beside it.
+# Each agent package a2c_uvm.f lists has its interface, <type>_if.sv, beside
+# it. The paths in a2c_uvm.f are relative to its own directory.
 SRCS=""
-for t in $(sed -n 's#^\.\./\.\./\.\./interfaces/\([^/]*\)/.*_uvm_pkg\.sv$#\1#p' "$HERE/../a2c_uvm.f"); do
-    SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv"
+for f in $(sed -n '/^a2c_uvm_pkg\.sv$/!s#_uvm_pkg\.sv$#_if.sv#p' "$HERE/../a2c_uvm.f"); do
+    SRCS="$SRCS $HERE/../$f"
 done
 SRCS="$SRCS -F $HERE/../a2c_uvm.f $HERE/a2c_uvm_loopback_tb.sv"
 

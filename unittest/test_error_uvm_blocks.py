@@ -10,11 +10,12 @@ A connectionMaps boundary port, a memoryConnections port and a
 registerConnections port need no ports: row, and the wrapper still has a pin
 group for each. A memoryConnections port has type memory, and a
 registerConnections port the type its regType maps to, so each passes the
-agent check exactly when that type has an agent: an rw register's status port
-does, and a memory or ext register's port does not. An accepted status
-register port must also reach the generated testbench: make gen gives it a
-status agent typedef over the register's structure, an A2C_SRC agent in the
-env, and the testbench module its pin, interface and config_db entry. The
+agent check exactly when that type has an agent. An rw register's status
+port, an ext register's external_reg port and a memory port all do, and each
+must reach the generated testbench: make gen gives it an agent typedef over
+the row's structures, an agent in the env with the role opposite the port,
+the testbench module its interface, and the wrapper its X/Z checker. A
+one-bit payload pin is a scalar bit, as the simulator shell binds a bool. The
 testbench module also declares names of its own: the DUT instance `dut`, the
 completion pins, the report server `srv` and one `<clock>_if` per clock,
 beside one `<port>_<signal>` pin per port signal, so a port, clock or reset
@@ -91,30 +92,6 @@ REJECTED = [
        '            rstOut_n: { clock: clk, direction: output }\n'),
       ('addressGroup: top }', 'addressGroup: top, resets: { rstOut_n: ~ } }')])],
      [WHERE, "has output reset 'rstOut_n'"]),
-    ('a memoryConnections port', ROOT_PROJECT,
-     [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
-              ('    ubAddrSt:', '    ubIdxSt:\n        idx: { varType: ubIdxT, desc: "Table index" }\n    ubAddrSt:'),
-              ('registers:\n',
-               'memories:\n'
-               '    - { memory: tbl, block: ubTb, structure: ubSt, wordLines: 16, '
-               'addressStruct: ubIdxSt, ports: [port1], desc: "Table" }\n\n'
-               'memoryConnections:\n'
-               '    - { memory: tbl, block: ubTb, instance: uDut, port: port1 }\n\n'
-               'registers:\n')])],
-     [WHERE, "its port 'tbl', which the memoryConnections row giving instance 'uDut' "
-             "access to memory 'tbl' creates, has type 'memory', which has no UVM agent",
-      "does not declare uvmAgent: true. Remove that row, or clear hasUvm."]),
-    ('an external register connection port', ROOT_PROJECT,
-     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkExt, regType: ext, block: ubSink, structure: ubSt, desc: "Sink external" }\n\n'
-               'registerConnections:\n'
-               '    - { register: sinkExt, block: ubSink, instance: uDut }\n')])],
-     [WHERE, "its port 'sinkExt', which the registerConnections row giving instance 'uDut' "
-             "access to register 'sinkExt' creates, has type 'external_reg', which has no UVM agent",
-      "does not declare uvmAgent: true. Remove that row, or clear hasUvm."]),
     ('an undeclared connectionMaps port of a type without an agent', ROOT_PROJECT,
      [(ARCH, [('blocks:\n',
                '    ubSide:\n'
@@ -353,6 +330,52 @@ GENERATED = [
          'status_if #(.data_t(uvmBlocks_package::ubSt)) sinkCfg();',
          '.sinkCfg_data(sinkCfg.data),',
          'uvm_config_db#(ubDut_uvm_pkg::sinkCfg_vif_t)::set(null, "uvm_test_top.*", "sinkCfg", sinkCfg);']}),
+    ('a one-bit status register connection port', ROOT_PROJECT,
+     [(ARCH, [('    ubWordT:', '    ubFlagT: { width: 1, desc: "Flag" }\n    ubWordT:'),
+              ('    ubAddrSt:', '    ubFlagSt:\n        flag: { varType: ubFlagT, desc: "Flag" }\n    ubAddrSt:'),
+              ('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
+               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: sinkFlag, regType: rw, block: ubSink, structure: ubFlagSt, desc: "Sink flag" }\n\n'
+               'registerConnections:\n'
+               '    - { register: sinkFlag, block: ubSink, instance: uDut }\n')])],
+     {os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
+         'output bit sinkFlag_data,']}),
+    ('a memoryConnections port', ROOT_PROJECT,
+     [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
+              ('    ubAddrSt:', '    ubIdxSt:\n        idx: { varType: ubIdxT, desc: "Table index" }\n    ubAddrSt:'),
+              ('registers:\n',
+               'memories:\n'
+               '    - { memory: tbl, block: ubTb, structure: ubSt, wordLines: 16, '
+               'addressStruct: ubIdxSt, ports: [port1], desc: "Table" }\n\n'
+               'memoryConnections:\n'
+               '    - { memory: tbl, block: ubTb, instance: uDut, port: port1 }\n\n'
+               'registers:\n')])],
+     {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
+         'typedef memory_agent #(.addr_t(ubIdxSt), .data_t(ubSt)) tbl_agent_t;',
+         'typedef virtual memory_if #(.addr_t(ubIdxSt), .data_t(ubSt)) tbl_vif_t;',
+         'tbl_cfg.role = a2c_uvm_pkg::A2C_DST;'],
+      os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
+         'memory_if #(.addr_t(uvmBlocks_package::ubIdxSt), .data_t(uvmBlocks_package::ubSt)) tbl();'],
+      os.path.join('verif', 'ubDut_hdl_sv_wrapper.sv'): [
+         'memory_xcheck tbl_xcheck (.clk(clk), .rst_n(rst_n), .intf(tbl));']}),
+    ('an external register connection port', ROOT_PROJECT,
+     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
+               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: sinkExt, regType: ext, block: ubSink, structure: ubSt, desc: "Sink external" }\n\n'
+               'registerConnections:\n'
+               '    - { register: sinkExt, block: ubSink, instance: uDut }\n')])],
+     {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
+         'typedef external_reg_agent #(.data_t(ubSt)) sinkExt_agent_t;',
+         'typedef virtual external_reg_if #(.data_t(ubSt)) sinkExt_vif_t;',
+         'sinkExt_cfg.role = a2c_uvm_pkg::A2C_SRC;'],
+      os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
+         'external_reg_if #(.data_t(uvmBlocks_package::ubSt)) sinkExt();'],
+      os.path.join('verif', 'ubDut_hdl_sv_wrapper.sv'): [
+         'external_reg_xcheck sinkExt_xcheck (.clk(clk), .rst_n(rst_n), .intf(sinkExt));']}),
 ]
 
 # A name that breaks the rule at every variant is reported once:

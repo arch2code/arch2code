@@ -29,9 +29,9 @@ release, and waits for each output's transactions on that output's own clock,
 all outputs at once.
 
 Each testbench module must import the block's test package, so the factory
-registers its tests, and declare exactly those pins, sizing each payload by
-`$bits` of its type in the package that declares it, type its interfaces by
-the same types, give each clock an a2c_clk_if released by that clock's reset,
+registers its tests, and declare exactly those pins, sizing each vector
+payload by `$bits` of its type in the package that declares it, type its
+interfaces by the same types, give each clock an a2c_clk_if released by that clock's reset,
 bind the HDL top with the pins toward SystemC tied off, and publish every port
 and clock in the config_db. A block with a model holds the RTL only under
 A2C_UVM_RTL_DUT and otherwise carries each signal across in the direction the
@@ -41,8 +41,10 @@ Each block's SystemC wrapper must include the BFM header that declares its
 pin bridges, bind every testbench pin, check the shell's payload pin types,
 drive each clock at its period and hold each reset low from time 0 until its
 own clock releases it. It imports the block's base module only when the block
-has a model. With a model it carries each port
-through a BFM of the swapped role on the port's clock domain. Its config must
+has a model, and with params its block module as well, because it names the
+model class at the factory as a container does for a child typed by its
+Config. With a model it carries each port through a BFM of the swapped role
+on the port's clock domain. Its config must
 create the wrapper under the block's name at the scaffolded variant, and its
 registrar must register one wrapper per variant over that variant's shell and
 Config.
@@ -365,8 +367,8 @@ def check_testbenches(work, design):
                 continue
             spelled = f' [{width - 1}:0]' if vector else ''
             decls.append(f'{direction.ljust(6)} bit{spelled} {pin}')
-        for i, (pin, direction, _, _, _, signal, payload) in enumerate(portPins):
-            if signal == 'data':
+        for i, (pin, direction, _, vector, _, signal, payload) in enumerate(portPins):
+            if signal == 'data' and vector:
                 decls[i] = f'{INVERSE[direction].ljust(6)} bit [$bits({payloadPkg[payload]}::{payload})-1:0] {pin}'
         problems += match(f'{tb}.sv', 'port declarations',
                           [line for line in lines if re.match(r'(input|output)\b', line)], decls)
@@ -434,6 +436,9 @@ def check_sc_files(work, design):
         if bool(re.search(r'^import \S+\.base;$', text, re.M)) != HAS_MDL[block]:
             problems.append(f"{wrapperFile} imports the base module: {not HAS_MDL[block]}, "
                             f"but the block has a model: {HAS_MDL[block]}")
+        if bool(re.search(r'^import \S+\.block;$', text, re.M)) != (HAS_MDL[block] and hasParams):
+            problems.append(f"{wrapperFile} imports the block module: {not (HAS_MDL[block] and hasParams)}, "
+                            f"but the block has a model with params: {HAS_MDL[block] and hasParams}")
 
         problems += match(wrapperFile, 'shell binds',
                           re.findall(r'^\s*tb_hdl\.(\w+)\(', text, re.M),
@@ -474,7 +479,8 @@ def check_sc_files(work, design):
             problems += match(wrapperFile, 'BFM clock domains', bfmDomains,
                               [(port, *PORT_DOMAIN.get((block, port), ('clk', 'rst_n')))
                                for port, *_ in UVM_PORTS[block]])
-            createModel = (f'instanceFactory::createInstance(name(), "{block}", "{block}", variant, "{PROJECT}"));')
+            impl = f'<{block}<Config>>' if hasParams else ''
+            createModel = (f'instanceFactory::createInstance{impl}(name(), "{block}", "{block}", variant, "{PROJECT}"));')
             if createModel not in lines:
                 problems.append(f"{wrapperFile} does not create the {block} model")
         elif bfmRoles or 'createInstance' in text:

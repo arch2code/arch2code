@@ -189,7 +189,7 @@ package apb_uvm_pkg;
         // low is not, because a completer that is not selected ignores it.
         // Within a transfer, each clock that changes paddr, pwrite, or a
         // write's pwdata gives one A2C_HOLD, and so does psel dropping before
-        // pready ends the transfer.
+        // the transfer completes.
         virtual task run_phase(uvm_phase phase);
             apb_item item;
             bit      setup;
@@ -204,7 +204,7 @@ package apb_uvm_pkg;
                 setup  = (cfg.vif.psel === 1'b1 && cfg.vif.penable !== 1'b1);
                 access = (cfg.vif.psel === 1'b1 && cfg.vif.penable === 1'b1);
                 if (in_transfer && cfg.vif.psel !== 1'b1) begin
-                    `uvm_error("A2C_HOLD", $sformatf("%s: psel dropped before pready ended the transfer at paddr %h",
+                    `uvm_error("A2C_HOLD", $sformatf("%s: psel dropped before the transfer completed at paddr %h",
                                                      cfg.port_name, held_addr))
                 end
                 if (access && !in_transfer) begin

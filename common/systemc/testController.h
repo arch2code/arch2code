@@ -61,15 +61,7 @@ public:
         return m_declared_test_names;
     }
     void register_test_name(std::string test_name) {
-        if (m_test_name_registration_count.empty()) {
-            std::cout << "ERROR: test name " << test_name << " is not valid: the test list is empty. "
-                      << "Call set_test_names before register_test_name." << std::endl;
-            exit(1);
-        }
-        if (m_test_name_registration_count.find(test_name) == m_test_name_registration_count.end()) {
-            std::cout << "ERROR: test name " << test_name << " is not valid" << '\n';
-            exit(1);
-        }
+        check_listed(test_name, "register_test_name");
         // add_test checks the same clash, for a register_test_name that runs first.
         if (m_tests_with_body.count(test_name)) {
             report_both_forms(test_name);
@@ -82,15 +74,7 @@ public:
     // started. Several bodies may share a name; the test completes when all
     // of them return.
     void add_test(std::string test_name, std::function<void()> body) {
-        if (m_test_name_registration_count.empty()) {
-            std::cout << "ERROR: test name " << test_name << " is not valid: the test list is empty. "
-                      << "Call set_test_names before ADD_TEST or add_test." << std::endl;
-            exit(1);
-        }
-        if (m_test_name_registration_count.find(test_name) == m_test_name_registration_count.end()) {
-            std::cout << "ERROR: test name " << test_name << " is not valid" << '\n';
-            exit(1);
-        }
+        check_listed(test_name, "ADD_TEST or add_test");
         if (m_old_form_names.count(test_name)) {
             report_both_forms(test_name);
         }
@@ -165,6 +149,18 @@ public:
     }
 
 private:
+    // caller names the call that must follow set_test_names.
+    void check_listed(const std::string &test_name, const char *caller) const {
+        if (m_test_name_registration_count.empty()) {
+            std::cout << "ERROR: test name " << test_name << " is not valid: the test list is empty. "
+                      << "Call set_test_names before " << caller << "." << std::endl;
+            exit(1);
+        }
+        if (m_test_name_registration_count.find(test_name) == m_test_name_registration_count.end()) {
+            std::cout << "ERROR: test name " << test_name << " is not valid" << '\n';
+            exit(1);
+        }
+    }
     [[noreturn]] void report_both_forms(const std::string &test_name) {
         std::cout << "ERROR: test " << test_name << " runs with add_test or ADD_TEST and also calls register_test_name. "
                   << "Run each test one way, not both." << std::endl;

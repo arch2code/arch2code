@@ -31,14 +31,15 @@ def render(args, prj, data):
 def pin_decl(pin):
     if pin['kind'] == 'clockReset':
         return f"{pin['direction']} {pin['pin']}"
-    # VCS gets $size wrong for parameter-derived structs, so payload widths
-    # are $bits of the payload type.
-    if pin['type']:
-        width = f" [$bits({pin['type']['pkg']}::{pin['type']['name']})-1:0]"
-    elif pin['vector']:
-        width = f" [{pin['width'] - 1}:0]"
-    else:
+    # A scalar pin binds to the shell's bool. VCS gets $size wrong for
+    # parameter-derived structs, so vector payload widths are $bits of the
+    # payload type.
+    if not pin['vector']:
         width = ''
+    elif pin['type']:
+        width = f" [$bits({pin['type']['pkg']}::{pin['type']['name']})-1:0]"
+    else:
+        width = f" [{pin['width'] - 1}:0]"
     return f"{pin['direction'].ljust(6)} bit{width} {pin['pin']}"
 
 

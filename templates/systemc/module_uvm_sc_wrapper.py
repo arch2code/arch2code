@@ -44,6 +44,8 @@ def render_class(args, prj, data):
             for intfType in sorted(intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data))]
     if hasMdl:
         out.append(f'import {intf_gen_utils.cpp_base_module_name(data["blockModuleName"])};')
+        if hasOwnParams:
+            out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
     out += intf_gen_utils.cpp_block_context_include_lines(prj, data)
     out += intf_gen_utils.cpp_own_config_import(data)
     out.append('import a2c.endOfTest;')
@@ -96,10 +98,14 @@ def render_class(args, prj, data):
             '    {',
             indented('\n'.join(binds), 8)]
     if hasMdl:
+        # A child typed by its container's Config has no factory registration,
+        # so a block with params names its class as its container does; a
+        # registration under the variant still wins.
+        impl = f'<{blockName}<Config>>' if hasOwnParams else ''
         model = [
             f'chnl = std::make_unique<{blockName}Channels{cfg}>("Chnl", "uvm");',
             f'dut = std::dynamic_pointer_cast<{blockName}Base{cfg}>(',
-            f'    instanceFactory::createInstance(name(), "{blockName}", "{blockName}", variant, "{project}"));',
+            f'    instanceFactory::createInstance{impl}(name(), "{blockName}", "{blockName}", variant, "{project}"));',
             f'Q_ASSERT(dut != nullptr, "{blockName} model instance was not created");',
         ]
         model += [f"dut->{portData['name']}(chnl->{portData['name']});" for portData, _ in ports]

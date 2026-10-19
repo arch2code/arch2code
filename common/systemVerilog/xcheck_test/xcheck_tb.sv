@@ -488,12 +488,153 @@ module po_case #(parameter int CASE = 0, parameter int EXP = 0,
     end
 endmodule
 
+module mem_case #(parameter int CASE = 0, parameter int EXP = 0,
+                  parameter string SIG = "", parameter string NAME = "") (input logic clk);
+    typedef struct packed {
+        logic [3:0] hi;
+        logic [3:0] lo;
+    } data_t;
+    typedef logic [4:0] addr_t;
+    logic rst_n;
+    memory_if #(.addr_t(addr_t), .data_t(data_t)) intf();
+    memory_xcheck u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    localparam string CHK = "u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        intf.enable = 1'b0;
+        intf.wr_en = 1'b0;
+        intf.addr = '0;
+        intf.write_data = '0;
+        intf.read_data = '0;
+    endtask
+
+    task automatic all_x();
+        intf.enable = 1'bx;
+        intf.wr_en = 1'bx;
+        intf.addr = 'x;
+        intf.write_data = 'x;
+        intf.read_data = 'x;
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    task automatic write(addr_t a);
+        intf.enable = 1'b1; intf.wr_en = 1'b1; intf.addr = a; cycles(1); idle();
+    endtask
+
+    // A read on one clock; the next clock carries its read_data.
+    task automatic read(addr_t a);
+        intf.enable = 1'b1; intf.wr_en = 1'b0; intf.addr = a; cycles(1); idle();
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin armed(); intf.enable = 1'bx; cycles(1); idle(); end
+            1: begin armed(); intf.enable = 1'b1; intf.addr = 'x; cycles(1); idle(); end
+            2: begin armed(); intf.addr = 'x; cycles(3); idle(); end
+            3: begin armed(); intf.enable = 1'b1; intf.wr_en = 1'bx; cycles(1); idle(); end
+            4: begin // write_data X on a write, twice
+                armed();
+                intf.enable = 1'b1; intf.wr_en = 1'b1; intf.write_data = 'x; cycles(1); idle(); cycles(2);
+                intf.enable = 1'b1; intf.wr_en = 1'b1; intf.write_data = 'x; cycles(1); idle();
+            end
+            5: begin armed(); intf.enable = 1'b1; intf.write_data = 'x; cycles(3); idle(); end
+            6: begin armed(); read(3); intf.read_data = 'x; cycles(1); idle(); read(4); end
+            7: begin // read_data X while idle and after writes
+                armed(); intf.read_data = 'x; cycles(2);
+                intf.enable = 1'b1; intf.wr_en = 1'b1; cycles(2);
+                idle(); intf.read_data = 'x; cycles(2); idle();
+            end
+            8: begin armed(); write(3); read(3); cycles(1); intf.read_data = 'x; cycles(2); idle(); end
+            9: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            10: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            11: begin idle(); delta_reset(); cycles(3); intf.enable = 1'bx; cycles(1); idle(); end
+            12: begin armed(); read(3); intf.read_data = 'x; write(3); end
+            13: begin armed(); read(3); intf.read_data = 'x; write(4); end
+            // The checker's final block would report too, but its order
+            // against this case's final block is undefined.
+            14: begin armed(); read(3); intf.read_data = 'x; cycles(1); idle(); cycles(3); u_chk.xzEndOfRun(); end
+            15: begin
+                armed(); read(3); intf.read_data = 'x; cycles(1); idle();
+                reset_pulse(); cycles(2); u_chk.xzEndOfRun();
+            end
+        endcase
+    end
+endmodule
+
+module er_case #(parameter int CASE = 0, parameter int EXP = 0,
+                 parameter string SIG = "", parameter string NAME = "") (input logic clk);
+    typedef struct packed {
+        logic [3:0] hi;
+        logic [3:0] lo;
+    } data_t;
+    logic rst_n;
+    external_reg_if #(.data_t(data_t)) intf();
+    external_reg_xcheck u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    localparam string CHK = "u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        intf.write = '0;
+        intf.wdata = '0;
+        intf.rdata = '0;
+    endtask
+
+    task automatic all_x();
+        intf.write = 'x;
+        intf.wdata = 'x;
+        intf.rdata = 'x;
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin armed(); intf.write = 'x; cycles(1); idle(); end
+            1: begin armed(); intf.rdata = 'x; cycles(1); idle(); end
+            2: begin // wdata X on a write, twice
+                armed();
+                intf.write = 2'b01; intf.wdata = 'x; cycles(1); idle(); cycles(2);
+                intf.write = 2'b01; intf.wdata = 'x; cycles(1); idle();
+            end
+            3: begin armed(); intf.wdata = 'x; cycles(3); idle(); end
+            4: begin armed(); intf.write = 2'b10; intf.wdata = 'x; cycles(1); idle(); end
+            5: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            6: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            7: begin idle(); delta_reset(); cycles(3); intf.write = 'x; cycles(1); idle(); end
+        endcase
+    end
+endmodule
+
 module xcheck_tb;
     logic clk = 1'b0;
     // The first rising edge is at 5 ns, after the time-0 delta resets.
     always #5 clk = ~clk;
 
-    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7;
+    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7 + 16 + 8;
 
     rv_case #(0, 1, "data", "rdy_vld data X while vld, twice") rv0 (clk);
     rv_case #(1, 0, "", "rdy_vld data X while !vld") rv1 (clk);
@@ -577,6 +718,32 @@ module xcheck_tb;
     po_case #(4, 0, "", "pop_ack X before arming and in reset") po4 (clk);
     po_case #(5, 0, "", "pop_ack power-on X reset") po5 (clk);
     po_case #(6, 1, "pop", "pop_ack reset released before a clock edge") po6 (clk);
+
+    mem_case #(0, 1, "enable", "memory enable X") mem0 (clk);
+    mem_case #(1, 1, "addr", "memory addr X while enable") mem1 (clk);
+    mem_case #(2, 0, "", "memory addr X while !enable") mem2 (clk);
+    mem_case #(3, 1, "wr_en", "memory wr_en X while enable") mem3 (clk);
+    mem_case #(4, 1, "write_data", "memory write_data X on a write, twice") mem4 (clk);
+    mem_case #(5, 0, "", "memory write_data X on a read") mem5 (clk);
+    mem_case #(6, 1, "read_data", "memory read_data X after a read, then a read") mem6 (clk);
+    mem_case #(7, 0, "", "memory read_data X while idle and after writes") mem7 (clk);
+    mem_case #(8, 0, "", "memory read_data X two clocks after a read") mem8 (clk);
+    mem_case #(9, 0, "", "memory X before arming and in reset") mem9 (clk);
+    mem_case #(10, 0, "", "memory power-on X reset") mem10 (clk);
+    mem_case #(11, 1, "enable", "memory reset released before a clock edge") mem11 (clk);
+    mem_case #(12, 0, "", "memory read_data X after a read, then a write of that address") mem12 (clk);
+    mem_case #(13, 1, "read_data", "memory read_data X after a read, then a write elsewhere") mem13 (clk);
+    mem_case #(14, 1, "read_data", "memory read_data X after a read, then no access to the end") mem14 (clk);
+    mem_case #(15, 0, "", "memory read_data X after a read, then a reset") mem15 (clk);
+
+    er_case #(0, 1, "write", "external_reg write X") er0 (clk);
+    er_case #(1, 1, "rdata", "external_reg rdata X") er1 (clk);
+    er_case #(2, 1, "wdata", "external_reg wdata X on a write, twice") er2 (clk);
+    er_case #(3, 0, "", "external_reg wdata X while write is zero") er3 (clk);
+    er_case #(4, 1, "wdata", "external_reg wdata X on a write strobe 2'b10") er4 (clk);
+    er_case #(5, 0, "", "external_reg X before arming and in reset") er5 (clk);
+    er_case #(6, 0, "", "external_reg power-on X reset") er6 (clk);
+    er_case #(7, 1, "write", "external_reg reset released before a clock edge") er7 (clk);
 
     initial begin
         $display("XC_CASES %0d", CASES);
