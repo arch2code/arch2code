@@ -37,6 +37,10 @@ module dataGen_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    push_ack_xcheck out_xcheck (.clk(clk), .rst_n(rst_n), .intf(out));
+    `endif
+
 endmodule : dataGen_hdl_sv_wrapper
 
 // GENERATED_CODE_END

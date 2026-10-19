@@ -13,7 +13,7 @@ when the port binds that payload, through the checker's CHECK_<SIGNAL>
 parameter: an unbound one is an undriven placeholder.
 
 The plain fixture block has an rdy_vld port on its default clock, a status
-port on a second clock with its own reset, and a push_ack port, whose type has
+port on a second clock with its own reset, and a pop_ack port, whose type has
 no agent and so gets no checker. The parameterized block's checkers are in the
 wrapper body, and it has one axi4_stream port that binds tuser_t and one that
 does not.
@@ -65,11 +65,11 @@ interfaces:
     desc: "Status"
     structures:
       - {structure: dataSt, structureType: data_t}
-  pushIf:
-    interfaceType: push_ack
-    desc: "Push"
+  popIf:
+    interfaceType: pop_ack
+    desc: "Pop"
     structures:
-      - {structure: dataSt, structureType: data_t}
+      - {structure: dataSt, structureType: rdata_t}
   pDataIf:
     interfaceType: rdy_vld
     desc: "Parameterized data stream"
@@ -114,7 +114,7 @@ blocks:
     ports:
       dataIn: {interface: dataIf, direction: dst}
       statusOut: {interface: statusIf, direction: src, clock: clkSlow}
-      pushOut: {interface: pushIf, direction: src}
+      popOut: {interface: popIf, direction: src}
   pdut:
     desc: "Parameterized block, whose checkers sit in the wrapper body"
     hasVl: true
@@ -141,7 +141,7 @@ blocks:
     ports:
       dataOut: {interface: dataIf, direction: src}
       statusIn: {interface: statusIf, direction: dst, clock: clkSlow}
-      pushIn: {interface: pushIf, direction: dst}
+      popIn: {interface: popIf, direction: dst}
 
 instances:
   uTop: {container: top, instanceType: top}
@@ -159,7 +159,7 @@ parameters:
 connections:
   - {interface: dataIf, src: uPeer, srcport: dataOut, dst: uDut, dstport: dataIn}
   - {interface: statusIf, src: uDut, srcport: statusOut, dst: uPeer, dstport: statusIn, clock: clkSlow}
-  - {interface: pushIf, src: uDut, srcport: pushOut, dst: uPeer, dstport: pushIn}
+  - {interface: popIf, src: uDut, srcport: popOut, dst: uPeer, dstport: popIn}
   - {interface: pDataIf, src: uPPeer, srcport: pOut, dst: uPdut, dstport: pIn}
   - {interface: axisUserIf, src: uPdut, srcport: axisUser, dst: uPPeer, dstport: axisUserIn}
   - {interface: axisNoUserIf, src: uPdut, srcport: axisNoUser, dst: uPPeer, dstport: axisNoUserIn}
@@ -241,8 +241,8 @@ def test_wrapper_instances(proj, dut):
         'rdy_vld_xcheck dataIn_xcheck (.clk(clk), .rst_n(rst_n), .intf(dataIn));',
         'status_xcheck statusOut_xcheck (.clk(clkSlow), .rst_n(rstSlow_n), .intf(statusOut));'],
         "the rdy_vld port is checked on clk/rst_n and the status port on clkSlow/rstSlow_n")
-    check(not any('pushOut' in line for line in instances),
-          "the push_ack port, whose type has no agent, has no checker")
+    check(not any('popOut' in line for line in instances),
+          "the pop_ack port, whose type has no agent, has no checker")
     if instances:
         first = lines.index(instances[0])
         last = lines.index(instances[-1])

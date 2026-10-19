@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-// Four-state cases for the five <type>_xcheck modules. Each case module drives
+// Four-state cases for the seven <type>_xcheck modules. Each case module drives
 // one interface into one checker with its own reset, and xz_count.c counts the
 // checker's reports, so every case expects an exact count and first signal.
 // run_xcheck_test.sh builds this and runs it.
@@ -278,12 +278,109 @@ module data_case #(parameter bit STATUS = 0, parameter int CASE = 0, parameter i
     end
 endmodule
 
+// push_ack has the same shape as rdy_vld: push qualifies data.
+module pa_case #(parameter int CASE = 0, parameter int EXP = 0,
+                 parameter string SIG = "", parameter string NAME = "") (input logic clk);
+    typedef struct packed {
+        logic [3:0] hi;
+        logic [3:0] lo;
+    } data_t;
+    logic rst_n;
+    push_ack_if #(.data_t(data_t)) intf();
+    push_ack_xcheck u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    localparam string CHK = "u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        intf.push = 1'b0;
+        intf.ack = 1'b0;
+        intf.data = '0;
+    endtask
+
+    task automatic all_x();
+        intf.push = 1'bx;
+        intf.ack = 1'bx;
+        intf.data = 'x;
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin // data X while push is high, twice
+                armed();
+                intf.push = 1'b1; intf.data = 'x; cycles(1); idle(); cycles(2);
+                intf.push = 1'b1; intf.data = 'x; cycles(1); idle();
+            end
+            1: begin armed(); intf.data = 'x; cycles(3); idle(); end
+            2: begin armed(); intf.push = 1'bx; cycles(1); idle(); end
+            3: begin armed(); intf.ack = 1'bx; cycles(1); idle(); end
+            4: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            5: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            6: begin idle(); delta_reset(); cycles(3); intf.push = 1'bx; cycles(1); idle(); end
+        endcase
+    end
+endmodule
+
+module na_case #(parameter int CASE = 0, parameter int EXP = 0,
+                 parameter string SIG = "", parameter string NAME = "") (input logic clk);
+    logic rst_n;
+    notify_ack_if intf();
+    notify_ack_xcheck u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    localparam string CHK = "u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        intf.notify = 1'b0;
+        intf.ack = 1'b0;
+    endtask
+
+    task automatic all_x();
+        intf.notify = 1'bx;
+        intf.ack = 1'bx;
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin armed(); intf.notify = 1'bx; cycles(1); idle(); end
+            1: begin armed(); intf.ack = 1'bx; cycles(1); idle(); end
+            2: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            3: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            4: begin idle(); delta_reset(); cycles(3); intf.notify = 1'bx; cycles(1); idle(); end
+        endcase
+    end
+endmodule
+
 module xcheck_tb;
     logic clk = 1'b0;
     // The first rising edge is at 5 ns, after the time-0 delta resets.
     always #5 clk = ~clk;
 
-    localparam int CASES = 7 + 16 + 15 + 4 + 4;
+    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5;
 
     rv_case #(0, 1, "data", "rdy_vld data X while vld, twice") rv0 (clk);
     rv_case #(1, 0, "", "rdy_vld data X while !vld") rv1 (clk);
@@ -335,6 +432,20 @@ module xcheck_tb;
     data_case #(1, 1, 0, "", "status X before arming and in reset") st1 (clk);
     data_case #(1, 2, 0, "", "status power-on X reset") st2 (clk);
     data_case #(1, 3, 1, "data", "status reset released before a clock edge") st3 (clk);
+
+    pa_case #(0, 1, "data", "push_ack data X while push, twice") pa0 (clk);
+    pa_case #(1, 0, "", "push_ack data X while !push") pa1 (clk);
+    pa_case #(2, 1, "push", "push_ack push X") pa2 (clk);
+    pa_case #(3, 1, "ack", "push_ack ack X") pa3 (clk);
+    pa_case #(4, 0, "", "push_ack X before arming and in reset") pa4 (clk);
+    pa_case #(5, 0, "", "push_ack power-on X reset") pa5 (clk);
+    pa_case #(6, 1, "push", "push_ack reset released before a clock edge") pa6 (clk);
+
+    na_case #(0, 1, "notify", "notify_ack notify X") na0 (clk);
+    na_case #(1, 1, "ack", "notify_ack ack X") na1 (clk);
+    na_case #(2, 0, "", "notify_ack X before arming and in reset") na2 (clk);
+    na_case #(3, 0, "", "notify_ack power-on X reset") na3 (clk);
+    na_case #(4, 1, "notify", "notify_ack reset released before a clock edge") na4 (clk);
 
     initial begin
         $display("XC_CASES %0d", CASES);

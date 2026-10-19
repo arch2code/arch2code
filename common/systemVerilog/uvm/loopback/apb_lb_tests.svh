@@ -199,10 +199,11 @@
 
     // The test drives the master's pins by hand against a slave agent with
     // max_wait 0, whose monitor checks them: a clean write and a read back,
-    // penable from idle with psel high and then with psel low, and three
-    // transfers that change paddr, pwrite and pwdata between the setup and
-    // access phases. Expects exactly two A2C_PROTO and three A2C_HOLD
-    // reports, demoted to info, and the five completed transfers reported.
+    // psel and penable from idle, penable with psel low, which a completer
+    // that is not selected ignores, and three transfers that change paddr,
+    // pwrite and pwdata between the setup and access phases. Expects exactly
+    // one A2C_PROTO and three A2C_HOLD reports, demoted to info, and the five
+    // completed transfers reported.
     class apb_monitor_checks_test extends lb_base_test;
         apb_agent_t                slave;
         lb_scoreboard#(apb_item_t) sb;
@@ -271,7 +272,7 @@
             drive(0, 0, 0, 32'h0, 32'h0);
             drive(1, 1, 0, 32'h50, 32'h0);          // penable with no setup phase
             drive(0, 0, 0, 32'h0, 32'h0);
-            drive(0, 1, 0, 32'h50, 32'h0);          // penable with no setup phase or psel
+            drive(0, 1, 0, 32'h50, 32'h0);          // penable without psel, not a report
             drive(0, 0, 0, 32'h0, 32'h0);
             drive(1, 0, 1, 32'h10, 32'h1);          // paddr changes
             drive(1, 1, 1, 32'h14, 32'h1);
@@ -293,7 +294,7 @@
             super.check_phase(phase);
             `uvm_info("LB_STATS", $sformatf("%0d A2C_PROTO, %0d A2C_HOLD, %0d transfers reported", proto, hold, sb.matched),
                       UVM_NONE)
-            if (proto != 2) `uvm_error("LB_CHECKS", $sformatf("expected 2 A2C_PROTO reports, got %0d", proto))
+            if (proto != 1) `uvm_error("LB_CHECKS", $sformatf("expected 1 A2C_PROTO report, got %0d", proto))
             if (hold != 3) `uvm_error("LB_CHECKS", $sformatf("expected 3 A2C_HOLD reports, got %0d", hold))
             if (sb.matched != 5) `uvm_error("LB_CHECKS", $sformatf("expected 5 transfers reported, got %0d", sb.matched))
         endfunction

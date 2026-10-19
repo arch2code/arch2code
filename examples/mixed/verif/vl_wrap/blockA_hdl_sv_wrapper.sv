@@ -103,6 +103,7 @@ module blockA_hdl_sv_wrapper
 
     `ifndef VERILATOR
     rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));
+    notify_ack_xcheck startDone_xcheck (.clk(clk), .rst_n(rst_n), .intf(startDone));
     rdy_vld_xcheck dupIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(dupIf));
     apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
     `endif

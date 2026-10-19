@@ -220,6 +220,10 @@ module pySocket_hdl_sv_wrapper
     `endif
 
     `ifndef VERILATOR
+    push_ack_xcheck test_push_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_push_ack));
+    push_ack_xcheck dut2Python_push_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_push_ack));
+    notify_ack_xcheck test_notify_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_notify_ack));
+    notify_ack_xcheck dut2Python_notify_ack_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_notify_ack));
     rdy_vld_xcheck test_rdy_vld_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_rdy_vld));
     rdy_vld_xcheck dut2Python_rdy_vld_xcheck (.clk(clk), .rst_n(rst_n), .intf(dut2Python_rdy_vld));
     axi4_stream_xcheck #(.CHECK_TUSER(1'b0)) test_axi4_stream_xcheck (.clk(clk), .rst_n(rst_n), .intf(test_axi4_stream));

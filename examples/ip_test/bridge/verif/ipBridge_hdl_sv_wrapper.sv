@@ -76,6 +76,8 @@ module ipBridge_hdl_sv_wrapper
     `endif
 
     `ifndef VERILATOR
+    push_ack_xcheck data8In_xcheck (.clk(clk), .rst_n(rst_n), .intf(data8In));
+    push_ack_xcheck data70In_xcheck (.clk(clk), .rst_n(rst_n), .intf(data70In));
     apb_xcheck apbReg_xcheck (.clk(clk), .rst_n(rst_n), .intf(apbReg));
     `endif
 

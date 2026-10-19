@@ -91,6 +91,13 @@ module src_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    push_ack_xcheck out0_xcheck (.clk(clk), .rst_n(rst_n), .intf(out0));
+    push_ack_xcheck out1_xcheck (.clk(clk), .rst_n(rst_n), .intf(out1));
+    push_ack_xcheck out2_xcheck (.clk(clk), .rst_n(rst_n), .intf(out2));
+    push_ack_xcheck out3_xcheck (.clk(clk), .rst_n(rst_n), .intf(out3));
+    `endif
+
 endmodule : src_hdl_sv_wrapper
 
 // GENERATED_CODE_END

@@ -3,6 +3,7 @@ interface_defs:
   push_ack : 
     timing: elastic
     backpressure: { default: true, overridable: false }
+    uvmAgent: true
     parameters : 
       data_t : { datatype : struct }
     signals: 

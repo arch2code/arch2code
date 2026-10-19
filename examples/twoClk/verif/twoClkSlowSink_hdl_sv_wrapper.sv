@@ -37,6 +37,10 @@ module twoClkSlowSink_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    push_ack_xcheck in_xcheck (.clk(clkSlow), .rst_n(rstSlow_n), .intf(in));
+    `endif
+
 endmodule : twoClkSlowSink_hdl_sv_wrapper
 
 // GENERATED_CODE_END

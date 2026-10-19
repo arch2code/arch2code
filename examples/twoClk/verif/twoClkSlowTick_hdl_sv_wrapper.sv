@@ -37,6 +37,10 @@ module twoClkSlowTick_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    push_ack_xcheck out_xcheck (.clk(clkTick), .rst_n(rstTick_n), .intf(out));
+    `endif
+
 endmodule : twoClkSlowTick_hdl_sv_wrapper
 
 // GENERATED_CODE_END

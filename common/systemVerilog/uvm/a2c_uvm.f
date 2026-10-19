@@ -5,3 +5,5 @@ a2c_uvm_pkg.sv
 ../../../interfaces/axi4_stream/axi4_stream_uvm_pkg.sv
 ../../../interfaces/raw/raw_uvm_pkg.sv
 ../../../interfaces/status/status_uvm_pkg.sv
+../../../interfaces/push_ack/push_ack_uvm_pkg.sv
+../../../interfaces/notify_ack/notify_ack_uvm_pkg.sv

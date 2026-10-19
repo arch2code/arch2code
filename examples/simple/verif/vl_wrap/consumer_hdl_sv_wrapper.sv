@@ -50,6 +50,11 @@ module consumer_hdl_sv_wrapper
     end
     `endif
 
+    `ifndef VERILATOR
+    push_ack_xcheck tag0_xcheck (.clk(clk), .rst_n(rst_n), .intf(tag0));
+    push_ack_xcheck tag1_xcheck (.clk(clk), .rst_n(rst_n), .intf(tag1));
+    `endif
+
 endmodule : consumer_hdl_sv_wrapper
 
 // GENERATED_CODE_END

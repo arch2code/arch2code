@@ -143,7 +143,7 @@ package a2c_uvm_pkg;
             return z ^ (z >> 31);
         endfunction
 
-        // Bits 64k up of the word come from the hash of seed, k and index.
+        // Bits 64k to 64k+63 of the word come from the hash of seed, k and index.
         protected function word_t random_fill(bit [63:0] index);
             bit [$bits(word_t)-1:0] bits;
             bit [63:0]              chunk;

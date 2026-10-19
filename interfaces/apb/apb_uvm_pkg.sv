@@ -185,9 +185,10 @@ package apb_uvm_pkg;
 
         // An access phase continues the transfer when the clock before it was
         // the setup phase or an access phase pready did not end. Any other
-        // clock with penable high is an A2C_PROTO. Within a transfer, a
-        // change of paddr, pwrite, or pwdata on a write, is one A2C_HOLD per
-        // clock that changes it.
+        // clock with psel and penable high is an A2C_PROTO; penable with psel
+        // low is not, because a completer that is not selected ignores it.
+        // Within a transfer, each clock that changes paddr, pwrite, or a
+        // write's pwdata gives one A2C_HOLD.
         virtual task run_phase(uvm_phase phase);
             apb_item item;
             bit      setup;
@@ -201,9 +202,9 @@ package apb_uvm_pkg;
                 cfg.clk_vif.sample_edge();
                 setup  = (cfg.vif.psel === 1'b1 && cfg.vif.penable !== 1'b1);
                 access = (cfg.vif.psel === 1'b1 && cfg.vif.penable === 1'b1);
-                if (cfg.vif.penable === 1'b1 && !in_transfer) begin
-                    `uvm_error("A2C_PROTO", $sformatf("%s: penable is high with psel %b and no setup phase on the clock before",
-                                                      cfg.port_name, cfg.vif.psel))
+                if (access && !in_transfer) begin
+                    `uvm_error("A2C_PROTO", $sformatf("%s: psel and penable are high with no setup phase on the clock before",
+                                                      cfg.port_name))
                 end
                 if (access && in_transfer) begin
                     string changed[$];

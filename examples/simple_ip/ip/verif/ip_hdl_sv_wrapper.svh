@@ -99,6 +99,7 @@ module ip_hdl_sv_wrapper
     `endif
 
     `ifndef VERILATOR
+    push_ack_xcheck ipDataIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(ipDataIf));
     apb_xcheck regs_xcheck (.clk(clk), .rst_n(rst_n), .intf(regs));
     `endif
 
