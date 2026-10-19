@@ -131,6 +131,7 @@ package a2c_uvm_loopback_pkg;
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
+    `include "a2c_model_cmp_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 
