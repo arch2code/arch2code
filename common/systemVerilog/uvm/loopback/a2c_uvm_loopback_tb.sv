@@ -115,6 +115,107 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : lb_base_test
 
+    function automatic bit lb_has(string s, string sub);
+        for (int i = 0; i + sub.len() <= s.len(); i++) begin
+            if (s.substr(i, i + sub.len() - 1) == sub) return 1;
+        end
+        return 0;
+    endfunction
+
+    // An a2c_error_demoter that keeps the text of each message it demotes.
+    class lb_recording_demoter extends a2c_error_demoter;
+        string messages[$];
+
+        `uvm_object_utils(lb_recording_demoter)
+
+        function new(string name = "lb_recording_demoter");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_severity() == UVM_ERROR && get_id() == demote_id) messages.push_back(get_message());
+            return super.catch();
+        endfunction
+
+        // How many kept messages hold sub.
+        function int unsigned count(string sub);
+            int unsigned n = 0;
+            foreach (messages[i]) n += lb_has(messages[i], sub);
+            return n;
+        endfunction
+    endclass : lb_recording_demoter
+
+    // What every Mode B test shares: a demoter on demote_id that records
+    // the messages, and a report_phase check that it demoted exactly
+    // want_errors, each kept message holding want_text when set.
+    class lb_mode_b_base extends lb_base_test;
+        lb_recording_demoter demoter;
+        string               demote_id = "A2C_MODEL_CMP";
+        int unsigned         want_errors = 0;
+        string               want_text[$];
+
+        `uvm_component_utils(lb_mode_b_base)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = demote_id;
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (demoter.demoted != want_errors) begin
+                `uvm_error("LB_MODE_B", $sformatf("expected %0d %s, got %0d: %p", want_errors, demote_id, demoter.demoted,
+                                              demoter.messages))
+            end
+            foreach (want_text[i]) begin
+                if (demoter.count(want_text[i]) == 0) begin
+                    `uvm_error("LB_MODE_B", $sformatf("no %s message holds '%s': %p", demote_id, want_text[i], demoter.messages))
+                end
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : lb_mode_b_base
+
+    // Sends a prepared list of items in order.
+    class lb_list_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
+        T items[$];
+
+        `uvm_object_param_utils(lb_list_seq#(T))
+
+        function new(string name = "lb_list_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            foreach (items[i]) begin
+                start_item(items[i]);
+                finish_item(items[i]);
+            end
+        endtask
+    endclass : lb_list_seq
+
+    // Keeps every item a monitor reports, with the time it reported it.
+    class lb_arrivals #(type T = uvm_sequence_item) extends uvm_subscriber #(T);
+        T        items[$];
+        realtime at[$];
+
+        `uvm_component_param_utils(lb_arrivals#(T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void write(T t);
+            items.push_back(t);
+            at.push_back($realtime);
+        endfunction
+    endclass : lb_arrivals
+
     `include "rdy_vld_lb_tests.svh"
     `include "axi4_stream_lb_tests.svh"
     `include "raw_lb_tests.svh"
@@ -158,6 +259,12 @@ module a2c_uvm_loopback_tb;
     raw_if #(.data_t(lb_data_t)) raw();
     status_if #(.data_t(lb_data_t)) st();
     apb_if #(.addr_t(lb_apb_word_t), .data_t(lb_apb_word_t)) apb();
+    // The model lanes of the Mode B tests.
+    rdy_vld_if #(.data_t(lb_data_t)) rv_model();
+    axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_model();
+    raw_if #(.data_t(lb_data_t)) raw_model();
+    status_if #(.data_t(lb_data_t)) st_model();
+    apb_if #(.addr_t(lb_apb_word_t), .data_t(lb_apb_word_t)) apb_model();
     push_ack_if #(.data_t(lb_data_t)) pa();
     notify_ack_if na();
     req_ack_if #(.data_t(lb_data_t), .rdata_t(lb_rdata_t)) ra();
@@ -177,6 +284,11 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(raw_vif_t)::set(null, "uvm_test_top", "raw", raw);
         uvm_config_db#(st_vif_t)::set(null, "uvm_test_top", "st", st);
         uvm_config_db#(apb_vif_t)::set(null, "uvm_test_top", "apb", apb);
+        uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv_model", rv_model);
+        uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_model", axis_model);
+        uvm_config_db#(raw_vif_t)::set(null, "uvm_test_top", "raw_model", raw_model);
+        uvm_config_db#(st_vif_t)::set(null, "uvm_test_top", "st_model", st_model);
+        uvm_config_db#(apb_vif_t)::set(null, "uvm_test_top", "apb_model", apb_model);
         uvm_config_db#(pa_vif_t)::set(null, "uvm_test_top", "pa", pa);
         uvm_config_db#(na_vif_t)::set(null, "uvm_test_top", "na", na);
         uvm_config_db#(ra_vif_t)::set(null, "uvm_test_top", "ra", ra);

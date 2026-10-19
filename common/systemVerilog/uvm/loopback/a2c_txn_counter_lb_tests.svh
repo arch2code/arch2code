@@ -1,36 +1,6 @@
 // Loopback tests of a2c_txn_counter and a2c_error_demoter, on a rdy_vld
 // link. Included in a2c_uvm_loopback_pkg after rdy_vld_lb_tests.svh.
 
-    function automatic bit lb_has(string s, string sub);
-        for (int i = 0; i + sub.len() <= s.len(); i++) begin
-            if (s.substr(i, i + sub.len() - 1) == sub) return 1;
-        end
-        return 0;
-    endfunction
-
-    // An a2c_error_demoter that keeps the text of each message it demotes.
-    class lb_recording_demoter extends a2c_error_demoter;
-        string messages[$];
-
-        `uvm_object_utils(lb_recording_demoter)
-
-        function new(string name = "lb_recording_demoter");
-            super.new(name);
-        endfunction
-
-        virtual function action_e catch();
-            if (get_severity() == UVM_ERROR && get_id() == demote_id) messages.push_back(get_message());
-            return super.catch();
-        endfunction
-
-        // How many kept messages hold sub.
-        function int unsigned count(string sub);
-            int unsigned n = 0;
-            foreach (messages[i]) n += lb_has(messages[i], sub);
-            return n;
-        endfunction
-    endclass : lb_recording_demoter
-
     // A rdy_vld src agent drives a dst agent whose monitor feeds an
     // a2c_txn_counter. The test sends n_items - late transactions and waits
     // for n_items + expect_delta, unless skip_wait is set. With second_wait

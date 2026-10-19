@@ -384,12 +384,16 @@ package a2c_uvm_pkg;
     //                      the latest model value, as one pair; a lane that has
     //                      reported no value yet is an A2C_MODEL_CMP error;
     //   A2C_STATUS_BOUNDS  every value either lane reports lies within lo..hi,
-    //                      or it is an A2C_MODEL_CMP error naming the lane;
+    //                      or it is an A2C_MODEL_CMP error naming the lane; a
+    //                      value has_xz() flags is an A2C_XZ error instead,
+    //                      and its bounds are not read;
     //   A2C_STATUS_OFF     each value is logged with id A2C_STATUS, unchecked.
     // A midstream window covers the next stable point only. bounds reads each
     // item through value(), which a subclass defines for an item whose
     // payload converts to an unsigned value of 64 bits or fewer; the default
-    // stops the run with A2C_CFG.
+    // stops the run with A2C_CFG. has_xz() flags none by default, so a
+    // subclass whose payload can carry X or Z must override it as well as
+    // value(), or bounds reads an X item as an in-range value.
     typedef enum {A2C_STATUS_STABLE, A2C_STATUS_BOUNDS, A2C_STATUS_OFF} a2c_status_policy_e;
 
     class a2c_status_comparator #(type T = uvm_sequence_item) extends a2c_comparator_base;
@@ -416,6 +420,10 @@ package a2c_uvm_pkg;
             return '0;
         endfunction
 
+        virtual function bit has_xz(T t);
+            return 0;
+        endfunction
+
         virtual function void open_midstream_window();
             window_open = 1;
         endfunction
@@ -431,6 +439,10 @@ package a2c_uvm_pkg;
             seen[lane]++;
             case (policy)
                 A2C_STATUS_BOUNDS: begin
+                    if (has_xz(t)) begin
+                        `uvm_error("A2C_XZ", $sformatf("%s: %s value %s has X or Z", get_full_name(), a2c_lane_name(lane), t.convert2string()))
+                        return;
+                    end
                     v = value(t);
                     if (v < lo || v > hi) begin
                         `uvm_error("A2C_MODEL_CMP", $sformatf("%s: %s value %s is outside 0x%0h..0x%0h",
@@ -520,30 +532,20 @@ package a2c_uvm_pkg;
     endclass : a2c_midstream_guard
 
     // Lets one responder serve both lanes of a Mode B port from one shared
-    // model. Each lane has its own next transaction index. The first lane to
-    // reach index n wins claim() and applies transaction n to the model,
-    // then record()s the response and its delay. The other lane's claim()
-    // fails, and replay() hands it that record, blocking until it exists; a
-    // lane that must never lead, such as a model lane whose response is
-    // built from the DUT's request, calls replay() without claim(). A
-    // replayed record is dropped. check_phase() reports, as A2C_REPLAY, a
-    // record the other lane never replayed, a claim never recorded, and a
-    // lane still blocked in replay(). T may be a class handle or a value
-    // type; replay() returns the recorded handle, not a copy.
+    // model. The DUT lane applies each transaction and record()s its
+    // response and delay; the model lane replays them in order and never
+    // applies a transaction's effect.
     class a2c_replay_log #(type T = uvm_sequence_item) extends uvm_component;
         typedef struct {
             T            rsp;
             int unsigned delay;
-            a2c_lane_e   lane;
         } record_t;
 
-        protected int unsigned next[2];
-        // The transaction each lane is blocked on in replay(), or -1.
-        protected int          waiting[2] = '{-1, -1};
-        // The lane that leads each transaction not yet replayed.
-        protected a2c_lane_e   claimed[int unsigned];
-        protected record_t     records[int unsigned];
-        protected event        recorded;
+        // Recorded and not yet replayed, oldest first.
+        protected record_t     records[$];
+        protected int unsigned replayed;
+        // The transaction the model lane waits for, or -1.
+        protected int          waiting = -1;
 
         `uvm_component_param_utils(a2c_replay_log#(T))
 
@@ -551,73 +553,38 @@ package a2c_uvm_pkg;
             super.new(name, parent);
         endfunction
 
-        function int unsigned next_index(a2c_lane_e lane);
-            return next[lane];
+        function void record(T rsp, int unsigned delay);
+            records.push_back('{rsp: rsp, delay: delay});
         endfunction
 
-        function bit claim(a2c_lane_e lane);
-            int unsigned n = next[lane];
-            if (claimed.exists(n)) return 0;
-            claimed[n] = lane;
-            return 1;
+        // Whether the model lane's next transaction is recorded. Until it
+        // is, check_phase() counts the model lane as waiting for it.
+        function bit can_replay();
+            waiting = (records.size() == 0) ? int'(replayed) : -1;
+            return records.size() != 0;
         endfunction
 
-        function void record(a2c_lane_e lane, T rsp, int unsigned delay);
-            int unsigned n = next[lane];
-            if (!claimed.exists(n) || claimed[n] != lane) begin
-                `uvm_fatal("A2C_REPLAY", $sformatf("%s: the %s lane records transaction %0d without claiming it", get_full_name(),
-                                                   a2c_lane_name(lane), n))
+        // T may be a class handle or a value type; rsp is the recorded
+        // handle, not a copy.
+        function void replay(output T rsp, output int unsigned delay);
+            if (records.size() == 0) begin
+                `uvm_fatal("A2C_REPLAY", $sformatf("%s: the model lane replays transaction %0d, which the DUT lane has not recorded",
+                                                   get_full_name(), replayed))
             end
-            records[n] = '{rsp: rsp, delay: delay, lane: lane};
-            next[lane]++;
-            ->recorded;
-        endfunction
-
-        task replay(a2c_lane_e lane, output T rsp, output int unsigned delay);
-            int unsigned n = next[lane];
-            if (claimed.exists(n) && claimed[n] == lane) begin
-                `uvm_fatal("A2C_REPLAY", $sformatf("%s: the %s lane replays transaction %0d, which it claimed", get_full_name(),
-                                                   a2c_lane_name(lane), n))
-            end
-            waiting[lane] = n;
-            while (!records.exists(n)) @recorded;
-            waiting[lane] = -1;
-            rsp   = records[n].rsp;
-            delay = records[n].delay;
-            records.delete(n);
-            claimed.delete(n);
-            next[lane]++;
-        endtask
-
-        protected function string other_name(int lane);
-            return a2c_lane_name((lane == A2C_DUT_LANE) ? A2C_MODEL_LANE : A2C_DUT_LANE);
+            rsp   = records[0].rsp;
+            delay = records[0].delay;
+            void'(records.pop_front());
+            replayed++;
         endfunction
 
         virtual function void check_phase(uvm_phase phase);
-            int unsigned n[2];
-            int unsigned first[2];
-            foreach (records[i]) begin
-                if (n[records[i].lane] == 0) first[records[i].lane] = i;
-                n[records[i].lane]++;
+            if (records.size() > 0) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: end of test with %0d responses the DUT lane recorded and the model lane never replayed, from transaction %0d",
+                                               get_full_name(), records.size(), replayed))
             end
-            foreach (n[lane]) begin
-                if (n[lane] > 0) begin
-                    `uvm_error("A2C_REPLAY", $sformatf("%s: end of test with %0d responses the %s lane recorded and the %s lane never replayed, from transaction %0d",
-                                                   get_full_name(), n[lane], a2c_lane_name(a2c_lane_e'(lane)), other_name(lane),
-                                                   first[lane]))
-                end
-            end
-            foreach (claimed[i]) begin
-                if (!records.exists(i)) begin
-                    `uvm_error("A2C_REPLAY", $sformatf("%s: the %s lane claimed transaction %0d and never recorded it", get_full_name(),
-                                                   a2c_lane_name(claimed[i]), i))
-                end
-            end
-            foreach (waiting[lane]) begin
-                if (waiting[lane] >= 0) begin
-                    `uvm_error("A2C_REPLAY", $sformatf("%s: the %s lane waited for transaction %0d, which the %s lane never recorded",
-                                                   get_full_name(), a2c_lane_name(a2c_lane_e'(lane)), waiting[lane], other_name(lane)))
-                end
+            if (waiting >= 0) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane waited for transaction %0d, which the DUT lane never recorded",
+                                               get_full_name(), waiting))
             end
         endfunction
     endclass : a2c_replay_log

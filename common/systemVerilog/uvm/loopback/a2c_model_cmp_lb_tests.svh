@@ -1,9 +1,9 @@
 // Loopback tests of a2c_uvm_pkg's Mode B classes: the in-order and status
 // comparators, the midstream guard and the replay log. Included in
 // a2c_uvm_loopback_pkg after the rdy_vld, status and a2c_txn_counter
-// tests, whose item types, typedefs and lb_recording_demoter they use. The
-// tests drive no pins: they write synthetic items, uvm_reg_items included,
-// into the classes' exports through analysis ports of their own.
+// tests, whose item types and typedefs they use. The tests drive no pins:
+// they write synthetic items, uvm_reg_items included, into the classes'
+// exports through analysis ports of their own.
 
     typedef a2c_in_order_comparator #(rv_item_t) lb_cmp_t;
     typedef a2c_status_comparator #(st_item_t)   lb_st_cmp_t;
@@ -46,42 +46,6 @@
             return 64'(t.data);
         endfunction
     endclass : lb_bounds_cmp
-
-    // What every test in this file shares: a demoter on demote_id that
-    // records the messages, and a report_phase check that it demoted
-    // exactly want_errors, each kept message holding want_text when set.
-    class lb_mode_b_base extends lb_base_test;
-        lb_recording_demoter demoter;
-        string               demote_id = "A2C_MODEL_CMP";
-        int unsigned         want_errors = 0;
-        string               want_text[$];
-
-        `uvm_component_utils(lb_mode_b_base)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-        endfunction
-
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            demoter = lb_recording_demoter::type_id::create("demoter");
-            demoter.demote_id = demote_id;
-            uvm_report_cb::add(null, demoter);
-        endfunction
-
-        virtual function void report_phase(uvm_phase phase);
-            if (demoter.demoted != want_errors) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected %0d %s, got %0d: %p", want_errors, demote_id, demoter.demoted,
-                                              demoter.messages))
-            end
-            foreach (want_text[i]) begin
-                if (demoter.count(want_text[i]) == 0) begin
-                    `uvm_error("LB_MODE_B", $sformatf("no %s message holds '%s': %p", demote_id, want_text[i], demoter.messages))
-                end
-            end
-            super.report_phase(phase);
-        endfunction
-    endclass : lb_mode_b_base
 
     // n_items random items reach an a2c_in_order_comparator on both sides,
     // each side with its own random gaps. Every pair matches. Subclasses
@@ -556,27 +520,24 @@
         endtask
     endclass : midstream_guard_predict_test
 
-    // Both lanes run n_items / 4 transactions through one replay log, with
-    // gaps that let the DUT lane lead the first half and the model lane the
-    // second. A leader takes two clocks between claim() and record(), so the
-    // follower blocks in replay(). The follower must get the leader's
-    // response handle and delay. With follow set, the model lane calls
-    // replay() without claim() and has the shorter gaps throughout, so it
-    // often asks for a transaction before the DUT lane has claimed it.
+    // The DUT lane records n_items / 4 transactions in one replay log, two
+    // clocks after each starts, and the model lane replays them in order,
+    // sampling can_replay() each clock until its next one is recorded. It
+    // must get the recorded response handle and delay. The model lane has
+    // the longer gaps, so it never waits; with follow set it has the
+    // shorter ones and must wait for some.
     class replay_log_test extends lb_mode_b_base;
         lb_replay_t  log;
         int unsigned n;
         bit          follow = 0;
-        // With set, the DUT lane claims one more transaction after its last
-        // and never records it.
-        bit          claim_after = 0;
-        // Indexed by a2c_lane_e: how many transactions each lane runs, how
-        // many it led, and whether it has run them all.
+        // Indexed by a2c_lane_e: how many transactions each lane runs, and
+        // whether it has run them all.
         int unsigned run[2];
-        int unsigned led[2];
         bit          done[2];
-        // Replays asked for before the DUT lane claimed the transaction.
+        // Replays the model lane asked for before they were recorded, and
+        // all its replays.
         int unsigned early;
+        int unsigned replays;
         rv_item_t    rsp_of[int unsigned];
         int unsigned delay_of[int unsigned];
 
@@ -595,69 +556,70 @@
             configure();
         endfunction
 
-        // Sets follow, claim_after, run and the expectations.
+        // Sets follow, run and the expectations.
         virtual function void configure();
         endfunction
 
-        protected task serve(a2c_lane_e lane);
-            bit replay_only = follow && lane == A2C_MODEL_LANE;
-            for (int unsigned i = 0; i < run[lane]; i++) begin
+        protected function int unsigned gap(a2c_lane_e lane);
+            bit fast = (lane == A2C_MODEL_LANE) == follow;
+            return fast ? $urandom_range(1, 0) : $urandom_range(6, 4);
+        endfunction
+
+        protected task record_all();
+            for (int unsigned i = 0; i < run[A2C_DUT_LANE]; i++) begin
+                repeat (gap(A2C_DUT_LANE)) clk_vif.sample_edge();
+                rsp_of[i]   = lb_rv_item(lb_data_t'($urandom()));
+                delay_of[i] = $urandom_range(3, 0);
+                repeat (2) clk_vif.sample_edge();
+                log.record(rsp_of[i], delay_of[i]);
+                repeat (delay_of[i]) clk_vif.sample_edge();
+            end
+            done[A2C_DUT_LANE] = 1;
+        endtask
+
+        protected task replay_all();
+            for (int unsigned i = 0; i < run[A2C_MODEL_LANE]; i++) begin
                 rv_item_t    rsp;
                 int unsigned delay;
-                bit          fast = follow ? replay_only : (lane == A2C_DUT_LANE) == (i < n / 2);
-                repeat (fast ? $urandom_range(1, 0) : $urandom_range(6, 4)) clk_vif.sample_edge();
-                if (log.next_index(lane) != i) `uvm_error("LB_REPLAY", $sformatf("%s next index %0d, expected %0d", lane.name(),
-                                                                               log.next_index(lane), i))
-                if (!replay_only && log.claim(lane)) begin
-                    led[lane]++;
-                    rsp         = lb_rv_item(lb_data_t'($urandom()));
-                    delay       = $urandom_range(3, 0);
-                    rsp_of[i]   = rsp;
-                    delay_of[i] = delay;
-                    repeat (2) clk_vif.sample_edge();
-                    log.record(lane, rsp, delay);
-                end else begin
-                    if (!rsp_of.exists(i)) early++;
-                    log.replay(lane, rsp, delay);
-                    if (rsp != rsp_of[i] || delay != delay_of[i]) begin
-                        `uvm_error("LB_REPLAY", $sformatf("%s transaction %0d replayed %s delay %0d, recorded %s delay %0d",
-                                                          lane.name(), i, rsp.convert2string(), delay,
-                                                          rsp_of[i].convert2string(), delay_of[i]))
-                    end
+                repeat (gap(A2C_MODEL_LANE)) clk_vif.sample_edge();
+                if (!log.can_replay()) early++;
+                while (!log.can_replay()) clk_vif.sample_edge();
+                log.replay(rsp, delay);
+                replays++;
+                if (rsp != rsp_of[i] || delay != delay_of[i]) begin
+                    `uvm_error("LB_REPLAY", $sformatf("transaction %0d replayed %s delay %0d, recorded %s delay %0d", i,
+                                                      rsp.convert2string(), delay, rsp_of[i].convert2string(), delay_of[i]))
                 end
                 repeat (delay) clk_vif.sample_edge();
             end
-            if (claim_after && lane == A2C_DUT_LANE) void'(log.claim(lane));
-            done[lane] = 1;
+            done[A2C_MODEL_LANE] = 1;
         endtask
 
-        // A lane left blocked in replay() never finishes, so the test ends
-        // 50 clocks after the DUT lane does.
+        // A model lane left waiting never finishes, so after the DUT lane is
+        // done the test waits only while the model lane replays a
+        // transaction at least once every 50 clocks.
         virtual task run_phase(uvm_phase phase);
+            int unsigned idle = 0;
             phase.raise_objection(this);
             clk_vif.wait_reset_release();
             fork
-                serve(A2C_DUT_LANE);
-                serve(A2C_MODEL_LANE);
+                record_all();
+                replay_all();
             join_none
             wait (done[A2C_DUT_LANE]);
-            fork
-                wait (done[A2C_MODEL_LANE]);
-                repeat (50) clk_vif.sample_edge();
-            join_any
+            while (!done[A2C_MODEL_LANE] && idle < 50) begin
+                int unsigned last = replays;
+                clk_vif.sample_edge();
+                idle = (replays == last) ? idle + 1 : 0;
+            end
             disable fork;
             phase.drop_objection(this);
         endtask
 
         virtual function void report_phase(uvm_phase phase);
-            `uvm_info("LB_STATS", $sformatf("%0d transactions, %0d led by the DUT lane and %0d by the model lane, %0d replays asked for early",
-                                            n, led[A2C_DUT_LANE], led[A2C_MODEL_LANE], early), UVM_NONE)
-            if (follow && (led[A2C_MODEL_LANE] != 0 || early == 0)) begin
-                `uvm_error("LB_REPLAY", "the model lane led, or never asked for a transaction before the DUT lane claimed it")
-            end
-            if (!follow && (led[A2C_DUT_LANE] == 0 || led[A2C_MODEL_LANE] == 0)) begin
-                `uvm_error("LB_REPLAY", "one lane never led, so replay in one direction went untested")
-            end
+            `uvm_info("LB_STATS", $sformatf("%0d transactions, %0d replays asked for before they were recorded", n, early), UVM_NONE)
+            if (follow && early == 0) `uvm_error("LB_REPLAY", "the model lane never asked for a transaction before it was recorded")
+            if (!follow && early != 0) `uvm_error("LB_REPLAY", $sformatf("the slower model lane asked early %0d times", early))
             super.report_phase(phase);
         endfunction
     endclass : replay_log_test
@@ -679,8 +641,7 @@
         endfunction
     endclass : replay_log_unconsumed_test
 
-    // The model lane only replays, the req_ack and pop_ack responder path,
-    // and is faster, so it waits in replay() before the DUT lane claims.
+    // The faster model lane waits for transactions before they are recorded.
     class replay_log_follow_test extends replay_log_test;
         `uvm_component_utils(replay_log_follow_test)
 
@@ -693,8 +654,8 @@
         endfunction
     endclass : replay_log_follow_test
 
-    // The DUT lane stops two transactions early, so the replay-only model
-    // lane waits for one the DUT lane never claimed: one report.
+    // The DUT lane stops two transactions early, so the model lane waits for
+    // one the DUT lane never records: one report.
     class replay_log_waiting_test extends replay_log_test;
         `uvm_component_utils(replay_log_waiting_test)
 
@@ -710,26 +671,6 @@
                                           n - 2));
         endfunction
     endclass : replay_log_waiting_test
-
-    // The DUT lane claims its last transaction and never records it: the
-    // claim and the model lane's wait are each reported.
-    class replay_log_unrecorded_claim_test extends replay_log_test;
-        `uvm_component_utils(replay_log_unrecorded_claim_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-        endfunction
-
-        virtual function void configure();
-            follow      = 1;
-            claim_after = 1;
-            run         = '{n - 1, n};
-            want_errors = 2;
-            want_text.push_back($sformatf("uvm_test_top.log: the DUT lane claimed transaction %0d and never recorded it", n - 1));
-            want_text.push_back($sformatf("uvm_test_top.log: the model lane waited for transaction %0d, which the DUT lane never recorded",
-                                          n - 1));
-        endfunction
-    endclass : replay_log_unrecorded_claim_test
 
     // The keyed reorder with one model item's value changed: one
     // A2C_MODEL_CMP that names the item's key.

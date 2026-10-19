@@ -310,3 +310,447 @@
             if (sb.matched != 6) `uvm_error("LB_CHECKS", $sformatf("expected 6 transfers reported, got %0d", sb.matched))
         endfunction
     endclass : apb_monitor_checks_test
+
+    function automatic apb_config_t lb_apb_cfg(string name, apb_vif_t vif, virtual a2c_clk_if clk_vif, a2c_role_e role,
+                                               string port);
+        apb_config_t cfg = apb_config_t::type_id::create(name);
+        cfg.vif       = vif;
+        cfg.clk_vif   = clk_vif;
+        cfg.role      = role;
+        cfg.port_name = port;
+        return cfg;
+    endfunction
+
+    // Mode B with the agent as master: apb is its DUT lane and apb_model its
+    // model lane, each served by a slave peer. The peers' memories have the
+    // same random fill and the same error range over 'h100 to 'h17f. The DUT
+    // lane's peer adds up to one wait clock per transfer and the model lane's
+    // up to three, so the lanes fall out of step. apb_check_seq checks every
+    // transfer against the DUT lane's memory, so req must carry the DUT
+    // lane's response. model_cmp must pair every transfer with no mismatch.
+    class apb_mode_b_test extends lb_mode_b_base;
+        apb_agent_t                         agent;
+        apb_agent_t                         peer;
+        apb_agent_t                         model_peer;
+        apb_config_t                        peer_cfg;
+        apb_config_t                        model_peer_cfg;
+        apb_vif_t                           vif;
+        apb_vif_t                           model_vif;
+        uvm_tlm_analysis_fifo #(apb_item_t) observed;
+        apb_check_seq                       seq;
+        int unsigned                        want_pairs;
+        int unsigned                        skew;
+
+        `uvm_component_utils(apb_mode_b_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            apb_config_t agent_cfg;
+            super.build_phase(phase);
+            if (!uvm_config_db#(apb_vif_t)::get(this, "", "apb", vif)) `uvm_fatal("LB_CFG", "no virtual apb_if 'apb'")
+            if (!uvm_config_db#(apb_vif_t)::get(this, "", "apb_model", model_vif)) `uvm_fatal("LB_CFG", "no virtual apb_if 'apb_model'")
+            agent_cfg = lb_apb_cfg("agent_cfg", vif, clk_vif, A2C_SRC, "apb");
+            agent_cfg.model_vif = model_vif;
+            peer_cfg       = lb_apb_cfg("peer_cfg", vif, clk_vif, A2C_DST, "apb");
+            model_peer_cfg = lb_apb_cfg("model_peer_cfg", model_vif, clk_vif, A2C_DST, "apb_model");
+            peer_cfg.mem       = apb_mem_t::type_id::create("peer_mem");
+            model_peer_cfg.mem = apb_mem_t::type_id::create("model_peer_mem");
+            peer_cfg.mem.fill       = A2C_MEM_FILL_RANDOM;
+            model_peer_cfg.mem.fill = A2C_MEM_FILL_RANDOM;
+            model_peer_cfg.mem.seed = peer_cfg.mem.seed;
+            peer_cfg.max_wait       = 1;
+            model_peer_cfg.max_wait = 3;
+            peer_cfg.error_ranges.push_back('{lo: 32'h100, hi: 32'h17f});
+            model_peer_cfg.error_ranges = peer_cfg.error_ranges;
+            uvm_config_db#(apb_config_t)::set(this, "agent", "cfg", agent_cfg);
+            uvm_config_db#(apb_config_t)::set(this, "peer", "cfg", peer_cfg);
+            uvm_config_db#(apb_config_t)::set(this, "model_peer", "cfg", model_peer_cfg);
+            agent      = apb_agent_t::type_id::create("agent", this);
+            peer       = apb_agent_t::type_id::create("peer", this);
+            model_peer = apb_agent_t::type_id::create("model_peer", this);
+            observed   = new("observed", this);
+            want_pairs = n_items;
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            peer.mon.ap.connect(observed.analysis_export);
+        endfunction
+
+        // Transfers after the checked sequence.
+        virtual task finish();
+        endtask
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            seq = apb_check_seq::type_id::create("seq");
+            seq.n            = n_items;
+            seq.mem          = peer_cfg.mem;
+            seq.error_ranges = peer_cfg.error_ranges;
+            seq.observed     = observed;
+            clk_vif.wait_reset_release();
+            fork
+                forever begin
+                    clk_vif.sample_edge();
+                    if (vif.psel !== model_vif.psel || vif.penable !== model_vif.penable) skew++;
+                end
+            join_none
+            seq.start(agent.sqr);
+            finish();
+            repeat (2) clk_vif.sample_edge();
+            disable fork;
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            `uvm_info("LB_STATS", $sformatf("%0d transfers checked against the DUT lane, %0d pairs; the lanes were out of step on %0d clocks",
+                                            seq.matched, agent.model_cmp.get_pairs(), skew), UVM_NONE)
+            if (seq.matched != n_items) `uvm_error("LB_APB", $sformatf("matched %0d of %0d transfers", seq.matched, n_items))
+            if (seq.reads == 0 || seq.writes == 0 || seq.errors == 0) `uvm_error("LB_APB", "the sequence missed a read, a write or an error")
+            if (agent.model_cmp.get_pairs() != want_pairs) begin
+                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), want_pairs))
+            end
+            if (skew == 0) `uvm_error("LB_MODE_B", "the lanes never fell out of step, so per-lane completion went untested")
+        endfunction
+    endclass : apb_mode_b_test
+
+    // The model lane's peer alone has an error range over 'h300, which one
+    // more read fetches: one A2C_MODEL_CMP, and req carries the DUT lane's
+    // word and pslverr 0.
+    class apb_mode_b_mismatch_test extends apb_mode_b_test;
+        bit [31:0] word;
+
+        `uvm_component_utils(apb_mode_b_mismatch_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            apb_item_t dut;
+            apb_item_t model;
+            super.build_phase(phase);
+            word = $urandom();
+            for (int unsigned b = 0; b < 4; b++) peer_cfg.mem.write(32'h300 + b, word[8 * b +: 8]);
+            model_peer_cfg.error_ranges.push_back('{lo: 32'h300, hi: 32'h303});
+            want_pairs  = n_items + 1;
+            want_errors = 1;
+            dut   = apb_item_t::type_id::create("dut");
+            model = apb_item_t::type_id::create("model");
+            dut.addr   = 32'h300;
+            model.addr = 32'h300;
+            dut.data     = word;
+            model.data   = '0;
+            model.slverr = 1;
+            want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", n_items + 1,
+                                          dut.convert2string(), model.convert2string()));
+        endfunction
+
+        virtual task finish();
+            lb_list_seq#(apb_item_t) read = lb_list_seq#(apb_item_t)::type_id::create("read");
+            apb_item_t               it   = apb_item_t::type_id::create("it");
+            it.write = 0;
+            it.addr  = 32'h300;
+            read.items.push_back(it);
+            read.start(agent.sqr);
+            if (it.slverr !== 0 || it.data !== word) begin
+                `uvm_error("LB_APB", $sformatf("req holds 0x%08h slverr %0d, the DUT lane gave 0x%08h slverr 0", it.data, it.slverr, word))
+            end
+            observed.flush();
+        endtask
+    endclass : apb_mode_b_mismatch_test
+
+    // Sends a list of transfers with idle clocks before each. With follow
+    // set, transfer hold_at waits until follow has reported that many
+    // transfers and one more.
+    class apb_gap_seq extends uvm_sequence #(apb_item_t);
+        apb_item_t                items[$];
+        int unsigned              gaps[$];
+        virtual a2c_clk_if        clk_vif;
+        lb_arrivals#(apb_item_t)  follow;
+        int                       hold_at = -1;
+
+        `uvm_object_utils(apb_gap_seq)
+
+        function new(string name = "apb_gap_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            foreach (items[i]) begin
+                repeat (gaps[i]) clk_vif.drive_edge();
+                if (i == hold_at) while (follow.items.size() <= i) clk_vif.sample_edge();
+                start_item(items[i]);
+                finish_item(items[i]);
+            end
+        endtask
+    endclass : apb_gap_seq
+
+    // Mode B with the agent as slave: apb is its DUT lane and apb_model its
+    // model lane, each driven by a master peer. The peers send the same
+    // n_items transfers to 16 words, one of them in an error range, each lane
+    // with its own random idle clocks between transfers, so either lane may
+    // reach a transfer first. The agent serves both lanes from one memory
+    // with up to two wait clocks. A reference applies the transfers once, in
+    // order, to a memory with the same fill. Each lane's read data and
+    // pslverr must match it, and the agent's memory must end as it does.
+    // model_cmp must pair every transfer with no mismatch, and each lane must
+    // reach the setup phase of some transfers first. The DUT lane applies
+    // every transfer, so the model lane must never complete one before it.
+    class apb_mode_b_slave_test extends lb_mode_b_base;
+        apb_agent_t              agent;
+        apb_agent_t              peer;
+        apb_agent_t              model_peer;
+        apb_config_t             agent_cfg;
+        apb_vif_t                vif;
+        apb_vif_t                model_vif;
+        apb_mem_t                ref_mem;
+        lb_arrivals#(apb_item_t) arrivals;
+        lb_arrivals#(apb_item_t) model_arrivals;
+        apb_gap_seq              seq;
+        apb_gap_seq              model_seq;
+        // The response the reference gives each transfer.
+        bit [31:0]               want_data[$];
+        bit                      want_slverr[$];
+        // The setup phase of each transfer on each lane, and the lane that
+        // reached it first.
+        realtime                 setup_at[2][$];
+        int unsigned             led[2];
+        bit                      done[2];
+        int unsigned             idle;
+
+        `uvm_component_utils(apb_mode_b_slave_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        // Edits model_seq and the expectations.
+        virtual function void build_streams();
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(apb_vif_t)::get(this, "", "apb", vif)) `uvm_fatal("LB_CFG", "no virtual apb_if 'apb'")
+            if (!uvm_config_db#(apb_vif_t)::get(this, "", "apb_model", model_vif)) `uvm_fatal("LB_CFG", "no virtual apb_if 'apb_model'")
+            agent_cfg = lb_apb_cfg("agent_cfg", vif, clk_vif, A2C_DST, "apb");
+            agent_cfg.model_vif = model_vif;
+            agent_cfg.mem       = apb_mem_t::type_id::create("slave_mem");
+            agent_cfg.mem.fill  = A2C_MEM_FILL_RANDOM;
+            agent_cfg.max_wait  = 2;
+            agent_cfg.error_ranges.push_back('{lo: 32'h30, hi: 32'h33});
+            ref_mem      = apb_mem_t::type_id::create("ref_mem");
+            ref_mem.fill = A2C_MEM_FILL_RANDOM;
+            ref_mem.seed = agent_cfg.mem.seed;
+            uvm_config_db#(apb_config_t)::set(this, "agent", "cfg", agent_cfg);
+            uvm_config_db#(apb_config_t)::set(this, "peer", "cfg", lb_apb_cfg("peer_cfg", vif, clk_vif, A2C_SRC, "apb"));
+            uvm_config_db#(apb_config_t)::set(this, "model_peer", "cfg",
+                                              lb_apb_cfg("model_peer_cfg", model_vif, clk_vif, A2C_SRC, "apb_model"));
+            agent          = apb_agent_t::type_id::create("agent", this);
+            peer           = apb_agent_t::type_id::create("peer", this);
+            model_peer     = apb_agent_t::type_id::create("model_peer", this);
+            arrivals       = lb_arrivals#(apb_item_t)::type_id::create("arrivals", this);
+            model_arrivals = lb_arrivals#(apb_item_t)::type_id::create("model_arrivals", this);
+            seq       = apb_gap_seq::type_id::create("seq");
+            model_seq = apb_gap_seq::type_id::create("model_seq");
+            seq.clk_vif       = clk_vif;
+            model_seq.clk_vif = clk_vif;
+            model_seq.follow  = arrivals;
+            for (int unsigned i = 0; i < n_items; i++) begin
+                apb_item_t it = apb_item_t::type_id::create("it");
+                apb_item_t m;
+                bit [31:0] word;
+                if (!it.randomize() with { addr < 32'h40; addr[1:0] == 2'b00; }) `uvm_fatal("LB_RAND", "apb item randomize failed")
+                $cast(m, it.clone());
+                seq.items.push_back(it);
+                model_seq.items.push_back(m);
+                seq.gaps.push_back($urandom_range(3, 0));
+                model_seq.gaps.push_back($urandom_range(3, 0));
+                for (int unsigned b = 0; b < 4; b++) word[8 * b +: 8] = ref_mem.read(it.addr + b);
+                want_slverr.push_back(it.addr inside {[32'h30 : 32'h33]});
+                if (!want_slverr[i] && it.write) begin
+                    for (int unsigned b = 0; b < 4; b++) ref_mem.write(it.addr + b, it.data[8 * b +: 8]);
+                    word = it.data;
+                end
+                want_data.push_back(word);
+            end
+            build_streams();
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            agent.mon.ap.connect(arrivals.analysis_export);
+            agent.model_mon.ap.connect(model_arrivals.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk_vif.wait_reset_release();
+            fork
+                forever begin
+                    clk_vif.sample_edge();
+                    if (vif.psel === 1'b1 && vif.penable !== 1'b1) setup_at[A2C_DUT_LANE].push_back($realtime);
+                    if (model_vif.psel === 1'b1 && model_vif.penable !== 1'b1) setup_at[A2C_MODEL_LANE].push_back($realtime);
+                end
+            join_none
+            fork
+                begin
+                    seq.start(peer.sqr);
+                    done[A2C_DUT_LANE] = 1;
+                end
+                begin
+                    model_seq.start(model_peer.sqr);
+                    done[A2C_MODEL_LANE] = 1;
+                end
+            join_none
+            // A model lane transfer the DUT lane never makes never ends, so
+            // after the DUT lane's last transfer the test waits only while
+            // the model lane completes a transfer at least once every 50 clocks.
+            wait (done[A2C_DUT_LANE]);
+            while (!done[A2C_MODEL_LANE] && idle < 50) begin
+                int unsigned last = model_arrivals.items.size();
+                clk_vif.sample_edge();
+                idle = (model_arrivals.items.size() == last) ? idle + 1 : 0;
+            end
+            repeat (2) clk_vif.sample_edge();
+            disable fork;
+            phase.drop_objection(this);
+        endtask
+
+        protected function void check_lane(string lane, apb_item_t got[$]);
+            for (int unsigned i = 0; i < got.size() && i < want_data.size(); i++) begin
+                if (got[i].slverr !== want_slverr[i] || (!got[i].write && !want_slverr[i] && got[i].data !== want_data[i])) begin
+                    `uvm_error("LB_REPLAY", $sformatf("%s lane transfer %0d: got %s, the reference gives data 0x%08h slverr %0d",
+                                                      lane, i, got[i].convert2string(), want_data[i], want_slverr[i]))
+                end
+            end
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned bad_bytes = 0;
+            super.check_phase(phase);
+            check_lane("DUT", seq.items);
+            check_lane("model", model_seq.items);
+            for (int unsigned a = 0; a < 32'h40; a++) begin
+                if (ref_mem.exists(a) != agent_cfg.mem.exists(a) || (ref_mem.exists(a) && ref_mem.read(a) !== agent_cfg.mem.read(a))) begin
+                    bad_bytes++;
+                end
+            end
+            if (bad_bytes != 0) `uvm_error("LB_REPLAY", $sformatf("the agent's memory differs from the reference in %0d bytes", bad_bytes))
+            for (int unsigned i = 0; i < setup_at[A2C_DUT_LANE].size() && i < setup_at[A2C_MODEL_LANE].size(); i++) begin
+                if (setup_at[A2C_MODEL_LANE][i] < setup_at[A2C_DUT_LANE][i]) led[A2C_MODEL_LANE]++;
+                else led[A2C_DUT_LANE]++;
+            end
+            for (int unsigned i = 0; i < arrivals.at.size() && i < model_arrivals.at.size(); i++) begin
+                if (model_arrivals.at[i] < arrivals.at[i]) begin
+                    `uvm_error("LB_REPLAY", $sformatf("the model lane completed transfer %0d before the DUT lane", i))
+                end
+            end
+            `uvm_info("LB_STATS", $sformatf("%0d pairs; the DUT lane led %0d transfers and the model lane %0d", agent.model_cmp.get_pairs(),
+                                            led[A2C_DUT_LANE], led[A2C_MODEL_LANE]), UVM_NONE)
+            if (agent.model_cmp.get_pairs() != n_items) begin
+                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), n_items))
+            end
+            check_led();
+        endfunction
+
+        virtual function void check_led();
+            if (led[A2C_DUT_LANE] == 0 || led[A2C_MODEL_LANE] == 0) `uvm_error("LB_MODE_B", "one lane never led, so replay went untested")
+        endfunction
+    endclass : apb_mode_b_slave_test
+
+    // The model lane's peer writes different data in one transfer, which it
+    // starts only after the DUT lane has completed it, so the DUT lane
+    // applies the transfer: one A2C_MODEL_CMP, and the memory and every read
+    // still match the reference.
+    class apb_mode_b_slave_mismatch_test extends apb_mode_b_slave_test;
+        `uvm_component_utils(apb_mode_b_slave_mismatch_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            apb_item_t m;
+            int        k = -1;
+            for (int unsigned i = n_items / 2; i < n_items && k < 0; i++) begin
+                if (seq.items[i].write && !want_slverr[i]) k = i;
+            end
+            if (k < 0) `uvm_fatal("LB_RAND", "no write in the second half of the transfers")
+            m = model_seq.items[k];
+            m.data = ~m.data;
+            model_seq.hold_at = k;
+            want_errors = 1;
+            want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", k + 1,
+                                          seq.items[k].convert2string(), m.convert2string()));
+        endfunction
+    endclass : apb_mode_b_slave_mismatch_test
+
+    // The model lane's peer starts every transfer on the first clock it can
+    // and the DUT lane's peer one to three clocks later, so the model lane
+    // reaches every transfer first. In one transfer the model lane's peer
+    // writes different data, and the next transfer reads that address back.
+    // The DUT lane applies the write, so both lanes must read the DUT
+    // lane's data and the memory must match the reference: one
+    // A2C_MODEL_CMP, for the write.
+    class apb_mode_b_slave_model_leads_test extends apb_mode_b_slave_test;
+        `uvm_component_utils(apb_mode_b_slave_model_leads_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            apb_item_t m;
+            int        k = -1;
+            foreach (seq.gaps[i]) begin
+                seq.gaps[i]       = $urandom_range(3, 1);
+                model_seq.gaps[i] = 0;
+            end
+            for (int unsigned i = 0; i + 1 < n_items && k < 0; i++) begin
+                if (seq.items[i].write && !want_slverr[i] && !seq.items[i + 1].write) k = i;
+            end
+            if (k < 0) `uvm_fatal("LB_RAND", "no write followed by a read")
+            // A read leaves the reference unchanged, so moving its address
+            // changes only its own expected response.
+            seq.items[k + 1].addr       = seq.items[k].addr;
+            model_seq.items[k + 1].addr = seq.items[k].addr;
+            want_data[k + 1]            = seq.items[k].data;
+            want_slverr[k + 1]          = 0;
+            m = model_seq.items[k];
+            m.data = ~m.data;
+            want_errors = 1;
+            want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", k + 1,
+                                          seq.items[k].convert2string(), m.convert2string()));
+        endfunction
+
+        virtual function void check_led();
+            if (led[A2C_MODEL_LANE] != n_items) begin
+                `uvm_error("LB_MODE_B", $sformatf("the model lane led %0d of %0d transfers", led[A2C_MODEL_LANE], n_items))
+            end
+        endfunction
+    endclass : apb_mode_b_slave_model_leads_test
+
+    // The model lane's peer sends one transfer more than the DUT lane's. The
+    // DUT lane never records it, so the model lane waits for it until the
+    // end of the test: one A2C_REPLAY.
+    class apb_mode_b_slave_extra_test extends apb_mode_b_slave_test;
+        `uvm_component_utils(apb_mode_b_slave_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            demote_id = "A2C_REPLAY";
+        endfunction
+
+        virtual function void build_streams();
+            apb_item_t it = apb_item_t::type_id::create("it");
+            if (!it.randomize() with { addr < 32'h30; addr[1:0] == 2'b00; }) `uvm_fatal("LB_RAND", "apb item randomize failed")
+            model_seq.items.push_back(it);
+            model_seq.gaps.push_back(0);
+            want_errors = 1;
+            want_text.push_back($sformatf("uvm_test_top.agent.drv.replay: the model lane waited for transaction %0d, which the DUT lane never recorded",
+                                          n_items));
+        endfunction
+    endclass : apb_mode_b_slave_extra_test

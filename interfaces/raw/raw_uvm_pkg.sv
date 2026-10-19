@@ -12,6 +12,14 @@
 // Support is limited. Against the RTL DUT the agent sees every clock. Against
 // the model DUT it is best effort: the SystemC raw BFM is not transactional,
 // so the model can drop or repeat a word.
+//
+// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// beside the DUT's and monitors it with model_mon. The src driver puts the
+// same word on both lanes every clock. Nothing is compared. What the DUT
+// produces that is not compared:
+//   DUT dst port, A2C_SRC agent: none
+//   DUT src port, A2C_DST agent: the word stream: no transfer boundary, and
+//   the model lane is best effort
 package raw_uvm_pkg;
 
     import uvm_pkg::*;
@@ -47,6 +55,8 @@ package raw_uvm_pkg;
 
     class raw_config #(type data_t = logic) extends uvm_object;
         virtual raw_if #(.data_t(data_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise.
+        virtual raw_if #(.data_t(data_t)) model_vif;
         virtual a2c_clk_if                clk_vif;
         uvm_active_passive_enum           is_active = UVM_ACTIVE;
         a2c_role_e                        role = A2C_SRC;
@@ -72,12 +82,14 @@ package raw_uvm_pkg;
 
         virtual task run_phase(uvm_phase phase);
             cfg.vif.data <= '0;
+            if (cfg.model_vif != null) cfg.model_vif.data <= '0;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.drive_edge();
                 seq_item_port.try_next_item(req);
                 if (req == null) continue;
                 cfg.vif.data <= req.data;
+                if (cfg.model_vif != null) cfg.model_vif.data <= req.data;
                 seq_item_port.item_done();
             end
         endtask
@@ -85,6 +97,8 @@ package raw_uvm_pkg;
 
     class raw_monitor #(type data_t = logic) extends uvm_monitor;
         raw_config#(data_t)                    cfg;
+        // The lane this monitor samples, cfg.vif or cfg.model_vif.
+        virtual raw_if #(.data_t(data_t))      vif;
         uvm_analysis_port #(raw_item#(data_t)) ap;
 
         `uvm_component_param_utils(raw_monitor#(data_t))
@@ -100,7 +114,7 @@ package raw_uvm_pkg;
             forever begin
                 cfg.clk_vif.sample_edge();
                 item = raw_item#(data_t)::type_id::create("item");
-                item.data = cfg.vif.data;
+                item.data = vif.data;
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),
                                              $sformatf("%0h", item.data)), UVM_HIGH)
                 ap.write(item);
@@ -116,6 +130,8 @@ package raw_uvm_pkg;
         raw_driver#(data_t)       drv;
         uvm_sequencer #(item_t)   sqr;
         raw_monitor#(data_t)      mon;
+        // Mode B only.
+        raw_monitor#(data_t)      model_mon;
 
         `uvm_component_param_utils(raw_agent#(data_t))
 
@@ -130,6 +146,12 @@ package raw_uvm_pkg;
             end
             mon = raw_monitor#(data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
+            mon.vif = cfg.vif;
+            if (cfg.model_vif != null) begin
+                model_mon = raw_monitor#(data_t)::type_id::create("model_mon", this);
+                model_mon.cfg = cfg;
+                model_mon.vif = cfg.model_vif;
+            end
             if (cfg.is_active == UVM_ACTIVE && cfg.role == A2C_SRC) begin
                 drv = raw_driver#(data_t)::type_id::create("drv", this);
                 drv.cfg = cfg;
