@@ -74,8 +74,28 @@ EDITS = [
     ('\ninterfaces:\n',
      '\nspecialStructures:\n'
      '    ubAlignSt: { baseStruct: ubAlignBaseSt }\n\n'
-     'interfaces:\n'),
+     'constants:\n'
+     '    UB_MTS: { value: 64, desc: "Read burst limit" }\n\n'
+     'interfaces:\n'
+     '    ubRd:\n'
+     '        desc: "AXI read"\n'
+     '        interfaceType: axi_read\n'
+     '        maxTransferSize: UB_MTS\n'
+     '        structures:\n'
+     '            - { structure: ubAddrSt, structureType: addr_t }\n'
+     '            - { structure: ubWordSt, structureType: data_t }\n'
+     '    ubRdP:\n'
+     '        desc: "AXI read limited by a block parameter"\n'
+     '        interfaceType: axi_read\n'
+     '        maxTransferSize: UB_W\n'
+     '        structures:\n'
+     '            - { structure: ubAddrSt, structureType: addr_t }\n'
+     '            - { structure: ubWordSt, structureType: data_t }\n'),
     ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W, UB_D]\n'),
+    ('            out: { interface: ubStream, direction: src }\n',
+     '            out: { interface: ubStream, direction: src }\n'
+     '            rdM: { interface: ubRd, direction: src }\n'
+     '            rdS: { interface: ubRdP, direction: dst }\n'),
     ('instanceType: ubDut,    instGroup: top, addressGroup: top }',
      'instanceType: ubDut,    instGroup: top, addressGroup: top, variant: v0 }'),
     ('\nconnections:\n',
@@ -84,6 +104,10 @@ EDITS = [
      '        v0: { UB_W: 4, UB_D: 16 }\n'
      '        v1: { UB_W: 12, UB_D: 32 }\n\n'
      'connections:\n'),
+    ('    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }\n',
+     '    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }\n'
+     '    - { interface: ubRd, src: uDut, srcport: rdM, dst: uSink, dstport: rdIn, name: rdOut, maxTransferSize: 32 }\n'
+     '    - { interface: ubRdP, src: uSrc, srcport: rdOut, dst: uDut, dstport: rdS, name: rdIn }\n'),
     ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
      '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
      '    - { register: cfg, regType: rw, block: ubDut, structure: ubPSt, defaultValue: 5, desc: "Config" }\n'
@@ -105,17 +129,27 @@ UB_D = {'v0': 16, 'v1': 32}
 
 # backpressureOverridable says whether the port's agent config has a
 # no_backpressure knob, and counter names the env's transaction counter for the
-# port's output, if it has one.
+# port's output, if it has one. maxTransferBytes is set on AXI ports only, per
+# variant, from the interface's maxTransferSize. rdM's interface names the
+# constant UB_MTS. Its connection sets maxTransferSize 32, which the view
+# ignores because the SystemC channel the run builds ignores it too. rdS's
+# interface names the block parameter UB_W, so each variant takes its binding.
 PORTS = [
     {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': None},
+     'backpressureOverridable': True, 'counter': None, 'maxTransferBytes': None},
     {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': 'out_counter'},
+     'backpressureOverridable': True, 'counter': 'out_counter', 'maxTransferBytes': None},
+    {'name': 'rdM', 'agent': 'rdM_agent', 'interfaceType': 'axi_read', 'role': 'src', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 64, 'v1': 64}},
+    {'name': 'rdS', 'agent': 'rdS_agent', 'interfaceType': 'axi_read', 'role': 'dst', 'clock': 'clk',
+     'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
+     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': UB_W},
     {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': None},
+     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': None},
 ]
 REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
 CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}
@@ -245,7 +279,7 @@ def run_all_tests():
             print(f"  FAIL: {problem}")
         print("\nFAIL: the UVM view disagrees with the block's ports or address rows")
         return 1
-    print("  PASS: ports carry their clock, reset and backpressure")
+    print("  PASS: ports carry their clock, reset, backpressure and AXI burst limit")
     print("  PASS: registers and memories sit at the allocated offsets and strides, with the packed fields at v0 and v1")
     print("\nPASS: the UVM view carries port domains and the register model")
     return 0

@@ -18,8 +18,9 @@ edit in either span survives it.
 
 A copy of `fixtures/uvm-blocks` with the two variants of
 test_uvm_register_view.py must give one ubDut_uvm_test_pkg.sv, named by both
-tops' A2C_UVM_TEST_SV. A second copy drops ubDut's output port, so it has no
-counted output: its test package has no fail test and waits on no output.
+tops' A2C_UVM_TEST_SV. A second copy drops ubDut's two output ports, out and
+rdM, so it has no counted output: its test package has no fail test and waits
+on no output.
 """
 
 import os
@@ -37,6 +38,9 @@ import test_uvm_register_view as regView
 NO_OUTPUT_EDITS = [
     ('            out: { interface: ubStream, direction: src }\n', ''),
     ('    - { interface: ubStream, src: uDut, srcport: out, dst: uSink, dstport: in, name: outLink }\n', ''),
+    ('            rdM: { interface: ubRd, direction: src }\n', ''),
+    ('    - { interface: ubRd, src: uDut, srcport: rdM, dst: uSink, dstport: rdIn, name: rdOut, maxTransferSize: 32 }\n',
+     ''),
 ]
 
 HEADER = [

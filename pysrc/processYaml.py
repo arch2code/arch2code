@@ -1815,6 +1815,8 @@ class projectOpen:
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
         clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
+        blockParams = self.data['blocks'][ret['qualBlock']]['params']
+        paramBySource = {row['paramSourceKey']: row['param'] for row in blockParams} if blockParams else {}
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
@@ -1824,6 +1826,22 @@ class projectOpen:
                 paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
                 elastic = intfDef['timing'] == 'elastic'
                 isOutput = portData['direction'] == 'src'
+                # Per top, the interface's maxTransferSize, which the axi_read
+                # agent reads as bytes. The run's SystemC channel is sized from
+                # the same interface value and ignores a connection's override,
+                # so the agent ignores it too. A constant that is a parameter of
+                # the block takes each variant's binding, as the channel does
+                # through the block's Config.
+                maxTransferBytes = None
+                if intfType in ('axi_read', 'axi_write'):
+                    sizeKey = intfData['maxTransferSizeKey']
+                    if sizeKey in paramBySource:
+                        maxTransferBytes = {variant: ret['standaloneVariants'][variant][paramBySource[sizeKey]]
+                                            for variant in tops}
+                    else:
+                        size = self.getConst(sizeKey or intfData['maxTransferSize'], require_int=True,
+                                             context_msg="an AXI interface's maxTransferSize")
+                        maxTransferBytes = {variant: size for variant in tops}
                 ports.append({
                     'name': portData['name'],
                     'agent': f"{portData['name']}_agent",
@@ -1840,6 +1858,7 @@ class projectOpen:
                     # number of transactions, so the env counts them.
                     'counter': f"{portData['name']}_counter"
                                if isOutput and elastic and not intfDef['addressBus'] else None,
+                    'maxTransferBytes': maxTransferBytes,
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.

@@ -21,6 +21,7 @@ package a2c_uvm_loopback_pkg;
     import pop_ack_uvm_pkg::*;
     import memory_uvm_pkg::*;
     import external_reg_uvm_pkg::*;
+    import axi_read_uvm_pkg::*;
 
     typedef struct packed {
         logic [3:0]  tag;
@@ -124,6 +125,7 @@ package a2c_uvm_loopback_pkg;
     `include "pop_ack_lb_tests.svh"
     `include "memory_lb_tests.svh"
     `include "external_reg_lb_tests.svh"
+    `include "axi_read_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
@@ -160,6 +162,8 @@ module a2c_uvm_loopback_tb;
     memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem();
     memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem2();
     external_reg_if #(.data_t(lb_data_t)) er();
+    axi_read_if #(.addr_t(lb_axr_addr_t), .data_t(lb_axr_data_t), .aruser_t(lb_axr_aruser_t),
+                  .ruser_t(lb_axr_ruser_t), .id_t(lb_axr_id_t)) axr();
 
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
@@ -175,6 +179,7 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(mem_vif_t)::set(null, "uvm_test_top", "mem", mem);
         uvm_config_db#(mem_vif_t)::set(null, "uvm_test_top", "mem2", mem2);
         uvm_config_db#(er_vif_t)::set(null, "uvm_test_top", "er", er);
+        uvm_config_db#(axr_vif_t)::set(null, "uvm_test_top", "axr", axr);
         run_test();
     end
 

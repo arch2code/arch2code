@@ -67,7 +67,7 @@ def render_items(prj, data, variant):
         for reg in uvm['registers']:
             lines += [''] + reg_class(reg, variant)
         lines += [''] + reg_block_class(uvm, variant)
-    lines += [''] + env_class(uvm, hasRegModel)
+    lines += [''] + env_class(uvm, hasRegModel, variant)
     return '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
 
 
@@ -132,7 +132,7 @@ def reg_block_class(uvm, variant):
     return lines
 
 
-def env_class(uvm, hasRegModel):
+def env_class(uvm, hasRegModel, variant):
     cls = uvm['envClass']
     ports = uvm['ports']
     counters = [port for port in ports if port['counter']]
@@ -161,7 +161,7 @@ def env_class(uvm, hasRegModel):
                   f'            `uvm_fatal("A2C_CFG", "no virtual a2c_clk_if \'{name}\'")',
                   '        end']
     for port in ports:
-        lines += [''] + agent_build(port)
+        lines += [''] + agent_build(port, variant)
     if hasRegModel:
         lines += ['',
                   f'        regmodel = {uvm["regBlockClass"]}::type_id::create("regmodel");',
@@ -189,7 +189,7 @@ def env_class(uvm, hasRegModel):
     return lines
 
 
-def agent_build(port):
+def agent_build(port, variant):
     # An agent plays the side opposite the DUT port's modport.
     name = port['name']
     cfg = f"{name}_cfg"
@@ -202,6 +202,8 @@ def agent_build(port):
              f'        {cfg}.port_name = "{name}";']
     if port['backpressureOverridable']:
         lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
+    if port['maxTransferBytes'] is not None:
+        lines.append(f"        {cfg}.max_transfer_bytes = {port['maxTransferBytes'][variant]};")
     agent = port['agent']
     lines += [f'        uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
               f'        {agent} = {name}_agent_t::type_id::create("{agent}", this);']

@@ -629,12 +629,128 @@ module er_case #(parameter int CASE = 0, parameter int EXP = 0,
     end
 endmodule
 
+module axr_case #(parameter int CASE = 0, parameter int EXP = 0,
+                  parameter string SIG = "", parameter string NAME = "",
+                  parameter bit BOUND = 1'b1) (input logic clk);
+    logic rst_n;
+    if (BOUND) begin : g_if
+        axi_read_if #(.addr_t(logic [7:0]), .data_t(logic [15:0]), .aruser_t(logic [1:0]),
+                      .ruser_t(logic [2:0]), .id_t(logic [1:0])) intf();
+        axi_read_xcheck #(.CHECK_ARID(1'b1), .CHECK_ARUSER(1'b1), .CHECK_RID(1'b1), .CHECK_RUSER(1'b1))
+            u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    end else begin : g_if
+        axi_read_if #(.addr_t(logic [7:0]), .data_t(logic [15:0])) intf();
+        axi_read_xcheck #(.CHECK_ARID(1'b0), .CHECK_ARUSER(1'b0), .CHECK_RID(1'b0), .CHECK_RUSER(1'b0))
+            u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    end
+    localparam string CHK = "g_if.u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        g_if.intf.arvalid = 1'b0;
+        g_if.intf.arready = 1'b1;
+        g_if.intf.arid = '0;
+        g_if.intf.araddr = '0;
+        g_if.intf.arlen = '0;
+        g_if.intf.arsize = '0;
+        g_if.intf.arburst = '0;
+        g_if.intf.aruser = '0;
+        g_if.intf.rvalid = 1'b0;
+        g_if.intf.rready = 1'b1;
+        g_if.intf.rid = '0;
+        g_if.intf.rdata = '0;
+        g_if.intf.rresp = '0;
+        g_if.intf.rlast = 1'b0;
+        g_if.intf.ruser = '0;
+    endtask
+
+    task automatic ar_x();
+        g_if.intf.arid = 'x;
+        g_if.intf.araddr = 'x;
+        g_if.intf.arlen = 'x;
+        g_if.intf.arsize = 'x;
+        g_if.intf.arburst = 'x;
+        g_if.intf.aruser = 'x;
+    endtask
+
+    task automatic r_x();
+        g_if.intf.rid = 'x;
+        g_if.intf.rdata = 'x;
+        g_if.intf.rresp = 'x;
+        g_if.intf.rlast = 1'bx;
+        g_if.intf.ruser = 'x;
+    endtask
+
+    task automatic all_x();
+        g_if.intf.arvalid = 1'bx;
+        g_if.intf.arready = 1'bx;
+        g_if.intf.rvalid = 1'bx;
+        g_if.intf.rready = 1'bx;
+        ar_x();
+        r_x();
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin armed(); g_if.intf.arvalid = 1'bx; cycles(1); idle(); end
+            1: begin armed(); g_if.intf.arready = 1'bx; cycles(1); idle(); end
+            2: begin armed(); g_if.intf.rvalid = 1'bx; cycles(1); idle(); end
+            3: begin armed(); g_if.intf.rready = 1'bx; cycles(1); idle(); end
+            4: begin // araddr X while arvalid is high, twice
+                armed();
+                g_if.intf.arvalid = 1'b1; g_if.intf.araddr = 'x; cycles(1); idle(); cycles(2);
+                g_if.intf.arvalid = 1'b1; g_if.intf.araddr = 'x; cycles(1); idle();
+            end
+            5: begin armed(); g_if.intf.araddr = 'x; cycles(3); idle(); end
+            6: begin armed(); g_if.intf.arvalid = 1'b1; g_if.intf.arlen = 'x; cycles(1); idle(); end
+            7: begin armed(); g_if.intf.arvalid = 1'b1; g_if.intf.arsize = 'x; cycles(1); idle(); end
+            8: begin armed(); g_if.intf.arvalid = 1'b1; g_if.intf.arburst = 'x; cycles(1); idle(); end
+            9: begin armed(); g_if.intf.arvalid = 1'b1; g_if.intf.arid = 'x; cycles(1); idle(); end
+            10: begin armed(); g_if.intf.arvalid = 1'b1; g_if.intf.aruser = 'x; cycles(1); idle(); end
+            11: begin armed(); ar_x(); cycles(3); idle(); end
+            12: begin // rdata X while rvalid is high, twice
+                armed();
+                g_if.intf.rvalid = 1'b1; g_if.intf.rdata = 'x; cycles(1); idle(); cycles(2);
+                g_if.intf.rvalid = 1'b1; g_if.intf.rdata = 'x; cycles(1); idle();
+            end
+            13: begin armed(); g_if.intf.rdata = 'x; cycles(3); idle(); end
+            14: begin armed(); g_if.intf.rvalid = 1'b1; g_if.intf.rresp = 'x; cycles(1); idle(); end
+            15: begin armed(); g_if.intf.rvalid = 1'b1; g_if.intf.rlast = 1'bx; cycles(1); idle(); end
+            16: begin armed(); g_if.intf.rvalid = 1'b1; g_if.intf.rid = 'x; cycles(1); idle(); end
+            17: begin armed(); g_if.intf.rvalid = 1'b1; g_if.intf.ruser = 'x; cycles(1); idle(); end
+            18: begin armed(); r_x(); cycles(3); idle(); end
+            19: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            20: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            21: begin idle(); delta_reset(); cycles(3); g_if.intf.arvalid = 1'bx; cycles(1); idle(); end
+            22: begin // the unbound arid and aruser placeholders X while arvalid is high
+                armed(); g_if.intf.arvalid = 1'b1; g_if.intf.arid = 'x; g_if.intf.aruser = 'x; cycles(3); idle();
+            end
+            23: begin // the unbound rid and ruser placeholders X while rvalid is high
+                armed(); g_if.intf.rvalid = 1'b1; g_if.intf.rid = 'x; g_if.intf.ruser = 'x; cycles(3); idle();
+            end
+        endcase
+    end
+endmodule
+
 module xcheck_tb;
     logic clk = 1'b0;
     // The first rising edge is at 5 ns, after the time-0 delta resets.
     always #5 clk = ~clk;
 
-    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7 + 16 + 8;
+    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7 + 16 + 8 + 24;
 
     rv_case #(0, 1, "data", "rdy_vld data X while vld, twice") rv0 (clk);
     rv_case #(1, 0, "", "rdy_vld data X while !vld") rv1 (clk);
@@ -744,6 +860,31 @@ module xcheck_tb;
     er_case #(5, 0, "", "external_reg X before arming and in reset") er5 (clk);
     er_case #(6, 0, "", "external_reg power-on X reset") er6 (clk);
     er_case #(7, 1, "write", "external_reg reset released before a clock edge") er7 (clk);
+
+    axr_case #(0, 1, "arvalid", "axi_read arvalid X") axr0 (clk);
+    axr_case #(1, 1, "arready", "axi_read arready X") axr1 (clk);
+    axr_case #(2, 1, "rvalid", "axi_read rvalid X") axr2 (clk);
+    axr_case #(3, 1, "rready", "axi_read rready X") axr3 (clk);
+    axr_case #(4, 1, "araddr", "axi_read araddr X while arvalid, twice") axr4 (clk);
+    axr_case #(5, 0, "", "axi_read araddr X while !arvalid") axr5 (clk);
+    axr_case #(6, 1, "arlen", "axi_read arlen X while arvalid") axr6 (clk);
+    axr_case #(7, 1, "arsize", "axi_read arsize X while arvalid") axr7 (clk);
+    axr_case #(8, 1, "arburst", "axi_read arburst X while arvalid") axr8 (clk);
+    axr_case #(9, 1, "arid", "axi_read bound arid X while arvalid") axr9 (clk);
+    axr_case #(10, 1, "aruser", "axi_read bound aruser X while arvalid") axr10 (clk);
+    axr_case #(11, 0, "", "axi_read AR payload X while !arvalid") axr11 (clk);
+    axr_case #(12, 1, "rdata", "axi_read rdata X while rvalid, twice") axr12 (clk);
+    axr_case #(13, 0, "", "axi_read rdata X while !rvalid") axr13 (clk);
+    axr_case #(14, 1, "rresp", "axi_read rresp X while rvalid") axr14 (clk);
+    axr_case #(15, 1, "rlast", "axi_read rlast X while rvalid") axr15 (clk);
+    axr_case #(16, 1, "rid", "axi_read bound rid X while rvalid") axr16 (clk);
+    axr_case #(17, 1, "ruser", "axi_read bound ruser X while rvalid") axr17 (clk);
+    axr_case #(18, 0, "", "axi_read R payload X while !rvalid") axr18 (clk);
+    axr_case #(19, 0, "", "axi_read X before arming and in reset") axr19 (clk);
+    axr_case #(20, 0, "", "axi_read power-on X reset") axr20 (clk);
+    axr_case #(21, 1, "arvalid", "axi_read reset released before a clock edge") axr21 (clk);
+    axr_case #(22, 0, "", "axi_read unbound arid and aruser X while arvalid", 1'b0) axr22 (clk);
+    axr_case #(23, 0, "", "axi_read unbound rid and ruser X while rvalid", 1'b0) axr23 (clk);
 
     initial begin
         $display("XC_CASES %0d", CASES);

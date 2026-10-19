@@ -24,7 +24,7 @@ SIM=$1
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=$(cd "$HERE/../../.." && pwd)
 OUT=$PWD/xcheck_$SIM
-TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack req_ack pop_ack memory external_reg"
+TYPES="rdy_vld apb axi4_stream raw status push_ack notify_ack req_ack pop_ack memory external_reg axi_read"
 SRCS=""
 for t in $TYPES; do
     SRCS="$SRCS $BASE/interfaces/$t/${t}_if.sv $BASE/interfaces/$t/${t}_xcheck.sv"
