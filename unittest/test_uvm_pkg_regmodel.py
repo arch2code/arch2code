@@ -30,7 +30,9 @@ and an explicit predictor on the register bus agent's monitor with
 auto-predict off. Its register model starts at its reset values. Every
 agent's config carries the role opposite its port's direction, so the agent
 on mst, where the DUT is the master, is A2C_DST and the register bus agent
-A2C_SRC, and the env sets no agent passive.
+A2C_SRC, and the env sets no agent passive. The AXI port rdM binds no id_t,
+so its config sets id_unbound. rdS binds one, and no other port's config sets
+it.
 
 An agent whose port binds no parameter is spelled with no #(), which no port
 of the fixture exercises, so the typedef lines are also checked on a port
@@ -181,6 +183,7 @@ ENV_LINES = [
     'ubRegs_cfg.role = a2c_uvm_pkg::A2C_SRC;',
     'ubRegs_cfg.port_name = "ubRegs";',
     'mst_cfg.role = a2c_uvm_pkg::A2C_DST;',
+    'rdM_cfg.id_unbound = 1;',
     'regmodel = ubDut_reg_block::type_id::create("regmodel");',
     'regmodel.build();',
     'regmodel.reset();',
@@ -209,7 +212,7 @@ def check(project):
         problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
         unexpected = [line for line in lines
                       if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.no_backpressure\b'
-                                  r'|.*_cfg\.is_active\b', line)]
+                                  r'|.*_cfg\.is_active\b|(in|out|rdS|ubRegs|mst)_cfg\.id_unbound\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
         # The resources come after their memory's configure() call, which
         # gives the memory the full name they are keyed by.

@@ -196,6 +196,45 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_error_demoter
 
+    // The AXI burst and response encodings and the helpers below, shared by
+    // the axi_read and axi_write agents.
+    typedef enum bit [1:0] {AXI_FIXED = 2'b00, AXI_INCR = 2'b01, AXI_WRAP = 2'b10} axi_burst_e;
+    typedef enum bit [1:0] {AXI_OKAY = 2'b00, AXI_EXOKAY = 2'b01, AXI_SLVERR = 2'b10, AXI_DECERR = 2'b11} axi_resp_e;
+
+    // The address of beat n of an AXI burst, and the bytes it carries: from
+    // that address to the end of its (1 << size)-byte window. FIXED repeats
+    // the start address, INCR steps from the aligned start, and WRAP steps
+    // within the window of (len + 1) << size bytes that holds the start. A
+    // reserved burst type steps as INCR.
+    function automatic void axi_beat(bit [63:0] start, bit [2:0] size, bit [7:0] len, bit [1:0] burst,
+                                     int unsigned n, output bit [63:0] addr, output int unsigned bytes);
+        bit [63:0] nbytes = 64'd1 << size;
+        bit [63:0] span   = nbytes * (64'(len) + 1);
+        bit [63:0] boundary;
+        case (burst)
+            AXI_FIXED: addr = start;
+            AXI_WRAP: begin
+                boundary = (start / span) * span;
+                addr     = boundary + (start - boundary + n * nbytes) % span;
+            end
+            default: addr = (n == 0) ? start : (start & ~(nbytes - 1)) + n * nbytes;
+        endcase
+        bytes = int'(nbytes - (addr & (nbytes - 1)));
+    endfunction
+
+    // An inclusive range of byte addresses an AXI slave answers with SLVERR.
+    typedef struct {
+        bit [63:0] lo;
+        bit [63:0] hi;
+    } axi_addr_range_t;
+
+    function automatic bit axi_in_error_range(bit [63:0] addr, axi_addr_range_t ranges[$]);
+        foreach (ranges[i]) begin
+            if (addr >= ranges[i].lo && addr <= ranges[i].hi) return 1;
+        end
+        return 0;
+    endfunction
+
 endpackage : a2c_uvm_pkg
 
 `endif // A2C_UVM_PKG_SV

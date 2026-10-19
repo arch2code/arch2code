@@ -12,3 +12,4 @@ a2c_uvm_pkg.sv
 ../../../interfaces/memory/memory_uvm_pkg.sv
 ../../../interfaces/external_reg/external_reg_uvm_pkg.sv
 ../../../interfaces/axi_read/axi_read_uvm_pkg.sv
+../../../interfaces/axi_write/axi_write_uvm_pkg.sv

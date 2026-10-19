@@ -90,7 +90,8 @@ EDITS = [
      '        maxTransferSize: UB_W\n'
      '        structures:\n'
      '            - { structure: ubAddrSt, structureType: addr_t }\n'
-     '            - { structure: ubWordSt, structureType: data_t }\n'),
+     '            - { structure: ubWordSt, structureType: data_t }\n'
+     '            - { structure: ubDataT, structureType: id_t }\n'),
     ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W, UB_D]\n'),
     ('            out: { interface: ubStream, direction: src }\n',
      '            out: { interface: ubStream, direction: src }\n'
@@ -134,22 +135,25 @@ UB_D = {'v0': 16, 'v1': 32}
 # constant UB_MTS. Its connection sets maxTransferSize 32, which the view
 # ignores because the SystemC channel the run builds ignores it too. rdS's
 # interface names the block parameter UB_W, so each variant takes its binding.
+# idUnbound is True on an AXI port whose interface binds no id_t: rdM's leaves
+# it unbound, rdS's binds it.
 PORTS = [
     {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': None, 'maxTransferBytes': None},
+     'backpressureOverridable': True, 'counter': None, 'maxTransferBytes': None, 'idUnbound': False},
     {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': 'out_counter', 'maxTransferBytes': None},
+     'backpressureOverridable': True, 'counter': 'out_counter', 'maxTransferBytes': None, 'idUnbound': False},
     {'name': 'rdM', 'agent': 'rdM_agent', 'interfaceType': 'axi_read', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 64, 'v1': 64}},
+     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 64, 'v1': 64},
+     'idUnbound': True},
     {'name': 'rdS', 'agent': 'rdS_agent', 'interfaceType': 'axi_read', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': UB_W},
+     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': UB_W, 'idUnbound': False},
     {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': None},
+     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': None, 'idUnbound': False},
 ]
 REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
 CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}

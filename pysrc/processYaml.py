@@ -1826,8 +1826,8 @@ class projectOpen:
                 paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
                 elastic = intfDef['timing'] == 'elastic'
                 isOutput = portData['direction'] == 'src'
-                # Per top, the interface's maxTransferSize, which the axi_read
-                # agent reads as bytes. The run's SystemC channel is sized from
+                # Per top, the interface's maxTransferSize, which the AXI
+                # agents read as bytes. The run's SystemC channel is sized from
                 # the same interface value and ignores a connection's override,
                 # so the agent ignores it too. A constant that is a parameter of
                 # the block takes each variant's binding, as the channel does
@@ -1859,6 +1859,10 @@ class projectOpen:
                     'counter': f"{portData['name']}_counter"
                                if isOutput and elastic and not intfDef['addressBus'] else None,
                     'maxTransferBytes': maxTransferBytes,
+                    # An AXI port that binds no id_t carries no ID in the
+                    # design, so its agent sends every burst with ID 0.
+                    'idUnbound': intfType in ('axi_read', 'axi_write') and any(
+                        b['isNull'] for b in paramBindings if b['structureType'] == 'id_t'),
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.

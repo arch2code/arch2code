@@ -113,11 +113,18 @@ public:
         }
     }
 
+    // wready stays low while sendDataCycle would wait for an address, so the
+    // HDL holds a W beat that comes before its AW instead of handing over
+    // beats this thread cannot take.
+    bool wReady() {
+        return m_chnl->m_data_out->get_rdy() && !m_chnl->sendDataCycleWaitsForAddr();
+    }
+
     void bfm_driver_w_thread() {
         axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW> w_data;
         wait(SC_ZERO_TIME);
         while (true) {
-            hdl_if_p->wready = m_chnl->m_data_out->get_rdy();
+            hdl_if_p->wready = wReady();
             while (!(hdl_if_p->wvalid && hdl_if_p->wready)) {
                 wait(clk.posedge_event());
                 if (!rst_n.read()) {
@@ -140,7 +147,7 @@ public:
                     }
                     break;
                 }
-                hdl_if_p->wready = m_chnl->m_data_out->get_rdy();
+                hdl_if_p->wready = wReady();
             }
             if (!rst_n.read() || !(hdl_if_p->wvalid && hdl_if_p->wready)) {
                 continue;

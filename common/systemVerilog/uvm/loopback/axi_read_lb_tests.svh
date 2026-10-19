@@ -20,8 +20,8 @@
                                   .ruser_t(lb_axr_ruser_t), .id_t(lb_axr_id_t)) axr_vif_t;
 
     // Sends n bursts and checks each response: its AR fields against the
-    // burst sent in the same position, since the slave answers in AR order,
-    // and each beat against the slave's memory. A beat in an error range
+    // oldest unanswered burst sent with its ID, since a slave keeps each
+    // ID's bursts in order, and each beat against the slave's memory. A beat in an error range
     // must be SLVERR with zero data; any other must be OKAY and carry the
     // memory's bytes on the lanes the AXI address rules give it. With reuse
     // set, every burst goes out through one item object, randomised again
@@ -30,9 +30,11 @@
         int unsigned          n;
         bit                   reuse;
         axi_read_mem_t        mem;
-        axi_read_addr_range_t error_ranges[$];
-        axr_item_t            sent[$];
+        axi_addr_range_t      error_ranges[$];
+        axr_item_t            waiting[$];
         axr_item_t            responses[$];
+        // Responses that answered a burst other than the oldest unanswered one.
+        int unsigned          reordered;
         int unsigned          bursts[axi_burst_e];
         int unsigned          narrow;
         int unsigned          unaligned;
@@ -66,25 +68,27 @@
                 pick(it);
                 it.gap = ($urandom_range(3, 0) == 0) ? $urandom_range(2, 1) : 0;
                 $cast(copy, it.clone());
-                sent.push_back(copy);
+                waiting.push_back(copy);
                 send(it);
             end
             wait_for_reads();
         endtask
 
-        function bit in_error_range(bit [63:0] addr);
-            foreach (error_ranges[i]) begin
-                if (addr >= error_ranges[i].lo && addr <= error_ranges[i].hi) return 1;
-            end
-            return 0;
-        endfunction
-
         virtual function void read_done(axr_item_t rsp);
-            axr_item_t   want = sent.pop_front();
+            axr_item_t   want;
             bit [63:0]   first;
             int unsigned count;
             bit [31:0]   word;
+            int          found[$] = waiting.find_first_index(w) with (w.id === rsp.id);
             responses.push_back(rsp);
+            if (found.size() == 0) begin
+                `uvm_error("LB_AXR", $sformatf("response %0d is for %s, which matches no burst sent", responses.size(),
+                                               rsp.convert2string()))
+                return;
+            end
+            want = waiting[found[0]];
+            waiting.delete(found[0]);
+            if (found[0] != 0) reordered++;
             if (rsp.addr !== want.addr || rsp.id !== want.id || rsp.len !== want.len || rsp.size !== want.size ||
                 rsp.burst !== want.burst || rsp.aruser !== want.aruser) begin
                 `uvm_error("LB_AXR", $sformatf("response %0d is for %s, sent %s", responses.size(), rsp.convert2string(),
@@ -104,7 +108,7 @@
                 beats++;
                 axi_beat(64'(rsp.addr), rsp.size, rsp.len, rsp.burst, b, first, count);
                 word = rsp.data[b];
-                if (in_error_range(first)) begin
+                if (axi_in_error_range(first, error_ranges)) begin
                     slverr_beats++;
                     if (rsp.resp[b] != AXI_SLVERR || word !== '0) begin
                         `uvm_error("LB_AXR", $sformatf("%s beat %0d at 0x%0h: rresp %s rdata 0x%08h, expected SLVERR and 0",
@@ -223,7 +227,8 @@
     // clocks, a response delay of up to three clocks, and an error range at
     // 'h3000 to 'h30ff. Also checks the beat addresses of three bursts
     // against worked examples of the AXI address rules, since the sequence
-    // checks every beat through the same function.
+    // checks every beat through the same function. With the slave's reorder
+    // set, at least one burst must be served ahead of an older one.
     class axi_read_random_test extends axr_pair_test;
         `uvm_component_utils(axi_read_random_test)
 
@@ -260,10 +265,10 @@
             check_beats("FIXED 3x4 at 'h05", 'h05, 2, 2, AXI_FIXED, '{'h05, 'h05, 'h05, 0}, '{3, 3, 3, 0});
             seq.n = 200;
             run_seq(seq);
-            `uvm_info("LB_STATS", $sformatf("%0d bursts (%0d FIXED, %0d INCR, %0d WRAP; %0d narrow, %0d unaligned), %0d beats, %0d SLVERR, at most %0d outstanding",
+            `uvm_info("LB_STATS", $sformatf("%0d bursts (%0d FIXED, %0d INCR, %0d WRAP; %0d narrow, %0d unaligned), %0d beats, %0d SLVERR, at most %0d outstanding, %0d served out of AR order",
                                             seq.responses.size(), seq.bursts[AXI_FIXED], seq.bursts[AXI_INCR],
                                             seq.bursts[AXI_WRAP], seq.narrow, seq.unaligned, seq.beats,
-                                            seq.slverr_beats, peak), UVM_NONE)
+                                            seq.slverr_beats, peak, seq.reordered), UVM_NONE)
             if (peak != 4) `uvm_error("LB_AXR", $sformatf("max_outstanding is 4, but at most %0d bursts were outstanding", peak))
             foreach (seq.bursts[b]) begin
                 if (seq.bursts[b] == 0) `uvm_error("LB_AXR", $sformatf("no %s burst", b.name()))
@@ -272,9 +277,32 @@
             if (seq.narrow == 0 || seq.unaligned == 0 || seq.slverr_beats == 0) begin
                 `uvm_error("LB_AXR", "the bursts covered no narrow transfer, no unaligned start or no error range")
             end
+            if (slave_cfg.reorder && seq.reordered == 0) `uvm_error("LB_AXR", "reorder is set, but every burst came in AR order")
+            if (!slave_cfg.reorder && seq.reordered != 0) begin
+                `uvm_error("LB_AXR", $sformatf("reorder is clear, but %0d bursts came out of AR order", seq.reordered))
+            end
             phase.drop_objection(this);
         endtask
     endclass : axi_read_random_test
+
+    // As axi_read_random_test, with the slave serving ready bursts in a
+    // random order that keeps each ID's bursts in AR order, and response
+    // delays of up to eight clocks so that several IDs are ready at once.
+    // The master and the monitor must each give a beat to the oldest open
+    // burst of its rid.
+    class axi_read_reorder_test extends axi_read_random_test;
+        `uvm_component_utils(axi_read_reorder_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void configure(axr_config_t master_cfg, axr_config_t slave_cfg);
+            super.configure(master_cfg, slave_cfg);
+            slave_cfg.reorder        = 1'b1;
+            slave_cfg.resp_delay_max = 8;
+        endfunction
+    endclass : axi_read_reorder_test
 
     // As axi_read_random_test, but every burst goes out through one item
     // object, randomised again before each send while up to three earlier

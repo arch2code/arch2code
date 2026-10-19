@@ -745,12 +745,158 @@ module axr_case #(parameter int CASE = 0, parameter int EXP = 0,
     end
 endmodule
 
+module axw_case #(parameter int CASE = 0, parameter int EXP = 0,
+                  parameter string SIG = "", parameter string NAME = "",
+                  parameter bit BOUND = 1'b1) (input logic clk);
+    logic rst_n;
+    if (BOUND) begin : g_if
+        axi_write_if #(.addr_t(logic [7:0]), .data_t(logic [15:0]), .strb_t(logic [1:0]), .awuser_t(logic [1:0]),
+                       .wuser_t(logic [2:0]), .buser_t(logic [3:0]), .id_t(logic [1:0])) intf();
+        axi_write_xcheck #(.CHECK_AWID(1'b1), .CHECK_AWUSER(1'b1), .CHECK_WID(1'b1), .CHECK_WUSER(1'b1),
+                           .CHECK_BID(1'b1), .CHECK_BUSER(1'b1))
+            u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    end else begin : g_if
+        axi_write_if #(.addr_t(logic [7:0]), .data_t(logic [15:0]), .strb_t(logic [1:0])) intf();
+        axi_write_xcheck #(.CHECK_AWID(1'b0), .CHECK_AWUSER(1'b0), .CHECK_WID(1'b0), .CHECK_WUSER(1'b0),
+                           .CHECK_BID(1'b0), .CHECK_BUSER(1'b0))
+            u_chk (.clk(clk), .rst_n(rst_n), .intf(intf));
+    end
+    localparam string CHK = "g_if.u_chk";
+`include "xcheck_case.svh"
+
+    task automatic idle();
+        g_if.intf.awvalid = 1'b0;
+        g_if.intf.awready = 1'b1;
+        g_if.intf.awid = '0;
+        g_if.intf.awaddr = '0;
+        g_if.intf.awlen = '0;
+        g_if.intf.awsize = '0;
+        g_if.intf.awburst = '0;
+        g_if.intf.awuser = '0;
+        g_if.intf.wvalid = 1'b0;
+        g_if.intf.wready = 1'b1;
+        g_if.intf.wid = '0;
+        g_if.intf.wdata = '0;
+        g_if.intf.wstrb = '0;
+        g_if.intf.wlast = 1'b0;
+        g_if.intf.wuser = '0;
+        g_if.intf.bvalid = 1'b0;
+        g_if.intf.bready = 1'b1;
+        g_if.intf.bid = '0;
+        g_if.intf.bresp = '0;
+        g_if.intf.buser = '0;
+    endtask
+
+    task automatic aw_x();
+        g_if.intf.awid = 'x;
+        g_if.intf.awaddr = 'x;
+        g_if.intf.awlen = 'x;
+        g_if.intf.awsize = 'x;
+        g_if.intf.awburst = 'x;
+        g_if.intf.awuser = 'x;
+    endtask
+
+    task automatic w_x();
+        g_if.intf.wid = 'x;
+        g_if.intf.wdata = 'x;
+        g_if.intf.wstrb = 'x;
+        g_if.intf.wlast = 1'bx;
+        g_if.intf.wuser = 'x;
+    endtask
+
+    task automatic b_x();
+        g_if.intf.bid = 'x;
+        g_if.intf.bresp = 'x;
+        g_if.intf.buser = 'x;
+    endtask
+
+    task automatic all_x();
+        g_if.intf.awvalid = 1'bx;
+        g_if.intf.awready = 1'bx;
+        g_if.intf.wvalid = 1'bx;
+        g_if.intf.wready = 1'bx;
+        g_if.intf.bvalid = 1'bx;
+        g_if.intf.bready = 1'bx;
+        aw_x();
+        w_x();
+        b_x();
+    endtask
+
+    task automatic armed();
+        rst_n = 1'b1; idle(); reset_pulse(); cycles(2);
+    endtask
+
+    initial begin
+        case (CASE)
+            0: begin armed(); g_if.intf.awvalid = 1'bx; cycles(1); idle(); end
+            1: begin armed(); g_if.intf.awready = 1'bx; cycles(1); idle(); end
+            2: begin armed(); g_if.intf.wvalid = 1'bx; cycles(1); idle(); end
+            3: begin armed(); g_if.intf.wready = 1'bx; cycles(1); idle(); end
+            4: begin armed(); g_if.intf.bvalid = 1'bx; cycles(1); idle(); end
+            5: begin armed(); g_if.intf.bready = 1'bx; cycles(1); idle(); end
+            6: begin // awaddr X while awvalid is high, twice
+                armed();
+                g_if.intf.awvalid = 1'b1; g_if.intf.awaddr = 'x; cycles(1); idle(); cycles(2);
+                g_if.intf.awvalid = 1'b1; g_if.intf.awaddr = 'x; cycles(1); idle();
+            end
+            7: begin armed(); g_if.intf.awaddr = 'x; cycles(3); idle(); end
+            8: begin armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awlen = 'x; cycles(1); idle(); end
+            9: begin armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awsize = 'x; cycles(1); idle(); end
+            10: begin armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awburst = 'x; cycles(1); idle(); end
+            11: begin armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awid = 'x; cycles(1); idle(); end
+            12: begin armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awuser = 'x; cycles(1); idle(); end
+            13: begin armed(); aw_x(); cycles(3); idle(); end
+            14: begin // wdata X while wvalid is high, twice
+                armed();
+                g_if.intf.wvalid = 1'b1; g_if.intf.wdata = 'x; cycles(1); idle(); cycles(2);
+                g_if.intf.wvalid = 1'b1; g_if.intf.wdata = 'x; cycles(1); idle();
+            end
+            15: begin armed(); g_if.intf.wdata = 'x; cycles(3); idle(); end
+            16: begin armed(); g_if.intf.wvalid = 1'b1; g_if.intf.wstrb = 'x; cycles(1); idle(); end
+            17: begin armed(); g_if.intf.wvalid = 1'b1; g_if.intf.wlast = 1'bx; cycles(1); idle(); end
+            18: begin armed(); g_if.intf.wvalid = 1'b1; g_if.intf.wid = 'x; cycles(1); idle(); end
+            19: begin armed(); g_if.intf.wvalid = 1'b1; g_if.intf.wuser = 'x; cycles(1); idle(); end
+            20: begin armed(); w_x(); cycles(3); idle(); end
+            21: begin // bresp X while bvalid is high, twice
+                armed();
+                g_if.intf.bvalid = 1'b1; g_if.intf.bresp = 'x; cycles(1); idle(); cycles(2);
+                g_if.intf.bvalid = 1'b1; g_if.intf.bresp = 'x; cycles(1); idle();
+            end
+            22: begin armed(); g_if.intf.bresp = 'x; cycles(3); idle(); end
+            23: begin armed(); g_if.intf.bvalid = 1'b1; g_if.intf.bid = 'x; cycles(1); idle(); end
+            24: begin armed(); g_if.intf.bvalid = 1'b1; g_if.intf.buser = 'x; cycles(1); idle(); end
+            25: begin armed(); b_x(); cycles(3); idle(); end
+            26: begin
+                rst_n = 1'b1; all_x(); cycles(3);
+                rst_n = 1'b0; cycles(2);
+                idle(); rst_n = 1'b1; cycles(3);
+                rst_n = 1'b0; all_x(); cycles(3);
+                idle(); rst_n = 1'b1; cycles(3);
+            end
+            27: begin
+                rst_n = 1'bx; all_x(); cycles(3);
+                rst_n = 1'b1; cycles(3); idle();
+            end
+            28: begin idle(); delta_reset(); cycles(3); g_if.intf.awvalid = 1'bx; cycles(1); idle(); end
+            29: begin // the unbound awid and awuser placeholders X while awvalid is high
+                armed(); g_if.intf.awvalid = 1'b1; g_if.intf.awid = 'x; g_if.intf.awuser = 'x; cycles(3); idle();
+            end
+            30: begin // the unbound wid and wuser placeholders X while wvalid is high
+                armed(); g_if.intf.wvalid = 1'b1; g_if.intf.wid = 'x; g_if.intf.wuser = 'x; cycles(3); idle();
+            end
+            31: begin // the unbound bid and buser placeholders X while bvalid is high
+                armed(); g_if.intf.bvalid = 1'b1; g_if.intf.bid = 'x; g_if.intf.buser = 'x; cycles(3); idle();
+            end
+        endcase
+    end
+endmodule
+
 module xcheck_tb;
     logic clk = 1'b0;
     // The first rising edge is at 5 ns, after the time-0 delta resets.
     always #5 clk = ~clk;
 
-    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7 + 16 + 8 + 24;
+    localparam int CASES = 7 + 16 + 15 + 4 + 4 + 7 + 5 + 9 + 7 + 16 + 8 + 24 + 32;
 
     rv_case #(0, 1, "data", "rdy_vld data X while vld, twice") rv0 (clk);
     rv_case #(1, 0, "", "rdy_vld data X while !vld") rv1 (clk);
@@ -885,6 +1031,39 @@ module xcheck_tb;
     axr_case #(21, 1, "arvalid", "axi_read reset released before a clock edge") axr21 (clk);
     axr_case #(22, 0, "", "axi_read unbound arid and aruser X while arvalid", 1'b0) axr22 (clk);
     axr_case #(23, 0, "", "axi_read unbound rid and ruser X while rvalid", 1'b0) axr23 (clk);
+
+    axw_case #(0, 1, "awvalid", "axi_write awvalid X") axw0 (clk);
+    axw_case #(1, 1, "awready", "axi_write awready X") axw1 (clk);
+    axw_case #(2, 1, "wvalid", "axi_write wvalid X") axw2 (clk);
+    axw_case #(3, 1, "wready", "axi_write wready X") axw3 (clk);
+    axw_case #(4, 1, "bvalid", "axi_write bvalid X") axw4 (clk);
+    axw_case #(5, 1, "bready", "axi_write bready X") axw5 (clk);
+    axw_case #(6, 1, "awaddr", "axi_write awaddr X while awvalid, twice") axw6 (clk);
+    axw_case #(7, 0, "", "axi_write awaddr X while !awvalid") axw7 (clk);
+    axw_case #(8, 1, "awlen", "axi_write awlen X while awvalid") axw8 (clk);
+    axw_case #(9, 1, "awsize", "axi_write awsize X while awvalid") axw9 (clk);
+    axw_case #(10, 1, "awburst", "axi_write awburst X while awvalid") axw10 (clk);
+    axw_case #(11, 1, "awid", "axi_write bound awid X while awvalid") axw11 (clk);
+    axw_case #(12, 1, "awuser", "axi_write bound awuser X while awvalid") axw12 (clk);
+    axw_case #(13, 0, "", "axi_write AW payload X while !awvalid") axw13 (clk);
+    axw_case #(14, 1, "wdata", "axi_write wdata X while wvalid, twice") axw14 (clk);
+    axw_case #(15, 0, "", "axi_write wdata X while !wvalid") axw15 (clk);
+    axw_case #(16, 1, "wstrb", "axi_write wstrb X while wvalid") axw16 (clk);
+    axw_case #(17, 1, "wlast", "axi_write wlast X while wvalid") axw17 (clk);
+    axw_case #(18, 1, "wid", "axi_write bound wid X while wvalid") axw18 (clk);
+    axw_case #(19, 1, "wuser", "axi_write bound wuser X while wvalid") axw19 (clk);
+    axw_case #(20, 0, "", "axi_write W payload X while !wvalid") axw20 (clk);
+    axw_case #(21, 1, "bresp", "axi_write bresp X while bvalid, twice") axw21 (clk);
+    axw_case #(22, 0, "", "axi_write bresp X while !bvalid") axw22 (clk);
+    axw_case #(23, 1, "bid", "axi_write bound bid X while bvalid") axw23 (clk);
+    axw_case #(24, 1, "buser", "axi_write bound buser X while bvalid") axw24 (clk);
+    axw_case #(25, 0, "", "axi_write B payload X while !bvalid") axw25 (clk);
+    axw_case #(26, 0, "", "axi_write X before arming and in reset") axw26 (clk);
+    axw_case #(27, 0, "", "axi_write power-on X reset") axw27 (clk);
+    axw_case #(28, 1, "awvalid", "axi_write reset released before a clock edge") axw28 (clk);
+    axw_case #(29, 0, "", "axi_write unbound awid and awuser X while awvalid", 1'b0) axw29 (clk);
+    axw_case #(30, 0, "", "axi_write unbound wid and wuser X while wvalid", 1'b0) axw30 (clk);
+    axw_case #(31, 0, "", "axi_write unbound bid and buser X while bvalid", 1'b0) axw31 (clk);
 
     initial begin
         $display("XC_CASES %0d", CASES);

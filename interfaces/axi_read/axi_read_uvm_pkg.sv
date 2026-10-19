@@ -14,7 +14,8 @@
 // sequence extends axi_read_base_seq to receive those responses.
 //
 // The slave serves bursts from cfg.mem, an a2c_mem_model of bytes at byte
-// addresses, in the order their AR transfers, whatever their ID. Byte X of a
+// addresses, in the order their AR transfers, whatever their ID, or with
+// cfg.reorder in any order that keeps each ID's bursts in AR order. Byte X of a
 // beat sits on bus byte lane X % (1 << FULL_SIZE), as the AXI address rules
 // place it. A bus that is not a power-of-two number of whole bytes carries
 // only full-width transfers; the lanes beyond its width do not exist.
@@ -26,30 +27,6 @@ package axi_read_uvm_pkg;
     import uvm_pkg::*;
     `include "uvm_macros.svh"
     import a2c_uvm_pkg::*;
-
-    typedef enum bit [1:0] {AXI_FIXED = 2'b00, AXI_INCR = 2'b01, AXI_WRAP = 2'b10} axi_burst_e;
-    typedef enum bit [1:0] {AXI_OKAY = 2'b00, AXI_EXOKAY = 2'b01, AXI_SLVERR = 2'b10, AXI_DECERR = 2'b11} axi_resp_e;
-
-    // The address of beat n of a burst, and the bytes it carries: from that
-    // address to the end of its (1 << size)-byte window. FIXED repeats the
-    // start address, INCR steps from the aligned start, and WRAP steps within
-    // the window of (len + 1) << size bytes that holds the start. A reserved
-    // burst type steps as INCR.
-    function automatic void axi_beat(bit [63:0] start, bit [2:0] size, bit [7:0] len, bit [1:0] burst,
-                                     int unsigned n, output bit [63:0] addr, output int unsigned bytes);
-        bit [63:0] nbytes = 64'd1 << size;
-        bit [63:0] span   = nbytes * (64'(len) + 1);
-        bit [63:0] boundary;
-        case (burst)
-            AXI_FIXED: addr = start;
-            AXI_WRAP: begin
-                boundary = (start / span) * span;
-                addr     = boundary + (start - boundary + n * nbytes) % span;
-            end
-            default: addr = (n == 0) ? start : (start & ~(nbytes - 1)) + n * nbytes;
-        endcase
-        bytes = int'(nbytes - (addr & (nbytes - 1)));
-    endfunction
 
     class axi_read_item #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                           type ruser_t = logic, type id_t = logic [3:0]) extends uvm_sequence_item;
@@ -148,12 +125,6 @@ package axi_read_uvm_pkg;
     // The slave's memory: one byte per byte address.
     typedef a2c_mem_model #(bit [7:0]) axi_read_mem_t;
 
-    // An inclusive range of byte addresses.
-    typedef struct {
-        bit [63:0] lo;
-        bit [63:0] hi;
-    } axi_read_addr_range_t;
-
     class axi_read_config #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                             type ruser_t = logic, type id_t = logic [3:0]) extends uvm_object;
         virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
@@ -167,6 +138,10 @@ package axi_read_uvm_pkg;
         // interface's maxTransferSize. The SystemC channel counts that value
         // in beats, so reading it as bytes is the limit every bus width meets.
         int unsigned                        max_transfer_bytes = 0;
+        // The port binds no id_t, so the design behind it carries no ID and
+        // may answer every burst with ID 0. The master then sends every
+        // burst with ID 0.
+        bit                                 id_unbound = 0;
         // A2C_SRC role: bursts whose AR has gone out and whose last beat has
         // not arrived, and the percentage of clocks with rready high.
         int unsigned                        max_outstanding = 1;
@@ -175,13 +150,15 @@ package axi_read_uvm_pkg;
         // arready is high on arready_pct percent of clocks. Each burst draws
         // a delay of resp_delay_min to resp_delay_max clocks, counted from
         // its AR transfer, before its first beat may go out. A burst still
-        // waits for the bursts ahead of it. A beat whose address falls in an
+        // waits for the bursts ahead of it, or with reorder only for the
+        // bursts ahead of it with its ID. A beat whose address falls in an
         // error range gets SLVERR and reads zero.
         axi_read_mem_t                      mem;
         int unsigned                        arready_pct = 100;
         int unsigned                        resp_delay_min = 0;
         int unsigned                        resp_delay_max = 0;
-        axi_read_addr_range_t               error_ranges[$];
+        bit                                 reorder = 0;
+        axi_addr_range_t                    error_ranges[$];
 
         `uvm_object_param_utils(axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -196,7 +173,8 @@ package axi_read_uvm_pkg;
     // otherwise overflow. send() counts the bursts, read_done() sees each
     // response, and wait_for_reads() holds body() until every burst has
     // returned, since a response to a sequence that has ended is dropped.
-    // new_item() gives an item whose constraints keep it within the port's
+    // A response with no beats is an item the master refused. new_item()
+    // gives an item whose constraints keep it within the port's
     // max_transfer_bytes.
     class axi_read_base_seq #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                               type ruser_t = logic, type id_t = logic [3:0])
@@ -329,10 +307,12 @@ package axi_read_uvm_pkg;
                     cfg.vif.arvalid <= 1'b0;
                     cfg.clk_vif.drive_edge();
                 end
-                pending[id_key_t'(req.id)].push_back(new_response(req));
+                rsp = new_response(req);
+                if (cfg.id_unbound) rsp.id = '0;
+                pending[id_key_t'(rsp.id)].push_back(rsp);
                 outstanding++;
                 cfg.vif.arvalid <= 1'b1;
-                cfg.vif.arid    <= req.id;
+                cfg.vif.arid    <= rsp.id;
                 cfg.vif.araddr  <= addr_t'(req.addr);
                 cfg.vif.arlen   <= req.len;
                 cfg.vif.arsize  <= req.size;
@@ -378,9 +358,10 @@ package axi_read_uvm_pkg;
         endfunction
     endclass : axi_read_master_driver
 
-    // Serves each burst from cfg.mem, in the order the ARs transfer. A beat
-    // is read from the memory when it first goes out and is held until it
-    // transfers.
+    // Serves each burst from cfg.mem, in the order the ARs transfer, or with
+    // cfg.reorder in any order that keeps each ID's bursts in AR order. A
+    // beat is read from the memory when it first goes out and is held until
+    // it transfers.
     class axi_read_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                                   type ruser_t = logic, type id_t = logic [3:0])
         extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t));
@@ -397,11 +378,20 @@ package axi_read_uvm_pkg;
             super.new(name, parent);
         endfunction
 
-        function bit in_error_range(bit [63:0] addr);
-            foreach (cfg.error_ranges[i]) begin
-                if (addr >= cfg.error_ranges[i].lo && addr <= cfg.error_ranges[i].hi) return 1;
+        // The index in queue of the burst that goes out next, or -1. A burst
+        // is ready once its delay has passed and no older burst with its ID
+        // is queued. Only the oldest burst may go, unless cfg.reorder lets
+        // any ready one.
+        protected function int next_burst(item_t queue[$], longint due[$], longint clocks);
+            int ready[$];
+            foreach (queue[i]) begin
+                bit older = 0;
+                if (!cfg.reorder && i != 0) break;
+                for (int j = 0; j < i; j++) older |= (queue[j].id === queue[i].id);
+                if (!older && due[i] <= clocks) ready.push_back(i);
             end
-            return 0;
+            if (ready.size() == 0) return -1;
+            return cfg.reorder ? ready[$urandom_range(ready.size() - 1, 0)] : ready[0];
         endfunction
 
         // Beat n of burst ar, read from the memory: its data and response.
@@ -411,7 +401,7 @@ package axi_read_uvm_pkg;
             int unsigned           count;
             axi_beat(64'(ar.addr), ar.size, ar.len, ar.burst, n, first, count);
             resp = AXI_OKAY;
-            if (in_error_range(first)) begin
+            if (axi_in_error_range(first, cfg.error_ranges)) begin
                 resp = AXI_SLVERR;
             end else begin
                 for (int unsigned i = 0; i < count; i++) begin
@@ -435,6 +425,7 @@ package axi_read_uvm_pkg;
             longint      clocks;
             data_t       data;
             axi_resp_e   resp;
+            int          pick;
             cfg.vif.arready <= 1'b0;
             cfg.vif.rvalid  <= 1'b0;
             cfg.vif.rid     <= '0;
@@ -446,9 +437,11 @@ package axi_read_uvm_pkg;
             cfg.clk_vif.drive_edge();
             forever begin
                 cfg.vif.arready <= ($urandom_range(99, 0) < cfg.arready_pct);
-                if (cur == null && queue.size() != 0 && due[0] <= clocks) begin
-                    cur  = queue.pop_front();
-                    void'(due.pop_front());
+                pick = (cur == null) ? next_burst(queue, due, clocks) : -1;
+                if (pick >= 0) begin
+                    cur  = queue[pick];
+                    queue.delete(pick);
+                    due.delete(pick);
                     beat = 0;
                 end
                 if (cur != null && !on_bus) begin
@@ -622,6 +615,16 @@ package axi_read_uvm_pkg;
             void'(open[id].pop_front());
             `uvm_info("A2C_TXN", a2c_txn(path(), cfg.role, it.convert2string(), $sformatf("%0h", it.addr)), UVM_MEDIUM)
             ap.write(it);
+        endfunction
+
+        // Every burst must have received its last beat by the end of the run.
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned left = 0;
+            foreach (open[id]) left += open[id].size();
+            if (left != 0) begin
+                `uvm_error("A2C_PROTO", $sformatf("%s: the run ended with %0d bursts still waiting for their last beat",
+                                                  cfg.port_name, left))
+            end
         endfunction
     endclass : axi_read_monitor
 

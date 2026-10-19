@@ -204,6 +204,8 @@ def agent_build(port, variant):
         lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
     if port['maxTransferBytes'] is not None:
         lines.append(f"        {cfg}.max_transfer_bytes = {port['maxTransferBytes'][variant]};")
+    if port['idUnbound']:
+        lines.append(f"        {cfg}.id_unbound = 1;")
     agent = port['agent']
     lines += [f'        uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
               f'        {agent} = {name}_agent_t::type_id::create("{agent}", this);']
