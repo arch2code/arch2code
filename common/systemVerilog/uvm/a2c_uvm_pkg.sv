@@ -106,13 +106,17 @@ package a2c_uvm_pkg;
 
     // A sparse memory of word_t words keyed by a 64-bit index, which a test
     // can preload and inspect. A read of an unwritten word returns the fill
-    // value without storing it, so exists() still reports the word unwritten
-    // and a random fill draws a new value on every such read. Only the first
-    // such read of each model logs, one A2C_MEM info line.
+    // value without storing it, so exists() reports only written words. The
+    // random fill is a hash of seed and the index, so every read of one
+    // unwritten word returns the same value whatever the order of reads.
+    // seed is drawn from the creating thread's generator, so it follows the
+    // simulation seed. The first read of an unwritten word logs one A2C_MEM
+    // info line per model; later ones are not logged.
     class a2c_mem_model #(type word_t = logic [31:0]) extends uvm_object;
         a2c_mem_fill_e fill = A2C_MEM_FILL_ZERO;
         // The word an A2C_MEM_FILL_FIXED model returns.
-        word_t         fill_value;
+        word_t         fill_value = '0;
+        bit [31:0]     seed;
 
         protected word_t store[bit [63:0]];
         protected bit    unwritten_read;
@@ -121,6 +125,7 @@ package a2c_uvm_pkg;
 
         function new(string name = "a2c_mem_model");
             super.new(name);
+            seed = $urandom();
         endfunction
 
         function void write(bit [63:0] index, word_t data);
@@ -129,6 +134,24 @@ package a2c_uvm_pkg;
 
         function bit exists(bit [63:0] index);
             return store.exists(index);
+        endfunction
+
+        // The splitmix64 finalizer.
+        protected static function bit [63:0] mix(bit [63:0] z);
+            z = (z ^ (z >> 30)) * 64'hbf58_476d_1ce4_e5b9;
+            z = (z ^ (z >> 27)) * 64'h94d0_49bb_1331_11eb;
+            return z ^ (z >> 31);
+        endfunction
+
+        // Bits 64k up of the word come from the hash of seed, k and index.
+        protected function word_t random_fill(bit [63:0] index);
+            bit [$bits(word_t)-1:0] bits;
+            bit [63:0]              chunk;
+            for (int unsigned i = 0; i < $bits(word_t); i++) begin
+                if (i % 64 == 0) chunk = mix(index ^ mix({seed, 32'(i / 64)}));
+                bits[i] = chunk[i % 64];
+            end
+            return word_t'(bits);
         endfunction
 
         function word_t read(bit [63:0] index);
@@ -141,7 +164,7 @@ package a2c_uvm_pkg;
             end
             case (fill)
                 A2C_MEM_FILL_ZERO:   data = '0;
-                A2C_MEM_FILL_RANDOM: if (!std::randomize(data)) `uvm_fatal("A2C_MEM", "fill randomize failed")
+                A2C_MEM_FILL_RANDOM: data = random_fill(index);
                 A2C_MEM_FILL_FIXED:  data = fill_value;
             endcase
             return data;

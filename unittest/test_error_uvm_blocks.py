@@ -11,21 +11,24 @@ registerConnections port need no ports: row, and the wrapper still has a pin
 group for each. A memoryConnections port has type memory, and a
 registerConnections port the type its regType maps to, so each passes the
 agent check exactly when that type has an agent: an rw register's status port
-does, and a memory or ext register's port does not. The testbench module also declares names of its own: the DUT
-instance `dut`, the completion pins, the report server `srv` and one
-`<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal, so a
-port, clock or reset named like one of them is rejected. A UVM register or
-memory row holds at most 64 bits, so a register, or a memory whose rows the
-register model pads to its decoder stride, over 64 bits at any standalone
-variant is rejected, and the padded case names the parameter maxValue that
-sets the stride. A field is a member of its uvm_reg subclass and a register or
-memory a member of the uvm_reg_block subclass, so a name that would hide a
-member of that class or of uvm_object is rejected, once per block whatever
-the number of variants. A register's class is `<block>_reg_<register>`, so a
-register named `block` would take the register block's class name and is
-rejected. A memory's structure members become no fields, so
-their names are not checked, and a name is checked only against its own
-class.
+does, and a memory or ext register's port does not. An accepted status
+register port must also reach the generated testbench: make gen gives it a
+status agent typedef over the register's structure, an A2C_SRC agent in the
+env, and the testbench module its pin, interface and config_db entry. The
+testbench module also declares names of its own: the DUT instance `dut`, the
+completion pins, the report server `srv` and one `<clock>_if` per clock,
+beside one `<port>_<signal>` pin per port signal, so a port, clock or reset
+named like one of them is rejected. A UVM register or memory row holds at most
+64 bits, so a register, or a memory whose rows the register model pads to its
+decoder stride, over 64 bits at any standalone variant is rejected, and the
+padded case names the parameter maxValue that sets the stride. A field is a
+member of its uvm_reg subclass and a register or memory a member of the
+uvm_reg_block subclass, so a name that would hide a member of that class or of
+uvm_object is rejected, once per block whatever the number of variants. A
+register's class is `<block>_reg_<register>`, so a register named `block`
+would take the register block's class name and is rejected. A memory's
+structure members become no fields, so their names are not checked, and a name
+is checked only against its own class.
 
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus. Each negative arm edits one rule's violation
@@ -305,14 +308,6 @@ REJECTED = [
 ACCEPTED = [
     ('rdy_vld ports and an apb register bus', ROOT_PROJECT, []),
     ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT, []),
-    ('a status register connection port', ROOT_PROJECT,
-     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
-               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkCfg, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
-               'registerConnections:\n'
-               '    - { register: sinkCfg, block: ubSink, instance: uDut }\n')])]),
     ('a field named like a uvm_reg_block-only member', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        get_registers: {')])]),
     ('a register named like a uvm_reg-only member', ROOT_PROJECT,
@@ -330,6 +325,32 @@ ACCEPTED = [
                'memories:\n'
                '    - { memory: tbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
                'regAccess: rw, desc: "Table" }\n')])]),
+]
+
+# Accepted, and the generated files must hold each line, stripped:
+# (name, project file, [(yaml file, edits)], {generated file: [lines]})
+GENERATED = [
+    ('a status register connection port', ROOT_PROJECT,
+     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
+               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: sinkCfg, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
+               'registerConnections:\n'
+               '    - { register: sinkCfg, block: ubSink, instance: uDut }\n')])],
+     {os.path.join('uvm', 'ubDut_uvm_pkg.sv'): [
+         'typedef status_agent #(.data_t(ubSt)) sinkCfg_agent_t;',
+         'typedef virtual status_if #(.data_t(ubSt)) sinkCfg_vif_t;',
+         'sinkCfg_agent_t sinkCfg_agent;',
+         'if (!uvm_config_db#(sinkCfg_vif_t)::get(this, "", "sinkCfg", sinkCfg_cfg.vif)) begin',
+         'sinkCfg_cfg.role = a2c_uvm_pkg::A2C_SRC;',
+         'uvm_config_db#(sinkCfg_config_t)::set(this, "sinkCfg_agent", "cfg", sinkCfg_cfg);',
+         'sinkCfg_agent = sinkCfg_agent_t::type_id::create("sinkCfg_agent", this);'],
+      os.path.join('uvm', 'ubDut_uvm_tb.sv'): [
+         'output bit [$bits(uvmBlocks_package::ubSt)-1:0] sinkCfg_data,',
+         'status_if #(.data_t(uvmBlocks_package::ubSt)) sinkCfg();',
+         '.sinkCfg_data(sinkCfg.data),',
+         'uvm_config_db#(ubDut_uvm_pkg::sinkCfg_vif_t)::set(null, "uvm_test_top.*", "sinkCfg", sinkCfg);']}),
 ]
 
 # A name that breaks the rule at every variant is reported once:
@@ -351,11 +372,11 @@ REPORTED_ONCE = [
 ]
 
 
-def make_db(project, projectYaml):
+def make(project, projectYaml, target):
     env = os.environ.copy()
     env['NO_COLOR'] = '1'
-    cmd = ['make', '-C', project, f'REPO_ROOT={project}', f'A2C_ROOT={base_dir}',
-           f'A2C_PRJ_YAML={os.path.join(project, projectYaml)}', 'db']
+    cmd = ['make', '-j8', '-C', project, f'REPO_ROOT={project}', f'A2C_ROOT={base_dir}',
+           f'A2C_PRJ_YAML={os.path.join(project, projectYaml)}', target]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=600,
                             env=env)
     return result.returncode, result.stdout + result.stderr
@@ -377,7 +398,7 @@ def check_rejected(project, name, projectYaml, fileEdits, required):
     shutil.copytree(FIXTURE, project)
     for yamlFile, edits in fileEdits:
         edit_yaml(project, yamlFile, edits)
-    rc, output = make_db(project, projectYaml)
+    rc, output = make(project, projectYaml, 'db')
     if rc == 0:
         print(f"  FAIL: {name}: make db accepted the block")
         return False
@@ -398,7 +419,7 @@ def check_accepted(project, name, projectYaml, fileEdits):
     shutil.copytree(FIXTURE, project)
     for yamlFile, edits in fileEdits:
         edit_yaml(project, yamlFile, edits)
-    rc, output = make_db(project, projectYaml)
+    rc, output = make(project, projectYaml, 'db')
     if rc != 0:
         print(f"  FAIL: {name}: make db rejected the block (rc={rc})")
         print(output)
@@ -407,11 +428,35 @@ def check_accepted(project, name, projectYaml, fileEdits):
     return True
 
 
+def check_generated(project, name, projectYaml, fileEdits, expected):
+    shutil.copytree(FIXTURE, project)
+    for yamlFile, edits in fileEdits:
+        edit_yaml(project, yamlFile, edits)
+    for target in ('db', 'newmodule', 'gen'):
+        rc, output = make(project, projectYaml, target)
+        if rc != 0:
+            print(f"  FAIL: {name}: make {target} failed (rc={rc})")
+            print(output)
+            return False
+    missing = list()
+    for relative, lines in expected.items():
+        with open(os.path.join(project, relative)) as f:
+            generated = {line.strip() for line in f}
+        missing += [f"{relative}: {line}" for line in lines if line not in generated]
+    if missing:
+        print(f"  FAIL: {name}: generated lines missing:")
+        for line in missing:
+            print(f"    {line}")
+        return False
+    print(f"  PASS: {name} is accepted and generated")
+    return True
+
+
 def check_reported_once(project, name, projectYaml, fileEdits, message):
     shutil.copytree(FIXTURE, project)
     for yamlFile, edits in fileEdits:
         edit_yaml(project, yamlFile, edits)
-    rc, output = make_db(project, projectYaml)
+    rc, output = make(project, projectYaml, 'db')
     if rc == 0 or output.count(message) != 1:
         print(f"  FAIL: {name}: make db exited {rc} and reported {message!r} "
               f"{output.count(message)} times, expected a rejection reporting it once")
@@ -427,6 +472,8 @@ def run_all_tests():
     try:
         for index, (name, projectYaml, fileEdits) in enumerate(ACCEPTED):
             ok = check_accepted(os.path.join(tmp, f'accept{index}'), name, projectYaml, fileEdits) and ok
+        for index, (name, projectYaml, fileEdits, expected) in enumerate(GENERATED):
+            ok = check_generated(os.path.join(tmp, f'gen{index}'), name, projectYaml, fileEdits, expected) and ok
         for index, (name, projectYaml, fileEdits, message) in enumerate(REPORTED_ONCE):
             ok = check_reported_once(os.path.join(tmp, f'once{index}'), name, projectYaml,
                                      fileEdits, message) and ok

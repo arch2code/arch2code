@@ -14,6 +14,7 @@ package a2c_uvm_loopback_pkg;
     import axi4_stream_uvm_pkg::*;
     import raw_uvm_pkg::*;
     import status_uvm_pkg::*;
+    import apb_uvm_pkg::*;
 
     typedef struct packed {
         logic [3:0]  tag;
@@ -110,6 +111,7 @@ package a2c_uvm_loopback_pkg;
     `include "axi4_stream_lb_tests.svh"
     `include "raw_lb_tests.svh"
     `include "status_lb_tests.svh"
+    `include "apb_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
@@ -138,6 +140,7 @@ module a2c_uvm_loopback_tb;
     axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis();
     raw_if #(.data_t(lb_data_t)) raw();
     status_if #(.data_t(lb_data_t)) st();
+    apb_if #(.addr_t(lb_apb_word_t), .data_t(lb_apb_word_t)) apb();
 
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
@@ -145,6 +148,7 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis", axis);
         uvm_config_db#(raw_vif_t)::set(null, "uvm_test_top", "raw", raw);
         uvm_config_db#(st_vif_t)::set(null, "uvm_test_top", "st", st);
+        uvm_config_db#(apb_vif_t)::set(null, "uvm_test_top", "apb", apb);
         run_test();
     end
 

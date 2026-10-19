@@ -1,8 +1,10 @@
 #!/bin/bash
 # Builds a2c_uvm_loopback_tb.sv on Xcelium or VCS and runs every test the
-# *_lb_tests.svh files beside it declare, file by file in name order. A test
-# is a class named *_test. Exits 0 only when every test reaches the UVM report
-# summary with no UVM_ERROR or UVM_FATAL and logs LB_PASS.
+# *_lb_tests.svh files beside it register with the factory: each
+# `uvm_component_utils line naming a class whose name ends in _test, file by
+# file in name order. Exits 0 only when the files register at least one test
+# and every test reaches the UVM report summary with no UVM_ERROR or
+# UVM_FATAL and logs LB_PASS.
 #
 #   run_loopback.sh xcelium|vcs [seed]
 #
@@ -23,7 +25,11 @@ SEED=${2:-1}
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=$(cd "$HERE/../../../.." && pwd)
 OUT=$PWD/loopback_$SIM
-TESTS=$(sed -n 's/^ *class \([A-Za-z0-9_]*_test\) extends .*/\1/p' "$HERE"/*_lb_tests.svh)
+TESTS=$(sed -n 's/^[[:space:]]*`uvm_component_utils(\([A-Za-z0-9_]*_test\)).*/\1/p' "$HERE"/*_lb_tests.svh)
+if [ -z "$TESTS" ]; then
+    echo "FAIL: no \`uvm_component_utils(*_test) line in $HERE/*_lb_tests.svh"
+    exit 1
+fi
 # a2c_uvm.f lists every agent package, so every interface they name is compiled.
 SRCS="$BASE/interfaces/rdy_vld/rdy_vld_if.sv $BASE/interfaces/apb/apb_if.sv
       $BASE/interfaces/axi4_stream/axi4_stream_if.sv $BASE/interfaces/raw/raw_if.sv

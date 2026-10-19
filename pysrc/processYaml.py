@@ -5520,6 +5520,11 @@ class projectCreate:
             typeKeys[row['interface_type']] = key
             if 'mappedFrom' in row:
                 typeKeys.update({alias: key for alias in row['mappedFrom']})
+
+        def interfacePort(name, interfaceKey):
+            interfaceRow = self.flatData['interfaces'][interfaceKey]
+            return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
+                    f"Use an interface type with an agent for '{name}'")
         failed = False
         for blockRow in self.flatData['blocks'].values():
             if not blockRow['hasUvm']:
@@ -5562,11 +5567,6 @@ class projectCreate:
             # Each boundary port's interface type key, how the agent check
             # names where the port comes from, and the fix it offers.
             boundary = dict()
-
-            def interfacePort(name, interfaceKey):
-                interfaceRow = self.flatData['interfaces'][interfaceKey]
-                return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
-                        f"Use an interface type with an agent for '{name}'")
             for name, row in blockRow['ports'].items():
                 boundary[name] = interfacePort(name, row['interfaceKey'])
             for row in self.flatData['connectionMaps'].values():
