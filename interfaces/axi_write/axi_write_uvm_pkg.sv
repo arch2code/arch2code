@@ -169,6 +169,10 @@ package axi_write_uvm_pkg;
                              type id_t = logic [3:0]) extends uvm_object;
         virtual axi_write_if #(.addr_t(addr_t), .data_t(data_t), .strb_t(strb_t), .awuser_t(awuser_t),
                                .wuser_t(wuser_t), .buser_t(buser_t), .id_t(id_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise. The agent has no
+        // Mode B operations yet and stops with A2C_CFG when it is set.
+        virtual axi_write_if #(.addr_t(addr_t), .data_t(data_t), .strb_t(strb_t), .awuser_t(awuser_t),
+                               .wuser_t(wuser_t), .buser_t(buser_t), .id_t(id_t)) model_vif;
         virtual a2c_clk_if                  clk_vif;
         uvm_active_passive_enum             is_active = UVM_ACTIVE;
         a2c_role_e                          role = A2C_SRC;
@@ -818,6 +822,10 @@ package axi_write_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(item_t)                                                        sqr;
         axi_write_monitor#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t) mon;
+        // Always null, because the agent has no Mode B operations yet; the env
+        // names both on every port.
+        axi_write_monitor#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t) model_mon;
+        a2c_comparator_base                                                          model_cmp;
 
         `uvm_component_param_utils(axi_write_agent#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t))
 
@@ -829,6 +837,9 @@ package axi_write_uvm_pkg;
             super.build_phase(phase);
             if (!uvm_config_db#(config_t)::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "axi_write_agent has no cfg")
+            end
+            if (cfg.model_vif != null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: axi_write has no Mode B operations yet", cfg.port_name))
             end
             if ($bits(data_t) != 8 * $bits(strb_t)) begin
                 `uvm_fatal("A2C_CFG", $sformatf("%s: data_t is %0d bits and strb_t %0d, but wstrb needs one bit per data byte",

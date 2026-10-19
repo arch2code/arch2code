@@ -145,6 +145,14 @@ def env_class(uvm, hasRegModel, variant):
         lines += [f"    {uvm['regBlockClass']} regmodel;",
                   f"    {bus['adapterClass']} adapter;",
                   f"    uvm_reg_predictor #({bus['port']}_item_t) predictor;"]
+    lines += ["    // Mode B, set from a2c_dual_dut: each agent also drives and monitors",
+              "    // the model DUT's <port>_model pins, and comparators lists the agents'",
+              "    // model_cmp comparators."]
+    lines += ['    bit dual_dut;',
+              '    a2c_uvm_pkg::a2c_comparator_base comparators[$];']
+    if hasRegModel:
+        lines += ['    a2c_uvm_pkg::a2c_midstream_guard guard;',
+                  f"    a2c_uvm_pkg::a2c_reg_write_subscriber #({bus['port']}_item_t) reg_writes;"]
     lines += ['',
               f"    `uvm_component_utils({cls})",
               '',
@@ -154,7 +162,10 @@ def env_class(uvm, hasRegModel, variant):
               '',
               '    virtual function void build_phase(uvm_phase phase);']
     lines += [f"        {port['name']}_config_t {port['name']}_cfg;" for port in ports]
-    lines.append('        super.build_phase(phase);')
+    lines += ['        super.build_phase(phase);',
+              '        if (!uvm_config_db#(bit)::get(this, "", "a2c_dual_dut", dual_dut)) begin',
+              '            `uvm_fatal("A2C_CFG", "no a2c_dual_dut setting")',
+              '        end']
     for clock in uvm['clocks']:
         name = clock['clock']
         lines += [f'        if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "{name}", {clock["vif"]})) begin',
@@ -168,24 +179,55 @@ def env_class(uvm, hasRegModel, variant):
                   '        regmodel.build();',
                   '        regmodel.reset();',
                   f'        adapter = {bus["adapterClass"]}::type_id::create("adapter");',
-                  f'        predictor = uvm_reg_predictor#({bus["port"]}_item_t)::type_id::create("predictor", this);']
-    lines += ['    endfunction']
-    if counters or hasRegModel:
-        lines += ['']
-        if hasRegModel:
-            lines += ["    // The register model's mirror follows the bus through the explicit",
-                      "    // predictor, not the register calls' own prediction."]
-        lines.append('    virtual function void connect_phase(uvm_phase phase);')
-        lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
-        if hasRegModel:
-            agent = bus['agent']
-            lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
-                      '        regmodel.default_map.set_auto_predict(0);',
-                      '        predictor.map     = regmodel.default_map;',
-                      '        predictor.adapter = adapter;',
-                      f"        {agent}.mon.ap.connect(predictor.bus_in);"]
-        lines.append('    endfunction')
-    lines.append(f"endclass : {cls}")
+                  f'        predictor = uvm_reg_predictor#({bus["port"]}_item_t)::type_id::create("predictor", this);',
+                  '        if (dual_dut) begin',
+                  '            guard = a2c_uvm_pkg::a2c_midstream_guard::type_id::create("guard", this);',
+                  f'            reg_writes = a2c_uvm_pkg::a2c_reg_write_subscriber#({bus["port"]}_item_t)::type_id::create("reg_writes", this);',
+                  '        end']
+    lines += ['    endfunction', '']
+    if hasRegModel:
+        lines += ["    // The register model's mirror follows the DUT lane's bus through the",
+                  "    // explicit predictor, not the register calls' own prediction. In Mode B",
+                  "    // the guard sees every write on the DUT lane's bus."]
+    lines.append('    virtual function void connect_phase(uvm_phase phase);')
+    lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
+    if hasRegModel:
+        agent = bus['agent']
+        lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
+                  '        regmodel.default_map.set_auto_predict(0);',
+                  '        predictor.map     = regmodel.default_map;',
+                  '        predictor.adapter = adapter;',
+                  f"        {agent}.mon.ap.connect(predictor.bus_in);"]
+    lines.append('        if (dual_dut) begin')
+    lines += [f"            {port['agent']}.model_mon.ap.connect({port['counter']}.model_export);" for port in counters]
+    for port in ports:
+        agent = port['agent']
+        lines += [f"            if ({agent}.model_cmp != null) begin",
+                  f"                comparators.push_back({agent}.model_cmp);",
+                  '            end']
+    # The counter reports a counted port's missing or extra items.
+    lines += [f"            {port['agent']}.model_cmp.counted = 1;" for port in counters]
+    if hasRegModel:
+        lines += ['            reg_writes.map     = regmodel.default_map;',
+                  '            reg_writes.adapter = adapter;',
+                  f"            {bus['agent']}.mon.ap.connect(reg_writes.analysis_export);",
+                  '            reg_writes.ap.connect(guard.analysis_export);']
+        lines += [f"            guard.counters.push_back({port['counter']});" for port in counters]
+        lines.append('            guard.comparators = comparators;')
+    lines += ['        end',
+              '    endfunction',
+              '',
+              '    // The base test calls this in Mode B each time wait_for_outputs()',
+              '    // returns. A comparator with auto_stable cleared takes its stable',
+              '    // points from the user region instead.',
+              '    function void model_stable_point();',
+              '        foreach (comparators[i]) begin',
+              '            if (comparators[i].auto_stable) begin',
+              '                comparators[i].stable_point();',
+              '            end',
+              '        end',
+              '    endfunction',
+              f"endclass : {cls}"]
     return lines
 
 
@@ -193,9 +235,15 @@ def agent_build(port, variant):
     # An agent plays the side opposite the DUT port's modport.
     name = port['name']
     cfg = f"{name}_cfg"
+    vif = f"virtual {port['interfaceType']}_if"
     lines = [f'        {cfg} = {name}_config_t::type_id::create("{cfg}");',
              f'        if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
-             f'            `uvm_fatal("A2C_CFG", "no virtual {port["interfaceType"]}_if \'{name}\'")',
+             f'            `uvm_fatal("A2C_CFG", "no {vif} \'{name}\'")',
+             '        end',
+             '        if (dual_dut) begin',
+             f'            if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}_model", {cfg}.model_vif)) begin',
+             f'                `uvm_fatal("A2C_CFG", "no {vif} \'{name}_model\'")',
+             '            end',
              '        end',
              f"        {cfg}.clk_vif = {port['clockVif']};",
              f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};",
@@ -212,5 +260,6 @@ def agent_build(port, variant):
     if port['counter']:
         counter = port['counter']
         lines += [f'        {counter} = a2c_uvm_pkg::a2c_txn_counter#({name}_item_t)::type_id::create("{counter}", this);',
-                  f'        {counter}.port_name = "{name}";']
+                  f'        {counter}.port_name = "{name}";',
+                  f'        {counter}.dual = dual_dut;']
     return lines

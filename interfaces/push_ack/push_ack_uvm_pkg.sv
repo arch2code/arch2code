@@ -47,6 +47,9 @@ package push_ack_uvm_pkg;
 
     class push_ack_config #(type data_t = logic) extends uvm_object;
         virtual push_ack_if #(.data_t(data_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise. The agent has no
+        // Mode B operations yet and stops with A2C_CFG when it is set.
+        virtual push_ack_if #(.data_t(data_t)) model_vif;
         virtual a2c_clk_if                     clk_vif;
         uvm_active_passive_enum                is_active = UVM_ACTIVE;
         a2c_role_e                             role = A2C_SRC;
@@ -189,6 +192,10 @@ package push_ack_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(push_ack_item#(data_t)) sqr;
         push_ack_monitor#(data_t)               mon;
+        // Always null, because the agent has no Mode B operations yet; the env
+        // names both on every port.
+        push_ack_monitor#(data_t)               model_mon;
+        a2c_comparator_base                     model_cmp;
 
         `uvm_component_param_utils(push_ack_agent#(data_t))
 
@@ -200,6 +207,9 @@ package push_ack_uvm_pkg;
             super.build_phase(phase);
             if (!uvm_config_db#(push_ack_config#(data_t))::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "push_ack_agent has no cfg")
+            end
+            if (cfg.model_vif != null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: push_ack has no Mode B operations yet", cfg.port_name))
             end
             if (cfg.ack_delay_min > cfg.ack_delay_max) begin
                 `uvm_fatal("A2C_CFG", $sformatf("%s: ack_delay_min %0d is above ack_delay_max %0d", cfg.port_name,

@@ -132,6 +132,9 @@ package raw_uvm_pkg;
         raw_monitor#(data_t)      mon;
         // Mode B only.
         raw_monitor#(data_t)      model_mon;
+        // Always null, because raw compares nothing; the env lists every
+        // agent's model_cmp that is set.
+        a2c_comparator_base       model_cmp;
 
         `uvm_component_param_utils(raw_agent#(data_t))
 

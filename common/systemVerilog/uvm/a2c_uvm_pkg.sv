@@ -480,7 +480,7 @@ package a2c_uvm_pkg;
     endclass : a2c_status_comparator
 
     // Holds Mode B to configuration changes while the datapath is quiescent.
-    // It subscribes to the register predictor's reg_ap. A write while any
+    // It takes the writes a2c_reg_write_subscriber converts. A write while any
     // listed counter has pending transactions on either lane, a reported
     // shortfall included, is a UVM_ERROR with id A2C_MIDSTREAM. With
     // +a2c_predict_midstream=1 the write is logged as UVM_INFO instead and
@@ -531,6 +531,55 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_midstream_guard
 
+    // Converts each write in the bus items a register bus monitor reports
+    // into a uvm_reg_item for a2c_midstream_guard, as uvm_reg_predictor
+    // converts bus items, and samples no pins itself. The item carries the
+    // kind and offset from the adapter's bus2reg(), and the register or
+    // memory the map places at that offset, or a null element for an
+    // unmapped one. A memory write, an unmapped write and each bus word of a
+    // multi-word register are all passed on. The predictor's reg_ap reports
+    // only writes that complete a whole register.
+    class a2c_reg_write_subscriber #(type BUS_T = uvm_sequence_item) extends uvm_subscriber #(BUS_T);
+        uvm_reg_map                       map;
+        uvm_reg_adapter                   adapter;
+        uvm_analysis_port #(uvm_reg_item) ap;
+
+        `uvm_component_param_utils(a2c_reg_write_subscriber#(BUS_T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            ap = new("ap", this);
+        endfunction
+
+        virtual function void write(BUS_T t);
+            uvm_reg_bus_op rw;
+            uvm_reg_item   item;
+            uvm_reg        rg;
+            uvm_mem        mem;
+            rw.byte_en = '1;
+            adapter.bus2reg(t, rw);
+            if (rw.kind != UVM_WRITE) return;
+            item = uvm_reg_item::type_id::create("item");
+            item.kind   = UVM_WRITE;
+            item.offset = rw.addr;
+            item.map    = map;
+            item.value  = new[1];
+            item.value[0] = rw.data;
+            rg = map.get_reg_by_offset(rw.addr, 0);
+            if (rg != null) begin
+                item.element      = rg;
+                item.element_kind = UVM_REG;
+            end else begin
+                mem = map.get_mem_by_offset(rw.addr);
+                if (mem != null) begin
+                    item.element      = mem;
+                    item.element_kind = UVM_MEM;
+                end
+            end
+            ap.write(item);
+        endfunction
+    endclass : a2c_reg_write_subscriber
+
     // Lets one responder serve both lanes of a Mode B port from one shared
     // model. The DUT lane applies each transaction and record()s its
     // response and delay; the model lane replays them in order and never
@@ -555,6 +604,17 @@ package a2c_uvm_pkg;
 
         function void record(T rsp, int unsigned delay);
             records.push_back('{rsp: rsp, delay: delay});
+        endfunction
+
+        // The responses recorded and not yet replayed.
+        function int unsigned pending();
+            return records.size();
+        endfunction
+
+        // Whether the model lane's last can_replay() found its transaction
+        // unrecorded, so the model lane leads and waits for the DUT lane.
+        function bit model_waiting();
+            return waiting >= 0;
         endfunction
 
         // Whether the model lane's next transaction is recorded. Until it
@@ -659,10 +719,19 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_mem_model
 
+    function automatic bit a2c_contains(string s, string sub);
+        for (int i = 0; i + sub.len() <= s.len(); i++) begin
+            if (s.substr(i, i + sub.len() - 1) == sub) return 1;
+        end
+        return 0;
+    endfunction
+
     // Turns each UVM_ERROR with id demote_id into UVM_INFO and counts it, so a
-    // negative test can pass when the check it provokes fires.
+    // negative test can pass when the check it provokes fires. With
+    // demote_text set, only the messages that contain it are demoted.
     class a2c_error_demoter extends uvm_report_catcher;
         string       demote_id = "";
+        string       demote_text = "";
         int unsigned demoted;
 
         `uvm_object_utils(a2c_error_demoter)
@@ -672,7 +741,8 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function action_e catch();
-            if (get_severity() == UVM_ERROR && get_id() == demote_id) begin
+            if (get_severity() == UVM_ERROR && get_id() == demote_id
+                    && (demote_text == "" || a2c_contains(get_message(), demote_text))) begin
                 demoted++;
                 set_severity(UVM_INFO);
                 // The action was chosen for UVM_ERROR and still holds

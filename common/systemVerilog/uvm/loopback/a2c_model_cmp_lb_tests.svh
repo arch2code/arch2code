@@ -1,9 +1,9 @@
 // Loopback tests of a2c_uvm_pkg's Mode B classes: the in-order and status
-// comparators, the midstream guard and the replay log. Included in
-// a2c_uvm_loopback_pkg after the rdy_vld, status and a2c_txn_counter
-// tests, whose item types and typedefs they use. The tests drive no pins:
-// they write synthetic items, uvm_reg_items included, into the classes'
-// exports through analysis ports of their own.
+// comparators, the midstream guard and its register write subscriber, and
+// the replay log. Included in a2c_uvm_loopback_pkg after the rdy_vld, status,
+// apb and a2c_txn_counter tests, whose item types and typedefs they use.
+// The tests drive no pins: they write synthetic items, uvm_reg_items
+// included, into the classes' exports through analysis ports of their own.
 
     typedef a2c_in_order_comparator #(rv_item_t) lb_cmp_t;
     typedef a2c_status_comparator #(st_item_t)   lb_st_cmp_t;
@@ -243,6 +243,38 @@
         endfunction
     endclass : model_cmp_inject_test
 
+    // Pair 5 injected and the model's item 9 changed. A demoter whose
+    // demote_text is the injection marker sits ahead of the test's own, so
+    // it demotes the injected report alone and the real mismatch at pair 9
+    // reaches the test's demoter.
+    class model_cmp_inject_text_test extends model_cmp_inject_test;
+        a2c_error_demoter injected;
+
+        `uvm_component_utils(model_cmp_inject_text_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            injected = a2c_error_demoter::type_id::create("injected");
+            injected.demote_id   = "A2C_MODEL_CMP";
+            injected.demote_text = "(injected mismatch)";
+            uvm_report_cb::add(null, injected);
+        endfunction
+
+        virtual function void build_streams();
+            model_data[8].value = ~model_data[8].value;
+            want_errors = 1;
+            want_text.push_back($sformatf("uvm_test_top.cmp: pair 9: DUT %s, model %s",
+                                          lb_rv_item(dut_data[8]).convert2string(), lb_rv_item(model_data[8]).convert2string()));
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (injected.demoted != 1) begin
+                `uvm_error("LB_MODE_B", $sformatf("the marker demoter demoted %0d reports, expected the injected one", injected.demoted))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : model_cmp_inject_text_test
+
     // A status comparator under the policy configure() sets, fed by hand.
     class lb_status_cmp_base extends lb_mode_b_base;
         lb_st_cmp_t                    cmp;
@@ -390,8 +422,7 @@
     endclass : lb_reg
 
     // A guard over a dual-lane counter and an in-order comparator, with
-    // uvm_reg_items written to it by hand as the register predictor's
-    // reg_ap would.
+    // uvm_reg_items written to it by hand as a2c_reg_write_subscriber would.
     class lb_guard_base extends lb_mode_b_base;
         a2c_midstream_guard               guard;
         a2c_txn_counter #(rv_item_t)      counter;
@@ -858,3 +889,104 @@
             phase.drop_objection(this);
         endtask
     endclass : status_cmp_midstream_test
+
+    // A 64-bit register, which spans two bus words.
+    class lb_reg64 extends uvm_reg;
+        rand uvm_reg_field data;
+
+        `uvm_object_utils(lb_reg64)
+
+        function new(string name = "lb_reg64");
+            super.new(name, 64, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            data = uvm_reg_field::type_id::create("data");
+            data.configure(this, 64, 0, "RW", 0, 64'h0, 1, 1, 0);
+        endfunction
+    endclass : lb_reg64
+
+    // lb_reg64 at 0x0 and a four-word memory at 0x10.
+    class lb_reg_block extends uvm_reg_block;
+        rand lb_reg64 wide;
+        uvm_mem       tbl;
+
+        `uvm_object_utils(lb_reg_block)
+
+        function new(string name = "lb_regs");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            wide = lb_reg64::type_id::create("wide");
+            wide.configure(this);
+            wide.build();
+            tbl = new("tbl", 4, 32, "RW", UVM_NO_COVERAGE);
+            tbl.configure(this);
+            default_map = create_map("default_map", 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            default_map.add_reg(wide, 'h0, "RW");
+            default_map.add_mem(tbl, 'h10, "RW");
+            lock_model();
+        endfunction
+    endclass : lb_reg_block
+
+    // apb items reach the guard through a2c_reg_write_subscriber while the
+    // counter is short. Each write raises one A2C_MIDSTREAM naming what the
+    // map holds at its address: both words of the 64-bit register, a memory
+    // row, and nothing at an unmapped address. A read raises none. The
+    // expected item then arrives on both lanes.
+    class reg_write_subscriber_test extends lb_guard_base;
+        lb_reg_block                     regs;
+        apb_reg_adapter                  adapter;
+        a2c_reg_write_subscriber #(apb_item) writes;
+        uvm_analysis_port #(apb_item)    bus_ap;
+
+        `uvm_component_utils(reg_write_subscriber_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_errors = 4;
+            want_text.push_back("write to lb_regs.tbl while outputs have transactions pending: rv (DUT 1, model 1)");
+            want_text.push_back("write to address 0x40 while");
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            regs = lb_reg_block::type_id::create("lb_regs");
+            regs.build();
+            adapter = apb_reg_adapter::type_id::create("adapter");
+            writes  = a2c_reg_write_subscriber#(apb_item)::type_id::create("writes", this);
+            bus_ap  = new("bus_ap", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            writes.map     = regs.default_map;
+            writes.adapter = adapter;
+            bus_ap.connect(writes.analysis_export);
+            writes.ap.connect(guard.analysis_export);
+        endfunction
+
+        function void bus(bit write, bit [31:0] addr);
+            apb_item it = apb_item::type_id::create("it");
+            it.write = write;
+            it.addr  = addr;
+            bus_ap.write(it);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            counter.expect_count(1);
+            bus(1, 'h0);
+            bus(1, 'h4);
+            bus(0, 'h10);
+            bus(1, 'h18);
+            bus(1, 'h40);
+            lane(A2C_DUT_LANE, 1);
+            lane(A2C_MODEL_LANE, 1);
+            if (demoter.count("write to lb_regs.wide while") != 2) begin
+                `uvm_error("LB_MODE_B", $sformatf("expected two writes to lb_regs.wide: %p", demoter.messages))
+            end
+            phase.drop_objection(this);
+        endtask
+    endclass : reg_write_subscriber_test

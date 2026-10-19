@@ -19,8 +19,10 @@
 // every transfer and the model lane follows: it gets the DUT lane's
 // response to transfer n after the same wait clocks, whatever its own
 // transfer asks for, and a model lane that reaches transfer n first holds
-// pready low until the DUT lane has applied it. What the DUT produces that
-// is not compared:
+// pready low until the DUT lane has applied it. When the run phase is ready
+// to end, the slave holds it while the model lane catches up; the drain_*
+// fields of apb_config bound that wait. What the DUT produces that is not
+// compared:
 //   DUT apb dst port, A2C_SRC master: wait states
 //   DUT apb src port, A2C_DST slave: none
 package apb_uvm_pkg;
@@ -77,6 +79,17 @@ package apb_uvm_pkg;
         apb_mem_t                                          mem;
         int unsigned                                       max_wait = 0;
         apb_addr_range_t                                   error_ranges[$];
+        // A2C_DST role in Mode B. At the end of the run phase the slave
+        // holds an objection until the model lane has replayed every
+        // recorded response, waits for no unrecorded transfer, has completed
+        // its transfer, and has started none for drain_quiet_cycles clocks.
+        // After drain_deadline_cycles clocks it lets the phase end, and the
+        // replay log's check_phase() reports what is left. The DUT's apb
+        // master traffic on this port must stop before the test ends: while
+        // it continues the quiet window never completes, so the drain runs
+        // to its deadline and the replay log reports any response left.
+        int unsigned                                       drain_quiet_cycles = 1000;
+        int unsigned                                       drain_deadline_cycles = 200000;
 
         `uvm_object_param_utils(apb_config#(addr_t, data_t))
 
@@ -190,6 +203,14 @@ package apb_uvm_pkg;
         // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
         protected vif_t        lane[2];
         protected int unsigned lanes;
+        protected lane_state_e state[2];
+        // The model lane's setup phases so far, so the drain sees a new one
+        // even when its replay is immediate.
+        protected int unsigned model_setups;
+        // The drain's progress across calls of phase_ready_to_end().
+        protected bit          drain_expired;
+        protected bit          drained;
+        protected int unsigned setups_at_drain;
 
         `uvm_component_param_utils(apb_slave_driver#(addr_t, data_t))
 
@@ -233,7 +254,6 @@ package apb_uvm_pkg;
         // transfer, and the sample point after it can see the next setup
         // phase, so back-to-back transfers are served.
         virtual task run_phase(uvm_phase phase);
-            lane_state_e state[2];
             int unsigned wait_clocks[2];
             rsp_t        rsp[2];
             lane[A2C_DUT_LANE] = cfg.vif;
@@ -249,7 +269,10 @@ package apb_uvm_pkg;
             forever begin
                 cfg.clk_vif.sample_edge();
                 for (int l = 0; l < lanes; l++) begin
-                    if (state[l] == LANE_IDLE && lane[l].psel === 1'b1 && lane[l].penable !== 1'b1) state[l] = LANE_SETUP;
+                    if (state[l] == LANE_IDLE && lane[l].psel === 1'b1 && lane[l].penable !== 1'b1) begin
+                        state[l] = LANE_SETUP;
+                        if (l == A2C_MODEL_LANE) model_setups++;
+                    end
                     if (state[l] != LANE_SETUP) continue;
                     if (l == A2C_DUT_LANE) apply(rsp[l], wait_clocks[l]);
                     else if (replay.can_replay()) replay.replay(rsp[l], wait_clocks[l]);
@@ -278,6 +301,48 @@ package apb_uvm_pkg;
                     endcase
                 end
             end
+        endtask
+
+        protected function bit model_lane_busy();
+            return replay.pending() > 0 || replay.model_waiting() || state[A2C_MODEL_LANE] != LANE_IDLE;
+        endfunction
+
+        // UVM calls this each time the run phase's last objection drops, so
+        // again after a drain, or a later objection anywhere, has dropped;
+        // by default it stops calling after 20 rounds and ends the phase.
+        // A drain runs again if the model lane has started a transfer since
+        // the last one, or is still busy after a drain that ended quiet. A
+        // model lane still busy at a drain's deadline is left for the replay
+        // log to report.
+        virtual function void phase_ready_to_end(uvm_phase phase);
+            super.phase_ready_to_end(phase);
+            if (replay == null || phase.get_imp() != uvm_run_phase::get()) return;
+            if (drained && model_setups == setups_at_drain && (drain_expired || !model_lane_busy())) return;
+            phase.raise_objection(this, "the model lane is draining");
+            fork
+                drain(phase);
+            join_none
+        endfunction
+
+        // Any model-lane activity or new setup restarts the quiet window.
+        protected task drain(uvm_phase phase);
+            int unsigned cycles = 0;
+            int unsigned quiet = 0;
+            int unsigned setups = model_setups;
+            while (quiet < cfg.drain_quiet_cycles && cycles < cfg.drain_deadline_cycles) begin
+                cfg.clk_vif.sample_edge();
+                cycles++;
+                if (model_lane_busy() || model_setups != setups) begin
+                    quiet  = 0;
+                    setups = model_setups;
+                end else begin
+                    quiet++;
+                end
+            end
+            drain_expired   = quiet < cfg.drain_quiet_cycles;
+            drained         = 1;
+            setups_at_drain = model_setups;
+            phase.drop_objection(this, "the model lane is drained");
         endtask
     endclass : apb_slave_driver
 

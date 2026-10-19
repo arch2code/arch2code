@@ -1881,13 +1881,20 @@ class projectOpen:
                            'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
         names = self.uvmNames[ret['qualBlock']]
         # The fail test expects more transactions than the first counted
-        # output delivers, so a block with none has no fail test.
-        counters = [port['counter'] for port in ports if port['counter']]
-        failTest = {'className': names['failTestClass'], 'counter': counters[0]} if counters else None
+        # output delivers, so a block with none has no fail test. The model
+        # mismatch test injects on that port's comparator, so it also needs
+        # the both DUT.
+        counted = [port for port in ports if port['counter']]
+        failTest = None
+        modelMismatchTest = None
+        if counted:
+            failTest = {'className': names['failTestClass'], 'counter': counted[0]['counter']}
+            if 'both' in names['duts']:
+                modelMismatchTest = {'className': names['modelMismatchTestClass'], 'agent': counted[0]['agent']}
         ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
                       'agentPackages': list(dict.fromkeys(f"{port['interfaceType']}_uvm_pkg" for port in ports)),
                       'registers': registers, 'memories': memories, 'registerBus': registerBus,
-                      'failTest': failTest}
+                      'failTest': failTest, 'modelMismatchTest': modelMismatchTest}
 
     def getUvmRegisterModel(self, ret, tops):
         """The block's firmware-visible registers and memories at the
@@ -5862,6 +5869,7 @@ class projectCreate:
                 'baseTestClass':   f"{block}_base_test",
                 'smokeTestClass':  f"{block}_smoke_test",
                 'failTestClass':   f"{block}_fail_test",
+                'modelMismatchTestClass': f"{block}_model_mismatch_test",
             }
         self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
 

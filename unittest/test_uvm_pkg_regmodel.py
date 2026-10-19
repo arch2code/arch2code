@@ -34,6 +34,18 @@ A2C_SRC, and the env sets no agent passive. The AXI port rdM binds no id_t,
 so its config sets id_unbound. rdS binds one, and no other port's config sets
 it.
 
+In Mode B, which the env reads from the testbench's a2c_dual_dut, the env
+also fetches every port's <port>_model interface into its config's model_vif,
+gives each counter the model monitor's stream, lists every agent's model_cmp
+that is set, marks the counted ports' comparators as counted, and creates the
+midstream guard over the counters and comparators. The guard hears every
+write on the DUT lane's register bus through a2c_reg_write_subscriber, which
+resolves it against the register map. None of this happens outside Mode B:
+the vif fetches, the guard and everything connect_phase adds sit under
+dual_dut, so a Mode A or rtl run builds and connects what it did before. The
+env's model_stable_point() calls stable_point() on each listed comparator
+with auto_stable set.
+
 An agent whose port binds no parameter is spelled with no #(), which no port
 of the fixture exercises, so the typedef lines are also checked on a port
 built here.
@@ -69,6 +81,10 @@ EXTRA_EDITS = [
      'regAccess: wo, desc: "Write-only table on an 8-byte stride" }\n'
      '    - { memory: ptbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
      'regAccess: rw, desc: "Padded table on an 8-byte stride" }\n'),
+]
+
+# ubDut masters a second APB bus, port mst, served by uSlave.
+MASTER_EDITS = [
     ('            out: { interface: ubStream, direction: src }\n',
      '            out: { interface: ubStream, direction: src }\n'
      '            mst: { interface: ubRegs, direction: src }\n'),
@@ -87,6 +103,8 @@ EXTRA_EDITS = [
      '    - { interface: ubRegs, src: uCpu, dst: uRouter }\n'
      '    - { interface: ubRegs, src: uDut, srcport: mst, dst: uSlave, name: mstLink }'),
 ]
+
+EXTRA_EDITS = EXTRA_EDITS + MASTER_EDITS
 
 UB_W = regView.UB_W
 UB_D = regView.UB_D
@@ -195,6 +213,94 @@ ENV_LINES = [
 ]
 
 
+# connect_phase's Mode B branch, whole and in order.
+MODE_B_CONNECT = [
+    'out_agent.model_mon.ap.connect(out_counter.model_export);',
+    'rdM_agent.model_mon.ap.connect(rdM_counter.model_export);',
+] + [line for agent in ('in', 'out', 'rdM', 'rdS', 'mst', 'ubRegs')
+     for line in (f'if ({agent}_agent.model_cmp != null) begin', f'comparators.push_back({agent}_agent.model_cmp);', 'end')] + [
+    'out_agent.model_cmp.counted = 1;',
+    'rdM_agent.model_cmp.counted = 1;',
+    'reg_writes.map     = regmodel.default_map;',
+    'reg_writes.adapter = adapter;',
+    'ubRegs_agent.mon.ap.connect(reg_writes.analysis_export);',
+    'reg_writes.ap.connect(guard.analysis_export);',
+    'guard.counters.push_back(out_counter);',
+    'guard.counters.push_back(rdM_counter);',
+    'guard.comparators = comparators;',
+]
+
+MODE_B_MEMBERS = [
+    'bit dual_dut;',
+    'a2c_uvm_pkg::a2c_comparator_base comparators[$];',
+    'a2c_uvm_pkg::a2c_midstream_guard guard;',
+    'a2c_uvm_pkg::a2c_reg_write_subscriber #(ubRegs_item_t) reg_writes;',
+    'if (!uvm_config_db#(bit)::get(this, "", "a2c_dual_dut", dual_dut)) begin',
+    'out_counter.dual = dual_dut;',
+    'rdM_counter.dual = dual_dut;',
+]
+
+STABLE_POINT = [
+    'function void model_stable_point();',
+    'foreach (comparators[i]) begin',
+    'if (comparators[i].auto_stable) begin',
+    'comparators[i].stable_point();',
+    'end',
+    'end',
+    'endfunction',
+]
+
+
+def block_after(lines, start, opener):
+    """The lines of the begin/end block that opens at the first opener at or
+    after start, without the opener and its closing end."""
+    i = lines.index(opener, start)
+    depth = 1
+    for j in range(i + 1, len(lines)):
+        if lines[j].endswith(' begin') or lines[j] == 'begin' or lines[j] == 'fork':
+            depth += 1
+        elif lines[j] in ('end', 'join') or lines[j].startswith('end else'):
+            depth -= 1
+            if depth == 0:
+                return lines[i + 1:j]
+    raise ValueError(f"no end for {opener!r} at line {i}")
+
+
+def check_mode_b(pkg, lines):
+    problems = [f"{pkg}.sv lacks the line {line!r}" for line in MODE_B_MEMBERS if line not in lines]
+    connect = lines.index('virtual function void connect_phase(uvm_phase phase);')
+    branch = block_after(lines, connect, 'if (dual_dut) begin')
+    if branch != MODE_B_CONNECT:
+        problems.append(f"{pkg}.sv connect_phase's dual_dut branch is\n    {branch}\n  expected\n    {MODE_B_CONNECT}")
+    # Each model vif fetch, and the guard and its feeder, exist only under dual_dut.
+    build = lines.index('virtual function void build_phase(uvm_phase phase);')
+    for port, intf in (('in', 'rdy_vld'), ('out', 'rdy_vld'), ('rdM', 'axi_read'), ('rdS', 'axi_read'),
+                       ('mst', 'apb'), ('ubRegs', 'apb')):
+        fetch = f'if (!uvm_config_db#({port}_vif_t)::get(this, "", "{port}_model", {port}_cfg.model_vif)) begin'
+        if fetch not in lines or lines[lines.index(fetch) - 1] != 'if (dual_dut) begin':
+            problems.append(f"{pkg}.sv does not fetch {port}_model under dual_dut")
+        elif lines[lines.index(fetch) + 1] != f'`uvm_fatal("A2C_CFG", "no virtual {intf}_if \'{port}_model\'")':
+            problems.append(f"{pkg}.sv does not stop with A2C_CFG when {port}_model is missing")
+    guardBranch = block_after(lines, lines.index('predictor = uvm_reg_predictor#(ubRegs_item_t)::type_id::create("predictor", this);', build),
+                              'if (dual_dut) begin')
+    wantGuard = ['guard = a2c_uvm_pkg::a2c_midstream_guard::type_id::create("guard", this);',
+                 'reg_writes = a2c_uvm_pkg::a2c_reg_write_subscriber#(ubRegs_item_t)::type_id::create("reg_writes", this);']
+    if guardBranch != wantGuard:
+        problems.append(f"{pkg}.sv creates under dual_dut\n    {guardBranch}\n  expected\n    {wantGuard}")
+    if not in_order(lines, STABLE_POINT):
+        problems.append(f"{pkg}.sv has no model_stable_point() over the auto_stable comparators")
+    return problems
+
+
+def in_order(lines, expected):
+    position = 0
+    for line in expected:
+        if line not in lines[position:]:
+            return False
+        position = lines.index(line, position) + 1
+    return True
+
+
 def check(project):
     prj = projectOpen(os.path.join(project, regView.DB))
     (qualBlock,) = [key for key, row in prj.data['blocks'].items() if row['block'] == 'ubDut']
@@ -214,6 +320,7 @@ def check(project):
                       if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.no_backpressure\b'
                                   r'|.*_cfg\.is_active\b|(in|out|rdS|ubRegs|mst)_cfg\.id_unbound\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
+        problems += check_mode_b(pkg, lines)
         # The resources come after their memory's configure() call, which
         # gives the memory the full name they are keyed by.
         for mem in ('wtbl', 'ptbl'):
@@ -280,6 +387,7 @@ def run_all_tests():
     print("  PASS: NO_MEM_TESTS on the write-only memory, NO_MEM_WALK_TEST on the padded one")
     print("  PASS: agent typedefs with and without bound parameters")
     print("  PASS: env agents with their roles, the output transaction counter and the register predictor")
+    print("  PASS: env Mode B wiring under dual_dut: model vifs, counter model streams, comparators, guard")
     print("\nPASS: the variant packages hold the register model and the env")
     return 0
 

@@ -59,6 +59,9 @@ package req_ack_uvm_pkg;
 
     class req_ack_config #(type data_t = logic, type rdata_t = logic) extends uvm_object;
         virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise. The agent has no
+        // Mode B operations yet and stops with A2C_CFG when it is set.
+        virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) model_vif;
         virtual a2c_clk_if                                       clk_vif;
         uvm_active_passive_enum                                  is_active = UVM_ACTIVE;
         a2c_role_e                                               role = A2C_SRC;
@@ -278,6 +281,10 @@ package req_ack_uvm_pkg;
         req_ack_driver#(data_t, rdata_t)    drv;
         req_ack_sequencer#(data_t, rdata_t) sqr;
         req_ack_monitor#(data_t, rdata_t)   mon;
+        // Always null, because the agent has no Mode B operations yet; the env
+        // names both on every port.
+        req_ack_monitor#(data_t, rdata_t)   model_mon;
+        a2c_comparator_base                 model_cmp;
 
         `uvm_component_param_utils(req_ack_agent#(data_t, rdata_t))
 
@@ -289,6 +296,9 @@ package req_ack_uvm_pkg;
             super.build_phase(phase);
             if (!uvm_config_db#(req_ack_config#(data_t, rdata_t))::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "req_ack_agent has no cfg")
+            end
+            if (cfg.model_vif != null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: req_ack has no Mode B operations yet", cfg.port_name))
             end
             mon = req_ack_monitor#(data_t, rdata_t)::type_id::create("mon", this);
             mon.cfg = cfg;

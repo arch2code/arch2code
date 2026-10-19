@@ -465,13 +465,14 @@
 
     // Sends a list of transfers with idle clocks before each. With follow
     // set, transfer hold_at waits until follow has reported that many
-    // transfers and one more.
+    // transfers and one more, then for hold_clocks idle clocks.
     class apb_gap_seq extends uvm_sequence #(apb_item_t);
         apb_item_t                items[$];
         int unsigned              gaps[$];
         virtual a2c_clk_if        clk_vif;
         lb_arrivals#(apb_item_t)  follow;
         int                       hold_at = -1;
+        int unsigned              hold_clocks = 0;
 
         `uvm_object_utils(apb_gap_seq)
 
@@ -482,7 +483,10 @@
         virtual task body();
             foreach (items[i]) begin
                 repeat (gaps[i]) clk_vif.drive_edge();
-                if (i == hold_at) while (follow.items.size() <= i) clk_vif.sample_edge();
+                if (i == hold_at) begin
+                    while (follow.items.size() <= i) clk_vif.sample_edge();
+                    repeat (hold_clocks) clk_vif.drive_edge();
+                end
                 start_item(items[i]);
                 finish_item(items[i]);
             end
@@ -541,6 +545,9 @@
             agent_cfg.mem       = apb_mem_t::type_id::create("slave_mem");
             agent_cfg.mem.fill  = A2C_MEM_FILL_RANDOM;
             agent_cfg.max_wait  = 2;
+            // A test whose model lane waits forever waits out the drain's
+            // whole deadline.
+            agent_cfg.drain_deadline_cycles = 2000;
             agent_cfg.error_ranges.push_back('{lo: 32'h30, hi: 32'h33});
             ref_mem      = apb_mem_t::type_id::create("ref_mem");
             ref_mem.fill = A2C_MEM_FILL_RANDOM;
@@ -735,7 +742,7 @@
 
     // The model lane's peer sends one transfer more than the DUT lane's. The
     // DUT lane never records it, so the model lane waits for it until the
-    // end of the test: one A2C_REPLAY.
+    // slave's end-of-test drain gives up: one A2C_REPLAY.
     class apb_mode_b_slave_extra_test extends apb_mode_b_slave_test;
         `uvm_component_utils(apb_mode_b_slave_extra_test)
 
@@ -754,3 +761,315 @@
                                           n_items));
         endfunction
     endclass : apb_mode_b_slave_extra_test
+
+    // The test ends as a generated Mode B test does once its outputs are
+    // done: it drops its objection, and the slave's phase_ready_to_end()
+    // drain holds the run phase. Here the outputs are done when the DUT lane
+    // has completed every transfer, and the model lane's peer starts the
+    // last one 50 clocks later, after a quiet window of 20 clocks: the model
+    // lane must still replay it and model_cmp must pair it, with no
+    // A2C_REPLAY.
+    class apb_mode_b_slave_drain_test extends apb_mode_b_slave_test;
+        apb_slave_driver#(lb_apb_word_t, lb_apb_word_t) slave;
+        int unsigned clocks;
+        int unsigned dropped_at;
+        int unsigned pending_at_drop;
+        bit          waiting_at_drop;
+
+        `uvm_component_utils(apb_mode_b_slave_drain_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            agent_cfg.drain_quiet_cycles    = 20;
+            agent_cfg.drain_deadline_cycles = 400;
+            model_seq.hold_at     = n_items - 1;
+            model_seq.hold_clocks = 50;
+        endfunction
+
+        virtual task wait_drop();
+            while (arrivals.items.size() < n_items) clk_vif.sample_edge();
+        endtask
+
+        // The clock counter runs until the run phase ends.
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            if (!$cast(slave, agent.drv)) `uvm_fatal("LB_CFG", "the agent's driver is not an apb_slave_driver")
+            clk_vif.wait_reset_release();
+            fork
+                forever begin
+                    clk_vif.sample_edge();
+                    clocks++;
+                end
+                seq.start(peer.sqr);
+                model_seq.start(model_peer.sqr);
+            join_none
+            wait_drop();
+            pending_at_drop = slave.replay.pending();
+            waiting_at_drop = slave.replay.model_waiting();
+            dropped_at      = clocks;
+            phase.drop_objection(this);
+        endtask
+
+        protected function int unsigned drain_clocks();
+            return clocks - dropped_at;
+        endfunction
+
+        virtual function void check_led();
+            `uvm_info("LB_STATS", $sformatf("%0d responses unreplayed and model lane waiting %0d at the drop; the drain took %0d clocks",
+                                            pending_at_drop, waiting_at_drop, drain_clocks()), UVM_NONE)
+            if (pending_at_drop == 0) begin
+                `uvm_error("LB_MODE_B", "the model lane had replayed every response at the drop, so the drain went untested")
+            end
+        endfunction
+
+        // The clock counter races the drain on each edge, so it may be one off.
+        protected function void check_deadline();
+            if (drain_clocks() + 1 < agent_cfg.drain_deadline_cycles || drain_clocks() > agent_cfg.drain_deadline_cycles + 1) begin
+                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected the deadline of %0d", drain_clocks(),
+                                                  agent_cfg.drain_deadline_cycles))
+            end
+        endfunction
+    endclass : apb_mode_b_slave_drain_test
+
+    // As apb_mode_b_slave_drain_test, with the model lane's last transfer 40
+    // clocks late and a drain deadline of 10 clocks: the drain gives up at
+    // the deadline, and the replay log's check_phase() reports the
+    // responses left in one A2C_REPLAY. The unpaired DUT lane transfers are
+    // the replay log's to report, so model_cmp is marked counted.
+    class apb_mode_b_slave_drain_deadline_test extends apb_mode_b_slave_drain_test;
+        `uvm_component_utils(apb_mode_b_slave_drain_deadline_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            demote_id = "A2C_REPLAY";
+        endfunction
+
+        virtual function void build_streams();
+            super.build_streams();
+            agent_cfg.drain_deadline_cycles = 10;
+            model_seq.hold_clocks = 40;
+            want_errors = 1;
+            want_text.push_back("responses the DUT lane recorded and the model lane never replayed");
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            agent.model_cmp.counted = 1;
+        endfunction
+
+        // The lanes' data checks of apb_mode_b_slave_test would read the
+        // model lane's transfer that never ran.
+        virtual function void check_phase(uvm_phase phase);
+            check_deadline();
+        endfunction
+    endclass : apb_mode_b_slave_drain_deadline_test
+
+    // The model lane leads every transfer, and the DUT lane's peer starts
+    // the last one 20 clocks late. The test drops its objection while the
+    // model lane waits for that unrecorded transfer, with a quiet window of
+    // one clock and up to eight wait clocks per transfer, so only the model
+    // lane's completion keeps the run phase alive through the last
+    // transfer: no A2C_REPLAY, every pair compared, and the model lane idle
+    // when the run ends.
+    class apb_mode_b_slave_drain_model_leads_test extends apb_mode_b_slave_drain_test;
+        `uvm_component_utils(apb_mode_b_slave_drain_model_leads_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            agent_cfg.drain_quiet_cycles    = 1;
+            agent_cfg.drain_deadline_cycles = 400;
+            agent_cfg.max_wait              = 8;
+            foreach (seq.gaps[i]) begin
+                seq.gaps[i]       = $urandom_range(3, 1);
+                model_seq.gaps[i] = 0;
+            end
+            seq.gaps[n_items - 1] = 20;
+        endfunction
+
+        // The model lane's setup phase of the last transfer, and one clock
+        // more so the slave has sampled it.
+        virtual task wait_drop();
+            do clk_vif.sample_edge();
+            while (model_arrivals.items.size() < n_items - 1 || model_vif.psel !== 1'b1 || model_vif.penable === 1'b1);
+            clk_vif.sample_edge();
+        endtask
+
+        virtual function void check_led();
+            `uvm_info("LB_STATS", $sformatf("model lane waiting %0d at the drop; the drain took %0d clocks", waiting_at_drop,
+                                            drain_clocks()), UVM_NONE)
+            if (!waiting_at_drop) `uvm_error("LB_MODE_B", "the model lane was not waiting at the drop, so the drain went untested")
+            if (model_vif.psel === 1'b1) `uvm_error("LB_MODE_B", "the run ended inside a model lane transfer")
+        endfunction
+    endclass : apb_mode_b_slave_drain_model_leads_test
+
+    // The model lane's peer sends one transfer more than the DUT lane's. The
+    // test drops its objection when the DUT lane is done, before the model
+    // lane has started the extra transfer. The quiet window sees it start,
+    // the model lane then waits for it until the drain's deadline, and the
+    // replay log reports the wait: one A2C_REPLAY.
+    class apb_mode_b_slave_drain_extra_test extends apb_mode_b_slave_drain_test;
+        `uvm_component_utils(apb_mode_b_slave_drain_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            demote_id = "A2C_REPLAY";
+        endfunction
+
+        virtual function void build_streams();
+            apb_item_t it = apb_item_t::type_id::create("it");
+            agent_cfg.drain_quiet_cycles    = 20;
+            agent_cfg.drain_deadline_cycles = 400;
+            if (!it.randomize() with { addr < 32'h30; addr[1:0] == 2'b00; }) `uvm_fatal("LB_RAND", "apb item randomize failed")
+            model_seq.items.push_back(it);
+            model_seq.gaps.push_back(0);
+            want_errors = 1;
+            want_text.push_back($sformatf("uvm_test_top.agent.drv.replay: the model lane waited for transaction %0d, %s",
+                                          n_items, "which the DUT lane never recorded"));
+        endfunction
+
+        virtual function void check_led();
+            check_deadline();
+        endfunction
+    endclass : apb_mode_b_slave_drain_extra_test
+
+    // As apb_mode_b_slave_drain_extra_test, with the drop in the setup phase
+    // of the extra transfer.
+    class apb_mode_b_slave_drain_extra_setup_test extends apb_mode_b_slave_drain_extra_test;
+        `uvm_component_utils(apb_mode_b_slave_drain_extra_setup_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual task wait_drop();
+            do clk_vif.sample_edge();
+            while (model_arrivals.items.size() < n_items || model_vif.psel !== 1'b1 || model_vif.penable === 1'b1);
+            clk_vif.sample_edge();
+        endtask
+    endclass : apb_mode_b_slave_drain_extra_setup_test
+
+    // As apb_mode_b_slave_drain_test, in two rounds. The first sends every
+    // transfer but the last, and its drain replays them all. On its second
+    // phase_ready_to_end() call, which comes when that drain drops, the test
+    // raises its objection again, sends the last transfer with the model
+    // lane's peer 30 clocks behind, and drops it when the DUT lane has
+    // completed the transfer. Only a second drain from the slave's repeated
+    // phase_ready_to_end() keeps the run phase alive until the model lane
+    // replays it: no A2C_REPLAY, and every pair compared.
+    class apb_mode_b_slave_drain_twice_test extends apb_mode_b_slave_drain_test;
+        apb_gap_seq  last_seq;
+        apb_gap_seq  model_last_seq;
+        int unsigned ready_calls;
+        bit          resumed;
+        int unsigned resumed_at;
+        int unsigned pending_at_second_drop;
+
+        `uvm_component_utils(apb_mode_b_slave_drain_twice_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            agent_cfg.drain_quiet_cycles    = 20;
+            agent_cfg.drain_deadline_cycles = 400;
+            last_seq       = apb_gap_seq::type_id::create("last_seq");
+            model_last_seq = apb_gap_seq::type_id::create("model_last_seq");
+            last_seq.clk_vif       = clk_vif;
+            model_last_seq.clk_vif = clk_vif;
+            last_seq.items.push_back(seq.items.pop_back());
+            last_seq.gaps.push_back(seq.gaps.pop_back());
+            model_last_seq.items.push_back(model_seq.items.pop_back());
+            void'(model_seq.gaps.pop_back());
+            model_last_seq.gaps.push_back(30);
+        endfunction
+
+        virtual task wait_drop();
+            while (arrivals.items.size() < n_items - 1) clk_vif.sample_edge();
+        endtask
+
+        virtual function void phase_ready_to_end(uvm_phase phase);
+            super.phase_ready_to_end(phase);
+            if (phase.get_imp() != uvm_run_phase::get()) return;
+            ready_calls++;
+            if (ready_calls != 2) return;
+            resumed    = 1;
+            resumed_at = clocks;
+            phase.raise_objection(this, "the last transfer");
+            fork last_round(phase); join_none
+        endfunction
+
+        // Runs before the last transfer is sent.
+        virtual task before_last();
+        endtask
+
+        protected task last_round(uvm_phase phase);
+            before_last();
+            fork
+                last_seq.start(peer.sqr);
+                model_last_seq.start(model_peer.sqr);
+            join_none
+            while (arrivals.items.size() < n_items) clk_vif.sample_edge();
+            pending_at_second_drop = slave.replay.pending();
+            phase.drop_objection(this, "the DUT lane completed the last transfer");
+        endtask
+
+        // The lanes' data checks read every transfer from seq and model_seq.
+        virtual function void check_phase(uvm_phase phase);
+            seq.items.push_back(last_seq.items[0]);
+            model_seq.items.push_back(model_last_seq.items[0]);
+            super.check_phase(phase);
+        endfunction
+
+        virtual function void check_led();
+            `uvm_info("LB_STATS", $sformatf("%0d phase_ready_to_end calls; %0d responses unreplayed at the second drop",
+                                            ready_calls, pending_at_second_drop), UVM_NONE)
+            if (!resumed) `uvm_error("LB_MODE_B", "the first drain never dropped, so the second round never ran")
+            if (pending_at_second_drop == 0) begin
+                `uvm_error("LB_MODE_B", {"the model lane had replayed the last transfer at the second drop, ",
+                                         "so the second drain went untested"})
+            end
+        endfunction
+    endclass : apb_mode_b_slave_drain_twice_test
+
+    // As apb_mode_b_slave_drain_twice_test, with the model lane's peer 40
+    // clocks late on the first round's last transfer and a deadline of 10
+    // clocks, so the first drain expires with the model lane busy. The test
+    // sends the last transfer once the model lane has completed the late
+    // one, and raises the deadline to 400 clocks. The model lane started a
+    // transfer after the expiry, so the slave must drain again: no
+    // A2C_REPLAY, and every pair compared.
+    class apb_mode_b_slave_drain_after_expiry_test extends apb_mode_b_slave_drain_twice_test;
+        `uvm_component_utils(apb_mode_b_slave_drain_after_expiry_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            super.build_streams();
+            agent_cfg.drain_deadline_cycles = 10;
+            model_seq.hold_at     = n_items - 2;
+            model_seq.hold_clocks = 40;
+        endfunction
+
+        virtual task before_last();
+            while (model_arrivals.items.size() < n_items - 1) clk_vif.sample_edge();
+            agent_cfg.drain_deadline_cycles = 400;
+        endtask
+
+        virtual function void check_led();
+            int unsigned first = resumed_at - dropped_at;
+            super.check_led();
+            // The clock counter races the drain on each edge, so it may be one off.
+            if (first + 1 < 10 || first > 11) begin
+                `uvm_error("LB_MODE_B", $sformatf("the first drain took %0d clocks, expected its deadline of 10", first))
+            end
+        endfunction
+    endclass : apb_mode_b_slave_drain_after_expiry_test

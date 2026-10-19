@@ -57,6 +57,9 @@ package pop_ack_uvm_pkg;
 
     class pop_ack_config #(type rdata_t = logic) extends uvm_object;
         virtual pop_ack_if #(.rdata_t(rdata_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise. The agent has no
+        // Mode B operations yet and stops with A2C_CFG when it is set.
+        virtual pop_ack_if #(.rdata_t(rdata_t)) model_vif;
         virtual a2c_clk_if                      clk_vif;
         uvm_active_passive_enum                 is_active = UVM_ACTIVE;
         a2c_role_e                              role = A2C_SRC;
@@ -223,6 +226,10 @@ package pop_ack_uvm_pkg;
         pop_ack_driver#(rdata_t)                drv;
         uvm_sequencer #(pop_ack_item#(rdata_t)) sqr;
         pop_ack_monitor#(rdata_t)               mon;
+        // Always null, because the agent has no Mode B operations yet; the env
+        // names both on every port.
+        pop_ack_monitor#(rdata_t)               model_mon;
+        a2c_comparator_base                     model_cmp;
 
         `uvm_component_param_utils(pop_ack_agent#(rdata_t))
 
@@ -234,6 +241,9 @@ package pop_ack_uvm_pkg;
             super.build_phase(phase);
             if (!uvm_config_db#(pop_ack_config#(rdata_t))::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "pop_ack_agent has no cfg")
+            end
+            if (cfg.model_vif != null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: pop_ack has no Mode B operations yet", cfg.port_name))
             end
             mon = pop_ack_monitor#(rdata_t)::type_id::create("mon", this);
             mon.cfg = cfg;

@@ -11,16 +11,27 @@ generated `<block>_base_test`; a user span holding `<block>_smoke_test` with
 an empty run_body(); and the generated footer with `<block>_fail_test`. The
 base test creates the env through the factory as `<block>_tb_env`, waits for
 reset, runs run_body() and then waits for every counted output under one
-objection. The fail test adds the missing transactions to the first counted
-output after the smoke stimulus, and passes only on exactly one
-A2C_TXN_COUNT error. make gen rewrites only the generated sections, so a user
+objection. In Mode B, which the env reads from a2c_dual_dut, each return of
+wait_for_outputs() is a stable point for the model comparators. The fail test
+adds the missing transactions to the first counted output after the smoke
+stimulus, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
+in Mode B, with each lane's pending count equal to the missing count. A block
+with a model, and so a both DUT, also gets `<block>_model_mismatch_test`,
+which injects a mismatch on that output's model comparator, stops with A2C_CFG
+outside Mode B, demotes only the A2C_MODEL_CMP that carries the injection
+marker, and passes only on exactly one of those with at least mismatch_at
+pairs compared. make gen rewrites only the generated sections, so a user
 edit in either span survives it.
 
 A copy of `fixtures/uvm-blocks` with the two variants of
 test_uvm_register_view.py must give one ubDut_uvm_test_pkg.sv, named by both
 tops' A2C_UVM_TEST_SV. A second copy drops ubDut's two output ports, out and
-rdM, so it has no counted output: its test package has no fail test and waits
-on no output.
+rdM, so it has no counted output: its test package has no fail or model
+mismatch test, waits on no output, and still takes the stable point. A third
+copy gives ubDut no model, so it keeps the fail test and has no model mismatch
+test. A fourth copy gives ubDut an apb master port, mst. The apb slave agent
+drains its replay log itself, so that copy's wait_for_outputs() ends in Mode B
+with the stable point alone, as every copy's does.
 """
 
 import os
@@ -41,6 +52,13 @@ NO_OUTPUT_EDITS = [
     ('            rdM: { interface: ubRd, direction: src }\n', ''),
     ('    - { interface: ubRd, src: uDut, srcport: rdM, dst: uSink, dstport: rdIn, name: rdOut, maxTransferSize: 32 }\n',
      ''),
+]
+
+MASTER_EDITS = regModel.MASTER_EDITS
+
+NO_MODEL_EDITS = [
+    ('        desc: "DUT under the UVM testbench"\n        hasMdl: true\n',
+     '        desc: "DUT under the UVM testbench"\n        hasMdl: false\n'),
 ]
 
 HEADER = [
@@ -91,6 +109,16 @@ OUTPUT_WAIT = [
     'env.out_counter.wait_for_count(env.clk_vif, output_deadline_cycles, quiet_cycles);',
     'join',
 ]
+STABLE_POINT = [
+    'if (env.dual_dut) begin',
+    'env.model_stable_point();',
+    'end',
+    'endtask',
+    'endclass : ubDut_base_test',
+]
+
+# The Mode B tail of wait_for_outputs(), whole and in order.
+MODE_B_TAIL = ['if (env.dual_dut) begin', 'env.model_stable_point();', 'end', 'endtask']
 
 SPAN_2 = [
     'class ubDut_smoke_test extends ubDut_base_test;',
@@ -109,8 +137,31 @@ FAIL_TEST = [
     'uvm_report_cb::add(null, demoter);',
     'super.run_body();',
     'env.out_counter.expect_count(missing_count);',
-    'if (demoter.demoted != 1 || others != 0) begin',
+    'int unsigned want = 1;',
+    'if (env.dual_dut) begin',
+    'want     = 2;',
+    'for (int lane = 0; lane < want; lane++) begin',
+    "int unsigned pending = env.out_counter.lane_pending(a2c_lane_e'(lane));",
+    'if (pending != missing_count) begin',
+    'if (demoter.demoted != want || others != 0 || shortfall != "") begin',
     'endclass : ubDut_fail_test',
+]
+
+MISMATCH_TEST = [
+    'class ubDut_model_mismatch_test extends ubDut_smoke_test;',
+    'a2c_error_demoter demoter;',
+    'int unsigned mismatch_at = 1;',
+    'void\'($value$plusargs("a2c_model_mismatch_at=%d", mismatch_at));',
+    'demoter.demote_id = "A2C_MODEL_CMP";',
+    'demoter.demote_text = "(injected mismatch)";',
+    'uvm_report_cb::add(null, demoter);',
+    'virtual function void connect_phase(uvm_phase phase);',
+    'if (!env.dual_dut) begin',
+    '`uvm_fatal("A2C_CFG", "ubDut_model_mismatch_test compares the model DUT against the RTL and runs only on the both DUT")',
+    'env.out_agent.model_cmp.inject_mismatch(mismatch_at);',
+    'int unsigned pairs = env.out_agent.model_cmp.get_pairs();',
+    'if (demoter.demoted != 1 || others != 0 || pairs < mismatch_at) begin',
+    'endclass : ubDut_model_mismatch_test',
 ]
 
 FOOTER = ['endpackage : ubDut_uvm_test_pkg', '`endif // UBDUT_UVM_TEST_PKG_SV']
@@ -144,7 +195,7 @@ def in_order(lines, expected):
     return True
 
 
-def check_layout(path, hasOutput):
+def check_layout(path, hasOutput, hasModel=True):
     problems = []
     name = os.path.basename(path)
     layout = regions(path)
@@ -152,14 +203,20 @@ def check_layout(path, hasOutput):
     if kinds != ['header', 'user', 'tests', 'user', 'footer']:
         return [f"{name} has the regions {kinds}, expected header, user, tests, user, footer"]
     (_, header), (_, span1), (_, tests), (_, span2), (_, footer) = layout
-    baseTest = BASE_TEST + (OUTPUT_WAIT if hasOutput else [])
+    baseTest = BASE_TEST + (OUTPUT_WAIT if hasOutput else []) + STABLE_POINT
+    footerTests = (FAIL_TEST if hasOutput else []) + (MISMATCH_TEST if hasOutput and hasModel else [])
     for what, lines, expected in (('header', header, HEADER), ('env span', span1, SPAN_1),
                                   ('tests section', tests, baseTest), ('smoke span', span2, SPAN_2),
-                                  ('footer', footer, (FAIL_TEST if hasOutput else []) + FOOTER)):
+                                  ('footer', footer, footerTests + FOOTER)):
         if not in_order(lines, expected):
             problems.append(f"{name} {what} is\n    {lines}\n  expected in order\n    {expected}")
     if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + FAIL_TEST[:1]):
         problems.append(f"{name} waits on an output or declares a fail test, and the block has no counted output")
+    if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
+        problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")
+    start = tests.index(MODE_B_TAIL[0]) if MODE_B_TAIL[0] in tests else -1
+    if start < 0 or tests[start:start + len(MODE_B_TAIL)] != MODE_B_TAIL:
+        problems.append(f"{name} tests section is\n    {tests}\n  expected the Mode B tail\n    {MODE_B_TAIL}")
     return problems
 
 
@@ -224,6 +281,25 @@ def check_no_output(project):
     return check_layout(os.path.join(project, 'uvm', 'ubDut_uvm_test_pkg.sv'), hasOutput=False)
 
 
+def check_no_model(project):
+    failure = build(project, NO_MODEL_EDITS)
+    if failure:
+        return [failure]
+    return check_layout(os.path.join(project, 'uvm', 'ubDut_uvm_test_pkg.sv'), hasOutput=True, hasModel=False)
+
+
+def check_master(project):
+    failure = build(project, MASTER_EDITS)
+    if failure:
+        return [failure]
+    problems = check_layout(os.path.join(project, 'uvm', 'ubDut_uvm_test_pkg.sv'), hasOutput=True)
+    for name in sorted(os.listdir(os.path.join(project, 'uvm'))):
+        with open(os.path.join(project, 'uvm', name)) as f:
+            if 'wait_for_replay' in f.read():
+                problems.append(f"{name} mentions wait_for_replay, which the slave's drain replaced")
+    return problems
+
+
 def run_all_tests():
     print("\n" + "=" * 70)
     print("UVM TEST PACKAGE SCAFFOLD")
@@ -232,7 +308,9 @@ def run_all_tests():
     ok = True
     try:
         for name, check in (('one test package for two variants, kept across make gen', check_two_variants),
-                            ('no fail test without a counted output', check_no_output)):
+                            ('no fail test without a counted output', check_no_output),
+                            ('no model mismatch test without a model', check_no_model),
+                            ('no generated drain for an apb master port', check_master)):
             problems = check(os.path.join(tmp, check.__name__))
             for problem in problems:
                 print(f"  FAIL: {name}: {problem}")

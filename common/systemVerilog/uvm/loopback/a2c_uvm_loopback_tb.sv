@@ -115,13 +115,6 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : lb_base_test
 
-    function automatic bit lb_has(string s, string sub);
-        for (int i = 0; i + sub.len() <= s.len(); i++) begin
-            if (s.substr(i, i + sub.len() - 1) == sub) return 1;
-        end
-        return 0;
-    endfunction
-
     // An a2c_error_demoter that keeps the text of each message it demotes.
     class lb_recording_demoter extends a2c_error_demoter;
         string messages[$];
@@ -140,7 +133,7 @@ package a2c_uvm_loopback_pkg;
         // How many kept messages hold sub.
         function int unsigned count(string sub);
             int unsigned n = 0;
-            foreach (messages[i]) n += lb_has(messages[i], sub);
+            foreach (messages[i]) n += a2c_contains(messages[i], sub);
             return n;
         endfunction
     endclass : lb_recording_demoter
@@ -233,6 +226,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
     `include "a2c_model_cmp_lb_tests.svh"
+    `include "mode_b_unsupported_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 

@@ -61,6 +61,9 @@ package memory_uvm_pkg;
 
     class memory_config #(type addr_t = logic, type data_t = logic) extends uvm_object;
         virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) vif;
+        // The model DUT's pin set in Mode B; null otherwise. The agent has no
+        // Mode B operations yet and stops with A2C_CFG when it is set.
+        virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) model_vif;
         virtual a2c_clk_if                                    clk_vif;
         uvm_active_passive_enum                               is_active = UVM_ACTIVE;
         a2c_role_e                                            role = A2C_SRC;
@@ -276,6 +279,10 @@ package memory_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(memory_item#(addr_t, data_t)) sqr;
         memory_monitor#(addr_t, data_t)              mon;
+        // Always null, because the agent has no Mode B operations yet; the env
+        // names both on every port.
+        memory_monitor#(addr_t, data_t)              model_mon;
+        a2c_comparator_base                          model_cmp;
 
         `uvm_component_param_utils(memory_agent#(addr_t, data_t))
 
@@ -287,6 +294,9 @@ package memory_uvm_pkg;
             super.build_phase(phase);
             if (!uvm_config_db#(config_t)::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "memory_agent has no cfg")
+            end
+            if (cfg.model_vif != null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: memory has no Mode B operations yet", cfg.port_name))
             end
             mon = memory_monitor#(addr_t, data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
