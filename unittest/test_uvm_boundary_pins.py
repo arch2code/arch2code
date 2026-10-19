@@ -49,9 +49,11 @@ Config.
 
 Under VCS every top's shell is analyzed, whichever top is selected, and each
 testbench module imports its block's test package. A dry run at each selected
-top must analyze another block's test package before that block's shells,
-once per top with A2C_UVM_PKG naming that top's variant package, and must
-leave the selected block's test package to the RTL analysis.
+top must analyze another block's test package once, before that block's
+shells and after the variant package its A2C_UVM_PKG names, one of that
+block's, and must leave the selected block's test package to the RTL
+analysis. Those steps, and each other top's variant package step, carry the
+RTL analysis's defines without the selected top's A2C_UVM_PKG.
 """
 
 import os
@@ -514,12 +516,15 @@ def check_sc_files(work, design):
 
 def check_vcs_shells(work):
     """The -sc_model recipe of a VCS dry run at each selected top: each
-    vlogan as (sv files, A2C_UVM_PKG define, -sc_model top), in order."""
+    vlogan as (sv files, A2C_UVM_PKG define, -sc_model top, +define+ words),
+    in order."""
     problems = []
     uvmDir = os.path.join(work, 'top', 'uvm')
     testSv = {block: os.path.join(uvmDir, f'{block}_uvm_test_pkg.sv') for block in CONFIGS}
+    pkgSv = {stem: os.path.join(uvmDir, f'{stem}_uvm_pkg.sv') for stem in UVM_TOPS}
     for selected, (selectedBlock, _) in UVM_TOPS.items():
-        result = make(work, 'all', os.path.join('top', 'rundir'), extra=(*VCS_DRY_RUN, f'UVM_TOP={selected}'))
+        result = make(work, 'all', os.path.join('top', 'rundir'),
+                      extra=(*VCS_DRY_RUN, f'UVM_TOP={selected}', 'EXTRA_HDL_DEFINES=A2C_PROBE'))
         if result.returncode != 0:
             problems.append(f"UVM_TOP={selected}: make -n failed (rc={result.returncode})\n{result.stderr}")
             continue
@@ -534,19 +539,49 @@ def check_vcs_shells(work):
                 continue
             define = [t.split('=', 1)[1] for t in tokens if t.startswith('+define+A2C_UVM_PKG=')]
             model = tokens[tokens.index('-sc_model') + 1] if '-sc_model' in tokens else None
-            steps.append(([t for t in tokens if t.endswith('.sv')], define, model))
-        if any(testSv[selectedBlock] in svs for svs, _, _ in steps):
+            steps.append(([t for t in tokens if t.endswith('.sv')], define, model,
+                          [t for t in tokens if t.startswith('+define+')]))
+        if any(testSv[selectedBlock] in svs for svs, _, _, _ in steps):
             problems.append(f"UVM_TOP={selected}: the shell step re-analyzes {selectedBlock}'s own test package")
-        for stem, (block, _) in UVM_TOPS.items():
+        # The default UVM_DUT is rtl only for a block without a model.
+        rtlDut = not HAS_MDL[selectedBlock]
+        pkgSteps = [(i, f'{stem}_uvm_pkg') for stem in UVM_TOPS if stem != selected
+                    for i, (svs, _, model, _) in enumerate(steps) if model is None and pkgSv[stem] in svs]
+        testSteps = []
+        for block in CONFIGS:
             if block == selectedBlock:
                 continue
-            shell = [i for i, (_, _, model) in enumerate(steps) if model == f'{stem}_uvm_tb']
-            ahead = [define for svs, define, _ in steps[:shell[0]] if testSv[block] in svs] if shell else []
-            if not shell:
-                problems.append(f"UVM_TOP={selected}: no -sc_model shell for {stem}_uvm_tb")
-            elif [f'{stem}_uvm_pkg'] not in ahead:
-                problems.append(f"UVM_TOP={selected}: {block}'s test package is not analyzed with "
-                                f"A2C_UVM_PKG={stem}_uvm_pkg before the {stem}_uvm_tb shell; analyses: {ahead}")
+            stems = [stem for stem, (b, _) in UVM_TOPS.items() if b == block]
+            shells = [i for i, (_, _, model, _) in enumerate(steps) if model in [f'{stem}_uvm_tb' for stem in stems]]
+            analyses = [(i, define) for i, (svs, define, _, _) in enumerate(steps) if testSv[block] in svs]
+            if len(shells) != len(stems):
+                problems.append(f"UVM_TOP={selected}: {len(shells)} -sc_model shells for {block}'s tops {stems}")
+            elif (len(analyses) != 1 or analyses[0][0] > min(shells)
+                  or analyses[0][1] not in [[f'{stem}_uvm_pkg'] for stem in stems]):
+                problems.append(f"UVM_TOP={selected}: {block}'s test package must be analyzed once, before its "
+                                f"shells, with A2C_UVM_PKG naming one of {[f'{stem}_uvm_pkg' for stem in stems]}; "
+                                f"analyses (step, A2C_UVM_PKG): {analyses}, shells at steps {shells}")
+            else:
+                i, [named] = analyses[0]
+                if not any(j < i and pkg == named for j, pkg in pkgSteps):
+                    problems.append(f"UVM_TOP={selected}: {block}'s test package at step {i} names {named}, "
+                                    f"which no earlier step analyzes; variant package steps: {pkgSteps}")
+                testSteps.append((i, f'{block}_uvm_test_pkg'))
+        if len(pkgSteps) != len(UVM_TOPS) - 1:
+            problems.append(f"UVM_TOP={selected}: variant package steps {pkgSteps}, expected one per other top")
+        # These steps re-analyze the RTL analysis's library sources, so they
+        # carry its defines, apart from the selected top's A2C_UVM_PKG.
+        for i, what in pkgSteps + testSteps:
+            defines = steps[i][3]
+            if '+define+A2C_PROBE' not in defines:
+                problems.append(f"UVM_TOP={selected}: the {what} step lacks EXTRA_HDL_DEFINES' +define+A2C_PROBE; "
+                                f"defines {defines}")
+            if f'+define+A2C_UVM_PKG={selected}_uvm_pkg' in defines:
+                problems.append(f"UVM_TOP={selected}: the {what} step carries the selected top's "
+                                f"+define+A2C_UVM_PKG={selected}_uvm_pkg")
+            if ('+define+A2C_UVM_RTL_DUT' in defines) != rtlDut:
+                problems.append(f"UVM_TOP={selected}: the {what} step {'lacks' if rtlDut else 'carries'} "
+                                f"+define+A2C_UVM_RTL_DUT, but UVM_DUT is {'rtl' if rtlDut else 'model'}")
     return problems
 
 

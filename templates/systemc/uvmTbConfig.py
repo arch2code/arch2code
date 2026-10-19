@@ -1,11 +1,10 @@
 # The UVM testbench config of a hasUvm block. It creates the SystemC wrapper
 # through the instanceFactory under the block's own name, at the variant of
-# the top --uvmTop names and with the DUT --uvmDut picks. The wrapper fails
-# the run for UVM errors. When UVM never finishes, as when a UVM_FATAL calls
+# the top --uvmTop names and with the DUT --uvmDut picks. The snapshot is
+# elaborated with both options, so a run repeats them. The wrapper fails the
+# run for UVM errors. When UVM never finishes, as when a UVM_FATAL calls
 # $finish, final() fails the run under Xcelium, where sc_start returns. Under
 # VCS the $finish skips final(), and main.cpp's exit_handler fails the run.
-# Both options are elaboration arguments of the snapshot, so a run repeats
-# them.
 # Only the Xcelium and VCS builds compile it, because it selects the
 # <block>_uvm factory entry that only the registrar registers, and the
 # registrar is built only there.
@@ -27,7 +26,7 @@ def render(args, prj, data):
         '            return false;',
         '        }',
     ]
-    dutHelp = f'DUT behind the UVM testbench: {choices}{why}' + ('' if why else '; must match the snapshot')
+    dutHelp = f'DUT behind the UVM testbench: {choices}{why}; must match the snapshot'
     out = [
         '#if defined(XCELIUM) || defined(VCS)',
         '#include <iostream>',

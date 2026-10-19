@@ -1,10 +1,10 @@
 # The UVM testbench top module of a hasUvm block. SystemC instantiates it
 # through a simulator shell built from the same pin list, so its ports are the
 # HDL top's pins with the port directions inverted, then the completion pins.
-# A block with a model holds the RTL only when compiled with A2C_UVM_RTL_DUT,
-# and otherwise carries the interfaces over the pins to the SystemC BFMs and
-# the model. A block without a model always holds the RTL. Holding the RTL
-# ties off the pins toward SystemC.
+# A block whose DUTs include the model holds the RTL only when compiled with
+# A2C_UVM_RTL_DUT, and otherwise carries the interfaces over the pins to the
+# SystemC BFMs and the model. A block whose only DUT is rtl always holds the
+# RTL. Holding the RTL ties off the pins toward SystemC.
 import itertools
 import textwrap
 
@@ -54,7 +54,7 @@ def group_comment(pin):
 def render_body(prj, data, variant, top):
     pins = prj.getUvmTopBoundaryPins(data, top['hdlTop'])
     portPins = [pin for pin in pins if pin['kind'] == 'port']
-    hasMdl = data['blockInfo']['hasMdl']
+    modelDut = 'model' in data['uvm']['duts']
 
     decls = list()
     for _, groupPins in itertools.groupby(pins, key=lambda pin: (pin['kind'], pin['port'])):
@@ -88,7 +88,7 @@ def render_body(prj, data, variant, top):
             tie = "'0" if pin['vector'] else "1'b0"
             rtl.append(f"assign {pin['pin']} = {tie};")
     rtl.append("assign rtl_dut = 1'b1;")
-    if hasMdl:
+    if modelDut:
         out.append('`ifdef A2C_UVM_RTL_DUT')
         out += [f'    {line}' if line else '' for line in rtl]
         out.append('`else')
