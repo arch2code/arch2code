@@ -23,7 +23,7 @@ DUT_RUN = os.path.join(base_dir, 'dutRun.py')
 
 SNAPSHOTS = ['run_model', 'run_top_verif', 'run_top_verif_tandem', 'run_top_model_tandem',
              'run_top.u_a_verif', 'run_uvm_top_default_model', 'run_uvm_top_default_rtl',
-             'run_uvm_top_wide_rtl']
+             'run_uvm_top_default_both', 'run_uvm_top_wide_rtl']
 
 # (label, arguments, snapshot that must run)
 RUNS = [
@@ -38,6 +38,8 @@ RUNS = [
      'run_uvm_top_default_model'),
     ('a UVM rtl DUT, top first', ['top_uvm', '--uvmTop', 'top_default', '--uvmDut', 'rtl'],
      'run_uvm_top_default_rtl'),
+    ('a UVM both DUT', ['top_uvm', '--uvmDut', 'both', '--uvmTop', 'top_default', '+UVM_TESTNAME=t'],
+     'run_uvm_top_default_both'),
     ('a UVM rtl DUT, = form', ['top_uvm', '--uvmDut=rtl', '--uvmTop=top_wide', '--seed', '0x1f'],
      'run_uvm_top_wide_rtl'),
 ]

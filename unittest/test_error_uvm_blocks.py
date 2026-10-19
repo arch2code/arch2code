@@ -18,8 +18,10 @@ the testbench module its interface, and the wrapper its X/Z checker. A
 one-bit payload pin is a scalar bit, as the simulator shell binds a bool. The
 testbench module also declares names of its own: the DUT instance `dut`, the
 completion pins, the report server `srv` and one `<clock>_if` per clock,
-beside one `<port>_<signal>` pin per port signal, so a port, clock or reset
-named like one of them is rejected. A UVM register or memory row holds at most
+beside one `<port>_<signal>` pin per port signal and, for a block with a
+model, the model DUT's `<port>_model` interface per port, so a port, clock or
+reset named like one of them is rejected. A block without a model may name a
+port `<port>_model`. A UVM register or memory row holds at most
 64 bits, so a register, or a memory whose rows the register model pads to its
 decoder stride, over 64 bits at any standalone variant is rejected, and the
 padded case names the parameter maxValue that sets the stride. A field is a
@@ -174,6 +176,12 @@ REJECTED = [
     ('a port named like another port\'s pin', ROOT_PROJECT,
      [(ARCH, [('            out: {', '            in_vld: {'), ('srcport: out,', 'srcport: in_vld,')])],
      [WHERE, "its port 'in_vld' has the name of the pin 'in_vld' of port 'in'"]),
+    ('a port named like the model completion pin', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            model_dut: {'), ('srcport: out,', 'srcport: model_dut,')])],
+     [WHERE, "its port 'model_dut' has the name of the completion pin 'model_dut'"]),
+    ('a port named like another port\'s model interface', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            in_model: {'), ('srcport: out,', 'srcport: in_model,')])],
+     [WHERE, "its port 'in_model' has the name of the model DUT's interface instance 'in_model' of port 'in'"]),
     ('a register wider than 64 bits at one variant', ROOT_PROJECT,
      [(ARCH, [('\ntypes:\n',
                '\nipParameters:\n'
@@ -287,6 +295,15 @@ REJECTED = [
 ACCEPTED = [
     ('rdy_vld ports and an apb register bus', ROOT_PROJECT, []),
     ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT, []),
+    ('a block without a model with a port named like another port\'s model interface', ROOT_PROJECT,
+     [(ARCH, [('        desc: "DUT under the UVM testbench"\n        hasMdl: true\n',
+               '        desc: "DUT under the UVM testbench"\n        hasMdl: false\n'),
+              ('            in:  { interface: ubStream, direction: dst }\n'
+               '            out: { interface: ubStream, direction: src }\n        registerPorts:',
+               '            pix: { interface: ubStream, direction: dst }\n'
+               '            pix_model: { interface: ubStream, direction: src }\n        registerPorts:'),
+              ('dst: uDut, dstport: in,', 'dst: uDut, dstport: pix,'),
+              ('src: uDut, srcport: out,', 'src: uDut, srcport: pix_model,')])]),
     ('a field named like a uvm_reg_block-only member', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        get_registers: {')])]),
     ('a register named like a uvm_reg-only member', ROOT_PROJECT,

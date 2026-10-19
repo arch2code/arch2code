@@ -17,7 +17,7 @@ def render(args, prj, data):
     topNames = ', '.join(top['stem'] for top in uvm['tops'].values())
     duts = uvm['duts']
     defaultDut = duts[0]
-    choices = ' or '.join(duts)
+    choices = duts[0] if len(duts) == 1 else f"{', '.join(duts[:-1])} or {duts[-1]}"
     why = '' if 'model' in duts else f', because {blockName} has no model'
     mismatch = ' && '.join(f'm_uvmDut != "{dut}"' for dut in duts)
     dutCheck = [
@@ -66,7 +66,8 @@ def render(args, prj, data):
         '    bool createTestBench(void) override',
         '    {',
         '        bfmContractCheck::failOnBreak = true;',
-        f'        {run}::rtlDut = m_uvmDut == "rtl";',
+        f'        {run}::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";',
+        f'        {run}::modelDut = m_uvmDut == "model" || m_uvmDut == "both";',
         f'        instanceFactory::registerInstance("{blockName}", "uvm");',
         f'        instanceFactory::createInstance("", "{blockName}", "{blockName}", m_variant.c_str(), "{project}");',
         '        return true;',

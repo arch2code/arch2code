@@ -2,8 +2,8 @@
 """A UVM testbench top's boundary files match the HDL top it instantiates.
 
 The testbench top drives what the DUT samples and samples what it drives, takes
-the DUT's clocks and resets as inputs, and adds three completion outputs:
-uvm_done, uvm_errors and rtl_dut. The VCS port map and the Xcelium shell
+the DUT's clocks and resets as inputs, and adds four completion outputs:
+uvm_done, uvm_errors, rtl_dut and model_dut. The VCS port map and the Xcelium shell
 `--vlBoundary` writes for it must say so with the DUT's widths at each variant,
 or the SystemC side binds mis-sized or mis-directed ports.
 
@@ -13,8 +13,8 @@ fixed st_a timed by a second clock, clkB, with its own reset. It is
 instantiated at two variants that size pst_a differently. dutV has no model.
 The expected pins are computed from the fixture YAML, independently of the
 generator, for each HDL top and UVM top. The build manifest must list every
-UVM top with its files and the DUTs it can hold, model and rtl or, for dutV,
-rtl only. dutV sits directly under the top instance, so its top is its
+UVM top with its files and the DUTs it can hold, model, rtl and both or, for
+dutV, rtl only. dutV sits directly under the top instance, so its top is its
 block's default; dutU, under vbwTop, has no default.
 
 Each variant package must bind that variant's parameter values, declare pst_a
@@ -33,9 +33,14 @@ registers its tests, and declare exactly those pins, sizing each vector
 payload by `$bits` of its type in the package that declares it, type its
 interfaces by the same types, give each clock an a2c_clk_if released by that clock's reset,
 bind the HDL top with the pins toward SystemC tied off, and publish every port
-and clock in the config_db. A block with a model holds the RTL only under
-A2C_UVM_RTL_DUT and otherwise carries each signal across in the direction the
-DUT sees it. A block without a model always holds the RTL.
+and clock in the config_db. A block with a model holds the RTL under
+A2C_UVM_RTL_DUT, and with neither DUT define carries each signal across in
+the direction the DUT sees it. Under A2C_UVM_BOTH_DUT it holds the RTL on
+the port interfaces, carries each signal across through a second interface
+per port, <port>_model, and publishes those too. Each branch is checked on
+its own: it drives rtl_dut and model_dut to its DUT set and sets a2c_dual_dut
+in the config_db. A block without a model always holds the RTL and sets
+a2c_dual_dut to 0.
 
 Each block's SystemC wrapper must include the BFM header that declares its
 pin bridges, bind every testbench pin, check the shell's payload pin types,
@@ -44,8 +49,10 @@ own clock releases it. It imports the block's base module only when the block
 has a model, and with params its block module as well, because it names the
 model class at the factory as a container does for a child typed by its
 Config. With a model it carries each port through a BFM of the swapped role
-on the port's clock domain. Its config must
-create the wrapper under the block's name at the scaffolded variant, and its
+on the port's clock domain, when the run's DUT set holds the model. Its config
+must accept both only for a block with a model, set the run's rtlDut and
+modelDut from --uvmDut, create the wrapper under the block's name at the
+scaffolded variant, and its
 registrar must register one wrapper per variant over that variant's shell and
 Config.
 
@@ -56,6 +63,12 @@ shells and after the variant package its A2C_UVM_PKG names, one of that
 block's, and must leave the selected block's test package to the RTL
 analysis. Those steps, and each other top's variant package step, carry the
 RTL analysis's defines without the selected top's A2C_UVM_PKG.
+
+At each UVM_DUT of dutU_v0, the VCS RTL analysis, the VCS shell of dutU_v0
+and the Xcelium DUT library each carry A2C_UVM_RTL_DUT only for rtl and
+A2C_UVM_BOTH_DUT only for both. The default UVM_TOPOLOGIES of dutU_v0
+builds the model, rtl and both snapshots in that order, and make gen refuses
+UVM_DUT=both for dutV, which has no model.
 
 A builder layer's A2C_LAYER_UVM_F_FILES reaches the VCS RTL analysis and the
 Xcelium DUT library, each list behind -F, after a2c_uvm.f and before the
@@ -71,7 +84,6 @@ import shlex
 import shutil
 import sys
 import tempfile
-from collections import Counter
 
 from _addrctl_helpers import base_dir, test_dir
 from _tmp_helpers import remove_tree
@@ -202,7 +214,7 @@ PORT_DOMAIN = {('dutU', 'side'): ('clkB', 'rstB_n')}
 VCS_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_VCS=1', 'VCS_HOME=/placeholder/vcs')
 XRUN_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_XCELIUM=1', 'XCELIUM_TOOLS=/placeholder/xcelium', 'XRUN_GCC_VERS=placeholder')
 COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
-                   ('rtl_dut', 'output', 1, False)]
+                   ('rtl_dut', 'output', 1, False), ('model_dut', 'output', 1, False)]
 
 
 def edit_fixture(work):
@@ -383,40 +395,79 @@ def check_testbenches(work, design):
 
         binds = [f'.{pin}({port}.{signal})' for pin, _, _, _, port, signal, _ in portPins]
         binds += [f'.{pin}({pin})' for pin, *_ in design.clock_reset_pins(block)]
-        problems += match(f'{tb}.sv', 'DUT binds', [line for line in lines if line.startswith('.')], binds)
 
-        rtlAssigns = []
-        mdlAssigns = []
-        for pin, direction, _, vector, port, signal, _ in portPins:
-            if direction == 'input':
-                tie = "'0" if vector else "1'b0"
-                rtlAssigns.append(f'assign {pin} = {tie};')
-                mdlAssigns.append(f'assign {pin} = {port}.{signal};')
-            else:
-                mdlAssigns.append(f'assign {port}.{signal} = {pin};')
-        rtlAssigns.append("assign rtl_dut = 1'b1;")
-        mdlAssigns.append("assign rtl_dut = 1'b0;")
-        assigns = rtlAssigns + (mdlAssigns if HAS_MDL[block] else [])
-        problems += match(f'{tb}.sv', 'assigns', Counter(line for line in lines if line.startswith('assign ')),
-                          Counter(assigns))
-        ifdefs = lines.count('`ifdef A2C_UVM_RTL_DUT')
-        if ifdefs != int(HAS_MDL[block]):
-            problems.append(f"{tb}.sv has {ifdefs} `ifdef A2C_UVM_RTL_DUT, expected {int(HAS_MDL[block])}")
+        def flags(rtl, model):
+            return [f"assign rtl_dut = 1'b{int(rtl)};", f"assign model_dut = 1'b{int(model)};"]
 
+        def carry(suffix):
+            return [f'assign {pin} = {port}{suffix}.{signal};' if direction == 'input'
+                    else f'assign {port}{suffix}.{signal} = {pin};'
+                    for pin, direction, _, _, port, signal, _ in portPins]
+
+        ties = [f'assign {pin} = ' + ("'0" if vector else "1'b0") + ';'
+                for pin, direction, _, vector, *_ in portPins if direction == 'input']
+        domains = clock_domains(design, block)
         intfs = [f'rdy_vld_if #(.data_t({payloadPkg[payload]}::{payload})) {port}();'
                  for port, _, payload in UVM_PORTS[block]]
-        domains = clock_domains(design, block)
         intfs += [f"a2c_clk_if {clock}_if(.clk({clock}), .rst_n({reset or NO_RESET}));"
                   for clock, reset in domains]
-        problems += match(f'{tb}.sv', 'interface instances',
-                          [line for line in lines if line.startswith(('rdy_vld_if', 'a2c_clk_if'))], intfs)
-
+        modelIntfs = [f'rdy_vld_if #(.data_t({payloadPkg[payload]}::{payload})) {port}_model();'
+                      for port, _, payload in UVM_PORTS[block]]
         sets = [f'uvm_config_db#({pkg}::{port}_vif_t)::set(null, "uvm_test_top.*", "{port}", {port});'
                 for port, *_ in UVM_PORTS[block]]
         sets += [f'uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top.*", "{clock}", {clock}_if);'
                  for clock, _ in domains]
-        problems += match(f'{tb}.sv', 'config_db sets',
-                          [line for line in lines if line.startswith('uvm_config_db#')], sets)
+        modelSets = [f'uvm_config_db#({pkg}::{port}_vif_t)::set(null, "uvm_test_top.*", "{port}_model", {port}_model);'
+                     for port, *_ in UVM_PORTS[block]]
+        dual = 'uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_dual_dut", 1\'b{});'
+
+        # Each section's lines: the module text outside any `ifdef, then each
+        # branch of the body group and of the config_db group by its DUT.
+        expected = {'common': {'assigns': [], 'binds': [], 'intfs': intfs, 'sets': sets}}
+        if HAS_MDL[block]:
+            expected.update({
+                'body both': {'assigns': carry('_model') + flags(True, True), 'binds': binds,
+                              'intfs': modelIntfs, 'sets': []},
+                'body rtl': {'assigns': ties + flags(True, False), 'binds': binds, 'intfs': [], 'sets': []},
+                'body model': {'assigns': carry('') + flags(False, True), 'binds': [], 'intfs': [], 'sets': []},
+                'sets both': {'assigns': [], 'binds': [], 'intfs': [], 'sets': modelSets + [dual.format(1)]},
+                'sets other': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [dual.format(0)]}})
+            groups = [['body both', 'body rtl', 'body model'], ['sets both', 'sets other']]
+            expectedDirectives = ['`ifdef A2C_UVM_BOTH_DUT', '`elsif A2C_UVM_RTL_DUT', '`else', '`endif',
+                                  '`ifdef A2C_UVM_BOTH_DUT', '`else', '`endif']
+        else:
+            expected['common'].update({'assigns': ties + flags(True, False), 'binds': binds,
+                                       'sets': sets + [dual.format(0)]})
+            groups = []
+            expectedDirectives = []
+        directives = [line for line in lines if line.startswith(('`if', '`el', '`endif'))]
+        problems += match(f'{tb}.sv', 'preprocessor directives', directives, expectedDirectives)
+        if directives == expectedDirectives:
+            sections = {name: [] for name in expected}
+            current = 'common'
+            group = branch = 0
+            for line in lines:
+                if line.startswith(('`if', '`el')):
+                    current = groups[group][branch]
+                    branch += 1
+                    continue
+                if line.startswith('`endif'):
+                    current = 'common'
+                    group += 1
+                    branch = 0
+                    continue
+                sections[current].append(line)
+            for name, want in expected.items():
+                got = {'assigns': [line for line in sections[name] if line.startswith('assign ')],
+                       'binds': [line for line in sections[name] if line.startswith('.')],
+                       'intfs': [line for line in sections[name] if line.startswith(('rdy_vld_if', 'a2c_clk_if'))],
+                       'sets': [line for line in sections[name] if line.startswith('uvm_config_db#')]}
+                for what in want:
+                    problems += match(f'{tb}.sv', f'{name} {what}', got[what], want[what])
+            if HAS_MDL[block]:
+                for name in ('body both', 'body rtl'):
+                    if f'{hdl} dut (' not in sections[name]:
+                        problems.append(f"{tb}.sv {name} does not instantiate {hdl}")
 
         expected = [f'module {tb}', f'endmodule : {tb}', f'{hdl} dut (', 'run_test();',
                     'uvm_root::get().finish_on_completion = 0;']
@@ -439,7 +490,7 @@ def check_sc_files(work, design):
         templateHead = 'template <typename TB_T, typename Config>' if hasParams else 'template <typename TB_T>'
         expected = [templateHead, f'class {block}_uvm_sc_wrapper : public sc_module, public blockBase {{',
                     f'struct {block}_uvm_run {{', 'static inline bool rtlDut = false;',
-                    '#include "rdy_vld_bfm.h"']
+                    'static inline bool modelDut = false;', '#include "rdy_vld_bfm.h"']
         problems += [f"{wrapperFile} lacks the line {line!r}" for line in expected if line not in lines]
         if bool(re.search(r'^import \S+\.base;$', text, re.M)) != HAS_MDL[block]:
             problems.append(f"{wrapperFile} imports the base module: {not HAS_MDL[block]}, "
@@ -491,6 +542,8 @@ def check_sc_files(work, design):
             createModel = (f'instanceFactory::createInstance{impl}(name(), "{block}", "{block}", variant, "{PROJECT}"));')
             if createModel not in lines:
                 problems.append(f"{wrapperFile} does not create the {block} model")
+            if f'if ({block}_uvm_run::modelDut) {{' not in lines:
+                problems.append(f"{wrapperFile} does not create the model only when the DUT set holds it")
         elif bfmRoles or 'createInstance' in text:
             problems.append(f"{wrapperFile} creates a model or BFMs for a block without a model")
 
@@ -498,7 +551,10 @@ def check_sc_files(work, design):
         with open(os.path.join(uvmDir, configFile)) as f:
             lines = [line.strip() for line in f]
         expected = ['#if defined(XCELIUM) || defined(VCS)', f'#include "{block}_uvm_sc_wrapper.h"',
-                    f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl";',
+                    f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";',
+                    f'{block}_uvm_run::modelDut = m_uvmDut == "model" || m_uvmDut == "both";',
+                    'if (m_uvmDut != "model" && m_uvmDut != "rtl" && m_uvmDut != "both") {' if HAS_MDL[block]
+                    else 'if (m_uvmDut != "rtl") {',
                     f'instanceFactory::registerInstance("{block}", "uvm");',
                     f'instanceFactory::createInstance("", "{block}", "{block}", m_variant.c_str(), "{PROJECT}");',
                     f'"{block}_uvm",',
@@ -593,9 +649,57 @@ def check_vcs_shells(work):
             if f'+define+A2C_UVM_PKG={selected}_uvm_pkg' in defines:
                 problems.append(f"UVM_TOP={selected}: the {what} step carries the selected top's "
                                 f"+define+A2C_UVM_PKG={selected}_uvm_pkg")
+            if '+define+A2C_UVM_BOTH_DUT' in defines:
+                problems.append(f"UVM_TOP={selected}: the {what} step carries +define+A2C_UVM_BOTH_DUT, "
+                                f"but UVM_DUT is {'rtl' if rtlDut else 'model'}")
             if ('+define+A2C_UVM_RTL_DUT' in defines) != rtlDut:
                 problems.append(f"UVM_TOP={selected}: the {what} step {'lacks' if rtlDut else 'carries'} "
                                 f"+define+A2C_UVM_RTL_DUT, but UVM_DUT is {'rtl' if rtlDut else 'model'}")
+    return problems
+
+
+def check_both_dut(work):
+    """The DUT defines at each UVM_DUT on dutU_v0, on the VCS RTL analysis,
+    the VCS shell of dutU_v0 and the Xcelium DUT library; the default
+    UVM_TOPOLOGIES; and the refusal of both for dutV. The parse writes a stamp
+    directory per top and DUT, so this runs after the checks that count them."""
+    problems = []
+
+    def shellOf(tokens):
+        return '-sc_model' in tokens and tokens[tokens.index('-sc_model') + 1] == 'dutU_v0_uvm_tb'
+
+    vendors = (('VCS', VCS_DRY_RUN, 'vlogan', {'RTL analysis': lambda t: 'vlogan_rtl.log' in t,
+                                               'dutU_v0 shell': shellOf}),
+               ('Xcelium', XRUN_DRY_RUN, 'xrun', {'DUT library': lambda t: '-makelib' in t}))
+    for dut in ('model', 'rtl', 'both'):
+        wanted = {'+define+A2C_UVM_RTL_DUT': dut == 'rtl', '+define+A2C_UVM_BOTH_DUT': dut == 'both'}
+        for flow, dryRun, tool, named in vendors:
+            result = make(work, 'all', os.path.join('top', 'rundir'), extra=(*dryRun, 'UVM_TOP=dutU_v0', f'UVM_DUT={dut}'))
+            if result.returncode != 0:
+                problems.append(f"{flow} UVM_DUT={dut}: make -n failed (rc={result.returncode})\n{result.stderr}")
+                continue
+            steps = [shlex.split(part) for command in result.stdout.replace('\\\n', ' ').splitlines()
+                     for part in command.split('&&')
+                     if part.split() and os.path.basename(part.split()[0]) == tool]
+            for what, isStep in named.items():
+                found = [tokens for tokens in steps if isStep(tokens)]
+                if len(found) != 1:
+                    problems.append(f"{flow} UVM_DUT={dut}: {len(found)} {tool} {what} steps, expected 1")
+                    continue
+                for define, present in wanted.items():
+                    if (define in found[0]) != present:
+                        problems.append(f"{flow} UVM_DUT={dut}: the {what} step {'lacks' if present else 'carries'} "
+                                        f"{define}; defines {[t for t in found[0] if t.startswith('+define+')]}")
+    result = make(work, 'uvm_snapshots', os.path.join('top', 'rundir'), extra=(*XRUN_DRY_RUN, 'UVM_TOP=dutU_v0'))
+    duts = re.findall(r'UVM_TOP=dutU_v0 UVM_DUT=(\w+) all', result.stdout)
+    if result.returncode != 0 or duts != ['model', 'rtl', 'both']:
+        problems.append(f"uvm_snapshots at UVM_TOP=dutU_v0 builds {duts}, expected ['model', 'rtl', 'both'] "
+                        f"(rc={result.returncode})\n{result.stderr}")
+    result = make(work, 'gen', os.path.join('top', 'rundir'), extra=(*XRUN_DRY_RUN, 'UVM_TOP=dutV', 'UVM_DUT=both'))
+    refusal = "UVM_DUT must be one of rtl for UVM_TOP dutV, not 'both'"
+    if result.returncode == 0 or refusal not in result.stderr:
+        problems.append(f"make gen with UVM_TOP=dutV UVM_DUT=both should stop with {refusal!r} "
+                        f"(rc={result.returncode})\n{result.stderr}")
     return problems
 
 
@@ -685,7 +789,7 @@ def check_manifest(work):
         expected[f'A2C_UVM_TEST_SV_{top}'] = [os.path.join(uvmDir, f'{UVM_TOPS[stem][0]}_uvm_test_pkg.sv')]
         expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]
         expected[f'A2C_UVM_PORTMAP_{top}'] = [os.path.join(root, '.gen', 'vl', f'{top}.portmap')]
-        expected[f'A2C_UVM_DUTS_{top}'] = ['model', 'rtl'] if HAS_MDL[UVM_TOPS[stem][0]] else ['rtl']
+        expected[f'A2C_UVM_DUTS_{top}'] = ['model', 'rtl', 'both'] if HAS_MDL[UVM_TOPS[stem][0]] else ['rtl']
     for block, stems in DEFAULT_TOPS.items():
         expected[f'A2C_UVM_DEFAULT_TOP_{block}'] = stems
     problems = [f"{key} is {man.get(key)}, expected {value}"
@@ -718,7 +822,8 @@ def run_all_tests():
                                    ('testbench modules', check_testbenches(work, design)),
                                    ('SystemC wrapper, config and registrar', check_sc_files(work, design)),
                                    ('VCS shell analysis', check_vcs_shells(work)),
-                                   ('layer agent lists', check_layer_uvm_lists(work))):
+                                   ('layer agent lists', check_layer_uvm_lists(work)),
+                                   ('both DUT', check_both_dut(work))):
                 for problem in problems:
                     print(f"  FAIL: {name}: {problem}")
                 if not problems:

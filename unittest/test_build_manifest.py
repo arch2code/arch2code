@@ -472,6 +472,7 @@ def check_uvm_manifest():
             f'A2C_UVM_TEST_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_test_pkg.sv')],
             f'A2C_UVM_TB_SV_{top}': [os.path.join(uvmDir, 'ubDut_uvm_tb.sv')],
             f'A2C_UVM_PORTMAP_{top}': [os.path.join(root, '.gen', 'vl', top + '.portmap')],
+            f'A2C_UVM_DUTS_{top}': ['model', 'rtl', 'both'],
         }
         for key, value in expected.items():
             if man.get(key) != value:

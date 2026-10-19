@@ -127,7 +127,7 @@ $(VCS_UVM_PKG_STAMP): $(VCS_UVM_PKG_OPTS)
 # defines and library files, with A2C_UVM_PKG dropped or naming the other
 # block's package. No library unit reads it, so the units they re-analyze into
 # AN.DB match the RTL analysis. The shells repeat the defines because
-# A2C_UVM_RTL_DUT changes the testbench module's body.
+# A2C_UVM_RTL_DUT and A2C_UVM_BOTH_DUT change the testbench module's body.
 VCS_UVM_SHELL_STAMP = $(VCS_STAMP_DIR)/uvm_sc_model.vlogan
 VCS_UVM_PORTMAPS = $(foreach t,$(A2C_UVM_TOPS),$(A2C_UVM_PORTMAP_$(t)))
 VCS_UVM_OTHER_TOPS = $(filter-out $(UVM_TB_TOP),$(A2C_UVM_TOPS))

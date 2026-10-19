@@ -1,15 +1,15 @@
 # UVM testbench flow, USE_UVM=1 with USE_VCS=1 or USE_XCELIUM=1. The SystemC
 # side runs the block's generated <block>_uvm testbench, which instantiates
-# one UVM testbench top; that top drives the block's model or, with
-# UVM_DUT=rtl, its RTL. Each top and DUT is its own snapshot,
-# run_uvm_<top>_<dut>. a2c-systemc.mk includes this file before it names the
-# snapshot and collects the sources; the vendor recipe items are under
-# USE_UVM in a2c-vcs.mk and a2c-xrun.mk.
+# one UVM testbench top; that top drives the block's model, with UVM_DUT=rtl
+# its RTL, and with UVM_DUT=both the RTL beside the model. Each top and DUT is
+# its own snapshot, run_uvm_<top>_<dut>. a2c-systemc.mk includes this file
+# before it names the snapshot and collects the sources; the vendor recipe
+# items are under USE_UVM in a2c-vcs.mk and a2c-xrun.mk.
 #
 #   UVM_TOP         the top's stem, <block>_<variant>; defaults to the top at
 #                   the variant of HDL_TOP_MODULE's DUT-top wrapper
-#   UVM_DUT         model or rtl; defaults to model, or to rtl for a block
-#                   with no model
+#   UVM_DUT         model, rtl or both; defaults to model, or to rtl for a
+#                   block with no model, which has neither model nor both
 #   UVM_TEST        the +UVM_TESTNAME the run script passes when the test
 #                   names none
 #   UVM_TOPOLOGIES  what uvm_snapshots builds, <top>:<dut>[,<dut>]... per top;
@@ -25,9 +25,6 @@ endif
 UVM_TOP ?= $(A2C_UVM_DEFAULT_TOP_$(HDL_TOP_MODULE))
 UVM_TB_TOP := $(A2C_UVM_TB_TOP_$(UVM_TOP))
 UVM_DUT ?= $(firstword $(A2C_UVM_DUTS_$(UVM_TB_TOP)))
-ifeq ($(UVM_DUT),both)
-$(error UVM_DUT=both, the model and the RTL in one snapshot, is not supported yet; use model or rtl)
-endif
 UVM_TEST ?=
 UVM_TOPOLOGIES ?= $(UVM_TOP):$(subst $(space),$(comma),$(A2C_UVM_DUTS_$(UVM_TB_TOP)))
 
@@ -53,7 +50,8 @@ A2C_UVM_F := $(A2C_ROOT)/common/systemVerilog/uvm/a2c_uvm.f
 A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)
 A2C_LAYER_UVM_SV := $(foreach f,$(A2C_LAYER_UVM_F_FILES),$(addprefix $(dir $(f)),$(file < $(f))))
 A2C_UVM_SV_FILES := $(A2C_UVM_PKG_SV_$(UVM_TB_TOP)) $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)) $(A2C_UVM_TB_SV_$(UVM_TB_TOP))
-A2C_UVM_HDL_DEFINES := A2C_UVM_PKG=$(A2C_UVM_PKG_$(UVM_TB_TOP)) $(if $(filter rtl,$(UVM_DUT)),A2C_UVM_RTL_DUT)
+A2C_UVM_HDL_DEFINES := A2C_UVM_PKG=$(A2C_UVM_PKG_$(UVM_TB_TOP)) $(if $(filter rtl,$(UVM_DUT)),A2C_UVM_RTL_DUT) \
+	$(if $(filter both,$(UVM_DUT)),A2C_UVM_BOTH_DUT)
 A2C_SV_FILES += $(A2C_UVM_SV_FILES)
 A2C_HDL_ARGS += -F $(A2C_UVM_F) $(addprefix -F ,$(A2C_LAYER_UVM_F_FILES)) $(addprefix +define+,$(A2C_UVM_HDL_DEFINES))
 A2C_HDL_DEPS += $(A2C_UVM_F) $(A2C_LAYER_UVM_F_FILES) $(A2C_LAYER_UVM_SV) $(A2C_UVM_LIB_SV) $(A2C_UVM_SV_FILES)
@@ -75,5 +73,5 @@ uvm_snapshots: gen
 
 help::
 	@echo "  USE_UVM=1                        - build the UVM snapshot run_uvm_<UVM_TOP>_<UVM_DUT> (needs USE_VCS=1 or USE_XCELIUM=1)"
-	@echo "  UVM_TOP / UVM_DUT / UVM_TEST     - UVM testbench top stem, model or rtl DUT, default +UVM_TESTNAME"
+	@echo "  UVM_TOP / UVM_DUT / UVM_TEST     - UVM testbench top stem, model, rtl or both DUT, default +UVM_TESTNAME"
 	@echo "  uvm_snapshots                    - build one UVM snapshot per top and DUT in UVM_TOPOLOGIES (<top>:<dut>[,<dut>]...)"

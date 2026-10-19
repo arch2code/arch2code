@@ -1,9 +1,10 @@
 # The SystemC wrapper of a hasUvm block's UVM testbench top, a class template
 # over the simulator shell of one variant's tb module and, for a block with
 # params, that variant's Config. It drives the clocks and resets into the
-# shell and ends the run once UVM finishes. With the model DUT it also holds
-# the model and BFMs that carry each port over the shell's pins; their roles
-# are the DUT's swapped, because the BFMs face the agents' side of the pins.
+# shell and ends the run once UVM finishes. With the model DUT, alone or
+# beside the RTL, it also holds the model and BFMs that carry each port over
+# the shell's pins; their roles are the DUT's swapped, because the BFMs face
+# the agents' side of the pins.
 import textwrap
 
 import pysrc.intf_gen_utils as intf_gen_utils
@@ -58,6 +59,7 @@ def render_class(args, prj, data):
         f'struct {run} {{',
         '    static constexpr const char *notFinished = "UVM testbench did not finish: uvm_done never rose";',
         '    static inline bool rtlDut = false;',
+        '    static inline bool modelDut = false;',
         '    static inline bool completed = false;',
         '};',
         '',
@@ -81,13 +83,14 @@ def render_class(args, prj, data):
                 # Born asserted, so the agents see reset from time 0.
                 ',\n'.join(f'{row["reset"]}("{row["reset"]}", false)' for row in data['resets']),
                 sec_clock_half_ctor_init(args, prj, data),
-                'uvm_done("uvm_done")', 'uvm_errors("uvm_errors")', 'rtl_dut("rtl_dut")', 'm_eot(true)']
+                'uvm_done("uvm_done")', 'uvm_errors("uvm_errors")', 'rtl_dut("rtl_dut")', 'model_dut("model_dut")',
+                'm_eot(true)']
     ctorInit = ',\n'.join(entry for entry in ctorInit if entry)
 
     binds = [f"tb_hdl.{pin['pin']}({sig['hdl_inst_name']}.{pin['signal']});"
              for _, sig in ports for pin in sig['hdl_pins']]
     binds += [f'tb_hdl.{name}({name});' for name in intf_gen_utils.clock_reset_port_names(data)]
-    binds += [f'tb_hdl.{name}({name});' for name in ('uvm_done', 'uvm_errors', 'rtl_dut')]
+    binds += [f'tb_hdl.{name}({name});' for name in ('uvm_done', 'uvm_errors', 'rtl_dut', 'model_dut')]
 
     out += ['public:',
             f'    using self_t = {wrapper}<{selfArgs}>;',
@@ -118,9 +121,9 @@ def render_class(args, prj, data):
                       f"{bfm}->clk({portData['domainClock']});",
                       f"{bfm}->rst_n({portData['domainReset']});"]
         out += ['',
-                '        // With the RTL DUT the SV testbench holds it, and the pins toward',
-                '        // SystemC stay bound to idle signals.',
-                f'        if (!{run}::rtlDut) {{',
+                "        // The model and its BFMs exist when the run's DUT set holds the model;",
+                '        // with the RTL alone the pins toward SystemC stay bound to idle signals.',
+                f'        if ({run}::modelDut) {{',
                 indented('\n'.join(model), 12),
                 '        }']
     out += ['',
@@ -142,6 +145,7 @@ def render_class(args, prj, data):
             '    sc_signal<bool> uvm_done;',
             '    sc_signal<sc_bv<32>> uvm_errors;',
             '    sc_signal<bool> rtl_dut;',
+            '    sc_signal<bool> model_dut;',
             '',
             indented('\n'.join(sig['hdl_if_decl'] for _, sig in ports), 4)]
     if hasMdl:
@@ -175,15 +179,20 @@ def render_class(args, prj, data):
             '        while (!uvm_done.read()) {',
             '            wait(uvm_done.value_changed_event());',
             '        }',
+            '        auto dutSet = [](bool rtl, bool model) {',
+            '            return rtl && model ? "model and RTL DUTs" : rtl ? "RTL DUT" : "model DUT";',
+            '        };',
             '        const bool svRtl = rtl_dut.read();',
+            '        const bool svModel = model_dut.read();',
             '        const uint32_t errors = uvm_errors.read().to_uint();',
-            '        log_.logPrint(std::format("UVM finished with {} UVM_ERROR/UVM_FATAL; the SV testbench was built with the {} DUT",',
-            '                                  errors, svRtl ? "RTL" : "model"), LOG_ALWAYS);',
+            '        log_.logPrint(std::format("UVM finished with {} UVM_ERROR/UVM_FATAL; the SV testbench was built with the {}",',
+            '                                  errors, dutSet(svRtl, svModel)), LOG_ALWAYS);',
             '        std::string failure;',
-            f'        if (svRtl != {run}::rtlDut) {{',
+            f'        if (svRtl != {run}::rtlDut || svModel != {run}::modelDut) {{',
+            f'            const char *option = {run}::rtlDut && {run}::modelDut ? "both" : {run}::rtlDut ? "rtl" : "model";',
             '            failure = std::format(',
-            '                "--uvmDut {} does not match the snapshot, whose SV testbench holds the {} DUT",',
-            f'                {run}::rtlDut ? "rtl" : "model", svRtl ? "RTL" : "model");',
+            '                "--uvmDut {} does not match the snapshot: the run expects the {}, and the SV testbench holds the {}",',
+            f'                option, dutSet({run}::rtlDut, {run}::modelDut), dutSet(svRtl, svModel));',
             '        } else if (errors != 0) {',
             '            failure = std::format("UVM reported {} UVM_ERROR/UVM_FATAL", errors);',
             '        }',

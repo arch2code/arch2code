@@ -4063,6 +4063,7 @@ class projectOpen:
             {'pin': 'uvm_done', 'direction': 'output', 'width': 1, 'vector': False, **completion},
             {'pin': 'uvm_errors', 'direction': 'output', 'width': 32, 'vector': True, **completion},
             {'pin': 'rtl_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'model_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
         ]
 
     def extractContext(self, structs, consts):
@@ -5630,12 +5631,16 @@ class projectCreate:
                        'uvm_done': "the completion pin 'uvm_done'",
                        'uvm_errors': "the completion pin 'uvm_errors'",
                        'rtl_dut': "the completion pin 'rtl_dut'",
+                       'model_dut': "the completion pin 'model_dut'",
                        'srv': "the report server variable 'srv'"}
             tbNames.update({f"{clock}_if": f"the a2c_clk_if instance '{clock}_if' of clock '{clock}'"
                             for clock in domain.clocks})
             for portName, (typeKey, _origin, _fix) in boundary.items():
                 tbNames.update({f"{portName}_{signal}": f"the pin '{portName}_{signal}' of port '{portName}'"
                                 for signal in self.flatData['interface_defs'][typeKey]['signals']})
+                if blockRow['hasMdl']:
+                    tbNames[f"{portName}_model"] = \
+                        f"the model DUT's interface instance '{portName}_model' of port '{portName}'"
             named = ([('port', name) for name in boundary]
                      + [('clock', name) for name in domain.clocks]
                      + [('reset', name) for name in domain.resets])
@@ -5848,7 +5853,7 @@ class projectCreate:
                 'runClass':        f"{block}_uvm_run",
                 'testbenchName':   f"{block}_uvm",
                 'tops':            tops,
-                'duts':            ['model', 'rtl'] if row['hasMdl'] else ['rtl'],
+                'duts':            ['model', 'rtl', 'both'] if row['hasMdl'] else ['rtl'],
                 'envClass':        f"{block}_env",
                 'regBlockClass':   f"{block}_reg_block",
                 'testPkgName':     testPkg,
