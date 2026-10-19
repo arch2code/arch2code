@@ -366,9 +366,11 @@ four-state interfaces it rebuilds from the pins. The template function is
 - Every port whose interface type declares `uvmAgent: true` gets one
   `<type>_xcheck` instance named `<port>_xcheck`. The template reads the flag
   from `interface_defs`, so the types with a UVM agent and the checked types
-  are one set: `rdy_vld`, `apb`, `axi4_stream`, `raw` and `status`. Register
-  ports count, so an `apb` register bus gets a checker. Ports of other types
-  get none.
+  are one set: every base interface type and Pro's `lmmi`. Register ports
+  and the ports a `memoryConnections` or `registerConnections` row creates
+  count, so an `apb` register bus, a `memory` port and an `external_reg`
+  port each get a checker. A project-declared type without the flag gets
+  none.
 - Each instance takes the port's own clock and reset, `domainClock` and
   `domainReset`, and the rebuilt interface instance, as in
   `rdy_vld_xcheck cStuffIf_xcheck (.clk(clk), .rst_n(rst_n), .intf(cStuffIf));`.
@@ -376,8 +378,10 @@ four-state interfaces it rebuilds from the pins. The template function is
   passes `CHECK_<SIGNAL>`, the signal name in upper case. It is `1'b1` when
   the port binds that parameter and `1'b0` when it leaves it unbound, so an
   undriven placeholder never fails the run. The template takes the optional
-  set from `getIntfParamBindings`. `axi4_stream` `tuser` is the one shipped
-  case. `examples/axi4sDemo` and `examples/hierVlDemo` bind it and pass
+  set from `getIntfParamBindings`. The shipped cases are `axi4_stream`'s
+  `tuser`, `axi_read`'s `arid`, `rid`, `aruser` and `ruser`, and
+  `axi_write`'s `awid`, `wid`, `bid`, `awuser`, `wuser` and `buser`.
+  `examples/axi4sDemo` and `examples/hierVlDemo` bind `tuser` and pass
   `1'b1`, and `examples/pySocket` does not and passes `1'b0`.
 - All instances of one wrapper sit in one `` `ifndef VERILATOR `` block after
   the DUT instance and its `VCS_DEBUG` block. That is the `.svh` body of a
@@ -386,7 +390,9 @@ four-state interfaces it rebuilds from the pins. The template function is
 - Verilator is two-state and never compiles the instances. VCS analyses the
   checkers through the `interfaces/*/*_xcheck.sv` wildcard in
   `VCS_LIB_SV_FILES` (`include/make/a2c-vcs.mk`), and Xcelium finds them
-  through the `-y` directories in `common/systemVerilog/a2c.f`. The `vlogan`
+  through the `-y` directories in `common/systemVerilog/a2c.f`. A Pro checker
+  comes in through `A2C_LAYER_VCS_LIB_SV_FILES` and the `-y` directory in
+  `builder/pro/common/systemVerilog/a2cPro.f`. The `vlogan`
   RTL analysis stamp and the xrun snapshot both depend on the checkers and
   on their shared include, `common/systemVerilog/a2c_xcheck.svh`.
 - A checker reports the first X or Z of its instance with an `A2C_XZ`

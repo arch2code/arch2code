@@ -593,14 +593,16 @@ The manifest leaves the `uvm` rows' `.cpp` files out of the SystemC source list.
 
 ### 9.4 X and Z checks on four-state simulators
 
-The HDL wrapper's pins and the testbench module's pins are two-state `bit`, so an X from the RTL reaches the UVM monitors and the SystemC BFMs as 0. Every generated HDL wrapper therefore instantiates a `<type>_xcheck` module on each port of a flagged type, on the port's own clock and reset, as `specs/spec-verilated-wrappers.md` section 9 describes. A checker fails the run on its first X or Z once reset has been asserted and released. It always checks the control signals, and checks the payload only while the protocol's valid signals qualify it. It prints `A2C_XZ <time> <path>: <signal> is X or Z` and calls `errorCode::fail` through the DPI function `a2c_xz_fail` in `common/systemc/xzCheck.cpp`. The run exits non-zero, and the `exit_code` filter that projects keep in their `default.json` fails it. The full rules are in `rules/dev-skills/authoring-interface-definitions.md`.
+The HDL wrapper's pins and the testbench module's pins are two-state `bit`, so an X from the RTL reaches the UVM monitors and the SystemC BFMs as 0. Every generated HDL wrapper therefore instantiates a `<type>_xcheck` module on each port of a flagged type, on the port's own clock and reset, as `specs/spec-verilated-wrappers.md` section 9 describes. A checker fails the run on its first X or Z once reset has been asserted and released. It always checks the control signals, and checks the payload only while the protocol's valid signals qualify it. It prints `A2C_XZ <time> <path>: <signal> is X or Z` and calls `errorCode::fail` through the DPI function `a2c_xz_fail` in `common/systemc/xzCheck.cpp`. The run exits non-zero, and the `exit_code` filter that projects keep in their `default.json` fails it.
 
 - The checks run in every VCS and Xcelium run with an RTL DUT, UVM or not.
 - Verilator never compiles them. The instances sit inside `` `ifndef VERILATOR ``.
 - Under Xcelium, `xrun_snapshots` runs each topology's testbench once while it builds the snapshot, so a real X fails the snapshot build itself. A UVM snapshot is built with `-elaborate` and does not simulate at build time.
 - The run's summary line shows the `A2C_XZ` reason unless a later `errorCode::fail` replaced it, because `errorCode::fail` keeps only the last reason. The `A2C_XZ` `$display` in the log always names the port and signal.
 
-Tested with: the SystemC regressions of a ten-block image pipeline, run with the checkers elaborated under Xcelium and VCS. The checkers found no X or Z.
+The per-type rules are in section 9.10, and what a new type's checker must ship is in `rules/dev-skills/authoring-interface-definitions.md`.
+
+Tested with: the SystemC regressions of a ten-block image pipeline, run with the checkers elaborated under Xcelium and VCS.
 
 ### 9.5 The environment and the register model
 
@@ -608,8 +610,8 @@ The `items` section of the variant package holds both, generated whole. A projec
 
 `<block>_env extends uvm_env` holds:
 
-- one `<port>_agent` per boundary port, in port order, configured in `build_phase` from a `<port>_config_t` object. The config takes the `virtual <type>_if` from `uvm_config_db` under the port name and `clk_vif` from the port's own clock domain, so a multi-clock block needs no hand wiring. Every agent gets a role, the opposite of the DUT port's direction, `A2C_SRC` on a DUT `dst` port. `no_backpressure` follows the port's effective backpressure on a type whose backpressure is overridable. The env sets no agent passive. On a DUT apb `src` port the `A2C_DST` agent builds `apb_slave_driver`, which serves the DUT's transfers from a byte memory, `cfg.mem`, with no sequencer. The register model stays on the register-bus port, so a block that is a bus target and a bus master gets one `A2C_SRC` agent with the register model and one serving `A2C_DST` agent per downstream apb port;
-- one `<port>_counter`, an `a2c_uvm_pkg::a2c_txn_counter`, per DUT output with a handshake: a `src` port of an elastic type that is not an address-bus type. `connect_phase` connects the output monitor's `mon.ap` to its `analysis_export`;
+- one `<port>_agent` per boundary port, in port order, configured in `build_phase` from a `<port>_config_t` object. The config takes the `virtual <type>_if` from `uvm_config_db` under the port name and `clk_vif` from the port's own clock domain, so a multi-clock block needs no hand wiring. Every agent gets a role, the opposite of the DUT port's direction, `A2C_SRC` on a DUT `dst` port. `no_backpressure` follows the port's effective backpressure on a type whose backpressure is overridable. On an `axi_read` or `axi_write` port the env sets `max_transfer_bytes` and, when the port binds no `id_t`, `id_unbound` (section 9.10). The env sets no agent passive and no `cfg.mem`, so each memory-backed agent creates its own model. A DUT `src` port gets an `A2C_DST` agent that serves it: on a DUT apb `src` port that is `apb_slave_driver`, with no sequencer. The register model stays on the register-bus port, so a block that is a bus target and a bus master gets one `A2C_SRC` agent with the register model and one serving `A2C_DST` agent per downstream apb port;
+- one `<port>_counter`, an `a2c_uvm_pkg::a2c_txn_counter`, per DUT output with a handshake: a `src` port of an elastic type that is not an address-bus type. Those types are `rdy_vld`, `axi4_stream`, `push_ack`, `notify_ack`, `req_ack`, `pop_ack`, `axi_read`, `axi_write` and Pro's `lmmi`. The counter counts the monitor's `ap` items, so on `pop_ack` it counts the DUT's pops, on `axi_read` its read bursts and on `axi_write` its write bursts. `connect_phase` connects the output monitor's `mon.ap` to its `analysis_export`;
 - one `virtual a2c_clk_if` per clock, as `<clock>_vif`;
 - with a register model, `regmodel`, the bus's `<type>_reg_adapter` as `adapter`, and a `uvm_reg_predictor` as `predictor`. `build_phase` builds the model and calls `regmodel.reset()`. `connect_phase` sets the bus agent's sequencer and the adapter on `default_map`, turns auto-prediction off, and feeds the predictor from the bus monitor, so the mirror follows bus traffic from any sequence.
 
@@ -705,8 +707,44 @@ Two tests need a four-state simulator with UVM and run only on the farm. Source 
 
 | Command | Builds | Passes when |
 | :--- | :--- | :--- |
-| `common/systemVerilog/xcheck_test/run_xcheck_test.sh xcelium\|vcs [<tb.sv> <source>...]` | `xcheck_tb.sv` with the checker of each type in the script's `TYPES` into `./xcheck_<sim>`. `xz_count.c` stands in for `a2c_xz_fail` and counts each checker's reports. Given a testbench, the script builds it instead, after the sources that follow it, with the testbench file's stem as the top. A builder layer runs its own checker cases this way, for example Pro's `pro/common/systemVerilog/xcheck_test/lmmi_xcheck_tb.sv` | every case logs `XC_PASS`, and the number that pass equals `CASES` in `xcheck_tb.sv`. The cases cover qualified and unqualified X per type, every control signal, X before arming and during a later reset, a power-on X reset, one report per instance, the apb completion qualifiers, `rdata` only while `ack` for req_ack and pop_ack, memory `read_data` X after a read followed by a write of that address, a write elsewhere, a read, no access, or a reset, external_reg `wdata` only while `write` is non-zero, bound and unbound `tuser`, and a reset released in delta cycles before the first edge |
-| `common/systemVerilog/uvm/loopback/run_loopback.sh xcelium\|vcs [seed [<layer.f>...]]` | `a2c_uvm_loopback_tb.sv` with every agent package into `./loopback_<sim>`. Each `<layer.f>` adds a builder layer's agent packages after `a2c_uvm.f`, the `<type>_if.sv` beside each, and the `*.sv` files in the `loopback/` directory beside the list, compiled after the testbench. Pro's `a2cPro_uvm_loopback.sv` binds its interfaces into the testbench and runs the tests of `lmmi_lb_tests.svh` | every test logs `LB_PASS` with zero `UVM_ERROR` and `UVM_FATAL`. The tests are the classes each `*_lb_tests.svh` file registers with `` `uvm_component_utils `` under a name ending in `_test`, and the script fails when any file registers none. It compiles the `<type>_if.sv` beside each agent package that `a2c_uvm.f` lists. The testbench includes one file per agent type with a loopback, plus `no_backpressure`, `a2c_txn_counter` and `a2c_mem_model`. `monitor_checks_test` drives the pins by hand and expects exactly six `A2C_STALL` and four `A2C_HOLD` reports. `apb_random_test` runs a master agent against a slave agent and checks each transfer against the slave's memory and its monitor, `apb_wait_error_test` adds up to three wait clocks and an error range, and `apb_monitor_checks_test` drives both ends' pins by hand under a passive monitor and expects exactly one `A2C_PROTO` and five `A2C_HOLD` reports. push_ack, notify_ack, req_ack and pop_ack each have a `_random_test` of a src agent against a dst agent with ack delays of 0 to 3 clocks, a `_monitor_checks_test` with exact `A2C_HOLD` and `A2C_PROTO` counts, and a `_counter_test` of the transaction counter. push_ack, notify_ack and req_ack transfers are checked in order against what the src sequence sent, and pop_ack rdata in order against what the src sequence expects. req_ack and pop_ack also check that the rdata the responder sent comes back to the src sequence, and replace the default responder in `_config_db_responder_test` through `uvm_config_db` and in `_factory_responder_test` through a factory override. `memory_random_test` runs back-to-back random accesses against a dst agent's memory model and checks every read against a copy the test keeps, `memory_write_read_test` reads each address on the clock after writing it, and `memory_shared_model_test` writes through one port and reads through a second port served by the same `a2c_mem_model`. `external_reg_strobe_test` sends write strobes back to back and with gaps and checks each one and the `rdata` level that follows it, and `external_reg_level_test` changes the dst agent's value with `update_on_write` off and checks that `rdata` follows it and that writes leave it alone. The `txn_count_*` tests cover the transaction counter's clean, missing, extra, unwaited, repeated, dropped and late cases. `a2c_mem_model_test` checks the memory model's reads, writes and three fill policies, that unwritten words read the same in any order, and one `A2C_MEM` line per model |
+| `common/systemVerilog/xcheck_test/run_xcheck_test.sh xcelium\|vcs [<tb.sv> <source>...]` | `xcheck_tb.sv` with the checker of each type in the script's `TYPES` into `./xcheck_<sim>`. `xz_count.c` stands in for `a2c_xz_fail` and counts each checker's reports. Given a testbench, the script builds it instead, after the sources that follow it, with the testbench file's stem as the top. A builder layer runs its own checker cases this way, for example Pro's `pro/common/systemVerilog/xcheck_test/lmmi_xcheck_tb.sv` | every case logs `XC_PASS`, and the number that pass equals `CASES` in `xcheck_tb.sv`. The cases cover qualified and unqualified X per type, every control signal, X before arming and during a later reset, a power-on X reset, one report per instance, the apb completion qualifiers, `rdata` only while `ack` for req_ack and pop_ack, memory `read_data` X after a read followed by a write of that address, a write elsewhere, a read, no access, or a reset, external_reg `wdata` only while `write` is non-zero, bound and unbound `tuser`, bound and unbound AXI ID and USER signals, and a reset released in delta cycles before the first edge |
+| `common/systemVerilog/uvm/loopback/run_loopback.sh xcelium\|vcs [seed [<layer.f>...]]` | `a2c_uvm_loopback_tb.sv` with every agent package `a2c_uvm.f` lists and the `<type>_if.sv` beside each, into `./loopback_<sim>`. Each `<layer.f>` adds a builder layer's agent packages after `a2c_uvm.f`, the `<type>_if.sv` beside each, and the `*.sv` files in the `loopback/` directory beside the list, compiled after the testbench | every test logs `LB_PASS` with zero `UVM_ERROR` and `UVM_FATAL`. The tests are the classes each `*_lb_tests.svh` file registers with `` `uvm_component_utils `` under a name ending in `_test`. The script fails when a file registers none |
+
+Run both from a scratch directory with the simulator setup sourced. `$A2C_ROOT/common` resolves in a builder checkout and in a base-only checkout; Pro's files sit under `$A2C_ROOT/pro`. Replace `xcelium` with `vcs` for VCS. The seed defaults to 1:
+
+```
+$A2C_ROOT/common/systemVerilog/xcheck_test/run_xcheck_test.sh xcelium
+$A2C_ROOT/common/systemVerilog/uvm/loopback/run_loopback.sh xcelium 7
+
+# with Pro: lmmi's checker cases, then the loopback with Pro's agents and tests
+$A2C_ROOT/common/systemVerilog/xcheck_test/run_xcheck_test.sh xcelium \
+    $A2C_ROOT/pro/common/systemVerilog/xcheck_test/lmmi_xcheck_tb.sv \
+    $A2C_ROOT/pro/interfaces/lmmi/lmmi_if.sv $A2C_ROOT/pro/interfaces/lmmi/lmmi_xcheck.sv
+$A2C_ROOT/common/systemVerilog/uvm/loopback/run_loopback.sh xcelium 7 \
+    $A2C_ROOT/pro/common/systemVerilog/uvm/a2cPro_uvm.f
+```
+
+Base's checker test holds 154 cases over the 13 base types, and Pro's `lmmi_xcheck_tb.sv` 15.
+
+- `run_xcheck_test.sh` takes a testbench and the sources it needs. It builds the sources first and the testbench last, with the testbench file's stem as the top.
+- `run_loopback.sh` takes the seed second and layer lists after it. The seed must come first: a list path in its place is read as the seed. The script never reads `A2C_LAYER_UVM_F_FILES`, because exporting that variable for it would make every later `make` in the same shell add Pro's list a second time. Pro's `a2cPro_uvm_loopback.sv` binds its interfaces into the testbench and runs the tests of `lmmi_lb_tests.svh`.
+
+The loopback testbench includes one `<type>_lb_tests.svh` per agent type, plus `no_backpressure_lb_tests.svh`, `a2c_txn_counter_lb_tests.svh` and `a2c_mem_model_lb_tests.svh`:
+
+| Tests | What they check |
+| :--- | :--- |
+| `rdy_vld_random_test`, `rdy_vld_burst_test`, `axi4_stream_test`, `raw_test`, `status_test`, `no_backpressure_test` | a src agent against a dst agent; what arrives is checked, in order, against what the src sent |
+| `monitor_checks_test` | pins driven by hand under passive monitors: exactly six `A2C_STALL` and four `A2C_HOLD` reports |
+| `apb_random_test`, `apb_wait_error_test`, `apb_monitor_checks_test` | master against slave, each transfer against the slave's memory and the monitor; up to three wait clocks and an error range; one `A2C_PROTO` and five `A2C_HOLD` from hand-driven pins |
+| `<type>_random_test`, `<type>_monitor_checks_test`, `<type>_counter_test` for push_ack, notify_ack, req_ack and pop_ack | src against dst with ack delays of 0 to 3 clocks, in order; exact `A2C_HOLD` and `A2C_PROTO` counts; the transaction counter on that type |
+| `req_ack_config_db_responder_test`, `req_ack_factory_responder_test`, and the same two for pop_ack | the default responder replaced through `uvm_config_db` and through a factory override, and the rdata the responder sent coming back to the src sequence |
+| `memory_random_test`, `memory_write_read_test`, `memory_shared_model_test` | back-to-back random accesses against a copy the test keeps; a read on the clock after each write, every access through one reused item; two ports on one `a2c_mem_model` |
+| `external_reg_strobe_test`, `external_reg_level_test` | write strobes back to back and with gaps, and the `rdata` level after each; `rdata` following `cfg.value` with `update_on_write` off |
+| `axi_read_random_test`, `axi_read_reorder_test`, `axi_read_reuse_test`, `axi_read_max_transfer_test`, `axi_read_monitor_checks_test` | FIXED, INCR, WRAP and narrow bursts with up to four outstanding against the slave's memory; `reorder` with response delays; one item object reused for every burst; an over-limit item refused; exact `A2C_HOLD` and `A2C_PROTO` counts |
+| the same five for axi_write, plus `axi_write_w_before_aw_test` | as axi_read, with strobes; W beats sent before their AW |
+| `txn_count_*_test` (seven) | the counter's clean, missing, extra, unwaited, repeated, dropped and late cases |
+| `a2c_mem_model_test` | reads, writes and the three fill policies, unwritten words reading the same in any order, one `A2C_MEM` line per model |
+| `lmmi_random_test`, `lmmi_reuse_test`, `lmmi_counter_test`, `lmmi_monitor_checks_test` (Pro) | as the other types |
 
 The loopback does not run on Verilator, because 5.052 and master stop with an internal error on `typedef <agent>::item_t`.
 
@@ -722,7 +760,141 @@ These unit tests cover the generator and make side without a simulator:
 - `test_hdl_wrapper_xcheck.py`, the checker instances;
 - `test_regr_rules_uvm.py`, the `uvm.json` filters;
 - `test_raw_src_bfm_missed_edges.py`, the raw BFM's missed-edge warning;
-- `test_memory_bfms.py`, the memory BFMs' read timing and the src BFM's skipped-access count.
+- `test_memory_bfms.py`, the memory BFMs' read timing and the src BFM's skipped-access count;
+- `test_axi_write_src_bfm_w_first.py`, `axi_write_src_bfm` holding `wready` low for a W beat that comes before its AW.
+
+### 9.10 Agents
+
+Every interface type with `uvmAgent: true` ships one agent package, `interfaces/<type>/<type>_uvm_pkg.sv`, or `builder/pro/interfaces/<type>/<type>_uvm_pkg.sv` for a Pro type. The 13 base types and Pro's `lmmi` carry the flag. A package holds `<type>_item`, `<type>_config`, the drivers, `<type>_monitor` with the analysis port `ap`, a sequencer, except for `status` and the `A2C_DST` drivers that choose nothing per transfer, and `<type>_agent`, which exports `item_t` and `config_t`. Every config has `vif`, `clk_vif`, `port_name`, `is_active` (default `UVM_ACTIVE`) and `role` (default `A2C_SRC`). The role is the side of the interface the agent plays, so an `A2C_SRC` agent drives a DUT `dst` port and an `A2C_DST` agent serves a DUT `src` port. A `UVM_PASSIVE` agent builds only its monitor.
+
+Handshake and memory types have one `<type>_driver` that switches on the role. The AMBA types have `<type>_master_driver` for `A2C_SRC` and `<type>_slave_driver` for `A2C_DST`. Their package headers give the AMBA 5 names: Requester and Completer for APB, Manager and Subordinate for AXI.
+
+The pin-timing rule: drivers change pins 100 ps after a rising edge through `a2c_clk_if.drive_edge()`, and monitors sample at the falling edge through `sample_edge()`. Every other source of boundary pins, the RTL and the SystemC BFMs, changes them only between a rising edge and the next falling edge, so a monitor sees the value the next rising edge transfers.
+
+| Type | `A2C_SRC` driver, with its knobs and defaults | `A2C_DST` driver | `A2C_DST` knobs and defaults |
+| :--- | :--- | :--- | :--- |
+| `rdy_vld` | items from `sqr`, back to back | drives `rdy` | `ready_pct` 100, `burst` 0, `burst_max` 8, `no_backpressure` 0 |
+| `axi4_stream` | items from `sqr`, back to back | drives `tready` | `ready_pct` 100, `no_backpressure` 0 |
+| `raw` | one item from `sqr` per clock | nothing | |
+| `status` | holds `data` at `cfg.value`, default 0; no sequencer | nothing | |
+| `apb` | `apb_master_driver`, one transfer per item | `apb_slave_driver`, memory-backed, no sequencer | `max_wait` 0, `error_ranges` empty |
+| `push_ack`, `notify_ack` | items from `sqr`, back to back | ack-only, no sequencer | `ack_delay_min` 0, `ack_delay_max` 0 |
+| `req_ack`, `pop_ack` | items from `sqr`, one in flight | data responder running `<type>_responder_seq`, one item from `sqr` per request | none; the item's `delay` sets the wait |
+| `memory` | one access per clock from `sqr` | memory-backed, no sequencer | `mem`, created when null |
+| `external_reg` | one write strobe per item; `write` defaults to `2'b01` | holds `rdata` at a value, no sequencer | `value` 0, `update_on_write` 1 |
+| `axi_read` | `axi_read_master_driver`; `max_outstanding` 1, `rready_pct` 100 | `axi_read_slave_driver`, memory-backed, no sequencer | `arready_pct` 100, `resp_delay_min` and `resp_delay_max` 0, `reorder` 0, `error_ranges` empty |
+| `axi_write` | `axi_write_master_driver`; `max_outstanding` 1, `bready_pct` 100 | `axi_write_slave_driver`, memory-backed, no sequencer | `awready_pct` and `wready_pct` 100, `resp_delay_min` and `resp_delay_max` 0, `reorder` 0, `error_ranges` empty |
+| `lmmi` (Pro) | one transfer per item, one in flight | memory-backed, no sequencer | `ready_delay_min` and `ready_delay_max` 0, `rdata_latency` 1 |
+
+Every item except `apb`, `raw` and `status` has a `gap` field, the idle clocks the src driver inserts first. A `req_ack` or `pop_ack` item also has `delay`, the extra clocks the dst driver waits before `ack`. Neither takes part in `do_compare`. An agent stops at build with `A2C_CFG` when a delay minimum is above its maximum, when an AXI `_pct` knob, `max_outstanding`, `rdata_latency` or, with `burst` set, `burst_max` is 0, or when a width rule fails: the apb slave needs a `data_t` of whole bytes, and `axi_write` the strobe rule of the burst-limit section below.
+
+#### The kinds of `A2C_DST` driver
+
+- **Ack-only**, `push_ack` and `notify_ack`. The driver raises `ack` for one clock, `ack_delay_min` to `ack_delay_max` extra clocks after it samples the request, drawn per transfer. With the defaults a transfer takes two clocks.
+- **Data responder**, `req_ack` and `pop_ack`. For each request it samples, the driver takes one item from `sqr` and drives `ack` and the item's `rdata` for one clock after the item's `delay`. The agent sets `<type>_responder_seq` as the `default_sequence` of `sqr.run_phase` through `uvm_config_db`. The default answers with random `rdata` and no delay, and a failed `randomize()` is `A2C_RAND`. A test replaces it with its own `default_sequence` set on `<agent>.sqr.run_phase` in `build_phase`, which wins because the test is higher in the hierarchy; the precedence holds only for sets made during `build_phase`. The other way is a factory override, which must name the port's specialization, `req_ack_responder_seq #(<data_t>, <rdata_t>)::type_id::set_type_override(...)` or `pop_ack_responder_seq #(<rdata_t>)`. The variant package declares no typedef for the responder, so the test spells the parameters itself. A replacement extends the same specialization and overrides `respond()`. `common/systemVerilog/uvm/loopback/req_ack_lb_tests.svh` shows both. `req_ack`'s sequencer is `req_ack_sequencer`. Its `uvm_tlm_analysis_fifo` `request_fifo` receives each request, data only, from the monitor's `req_ap`, and the default `body()` hands it to `respond()`, so a responder can compute `rdata` from the request. A replacement `body()` must take one request per response. The sequencer reports `A2C_RESPONDER` at `check_phase` when more than one is left.
+- **Memory-backed**, `memory`, `lmmi` and the apb and AXI slaves. The driver serves each access from `cfg.mem`, an `a2c_mem_model`, which the agent creates when the test leaves it null. A `memory` read takes its word at the sample edge, before the rising edge applies a write, so a same-clock read and write of one address through two agents sharing a model return the old word, as `memory_dp` does. The apb slave maps bus byte k to `paddr + k`, with no alignment, and writes every byte, because `apb_if` has no `pstrb`. An address in `error_ranges` gets `pslverr` or `SLVERR`, leaves the memory untouched and reads 0. An AXI write burst with any beat in a range writes nothing.
+- **Level**, `external_reg`. The driver holds `rdata` at `cfg.value`. With `update_on_write` set it loads each write's `wdata` into `value`, so `rdata` changes one clock after the write, as a register flop does.
+
+#### Read data back to the sequence
+
+| Return | Types | How |
+| :--- | :--- | :--- |
+| in the request | `req_ack`, `pop_ack`, `lmmi`, the apb master | one transfer in flight. The driver writes the read data, and on apb `slverr`, into `req` before `item_done()` |
+| pipelined response | `memory`, `axi_read`, `axi_write` | `item_done()` when the access, AR or AW is accepted, and `put_response()` with `set_id_info()` when the read data or B arrives. A sequence extends `memory_base_seq`, `axi_read_base_seq` or `axi_write_base_seq`. Each turns on `use_response_handler`, counts in `send()`, passes each response to `read_done()` or `write_done()`, and waits in `wait_for_reads()` or `wait_for_writes()`, because a response to a sequence that has ended is dropped |
+
+A pipelined driver builds the response when it accepts the request: a new object with the request's fields and `set_id_info()`. A sequence may reuse the request object for its next item, so a response built later would carry the next item's fields. The `memory` driver takes a read's word at the sample edge after the access, so at most one read response is pending. An AXI master refuses an item it cannot drive, as the burst-limit section below describes, and completes it at once with a response that has no beats.
+
+#### Monitor checks
+
+Every monitor writes one `ap` item per transaction and logs it as `A2C_TXN` at `UVM_MEDIUM`, except `raw`, which logs each word at `UVM_HIGH`. The AXI monitors also log each beat at `UVM_HIGH`, and write their item at a read burst's last beat or a write burst's B. The `external_reg` monitor writes writes to `ap` and `rdata` levels to a second port, `rdata_ap`: one item at reset release, then one per change of `rdata`. `A2C_HOLD` and `A2C_PROTO` are `UVM_ERROR` reports:
+
+| Type | `A2C_HOLD` | `A2C_PROTO` | At the end of the run |
+| :--- | :--- | :--- | :--- |
+| `rdy_vld`, `axi4_stream` | a stalled source drops valid or changes its payload; `A2C_STALL` on a stalled `backpressure: false` port | | |
+| `apb` | `paddr`, `pwrite` or a write's `pwdata` changes, or `psel` drops, before `pready` | `psel` and `penable` high with no setup phase on the clock before | |
+| `push_ack`, `req_ack` | the request drops or its data changes before `ack` | `ack` with no request | |
+| `notify_ack`, `pop_ack` | the request drops before `ack` | `ack` with no request | |
+| `axi_read` | AR or R valid drops, or its payload changes, while stalled | reserved `arburst`; `arsize` wider than the bus; FIXED over 16 beats; WRAP not 2, 4, 8 or 16 beats, or not aligned; INCR across 4 KB; `rlast` on the wrong beat; `rid` matching no open burst | bursts still waiting for their last beat |
+| `axi_write` | as `axi_read`, on AW, W and B | as `axi_read` on AW; `wid` not its burst's `awid`, unless `id_unbound`; `wstrb` setting a lane the beat does not carry; `wlast` on the wrong beat; B before the burst's last W; `bid` matching no burst | W beats no AW claimed, bursts whose W has not ended, bursts waiting for B |
+| `lmmi` | the request drops, or `lmmi_wr_rdn`, `lmmi_offset` or a write's `lmmi_wdata` changes, before `lmmi_ready` | `lmmi_rdata_valid` with no read outstanding; a request taken while a read is outstanding | a read waiting for `lmmi_rdata_valid` |
+| `memory`, `external_reg`, `raw`, `status` | | | |
+
+The AXI slaves also report `A2C_PROTO` for a narrow transfer on a bus that is not a power-of-two number of whole bytes. The `rdy_vld`, `push_ack`, `notify_ack`, `req_ack` and `pop_ack` monitors report `A2C_XZ` too, but only on a four-state boundary such as the loopback. The generated testbench's pins are two-state, so the checkers of the next table cover X and Z. Other end-of-run reports are `a2c_txn_counter`'s `A2C_TXN_COUNT` and `req_ack_sequencer`'s `A2C_RESPONDER`.
+
+#### X/Z checker rules
+
+Each `<type>_xcheck` checks its control signals on every clock and its payload only while the protocol qualifies it:
+
+| Type | Every clock | When qualified |
+| :--- | :--- | :--- |
+| `rdy_vld` | `vld`, `rdy` | `data` while `vld` |
+| `axi4_stream` | `tvalid`, `tready` | every other signal while `tvalid`; `tuser` only under `CHECK_TUSER` |
+| `apb` | `psel`, `penable`, `pready` | `paddr`, `pwrite` while `psel`; `pwdata` while `psel && pwrite`; `pslverr`, and `prdata` on a read, on `psel && penable && pready` |
+| `raw`, `status` | `data` | |
+| `push_ack` | `push`, `ack` | `data` while `push` |
+| `notify_ack` | `notify`, `ack` | |
+| `req_ack` | `req`, `ack` | `data` while `req`; `rdata` while `ack` |
+| `pop_ack` | `pop`, `ack` | `rdata` while `ack` |
+| `memory` | `enable` | `addr`, `wr_en` while `enable`; `write_data` on a write; `read_data` on the clock after a read, under the next-access rule |
+| `external_reg` | `write`, `rdata` | `wdata` while `write` is non-zero |
+| `axi_read` | `arvalid`, `arready`, `rvalid`, `rready` | `araddr`, `arlen`, `arsize`, `arburst` while `arvalid`; `rdata`, `rresp`, `rlast` while `rvalid`; `arid`, `aruser`, `rid`, `ruser` only under `CHECK_ARID`, `CHECK_ARUSER`, `CHECK_RID`, `CHECK_RUSER` |
+| `axi_write` | `awvalid`, `awready`, `wvalid`, `wready`, `bvalid`, `bready` | AW fields while `awvalid`; `wdata`, `wstrb`, `wlast` while `wvalid`; `bresp` while `bvalid`; `awid`, `awuser`, `wid`, `wuser`, `bid`, `buser` only under their `CHECK_` parameters |
+| `lmmi` (Pro) | `lmmi_request`, `lmmi_ready`, `lmmi_rdata_valid` | `lmmi_wr_rdn`, `lmmi_offset` while `lmmi_request`; `lmmi_wdata` on a write request; `lmmi_rdata` while `lmmi_rdata_valid` |
+
+The memory next-access rule: an X or Z `read_data` word fails unless the port's next access writes the same address. A read-modify-write of a word never written, such as a firmware register update's pre-read of the memory's power-on X, then passes, because the write replaces the word. An X word that no access follows fails at the end of the run, and a reset drops it. The rule needs no per-address storage.
+
+The wrapper sets each `CHECK_<SIGNAL>` to `1'b1` when the port binds the optional parameter that types the signal and `1'b0` when it does not. A src block leaves an unbound optional payload undriven, so no checker checks it, and an AXI port that binds no `id_t` gets no ID check.
+
+#### `a2c_mem_model`
+
+`a2c_mem_model #(type word_t)`, in `common/systemVerilog/uvm/a2c_uvm_pkg.sv`, is the storage of every memory-backed driver. It is a sparse store keyed by a 64-bit index, with `read()`, `write()` and `exists()`. A test preloads it with `write()` and inspects it with `read()` and `exists()`. It is not a `uvm_mem`, which needs a register model and a map.
+
+- **Fill.** A read of an unwritten word returns the fill without storing it, so `exists()` reports only written words. `fill` is `A2C_MEM_FILL_ZERO` by default, `A2C_MEM_FILL_RANDOM`, or `A2C_MEM_FILL_FIXED` with `fill_value`. The random fill is a splitmix64 hash of `seed` and the index, so a word reads the same in any order of reads. `seed` comes from `$urandom()` when the model is created, so it follows the simulation seed.
+- **Log.** The first read of an unwritten word logs one `A2C_MEM` line at `UVM_LOW`, with the index and the fill policy. Later ones are not logged.
+- **Words.** The apb, `axi_read` and `axi_write` slaves use byte words, `bit [7:0]`, at byte addresses. `memory` and `lmmi` use their `data_t` word, indexed by `addr` or `lmmi_offset`.
+- **Sharing.** The env creates no model, so two ports of one memory keep separate models. To share one, create it in the `<block>_tb_env` subclass's `build_phase` after `super.build_phase(phase)`, fetch each port's config with `uvm_config_db#(<port>_config_t)::get(this, "<port>_agent", "cfg", cfg)`, and set `cfg.mem` on both. The env's `<port>_cfg` handles are locals of its `build_phase`, and the agents read their configs later in the build, so the objects set here are the ones the agents use.
+
+#### The AXI burst limit
+
+One AXI item is one burst. The item's constraints keep AXI4 legality: INCR up to 256 beats, FIXED and WRAP up to 16, WRAP of 2, 4, 8 or 16 beats from an aligned address, `size` within the bus, and no INCR burst across a 4 KB page, or across the address space when that is smaller. `axi_write` needs `$bits(data_t) == 8 * $bits(strb_t)`, one strobe bit per byte, or the agent stops at build with `A2C_CFG`. A bus that is not a power-of-two number of whole bytes carries only full-width transfers.
+
+- The env sets `max_transfer_bytes` to the interface's `maxTransferSize`, per variant (`pysrc/processYaml.py`, `getBDUvm`). A `maxTransferSize` constant that is a param of the block takes each variant's binding.
+- A connection's `maxTransferSize` override is ignored. The UVM run's `<block>Channels` (`templates/systemc/baseClassDecl.py`, `channelConstructor`) sizes the model's AXI channel from the interface value, and an agent limit above it would overrun the model's burst buffer.
+- The limit counts bytes, `(len + 1) << size`. The SystemC channel counts the same value in beats, and a beat carries at least one byte, so the byte reading is safe on every bus width.
+- `<type>_base_seq::new_item()` returns an item whose constraint holds it within the port's limit. The master refuses any item above the limit with an `A2C_CFG` `UVM_ERROR`, because an item made without `new_item()` carries no limit. `axi_write_master_driver` also refuses an item without one data, strobe and `wuser` entry per beat.
+- `id_unbound` is set on a port that binds no `id_t`. The design behind it carries no ID and may answer every burst with ID 0, so the master sends every burst with ID 0, and the `axi_write` monitor does not compare `wid` with `awid`. `axi_write` drives the AXI3-style `wid` equal to `awid`.
+- `reorder` lets a slave answer any burst whose delay has passed, as long as each ID's bursts keep their AR or AW order. With `reorder` at 0 it answers in AR or AW order. The slaves accept W beats before their AW and hold them until the AW arrives.
+
+#### Names that depart from common UVM practice
+
+The agents use IEEE 1800.2 class roles and names: item, config, driver, monitor with `ap`, sequencer `sqr`, agent, `default_sequence`, `put_response()` with `set_id_info()`. The names below depart from common practice, each with its reason:
+
+| Name | Reason |
+| :--- | :--- |
+| roles `A2C_SRC` and `A2C_DST` | they match the interface modports and the SystemC BFM names |
+| one role-switched `<type>_driver` for handshake and memory types | each role's code is short, as in `rdy_vld` |
+| master and slave for the AMBA driver classes | they match `apb_master_driver` and UVM 1.2-era VIPs; each package header gives the AMBA 5 terms |
+| ack-only, memory-backed and level `A2C_DST` drivers with no sequencer | nothing is chosen per transaction |
+| `a2c_mem_model`, not `uvm_mem` | `uvm_mem` needs a register model and a map |
+| item fields `gap` and `delay` | stimulus timing, left out of `do_compare` |
+| `a2c_clk_if` edge tasks, not clocking blocks: drive at the rising edge plus 100 ps, sample at the falling edge | a clocking block in a shared clock interface cannot drive the signals of other interface instances, and a `#1` output skew is a whole period of a 1 ns clock |
+| `status_driver` extends `uvm_component`, not `uvm_driver` | it holds a level from its config and takes no items |
+
+### 9.11 The SystemC side under UVM
+
+With the model DUT, the generated wrapper drives the pins through the SystemC BFMs in the DUT's swapped roles. Every BFM follows the pin-timing rule of 9.10.
+
+- `memory_dst_bfm` drives an access after a rising edge, samples `read_data` at the falling edge, and resumes the model at the next rising edge. A model read therefore takes two edges, and a model's back-to-back reads run at one per two clocks. A Verilated memory returns the same word as a UVM agent.
+- `memory_src_bfm`'s `request()` must not consume simulated time. An enabled edge that passes while it waits is never served. The BFM counts each one as a `bfmContractCheck` break, which fails a UVM run.
+- `axi_write_src_bfm` holds `wready` low while its channel would wait for an address: a transactional receiver, a new burst and no address queued. A master that sends W before AW then holds the beat instead of losing it.
+- `lmmi_dst_bfm` drops `lmmi_request` before `complete()`, which waits out the channel's timed delay, so a slave does not see a second read.
+- `req_ack_dst_bfm` and `pop_ack_dst_bfm` drop the request for a clock between requests. The UVM src drivers may send requests back to back, and the src BFMs accept that.
+
+Tests and end-of-test voters live outside the DUT. The UVM testbench config never calls `set_test_names`, so a model that calls `register_test_name` or `ADD_TEST` exits with `the test list is empty`.
+
+#### Builder layers
+
+A builder layer ships its agents through `A2C_LAYER_UVM_F_FILES`, a list of `-F` files of agent packages, each path relative to its list. Under `USE_UVM` the flow compiles them after `a2c_uvm.f`, which lists `a2c_clk_if.sv` and `a2c_uvm_pkg.sv` first, so a layer package can import `a2c_uvm_pkg`. Make reads each list with `$(file <)`, which needs GNU Make 4.2, and makes the lists and every file they name prerequisites of the snapshot. Pro adds `pro/common/systemVerilog/uvm/a2cPro_uvm.f` in `a2cPro.mk`, and its checkers through the `-y` line of `a2cPro.f` and `A2C_LAYER_VCS_LIB_SV_FILES`.
 
 ## 10. Open items
 
@@ -733,6 +905,7 @@ These unit tests cover the generator and make side without a simulator:
 - The Xcelium documentation reviewed during testing states that a snapshot records `LD_LIBRARY_PATH` and rejects a different value at simulation time. The builder does not record it. Keep `LD_LIBRARY_PATH` the same for the build and every run.
 - An exported `XRUN_OPTS` or `VCS_LIB_SV_FILES`, or under `VCS_DEBUG` an exported `VLOGAN_OPTS` or `VCS_ELAB_OPTS`, is appended to again in each sub-make, so the builder's additions appear twice (section 3).
 - The builder default `DUT_TOPOLOGIES` includes `verif:tandem`, which needs a builder layer that registers tandem blocks (section 1.3).
+- Tandem: Pro's 1-in-2-out external_reg tee (`builder/pro/common/systemc/external_reg_port_tee.h`, `port_tee`) forwards a CPU write with `write()`, not `reg_write_cmd()`. A tandem dst model that waits in `read()` for CPU writes never sees one.
 - UVM: a second `make USE_UVM=1 USE_VCS=1 uvm_snapshots` is not a no-op. The model and rtl snapshots share one `AN.DB` and one analysis-options stamp, and only the rtl build adds `+define+A2C_UVM_RTL_DUT`, so each build re-analyses after the other. A no-op needs a per-DUT analysis library or a DUT selection without a define. Xcelium is not affected.
 - UVM: the VCS steps for a second `hasUvm` block are checked by unit tests only. The two IPs on UVM have one top each.
 - UVM: `UVM_DUT=both`, the model and the RTL in one snapshot with the model as the reference, does not exist. The model-against-RTL compare is a project script that runs both snapshots, such as isp_debayer's `uvm/xcheck_uvm.sh`.
@@ -741,3 +914,15 @@ These unit tests cover the generator and make side without a simulator:
 - UVM: an rtl-only (`hasMdl: false`) `hasVl` block's `<block>_hdl_sc_wrapper.h` imports `<ctx>_<block>.base`, which such a block never gets, so its C++ fails to compile in a `VL_DUT`, VCS or Xcelium build. The unit tests generate the files but never compile them.
 - UVM: the flow compiles UVM 1.2 on both vendors. The IEEE 1800.2 libraries both installs ship have never been compiled against. A move needs `set_finish_on_completion()` in the testbench module and a different memory stride rule (section 9.5).
 - UVM: the JUnit report of `regrLauncher.py` records only the first failure (`regrLauncher/report.py`), so the order of the rule files decides which failure it shows.
+- UVM: no base example or ISP block has real RTL behind a `req_ack` or `pop_ack` port, or behind an AXI port. mixed declares req_ack ports only, pySocket's `dut.sv` drives nothing, and axiDemo's producer and consumer RTL are stubs. Only the loopback and scratch model-DUT benches have exercised these agents.
+- UVM: the `notify_ack` `A2C_DST` driver has not run against RTL. The mixed example, whose blockA has a notify_ack `src` port, does not build on Xcelium (`URRNG` in blockB's `memory_dp.sv`), and its blockA RTL fails VCS elaboration (`ICPD`).
+- UVM: an `axi4_stream` src agent can send a packet longer than the buffer of a multi-cycle model channel. Its items carry no `maxTransferSize` limit.
+- UVM: the memory next-access rule passes an X `read_data` word whose next access writes the same address, even when the design used the X word.
+- UVM: the AXI burst limit counts bytes, so on a bus wider than a byte it is below the channel's beat capacity. On a 32-bit bus with `maxTransferSize` 256, INCR bursts stop at 64 beats.
+- UVM: the AXI slaves do not interleave R beats of different bursts. `reorder` reorders whole bursts.
+- UVM: with `id_unbound` set, an AXI master's response carries ID 0, not the ID of the item it answers.
+- UVM: a UVM failure that leaves a model's end-of-test voter waiting hangs the run, because the run ends only when every voter has voted. Pass `--scTimeLimit <us>` on model-DUT benches.
+- UVM: a model that calls `register_test_name` or `ADD_TEST` exits under UVM, because the UVM testbench config lists no tests (section 9.11). Some base example models do, such as simple's producer and mixed's blockD, so those blocks cannot run as a model DUT under UVM.
+- UVM: Pro's lmmiDemo RTL does not elaborate on Xcelium, which rejects `$bits` of a hierarchical name in a typedef.
+- UVM: the view chooses the AXI ports that get `max_transfer_bytes` by the type names `axi_read` and `axi_write` (`pysrc/processYaml.py`, `getBDUvm`). `sc_channel.multicycle_types` is also declared by `rdy_vld` and `axi4_stream`, so it cannot make the choice. A per-type flag in the interface definition would need a schema change.
+- UVM: the UVM run's `<block>Channels` sizes an AXI channel from the interface's `maxTransferSize` and ignores a connection override, as the agents do. Channels built from a connection row in other flows honour the override (`pysrc/intf_gen_utils.py`, `sc_multicycle_ctor_args`).
