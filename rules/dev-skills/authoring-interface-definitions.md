@@ -78,19 +78,19 @@ A definition with `uvmAgent: true` ships two more files beside it and adds a lin
 
 ### The agent package
 
-- The agent's type parameters are the definition's `parameters:`, under the same names: `data_t` for `rdy_vld`, `addr_t` and `data_t` for `apb`, `tdata_t`, `tid_t`, `tdest_t` and `tuser_t` for `axi4_stream`. The generated variant package writes `typedef myproto_agent #(.<parameter>(<type>), ...) <port>_agent_t;` with the port's bound parameters only, and the same list on `virtual myproto_if`. An unbound optional parameter keeps the class default, so give it the default `myproto_if.sv` gives it.
+- The agent's type parameters are the definition's `parameters:`, under the same names: `data_t` for `rdy_vld`, `addr_t` and `data_t` for `apb`, `tdata_t`, `tid_t`, `tdest_t` and `tuser_t` for `axi4_stream`. The generated variant package writes `typedef myproto_agent #(.<parameter>(<type>), ...) <port>_agent_t;` with the port's bound parameters only, and the same list on `virtual myproto_if`. A port that binds none gets `typedef myproto_agent <port>_agent_t;` with no `#()`. An unbound optional parameter keeps the class default, so give it the default `myproto_if.sv` gives it.
 - An agent provides drivers for both roles. It takes a role, `a2c_role_e` from `a2c_uvm_pkg`, in its config. The role is the opposite of the DUT port's modport, so a DUT `dst` port gets an `A2C_SRC` agent. `rdy_vld`, `axi4_stream`, `raw` and `status` meet the rule.
-- `apb` does not meet it yet. `apb_config` has no role and the agent has only a master driver, so the generated env makes the agent of a DUT apb `src` port passive. The slave driver is still to be written.
+- `apb` does not meet it yet. The agent has only a master driver, which it builds for the `A2C_SRC` role only, so the `A2C_DST` agent of a DUT apb `src` port only monitors. The slave driver is still to be written.
 - Drivers drive at `clk_vif.drive_edge()` and monitors sample at `clk_vif.sample_edge()`, both defined in `common/systemVerilog/uvm/a2c_clk_if.sv`. Each monitor logs every transaction through `a2c_txn()` with id `A2C_TXN`.
-- Add a test to `common/systemVerilog/uvm/loopback/a2c_uvm_loopback_tb.sv` and its name to `TESTS` in `run_loopback.sh`. The loopback runs on Xcelium and VCS only, as `run_loopback.sh xcelium|vcs [seed]`.
+- Add the type's loopback tests to `common/systemVerilog/uvm/loopback/<type>_lb_tests.svh` and an `` `include `` of it to `a2c_uvm_loopback_tb.sv`. `run_loopback.sh` runs every class named `*_test` in the `*_lb_tests.svh` files. The loopback runs on Xcelium and VCS only, as `run_loopback.sh xcelium|vcs [seed]`.
 
 The generated env (`templates/systemVerilog/uvmPkg.py`) uses these names, so an agent package must provide all of them:
 
 | Name | Used for |
 | :--- | :--- |
 | config fields `vif`, `clk_vif`, `port_name` | set for every port; `clk_vif` is the port's own clock domain |
-| config field `is_active`, default `UVM_ACTIVE` | set to `UVM_PASSIVE` only on a DUT `src` port of a definition with `addressBus: true`; every other port keeps the default |
-| config field `role` | set unless the definition has `addressBus: true` |
+| config field `is_active`, default `UVM_ACTIVE` | never set; every agent keeps the default |
+| config field `role` | set on every port |
 | config field `no_backpressure` | set when the definition is elastic with `backpressure.overridable: true` |
 | agent member `mon`, with a `uvm_analysis_port` named `ap` | feeds the output counter and, on a register bus, the register predictor |
 | agent member `sqr` | the register model's sequencer, on a register bus |

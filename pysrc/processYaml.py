@@ -1833,14 +1833,9 @@ class projectOpen:
                     'clockVif': clockVifs[portData['domainClock']],
                     'reset': portData['domainReset'] if portData['domainReset'] in resetPorts else None,
                     'backpressure': portData['effectiveBackpressure'],
-                    # The agent config carries a role unless the type is a
-                    # register bus, whose agent is master-only, and a
-                    # no_backpressure knob when a port may lower the default.
-                    'hasRole': not intfDef['addressBus'],
+                    # The agent config carries a no_backpressure knob when a
+                    # port may lower the default.
                     'backpressureOverridable': elastic and intfDef['backpressure']['overridable'],
-                    # A master-only agent can only watch a DUT register-bus
-                    # master.
-                    'passive': intfDef['addressBus'] and isOutput,
                     # A DUT data output with a handshake delivers a countable
                     # number of transactions, so the env counts them.
                     'counter': f"{portData['name']}_counter"
@@ -5518,6 +5513,13 @@ class projectCreate:
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
         structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.uvmRegisterWidths = dict()
+        # The interface definition key of a memory port and of each register
+        # port type alias, reg_<regType>.
+        typeKeys = dict()
+        for key, row in self.flatData['interface_defs'].items():
+            typeKeys[row['interface_type']] = key
+            if 'mappedFrom' in row:
+                typeKeys.update({alias: key for alias in row['mappedFrom']})
         failed = False
         for blockRow in self.flatData['blocks'].values():
             if not blockRow['hasUvm']:
@@ -5557,41 +5559,45 @@ class projectCreate:
                     f"drives every clock and reset of the block and samples none. "
                     f"Make them inputs of '{block}', or clear hasUvm.")
                 failed = True
+            # Each boundary port's interface type key, how the agent check
+            # names where the port comes from, and the fix it offers.
+            boundary = dict()
+
+            def interfacePort(name, interfaceKey):
+                interfaceRow = self.flatData['interfaces'][interfaceKey]
+                return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
+                        f"Use an interface type with an agent for '{name}'")
+            for name, row in blockRow['ports'].items():
+                boundary[name] = interfacePort(name, row['interfaceKey'])
+            for row in self.flatData['connectionMaps'].values():
+                if row['blockKey'] == blockKey:
+                    boundary.setdefault(row['portName'], interfacePort(row['portName'], row['interfaceKey']))
+            for name, row in blockRow.get('registerPorts', {}).items():
+                boundary.setdefault(name, interfacePort(name, row['interfaceKey']))
             blockInstances = {key: row['instance'] for key, row in self.flatData['instances'].items()
                               if row['instanceTypeKey'] == blockKey}
             for row in self.flatData['memoryConnections'].values():
                 if row['instanceKey'] in blockInstances:
-                    printError(
-                        f"{where} but has port '{row['memory']}', which the memoryConnections "
-                        f"row giving instance '{blockInstances[row['instanceKey']]}' access to "
-                        f"memory '{row['memory']}' creates. A memory port has no UVM agent. "
-                        f"Remove that row, or clear hasUvm.")
-                    failed = True
+                    boundary.setdefault(row['memory'], (
+                        typeKeys['memory'],
+                        f", which the memoryConnections row giving instance '{blockInstances[row['instanceKey']]}' "
+                        f"access to memory '{row['memory']}' creates, has type",
+                        "Remove that row"))
             for row in self.flatData['registerConnections'].values():
                 if row['instanceKey'] in blockInstances:
-                    printError(
-                        f"{where} but has port '{row['register']}', which the registerConnections "
-                        f"row giving instance '{blockInstances[row['instanceKey']]}' access to "
-                        f"register '{row['register']}' creates. A register connection port has "
-                        f"no UVM agent. Remove that row, or clear hasUvm.")
-                    failed = True
-            # The interface of each remaining boundary port, keyed by port name.
-            boundary = {name: row['interfaceKey'] for name, row in blockRow['ports'].items()}
-            for row in self.flatData['connectionMaps'].values():
-                if row['blockKey'] == blockKey:
-                    boundary.setdefault(row['portName'], row['interfaceKey'])
-            for name, row in blockRow.get('registerPorts', {}).items():
-                boundary.setdefault(name, row['interfaceKey'])
-            for portName, interfaceKey in boundary.items():
-                interfaceRow = self.flatData['interfaces'][interfaceKey]
-                typeRow = self.flatData['interface_defs'][interfaceRow['interfaceTypeKey']]
+                    regType = self.flatData['registers'][row['registerBlockKey']]['regType']
+                    boundary.setdefault(row['register'], (
+                        typeKeys[f'reg_{regType}'],
+                        f", which the registerConnections row giving instance '{blockInstances[row['instanceKey']]}' "
+                        f"access to register '{row['register']}' creates, has type",
+                        "Remove that row"))
+            for portName, (typeKey, origin, fix) in boundary.items():
+                typeRow = self.flatData['interface_defs'][typeKey]
                 if not typeRow['uvmAgent']:
                     printError(
-                        f"{where} but its port '{portName}' has interface "
-                        f"'{interfaceRow['interface']}' of type '{typeRow['interface_type']}', "
+                        f"{where} but its port '{portName}'{origin} '{typeRow['interface_type']}', "
                         f"which has no UVM agent: its interface definition does not "
-                        f"declare uvmAgent: true. Use an interface type with an agent "
-                        f"for '{portName}', or clear hasUvm.")
+                        f"declare uvmAgent: true. {fix}, or clear hasUvm.")
                     failed = True
             # The testbench module names an interface instance after each
             # port and a pin after each clock and reset, beside these names.
@@ -5604,8 +5610,7 @@ class projectCreate:
                        'srv': "the report server variable 'srv'"}
             tbNames.update({f"{clock}_if": f"the a2c_clk_if instance '{clock}_if' of clock '{clock}'"
                             for clock in domain.clocks})
-            for portName, interfaceKey in boundary.items():
-                typeKey = self.flatData['interfaces'][interfaceKey]['interfaceTypeKey']
+            for portName, (typeKey, _origin, _fix) in boundary.items():
                 tbNames.update({f"{portName}_{signal}": f"the pin '{portName}_{signal}' of port '{portName}'"
                                 for signal in self.flatData['interface_defs'][typeKey]['signals']})
             named = ([('port', name) for name in boundary]

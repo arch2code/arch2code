@@ -1,7 +1,8 @@
 #!/bin/bash
-# Builds a2c_uvm_loopback_tb.sv on Xcelium or VCS and runs every loopback
-# test in it. Exits 0 only when every test reaches the UVM report summary with
-# no UVM_ERROR or UVM_FATAL and logs LB_PASS.
+# Builds a2c_uvm_loopback_tb.sv on Xcelium or VCS and runs every test the
+# *_lb_tests.svh files beside it declare, file by file in name order. A test
+# is a class named *_test. Exits 0 only when every test reaches the UVM report
+# summary with no UVM_ERROR or UVM_FATAL and logs LB_PASS.
 #
 #   run_loopback.sh xcelium|vcs [seed]
 #
@@ -22,10 +23,7 @@ SEED=${2:-1}
 HERE=$(cd "$(dirname "$0")" && pwd)
 BASE=$(cd "$HERE/../../../.." && pwd)
 OUT=$PWD/loopback_$SIM
-TESTS="rdy_vld_random_test rdy_vld_burst_test axi4_stream_test raw_test status_test
-       no_backpressure_test monitor_checks_test txn_count_clean_test txn_count_missing_test
-       txn_count_extra_test txn_count_unwaited_extra_test txn_count_twice_test txn_count_dropped_test
-       txn_count_late_test"
+TESTS=$(sed -n 's/^ *class \([A-Za-z0-9_]*_test\) extends .*/\1/p' "$HERE"/*_lb_tests.svh)
 # a2c_uvm.f lists every agent package, so every interface they name is compiled.
 SRCS="$BASE/interfaces/rdy_vld/rdy_vld_if.sv $BASE/interfaces/apb/apb_if.sv
       $BASE/interfaces/axi4_stream/axi4_stream_if.sv $BASE/interfaces/raw/raw_if.sv
@@ -38,13 +36,13 @@ cd "$OUT" || exit 1
 case $SIM in
     xcelium)
         # -uvmhome CDNS-1.2: without it xrun picks UVM 1.1d.
-        xrun -64bit -sv -uvm -uvmhome CDNS-1.2 -timescale 1ns/1ps -elaborate $SRCS \
+        xrun -64bit -sv -uvm -uvmhome CDNS-1.2 -timescale 1ns/1ps -incdir $HERE -elaborate $SRCS \
             -top a2c_uvm_loopback_tb -l build.log > /dev/null
         BUILD=$?
         run() { xrun -64bit -R +UVM_TESTNAME=$1 -svseed $SEED -l $1.log > /dev/null; }
         ;;
     vcs)
-        vcs -full64 -sverilog -ntb_opts uvm-1.2 -timescale=1ns/1ps $SRCS \
+        vcs -full64 -sverilog -ntb_opts uvm-1.2 -timescale=1ns/1ps +incdir+$HERE $SRCS \
             -top a2c_uvm_loopback_tb -o simv -l build.log > /dev/null
         BUILD=$?
         run() { ./simv +UVM_TESTNAME=$1 +ntb_random_seed=$SEED -l $1.log > /dev/null; }

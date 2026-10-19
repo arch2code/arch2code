@@ -27,9 +27,14 @@ firmware header. Everything else is worked out here from the YAML.
 The env must create one agent per port with its config, one transaction
 counter for the DUT stream output and none for the input or either APB port,
 and an explicit predictor on the register bus agent's monitor with
-auto-predict off. Its register model starts at its reset values. The apb
-agent has only a master driver, so the agent on mst, where the DUT is the
-master, must be passive, and the register bus agent active.
+auto-predict off. Its register model starts at its reset values. Every
+agent's config carries the role opposite its port's direction, so the agent
+on mst, where the DUT is the master, is A2C_DST and the register bus agent
+A2C_SRC, and the env sets no agent passive.
+
+An agent whose port binds no parameter is spelled with no #(), which no port
+of the fixture exercises, so the typedef lines are also checked on a port
+built here.
 """
 
 import os
@@ -43,6 +48,7 @@ from _addrctl_helpers import base_dir, test_dir
 from _tmp_helpers import remove_tree
 from pysrc.processYaml import projectOpen
 import test_uvm_register_view as regView
+from templates.systemVerilog import uvmPkg
 
 
 EXTRA_EDITS = [
@@ -172,8 +178,9 @@ ENV_LINES = [
     'out_cfg.role = a2c_uvm_pkg::A2C_DST;',
     'out_counter = a2c_uvm_pkg::a2c_txn_counter#(out_item_t)::type_id::create("out_counter", this);',
     'out_counter.port_name = "out";',
+    'ubRegs_cfg.role = a2c_uvm_pkg::A2C_SRC;',
     'ubRegs_cfg.port_name = "ubRegs";',
-    'mst_cfg.is_active = UVM_PASSIVE;',
+    'mst_cfg.role = a2c_uvm_pkg::A2C_DST;',
     'regmodel = ubDut_reg_block::type_id::create("regmodel");',
     'regmodel.build();',
     'regmodel.reset();',
@@ -201,8 +208,8 @@ def check(project):
         expected = expected_regmodel(variant, offsets) + ENV_LINES
         problems += [f"{pkg}.sv lacks the line {line!r}" for line in expected if line not in lines]
         unexpected = [line for line in lines
-                      if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.(role|no_backpressure)\b'
-                                  r'|(in|out|ubRegs)_cfg\.is_active\b', line)]
+                      if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.no_backpressure\b'
+                                  r'|.*_cfg\.is_active\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
         # The resources come after their memory's configure() call, which
         # gives the memory the full name they are keyed by.
@@ -224,6 +231,25 @@ def check(project):
     return problems
 
 
+def check_typedefs():
+    bound = {'structureType': 'data_t', 'structure': 'ubSt', 'isNull': False}
+    unbound = {'structureType': 'user_t', 'structure': None, 'isNull': True}
+    cases = [
+        ({'name': 'p', 'interfaceType': 'rdy_vld', 'paramBindings': [bound, unbound]},
+         ['typedef rdy_vld_agent #(.data_t(ubSt)) p_agent_t;',
+          'typedef p_agent_t::item_t p_item_t;',
+          'typedef p_agent_t::config_t p_config_t;',
+          'typedef virtual rdy_vld_if #(.data_t(ubSt)) p_vif_t;']),
+        ({'name': 'q', 'interfaceType': 'notify_ack', 'paramBindings': [unbound]},
+         ['typedef notify_ack_agent q_agent_t;',
+          'typedef q_agent_t::item_t q_item_t;',
+          'typedef q_agent_t::config_t q_config_t;',
+          'typedef virtual notify_ack_if q_vif_t;']),
+    ]
+    return [f"port {port['name']} typedefs\n    {uvmPkg.agent_typedefs(port)}\n  expected\n    {want}"
+            for port, want in cases if uvmPkg.agent_typedefs(port) != want]
+
+
 def run_all_tests():
     print("\n" + "=" * 70)
     print("UVM VARIANT PACKAGE REGISTER MODEL AND ENV")
@@ -239,7 +265,7 @@ def run_all_tests():
                 print(f"FAIL: make {target} rejected the fixture (rc={result.returncode})")
                 print(result.stdout + result.stderr)
                 return 1
-        problems = check(project)
+        problems = check(project) + check_typedefs()
     finally:
         remove_tree(tmp)
     if problems:
@@ -249,7 +275,8 @@ def run_all_tests():
         return 1
     print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
     print("  PASS: NO_MEM_TESTS on the write-only memory, NO_MEM_WALK_TEST on the padded one")
-    print("  PASS: env agents, the passive apb src agent, the output transaction counter and the register predictor")
+    print("  PASS: agent typedefs with and without bound parameters")
+    print("  PASS: env agents with their roles, the output transaction counter and the register predictor")
     print("\nPASS: the variant packages hold the register model and the env")
     return 0
 

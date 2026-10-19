@@ -37,10 +37,18 @@ def render_header(args, prj, data, top):
     return out
 
 
-def param_args(port):
-    # Unbound optional parameters keep the class and interface defaults.
-    return ', '.join(f".{b['structureType']}({b['structure']})"
-                     for b in port['paramBindings'] if not b['isNull'])
+def agent_typedefs(port):
+    # Unbound optional parameters keep the class and interface defaults. A
+    # port with no bound parameter names the classes with no #().
+    args = ', '.join(f".{b['structureType']}({b['structure']})"
+                    for b in port['paramBindings'] if not b['isNull'])
+    params = f" #({args})" if args else ''
+    name = port['name']
+    intfType = port['interfaceType']
+    return [f"typedef {intfType}_agent{params} {name}_agent_t;",
+            f"typedef {name}_agent_t::item_t {name}_item_t;",
+            f"typedef {name}_agent_t::config_t {name}_config_t;",
+            f"typedef virtual {intfType}_if{params} {name}_vif_t;"]
 
 
 def render_items(prj, data, variant):
@@ -52,13 +60,7 @@ def render_items(prj, data, variant):
             data['parameterizedDecls'], prj, data['blockInfo']['params'])]
         lines.append('')
     for port in data['uvm']['ports']:
-        name = port['name']
-        intfType = port['interfaceType']
-        params = param_args(port)
-        lines.append(f"typedef {intfType}_agent #({params}) {name}_agent_t;")
-        lines.append(f"typedef {name}_agent_t::item_t {name}_item_t;")
-        lines.append(f"typedef {name}_agent_t::config_t {name}_config_t;")
-        lines.append(f"typedef virtual {intfType}_if #({params}) {name}_vif_t;")
+        lines += agent_typedefs(port)
     uvm = data['uvm']
     hasRegModel = uvm['registerBus'] is not None
     if hasRegModel:
@@ -195,12 +197,9 @@ def agent_build(port):
              f'        if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
              f'            `uvm_fatal("A2C_CFG", "no virtual {port["interfaceType"]}_if \'{name}\'")',
              '        end',
-             f"        {cfg}.clk_vif = {port['clockVif']};"]
-    if port['hasRole']:
-        lines.append(f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};")
-    lines.append(f'        {cfg}.port_name = "{name}";')
-    if port['passive']:
-        lines.append(f"        {cfg}.is_active = UVM_PASSIVE;")
+             f"        {cfg}.clk_vif = {port['clockVif']};",
+             f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};",
+             f'        {cfg}.port_name = "{name}";']
     if port['backpressureOverridable']:
         lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
     agent = port['agent']

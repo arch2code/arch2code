@@ -103,19 +103,19 @@ FILE_PKG = 'uvmBlocks_package'
 UB_W = {'v0': 4, 'v1': 12}
 UB_D = {'v0': 16, 'v1': 32}
 
-# hasRole and backpressureOverridable say which config fields the port's agent
-# has, passive whether the agent only watches, and counter the env's
-# transaction counter for the port's output, if it has one.
+# backpressureOverridable says whether the port's agent config has a
+# no_backpressure knob, and counter names the env's transaction counter for the
+# port's output, if it has one.
 PORTS = [
     {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': True, 'backpressureOverridable': True, 'passive': False, 'counter': None},
+     'backpressureOverridable': True, 'counter': None},
     {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': True, 'backpressureOverridable': True, 'passive': False, 'counter': 'out_counter'},
+     'backpressureOverridable': True, 'counter': 'out_counter'},
     {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'hasRole': False, 'backpressureOverridable': False, 'passive': False, 'counter': None},
+     'backpressureOverridable': False, 'counter': None},
 ]
 REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
 CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}

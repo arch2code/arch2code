@@ -40,6 +40,8 @@ package apb_uvm_pkg;
         virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif;
         virtual a2c_clk_if                                 clk_vif;
         uvm_active_passive_enum                            is_active = UVM_ACTIVE;
+        // Only the A2C_SRC role has a driver, so an A2C_DST agent only watches.
+        a2c_role_e                                         role = A2C_SRC;
         string                                             port_name = "";
 
         `uvm_object_param_utils(apb_config#(addr_t, data_t))
@@ -143,7 +145,7 @@ package apb_uvm_pkg;
             end
             mon = apb_monitor#(addr_t, data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
-            if (cfg.is_active == UVM_ACTIVE) begin
+            if (cfg.is_active == UVM_ACTIVE && cfg.role == A2C_SRC) begin
                 drv = apb_master_driver#(addr_t, data_t)::type_id::create("drv", this);
                 drv.cfg = cfg;
                 sqr = uvm_sequencer#(apb_item)::type_id::create("sqr", this);

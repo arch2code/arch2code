@@ -8,7 +8,10 @@ that breaks one of those assumptions, naming the block and, where one is at
 fault, the port and its interface type. The boundary covers more than ports:.
 A connectionMaps boundary port, a memoryConnections port and a
 registerConnections port need no ports: row, and the wrapper still has a pin
-group for each. The testbench module also declares names of its own: the DUT
+group for each. A memoryConnections port has type memory, and a
+registerConnections port the type its regType maps to, so each passes the
+agent check exactly when that type has an agent: an rw register's status port
+does, and a memory or ext register's port does not. The testbench module also declares names of its own: the DUT
 instance `dut`, the completion pins, the report server `srv` and one
 `<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal, so a
 port, clock or reset named like one of them is rejected. A UVM register or
@@ -93,18 +96,20 @@ REJECTED = [
                'memoryConnections:\n'
                '    - { memory: tbl, block: ubTb, instance: uDut, port: port1 }\n\n'
                'registers:\n')])],
-     [WHERE, "has port 'tbl', which the memoryConnections row giving instance 'uDut' "
-             "access to memory 'tbl' creates", "A memory port has no UVM agent"]),
-    ('a registerConnections port', ROOT_PROJECT,
+     [WHERE, "its port 'tbl', which the memoryConnections row giving instance 'uDut' "
+             "access to memory 'tbl' creates, has type 'memory', which has no UVM agent",
+      "does not declare uvmAgent: true. Remove that row, or clear hasUvm."]),
+    ('an external register connection port', ROOT_PROJECT,
      [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
                '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
               ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
                '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
-               '    - { register: sinkCfg, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
+               '    - { register: sinkExt, regType: ext, block: ubSink, structure: ubSt, desc: "Sink external" }\n\n'
                'registerConnections:\n'
-               '    - { register: sinkCfg, block: ubSink, instance: uDut }\n')])],
-     [WHERE, "has port 'sinkCfg', which the registerConnections row giving instance 'uDut' "
-             "access to register 'sinkCfg' creates", "A register connection port has no UVM agent"]),
+               '    - { register: sinkExt, block: ubSink, instance: uDut }\n')])],
+     [WHERE, "its port 'sinkExt', which the registerConnections row giving instance 'uDut' "
+             "access to register 'sinkExt' creates, has type 'external_reg', which has no UVM agent",
+      "does not declare uvmAgent: true. Remove that row, or clear hasUvm."]),
     ('an undeclared connectionMaps port of a type without an agent', ROOT_PROJECT,
      [(ARCH, [('blocks:\n',
                '    ubSide:\n'
@@ -169,6 +174,15 @@ REJECTED = [
                '            rtl_dut: { clock: clk }\n'),
               ('addressGroup: top }', 'addressGroup: top, resets: { rtl_dut: rst_n } }')])],
      [WHERE, "its reset 'rtl_dut' has the name of the completion pin 'rtl_dut'"]),
+    ('a register connection port named like a completion pin', ROOT_PROJECT,
+     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
+               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: uvm_done, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
+               'registerConnections:\n'
+               '    - { register: uvm_done, block: ubSink, instance: uDut }\n')])],
+     [WHERE, "its port 'uvm_done' has the name of the completion pin 'uvm_done'"]),
     ('a port named like the report server variable', ROOT_PROJECT,
      [(ARCH, [('            in:  {', '            srv: {'), ('dstport: in,', 'dstport: srv,')])],
      [WHERE, "its port 'srv' has the name of the report server variable 'srv'"]),
@@ -291,6 +305,14 @@ REJECTED = [
 ACCEPTED = [
     ('rdy_vld ports and an apb register bus', ROOT_PROJECT, []),
     ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT, []),
+    ('a status register connection port', ROOT_PROJECT,
+     [(ARCH, [('    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top }\n',
+               '    uSink:   { container: ubTb, instanceType: ubSink,   instGroup: top, addressGroup: top }\n'),
+              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
+               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
+               '    - { register: sinkCfg, regType: rw, block: ubSink, structure: ubSt, desc: "Sink config" }\n\n'
+               'registerConnections:\n'
+               '    - { register: sinkCfg, block: ubSink, instance: uDut }\n')])]),
     ('a field named like a uvm_reg_block-only member', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        get_registers: {')])]),
     ('a register named like a uvm_reg-only member', ROOT_PROJECT,

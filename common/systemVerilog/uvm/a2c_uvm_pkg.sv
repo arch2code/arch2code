@@ -101,6 +101,53 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_txn_counter
 
+    // What a2c_mem_model returns for a word nothing has written.
+    typedef enum {A2C_MEM_FILL_ZERO, A2C_MEM_FILL_RANDOM, A2C_MEM_FILL_FIXED} a2c_mem_fill_e;
+
+    // A sparse memory of word_t words keyed by a 64-bit index, which a test
+    // can preload and inspect. A read of an unwritten word returns the fill
+    // value without storing it, so exists() still reports the word unwritten
+    // and a random fill draws a new value on every such read. Only the first
+    // such read of each model logs, one A2C_MEM info line.
+    class a2c_mem_model #(type word_t = logic [31:0]) extends uvm_object;
+        a2c_mem_fill_e fill = A2C_MEM_FILL_ZERO;
+        // The word an A2C_MEM_FILL_FIXED model returns.
+        word_t         fill_value;
+
+        protected word_t store[bit [63:0]];
+        protected bit    unwritten_read;
+
+        `uvm_object_param_utils(a2c_mem_model#(word_t))
+
+        function new(string name = "a2c_mem_model");
+            super.new(name);
+        endfunction
+
+        function void write(bit [63:0] index, word_t data);
+            store[index] = data;
+        endfunction
+
+        function bit exists(bit [63:0] index);
+            return store.exists(index);
+        endfunction
+
+        function word_t read(bit [63:0] index);
+            word_t data;
+            if (store.exists(index)) return store[index];
+            if (!unwritten_read) begin
+                unwritten_read = 1;
+                `uvm_info("A2C_MEM", $sformatf("%s: read of unwritten index 0x%0h returns the %s fill; later unwritten reads are not logged",
+                                               get_name(), index, fill.name()), UVM_LOW)
+            end
+            case (fill)
+                A2C_MEM_FILL_ZERO:   data = '0;
+                A2C_MEM_FILL_RANDOM: if (!std::randomize(data)) `uvm_fatal("A2C_MEM", "fill randomize failed")
+                A2C_MEM_FILL_FIXED:  data = fill_value;
+            endcase
+            return data;
+        endfunction
+    endclass : a2c_mem_model
+
     // Turns each UVM_ERROR with id demote_id into UVM_INFO and counts it, so a
     // negative test can pass when the check it provokes fires.
     class a2c_error_demoter extends uvm_report_catcher;
