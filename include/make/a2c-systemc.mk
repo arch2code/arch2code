@@ -79,7 +79,8 @@ $(error XCELIUM_TOOLS is not set - point it at the Xcelium install's tools direc
 endif
 SYSTEMC_INCLUDE = $(XCELIUM_TOOLS)/systemc/include
 endif
-CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
+# /usr/include is already a system dir, and -isystem on it breaks libstdc++'s #include_next.
+CPP_INCLUDES = $(addprefix -isystem,$(filter-out /usr/include,$(BOOST_INCLUDE) $(SYSTEMC_INCLUDE))) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $(A2C_ROOT)/interfaces/*) $(wildcard $(A2C_ROOT)/pro/interfaces/*)
 # Project C++ source/include dirs come from the generated manifest (.gen/build.mk,
@@ -298,7 +299,7 @@ LD_FLAGS  += $(EXTRA_LD_FLAGS)
 CPP_MODULE_PCM := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
 CPP_MODULE_OBJ := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
 CPP_MODULE_FLAGS := $(foreach module,$(CPP_MODULE_NAMES),-fmodule-file=$(module)=$(call cpp_module_pcm,$(call cpp_module_src_for,$(module))))
-CPP_MODULE_OBJ_FLAGS := $(filter-out -I%,$(CXX_FLAGS))
+CPP_MODULE_OBJ_FLAGS := $(filter-out -I% -isystem/%,$(CXX_FLAGS))
 
 # Build-flavor stamp. The model and VL (VL_DUT=1) builds share the same
 # BIN/BUILD_DIR paths and the same object files; toggling VL_DUT only changes the
