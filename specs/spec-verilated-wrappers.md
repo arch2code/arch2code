@@ -267,14 +267,10 @@ file name with `$(notdir)` or a pattern.
   define `SC_CPLUSPLUS=201703L`. C++23 turns on coroutines in Clang and in GCC
   11 or later, so project code that includes a timing model's headers compiles
   as it is.
-- `VL_TIMING=1` is supported only on Verilator 5.053 or later. Until 5.053 is
-  released, that is master at or after commit `ea536a5`. In older versions an
-  `--sc` model with a delay pending wakes on that delay's timer
-  (`next_trigger(dt)` overrides its static sensitivity), so it misses input
-  clock edges and can lose output updates until the delay ends
-  (verilator/verilator#8394, fixed by #8534). The library build warns when
-  `verilator --version` is below 5.053 and does not fail. A `5.053 devel`
-  build from before `ea536a5` passes that check.
+- Without the upstream fix (#8534), an `--sc` model with a delay pending
+  wakes on that delay's timer (`next_trigger(dt)` overrides its static
+  sensitivity), so it can miss input clock edges and lose output updates until
+  the delay ends (verilator/verilator#8394).
 - Generated SV wrapper port assigns (`pysrc/intf_gen_utils.py`) carry
   `` `A2C_HDL_BOUNDARY_DLY ``, from `common/systemVerilog/hdlBoundary.svh`,
   which every wrapper with port assigns includes. It is `#0` under VCS and

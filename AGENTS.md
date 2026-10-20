@@ -4,7 +4,7 @@ These rules apply when working under `builder/base`, especially generator,
 template, and project database code.
 
 ## General rules
-1. Ask, don't assume. If something is unclear, ask before writing a single line. Never make silent assumptions about intent, architecture, or requirements.
+1. Ask, don't assume. When intent, architecture or requirements are unclear, ask before you write code, and state any assumption you do make.
 2. Simplest solution first. Implement the simplest thing that could work. Do not add abstractions or flexibility that were not requested.
 3. Don't touch unrelated code. If a file or function is not part of the current task, do not modify it, even if you think it could be improved.
 4. Flag uncertainty. If you are not confident about an approach or technical detail, say so before proceeding.

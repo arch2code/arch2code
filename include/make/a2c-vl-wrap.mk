@@ -106,14 +106,9 @@ VL_LIB_OBJ_FILES += obj_dir/vl_dummy/verilated_cov.o
 endif
 
 # Under --timing vl_dummy carries a delay, so its verilate builds the timing
-# runtime that every timing top links against. Before 5.053 a --sc model with a
-# delay pending misses input clock edges until the delay ends.
+# runtime that every timing top links against.
 ifneq ($(filter 1,$(VL_TIMING)),)
 VL_LIB_OBJ_FILES += obj_dir/vl_dummy/verilated_timing.o
-VL_VERSION := $(word 2,$(shell verilator --version))
-ifneq ($(firstword $(shell printf '%s\n' $(VL_VERSION) 5.053 | sort -V)),5.053)
-$(warning VL_TIMING=1 with Verilator $(VL_VERSION): while an RTL delay is pending, a Verilated top misses input clock edges and can lose output updates. Verilator 5.053 fixes this)
-endif
 endif
 
 #------------------------------------------------------------------------

@@ -19,12 +19,12 @@ If the user passed arguments, treat them as a description of what the next sessi
 
 State each of these, because the next agent starts with none of them:
 
-- **Where.** Working directory, and the submodule if the work is under one. `builder/base` and `builder/pro` are separate git repos.
+- **Where.** Working directory, and the submodule if the work is under one. `builder` and `builder/base` are separate git repos, and `pro/` lives in `builder`.
 - **Branch.** Name it. Say whether changes are staged, committed, or pushed.
 - **Skills to load first.** Name the skills the next agent must call the Skill tool for before editing, and say to load them before reading or editing anything. Use the routing table in `CLAUDE.md` to pick them.
 - **The plan and the stage.** Path to the plan or spec the work follows, wherever it lives (`builder/base/plans/` for open plans, `builder/base/specs/` for specs, `builder/pro/plans/` for pro work), and which stage or item comes next. Do not restate the stage; the plan holds it.
 - **What just landed.** One or two lines on the state the previous session left, including anything half-finished.
-- **How to verify.** The exact make target that proves the work, with `-j`.
+- **How to verify.** The exact make target that proves the work, with `-j` except for `push-test`.
 
 Leave out anything the plan file already says. A handoff that restates the plan is a handoff that goes stale the moment the plan is updated.
 

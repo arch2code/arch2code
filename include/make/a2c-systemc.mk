@@ -472,7 +472,7 @@ help::
 	@echo "  clangd  	- Generate .clangd configuration for IDE"
 	@echo "Makefile Runtime Variables:"
 	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
-	@echo "  VL_TIMING=1	- Verilate and lint with --timing (Verilator 5.053, currently master at or after ea536a5)"
+	@echo "  VL_TIMING=1	- Verilate and lint with --timing"
 	@echo "  USE_VCS=1	- Compile for VCS and link with vcs (with VL_DUT=1: RTL DUT elaborated by VCS)"
 	@echo "  USE_XCELIUM=1	- Compile for Xcelium and build its snapshot with xrun (with VL_DUT=1: RTL DUT elaborated by Xcelium)"
 
