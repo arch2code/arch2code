@@ -13,6 +13,23 @@
 // its run_phase default_sequence; a test replaces it with a uvm_config_db
 // set from higher in the hierarchy or with a factory override. Pin timing
 // follows a2c_clk_if: drive at drive_edge(), sample at sample_edge().
+//
+// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
+// each request on both lanes at one drive point, and each lane drops req once
+// its own transfer has happened; the next item starts when both have, with
+// the DUT lane's rdata in req. The A2C_DST driver builds response n from the
+// DUT lane's request n, through request_fifo, and records its rdata and
+// delay; the model lane's request n gets the same rdata after the same
+// delay, and a model lane that reaches request n first waits until the DUT
+// lane has. Only the DUT lane's requests reach request_fifo. A responder
+// sequence that takes simulated time to answer holds only the DUT lane.
+// The replay log holds the end of the run phase while the model lane
+// catches up (a2c_replay_drain). model_cmp compares the transfers of the
+// two lanes in order: on the A2C_SRC role for their rdata, on the A2C_DST
+// role for their request data. What the DUT produces that is not compared:
+//   DUT dst port, A2C_SRC agent: `ack` delay
+//   DUT src port, A2C_DST agent: none
 package req_ack_uvm_pkg;
 
     import uvm_pkg::*;
@@ -59,8 +76,7 @@ package req_ack_uvm_pkg;
 
     class req_ack_config #(type data_t = logic, type rdata_t = logic) extends uvm_object;
         virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise. The agent has no
-        // Mode B operations yet and stops with A2C_CFG when it is set.
+        // The model DUT's pin set in Mode B; null otherwise.
         virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) model_vif;
         virtual a2c_clk_if                                       clk_vif;
         uvm_active_passive_enum                                  is_active = UVM_ACTIVE;
@@ -134,8 +150,30 @@ package req_ack_uvm_pkg;
     endclass : req_ack_responder_seq
 
     class req_ack_driver #(type data_t = logic, type rdata_t = logic)
-        extends uvm_driver #(req_ack_item#(data_t, rdata_t));
+        extends uvm_driver #(req_ack_item#(data_t, rdata_t)) implements a2c_replay_lanes;
+        typedef virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) vif_t;
+        typedef a2c_replay_log #(rdata_t) replay_t;
+        // LANE_REQUESTED: a lane that has seen req and has no response yet:
+        // a DUT lane whose responder has not answered, or a model lane
+        // waiting for the DUT lane.
+        typedef enum {LANE_IDLE, LANE_REQUESTED, LANE_WAIT, LANE_ACK} lane_state_e;
+
         req_ack_config#(data_t, rdata_t) cfg;
+        // dst role in Mode B only.
+        replay_t                         replay;
+
+        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
+        protected vif_t        lane[2];
+        protected int unsigned lanes;
+        protected lane_state_e state[2];
+        protected int unsigned starts[2];
+        // dst role: a fetch of the DUT lane's response is under way, and
+        // has returned it in req.
+        protected bit          fetching;
+        protected bit          fetched;
+        // The transactions each lane has completed, each counted at the
+        // drive point of its last clock, from which it cannot be withdrawn.
+        protected int unsigned done[2];
 
         `uvm_component_param_utils(req_ack_driver#(data_t, rdata_t))
 
@@ -143,7 +181,18 @@ package req_ack_uvm_pkg;
             super.new(name, parent);
         endfunction
 
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (cfg.model_vif == null || cfg.role != A2C_DST) return;
+            replay = replay_t::type_id::create("replay", this);
+            replay.driver  = this;
+            replay.clk_vif = cfg.clk_vif;
+        endfunction
+
         virtual task run_phase(uvm_phase phase);
+            lane[A2C_DUT_LANE] = cfg.vif;
+            lane[A2C_MODEL_LANE] = cfg.model_vif;
+            lanes = (cfg.model_vif != null) ? 2 : 1;
             if (cfg.role == A2C_SRC) begin
                 run_src();
             end else begin
@@ -151,60 +200,177 @@ package req_ack_uvm_pkg;
             end
         endtask
 
+        protected function void drive_req(bit r);
+            for (int l = 0; l < lanes; l++) lane[l].req <= r;
+        endfunction
+
         // Each loop iteration starts at a drive point. try_next_item lets
         // back-to-back requests go out on consecutive clocks, and req drops
         // on the first drive point with no item.
         protected virtual task run_src();
-            cfg.vif.req  <= 1'b0;
-            cfg.vif.data <= '0;
+            for (int l = 0; l < lanes; l++) begin
+                lane[l].req  <= 1'b0;
+                lane[l].data <= '0;
+            end
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
             forever begin
                 seq_item_port.try_next_item(req);
                 if (req == null) begin
-                    cfg.vif.req <= 1'b0;
+                    drive_req(1'b0);
                     cfg.clk_vif.drive_edge();
                     continue;
                 end
                 repeat (req.gap) begin
-                    cfg.vif.req <= 1'b0;
+                    drive_req(1'b0);
                     cfg.clk_vif.drive_edge();
                 end
-                cfg.vif.req  <= 1'b1;
-                cfg.vif.data <= req.data;
-                do cfg.clk_vif.sample_edge(); while (cfg.vif.ack !== 1'b1);
-                req.rdata = cfg.vif.rdata;
-                // The transfer happens at the rising edge before this drive point.
-                cfg.clk_vif.drive_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    lane[l].req  <= 1'b1;
+                    lane[l].data <= req.data;
+                end
+                wait_transfer();
                 seq_item_port.item_done();
+            end
+        endtask
+
+        // Returns at the drive point after the last lane's transfer, which
+        // is the rising edge before it, with the DUT lane's rdata in req. A
+        // lane whose transfer has happened holds req low from the next drive
+        // point on.
+        protected task wait_transfer();
+            bit          pending[2];
+            int unsigned left = lanes;
+            for (int l = 0; l < lanes; l++) pending[l] = 1'b1;
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    if (pending[l] && lane[l].ack === 1'b1) begin
+                        if (l == A2C_DUT_LANE) req.rdata = lane[l].rdata;
+                        pending[l] = 1'b0;
+                        left--;
+                    end
+                end
+                cfg.clk_vif.drive_edge();
+                if (left == 0) return;
+                for (int l = 0; l < lanes; l++) begin
+                    if (!pending[l]) lane[l].req <= 1'b0;
+                end
             end
         endtask
 
         // ack and rdata are driven for one clock per transfer, and rise only
         // after req has been sampled, so with no delay a transfer takes two
-        // clocks. rdata is zero while ack is low.
+        // clocks. rdata is zero while ack is low. One process serves every
+        // lane, taking the DUT lane first, so a model lane waiting on
+        // request n replays it on the clock the DUT lane takes its response.
         protected virtual task run_dst();
-            cfg.vif.ack   <= 1'b0;
-            cfg.vif.rdata <= '0;
+            int unsigned delay[2];
+            rdata_t      rdata[2];
+            bit          at_edge;
+            for (int l = 0; l < lanes; l++) begin
+                state[l] = LANE_IDLE;
+                lane[l].ack   <= 1'b0;
+                lane[l].rdata <= '0;
+            end
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
-                if (cfg.vif.req !== 1'b1) continue;
-                seq_item_port.get_next_item(req);
-                repeat (req.delay) cfg.clk_vif.drive_edge();
-                cfg.clk_vif.drive_edge();
-                cfg.vif.ack   <= 1'b1;
-                cfg.vif.rdata <= req.rdata;
-                cfg.clk_vif.drive_edge();
-                cfg.vif.ack   <= 1'b0;
-                cfg.vif.rdata <= '0;
-                seq_item_port.item_done();
+                for (int l = 0; l < lanes; l++) begin
+                    if (state[l] == LANE_IDLE && lane[l].req === 1'b1) begin
+                        state[l] = LANE_REQUESTED;
+                        starts[l]++;
+                    end
+                end
+                at_edge = 0;
+                if (state[A2C_DUT_LANE] == LANE_REQUESTED) begin
+                    fetch_response(at_edge);
+                    if (!at_edge) begin
+                        delay[A2C_DUT_LANE] = req.delay;
+                        rdata[A2C_DUT_LANE] = req.rdata;
+                        if (replay != null) replay.record(rdata[A2C_DUT_LANE], delay[A2C_DUT_LANE]);
+                        state[A2C_DUT_LANE] = LANE_WAIT;
+                    end
+                end
+                if (lanes == 2 && state[A2C_MODEL_LANE] == LANE_REQUESTED && replay.can_replay()) begin
+                    replay.replay(rdata[A2C_MODEL_LANE], delay[A2C_MODEL_LANE]);
+                    state[A2C_MODEL_LANE] = LANE_WAIT;
+                end
+                if (at_edge) cfg.clk_vif.skew_after_edge();
+                else cfg.clk_vif.drive_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    case (state[l])
+                        LANE_WAIT: begin
+                            if (delay[l] > 0) begin
+                                delay[l]--;
+                            end else begin
+                                lane[l].ack   <= 1'b1;
+                                lane[l].rdata <= rdata[l];
+                                state[l] = LANE_ACK;
+                                done[l]++;
+                            end
+                        end
+                        LANE_ACK: begin
+                            lane[l].ack   <= 1'b0;
+                            lane[l].rdata <= '0;
+                            state[l] = LANE_IDLE;
+                            if (l == A2C_DUT_LANE) seq_item_port.item_done();
+                        end
+                        default: ;
+                    endcase
+                end
             end
         endtask
+
+        // Waits for the DUT lane's response in req until the next rising
+        // edge, and returns at_edge set if the edge came first. The fetch
+        // runs in its own process and outlives the wait, so a responder that
+        // takes clocks to answer stalls only the DUT lane. Its response takes
+        // effect from the first drive point after it arrives, as it would
+        // with get_next_item() called in line.
+        protected task fetch_response(output bit at_edge);
+            if (!fetching) begin
+                fetching = 1;
+                fork
+                    begin
+                        seq_item_port.get_next_item(req);
+                        fetched = 1;
+                    end
+                join_none
+            end
+            fork
+                begin
+                    fork
+                        wait (fetched);
+                        @(cfg.clk_vif.cb);
+                    join_any
+                    disable fork;
+                end
+            join
+            at_edge = !fetched;
+            if (fetched) begin
+                fetched  = 0;
+                fetching = 0;
+            end
+        endtask
+
+        virtual function bit lane_busy(a2c_lane_e l);
+            return state[l] != LANE_IDLE;
+        endfunction
+
+        virtual function int unsigned lane_done(a2c_lane_e l);
+            return done[l];
+        endfunction
+
+        virtual function int unsigned lane_starts(a2c_lane_e l);
+            return starts[l];
+        endfunction
     endclass : req_ack_driver
 
     class req_ack_monitor #(type data_t = logic, type rdata_t = logic) extends uvm_monitor;
         req_ack_config#(data_t, rdata_t)                    cfg;
+        // The lane this monitor samples, cfg.vif or cfg.model_vif.
+        virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) vif;
         // One item per completed transfer, with data and rdata.
         uvm_analysis_port #(req_ack_item#(data_t, rdata_t)) ap;
         // One item per request, data only, on the clock the request is first
@@ -230,10 +396,10 @@ package req_ack_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
-                req   = cfg.vif.req;
-                ack   = cfg.vif.ack;
-                data  = cfg.vif.data;
-                rdata = cfg.vif.rdata;
+                req   = vif.req;
+                ack   = vif.ack;
+                data  = vif.data;
+                rdata = vif.rdata;
                 // A source waiting for ack must hold req and data until the transfer.
                 if (waiting && (req !== 1'b1 || data !== held)) begin
                     string what = (req !== 1'b1) ? "req dropped" : "data changed";
@@ -281,10 +447,9 @@ package req_ack_uvm_pkg;
         req_ack_driver#(data_t, rdata_t)    drv;
         req_ack_sequencer#(data_t, rdata_t) sqr;
         req_ack_monitor#(data_t, rdata_t)   mon;
-        // Always null, because the agent has no Mode B operations yet; the env
-        // names both on every port.
+        // Mode B only.
         req_ack_monitor#(data_t, rdata_t)   model_mon;
-        a2c_comparator_base                 model_cmp;
+        a2c_in_order_comparator #(item_t)   model_cmp;
 
         `uvm_component_param_utils(req_ack_agent#(data_t, rdata_t))
 
@@ -297,11 +462,15 @@ package req_ack_uvm_pkg;
             if (!uvm_config_db#(req_ack_config#(data_t, rdata_t))::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "req_ack_agent has no cfg")
             end
-            if (cfg.model_vif != null) begin
-                `uvm_fatal("A2C_CFG", $sformatf("%s: req_ack has no Mode B operations yet", cfg.port_name))
-            end
             mon = req_ack_monitor#(data_t, rdata_t)::type_id::create("mon", this);
             mon.cfg = cfg;
+            mon.vif = cfg.vif;
+            if (cfg.model_vif != null) begin
+                model_mon = req_ack_monitor#(data_t, rdata_t)::type_id::create("model_mon", this);
+                model_mon.cfg = cfg;
+                model_mon.vif = cfg.model_vif;
+                model_cmp = a2c_in_order_comparator#(item_t)::type_id::create("model_cmp", this);
+            end
             if (cfg.is_active != UVM_ACTIVE) return;
             drv = req_ack_driver#(data_t, rdata_t)::type_id::create("drv", this);
             drv.cfg = cfg;
@@ -315,6 +484,11 @@ package req_ack_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
+            if (model_cmp != null) begin
+                mon.ap.connect(model_cmp.dut_export);
+                model_mon.ap.connect(model_cmp.model_export);
+                if (drv != null && drv.replay != null) drv.replay.cmp = model_cmp;
+            end
             if (sqr == null) return;
             drv.seq_item_port.connect(sqr.seq_item_export);
             if (cfg.role == A2C_DST) begin

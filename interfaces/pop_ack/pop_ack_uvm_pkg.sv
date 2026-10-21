@@ -13,6 +13,23 @@
 // default_sequence; a test replaces it with a uvm_config_db set from higher
 // in the hierarchy or with a factory override. Pin timing follows
 // a2c_clk_if: drive at drive_edge(), sample at sample_edge().
+//
+// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// beside the DUT's and monitors it with model_mon. The A2C_SRC driver pops on
+// both lanes at one drive point, and each lane drops pop once its own
+// transfer has happened; the next item starts when both have, with the DUT
+// lane's rdata in req. The A2C_DST driver takes response n from its
+// sequencer for the DUT lane's pop n and records its rdata and delay; the
+// model lane's pop n gets the same rdata after the same delay, and a model
+// lane that reaches pop n first waits until the DUT lane has. A responder
+// sequence that takes simulated time to answer holds only the DUT lane.
+// The replay log holds the end of the run phase while the model lane
+// catches up (a2c_replay_drain). model_cmp compares the transfers of the
+// two lanes in order: on the A2C_SRC role for their rdata, on the A2C_DST
+// role for their count, since both lanes get the same rdata. What the DUT
+// produces that is not compared:
+//   DUT dst port, A2C_SRC agent: `ack` delay
+//   DUT src port, A2C_DST agent: none
 package pop_ack_uvm_pkg;
 
     import uvm_pkg::*;
@@ -57,8 +74,7 @@ package pop_ack_uvm_pkg;
 
     class pop_ack_config #(type rdata_t = logic) extends uvm_object;
         virtual pop_ack_if #(.rdata_t(rdata_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise. The agent has no
-        // Mode B operations yet and stops with A2C_CFG when it is set.
+        // The model DUT's pin set in Mode B; null otherwise.
         virtual pop_ack_if #(.rdata_t(rdata_t)) model_vif;
         virtual a2c_clk_if                      clk_vif;
         uvm_active_passive_enum                 is_active = UVM_ACTIVE;
@@ -100,8 +116,31 @@ package pop_ack_uvm_pkg;
         endtask
     endclass : pop_ack_responder_seq
 
-    class pop_ack_driver #(type rdata_t = logic) extends uvm_driver #(pop_ack_item#(rdata_t));
+    class pop_ack_driver #(type rdata_t = logic) extends uvm_driver #(pop_ack_item#(rdata_t))
+        implements a2c_replay_lanes;
+        typedef virtual pop_ack_if #(.rdata_t(rdata_t)) vif_t;
+        typedef a2c_replay_log #(rdata_t) replay_t;
+        // LANE_POPPED: a lane that has seen pop and has no response yet:
+        // a DUT lane whose responder has not answered, or a model lane
+        // waiting for the DUT lane.
+        typedef enum {LANE_IDLE, LANE_POPPED, LANE_WAIT, LANE_ACK} lane_state_e;
+
         pop_ack_config#(rdata_t) cfg;
+        // dst role in Mode B only.
+        replay_t                 replay;
+
+        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
+        protected vif_t        lane[2];
+        protected int unsigned lanes;
+        protected lane_state_e state[2];
+        protected int unsigned starts[2];
+        // dst role: a fetch of the DUT lane's response is under way, and
+        // has returned it in req.
+        protected bit          fetching;
+        protected bit          fetched;
+        // The transactions each lane has completed, each counted at the
+        // drive point of its last clock, from which it cannot be withdrawn.
+        protected int unsigned done[2];
 
         `uvm_component_param_utils(pop_ack_driver#(rdata_t))
 
@@ -109,7 +148,18 @@ package pop_ack_uvm_pkg;
             super.new(name, parent);
         endfunction
 
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (cfg.model_vif == null || cfg.role != A2C_DST) return;
+            replay = replay_t::type_id::create("replay", this);
+            replay.driver  = this;
+            replay.clk_vif = cfg.clk_vif;
+        endfunction
+
         virtual task run_phase(uvm_phase phase);
+            lane[A2C_DUT_LANE] = cfg.vif;
+            lane[A2C_MODEL_LANE] = cfg.model_vif;
+            lanes = (cfg.model_vif != null) ? 2 : 1;
             if (cfg.role == A2C_SRC) begin
                 run_src();
             end else begin
@@ -117,58 +167,171 @@ package pop_ack_uvm_pkg;
             end
         endtask
 
+        protected function void drive_pop(bit p);
+            for (int l = 0; l < lanes; l++) lane[l].pop <= p;
+        endfunction
+
         // Each loop iteration starts at a drive point. try_next_item lets
         // back-to-back pops go out on consecutive clocks, and pop drops on
         // the first drive point with no item.
         protected virtual task run_src();
-            cfg.vif.pop <= 1'b0;
+            drive_pop(1'b0);
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
             forever begin
                 seq_item_port.try_next_item(req);
                 if (req == null) begin
-                    cfg.vif.pop <= 1'b0;
+                    drive_pop(1'b0);
                     cfg.clk_vif.drive_edge();
                     continue;
                 end
                 repeat (req.gap) begin
-                    cfg.vif.pop <= 1'b0;
+                    drive_pop(1'b0);
                     cfg.clk_vif.drive_edge();
                 end
-                cfg.vif.pop <= 1'b1;
-                do cfg.clk_vif.sample_edge(); while (cfg.vif.ack !== 1'b1);
-                req.rdata = cfg.vif.rdata;
-                // The transfer happens at the rising edge before this drive point.
-                cfg.clk_vif.drive_edge();
+                drive_pop(1'b1);
+                wait_transfer();
                 seq_item_port.item_done();
+            end
+        endtask
+
+        // Returns at the drive point after the last lane's transfer, which
+        // is the rising edge before it, with the DUT lane's rdata in req. A
+        // lane whose transfer has happened holds pop low from the next drive
+        // point on.
+        protected task wait_transfer();
+            bit          pending[2];
+            int unsigned left = lanes;
+            for (int l = 0; l < lanes; l++) pending[l] = 1'b1;
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    if (pending[l] && lane[l].ack === 1'b1) begin
+                        if (l == A2C_DUT_LANE) req.rdata = lane[l].rdata;
+                        pending[l] = 1'b0;
+                        left--;
+                    end
+                end
+                cfg.clk_vif.drive_edge();
+                if (left == 0) return;
+                for (int l = 0; l < lanes; l++) begin
+                    if (!pending[l]) lane[l].pop <= 1'b0;
+                end
             end
         endtask
 
         // ack and rdata are driven for one clock per transfer, and rise only
         // after pop has been sampled, so with no delay a transfer takes two
-        // clocks. rdata is zero while ack is low.
+        // clocks. rdata is zero while ack is low. One process serves every
+        // lane, taking the DUT lane first, so a model lane waiting on
+        // pop n replays it on the clock the DUT lane takes its response.
         protected virtual task run_dst();
-            cfg.vif.ack   <= 1'b0;
-            cfg.vif.rdata <= '0;
+            int unsigned delay[2];
+            rdata_t      rdata[2];
+            bit          at_edge;
+            for (int l = 0; l < lanes; l++) begin
+                state[l] = LANE_IDLE;
+                lane[l].ack   <= 1'b0;
+                lane[l].rdata <= '0;
+            end
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
-                if (cfg.vif.pop !== 1'b1) continue;
-                seq_item_port.get_next_item(req);
-                repeat (req.delay) cfg.clk_vif.drive_edge();
-                cfg.clk_vif.drive_edge();
-                cfg.vif.ack   <= 1'b1;
-                cfg.vif.rdata <= req.rdata;
-                cfg.clk_vif.drive_edge();
-                cfg.vif.ack   <= 1'b0;
-                cfg.vif.rdata <= '0;
-                seq_item_port.item_done();
+                for (int l = 0; l < lanes; l++) begin
+                    if (state[l] == LANE_IDLE && lane[l].pop === 1'b1) begin
+                        state[l] = LANE_POPPED;
+                        starts[l]++;
+                    end
+                end
+                at_edge = 0;
+                if (state[A2C_DUT_LANE] == LANE_POPPED) begin
+                    fetch_response(at_edge);
+                    if (!at_edge) begin
+                        delay[A2C_DUT_LANE] = req.delay;
+                        rdata[A2C_DUT_LANE] = req.rdata;
+                        if (replay != null) replay.record(rdata[A2C_DUT_LANE], delay[A2C_DUT_LANE]);
+                        state[A2C_DUT_LANE] = LANE_WAIT;
+                    end
+                end
+                if (lanes == 2 && state[A2C_MODEL_LANE] == LANE_POPPED && replay.can_replay()) begin
+                    replay.replay(rdata[A2C_MODEL_LANE], delay[A2C_MODEL_LANE]);
+                    state[A2C_MODEL_LANE] = LANE_WAIT;
+                end
+                if (at_edge) cfg.clk_vif.skew_after_edge();
+                else cfg.clk_vif.drive_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    case (state[l])
+                        LANE_WAIT: begin
+                            if (delay[l] > 0) begin
+                                delay[l]--;
+                            end else begin
+                                lane[l].ack   <= 1'b1;
+                                lane[l].rdata <= rdata[l];
+                                state[l] = LANE_ACK;
+                                done[l]++;
+                            end
+                        end
+                        LANE_ACK: begin
+                            lane[l].ack   <= 1'b0;
+                            lane[l].rdata <= '0;
+                            state[l] = LANE_IDLE;
+                            if (l == A2C_DUT_LANE) seq_item_port.item_done();
+                        end
+                        default: ;
+                    endcase
+                end
             end
         endtask
+
+        // Waits for the DUT lane's response in req until the next rising
+        // edge, and returns at_edge set if the edge came first. The fetch
+        // runs in its own process and outlives the wait, so a responder that
+        // takes clocks to answer stalls only the DUT lane. Its response takes
+        // effect from the first drive point after it arrives, as it would
+        // with get_next_item() called in line.
+        protected task fetch_response(output bit at_edge);
+            if (!fetching) begin
+                fetching = 1;
+                fork
+                    begin
+                        seq_item_port.get_next_item(req);
+                        fetched = 1;
+                    end
+                join_none
+            end
+            fork
+                begin
+                    fork
+                        wait (fetched);
+                        @(cfg.clk_vif.cb);
+                    join_any
+                    disable fork;
+                end
+            join
+            at_edge = !fetched;
+            if (fetched) begin
+                fetched  = 0;
+                fetching = 0;
+            end
+        endtask
+
+        virtual function bit lane_busy(a2c_lane_e l);
+            return state[l] != LANE_IDLE;
+        endfunction
+
+        virtual function int unsigned lane_done(a2c_lane_e l);
+            return done[l];
+        endfunction
+
+        virtual function int unsigned lane_starts(a2c_lane_e l);
+            return starts[l];
+        endfunction
     endclass : pop_ack_driver
 
     class pop_ack_monitor #(type rdata_t = logic) extends uvm_monitor;
         pop_ack_config#(rdata_t)                    cfg;
+        // The lane this monitor samples, cfg.vif or cfg.model_vif.
+        virtual pop_ack_if #(.rdata_t(rdata_t))     vif;
         // One item per completed transfer, with rdata.
         uvm_analysis_port #(pop_ack_item#(rdata_t)) ap;
 
@@ -188,9 +351,9 @@ package pop_ack_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
-                pop   = cfg.vif.pop;
-                ack   = cfg.vif.ack;
-                rdata = cfg.vif.rdata;
+                pop   = vif.pop;
+                ack   = vif.ack;
+                rdata = vif.rdata;
                 // A source waiting for ack must hold pop until the transfer.
                 if (waiting && pop !== 1'b1) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: pop dropped before ack", cfg.port_name))
@@ -226,10 +389,9 @@ package pop_ack_uvm_pkg;
         pop_ack_driver#(rdata_t)                drv;
         uvm_sequencer #(pop_ack_item#(rdata_t)) sqr;
         pop_ack_monitor#(rdata_t)               mon;
-        // Always null, because the agent has no Mode B operations yet; the env
-        // names both on every port.
+        // Mode B only.
         pop_ack_monitor#(rdata_t)               model_mon;
-        a2c_comparator_base                     model_cmp;
+        a2c_in_order_comparator #(item_t)       model_cmp;
 
         `uvm_component_param_utils(pop_ack_agent#(rdata_t))
 
@@ -242,11 +404,15 @@ package pop_ack_uvm_pkg;
             if (!uvm_config_db#(pop_ack_config#(rdata_t))::get(this, "", "cfg", cfg)) begin
                 `uvm_fatal("A2C_CFG", "pop_ack_agent has no cfg")
             end
-            if (cfg.model_vif != null) begin
-                `uvm_fatal("A2C_CFG", $sformatf("%s: pop_ack has no Mode B operations yet", cfg.port_name))
-            end
             mon = pop_ack_monitor#(rdata_t)::type_id::create("mon", this);
             mon.cfg = cfg;
+            mon.vif = cfg.vif;
+            if (cfg.model_vif != null) begin
+                model_mon = pop_ack_monitor#(rdata_t)::type_id::create("model_mon", this);
+                model_mon.cfg = cfg;
+                model_mon.vif = cfg.model_vif;
+                model_cmp = a2c_in_order_comparator#(item_t)::type_id::create("model_cmp", this);
+            end
             if (cfg.is_active != UVM_ACTIVE) return;
             drv = pop_ack_driver#(rdata_t)::type_id::create("drv", this);
             drv.cfg = cfg;
@@ -262,6 +428,11 @@ package pop_ack_uvm_pkg;
         virtual function void connect_phase(uvm_phase phase);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
+            end
+            if (model_cmp != null) begin
+                mon.ap.connect(model_cmp.dut_export);
+                model_mon.ap.connect(model_cmp.model_export);
+                if (drv != null && drv.replay != null) drv.replay.cmp = model_cmp;
             end
         endfunction
     endclass : pop_ack_agent

@@ -11,7 +11,13 @@ generated `<block>_base_test`; a user span holding `<block>_smoke_test` with
 an empty run_body(); and the generated footer with `<block>_fail_test`. The
 base test creates the env through the factory as `<block>_tb_env`, waits for
 reset, runs run_body() and then waits for every counted output under one
-objection. In Mode B, which the env reads from a2c_dual_dut, each return of
+objection. It hands the env its clock stop and the drain's window, deadline,
+catch-up and cut setting through the config_db, each from its plusarg. A
+value a test sets in its constructor stands until a plusarg overrides it,
+the drain's included: only a drain window or deadline left at -1 takes the
+quiet window or output deadline, and a catch-up left at -1 is not set, so
+each replay log takes its own deadline. In
+Mode B, which the env reads from a2c_dual_dut, each return of
 wait_for_outputs() is a stable point for the model comparators. The fail test
 adds the missing transactions to the first counted output after the smoke
 stimulus, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
@@ -32,6 +38,11 @@ copy gives ubDut no model, so it keeps the fail test and has no model mismatch
 test. A fourth copy gives ubDut an apb master port, mst. The apb slave agent
 drains its replay log itself, so that copy's wait_for_outputs() ends in Mode B
 with the stable point alone, as every copy's does.
+
+The loopback simulates the template's base test too:
+common/systemVerilog/uvm/loopback/a2c_gen_base_test_lb_tests.svh holds
+render_tests() of it for a stand-in env between its RENDERED markers, and
+must match the template's current text.
 """
 
 import os
@@ -39,11 +50,12 @@ import shutil
 import sys
 import tempfile
 
-from _addrctl_helpers import test_dir
+from _addrctl_helpers import base_dir, test_dir
 from _tmp_helpers import remove_tree
 from test_build_manifest import parse_manifest
 import test_uvm_pkg_regmodel as regModel
 import test_uvm_register_view as regView
+from templates.systemVerilog import uvmTest
 
 
 NO_OUTPUT_EDITS = [
@@ -91,9 +103,27 @@ BASE_TEST = [
     'ubDut_tb_env env;',
     'int unsigned output_deadline_cycles = 200000;',
     'int unsigned quiet_cycles = 1000;',
+    'int unsigned clock_stop_cycles = 1000;',
+    'int          drain_quiet_cycles = -1;',
+    'int          drain_deadline_cycles = -1;',
+    'int          drain_catchup_cycles = -1;',
+    'bit          drain_cut_expected;',
     '`uvm_component_utils(ubDut_base_test)',
     'void\'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));',
     'void\'($value$plusargs("a2c_quiet_cycles=%d", quiet_cycles));',
+    'void\'($value$plusargs("a2c_clock_stop_cycles=%d", clock_stop_cycles));',
+    'if (drain_quiet_cycles < 0) drain_quiet_cycles = quiet_cycles;',
+    'if (drain_deadline_cycles < 0) drain_deadline_cycles = output_deadline_cycles;',
+    'void\'($value$plusargs("a2c_drain_quiet_cycles=%d", drain_quiet_cycles));',
+    'void\'($value$plusargs("a2c_drain_deadline_cycles=%d", drain_deadline_cycles));',
+    'void\'($value$plusargs("a2c_drain_catchup_cycles=%d", drain_catchup_cycles));',
+    'void\'($value$plusargs("a2c_drain_cut_expected=%d", drain_cut_expected));',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);',
+    'if (drain_catchup_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);',
+    'uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);',
     'env = ubDut_tb_env::type_id::create("env", this);',
     'virtual task run_phase(uvm_phase phase);',
     'phase.raise_objection(this);',
@@ -167,6 +197,10 @@ MISMATCH_TEST = [
 FOOTER = ['endpackage : ubDut_uvm_test_pkg', '`endif // UBDUT_UVM_TEST_PKG_SV']
 
 USER_LINE = '// a user line in the env span'
+
+LOOPBACK_COPY = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'loopback', 'a2c_gen_base_test_lb_tests.svh')
+LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env', 'ports': [],
+                'clocks': [{'vif': 'clk_vif'}]}
 
 
 def regions(path):
@@ -300,6 +334,20 @@ def check_master(project):
     return problems
 
 
+def check_loopback_copy(_project):
+    with open(LOOPBACK_COPY) as f:
+        text = f.read()
+    begin = '    // RENDERED BEGIN\n'
+    end = '    // RENDERED END\n'
+    if text.count(begin) != 1 or text.count(end) != 1:
+        return [f"{LOOPBACK_COPY} lacks one RENDERED BEGIN and one RENDERED END marker"]
+    copy = text[text.index(begin) + len(begin):text.index(end)]
+    rendered = uvmTest.render_tests(LOOPBACK_UVM).lstrip('\n')
+    if copy != rendered:
+        return [f"{LOOPBACK_COPY} holds a stale render of the base test; replace the span between its markers with\n{rendered}"]
+    return []
+
+
 def run_all_tests():
     print("\n" + "=" * 70)
     print("UVM TEST PACKAGE SCAFFOLD")
@@ -310,7 +358,8 @@ def run_all_tests():
         for name, check in (('one test package for two variants, kept across make gen', check_two_variants),
                             ('no fail test without a counted output', check_no_output),
                             ('no model mismatch test without a model', check_no_model),
-                            ('no generated drain for an apb master port', check_master)):
+                            ('no generated drain for an apb master port', check_master),
+                            ('the loopback simulates the current base test', check_loopback_copy)):
             problems = check(os.path.join(tmp, check.__name__))
             for problem in problems:
                 print(f"  FAIL: {name}: {problem}")

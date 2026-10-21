@@ -32,6 +32,59 @@ package a2c_uvm_pkg;
         return "model";
     endfunction
 
+    // The config_db entry for field of c that uvm_config_db#(T)::get() would
+    // return if every entry had type T: of the entries whose scope matches
+    // c, those of the highest precedence, and of them the one set last.
+    // During build_phase a set's precedence falls with the setter's depth,
+    // so a test's set beats its env's. How specific a scope is plays no
+    // part, so a later set for "env*" beats an earlier one for "env.agent"
+    // from the same component. null when nothing matches.
+    function automatic uvm_resource_base a2c_config_lookup(uvm_component c, string field);
+        uvm_resource_pool            rp = uvm_resource_pool::get();
+        uvm_resource_types::rsrc_q_t q  = rp.lookup_regex_names(c.get_full_name(), field, null);
+        return rp.get_highest_precedence(q);
+    endfunction
+
+    // Reads the integer knob field of c from the config_db, set as int
+    // unsigned, as the generated base test does, as int, or as
+    // uvm_config_int, the uvm_bitstream_t of +uvm_set_config_int. The type
+    // does not change which entry wins (a2c_config_lookup()), so a set of
+    // one type overrides a set of another exactly as it would one of its
+    // own. A winning entry of any other type is ignored with an A2C_CFG
+    // warning. Leaves value alone and returns 0 when nothing is read.
+    function automatic bit a2c_get_config_int(uvm_component c, string field, ref int unsigned value);
+        uvm_resource_base                r = a2c_config_lookup(c, field);
+        uvm_resource#(int unsigned)      as_uint;
+        uvm_resource#(int)               as_int;
+        uvm_resource#(uvm_bitstream_t)   as_bits;
+        if (r == null) return 0;
+        if ($cast(as_uint, r)) begin
+            value = as_uint.read(c);
+        end else if ($cast(as_int, r)) begin
+            value = as_int.read(c);
+        end else if ($cast(as_bits, r)) begin
+            value = as_bits.read(c);
+        end else begin
+            `uvm_warning("A2C_CFG", $sformatf("%s: %s is set in the config_db as a type other than int unsigned, int or uvm_config_int, and is ignored",
+                                              c.get_full_name(), field))
+            return 0;
+        end
+        return 1;
+    endfunction
+
+    // As a2c_get_config_int() for a flag, with bit as a fourth type; any
+    // non-zero value sets the flag.
+    function automatic void a2c_get_config_bit(uvm_component c, string field, ref bit value);
+        uvm_resource_base  r = a2c_config_lookup(c, field);
+        uvm_resource#(bit) as_bit;
+        int unsigned       n;
+        if (r != null && $cast(as_bit, r)) begin
+            value = as_bit.read(c);
+        end else if (a2c_get_config_int(c, field, n)) begin
+            value = (n != 0);
+        end
+    endfunction
+
     `uvm_analysis_imp_decl(_a2c_dut)
     `uvm_analysis_imp_decl(_a2c_model)
 
@@ -52,8 +105,12 @@ package a2c_uvm_pkg;
     // model_export is an A2C_CFG error. The base class holds everything but
     // the exports, so a2c_midstream_guard can list counters of any item type.
     virtual class a2c_txn_counter_base extends uvm_component;
-        string port_name = "";
-        bit    dual = 0;
+        string       port_name = "";
+        bit          dual = 0;
+        // A clock with no edge for this many of its periods has stopped. A
+        // generated base test sets it from +a2c_clock_stop_cycles through
+        // a2c_clock_stop_cycles in the config_db.
+        int unsigned clock_stop_cycles = 1000;
 
         // Indexed by a2c_lane_e.
         protected int unsigned expected[2];
@@ -63,6 +120,11 @@ package a2c_uvm_pkg;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            void'(a2c_get_config_int(this, "a2c_clock_stop_cycles", clock_stop_cycles));
         endfunction
 
         protected function int unsigned lanes();
@@ -124,18 +186,24 @@ package a2c_uvm_pkg;
         // After a report the lane's expected count is set to its received
         // count, so a later wait_for_count() or check_phase does not report
         // the same transactions again. The quiet window starts once every
-        // lane has its count.
+        // lane has its count. A clock with no edge for clock_stop_cycles
+        // periods has stopped: a shortfall is reported then, and a quiet
+        // window ends.
         task wait_for_count(virtual a2c_clk_if clk_vif, int unsigned deadline_cycles, int unsigned quiet_cycles);
             int unsigned cycles = 0;
             bit          failed = 0;
-            while (outstanding() > 0 && cycles < deadline_cycles) begin
-                clk_vif.sample_edge();
-                cycles++;
+            bit          running = 1;
+            string       why;
+            while (outstanding() > 0 && cycles < deadline_cycles && running) begin
+                clk_vif.next_sample(clock_stop_cycles, running);
+                if (running) cycles++;
             end
+            if (running) why = $sformatf("deadline of %0d clocks passed", deadline_cycles);
+            else why = $sformatf("the clock stopped after %0d clocks", cycles);
             for (int lane = 0; lane < lanes(); lane++) begin
                 if (received[lane] < expected[lane]) begin
-                    `uvm_error("A2C_TXN_COUNT", $sformatf("%s: deadline of %0d clocks passed: expected %0d transactions, received %0d (%0d missing)",
-                                                      where(lane), deadline_cycles, expected[lane], received[lane],
+                    `uvm_error("A2C_TXN_COUNT", $sformatf("%s: %s: expected %0d transactions, received %0d (%0d missing)",
+                                                      where(lane), why, expected[lane], received[lane],
                                                       expected[lane] - received[lane]))
                     missing[lane] += expected[lane] - received[lane];
                     expected[lane] = received[lane];
@@ -143,7 +211,7 @@ package a2c_uvm_pkg;
                 end
             end
             if (failed) return;
-            repeat (quiet_cycles) clk_vif.sample_edge();
+            for (int unsigned c = 0; c < quiet_cycles && running; c++) clk_vif.next_sample(clock_stop_cycles, running);
             for (int lane = 0; lane < lanes(); lane++) begin
                 if (received[lane] > expected[lane]) begin
                     `uvm_error("A2C_TXN_COUNT", $sformatf("%s: by the end of the quiet window received %0d transactions, expected %0d (%0d extra)",
@@ -225,6 +293,11 @@ package a2c_uvm_pkg;
     // stable_point() called from the block's own event. The env sets counted
     // on a port whose a2c_txn_counter already reports a missing or extra
     // transaction, so check_phase() does not report the unpaired items again.
+    //
+    // cut(s) ends the comparison after pair s, for a run that
+    // a2c_replay_drain ends after transaction s, and uncut() undoes it. A
+    // comparator a replay log drives must override both; this cut() stops
+    // the run with A2C_CFG, so a comparator cannot ignore a cut by omission.
     virtual class a2c_comparator_base extends uvm_component;
         int unsigned midstream_beats = 64;
         int unsigned max_reported = 10;
@@ -246,6 +319,14 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function void stable_point();
+        endfunction
+
+        virtual function void cut(int unsigned s);
+            `uvm_fatal("A2C_CFG", $sformatf("%s: %s does not override cut(), which the end-of-test drain calls to end the comparison after pair %0d",
+                                            get_full_name(), get_type_name(), s))
+        endfunction
+
+        virtual function void uncut();
         endfunction
 
         virtual function void open_midstream_window();
@@ -312,15 +393,27 @@ package a2c_uvm_pkg;
     // check_phase() reports the items either side has left unpaired as
     // A2C_MODEL_CMP, unless counted is set. A subclass that overrides key()
     // pairs in order per key instead, for a protocol that orders only within
-    // an ID, such as AXI; the key also appears in the mismatch message.
+    // an ID, such as AXI; the key also appears in the mismatch message. After
+    // cut(s) each side's items after its first s are held, never compared,
+    // and dropped at the end of the test unless uncut() releases them.
     class a2c_in_order_comparator #(type T = uvm_sequence_item) extends a2c_comparator_base;
         uvm_analysis_imp_a2c_dut #(T, a2c_in_order_comparator#(T))   dut_export;
         uvm_analysis_imp_a2c_model #(T, a2c_in_order_comparator#(T)) model_export;
 
+        // An item and its place in its side's arrival order, from 1.
+        typedef struct {
+            T            t;
+            int unsigned n;
+        } entry_t;
+
         // Items waiting for their pair, per key. One side's queue for a key
         // is empty whenever the other side's is not.
-        protected T dut_q[string][$];
-        protected T model_q[string][$];
+        protected entry_t dut_q[string][$];
+        protected entry_t model_q[string][$];
+        // Indexed by a2c_lane_e: the items after the cut, in arrival order.
+        protected entry_t held[2][$];
+        // The pair the comparison ends after, or 0.
+        protected int unsigned limit;
 
         `uvm_component_param_utils(a2c_in_order_comparator#(T))
 
@@ -335,30 +428,80 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function void write_a2c_dut(T t);
-            string k = key(t);
+            entry_t e;
             seen[A2C_DUT_LANE]++;
-            if (model_q.exists(k) && model_q[k].size() > 0) compare_pair(t, model_q[k].pop_front(), k);
-            else dut_q[k].push_back(t);
+            e.t = t;
+            e.n = seen[A2C_DUT_LANE];
+            if (limit != 0 && e.n > limit) held[A2C_DUT_LANE].push_back(e);
+            else pair_dut(e);
         endfunction
 
         virtual function void write_a2c_model(T t);
-            string k = key(t);
+            entry_t e;
             seen[A2C_MODEL_LANE]++;
-            if (dut_q.exists(k) && dut_q[k].size() > 0) compare_pair(dut_q[k].pop_front(), t, k);
-            else model_q[k].push_back(t);
+            e.t = t;
+            e.n = seen[A2C_MODEL_LANE];
+            if (limit != 0 && e.n > limit) held[A2C_MODEL_LANE].push_back(e);
+            else pair_model(e);
         endfunction
 
-        protected function void compare_pair(T dut, T model, string k);
+        protected function void pair_dut(entry_t e);
+            string  k = key(e.t);
+            entry_t m;
+            if (model_q.exists(k) && model_q[k].size() > 0) begin
+                m = model_q[k].pop_front();
+                compare_pair(e.t, m.t, k);
+            end else begin
+                dut_q[k].push_back(e);
+            end
+        endfunction
+
+        protected function void pair_model(entry_t e);
+            string  k = key(e.t);
+            entry_t d;
+            if (dut_q.exists(k) && dut_q[k].size() > 0) begin
+                d = dut_q[k].pop_front();
+                compare_pair(d.t, e.t, k);
+            end else begin
+                model_q[k].push_back(e);
+            end
+        endfunction
+
+        // Each key's queue holds its side's items in arrival order, so the
+        // items after s are at the back of each.
+        protected function void hold_after(ref entry_t q[string][$], input a2c_lane_e lane, input int unsigned s);
+            entry_t later[$];
+            foreach (q[k]) begin
+                while (q[k].size() > 0 && q[k][q[k].size() - 1].n > s) later.push_back(q[k].pop_back());
+            end
+            later.sort with (item.n);
+            held[lane] = {later, held[lane]};
+        endfunction
+
+        virtual function void cut(int unsigned s);
+            limit = s;
+            hold_after(dut_q, A2C_DUT_LANE, s);
+            hold_after(model_q, A2C_MODEL_LANE, s);
+        endfunction
+
+        virtual function void uncut();
+            limit = 0;
+            while (held[A2C_DUT_LANE].size() > 0) pair_dut(held[A2C_DUT_LANE].pop_front());
+            while (held[A2C_MODEL_LANE].size() > 0) pair_model(held[A2C_MODEL_LANE].pop_front());
+        endfunction
+
+        // A subclass may hold a pair and check it when a later one arrives.
+        protected virtual function void compare_pair(T dut, T model, string k);
             check_pair(dut.compare(model), dut, model, k);
         endfunction
 
-        protected function void report_unpaired(string side, T q[string][$]);
+        protected function void report_unpaired(string side, entry_t q[string][$]);
             int unsigned n = 0;
             string       first = "";
             string       first_key = "";
             foreach (q[k]) begin
                 if (q[k].size() > 0 && first == "") begin
-                    first     = q[k][0].convert2string();
+                    first     = q[k][0].t.convert2string();
                     first_key = k;
                 end
                 n += q[k].size();
@@ -580,21 +723,218 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_reg_write_subscriber
 
+    // What a Mode B responder driver tells its a2c_replay_log about the two
+    // lanes it serves, for the end-of-test drain. lane_starts() and
+    // lane_busy() must change away from the rising edge of the log's
+    // clk_vif, at the falling edge or the drive point, as the built-in
+    // drivers do: the drain reads them at the rising edge. A driver that
+    // counts in an @(posedge clk) process races the drain, which can end in
+    // that time step before the count moves and leave a false A2C_REPLAY.
+    interface class a2c_replay_lanes;
+        // Whether the lane is inside a transaction, from the clock it
+        // starts.
+        pure virtual function bit lane_busy(a2c_lane_e l);
+        // The transactions the lane has started so far.
+        pure virtual function int unsigned lane_starts(a2c_lane_e l);
+        // The transactions the lane has completed so far.
+        pure virtual function int unsigned lane_done(a2c_lane_e l);
+    endclass : a2c_replay_lanes
+
+    typedef class a2c_replay_drain;
+
+    // What a2c_replay_drain reads of an a2c_replay_log, whatever its
+    // response type.
+    virtual class a2c_replay_log_base extends uvm_component;
+        a2c_replay_lanes    driver;
+        virtual a2c_clk_if  clk_vif;
+        // The agent's model_cmp, which a cut also cuts.
+        a2c_comparator_base cmp;
+        // In cycles of clk_vif.
+        int unsigned        drain_quiet_cycles = 1000;
+        int unsigned        drain_deadline_cycles = 200000;
+        // The clocks the lanes have, after a cut, to complete the
+        // transactions it keeps. Below 0 it takes drain_deadline_cycles.
+        int                 drain_catchup_cycles = -1;
+        int unsigned        clock_stop_cycles = 1000;
+        // Reports a cut as UVM_INFO, not an A2C_CUT warning, for a test
+        // whose ports are meant to stay busy to the end.
+        bit                 drain_cut_expected;
+        // Indexed by a2c_lane_e: lane_starts() when the last drain ended, so
+        // a run phase that resumes drains again when a lane has started a
+        // transaction since.
+        int unsigned        starts_at_drain[2];
+        // Clocks since the DUT lane last started a transaction. The drain
+        // counts them, and after a drain that cut the log goes on counting
+        // them until the next drain starts.
+        int unsigned        since_start;
+
+        protected int unsigned replayed;
+        // The transaction the model lane waits for, counted from 0, or -1.
+        protected int          waiting = -1;
+        // The transactions the run keeps when the drain cut it, or 0.
+        protected int unsigned cut_at;
+        // Whether the drain cut the log on its first clock because its DUT
+        // lane had not paused since an earlier drain cut it.
+        protected bit          recut;
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        // A generated base test sets these on every log through the
+        // config_db as int unsigned, and the flag as bit, from
+        // +a2c_drain_quiet_cycles, +a2c_drain_deadline_cycles,
+        // +a2c_drain_catchup_cycles, +a2c_clock_stop_cycles and
+        // +a2c_drain_cut_expected. A test overrides one log's in its own
+        // build_phase(), after super.build_phase(), on the log's path, as
+        // int unsigned, int or uvm_config_int, with the config_db's own
+        // precedence whatever the type (a2c_get_config_int()); a
+        // +uvm_set_config_int on the command line works too.
+        virtual function void build_phase(uvm_phase phase);
+            int unsigned catchup;
+            super.build_phase(phase);
+            void'(a2c_get_config_int(this, "a2c_drain_quiet_cycles", drain_quiet_cycles));
+            void'(a2c_get_config_int(this, "a2c_drain_deadline_cycles", drain_deadline_cycles));
+            if (a2c_get_config_int(this, "a2c_drain_catchup_cycles", catchup)) drain_catchup_cycles = catchup;
+            void'(a2c_get_config_int(this, "a2c_clock_stop_cycles", clock_stop_cycles));
+            a2c_get_config_bit(this, "a2c_drain_cut_expected", drain_cut_expected);
+        endfunction
+
+        function int unsigned catchup_cycles();
+            return (drain_catchup_cycles < 0) ? drain_deadline_cycles : drain_catchup_cycles;
+        endfunction
+
+        // A log with no clk_vif stays out of the drain, as the drain could
+        // not watch it.
+        virtual function void start_of_simulation_phase(uvm_phase phase);
+            super.start_of_simulation_phase(phase);
+            if (driver == null) return;
+            if (drain_deadline_cycles < drain_quiet_cycles) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: drain_deadline_cycles (+a2c_drain_deadline_cycles), %0d, is below drain_quiet_cycles (+a2c_drain_quiet_cycles), %0d, so the log can never be quiet for its window before the deadline",
+                                                get_full_name(), drain_deadline_cycles, drain_quiet_cycles))
+            end
+            if (clk_vif == null) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: the replay log has no clk_vif, so the end-of-test drain cannot watch it", get_full_name()))
+                return;
+            end
+            a2c_replay_drain::register(this);
+        endfunction
+
+        // The responses recorded and not yet replayed.
+        pure virtual function int unsigned pending();
+
+        // Whether the model lane's last can_replay() found its transaction
+        // unrecorded, so the model lane leads and waits for the DUT lane.
+        function bit model_waiting();
+            return waiting >= 0;
+        endfunction
+
+        // Neither lane is inside a transaction, no recorded response waits
+        // for the model lane, and the model lane waits for no record.
+        function bit idle();
+            return pending() == 0 && !model_waiting() && !driver.lane_busy(A2C_DUT_LANE) && !driver.lane_busy(A2C_MODEL_LANE);
+        endfunction
+
+        function string lane_counts();
+            return $sformatf("DUT lane %0d started, %0d done; model lane %0d started, %0d done", driver.lane_starts(A2C_DUT_LANE),
+                             driver.lane_done(A2C_DUT_LANE), driver.lane_starts(A2C_MODEL_LANE), driver.lane_done(A2C_MODEL_LANE));
+        endfunction
+
+        // What keeps the log from settling, for the drain's A2C_DRAIN
+        // warnings.
+        function string unsettled();
+            string why = "";
+            if (cut_at != 0) return $sformatf("the lanes have not both completed the %0d transactions the cut keeps; %s", cut_at, lane_counts());
+            if (model_waiting()) why = $sformatf("the model lane waits for transaction %0d, which the DUT lane has not recorded", waiting + 1);
+            if (pending() > 0) begin
+                if (why != "") why = {why, ", and "};
+                why = {why, $sformatf("%0d transactions the DUT lane recorded wait for the model lane", pending())};
+            end
+            if (why == "") begin
+                why = $sformatf("the lanes were never idle for drain_quiet_cycles (+a2c_drain_quiet_cycles), %0d clocks, in a row",
+                                drain_quiet_cycles);
+            end
+            return {why, "; ", lane_counts()};
+        endfunction
+
+        // Keeps the transactions the DUT lane has started, on both lanes,
+        // and drops the later ones of either lane at the end of the test.
+        function void cut(bit first_clock);
+            cut_at = driver.lane_starts(A2C_DUT_LANE);
+            recut  = first_clock;
+            if (cmp != null) cmp.cut(cut_at);
+        endfunction
+
+        function void uncut();
+            cut_at = 0;
+            recut  = 0;
+            if (cmp != null) cmp.uncut();
+        endfunction
+
+        function int unsigned get_cut();
+            return cut_at;
+        endfunction
+
+        function bit cut_reached();
+            return cut_at != 0 && driver.lane_done(A2C_DUT_LANE) >= cut_at && driver.lane_done(A2C_MODEL_LANE) >= cut_at;
+        endfunction
+
+        // Only the end of the run phase drains. UVM 1.2 calls the run
+        // phase's phase_ready_to_end() only once the runtime phases running
+        // beside it, main_phase() among them, have ended too, so a
+        // hand-written test that objects only in main_phase() still drains,
+        // from its drop when the phases after main_phase() hold no
+        // objection (push_ack_mode_b_dst_main_phase_test).
+        virtual function void phase_ready_to_end(uvm_phase phase);
+            super.phase_ready_to_end(phase);
+            if (driver == null || phase.get_imp() != uvm_run_phase::get()) return;
+            a2c_replay_drain::request(phase, this);
+        endfunction
+
+        // A cut that a lane did not reach is an A2C_REPLAY error, and the
+        // transactions a cut drops an A2C_CUT warning, or UVM_INFO with
+        // drain_cut_expected set.
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned dropped[2];
+            string       what;
+            super.check_phase(phase);
+            if (cut_at == 0) return;
+            if (!cut_reached()) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it in the %0d clocks after the cut (drain_catchup_cycles, +a2c_drain_catchup_cycles): %s",
+                                                   get_full_name(), cut_at, catchup_cycles(), lane_counts()))
+            end
+            foreach (dropped[l]) begin
+                int unsigned n = driver.lane_starts(a2c_lane_e'(l));
+                dropped[l] = (n > cut_at) ? n - cut_at : 0;
+            end
+            what = $sformatf("%s: the drain cut the run after pair %0d; %0d DUT lane and %0d model lane transactions after it go unchecked",
+                             get_full_name(), cut_at, dropped[A2C_DUT_LANE], dropped[A2C_MODEL_LANE]);
+            if (dropped[A2C_DUT_LANE] + dropped[A2C_MODEL_LANE] == 0) begin
+                `uvm_info("A2C_CUT", what, UVM_LOW)
+            end else if (drain_cut_expected) begin
+                `uvm_info("A2C_CUT", {what, "; drain_cut_expected (+a2c_drain_cut_expected) is set"}, UVM_LOW)
+            end else if (recut) begin
+                `uvm_warning("A2C_CUT", {what, ". An earlier drain cut the run, and the DUT lane had not paused for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks since, so this drain cut it again on its first clock; set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy"})
+            end else begin
+                `uvm_warning("A2C_CUT", {what, ". The DUT lane did not pause for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks before the deadline; lower +a2c_drain_deadline_cycles (drain_deadline_cycles) to cut sooner, or set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy"})
+            end
+        endfunction
+    endclass : a2c_replay_log_base
+
     // Lets one responder serve both lanes of a Mode B port from one shared
     // model. The DUT lane applies each transaction and record()s its
     // response and delay; the model lane replays them in order and never
-    // applies a transaction's effect.
-    class a2c_replay_log #(type T = uvm_sequence_item) extends uvm_component;
+    // applies a transaction's effect. A driver sets driver and clk_vif, and
+    // a2c_replay_drain then holds the end of the run phase while the model
+    // lane catches up.
+    class a2c_replay_log #(type T = uvm_sequence_item) extends a2c_replay_log_base;
         typedef struct {
             T            rsp;
             int unsigned delay;
         } record_t;
 
         // Recorded and not yet replayed, oldest first.
-        protected record_t     records[$];
-        protected int unsigned replayed;
-        // The transaction the model lane waits for, or -1.
-        protected int          waiting = -1;
+        protected record_t records[$];
 
         `uvm_component_param_utils(a2c_replay_log#(T))
 
@@ -603,18 +943,14 @@ package a2c_uvm_pkg;
         endfunction
 
         function void record(T rsp, int unsigned delay);
-            records.push_back('{rsp: rsp, delay: delay});
+            record_t r;
+            r.rsp   = rsp;
+            r.delay = delay;
+            records.push_back(r);
         endfunction
 
-        // The responses recorded and not yet replayed.
-        function int unsigned pending();
+        virtual function int unsigned pending();
             return records.size();
-        endfunction
-
-        // Whether the model lane's last can_replay() found its transaction
-        // unrecorded, so the model lane leads and waits for the DUT lane.
-        function bit model_waiting();
-            return waiting >= 0;
         endfunction
 
         // Whether the model lane's next transaction is recorded. Until it
@@ -629,7 +965,7 @@ package a2c_uvm_pkg;
         function void replay(output T rsp, output int unsigned delay);
             if (records.size() == 0) begin
                 `uvm_fatal("A2C_REPLAY", $sformatf("%s: the model lane replays transaction %0d, which the DUT lane has not recorded",
-                                                   get_full_name(), replayed))
+                                                   get_full_name(), replayed + 1))
             end
             rsp   = records[0].rsp;
             delay = records[0].delay;
@@ -637,17 +973,253 @@ package a2c_uvm_pkg;
             replayed++;
         endfunction
 
+        // A cut log's records and wait past the cut go unchecked, and the
+        // base reports those before it.
         virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (cut_at != 0) return;
             if (records.size() > 0) begin
                 `uvm_error("A2C_REPLAY", $sformatf("%s: end of test with %0d responses the DUT lane recorded and the model lane never replayed, from transaction %0d",
-                                               get_full_name(), records.size(), replayed))
+                                               get_full_name(), records.size(), replayed + 1))
             end
             if (waiting >= 0) begin
                 `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane waited for transaction %0d, which the DUT lane never recorded",
-                                               get_full_name(), waiting))
+                                               get_full_name(), waiting + 1))
             end
         endfunction
     endclass : a2c_replay_log
+
+    // The one end-of-test drain every a2c_replay_log shares, so ports that
+    // keep each other busy end together. Each time the run phase's last
+    // objection drops, UVM calls phase_ready_to_end() on every log, and the
+    // first call starts a drain: always the first time, and later only when
+    // a lane has started a transaction since the last drain ended, because
+    // every drain ends with each log settled, cut or given up. A drain
+    // undoes the cuts of the one before it, as the run phase has resumed. It
+    // watches each log at the rising edges of its own clk_vif, when no
+    // driver moves, counts the log's quiet window and deadline in those
+    // clocks, and drops once every log has settled or been given up:
+    //   - a log settles once it has been idle() for drain_quiet_cycles
+    //     clocks in a row with no lane starting a transaction, so a stream
+    //     that pauses and then ends late is checked in full;
+    //   - a log not settled at drain_deadline_cycles whose DUT lane started
+    //     a transaction in its last drain_quiet_cycles clocks, as traffic
+    //     that never pauses does, is cut after the transactions the DUT lane
+    //     has started then. It settles once both lanes have completed them,
+    //     and is given up if they have not within drain_catchup_cycles
+    //     clocks more, which its check_phase() reports as A2C_REPLAY. A log
+    //     the last drain cut, whose DUT lane has not gone drain_quiet_cycles
+    //     clocks without starting a transaction since, is cut on the first
+    //     clock instead of at the deadline;
+    //   - any other log not settled at its deadline is given up with an
+    //     A2C_DRAIN warning, and its check_phase() reports what is left;
+    //   - a log whose clock has not risen for clock_stop_cycles periods and
+    //     a half has a stopped clock. It settles if it is idle() and not
+    //     cut, and is otherwise given up with an A2C_DRAIN warning. If the
+    //     clock of a settled log rises again, the drain watches the log
+    //     again from that edge, with a new quiet window and deadline. A log
+    //     given up on a stopped clock is not watched again when the clock
+    //     resumes: its A2C_DRAIN warning is already out and cannot be taken
+    //     back, its check_phase() reports what the lanes have left by the
+    //     end of the test, and the drain's end must not hang on a clock
+    //     that may never return.
+    class a2c_replay_drain;
+        protected static a2c_replay_log_base logs[$];
+        protected static bit                 running;
+        protected static bit                 drained;
+        // The drains started, so a log's flow count stops at the next one.
+        protected static int unsigned        drains;
+        // Indexed as logs, for the drain running.
+        protected static bit                 settled[];
+        protected static bit                 given_up[];
+        // Each lane's lane_starts() at the watcher's last update.
+        protected static int unsigned        seen_starts[][2];
+        // Counts the watchers' updates, so the drain wakes on each.
+        protected static int unsigned        updates;
+
+        static function void register(a2c_replay_log_base log);
+            logs.push_back(log);
+        endfunction
+
+        static function void request(uvm_phase phase, a2c_replay_log_base log);
+            if (running || !needed()) return;
+            running = 1;
+            phase.raise_objection(log, "the model lanes are draining");
+            fork
+                drain(phase, log);
+            join_none
+        endfunction
+
+        protected static function bit needed();
+            if (!drained) return 1;
+            foreach (logs[i]) begin
+                for (int l = 0; l < 2; l++) begin
+                    if (logs[i].driver.lane_starts(a2c_lane_e'(l)) != logs[i].starts_at_drain[l]) return 1;
+                end
+            end
+            return 0;
+        endfunction
+
+        // Whether a lane of log i has started a transaction since its
+        // watcher's last update.
+        protected static function bit started(int unsigned i);
+            for (int l = 0; l < 2; l++) begin
+                if (logs[i].driver.lane_starts(a2c_lane_e'(l)) != seen_starts[i][l]) return 1;
+            end
+            return 0;
+        endfunction
+
+        protected static function void update(int unsigned i);
+            for (int l = 0; l < 2; l++) seen_starts[i][l] = logs[i].driver.lane_starts(a2c_lane_e'(l));
+            updates++;
+        endfunction
+
+        // The drain wakes on a watcher's update and reads every settled[] in
+        // that time step, before the watchers of other logs whose clocks rise
+        // then may have run, and a driver may have started a transaction at
+        // the falling edge before. So a log settled and not cut must still be
+        // idle(), with no start since its watcher looked, for the drain to
+        // end; otherwise the drain waits for that watcher's update.
+        protected static function bit still_settled(int unsigned i);
+            if (logs[i].get_cut() != 0) return 1;
+            return logs[i].idle() && !started(i);
+        endfunction
+
+        protected static function void give_up(int unsigned i);
+            settled[i]  = 0;
+            given_up[i] = 1;
+            update(i);
+        endfunction
+
+        // Returns whether the log settled.
+        protected static function bit clock_stopped(int unsigned i);
+            if (logs[i].get_cut() == 0 && logs[i].idle()) begin
+                settled[i] = 1;
+                update(i);
+                return 1;
+            end
+            `uvm_warning_context("A2C_DRAIN", $sformatf("the clock stopped before the log settled: %s", logs[i].unsettled()), logs[i])
+            give_up(i);
+            return 0;
+        endfunction
+
+        protected static function void count_start(a2c_replay_log_base log, ref int unsigned starts);
+            log.since_start = (log.driver.lane_starts(A2C_DUT_LANE) != starts) ? 0 : log.since_start + 1;
+            starts = log.driver.lane_starts(A2C_DUT_LANE);
+        endfunction
+
+        protected static task watch(int unsigned i, bit recut);
+            a2c_replay_log_base log = logs[i];
+            int unsigned        quiet = log.drain_quiet_cycles;
+            int unsigned        stop = log.clock_stop_cycles;
+            int unsigned        deadline = recut ? 1 : log.drain_deadline_cycles;
+            int unsigned        cycles = 0;
+            int unsigned        idle = 0;
+            int unsigned        starts = log.driver.lane_starts(A2C_DUT_LANE);
+            bit                 ticking;
+            if (!recut) log.since_start = quiet;
+            forever begin
+                log.clk_vif.next_rise(stop, ticking);
+                if (!ticking) begin
+                    if (!clock_stopped(i)) return;
+                    @(posedge log.clk_vif.clk);
+                    cycles   = 0;
+                    idle     = 0;
+                    deadline = log.drain_deadline_cycles;
+                end
+                cycles++;
+                idle = (log.idle() && !started(i)) ? idle + 1 : 0;
+                count_start(log, starts);
+                settled[i] = idle >= quiet;
+                update(i);
+                if (settled[i] || cycles < deadline) continue;
+                if (log.since_start < quiet) break;
+                // A re-cut log whose DUT lane has just paused.
+                if (cycles < log.drain_deadline_cycles) begin
+                    deadline = log.drain_deadline_cycles;
+                    continue;
+                end
+                `uvm_warning_context("A2C_DRAIN", $sformatf("the drain reached its deadline, drain_deadline_cycles (+a2c_drain_deadline_cycles), of %0d clocks before the log settled: %s",
+                                                            log.drain_deadline_cycles, log.unsettled()), log)
+                give_up(i);
+                return;
+            end
+            log.cut(cycles < log.drain_deadline_cycles);
+            for (int unsigned c = 0; !log.cut_reached(); c++) begin
+                if (c == log.catchup_cycles()) begin
+                    give_up(i);
+                    break;
+                end
+                log.clk_vif.next_rise(stop, ticking);
+                if (!ticking) begin
+                    void'(clock_stopped(i));
+                    break;
+                end
+                count_start(log, starts);
+            end
+            if (!given_up[i]) begin
+                settled[i] = 1;
+                update(i);
+            end
+            // Goes on counting since_start to the end of the drain, so the
+            // next drain re-cuts the log only if its DUT lane is still
+            // flowing. @(posedge) rather than next_rise(), which returns at
+            // once, in a zero-time loop, on a stopped clock.
+            forever begin
+                @(posedge log.clk_vif.clk);
+                count_start(log, starts);
+            end
+        endtask
+
+        // Goes on counting since_start for a log the drain cut, until its
+        // DUT lane pauses for drain_quiet_cycles clocks or the next drain
+        // starts.
+        protected static task count_flow(a2c_replay_log_base log, int unsigned drain);
+            int unsigned starts = log.driver.lane_starts(A2C_DUT_LANE);
+            while (log.since_start < log.drain_quiet_cycles) begin
+                @(posedge log.clk_vif.clk);
+                if (drains != drain) return;
+                count_start(log, starts);
+            end
+        endtask
+
+        protected static task drain(uvm_phase phase, a2c_replay_log_base holder);
+            bit recut[] = new[logs.size()];
+            drains++;
+            settled     = new[logs.size()];
+            given_up    = new[logs.size()];
+            seen_starts = new[logs.size()];
+            foreach (logs[i]) recut[i] = logs[i].get_cut() != 0 && logs[i].since_start < logs[i].drain_quiet_cycles;
+            foreach (logs[i]) logs[i].uncut();
+            foreach (logs[i]) begin
+                automatic int unsigned k = i;
+                automatic bit          r = recut[i];
+                for (int l = 0; l < 2; l++) seen_starts[i][l] = logs[i].driver.lane_starts(a2c_lane_e'(l));
+                fork
+                    watch(k, r);
+                join_none
+            end
+            forever begin
+                bit          finished = 1;
+                int unsigned seen = updates;
+                foreach (logs[i]) finished &= (settled[i] && still_settled(i)) || given_up[i];
+                if (finished) break;
+                wait (updates != seen);
+            end
+            disable fork;
+            drained = 1;
+            foreach (logs[i]) begin
+                automatic a2c_replay_log_base log = logs[i];
+                for (int l = 0; l < 2; l++) log.starts_at_drain[l] = log.driver.lane_starts(a2c_lane_e'(l));
+                if (log.get_cut() == 0) continue;
+                fork
+                    count_flow(log, drains);
+                join_none
+            end
+            running = 0;
+            phase.drop_objection(holder, "the model lanes are drained");
+        endtask
+    endclass : a2c_replay_drain
 
     // What a2c_mem_model returns for a word nothing has written.
     typedef enum {A2C_MEM_FILL_ZERO, A2C_MEM_FILL_RANDOM, A2C_MEM_FILL_FIXED} a2c_mem_fill_e;

@@ -668,7 +668,7 @@
             run         = '{n, n - 2};
             want_errors = 1;
             want_text.push_back($sformatf("uvm_test_top.log: end of test with 2 responses the DUT lane recorded and the model lane never replayed, from transaction %0d",
-                                          n - 2));
+                                          n - 1));
         endfunction
     endclass : replay_log_unconsumed_test
 
@@ -699,7 +699,7 @@
             run         = '{n - 2, n};
             want_errors = 1;
             want_text.push_back($sformatf("uvm_test_top.log: the model lane waited for transaction %0d, which the DUT lane never recorded",
-                                          n - 2));
+                                          n - 1));
         endfunction
     endclass : replay_log_waiting_test
 
@@ -990,3 +990,122 @@
             phase.drop_objection(this);
         endtask
     endclass : reg_write_subscriber_test
+
+    // The keyed comparator gets DUT items 1 to 12 on keys 0 to 3 in turn
+    // and model items 1 and 2, and is cut after pair 4 with two DUT items of
+    // every key queued past it. Model items 3 to 12 then arrive, item 6
+    // different. Only pairs 1 to 4 are compared, and the items past the cut
+    // on either side are dropped at the end of the test, whatever their key:
+    // no error. With uncut_at_end set the test calls uncut() at the end, so
+    // pairs 5 to 12 are compared in order too and pair 6 is one
+    // A2C_MODEL_CMP.
+    class model_cmp_keyed_cut_test extends lb_mode_b_base;
+        lb_keyed_cmp                   cmp;
+        uvm_analysis_port #(rv_item_t) dut_ap;
+        uvm_analysis_port #(rv_item_t) model_ap;
+        bit                            uncut_at_end = 0;
+
+        `uvm_component_utils(model_cmp_keyed_cut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            cmp      = lb_keyed_cmp::type_id::create("cmp", this);
+            dut_ap   = new("dut_ap", this);
+            model_ap = new("model_ap", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            dut_ap.connect(cmp.dut_export);
+            model_ap.connect(cmp.model_export);
+        endfunction
+
+        // Item i, from 1, on key i % 4; bad changes its value only.
+        protected function lb_data_t data(int unsigned i, bit bad = 0);
+            return lb_data_t'({4'(i % 4), bad ? ~20'(i) : 20'(i)});
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            for (int unsigned i = 1; i <= 12; i++) dut_ap.write(lb_rv_item(data(i)));
+            for (int unsigned i = 1; i <= 2; i++) model_ap.write(lb_rv_item(data(i)));
+            cmp.cut(4);
+            for (int unsigned i = 3; i <= 12; i++) model_ap.write(lb_rv_item(data(i, i == 6)));
+            if (cmp.get_pairs() != 4) `uvm_error("LB_MODE_B", $sformatf("%0d pairs after the cut, expected 4", cmp.get_pairs()))
+            if (uncut_at_end) begin
+                cmp.uncut();
+                if (cmp.get_pairs() != 12) `uvm_error("LB_MODE_B", $sformatf("%0d pairs after uncut(), expected 12", cmp.get_pairs()))
+            end
+            phase.drop_objection(this);
+        endtask
+    endclass : model_cmp_keyed_cut_test
+
+    class model_cmp_keyed_uncut_test extends model_cmp_keyed_cut_test;
+        `uvm_component_utils(model_cmp_keyed_uncut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            uncut_at_end = 1;
+            want_errors  = 1;
+            want_text.push_back("uvm_test_top.cmp: pair 6 key 2: DUT");
+        endfunction
+    endclass : model_cmp_keyed_uncut_test
+
+    // Turns each A2C_CFG fatal into an info line and keeps its text.
+    class lb_cfg_fatal_catcher extends uvm_report_catcher;
+        string messages[$];
+
+        `uvm_object_utils(lb_cfg_fatal_catcher)
+
+        function new(string name = "lb_cfg_fatal_catcher");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_severity() == UVM_FATAL && get_id() == "A2C_CFG") begin
+                messages.push_back(get_message());
+                set_severity(UVM_INFO);
+                set_action(UVM_DISPLAY);
+                set_message({"expected, demoted to info: ", get_message()});
+            end
+            return THROW;
+        endfunction
+    endclass : lb_cfg_fatal_catcher
+
+    // A comparator that does not override cut() stops the run when a drain
+    // cuts it: one A2C_CFG fatal naming the comparator.
+    class model_cmp_base_cut_test extends lb_base_test;
+        lb_st_cmp_t          cmp;
+        lb_cfg_fatal_catcher catcher;
+
+        `uvm_component_utils(model_cmp_base_cut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            cmp     = lb_st_cmp_t::type_id::create("cmp", this);
+            catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
+            uvm_report_cb::add(null, catcher);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            cmp.cut(3);
+            cmp.uncut();
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            if (catcher.messages.size() != 1 || !a2c_contains(catcher.messages[0], "uvm_test_top.cmp: ")
+                    || !a2c_contains(catcher.messages[0], "does not override cut()")) begin
+                `uvm_error("LB_MODE_B", $sformatf("expected one A2C_CFG fatal from cut(): %p", catcher.messages))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : model_cmp_base_cut_test

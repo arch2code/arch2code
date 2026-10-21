@@ -252,3 +252,147 @@
             if (sb.matched != 4) `uvm_error("LB_CHECKS", $sformatf("expected 4 events reported, got %0d", sb.matched))
         endfunction
     endclass : notify_ack_monitor_checks_test
+
+    // Mode B on na and na_model; lb_hs_mode_b has the checks. As A2C_SRC
+    // the DUT lane's peer acks after 0 to 1 extra clocks and the model
+    // lane's after 0 to 3; as A2C_DST the agent acks after 0 to 2. An event
+    // has no payload, so model_cmp checks only the count.
+    class na_mode_b extends lb_hs_mode_b #(na_agent_t, na_item_t, na_config_t, na_vif_t);
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "na";
+        endfunction
+
+        virtual function na_item_t new_item(int unsigned i);
+            return na_item_t::type_id::create("it");
+        endfunction
+
+        virtual function void configure();
+            peer_cfg.ack_delay_max       = 1;
+            model_peer_cfg.ack_delay_max = 3;
+            agent_cfg.ack_delay_max      = 2;
+        endfunction
+    endclass : na_mode_b
+
+    // The agent notifies each item on both lanes.
+    class notify_ack_mode_b_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_SRC;
+            variant = LB_MATCH;
+        endfunction
+    endclass : notify_ack_mode_b_test
+
+    // The agent acks both lanes, replaying the DUT lane's delays.
+    class notify_ack_mode_b_dst_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MATCH;
+        endfunction
+    endclass : notify_ack_mode_b_dst_test
+
+    // The model lane reaches every event first and waits for the DUT lane.
+    class notify_ack_mode_b_dst_model_leads_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_model_leads_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_LEADS;
+        endfunction
+    endclass : notify_ack_mode_b_dst_model_leads_test
+
+    // The DUT lane makes one event more: the drain runs to its deadline and
+    // the replay log reports the record the model lane never replayed.
+    class notify_ack_mode_b_dst_dut_extra_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_dut_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DUT_EXTRA;
+        endfunction
+    endclass : notify_ack_mode_b_dst_dut_extra_test
+
+    // The model lane makes one event more, which it waits for until the
+    // drain's deadline: one A2C_REPLAY.
+    class notify_ack_mode_b_dst_model_extra_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_model_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_EXTRA;
+        endfunction
+    endclass : notify_ack_mode_b_dst_model_extra_test
+
+    // The test drops its objection when the DUT lane is done, before the model
+    // lane starts its last event: the drain must hold the run phase until
+    // the model lane has replayed it.
+    class notify_ack_mode_b_dst_drain_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_drain_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DRAIN;
+        endfunction
+    endclass : notify_ack_mode_b_dst_drain_test
+
+    // As notify_ack_mode_b_dst_drain_test with a quiet window of one clock
+    // and every ack 3 clocks late, and the drop once the DUT lane is idle.
+    // Once the model lane has replayed its last event, only its wait for
+    // that ack keeps the window from closing before the event completes.
+    class notify_ack_mode_b_dst_drain_short_quiet_test extends notify_ack_mode_b_dst_drain_test;
+        `uvm_component_utils(notify_ack_mode_b_dst_drain_short_quiet_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            drain_quiet = 1;
+        endfunction
+
+        virtual function void configure();
+            super.configure();
+            agent_cfg.ack_delay_min = 3;
+            agent_cfg.ack_delay_max = 3;
+        endfunction
+
+        virtual task wait_drop();
+            super.wait_drop();
+            repeat (2) clk_vif.sample_edge();
+        endtask
+    endclass : notify_ack_mode_b_dst_drain_short_quiet_test
+
+    // Both peers keep sending after the test drops its objection, so the
+    // drain's quiet window never comes: it must cut the run at its deadline
+    // and end once both lanes have completed what the cut keeps, with no
+    // A2C_REPLAY.
+    class notify_ack_mode_b_dst_drain_busy_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_drain_busy_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_BUSY;
+        endfunction
+    endclass : notify_ack_mode_b_dst_drain_busy_test
+
+    // The first drain expires with the model lane's late event pending,
+    // and the test sends the last event after it: the model lane's start
+    // since the expiry must bring a second drain that replays it. One more
+    // event, sent after the second drain and late on the model lane, must
+    // bring a third.
+    class notify_ack_mode_b_dst_after_expiry_test extends na_mode_b;
+        `uvm_component_utils(notify_ack_mode_b_dst_after_expiry_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_AFTER_EXPIRY;
+        endfunction
+    endclass : notify_ack_mode_b_dst_after_expiry_test

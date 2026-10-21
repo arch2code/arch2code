@@ -342,3 +342,471 @@
             super.report_phase(phase);
         endfunction
     endclass : txn_count_model_without_dual_test
+
+    // A counter on clk3 with a clock stop of 10 clocks expects three
+    // transactions and gets two, and clk3 stops five clocks into
+    // wait_for_count(). The wait must return ten and a half periods after
+    // clk3's last falling edge, far short of its deadline, with one
+    // A2C_TXN_COUNT naming the stop, and check_phase must not report the
+    // shortfall again.
+    class txn_count_clock_stop_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk3_vif;
+        realtime                       stop_time;
+        realtime                       end_time;
+
+        `uvm_component_utils(txn_count_clock_stop_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name         = "rv";
+            counter.clock_stop_cycles = 10;
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk3_vif.wait_reset_release();
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    repeat (5) clk3_vif.sample_edge();
+                    lb_clk3_run = 0;
+                    stop_time   = $realtime;
+                end
+            join_none
+            counter.wait_for_count(clk3_vif, 1000, 10);
+            end_time = $realtime;
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            realtime waited = end_time - stop_time;
+            `uvm_info("LB_STATS", $sformatf("the wait returned %0t after clk3 stopped; %0d A2C_TXN_COUNT", waited, demoter.demoted), UVM_NONE)
+            if (demoter.demoted != 1 || demoter.count("rv: the clock stopped after 5 clocks: expected 3 transactions, received 2 (1 missing)") != 1) begin
+                `uvm_error("LB_TXN_COUNT", $sformatf("expected one A2C_TXN_COUNT for the stopped clock: %p", demoter.messages))
+            end
+            // clk3 stopped at a falling edge, and its period is 20ns.
+            if (waited < 209ns || waited > 211ns) `uvm_error("LB_TXN_COUNT", $sformatf("the wait returned %0t after clk3 stopped, expected 210ns", waited))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_clock_stop_test
+
+    // A counter on clk4, which has no reset, waits from clk4's first rising
+    // edge, before clk4 has a period. It expects two transactions, has one,
+    // and gets the other ten of clk's clocks into the wait, short of one
+    // clk4 period: no A2C_TXN_COUNT, as clk4 has not stopped.
+    class txn_count_slow_clock_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk4_vif;
+        int unsigned                   expected = 2;
+        string                         want_text = "";
+        // Waits from time 0, before clk4 has risen, instead.
+        bit                            unstarted;
+
+        `uvm_component_utils(txn_count_slow_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk4", clk4_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk4'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name = "rv";
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            if (!unstarted) clk4_vif.wait_reset_release();
+            counter.expect_count(expected);
+            ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    repeat (10) clk_vif.sample_edge();
+                    ap.write(rv_item_t::type_id::create("it"));
+                end
+            join_none
+            counter.wait_for_count(clk4_vif, 1000, 2);
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("%0d A2C_TXN_COUNT: %p", demoter.demoted, demoter.messages), UVM_NONE)
+            if (want_text == "" && demoter.demoted != 0) `uvm_error("LB_TXN_COUNT", $sformatf("expected no A2C_TXN_COUNT: %p", demoter.messages))
+            if (want_text != "" && (demoter.demoted != 1 || demoter.count(want_text) != 1)) begin
+                `uvm_error("LB_TXN_COUNT", $sformatf("expected the one A2C_TXN_COUNT '%s': %p", want_text, demoter.messages))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_slow_clock_test
+
+    // As txn_count_slow_clock_test expecting one transaction: the second is
+    // extra, and the quiet window, which waits for clk4's edges, must report
+    // it.
+    class txn_count_slow_clock_extra_test extends txn_count_slow_clock_test;
+        `uvm_component_utils(txn_count_slow_clock_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            expected  = 1;
+            want_text = "rv: by the end of the quiet window received 2 transactions, expected 1 (1 extra)";
+        endfunction
+    endclass : txn_count_slow_clock_extra_test
+
+    // As txn_count_slow_clock_test from time 0, before clk4 first rises at
+    // 250ns: a clock that has not started yet has not stopped, so no
+    // A2C_TXN_COUNT.
+    class txn_count_unstarted_clock_test extends txn_count_slow_clock_test;
+        `uvm_component_utils(txn_count_unstarted_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            unstarted = 1;
+        endfunction
+    endclass : txn_count_unstarted_clock_test
+
+    // A counter on clk3 with a clock stop of 10 clocks, set through the
+    // config_db, expects three transactions and gets two. clk3 stops low
+    // for 1us, runs one more cycle and stops low again, and the wait starts
+    // then. The rising edge after the long gap must not make the gap clk3's
+    // period, so the wait must return ten and a half periods of 20ns after
+    // clk3's last falling edge with one A2C_TXN_COUNT, not ten and a half
+    // gaps.
+    class txn_count_clock_restop_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk3_vif;
+        realtime                       stop_time;
+        realtime                       end_time;
+
+        `uvm_component_utils(txn_count_clock_restop_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3'")
+            uvm_config_db#(int unsigned)::set(this, "counter", "a2c_clock_stop_cycles", 10);
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name = "rv";
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk3_vif.wait_reset_release();
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            clk3_vif.sample_edge();
+            lb_clk3_run = 0;
+            #1us;
+            lb_clk3_run = 1;
+            clk3_vif.sample_edge();
+            lb_clk3_run = 0;
+            stop_time = $realtime;
+            counter.wait_for_count(clk3_vif, 1000, 10);
+            end_time = $realtime;
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            realtime waited = end_time - stop_time;
+            `uvm_info("LB_STATS", $sformatf("the wait returned %0t after clk3 stopped again; %0d A2C_TXN_COUNT", waited, demoter.demoted), UVM_NONE)
+            if (demoter.demoted != 1 || demoter.count("rv: the clock stopped after 0 clocks: expected 3 transactions, received 2 (1 missing)") != 1) begin
+                `uvm_error("LB_TXN_COUNT", $sformatf("expected one A2C_TXN_COUNT for the stopped clock: %p", demoter.messages))
+            end
+            if (waited < 209ns || waited > 211ns) `uvm_error("LB_TXN_COUNT", $sformatf("the wait returned %0t after clk3 stopped again, expected 210ns", waited))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_clock_restop_test
+
+    // A counter on clk3 with a quiet window of 0 clocks and the default
+    // clock stop expects three transactions and has two. clk3 pauses for
+    // five periods, and the third arrives two clocks after it runs again.
+    // A pause far short of the clock stop is no stop: no A2C_TXN_COUNT.
+    class txn_count_clock_pause_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk3_vif;
+
+        `uvm_component_utils(txn_count_clock_pause_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name = "rv";
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk3_vif.wait_reset_release();
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    clk3_vif.sample_edge();
+                    lb_clk3_run = 0;
+                    #100ns;
+                    lb_clk3_run = 1;
+                    repeat (2) clk3_vif.sample_edge();
+                    ap.write(rv_item_t::type_id::create("it"));
+                end
+            join_none
+            counter.wait_for_count(clk3_vif, 1000, 0);
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("%0d A2C_TXN_COUNT: %p", demoter.demoted, demoter.messages), UVM_NONE)
+            if (demoter.demoted != 0) `uvm_error("LB_TXN_COUNT", $sformatf("expected no A2C_TXN_COUNT: %p", demoter.messages))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_clock_pause_test
+
+    // A counter on clk6 with a clock stop of 10 clocks. clk6 slows from a
+    // 10ns period to 1us, a hundred times longer, and after five rising
+    // edges at the new rate the counter expects three transactions, has
+    // two, and gets the third three clocks into its wait. The wait must
+    // judge the slow clock by its new period: no A2C_TXN_COUNT. A period
+    // that only shrinks would stay at 10ns and read clk6 as stopped.
+    class txn_count_clock_drop_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk6_vif;
+
+        `uvm_component_utils(txn_count_clock_drop_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk6", clk6_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk6'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name         = "rv";
+            counter.clock_stop_cycles = 10;
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk6_vif.wait_reset_release();
+            repeat (5) clk6_vif.sample_edge();
+            lb_clk6_half_ns = 500;
+            repeat (5) @(posedge clk6_vif.clk);
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    repeat (3) clk6_vif.sample_edge();
+                    ap.write(rv_item_t::type_id::create("it"));
+                end
+            join_none
+            counter.wait_for_count(clk6_vif, 1000, 2);
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("clk6's period %0.3f ns; %0d A2C_TXN_COUNT: %p", clk6_vif.period, demoter.demoted, demoter.messages),
+                      UVM_NONE)
+            if (demoter.demoted != 0) `uvm_error("LB_TXN_COUNT", $sformatf("expected no A2C_TXN_COUNT: %p", demoter.messages))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_clock_drop_test
+
+    // A counter on clk7, of a 20ns period, with a clock stop of one clock
+    // and a quiet window of 0. It expects three transactions and has two.
+    // clk7 gets a runt pulse 0.5ns after a falling edge, so its rising
+    // edges come 10.5ns and 9.5ns apart once, and the third transaction
+    // arrives four clocks later. The two short intervals must not become
+    // the period, which would make the stop limit 1.5 of them, under 20ns:
+    // no A2C_TXN_COUNT.
+    class txn_count_clock_runt_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk7_vif;
+
+        `uvm_component_utils(txn_count_clock_runt_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk7", clk7_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk7'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name         = "rv";
+            counter.clock_stop_cycles = 1;
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk7_vif.wait_reset_release();
+            repeat (5) clk7_vif.sample_edge();
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    clk7_vif.sample_edge();
+                    lb_clk7_runt = 1;
+                    repeat (5) clk7_vif.sample_edge();
+                    ap.write(rv_item_t::type_id::create("it"));
+                end
+            join_none
+            counter.wait_for_count(clk7_vif, 1000, 0);
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("clk7's period %0.3f ns; %0d A2C_TXN_COUNT: %p", clk7_vif.period, demoter.demoted, demoter.messages),
+                      UVM_NONE)
+            if (demoter.demoted != 0) `uvm_error("LB_TXN_COUNT", $sformatf("expected no A2C_TXN_COUNT: %p", demoter.messages))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_clock_runt_test
+
+    // A counter on clk8, gated in bursts of three edges 10ns apart with
+    // uneven gaps, so it never has three agreeing intervals and only the
+    // shortest interval gives it a period. The clock stop is 10 clocks,
+    // 105ns, longer than any gap. The counter expects three transactions
+    // and has two, and clk8 stops four bursts into the wait. The wait must
+    // ride through the gaps and return 105ns after clk8's last falling
+    // edge with one A2C_TXN_COUNT naming the stop.
+    class txn_count_burst_clock_stop_test extends lb_base_test;
+        a2c_txn_counter #(rv_item_t)   counter;
+        uvm_analysis_port #(rv_item_t) ap;
+        lb_recording_demoter           demoter;
+        virtual a2c_clk_if             clk8_vif;
+        realtime                       waited;
+
+        `uvm_component_utils(txn_count_burst_clock_stop_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk8", clk8_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk8'")
+            counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
+            counter.port_name         = "rv";
+            counter.clock_stop_cycles = 10;
+            ap = new("ap", this);
+            demoter = lb_recording_demoter::type_id::create("demoter");
+            demoter.demote_id = "A2C_TXN_COUNT";
+            uvm_report_cb::add(null, demoter);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            ap.connect(counter.analysis_export);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk8_vif.wait_reset_release();
+            counter.expect_count(3);
+            repeat (2) ap.write(rv_item_t::type_id::create("it"));
+            fork
+                begin
+                    repeat (12) clk8_vif.sample_edge();
+                    lb_clk8_run = 0;
+                end
+            join_none
+            // Fails fast where a clock with no period would hang the wait.
+            fork
+                begin
+                    fork
+                        counter.wait_for_count(clk8_vif, 1000, 10);
+                        begin
+                            #5us;
+                            `uvm_fatal("LB_TXN_COUNT", "the wait has not returned 5us after it started, so it never saw clk8 stop")
+                        end
+                    join_any
+                    disable fork;
+                end
+            join
+            waited = $realtime - clk8_vif.last_fall;
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("the wait returned %0t after clk8's last falling edge, period %0.3f ns; %0d A2C_TXN_COUNT: %p",
+                                            waited, clk8_vif.period, demoter.demoted, demoter.messages), UVM_NONE)
+            if (demoter.demoted != 1 || demoter.count("rv: the clock stopped after 12 clocks: expected 3 transactions, received 2 (1 missing)") != 1) begin
+                `uvm_error("LB_TXN_COUNT", $sformatf("expected one A2C_TXN_COUNT for the stopped clock: %p", demoter.messages))
+            end
+            if (waited < 104ns || waited > 106ns) `uvm_error("LB_TXN_COUNT", $sformatf("the wait returned %0t after clk8 stopped, expected 105ns", waited))
+            super.report_phase(phase);
+        endfunction
+    endclass : txn_count_burst_clock_stop_test

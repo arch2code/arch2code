@@ -37,8 +37,8 @@
             ports.push_back(PORT); \
         end
 
-    // Each of the eight agents with no Mode B operations yet, given a
-    // model_vif, stops with one A2C_CFG naming its port.
+    // Each agent with no Mode B operations yet, given a model_vif, stops
+    // with one A2C_CFG naming its port.
     class mode_b_unsupported_test extends lb_base_test;
         lb_mode_b_fatal_catcher catcher;
         string                  ports[$];
@@ -55,12 +55,6 @@
             super.build_phase(phase);
             `LB_MODE_B_UNSUPPORTED(axr_config_t, axr_agent_t, axr_vif_t, "axr")
             `LB_MODE_B_UNSUPPORTED(axw_config_t, axw_agent_t, axw_vif_t, "axw")
-            `LB_MODE_B_UNSUPPORTED(mem_config_t, mem_agent_t, mem_vif_t, "mem")
-            `LB_MODE_B_UNSUPPORTED(ra_config_t, ra_agent_t, ra_vif_t, "ra")
-            `LB_MODE_B_UNSUPPORTED(pa_config_t, pa_agent_t, pa_vif_t, "pa")
-            `LB_MODE_B_UNSUPPORTED(po_config_t, po_agent_t, po_vif_t, "po")
-            `LB_MODE_B_UNSUPPORTED(na_config_t, na_agent_t, na_vif_t, "na")
-            `LB_MODE_B_UNSUPPORTED(er_config_t, er_agent_t, er_vif_t, "er")
         endfunction
 
         virtual task run_phase(uvm_phase phase);

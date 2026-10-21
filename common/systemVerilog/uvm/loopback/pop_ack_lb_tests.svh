@@ -33,6 +33,30 @@
         endfunction
     endclass : po_echo_responder
 
+    // As po_echo_responder, and takes clocks clocks to answer each pop once
+    // the driver asks for it.
+    class po_slow_responder extends po_echo_responder;
+        static virtual a2c_clk_if clk_vif;
+        static int unsigned       clocks = 3;
+
+        `uvm_object_utils(po_slow_responder)
+
+        function new(string name = "po_slow_responder");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            po_item_t rsp;
+            forever begin
+                rsp = po_item_t::type_id::create("rsp");
+                start_item(rsp);
+                repeat (clocks) clk_vif.sample_edge();
+                respond(rsp);
+                finish_item(rsp);
+            end
+        endtask
+    endclass : po_slow_responder
+
     // Answers each pop with its sequence number, salt 4'hA, with no delay,
     // and counts the pops it answered.
     class po_override_responder extends po_responder_t;
@@ -379,3 +403,220 @@
             if (sb.matched != 4) `uvm_error("LB_CHECKS", $sformatf("expected 4 transfers reported, got %0d", sb.matched))
         endfunction
     endclass : pop_ack_monitor_checks_test
+
+    // As po_echo_responder, and answers pop number corrupt_at with the bits
+    // of rdata inverted.
+    class po_corrupt_responder extends po_echo_responder;
+        static int corrupt_at = -1;
+
+        `uvm_object_utils(po_corrupt_responder)
+
+        function new(string name = "po_corrupt_responder");
+            super.new(name);
+        endfunction
+
+        virtual function void respond(po_item_t rsp);
+            int unsigned n = answered;
+            super.respond(rsp);
+            if (n == corrupt_at) rsp.rdata = ~rsp.rdata;
+        endfunction
+    endclass : po_corrupt_responder
+
+    // Mode B on po and po_model; lb_hs_mode_b has the checks. Every
+    // responder is a po_echo_responder, so both lanes' answers match and
+    // their delays differ. As A2C_SRC each item must come back with the DUT
+    // lane's rdata, which the DUT lane's check makes sure of.
+    class po_mode_b extends lb_hs_mode_b #(po_agent_t, po_item_t, po_config_t, po_vif_t);
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "po";
+        endfunction
+
+        // The rdata the echo responders give pop i, so a lane's report
+        // matches it whichever lane is checked.
+        virtual function po_item_t new_item(int unsigned i);
+            po_item_t it = po_item_t::type_id::create("it");
+            it.rdata = po_answer(i, 4'h5);
+            return it;
+        endfunction
+
+        virtual function void configure();
+            uvm_object_wrapper echo = po_echo_responder::type_id::get();
+            if (role == A2C_DST) begin
+                if (variant == LB_SLOW) begin
+                    po_slow_responder::clk_vif = clk_vif;
+                    echo = po_slow_responder::type_id::get();
+                end
+                uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", echo);
+                return;
+            end
+            uvm_config_db#(uvm_object_wrapper)::set(this, "peer.sqr.run_phase", "default_sequence", echo);
+            if (variant == LB_MISMATCH) begin
+                po_corrupt_responder::corrupt_at = mismatch_at;
+                echo = po_corrupt_responder::type_id::get();
+            end
+            uvm_config_db#(uvm_object_wrapper)::set(this, "model_peer.sqr.run_phase", "default_sequence", echo);
+        endfunction
+    endclass : po_mode_b
+
+    // The agent pops each item on both lanes, and model_cmp compares the
+    // answers.
+    class pop_ack_mode_b_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_SRC;
+            variant = LB_MATCH;
+        endfunction
+    endclass : pop_ack_mode_b_test
+
+    // The model lane's peer answers one pop differently: one A2C_MODEL_CMP,
+    // and the item still carries the DUT lane's rdata.
+    class pop_ack_mode_b_mismatch_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_mismatch_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_SRC;
+            variant = LB_MISMATCH;
+        endfunction
+    endclass : pop_ack_mode_b_mismatch_test
+
+    // The agent answers both lanes, replaying the DUT lane's responses.
+    class pop_ack_mode_b_dst_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MATCH;
+        endfunction
+    endclass : pop_ack_mode_b_dst_test
+
+    // The model lane reaches every transfer first and waits for the DUT lane.
+    class pop_ack_mode_b_dst_model_leads_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_model_leads_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_LEADS;
+        endfunction
+    endclass : pop_ack_mode_b_dst_model_leads_test
+
+    // The DUT lane makes one transfer more: the drain runs to its deadline and
+    // the replay log reports the record the model lane never replayed.
+    class pop_ack_mode_b_dst_dut_extra_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_dut_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DUT_EXTRA;
+        endfunction
+    endclass : pop_ack_mode_b_dst_dut_extra_test
+
+    // The model lane makes one transfer more, which it waits for until the
+    // drain's deadline: one A2C_REPLAY.
+    class pop_ack_mode_b_dst_model_extra_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_model_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_EXTRA;
+        endfunction
+    endclass : pop_ack_mode_b_dst_model_extra_test
+
+    // The test drops its objection when the DUT lane is done, before the model
+    // lane starts its last transfer: the drain must hold the run phase until
+    // the model lane has replayed it.
+    class pop_ack_mode_b_dst_drain_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_drain_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DRAIN;
+        endfunction
+    endclass : pop_ack_mode_b_dst_drain_test
+
+    // As po_echo_responder, with every ack 3 clocks late.
+    class po_late_responder extends po_echo_responder;
+        `uvm_object_utils(po_late_responder)
+
+        function new(string name = "po_late_responder");
+            super.new(name);
+        endfunction
+
+        virtual function void respond(po_item_t rsp);
+            super.respond(rsp);
+            rsp.delay = 3;
+        endfunction
+    endclass : po_late_responder
+
+    // As pop_ack_mode_b_dst_drain_test with a quiet window of one clock
+    // and every ack 3 clocks late, and the drop once the DUT lane is idle.
+    // Once the model lane has replayed its last pop, only its wait for that
+    // ack keeps the window from closing before the pop completes.
+    class pop_ack_mode_b_dst_drain_short_quiet_test extends pop_ack_mode_b_dst_drain_test;
+        `uvm_component_utils(pop_ack_mode_b_dst_drain_short_quiet_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            drain_quiet = 1;
+        endfunction
+
+        virtual function void configure();
+            uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", po_late_responder::type_id::get());
+        endfunction
+
+        virtual task wait_drop();
+            super.wait_drop();
+            repeat (2) clk_vif.sample_edge();
+        endtask
+    endclass : pop_ack_mode_b_dst_drain_short_quiet_test
+
+    // Both peers keep sending after the test drops its objection, so the
+    // drain's quiet window never comes: it must cut the run at its deadline
+    // and end once both lanes have completed what the cut keeps, with no
+    // A2C_REPLAY.
+    class pop_ack_mode_b_dst_drain_busy_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_drain_busy_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_BUSY;
+        endfunction
+    endclass : pop_ack_mode_b_dst_drain_busy_test
+
+    // The agent's responder takes three clocks to answer each pop, and both
+    // peers keep popping after the drop: the model lane's ack and rdata must
+    // drop on time, and its pops be seen, while the DUT lane waits for its
+    // response, and the drain must cut the run at its deadline.
+    class pop_ack_mode_b_dst_slow_responder_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_slow_responder_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_SLOW;
+        endfunction
+    endclass : pop_ack_mode_b_dst_slow_responder_test
+
+    // The first drain expires with the model lane's late transfer pending,
+    // and the test sends the last transfer after it: the model lane's start
+    // since the expiry must bring a second drain that replays it. One more
+    // transfer, sent after the second drain and late on the model lane, must
+    // bring a third.
+    class pop_ack_mode_b_dst_after_expiry_test extends po_mode_b;
+        `uvm_component_utils(pop_ack_mode_b_dst_after_expiry_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_AFTER_EXPIRY;
+        endfunction
+    endclass : pop_ack_mode_b_dst_after_expiry_test

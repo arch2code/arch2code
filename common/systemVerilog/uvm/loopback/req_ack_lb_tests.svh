@@ -394,3 +394,348 @@
             if (seen != 6) `uvm_error("LB_CHECKS", $sformatf("expected 6 requests on req_ap, got %0d", seen))
         endfunction
     endclass : req_ack_monitor_checks_test
+
+    // As ra_echo_responder, and takes clocks clocks to answer each request
+    // once the driver asks for it.
+    class ra_slow_responder extends ra_echo_responder;
+        static virtual a2c_clk_if clk_vif;
+        static int unsigned       clocks = 3;
+
+        `uvm_object_utils(ra_slow_responder)
+
+        function new(string name = "ra_slow_responder");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            ra_item_t request;
+            ra_item_t rsp;
+            forever begin
+                p_sequencer.request_fifo.get(request);
+                rsp = ra_item_t::type_id::create("rsp");
+                start_item(rsp);
+                repeat (clocks) clk_vif.sample_edge();
+                respond(request, rsp);
+                finish_item(rsp);
+            end
+        endtask
+    endclass : ra_slow_responder
+
+    // As ra_echo_responder, and answers request number corrupt_at with the
+    // bits of rdata inverted.
+    class ra_corrupt_responder extends ra_echo_responder;
+        static int   corrupt_at = -1;
+        int unsigned answered;
+
+        `uvm_object_utils(ra_corrupt_responder)
+
+        function new(string name = "ra_corrupt_responder");
+            super.new(name);
+        endfunction
+
+        virtual function void respond(ra_item_t request, ra_item_t rsp);
+            super.respond(request, rsp);
+            if (answered++ == corrupt_at) rsp.rdata = ~rsp.rdata;
+        endfunction
+    endclass : ra_corrupt_responder
+
+    // Mode B on ra and ra_model; lb_hs_mode_b has the checks. Every
+    // responder is an ra_echo_responder, so both lanes' answers match and
+    // their delays differ. As A2C_SRC each item must come back with the DUT
+    // lane's rdata, which the DUT lane's check makes sure of.
+    class ra_mode_b extends lb_hs_mode_b #(ra_agent_t, ra_item_t, ra_config_t, ra_vif_t);
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "ra";
+        endfunction
+
+        virtual function ra_item_t new_item(int unsigned i);
+            ra_item_t it = ra_item_t::type_id::create("it");
+            if (!it.randomize()) `uvm_fatal("LB_RAND", "req_ack item randomize failed")
+            it.data.value = 20'(i);
+            it.rdata      = ra_answer(it.data, 4'h5);
+            return it;
+        endfunction
+
+        virtual function void configure();
+            uvm_object_wrapper echo = ra_echo_responder::type_id::get();
+            if (role == A2C_DST) begin
+                if (variant == LB_SLOW) begin
+                    ra_slow_responder::clk_vif = clk_vif;
+                    echo = ra_slow_responder::type_id::get();
+                end
+                uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", echo);
+                return;
+            end
+            uvm_config_db#(uvm_object_wrapper)::set(this, "peer.sqr.run_phase", "default_sequence", echo);
+            if (variant == LB_MISMATCH) begin
+                ra_corrupt_responder::corrupt_at = mismatch_at;
+                echo = ra_corrupt_responder::type_id::get();
+            end
+            uvm_config_db#(uvm_object_wrapper)::set(this, "model_peer.sqr.run_phase", "default_sequence", echo);
+        endfunction
+
+        virtual function void corrupt(ra_item_t it);
+            it.data.tag = ~it.data.tag;
+        endfunction
+    endclass : ra_mode_b
+
+    // The agent requests each item on both lanes, and model_cmp compares the
+    // answers.
+    class req_ack_mode_b_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_SRC;
+            variant = LB_MATCH;
+        endfunction
+    endclass : req_ack_mode_b_test
+
+    // The model lane's peer answers one request differently: one
+    // A2C_MODEL_CMP, and the item still carries the DUT lane's rdata.
+    class req_ack_mode_b_mismatch_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_mismatch_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_SRC;
+            variant = LB_MISMATCH;
+        endfunction
+    endclass : req_ack_mode_b_mismatch_test
+
+    // The agent answers both lanes, replaying the DUT lane's responses.
+    class req_ack_mode_b_dst_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MATCH;
+        endfunction
+    endclass : req_ack_mode_b_dst_test
+
+    // The model lane reaches every transfer first and waits for the DUT lane.
+    class req_ack_mode_b_dst_model_leads_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_model_leads_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_LEADS;
+        endfunction
+    endclass : req_ack_mode_b_dst_model_leads_test
+
+    // The DUT lane makes one transfer more: the drain runs to its deadline and
+    // the replay log reports the record the model lane never replayed.
+    class req_ack_mode_b_dst_dut_extra_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_dut_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DUT_EXTRA;
+        endfunction
+    endclass : req_ack_mode_b_dst_dut_extra_test
+
+    // As req_ack_mode_b_dst_dut_extra_test, with the responder taking 60
+    // clocks to answer the extra request and the test dropping while it
+    // does, once the model lane is done. The DUT lane is inside the request
+    // with no record of it yet, so its quiet window of 20 clocks cannot
+    // settle the log; the response is recorded later and the model lane
+    // never replays it. The DUT lane has stopped at the deadline, so the
+    // one drain runs to it and gives up rather than cut: one A2C_REPLAY.
+    class req_ack_mode_b_dst_dut_extra_slow_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_dut_extra_slow_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DUT_EXTRA;
+        endfunction
+
+        virtual function void configure();
+            ra_slow_responder::clk_vif = clk_vif;
+            ra_slow_responder::clocks  = 0;
+            uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", ra_slow_responder::type_id::get());
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            items[n_items].gap = 0;
+        endfunction
+
+        virtual task wait_drop();
+            while (arrivals.items.size() < n_items) clk_vif.sample_edge();
+            ra_slow_responder::clocks = 60;
+            while (model_arrivals.items.size() < n_items) clk_vif.sample_edge();
+            repeat (2) clk_vif.sample_edge();
+        endtask
+
+        virtual function void check_phase(uvm_phase phase);
+            `uvm_info("LB_STATS", $sformatf("%0d phase_ready_to_end calls; the drains took %0d clocks", ready_calls, drain_clocks()), UVM_NONE)
+            if (ready_calls != 2) `uvm_error("LB_MODE_B", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
+            if (agent.drv.replay.get_cut() != 0) `uvm_error("LB_MODE_B", "the drain cut the run, so the pending request went untested")
+            if (drain_clocks() + 1 < drain_deadline) `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, short of the deadline of %0d", drain_clocks(), drain_deadline))
+        endfunction
+    endclass : req_ack_mode_b_dst_dut_extra_slow_test
+
+    // The model lane makes one transfer more, which it waits for until the
+    // drain's deadline: one A2C_REPLAY.
+    class req_ack_mode_b_dst_model_extra_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_model_extra_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MODEL_EXTRA;
+        endfunction
+    endclass : req_ack_mode_b_dst_model_extra_test
+
+    // The test drops its objection when the DUT lane is done, before the model
+    // lane starts its last transfer: the drain must hold the run phase until
+    // the model lane has replayed it.
+    class req_ack_mode_b_dst_drain_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_drain_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_DRAIN;
+        endfunction
+    endclass : req_ack_mode_b_dst_drain_test
+
+    // As ra_echo_responder, with every ack 3 clocks late.
+    class ra_late_responder extends ra_echo_responder;
+        `uvm_object_utils(ra_late_responder)
+
+        function new(string name = "ra_late_responder");
+            super.new(name);
+        endfunction
+
+        virtual function void respond(ra_item_t request, ra_item_t rsp);
+            super.respond(request, rsp);
+            rsp.delay = 3;
+        endfunction
+    endclass : ra_late_responder
+
+    // As req_ack_mode_b_dst_drain_test with a quiet window of one clock
+    // and every ack 3 clocks late, and the drop once the DUT lane is idle.
+    // Once the model lane has replayed its last request, only its wait for
+    // that ack keeps the window from closing before the request completes.
+    class req_ack_mode_b_dst_drain_short_quiet_test extends req_ack_mode_b_dst_drain_test;
+        `uvm_component_utils(req_ack_mode_b_dst_drain_short_quiet_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            drain_quiet = 1;
+        endfunction
+
+        virtual function void configure();
+            uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", ra_late_responder::type_id::get());
+        endfunction
+
+        virtual task wait_drop();
+            super.wait_drop();
+            repeat (2) clk_vif.sample_edge();
+        endtask
+    endclass : req_ack_mode_b_dst_drain_short_quiet_test
+
+    // Both peers keep sending after the test drops its objection, so the
+    // drain's quiet window never comes: it must cut the run at its deadline
+    // and end once both lanes have completed what the cut keeps, with no
+    // A2C_REPLAY.
+    class req_ack_mode_b_dst_drain_busy_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_drain_busy_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_BUSY;
+        endfunction
+    endclass : req_ack_mode_b_dst_drain_busy_test
+
+    // The agent's responder takes three clocks to answer each request, and
+    // both peers keep sending after the drop: the model lane's ack and rdata
+    // must drop on time, and its requests be seen, while the DUT lane waits
+    // for its response, and the drain must cut the run at its deadline.
+    class req_ack_mode_b_dst_slow_responder_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_slow_responder_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_SLOW;
+        endfunction
+    endclass : req_ack_mode_b_dst_slow_responder_test
+
+    // The first drain expires with the model lane's late transfer pending,
+    // and the test sends the last transfer after it: the model lane's start
+    // since the expiry must bring a second drain that replays it. One more
+    // transfer, sent after the second drain and late on the model lane, must
+    // bring a third.
+    class req_ack_mode_b_dst_after_expiry_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_after_expiry_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_AFTER_EXPIRY;
+        endfunction
+    endclass : req_ack_mode_b_dst_after_expiry_test
+
+    // The model lane's peer sends one request with different data: one
+    // A2C_MODEL_CMP naming its pair.
+    class req_ack_mode_b_dst_mismatch_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_mismatch_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_MISMATCH;
+        endfunction
+    endclass : req_ack_mode_b_dst_mismatch_test
+
+    // As req_ack_mode_b_dst_after_expiry_test, with the responder taking 30
+    // clocks in the third round and a quiet window of 2 clocks for the third
+    // drain. The test drops while the DUT lane waits for the response, with
+    // nothing recorded and the model lane idle, so only the DUT lane's busy
+    // state keeps the third drain open until both lanes complete the
+    // transfer: no A2C_REPLAY, and every pair compared.
+    class req_ack_mode_b_dst_expiry_slow_test extends ra_mode_b;
+        `uvm_component_utils(req_ack_mode_b_dst_expiry_slow_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            role    = A2C_DST;
+            variant = LB_AFTER_EXPIRY;
+        endfunction
+
+        virtual function void configure();
+            ra_slow_responder::clk_vif = clk_vif;
+            ra_slow_responder::clocks  = 0;
+            uvm_config_db#(uvm_object_wrapper)::set(this, "agent.sqr.run_phase", "default_sequence", ra_slow_responder::type_id::get());
+        endfunction
+
+        virtual function void before_round(int unsigned i);
+            if (i != n_items) return;
+            ra_slow_responder::clocks = 30;
+            agent.drv.replay.drain_quiet_cycles = 2;
+        endfunction
+
+        virtual task wait_round_drop(int unsigned i);
+            if (i != n_items) begin
+                super.wait_round_drop(i);
+                return;
+            end
+            while (agent.drv.lane_starts(A2C_DUT_LANE) <= i) clk_vif.sample_edge();
+            clk_vif.sample_edge();
+        endtask
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (!busy_at_third_drop || pending_at_third_drop != 0) begin
+                `uvm_error("LB_MODE_B", "the DUT lane was not waiting for its response at the third drop")
+            end
+        endfunction
+    endclass : req_ack_mode_b_dst_expiry_slow_test
