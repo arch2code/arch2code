@@ -7886,13 +7886,6 @@ class projectCreate:
         # key, so constants are already keyed by constantKey.
         constants = self.flatData['constants']
 
-        # connectionsends is a nested ('multiple') table, not flat - gather the
-        # endpoints per connection from self.data, keyed by connectionKey.
-        connEnds = dict()
-        for fileRows in self.data.get('connectionsends', dict()).values():
-            for end in fileRows.values():
-                connEnds.setdefault(end['connectionKey'], list()).append(end)
-
         def checkEndpoint(intf, needed, instRow, portName, whereWords):
             blockKey = instRow['instanceTypeKey']
             childIfaceKey = self._declaredPortInterfaceKey(blocks[blockKey], portName)
@@ -7940,7 +7933,7 @@ class projectCreate:
                     needed |= info['paramDeps']
             if not needed:
                 continue
-            for end in connEnds.get(conn['connectionKey'], list()):
+            for end in conn['ends'].values():
                 whereWords = (f"on the connection '{conn['src']}' -> '{conn['dst']}' connects "
                               f"endpoint instance '{end['instance']}' (block '{end['instanceType']}')")
                 if checkEndpoint(intf, needed, end, end['portName'], whereWords):
@@ -10906,7 +10899,6 @@ class projectCreate:
         # twice (avoid list_append duplication), otherwise duplicate
         # rows would accumulate here.
         self.data['connections'].setdefault(yamlFile, dict())
-        self.data['connectionsends'].setdefault(yamlFile, dict())
         # loop through the items in the section
         for item in data:
 
@@ -10952,8 +10944,7 @@ class projectCreate:
 
                 # An end is keyed by portId (instanceType + portName), so both
                 # ends of ONE connection collide when they are instances of the
-                # same block on the same port name. Collision across connections
-                # in the per-file dict below is the intended dedup of one fact.
+                # same block on the same port name.
                 if endRow['portId'] in entry['ends']:
                     printError(
                         f"Connection '{myKey}' in file {yamlFile} names both ends "
@@ -10966,7 +10957,6 @@ class projectCreate:
                         f"dstport: entries.")
                     exit(warningAndErrorReport())
                 entry['ends'][endRow['portId']]=endRow
-                self.data['connectionsends'][yamlFile][endRow['portId']]=endRow
 
             self.data['connections'][yamlFile][myKey] = entry
             self.addFlatRecord('connections', entry)

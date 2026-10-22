@@ -351,6 +351,66 @@ parameters:
         "parameterized interface endpoint parameterized with the wrong param")
 
 
+def test_param_interface_endpoint_checked_on_every_connection():
+    # Two connections in one file reach the same port of the same block type,
+    # in different instances. Each end is checked, so both consumer instances
+    # are named, not only the one on the connection read last.
+    arch = """ipParameters:
+  constants:
+    WIDTH: { value: 8, maxValue: 16, desc: "backing width the payload needs" }
+    OTHER_W: { value: 8, maxValue: 16, desc: "unrelated backing param" }
+  types:
+    dataT: { width: WIDTH, maxBitwidth: 16, desc: "parameterizable payload word" }
+
+structures:
+  dataSt:
+    data: { varType: dataT, desc: "parameterizable payload" }
+
+interfaces:
+  dataIf:
+    desc: "parameterized push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: dataSt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "parameterized producer that backs WIDTH"
+    params: [WIDTH]
+    ports:
+      out: { interface: dataIf, direction: src }
+  consumer:
+    desc: "parameterized, but carries the wrong backing param"
+    params: [OTHER_W]
+    ports:
+      in: { interface: dataIf, direction: dst }
+  top: { desc: "top", hasRtl: false }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProdA: { container: top, instanceType: producer, variant: v0 }
+  uConsA: { container: top, instanceType: consumer, variant: v0 }
+  uProdB: { container: top, instanceType: producer, variant: v0 }
+  uConsB: { container: top, instanceType: consumer, variant: v0 }
+
+connections:
+  - { interface: dataIf, src: uProdA, srcport: out, dst: uConsA, dstport: in, name: linkA }
+  - { interface: dataIf, src: uProdB, srcport: out, dst: uConsB, dstport: in, name: linkB }
+
+parameters:
+  producer:
+    v0:
+      WIDTH: 8
+  consumer:
+    v0:
+      OTHER_W: 8
+"""
+    return _expect_error(
+        arch,
+        ["endpoint instance 'uConsA'", "endpoint instance 'uConsB'", "missing WIDTH"],
+        "parameterized interface endpoints of one block type on two connections")
+
+
 def test_param_interface_src_endpoint_missing_param():
     # The shortfall is on the src (producer) end this time: the producer has a
     # parameterizable port on its own surface but declares no params: at all,
@@ -701,6 +761,7 @@ def run_all_tests():
         test_param_interface_endpoint_missing_param,
         test_param_interface_endpoint_wrong_param,
         test_param_interface_src_endpoint_missing_param,
+        test_param_interface_endpoint_checked_on_every_connection,
         test_param_interface_both_endpoints_parameterized,
         test_nonparam_interface_endpoints_ok,
         test_crossvariant_nonparam_boundary_channel,
