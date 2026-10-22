@@ -626,6 +626,7 @@ class projectOpen:
         self.blockSvModuleName = self.config.getConfig('BLOCKSVMODULENAME')
         self.svWrapperNames = self.config.getConfig('SVWRAPPERNAMES')
         self.uvmNames = self.config.getConfig('UVMNAMES')
+        self.portTransferSizes = self.config.getConfig('PORTTRANSFERSIZES')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
@@ -1815,8 +1816,6 @@ class projectOpen:
                    'reset': row['selectedReset'] if row['selectedReset'] in resetPorts else None}
                   for row in ret['clocks']]
         clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
-        blockParams = self.data['blocks'][ret['qualBlock']]['params']
-        paramBySource = {row['paramSourceKey']: row['param'] for row in blockParams} if blockParams else {}
         ports = list()
         for portGroup in ret['ports'].values():
             for portData in portGroup.values():
@@ -1826,22 +1825,10 @@ class projectOpen:
                 paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
                 elastic = intfDef['timing'] == 'elastic'
                 isOutput = portData['direction'] == 'src'
-                # Per top, the interface's maxTransferSize, which the AXI
-                # agents read as bytes. The run's SystemC channel is sized from
-                # the same interface value and ignores a connection's override,
-                # so the agent ignores it too. A constant that is a parameter of
-                # the block takes each variant's binding, as the channel does
-                # through the block's Config.
                 maxTransferBytes = None
-                if intfType in ('axi_read', 'axi_write'):
-                    sizeKey = intfData['maxTransferSizeKey']
-                    if sizeKey in paramBySource:
-                        maxTransferBytes = {variant: ret['standaloneVariants'][variant][paramBySource[sizeKey]]
-                                            for variant in tops}
-                    else:
-                        size = self.getConst(sizeKey or intfData['maxTransferSize'], require_int=True,
-                                             context_msg="an AXI interface's maxTransferSize")
-                        maxTransferBytes = {variant: size for variant in tops}
+                if intfDef['uvmMaxTransferBytes']:
+                    sizes = self.portTransferSizes[(ret['qualBlock'], portData['name'])]['bytes']
+                    maxTransferBytes = {variant: sizes[variant] for variant in tops}
                 ports.append({
                     'name': portData['name'],
                     'agent': f"{portData['name']}_agent",
@@ -1859,10 +1846,10 @@ class projectOpen:
                     'counter': f"{portData['name']}_counter"
                                if isOutput and elastic and not intfDef['addressBus'] else None,
                     'maxTransferBytes': maxTransferBytes,
-                    # An AXI port that binds no id_t carries no ID in the
+                    # A port that binds no ID parameter carries no ID in the
                     # design, so its agent sends every burst with ID 0.
-                    'idUnbound': intfType in ('axi_read', 'axi_write') and any(
-                        b['isNull'] for b in paramBindings if b['structureType'] == 'id_t'),
+                    'idUnbound': bool(intfDef['uvmIdParam']) and any(
+                        b['isNull'] for b in paramBindings if b['structureType'] == intfDef['uvmIdParam']),
                     'paramBindings': paramBindings,
                     # Per variant, the bound payloads with their declaring
                     # packages, for package-scoped references.
@@ -3478,6 +3465,12 @@ class projectOpen:
                 domainClock = self.getBDPortDomain(ret, portRow['name'])
                 self._stampPortDomain(ret, portRow, domainClock)
             ret['ports'][portType['dest']] = dict(newPorts)
+        # The size a connection override gives the port's channel in
+        # <block>Channels, or None to keep the interface's maxTransferSize.
+        for group in ret['ports'].values():
+            for portRow in group.values():
+                sizes = self.portTransferSizes.get((ret['qualBlock'], portRow['name']))
+                portRow['channelTransferSize'] = sizes['channelBytes'] if sizes else None
 
     def _stampPortDomain(self, ret, portRow, domainClock):
         """Stamp a boundary port's domainClock/domainReset. The block's own
@@ -4890,6 +4883,7 @@ class projectCreate:
         self.calcConfigModules()
         self.calcVariantConfigDescriptors()
         self.calcVariantSourceBlocks()
+        self.calcPortTransferSizes()
         # reject a testbench on a block whose Config comes from its container
         self.validateContainerSourcedTestbench()
         # reject one variant label declared by two of a block's variant sources
@@ -4957,6 +4951,277 @@ class projectCreate:
         g.db.commit()
         g.db.close()
         printIfDebug("Process Complete")
+
+    def calcPortTransferSizes(self):
+        """The burst size each port's channel and UVM agent take, for the
+        blocks whose generated code builds one of each per port: a hasTb
+        block, whose <block>Testbench instantiates <block>Channels, a hasUvm
+        block, and a block with a fileMap entry that sets buildsChannels, such
+        as Pro's tandem wrapper, which instantiates <block>Channels for its
+        verif and model sides. A connection's maxTransferSize overrides its
+        interface's at every port the connection reaches, through
+        connectionMaps too, and all connections reaching one such port at one
+        variant must agree where the port uses its size: a multi-cycle port's
+        channel, or the agent of a hasUvm block's port whose type sets
+        uvmMaxTransferBytes. Other blocks have a channel per connection, sized
+        by that connection, so their ports take no single size and are not
+        checked.
+
+        An override may name a parameter of the block that holds the
+        connection, whose channel for it reads that block's Config. An end
+        then takes the holder's binding: at its own variant when it inherits
+        the holder's Config, else at each variant the holder is built at.
+
+        Persisted as PORTTRANSFERSIZES: (blockKey, portName) -> {'bytes':
+        {variant: bytes}, 'channelBytes': bytes or None}. 'bytes' covers the
+        block's standalone variants and the variants its instances are
+        reached at. 'channelBytes' is the size <block>Channels takes when an
+        override changes it, else None, and the channel keeps the interface's
+        own maxTransferSize, a constant name included.
+        """
+        reachable = self.config.getConfig('REACHABLEINSTANCES')
+        instances = self.flatData['instances']
+        blocks = self.flatData['blocks']
+        interfaces = self.flatData['interfaces']
+        constants = self.flatData['constants']
+        resolver = ValueResolver(self)
+        paramsByBlock = dict()
+        for row in self.flatData['blocksparams'].values():
+            paramsByBlock.setdefault(row['blockKey'], set()).add(row['paramSourceKey'])
+        defaultDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
+        # Why each in-scope block's ports take one size. A fileMap entry with
+        # buildsChannels, such as Pro's tandem wrapper, puts the blocks it is
+        # made for in scope.
+        blocksWithParams = set(paramsByBlock)
+        oneChannelPerPort = dict()
+        for blockKey, blockRow in blocks.items():
+            fileMap = self.projectLayout[self.contextOwningProject[blockRow['_context']]]['fileMap']
+            condRow = artifactPaths.blockCondRow(blockRow, blocksWithParams)
+            builders = sorted(name for name, fileDef in fileMap.items()
+                              if fileDef.get('buildsChannels') and artifactPaths.fileMapCondMatch(fileDef, condRow))
+            if blockRow['hasTb'] or blockRow['hasUvm']:
+                flag = 'hasTb' if blockRow['hasTb'] else 'hasUvm'
+                oneChannelPerPort[blockKey] = (f"has {flag}, so its testbench builds one channel and one "
+                                               f"agent for the port")
+            elif builders:
+                oneChannelPerPort[blockKey] = (f"gets fileMap entry '{builders[0]}', which sets buildsChannels, so "
+                                               f"its generated code builds one channel for the port")
+        standaloneMemo = dict()
+
+        def standaloneOf(blockKey):
+            if blockKey not in standaloneMemo:
+                standaloneMemo[blockKey] = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            return standaloneMemo[blockKey]
+        standalone = {blockKey: standaloneOf(blockKey) for blockKey in oneChannelPerPort}
+        # A label the block does not declare standalone, such as a foreign
+        # one, has its own descriptor; the owner's wins a clash.
+        ownValues = dict()
+        for blockKey, descriptors in self.variantConfigDescriptors.items():
+            for descriptor in sorted(descriptors, key=lambda d: d['isForeign'], reverse=True):
+                ownValues.setdefault(blockKey, dict())[descriptor['variant']] = descriptor['values']
+
+        def boundValue(blockKey, variant, sizeKey):
+            if variant in standaloneOf(blockKey):
+                values = standaloneOf(blockKey)[variant]['values']
+            else:
+                values = ownValues.get(blockKey, dict()).get(variant, defaultDescriptors[blockKey]['values'])
+            return values[constants[sizeKey]['constant']]
+
+        def sizeAt(token, sizeKey, blockKey, variant, what):
+            # An optionalConst size: a literal, a constant, or a parameter of
+            # the port's block, which takes the variant's binding.
+            if not sizeKey:
+                try:
+                    return int(str(token), 0)
+                except ValueError:
+                    self.logError(f"{what} sets maxTransferSize '{token}', which is not a whole number of bytes.")
+            if sizeKey in paramsByBlock.get(blockKey, ()):
+                return int(boundValue(blockKey, variant, sizeKey))
+            return int(resolver.lookupNamedRow(sizeKey, 'a maxTransferSize')['value'])
+
+        variantMemo = dict()
+
+        def instanceVariants(instKey):
+            # An inheriting instance is built at each variant of its container.
+            if instKey not in variantMemo:
+                instRow = instances[instKey]
+                if not instRow['inheritContainerParam']:
+                    variantMemo[instKey] = {instRow['variant']}
+                else:
+                    variantMemo[instKey] = {variant for key, row in instances.items()
+                                            if key in reachable and row['instanceTypeKey'] == instRow['containerKey']
+                                            for variant in instanceVariants(key)}
+            return variantMemo[instKey]
+
+        def connectionLabel(conn):
+            name = f"'{conn['name']}'" if conn['name'] else f"{conn['interface']} from '{conn['src']}' to '{conn['dst']}'"
+            return f"connection {name} ({self.diagnosticLocation(conn['_context'], conn.get('lc'))})"
+
+        def holderVariants(holderKey):
+            # The variants the block holding a connection is built at.
+            return {variant for key, row in instances.items()
+                    if key in reachable and row['instanceTypeKey'] == holderKey
+                    for variant in instanceVariants(key)} or {''}
+
+        # (blockKey, portName) -> variant -> [(source, interfaceKey, label)].
+        # source is None for the interface's own size, the connection row for
+        # an override in bytes or a constant, or {'bytes', 'maxTransferSize'}
+        # for a holder's parameter already resolved.
+        reached = dict()
+        portIntf = dict()
+        for conn in self.flatData['connections'].values():
+            overridden = bool(conn['maxTransferSizeKey']) or str(conn['maxTransferSize']) != '0'
+            label = connectionLabel(conn)
+            holderKey = next((instances[end['instanceKey']]['containerKey'] for end in conn['ends'].values()), None)
+            holderParam = False
+            # The holder's channel for the connection spells the override in
+            # the holder's scope, so a parameter is one of the holder's.
+            if conn['maxTransferSizeKey'] and \
+                    resolver.lookupNamedRow(conn['maxTransferSizeKey'], 'a maxTransferSize')['isParameterizable']:
+                holderParam = conn['maxTransferSizeKey'] in paramsByBlock.get(holderKey, ())
+                if not holderParam:
+                    holderName = blocks[holderKey]['block'] if holderKey in blocks else holderKey
+                    self.logError(f"The {label} sets maxTransferSize '{conn['maxTransferSize']}', which is a "
+                                  f"parameter that block '{holderName}', which holds the connection, does not "
+                                  f"take. The channel '{holderName}' builds for the connection reads the "
+                                  f"override from its own Config, so an override is a number of bytes, a project "
+                                  f"constant, or a parameter of '{holderName}'. Binding the interface's "
+                                  f"maxTransferSize to a parameter instead sizes every port of interface "
+                                  f"'{conn['interface']}'.")
+                    continue
+            for end in conn['ends'].values():
+                if end['instanceKey'] not in reachable:
+                    continue
+                blockKey = instances[end['instanceKey']]['instanceTypeKey']
+                # An end whose block declares another interface for the port is
+                # bridged by an adapter, so the port keeps its own interface's size.
+                declared = self._declaredPortInterfaceKey(blocks[blockKey], end['portName'])
+                intfKey = declared or conn['interfaceKey']
+                portIntf.setdefault((blockKey, end['portName']), intfKey)
+                source = conn if overridden and intfKey == conn['interfaceKey'] else None
+                inherits = instances[end['instanceKey']]['inheritContainerParam']
+                for variant in instanceVariants(end['instanceKey']):
+                    items = reached.setdefault((blockKey, end['portName']), dict()).setdefault(variant, list())
+                    if source is None or not holderParam:
+                        items.append((source, intfKey, label))
+                        continue
+                    for holderVariant in sorted({variant} if inherits else holderVariants(holderKey)):
+                        bytesAt = int(boundValue(holderKey, holderVariant, conn['maxTransferSizeKey']))
+                        where = f" at variant '{holderVariant}' of block '{blocks[holderKey]['block']}'" \
+                            if holderVariant else ''
+                        items.append(({'bytes': bytesAt, 'maxTransferSize': conn['maxTransferSize']}, intfKey,
+                                      label + where))
+
+        # A connectionMaps entry hands its block's port to a child's port, so
+        # the child port is reached by whatever reaches the block port.
+        mapsByChildPort = dict()
+        for cm in self.flatData['connectionMaps'].values():
+            portIntf.setdefault((cm['blockKey'], cm['portName']),
+                                self._declaredPortInterfaceKey(blocks[cm['blockKey']], cm['portName'])
+                                or cm['interfaceKey'])
+            if cm['instanceKey'] in reachable:
+                childKey = instances[cm['instanceKey']]['instanceTypeKey']
+                mapsByChildPort.setdefault((childKey, cm['instancePortName']), list()).append(cm)
+        resolved = dict()
+
+        def contributions(portKey):
+            if portKey in resolved:
+                return resolved[portKey]
+            ret = {variant: list(items) for variant, items in reached.get(portKey, dict()).items()}
+            for cm in mapsByChildPort.get(portKey, ()):
+                instRow = instances[cm['instanceKey']]
+                declared = self._declaredPortInterfaceKey(blocks[portKey[0]], portKey[1])
+                intfKey = declared or cm['interfaceKey']
+                portIntf.setdefault(portKey, intfKey)
+                where = (f" through connectionMaps entry for port '{cm['portName']}' of block "
+                         f"'{cm['block']}' ({self.diagnosticLocation(cm['_context'], cm.get('lc'))})")
+                for parentVariant, items in contributions((cm['blockKey'], cm['portName'])).items():
+                    variants = {parentVariant} if instRow['inheritContainerParam'] \
+                        else instanceVariants(cm['instanceKey'])
+                    for variant in variants:
+                        ret.setdefault(variant, list()).extend(
+                            (source if intfKey == cm['interfaceKey'] else None, intfKey, label + where)
+                            for source, _intfKey, label in items)
+            resolved[portKey] = ret
+            return ret
+
+        sizes = dict()
+        errors = False
+        for blockKey, why in oneChannelPerPort.items():
+            blockRow = blocks[blockKey]
+            blockName = blockRow['block']
+            portNames = set(blockRow.get('ports', dict())) | set(blockRow.get('registerPorts', dict()))
+            portNames |= {portName for (key, portName) in set(reached) | set(mapsByChildPort) | set(portIntf)
+                          if key == blockKey}
+            for portName in sorted(portNames):
+                portKey = (blockKey, portName)
+                found = contributions(portKey)
+                intf = interfaces[self._declaredPortInterfaceKey(blockRow, portName) or portIntf[portKey]]
+                # The port's single size reaches the channel only on a
+                # multi-cycle interface, and the agent only on a type with
+                # uvmMaxTransferBytes.
+                intfDef = self.flatData['interface_defs'][intf['interfaceTypeKey']]
+                sizeUsed = bool(intf['multiCycleMode']) or bool(blockRow['hasUvm'] and intfDef['uvmMaxTransferBytes'])
+                variants = set(found) | set(standalone[blockKey])
+                if not standalone[blockKey]:
+                    variants.add('')
+                byVariant = dict()
+                overrides = list()
+                for variant in sorted(variants):
+                    interfaceBytes = sizeAt(intf['maxTransferSize'], intf['maxTransferSizeKey'], blockKey, variant,
+                                            f"Interface '{intf['interface']}'")
+                    bySize = dict()
+                    for source, itemIntfKey, label in found.get(variant, ()):
+                        if source is None:
+                            itemIntf = interfaces[itemIntfKey]
+                            bySize.setdefault(sizeAt(itemIntf['maxTransferSize'], itemIntf['maxTransferSizeKey'],
+                                                     blockKey, variant, f"Interface '{itemIntf['interface']}'"),
+                                              list()).append(f"{label}, the interface's maxTransferSize")
+                            continue
+                        if 'bytes' in source:
+                            size = source['bytes']
+                        else:
+                            size = sizeAt(source['maxTransferSize'], source['maxTransferSizeKey'], blockKey, variant,
+                                          f"The {label}")
+                        if size <= 0:
+                            self.logError(f"The {label} sets maxTransferSize '{source['maxTransferSize']}', which is "
+                                          f"{size} bytes at port '{portName}' of block '{blockName}'. An override is "
+                                          f"a positive number of bytes; remove it to keep the interface's size.")
+                            continue
+                        # An override equal to the interface's size changes nothing.
+                        if size != interfaceBytes:
+                            overrides.append((variant, label))
+                        bySize.setdefault(size, list()).append(f"{label}, its maxTransferSize")
+                    variantWords = f" at variant '{variant}'" if variant else ''
+                    if len(bySize) > 1 and sizeUsed:
+                        listed = '; '.join(f"{size} bytes from {', '.join(labels)}"
+                                           for size, labels in sorted(bySize.items()))
+                        printError(f"Port '{portName}' of block '{blockName}'{variantWords} is reached by "
+                                   f"connections that give it different transfer sizes: {listed}. Block "
+                                   f"'{blockName}' {why}, and the port takes one transfer size per variant; "
+                                   f"give these connections the same maxTransferSize, or none.")
+                        errors = True
+                    byVariant[variant] = next(iter(bySize)) if len(bySize) == 1 else interfaceBytes
+                channelBytes = None
+                if overrides and intf['multiCycleMode']:
+                    if len(set(byVariant.values())) > 1:
+                        listed = ', '.join(f"{size} bytes at variant '{variant}'"
+                                           for variant, size in sorted(byVariant.items()))
+                        origins = '; '.join(sorted({f"{label} at variant '{variant}'" for variant, label in overrides}))
+                        printError(f"Port '{portName}' of parameterized block '{blockName}' has transfer "
+                                   f"size {listed}. The override comes from {origins}; a variant reached by "
+                                   f"no override takes the interface's maxTransferSize. {blockName}Channels "
+                                   f"is one class template over Config, so its multi-cycle channel takes one "
+                                   f"size. Remove the override, or replace it by binding the interface's "
+                                   f"maxTransferSize to a parameter of '{blockName}' so each Config carries "
+                                   f"its own size; that binding sizes every port of interface "
+                                   f"'{intf['interface']}'.")
+                        errors = True
+                    channelBytes = next(iter(byVariant.values()))
+                sizes[portKey] = {'bytes': byVariant, 'channelBytes': channelBytes}
+        if errors:
+            exit(warningAndErrorReport())
+        self.config.setConfig('PORTTRANSFERSIZES', sizes, bin=True)
 
     def calcVariantSourceBlocks(self):
         # The blocks whose declared variants supply each block's Config, normally
@@ -5557,6 +5822,20 @@ class projectCreate:
             return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
                     f"Use an interface type with an agent for '{name}'")
         failed = False
+        # The env sets these agent config fields, so only a type with an
+        # agent may ask for them.
+        for row in self.flatData['interface_defs'].values():
+            where = f"Interface type '{row['interface_type']}' (file {row['_context']})"
+            for field in ('uvmMaxTransferBytes', 'uvmIdParam'):
+                if row[field] and not row['uvmAgent']:
+                    printError(f"{where} sets {field} but not uvmAgent: true. The generated env answers "
+                               f"{field} with a member of the type's agent config, and only a type with an "
+                               f"agent has one; remove {field} or ship the agent.")
+                    failed = True
+            if row['uvmIdParam'] and ('parameters' not in row or row['uvmIdParam'] not in row['parameters']):
+                printError(f"{where} sets uvmIdParam '{row['uvmIdParam']}', which is not one of its "
+                           f"parameters. Name the parameter that carries the transaction ID.")
+                failed = True
         for blockRow in self.flatData['blocks'].values():
             if not blockRow['hasUvm']:
                 continue
@@ -6074,6 +6353,12 @@ class projectCreate:
     # (see artifactPaths.fileNamePrefix).
     FILE_PREFIX_KEYS = {'sv': 'svFilePrefix', 'sc': 'scFilePrefix', 'fw': 'fwFilePrefix'}
 
+    # The keys a fileMap entry may set. The generators read each with .get(),
+    # so a misspelled key would otherwise turn its flag off without a word.
+    FILE_MAP_ENTRY_KEYS = ('basePath', 'blockDir', 'buildsChannels', 'cond', 'condAnd', 'desc', 'dutVariant',
+                           'ext', 'langDomain', 'mode', 'name', 'ownerQualified', 'pairVlTop',
+                           'requiresRegistrations', 'variant')
+
     def _filePrefixes(self, proj, projectLabel):
         # An omitted key means no prefix. The SV names a prefix produces are
         # checked as identifiers once they exist (deriveModuleIdentities,
@@ -6107,6 +6392,12 @@ class projectCreate:
                     f"'{key}'")
         langDomains = ', '.join(self.FILE_PREFIX_KEYS)
         for fileType, fileDef in fileGeneration['fileMap'].items():
+            for key in fileDef:
+                if key not in self.FILE_MAP_ENTRY_KEYS:
+                    self.logError(
+                        f"fileGeneration.fileMap entry '{fileType}' in project '{projectLabel}' "
+                        f"sets '{key}', which is not a fileMap key; the keys are "
+                        f"{', '.join(self.FILE_MAP_ENTRY_KEYS)}")
             if 'langDomain' not in fileDef:
                 problem = "has no langDomain"
             elif fileDef['langDomain'] not in self.FILE_PREFIX_KEYS:

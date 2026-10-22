@@ -655,6 +655,18 @@
         endfunction
     endclass : req_ack_mode_b_dst_drain_busy_test
 
+    // As req_ack_mode_b_dst_drain_busy_test, with a passive Mode B agent watching the port: the drain's
+    // cut must cut its model_cmp too, so it pairs what the agent pairs and
+    // reports no unpaired transfer.
+    class req_ack_mode_b_dst_busy_passive_test extends req_ack_mode_b_dst_drain_busy_test;
+        `uvm_component_utils(req_ack_mode_b_dst_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            watch_passive = 1;
+        endfunction
+    endclass : req_ack_mode_b_dst_busy_passive_test
+
     // The agent's responder takes three clocks to answer each request, and
     // both peers keep sending after the drop: the model lane's ack and rdata
     // must drop on time, and its requests be seen, while the DUT lane waits

@@ -317,6 +317,10 @@ package external_reg_uvm_pkg;
     class external_reg_agent #(type data_t = logic [31:0]) extends uvm_agent;
         typedef external_reg_item#(data_t)   item_t;
         typedef external_reg_config#(data_t) config_t;
+        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
+        // the active agent's replay log also cuts, and tells a passive agent
+        // whether an active one has claimed the pin set.
+        typedef a2c_pin_registry #(virtual external_reg_if #(.data_t(data_t))) registry_t;
 
         config_t                                  cfg;
         external_reg_driver#(data_t)              drv;
@@ -371,8 +375,20 @@ package external_reg_uvm_pkg;
                 void'($cast(write_cmp, model_cmp));
                 mon.ap.connect(write_cmp.dut_export);
                 model_mon.ap.connect(write_cmp.model_export);
-                if (drv != null && drv.replay != null) drv.replay.cmp = write_cmp;
+                if (drv != null && drv.replay != null) begin
+                    drv.replay.cmp      = write_cmp;
+                    drv.replay.watchers = registry_t::of(cfg.vif);
+                    registry_t::of(cfg.vif).owner = get_full_name();
+                end
+                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(write_cmp);
             end
+        endfunction
+
+        // A passive Mode B agent says so when no active responder has claimed
+        // its pin set, since its model_cmp then misses the drain's cuts.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : external_reg_agent
 

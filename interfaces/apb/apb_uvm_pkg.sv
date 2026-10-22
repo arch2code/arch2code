@@ -379,6 +379,10 @@ package apb_uvm_pkg;
     class apb_agent #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_agent;
         typedef apb_item                    item_t;
         typedef apb_config#(addr_t, data_t) config_t;
+        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
+        // the active agent's replay log also cuts, and tells a passive agent
+        // whether an active one has claimed the pin set.
+        typedef a2c_pin_registry #(virtual apb_if #(.addr_t(addr_t), .data_t(data_t))) registry_t;
 
         apb_config#(addr_t, data_t)  cfg;
         // apb_master_driver for A2C_SRC, apb_slave_driver for A2C_DST.
@@ -438,8 +442,20 @@ package apb_uvm_pkg;
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
-                if ($cast(slave, drv) && slave.replay != null) slave.replay.cmp = model_cmp;
+                if (drv != null && $cast(slave, drv) && slave.replay != null) begin
+                    slave.replay.cmp      = model_cmp;
+                    slave.replay.watchers = registry_t::of(cfg.vif);
+                    registry_t::of(cfg.vif).owner = get_full_name();
+                end
+                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
+        endfunction
+
+        // A passive Mode B agent says so when no active responder has claimed
+        // its pin set, since its model_cmp then misses the drain's cuts.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : apb_agent
 

@@ -143,6 +143,12 @@ interface_defs:
   # the type ships its UVM agent, <type>_uvm_pkg.sv, so a hasUvm block's
   # boundary port may use it
   uvmAgent: optional(false)
+  # the type's agent config carries max_transfer_bytes, which the generated
+  # env sets from the port's transfer size
+  uvmMaxTransferBytes: optional(false)
+  # the parameter that carries the transaction ID; a port that leaves it
+  # unbound gets its agent config's id_unbound set
+  uvmIdParam: optional()
   parameters:
     _attribs: [optional, multiple]
     param: key
@@ -584,7 +590,7 @@ connections: # custom handler
         field: instance
     dstport: optional # port can be used to force the naming of the port to allow it to be different each end
     interfaceName: optional  # force the interface instance name for HW case. This is to allows the array case to instead use names for the array instances
-    maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
+    maxTransferSize: optionalConst(0) # for multiCycle operation, overrides the interface maxTransferSize definition
     tracker: # this indicates that an interface will see the first or last use of a tracker tag, and interface should manage the tracker instead of generate error
              # the use case is to allow automation of tracker when HW implimentation is performing allocation or deallocation
       _type: optional
@@ -638,7 +644,7 @@ connections: # custom handler
       dstport: optional
   interfaceName: optional  # force the interface instance name for HW case. This is to allows the array case to instead use names for the array instances
   channel: optional #filled programatically based on src portName
-  maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
+  maxTransferSize: optionalConst(0) # for multiCycle operation, overrides the interface maxTransferSize definition
   tracker: optional
   clock: optional()       # storage side of the _dataSchema field above
   isParameterizable: auto(interfaceRefIsParameterizable)

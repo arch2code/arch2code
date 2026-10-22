@@ -410,6 +410,18 @@
         endfunction
     endclass : push_ack_mode_b_dst_drain_busy_zero_test
 
+    // As push_ack_mode_b_dst_drain_busy_zero_test, with a passive Mode B agent watching the port: the drain's
+    // cut must cut its model_cmp too, so it pairs what the agent pairs and
+    // reports no unpaired transfer.
+    class push_ack_mode_b_dst_busy_passive_test extends push_ack_mode_b_dst_drain_busy_zero_test;
+        `uvm_component_utils(push_ack_mode_b_dst_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            watch_passive = 1;
+        endfunction
+    endclass : push_ack_mode_b_dst_busy_passive_test
+
     // Two busy ports, each with its own replay log: pa as in
     // push_ack_mode_b_dst_drain_busy_zero_test, and pa2, whose peers keep
     // pushing with gaps of 0 to 3 clocks, the model lane's two clocks behind.

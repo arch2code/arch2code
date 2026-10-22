@@ -188,13 +188,17 @@ package a2c_uvm_loopback_pkg;
 
     // What every Mode B test shares: a demoter on demote_id that records
     // the messages, and a report_phase check that it demoted exactly
-    // want_errors, each kept message holding want_text when set. A test
+    // want_errors, some kept message holding each want_text, and none
+    // holding any unwant_text, and that the passive agents with no active
+    // agent on their pin set raised want_unowned A2C_PASSIVE infos. A test
     // adds the logs whose cuts it checks to tracker.logs.
     class lb_mode_b_base extends lb_base_test;
         lb_recording_demoter demoter;
         string               demote_id = "A2C_MODEL_CMP";
         int unsigned         want_errors = 0;
         string               want_text[$];
+        string               unwant_text[$];
+        int unsigned         want_unowned = 0;
         lb_cut_tracker       tracker;
 
         `uvm_component_utils(lb_mode_b_base)
@@ -258,9 +262,40 @@ package a2c_uvm_loopback_pkg;
                     `uvm_error("LB_MODE_B", $sformatf("no %s message holds '%s': %p", demote_id, want_text[i], demoter.messages))
                 end
             end
+            foreach (unwant_text[i]) begin
+                if (demoter.count(unwant_text[i]) != 0) begin
+                    `uvm_error("LB_MODE_B", $sformatf("a %s message holds '%s': %p", demote_id, unwant_text[i], demoter.messages))
+                end
+            end
+            if (uvm_report_server::get_server().get_id_count("A2C_PASSIVE") != want_unowned) begin
+                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_PASSIVE reports, expected %0d", uvm_report_server::get_server().get_id_count("A2C_PASSIVE"),
+                                                  want_unowned))
+            end
             super.report_phase(phase);
         endfunction
     endclass : lb_mode_b_base
+
+    // Turns each A2C_CFG fatal about a missing Mode B into UVM_INFO and keeps
+    // its text, for the tests of a layer's agents with no Mode B operations
+    // yet.
+    class lb_mode_b_fatal_catcher extends uvm_report_catcher;
+        string messages[$];
+
+        `uvm_object_utils(lb_mode_b_fatal_catcher)
+
+        function new(string name = "lb_mode_b_fatal_catcher");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_severity() == UVM_FATAL && get_id() == "A2C_CFG" && a2c_contains(get_message(), "has no Mode B operations yet")) begin
+                messages.push_back(get_message());
+                set_severity(UVM_INFO);
+                set_action(UVM_DISPLAY);
+            end
+            return THROW;
+        endfunction
+    endclass : lb_mode_b_fatal_catcher
 
     // Sends a prepared list of items in order.
     class lb_list_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
@@ -367,6 +402,13 @@ package a2c_uvm_loopback_pkg;
         int unsigned         pending_at_second_drop;
         int unsigned         pending_at_third_drop;
         bit                  busy_at_third_drop;
+        // A passive Mode B agent on the port, which must build no driver and
+        // pair what agent pairs, a cut run included. On a busy port the
+        // model lane's peer then pauses 10 clocks after the drop, so the DUT
+        // lane completes transfers past the cut while the model lane catches
+        // up, which only a cut model_cmp holds back.
+        bit                  watch_passive;
+        AGENT_T              watcher;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -427,6 +469,13 @@ package a2c_uvm_loopback_pkg;
             model_peer     = AGENT_T::type_id::create("model_peer", this);
             arrivals       = lb_arrivals#(ITEM_T)::type_id::create("arrivals", this);
             model_arrivals = lb_arrivals#(ITEM_T)::type_id::create("model_arrivals", this);
+            if (watch_passive) begin
+                CFG_T watcher_cfg = lane_cfg("watcher_cfg", vif, role, port);
+                watcher_cfg.model_vif = model_vif;
+                watcher_cfg.is_active = UVM_PASSIVE;
+                uvm_config_db#(CFG_T)::set(this, "watcher", "cfg", watcher_cfg);
+                watcher = AGENT_T::type_id::create("watcher", this);
+            end
             for (int unsigned i = 0; i < n_items + tail; i++) begin
                 ITEM_T it = new_item(i);
                 ITEM_T m;
@@ -457,6 +506,7 @@ package a2c_uvm_loopback_pkg;
                         m.gap  = ((i / 10) % 2 == 0) ? $urandom_range(1, 0) : $urandom_range(3, 2);
                     end
                 endcase
+                if (watch_passive && busy() && i == n_items + 20) m.gap += 10;
                 items.push_back(it);
                 model_items.push_back(m);
             end
@@ -701,6 +751,15 @@ package a2c_uvm_loopback_pkg;
             `uvm_info("LB_STATS", $sformatf("%0d and %0d transfers on the DUT and model lanes, %0d on different clocks; %0d pairs; the model lane led %0d; %0d unreplayed at the drop; the drain took %0d clocks",
                                             arrivals.items.size(), model_arrivals.items.size(), apart, pairs, model_led,
                                             pending_at_drop, drain_clocks()), UVM_NONE)
+            if (watch_passive) begin
+                if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+                if (pairs == 0 || watcher.model_cmp.get_pairs() != pairs) begin
+                    `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(), pairs))
+                end
+                if (busy() && arrivals.items.size() <= agent.drv.replay.get_cut()) begin
+                    `uvm_error("LB_MODE_B", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
+                end
+            end
             if (role == A2C_SRC) begin
                 if (apart == 0) `uvm_error("LB_MODE_B", "the lanes completed every transfer on the same clock, so per-lane completion went untested")
                 if (agent.model_cmp != null && pairs != n) begin
@@ -787,13 +846,13 @@ package a2c_uvm_loopback_pkg;
     `include "external_reg_lb_tests.svh"
     `include "axi_read_lb_tests.svh"
     `include "axi_write_lb_tests.svh"
+    `include "axi_mode_b_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"
     `include "a2c_model_cmp_lb_tests.svh"
     `include "a2c_replay_drain_lb_tests.svh"
     `include "a2c_gen_base_test_lb_tests.svh"
-    `include "mode_b_unsupported_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 
@@ -896,6 +955,10 @@ module a2c_uvm_loopback_tb;
                   .ruser_t(lb_axr_ruser_t), .id_t(lb_axr_id_t)) axr();
     axi_write_if #(.addr_t(lb_axw_addr_t), .data_t(lb_axw_data_t), .strb_t(lb_axw_strb_t), .awuser_t(lb_axw_awuser_t),
                    .wuser_t(lb_axw_wuser_t), .buser_t(lb_axw_buser_t), .id_t(lb_axw_id_t)) axw();
+    axi_read_if #(.addr_t(lb_axr_addr_t), .data_t(lb_axr_data_t), .aruser_t(lb_axr_aruser_t),
+                  .ruser_t(lb_axr_ruser_t), .id_t(lb_axr_id_t)) axr_model();
+    axi_write_if #(.addr_t(lb_axw_addr_t), .data_t(lb_axw_data_t), .strb_t(lb_axw_strb_t), .awuser_t(lb_axw_awuser_t),
+                   .wuser_t(lb_axw_wuser_t), .buser_t(lb_axw_buser_t), .id_t(lb_axw_id_t)) axw_model();
 
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
@@ -934,6 +997,8 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(er_vif_t)::set(null, "uvm_test_top", "er_model", er_model);
         uvm_config_db#(axr_vif_t)::set(null, "uvm_test_top", "axr", axr);
         uvm_config_db#(axw_vif_t)::set(null, "uvm_test_top", "axw", axw);
+        uvm_config_db#(axr_vif_t)::set(null, "uvm_test_top", "axr_model", axr_model);
+        uvm_config_db#(axw_vif_t)::set(null, "uvm_test_top", "axw_model", axw_model);
         run_test();
     end
 

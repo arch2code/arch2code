@@ -37,6 +37,9 @@ The entry key is the interface type name. The sections are:
 - `addressBus: true` marks a register or address bus meta-protocol.
 - `mappedFrom:` lists the register and memory type aliases, such as `reg_ro` and `reg_rw`, that resolve to this definition.
 - `uvmAgent: true` says the type ships a UVM agent and an X/Z checker, described under "UVM agent and X/Z checker" below. A `hasUvm` block may use only flagged types on its boundary, and `make db` names the port and type that break this. The HDL wrapper of every `hasVl` block, `hasUvm` or not, instantiates the checker on each port of a flagged type.
+- `uvmMaxTransferBytes: true` says the agent's `<type>_config` declares `max_transfer_bytes`, an `int unsigned` burst limit in bytes, and the generated env sets it from the port's transfer size: a connection's `maxTransferSize` override where one reaches the port, else the interface's. It needs `uvmAgent: true`.
+- `uvmIdParam: <parameter>` names the parameter that carries the transaction ID, `id_t` on `axi_read` and `axi_write`. The agent's `<type>_config` then declares `bit id_unbound`, and the generated env sets it on a port whose interface leaves that parameter unbound, so the master sends every burst with ID 0. It needs `uvmAgent: true`, and the name must be one of the definition's `parameters`.
+- `make db` rejects either field without `uvmAgent: true`, and a `uvmIdParam` that is not a parameter. `unittest/test_uvm_max_transfer_bytes_flag.py` walks the shipped definitions, Pro's included, and checks each field and its config member agree.
 
 ## Companion files
 
@@ -101,7 +104,8 @@ The generated env (`templates/systemVerilog/uvmPkg.py`) uses these names, so an 
 | config fields `vif`, `clk_vif`, `port_name` | set for every port; `clk_vif` is the port's own clock domain |
 | config field `role` | set on every port |
 | config field `no_backpressure` | set when the definition is elastic with `backpressure.overridable: true` |
-| config fields `max_transfer_bytes` and `id_unbound` | set on `axi_read` and `axi_write` ports only. The view chooses them by type name, so a new burst type needs a change to `getBDUvm` (`pysrc/processYaml.py`) |
+| config field `max_transfer_bytes` | set when the definition has `uvmMaxTransferBytes: true`, to the port's transfer size per variant |
+| config field `id_unbound` | set when the definition names `uvmIdParam` and the port leaves that parameter unbound |
 | agent member `mon`, with a `uvm_analysis_port` named `ap` | feeds the output counter and, on a register bus, the register predictor |
 | agent member `sqr` | the register model's sequencer, on a register bus |
 | class `myproto_reg_adapter` | a definition with `addressBus: true` only; the env creates it as the register model's adapter |

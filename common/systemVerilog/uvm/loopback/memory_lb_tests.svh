@@ -867,6 +867,45 @@
         endfunction
     endclass : memory_mode_b_dst_stale_test
 
+    // As memory_mode_b_dst_stale_test after a master elsewhere declared the
+    // model lane dead on the first clock, so the report names the death.
+    class memory_mode_b_dst_stale_dead_test extends memory_mode_b_dst_stale_test;
+        `uvm_component_utils(memory_mode_b_dst_stale_dead_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_text.push_back("; the model lane of uvm_test_top was declared dead at ");
+            want_text.push_back(" (A2C_SKEW), which may be related");
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            fork
+                begin
+                    clk_vif.wait_reset_release();
+                    clk_vif.sample_edge();
+                    a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
+                end
+            join_none
+            super.run_phase(phase);
+        endtask
+    endclass : memory_mode_b_dst_stale_dead_test
+
+    // As memory_mode_b_dst_stale_test with the death after the run, which
+    // the report therefore does not name.
+    class memory_mode_b_dst_stale_dead_after_test extends memory_mode_b_dst_stale_test;
+        `uvm_component_utils(memory_mode_b_dst_stale_dead_after_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            unwant_text.push_back("which may be related");
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            super.run_phase(phase);
+            a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
+        endtask
+    endclass : memory_mode_b_dst_stale_dead_after_test
+
     // The model lane's peer makes one access more, which the DUT lane never
     // records: the drain runs to its deadline, and the replay log reports
     // the wait in one A2C_REPLAY.
@@ -996,6 +1035,48 @@
             end
         endfunction
     endclass : memory_mode_b_dst_drain_busy_zero_test
+
+    // As memory_mode_b_dst_drain_busy_zero_test, with a passive Mode B agent
+    // watching the port: the drain's cut must cut its model_cmp too, so it
+    // pairs what the agent pairs and reports no unpaired access. The model
+    // lane pauses 10 clocks after the drop, so the DUT lane makes accesses
+    // past the cut while the model lane catches up.
+    class memory_mode_b_dst_busy_passive_test extends memory_mode_b_dst_drain_busy_zero_test;
+        mem_agent_t watcher;
+
+        `uvm_component_utils(memory_mode_b_dst_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            super.build_streams();
+            model_seq.items[n_items + 20].gap += 10;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            mem_config_t cfg;
+            super.build_phase(phase);
+            cfg = lane_cfg("watcher_cfg", vif, A2C_DST, "mem");
+            cfg.model_vif = model_vif;
+            cfg.is_active = UVM_PASSIVE;
+            uvm_config_db#(mem_config_t)::set(this, "watcher", "cfg", cfg);
+            watcher = mem_agent_t::type_id::create("watcher", this);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
+                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                                                  agent.model_cmp.get_pairs()))
+            end
+            if (arrivals.items.size() <= agent.drv.replay.get_cut()) begin
+                `uvm_error("LB_MODE_B", "the DUT lane made no access past the cut, so the passive agent's cut went untested")
+            end
+        endfunction
+    endclass : memory_mode_b_dst_busy_passive_test
 
     // As memory_mode_b_dst_drain_busy_zero_test with the model lane two
     // clocks behind, so on no clock do the lanes make the same access.

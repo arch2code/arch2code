@@ -318,6 +318,7 @@ def channelConstructor(args, prj, data, line, multicycle_types, backpressure_arg
     # we may have a multicycle interface
     intf_data = intf_gen_utils.get_intf_data(line['connection'], prj)
     interface_size = intf_data.get('maxTransferSize',0)
+    channel_size = interface_size if line['channelTransferSize'] is None else line['channelTransferSize']
     tracker_type = intf_data.get('trackerType',"")
     multi_cycle_mode = intf_data.get('multiCycleMode',"")
     tracker = line.get('tracker',"")
@@ -336,9 +337,9 @@ def channelConstructor(args, prj, data, line, multicycle_types, backpressure_arg
                 exit(warningAndErrorReport())
             if tracker_type != "":
                 tracker_type = f'tracker:{tracker_type}'
-            extra = f', "{multi_cycle_mode}", {interface_size}, "{tracker_type}"'
+            extra = f', "{multi_cycle_mode}", {channel_size}, "{tracker_type}"'
         else:
             if interface_size != "0" or tracker_type:
-                print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
+                print(f"warning: interface {intf_data['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
     return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{backpressure_arg}{extra}{auto_mode})')

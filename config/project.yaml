@@ -137,6 +137,9 @@ fileGeneration:
     #   all listed fields must match. Neither means always generate.
     # smartInclude is yaml based rather than block based: if true the file is created
     #   only when the yaml file has content to include, if false it is always created.
+    # buildsChannels: true marks a block entry whose generated code instantiates
+    #   <block>Channels, so each port of a block it is made for takes one transfer
+    #   size per variant, which make db checks as it does for a hasTb block.
     blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    langDomain: sc, desc: "Module Base class interface unit (Base/Inverted/Channels)"}
     # Every block implementation is a single C++20 module interface unit whose
     # member bodies are module-visible. classDecl selects the form on hasOwnParams:

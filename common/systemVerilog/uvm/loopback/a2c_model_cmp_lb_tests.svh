@@ -35,6 +35,19 @@
         endfunction
     endclass : lb_keyed_cmp
 
+    // Keyed by tag, except tag 3, which has no key.
+    class lb_mixed_key_cmp extends lb_cmp_t;
+        `uvm_component_utils(lb_mixed_key_cmp)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function string key(rv_item_t t);
+            return (t.data.tag[1:0] == 3) ? "" : $sformatf("%0d", t.data.tag[1:0]);
+        endfunction
+    endclass : lb_mixed_key_cmp
+
     class lb_bounds_cmp extends lb_st_cmp_t;
         `uvm_component_utils(lb_bounds_cmp)
 
@@ -571,6 +584,10 @@
         int unsigned replays;
         rv_item_t    rsp_of[int unsigned];
         int unsigned delay_of[int unsigned];
+        // When the test declares the model lane dead, as a master on another
+        // port would: never, on the first clock after the reset, before any
+        // record, or after the run.
+        enum {DEAD_NEVER, DEAD_FIRST, DEAD_LAST} dead = DEAD_NEVER;
 
         `uvm_component_utils(replay_log_test)
 
@@ -633,6 +650,10 @@
             int unsigned idle = 0;
             phase.raise_objection(this);
             clk_vif.wait_reset_release();
+            if (dead == DEAD_FIRST) begin
+                clk_vif.sample_edge();
+                a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
+            end
             fork
                 record_all();
                 replay_all();
@@ -644,8 +665,22 @@
                 idle = (replays == last) ? idle + 1 : 0;
             end
             disable fork;
+            // A clock between the death and the end keeps it before the
+            // check_phase() reports, which leave out a death of their own
+            // time step.
+            if (dead == DEAD_LAST) begin
+                a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
+                clk_vif.sample_edge();
+            end
             phase.drop_objection(this);
         endtask
+
+        // A death before the reported event names it; a later one does not.
+        protected function void want_death();
+            if (dead == DEAD_FIRST) want_text.push_back("; the model lane of uvm_test_top was declared dead at ");
+            if (dead == DEAD_FIRST) want_text.push_back(" (A2C_SKEW), which may be related");
+            if (dead == DEAD_LAST) unwant_text.push_back("which may be related");
+        endfunction
 
         virtual function void report_phase(uvm_phase phase);
             `uvm_info("LB_STATS", $sformatf("%0d transactions, %0d replays asked for before they were recorded", n, early), UVM_NONE)
@@ -702,6 +737,69 @@
                                           n - 1));
         endfunction
     endclass : replay_log_waiting_test
+
+    // As replay_log_unconsumed_test, but a master declared the model lane
+    // dead before the first record: the two records the model lane never
+    // replayed are still one error, which names the death.
+    class replay_log_dead_lane_test extends replay_log_unconsumed_test;
+        `uvm_component_utils(replay_log_dead_lane_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            dead = DEAD_FIRST;
+        endfunction
+
+        virtual function void configure();
+            super.configure();
+            want_death();
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            uvm_report_server srv = uvm_report_server::get_server();
+            if (srv.get_id_count("A2C_REPLAY") != 1) begin
+                `uvm_error("LB_REPLAY", $sformatf("%0d A2C_REPLAY reports, expected the one error of the log", srv.get_id_count("A2C_REPLAY")))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : replay_log_dead_lane_test
+
+    // As replay_log_dead_lane_test with the death after the records, which
+    // the error therefore does not name.
+    class replay_log_dead_lane_after_test extends replay_log_dead_lane_test;
+        `uvm_component_utils(replay_log_dead_lane_after_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            dead = DEAD_LAST;
+        endfunction
+    endclass : replay_log_dead_lane_after_test
+
+    // As replay_log_waiting_test with a death before the model lane starts
+    // to wait, which the report names.
+    class replay_log_waiting_dead_test extends replay_log_waiting_test;
+        `uvm_component_utils(replay_log_waiting_dead_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            dead = DEAD_FIRST;
+        endfunction
+
+        virtual function void configure();
+            super.configure();
+            want_death();
+        endfunction
+    endclass : replay_log_waiting_dead_test
+
+    // As replay_log_waiting_dead_test with the death after the model lane
+    // started to wait, which the report therefore does not name.
+    class replay_log_waiting_dead_after_test extends replay_log_waiting_dead_test;
+        `uvm_component_utils(replay_log_waiting_dead_after_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            dead = DEAD_LAST;
+        endfunction
+    endclass : replay_log_waiting_dead_after_test
 
     // The keyed reorder with one model item's value changed: one
     // A2C_MODEL_CMP that names the item's key.
@@ -1054,6 +1152,112 @@
         endfunction
     endclass : model_cmp_keyed_uncut_test
 
+    // The keyed comparator is cut after pair 6 before any item arrives.
+    // The model side's 8 items, keys 0 and 1 four each, arrive first and are
+    // all held, since no DUT item has given a key a quota yet. The DUT side's
+    // then arrive with the keys alternating, so the 6 the cut keeps carry
+    // three of each key, and each releases one held model item of its key.
+    // A real drain takes this path when the DUT lane's within-cut bursts
+    // complete after the cut. Pairs 1 to 6 match, and the rest are dropped.
+    class model_cmp_keyed_cut_late_dut_test extends lb_mode_b_base;
+        lb_keyed_cmp cmp;
+
+        `uvm_component_utils(model_cmp_keyed_cut_late_dut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            cmp = lb_keyed_cmp::type_id::create("cmp", this);
+        endfunction
+
+        // The n-th item, from 1, of key k.
+        protected function rv_item_t item(int unsigned k, int unsigned n);
+            return lb_rv_item(lb_data_t'({4'(k), 20'(100 * k + n)}));
+        endfunction
+
+        protected function void check_pairs(int unsigned want, string when);
+            if (cmp.get_pairs() != want) `uvm_error("LB_MODE_B", $sformatf("%0d pairs %s, expected %0d", cmp.get_pairs(), when, want))
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            cmp.cut(6);
+            for (int unsigned k = 0; k < 2; k++) for (int unsigned n = 1; n <= 4; n++) cmp.write_a2c_model(item(k, n));
+            check_pairs(0, "before any DUT item");
+            for (int unsigned n = 1; n <= 4; n++) for (int unsigned k = 0; k < 2; k++) cmp.write_a2c_dut(item(k, n));
+            check_pairs(6, "after the DUT items");
+            phase.drop_objection(this);
+        endtask
+    endclass : model_cmp_keyed_cut_late_dut_test
+
+    // A re-cut. The model side's 8 items, keys 0 and 1 four each, and the
+    // DUT side's first of each key arrive, and the comparator is cut after
+    // pair 4, which holds back the model items past each key's quota of one.
+    // uncut() pairs them again, as a drain does when the run resumes, and a
+    // second cut after pair 6 must hold the same items back once more: the
+    // DUT side's next four each release one of its key, and nothing is left
+    // unpaired.
+    class model_cmp_keyed_recut_test extends model_cmp_keyed_cut_late_dut_test;
+        `uvm_component_utils(model_cmp_keyed_recut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            for (int unsigned k = 0; k < 2; k++) for (int unsigned n = 1; n <= 4; n++) cmp.write_a2c_model(item(k, n));
+            for (int unsigned k = 0; k < 2; k++) cmp.write_a2c_dut(item(k, 1));
+            cmp.cut(4);
+            cmp.uncut();
+            cmp.cut(6);
+            check_pairs(2, "after the re-cut");
+            for (int unsigned n = 2; n <= 4; n++) for (int unsigned k = 0; k < 2; k++) cmp.write_a2c_dut(item(k, n));
+            check_pairs(6, "after the DUT items");
+            phase.drop_objection(this);
+        endtask
+    endclass : model_cmp_keyed_recut_test
+
+    // A comparator whose key() gives some items no key. The DUT side's 6
+    // items, keys 0, none, 1, none, 0, none, arrive and the comparator is
+    // cut after pair 4, which keeps two items with no key. Of the model
+    // side's three items with no key it pairs two and holds the third, so
+    // check_phase finds none unpaired.
+    class model_cmp_mixed_key_cut_test extends lb_mode_b_base;
+        lb_mixed_key_cmp cmp;
+
+        `uvm_component_utils(model_cmp_mixed_key_cut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            cmp = lb_mixed_key_cmp::type_id::create("cmp", this);
+        endfunction
+
+        protected function rv_item_t item(int unsigned k, int unsigned n);
+            return lb_rv_item(lb_data_t'({4'(k), 20'(100 * k + n)}));
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            int unsigned dut_keys[6] = '{0, 3, 1, 3, 0, 3};
+            int unsigned seen[4];
+            phase.raise_objection(this);
+            foreach (dut_keys[i]) cmp.write_a2c_dut(item(dut_keys[i], ++seen[dut_keys[i]]));
+            cmp.cut(4);
+            for (int unsigned n = 1; n <= 3; n++) cmp.write_a2c_model(item(3, n));
+            cmp.write_a2c_model(item(0, 1));
+            cmp.write_a2c_model(item(1, 1));
+            if (cmp.get_pairs() != 4) `uvm_error("LB_MODE_B", $sformatf("%0d pairs, expected 4", cmp.get_pairs()))
+            phase.drop_objection(this);
+        endtask
+    endclass : model_cmp_mixed_key_cut_test
+
     // Turns each A2C_CFG fatal into an info line and keeps its text.
     class lb_cfg_fatal_catcher extends uvm_report_catcher;
         string messages[$];
@@ -1109,3 +1313,141 @@
             super.report_phase(phase);
         endfunction
     endclass : model_cmp_base_cut_test
+
+    // A comparator written on a2c_comparator_base: it pairs in arrival
+    // order itself and leaves a dead lane to check_pair().
+    class lb_hand_cmp extends a2c_comparator_base;
+        protected rv_item_t q[2][$];
+
+        `uvm_component_utils(lb_hand_cmp)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        function void put(a2c_lane_e lane, rv_item_t t);
+            rv_item_t other;
+            seen[lane]++;
+            if (q[1 - lane].size() == 0) begin
+                q[lane].push_back(t);
+                return;
+            end
+            other = q[1 - lane].pop_front();
+            if (lane == A2C_DUT_LANE) check_pair(t.compare(other), t, other);
+            else check_pair(other.compare(t), other, t);
+        endfunction
+    endclass : lb_hand_cmp
+
+    // Keeps the UVM_INFO messages with one id.
+    class lb_info_catcher extends uvm_report_catcher;
+        string id;
+        string messages[$];
+
+        `uvm_object_utils(lb_info_catcher)
+
+        function new(string name = "lb_info_catcher");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_severity() == UVM_INFO && get_id() == id) messages.push_back(get_message());
+            return THROW;
+        endfunction
+    endclass : lb_info_catcher
+
+    // An unkeyed, a keyed and a hand-written comparator each get five
+    // matching pairs and one more DUT item, and then the model lane dies.
+    // The model item that pairs with that DUT item comes in the death's
+    // time step, after it, and is compared. Three more items follow on each
+    // side a clock later, the model's all different from the DUT's. No
+    // comparator compares them or reports a mismatch or an unpaired item,
+    // and each reports the death in one line, with 3 DUT and 3 model items
+    // not compared. is_dead() and died_at() name the model lane and the
+    // death's time, and nothing before it.
+    class model_cmp_lane_dead_test extends lb_mode_b_base;
+        lb_cmp_t        plain;
+        lb_keyed_cmp    keyed;
+        lb_hand_cmp     hand;
+        lb_info_catcher infos;
+        realtime        died;
+
+        `uvm_component_utils(model_cmp_lane_dead_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            plain = lb_cmp_t::type_id::create("plain", this);
+            keyed = lb_keyed_cmp::type_id::create("keyed", this);
+            hand  = lb_hand_cmp::type_id::create("hand", this);
+            infos = lb_info_catcher::type_id::create("infos");
+            infos.id = "A2C_MODEL_CMP";
+            uvm_report_cb::add(null, infos);
+        endfunction
+
+        protected function void put(a2c_lane_e lane, lb_data_t d);
+            if (lane == A2C_DUT_LANE) begin
+                plain.write_a2c_dut(lb_rv_item(d));
+                keyed.write_a2c_dut(lb_rv_item(d));
+            end else begin
+                plain.write_a2c_model(lb_rv_item(d));
+                keyed.write_a2c_model(lb_rv_item(d));
+            end
+            hand.put(lane, lb_rv_item(d));
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk_vif.wait_reset_release();
+            for (int unsigned n = 0; n < 6; n++) put(A2C_DUT_LANE, lb_data_t'({4'(n % 4), 20'(n)}));
+            for (int unsigned n = 0; n < 5; n++) put(A2C_MODEL_LANE, lb_data_t'({4'(n % 4), 20'(n)}));
+            clk_vif.sample_edge();
+            check_lanes(0);
+            died = $realtime;
+            plain.lane_dead(A2C_MODEL_LANE);
+            keyed.lane_dead(A2C_MODEL_LANE);
+            hand.lane_dead(A2C_MODEL_LANE);
+            put(A2C_MODEL_LANE, lb_data_t'({4'(5 % 4), 20'(5)}));
+            clk_vif.sample_edge();
+            for (int unsigned n = 6; n < 9; n++) put(A2C_DUT_LANE, lb_data_t'({4'(n % 4), 20'(n)}));
+            for (int unsigned n = 6; n < 9; n++) put(A2C_MODEL_LANE, lb_data_t'({4'(n % 4), 20'(n + 1000)}));
+            check_lanes(1);
+            phase.drop_objection(this);
+        endtask
+
+        // Each comparator's view of the lanes, before the death or after it.
+        protected function void check_lanes(bit after);
+            a2c_comparator_base cmps[3] = '{plain, keyed, hand};
+            foreach (cmps[i]) begin
+                if (cmps[i].is_dead(A2C_DUT_LANE) || cmps[i].died_at(A2C_DUT_LANE) != 0 || cmps[i].is_dead(A2C_MODEL_LANE) != after
+                        || cmps[i].died_at(A2C_MODEL_LANE) != (after ? died : 0)) begin
+                    `uvm_error("LB_MODE_B", $sformatf("%s %s the death: is_dead %0d and %0d, died_at %0t and %0t, the death at %0t",
+                                                      cmps[i].get_full_name(), after ? "after" : "before", cmps[i].is_dead(A2C_DUT_LANE),
+                                                      cmps[i].is_dead(A2C_MODEL_LANE), cmps[i].died_at(A2C_DUT_LANE),
+                                                      cmps[i].died_at(A2C_MODEL_LANE), died))
+                end
+            end
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            a2c_comparator_base cmps[3] = '{plain, keyed, hand};
+            foreach (cmps[i]) begin
+                string head = {cmps[i].get_full_name(), ": the comparison stopped after 6 pairs: the master declared the model lane dead at "};
+                int    found[$];
+                if (cmps[i].get_pairs() != 6 || cmps[i].uncompared(A2C_DUT_LANE) != 3 || cmps[i].uncompared(A2C_MODEL_LANE) != 3) begin
+                    `uvm_error("LB_MODE_B", $sformatf("%s: %0d pairs and %0d DUT and %0d model items not compared, expected 6, 3 and 3",
+                                                      cmps[i].get_full_name(), cmps[i].get_pairs(), cmps[i].uncompared(A2C_DUT_LANE),
+                                                      cmps[i].uncompared(A2C_MODEL_LANE)))
+                end
+                found = infos.messages.find_index(m) with (a2c_contains(m, head)
+                                                           && a2c_contains(m, ". 3 DUT and 3 model items were not compared"));
+                if (found.size() != 1) begin
+                    `uvm_error("LB_MODE_B", $sformatf("no one report of the death from %s: %p", cmps[i].get_full_name(), infos.messages))
+                end
+            end
+            `uvm_info("LB_STATS", $sformatf("%0d death reports", infos.messages.size()), UVM_NONE)
+            super.report_phase(phase);
+        endfunction
+    endclass : model_cmp_lane_dead_test

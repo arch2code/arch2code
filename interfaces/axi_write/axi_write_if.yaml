@@ -4,6 +4,8 @@ interface_defs:
     timing: elastic
     backpressure: { default: true, overridable: false }
     uvmAgent: true
+    uvmMaxTransferBytes: true
+    uvmIdParam: id_t
     parameters : 
       addr_t : { datatype : struct }
       data_t : { datatype : struct }

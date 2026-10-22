@@ -1244,6 +1244,48 @@
         endfunction
     endclass : apb_mode_b_slave_drain_busy_test
 
+    // As apb_mode_b_slave_drain_busy_test, with a passive Mode B agent
+    // watching the port: the drain's cut must cut its model_cmp too, so it
+    // pairs what the agent pairs and reports no unpaired transfer. The model
+    // lane pauses 10 clocks after the drop, so the DUT lane completes
+    // transfers past the cut while the model lane catches up.
+    class apb_mode_b_slave_busy_passive_test extends apb_mode_b_slave_drain_busy_test;
+        apb_agent_t watcher;
+
+        `uvm_component_utils(apb_mode_b_slave_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            super.build_streams();
+            model_seq.gaps[n_items + 20] += 10;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            apb_config_t cfg;
+            super.build_phase(phase);
+            cfg = lb_apb_cfg("watcher_cfg", vif, clk_vif, A2C_DST, "apb");
+            cfg.model_vif = model_vif;
+            cfg.is_active = UVM_PASSIVE;
+            uvm_config_db#(apb_config_t)::set(this, "watcher", "cfg", cfg);
+            watcher = apb_agent_t::type_id::create("watcher", this);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
+                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                                                  agent.model_cmp.get_pairs()))
+            end
+            if (arrivals.items.size() <= slave.replay.get_cut()) begin
+                `uvm_error("LB_MODE_B", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
+            end
+        endfunction
+    endclass : apb_mode_b_slave_busy_passive_test
+
     // As apb_mode_b_slave_drain_busy_test with no idle clocks, so the port
     // never rests from the drop to the end of the test.
     class apb_mode_b_slave_drain_busy_zero_test extends apb_mode_b_slave_drain_busy_test;

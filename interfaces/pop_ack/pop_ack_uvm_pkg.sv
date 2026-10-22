@@ -384,6 +384,10 @@ package pop_ack_uvm_pkg;
     class pop_ack_agent #(type rdata_t = logic) extends uvm_agent;
         typedef pop_ack_item#(rdata_t)   item_t;
         typedef pop_ack_config#(rdata_t) config_t;
+        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
+        // the active agent's replay log also cuts, and tells a passive agent
+        // whether an active one has claimed the pin set.
+        typedef a2c_pin_registry #(virtual pop_ack_if #(.rdata_t(rdata_t))) registry_t;
 
         pop_ack_config#(rdata_t)                cfg;
         pop_ack_driver#(rdata_t)                drv;
@@ -432,8 +436,22 @@ package pop_ack_uvm_pkg;
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
-                if (drv != null && drv.replay != null) drv.replay.cmp = model_cmp;
+                if (drv != null && drv.replay != null) begin
+                    drv.replay.cmp      = model_cmp;
+                    drv.replay.watchers = registry_t::of(cfg.vif);
+                    registry_t::of(cfg.vif).owner = get_full_name();
+                end
+                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
+        endfunction
+
+        // A passive A2C_DST Mode B agent says so when no active responder has
+        // claimed its pin set, since its model_cmp then misses the drain's
+        // cuts. An active A2C_SRC agent keeps no replay log and claims no pin
+        // set, so a passive one has nothing to report.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : pop_ack_agent
 

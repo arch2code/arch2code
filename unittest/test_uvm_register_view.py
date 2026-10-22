@@ -130,10 +130,10 @@ UB_D = {'v0': 16, 'v1': 32}
 
 # backpressureOverridable says whether the port's agent config has a
 # no_backpressure knob, and counter names the env's transaction counter for the
-# port's output, if it has one. maxTransferBytes is set on AXI ports only, per
-# variant, from the interface's maxTransferSize. rdM's interface names the
-# constant UB_MTS. Its connection sets maxTransferSize 32, which the view
-# ignores because the SystemC channel the run builds ignores it too. rdS's
+# port's output, if it has one. maxTransferBytes is set per variant on the
+# ports of a type that declares uvmMaxTransferBytes, the AXI types here. rdM's
+# interface names the constant UB_MTS, and its connection, which reaches uDut
+# at v0 only, overrides it with 32; v1 has no connection, so it takes 64. rdS's
 # interface names the block parameter UB_W, so each variant takes its binding.
 # idUnbound is True on an AXI port whose interface binds no id_t: rdM's leaves
 # it unbound, rdS's binds it.
@@ -146,7 +146,7 @@ PORTS = [
      'backpressureOverridable': True, 'counter': 'out_counter', 'maxTransferBytes': None, 'idUnbound': False},
     {'name': 'rdM', 'agent': 'rdM_agent', 'interfaceType': 'axi_read', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 64, 'v1': 64},
+     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 32, 'v1': 64},
      'idUnbound': True},
     {'name': 'rdS', 'agent': 'rdS_agent', 'interfaceType': 'axi_read', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,

@@ -290,6 +290,10 @@ package notify_ack_uvm_pkg;
     class notify_ack_agent extends uvm_agent;
         typedef notify_ack_item   item_t;
         typedef notify_ack_config config_t;
+        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
+        // the active agent's replay log also cuts, and tells a passive agent
+        // whether an active one has claimed the pin set.
+        typedef a2c_pin_registry #(virtual notify_ack_if) registry_t;
 
         notify_ack_config                cfg;
         notify_ack_driver                drv;
@@ -340,8 +344,20 @@ package notify_ack_uvm_pkg;
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
-                if (drv != null && drv.replay != null) drv.replay.cmp = model_cmp;
+                if (drv != null && drv.replay != null) begin
+                    drv.replay.cmp      = model_cmp;
+                    drv.replay.watchers = registry_t::of(cfg.vif);
+                    registry_t::of(cfg.vif).owner = get_full_name();
+                end
+                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
+        endfunction
+
+        // A passive Mode B agent says so when no active responder has claimed
+        // its pin set, since its model_cmp then misses the drain's cuts.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : notify_ack_agent
 

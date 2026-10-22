@@ -32,57 +32,95 @@ package a2c_uvm_pkg;
         return "model";
     endfunction
 
-    // The config_db entry for field of c that uvm_config_db#(T)::get() would
-    // return if every entry had type T: of the entries whose scope matches
-    // c, those of the highest precedence, and of them the one set last.
-    // During build_phase a set's precedence falls with the setter's depth,
-    // so a test's set beats its env's. How specific a scope is plays no
-    // part, so a later set for "env*" beats an earlier one for "env.agent"
-    // from the same component. null when nothing matches.
-    function automatic uvm_resource_base a2c_config_lookup(uvm_component c, string field);
-        uvm_resource_pool            rp = uvm_resource_pool::get();
-        uvm_resource_types::rsrc_q_t q  = rp.lookup_regex_names(c.get_full_name(), field, null);
-        return rp.get_highest_precedence(q);
-    endfunction
-
-    // Reads the integer knob field of c from the config_db, set as int
-    // unsigned, as the generated base test does, as int, or as
-    // uvm_config_int, the uvm_bitstream_t of +uvm_set_config_int. The type
-    // does not change which entry wins (a2c_config_lookup()), so a set of
-    // one type overrides a set of another exactly as it would one of its
-    // own. A winning entry of any other type is ignored with an A2C_CFG
-    // warning. Leaves value alone and returns 0 when nothing is read.
-    function automatic bit a2c_get_config_int(uvm_component c, string field, ref int unsigned value);
-        uvm_resource_base                r = a2c_config_lookup(c, field);
-        uvm_resource#(int unsigned)      as_uint;
-        uvm_resource#(int)               as_int;
-        uvm_resource#(uvm_bitstream_t)   as_bits;
-        if (r == null) return 0;
+    // Reads r into value when it has a type a knob may be set as: int
+    // unsigned, as the generated base test sets it, int, uvm_config_int, the
+    // uvm_bitstream_t of +uvm_set_config_int, and with as_flag set also bit.
+    // Returns 0 for any other type, leaving value alone. With c null it
+    // only checks the type, so the resource records no read.
+    function automatic bit a2c_read_config(uvm_component c, uvm_resource_base r, bit as_flag, ref int unsigned value);
+        uvm_resource#(int unsigned)    as_uint;
+        uvm_resource#(int)             as_int;
+        uvm_resource#(uvm_bitstream_t) as_bits;
+        uvm_resource#(bit)             as_bit;
         if ($cast(as_uint, r)) begin
-            value = as_uint.read(c);
+            if (c != null) value = as_uint.read(c);
         end else if ($cast(as_int, r)) begin
-            value = as_int.read(c);
+            if (c != null) value = as_int.read(c);
         end else if ($cast(as_bits, r)) begin
-            value = as_bits.read(c);
+            if (c != null) value = as_bits.read(c);
+        end else if (as_flag && $cast(as_bit, r)) begin
+            if (c != null) value = as_bit.read(c);
         end else begin
-            `uvm_warning("A2C_CFG", $sformatf("%s: %s is set in the config_db as a type other than int unsigned, int or uvm_config_int, and is ignored",
-                                              c.get_full_name(), field))
             return 0;
         end
         return 1;
     endfunction
 
-    // As a2c_get_config_int() for a flag, with bit as a fourth type; any
+    // Reads the knob field of c from the config_db. Of the entries whose
+    // scope matches c, the one uvm_config_db#(T)::get() would return if
+    // every entry had type T wins: those of the highest precedence, and of
+    // them the one set last. During build_phase a set's precedence falls
+    // with the setter's depth, so a test's set beats its env's. How specific
+    // a scope is plays no part, so a later set for "env*" beats an earlier
+    // one for "env.agent" from the same component. So a set of one accepted
+    // type overrides a set of another exactly as it would one of its own.
+    //
+    // A winning entry of a type a2c_read_config() does not accept is
+    // skipped, as if it had never been set, with an A2C_CFG warning: the
+    // knob then takes the best entry of an accepted type, so a stray set
+    // costs only itself and not the base test's value under it, or keeps
+    // its value when there is none. Leaves value alone and returns 0 when
+    // nothing is read.
+    function automatic bit a2c_config_get(uvm_component c, string field, bit as_flag, ref int unsigned value);
+        uvm_resource_pool            rp = uvm_resource_pool::get();
+        uvm_resource_types::rsrc_q_t q;
+        uvm_resource_types::rsrc_q_t accepted;
+        uvm_resource_base            r;
+        string                       types = as_flag ? "bit, int unsigned, int or uvm_config_int" : "int unsigned, int or uvm_config_int";
+        string                       fix = as_flag ? "Set it as bit" : "Set it as int unsigned";
+        int unsigned                 unused;
+        process                      p = process::self();
+        string                       state;
+        // lookup_regex() builds a new queue, and so does accepted = new().
+        // IEEE 1800 section 18.14.1 seeds each new object's generator from
+        // the creating thread's, which advances that thread's random state. The
+        // state is put back, as uvm_resource_pool::lookup_name() does around
+        // its own new queue, so reading a knob leaves the caller's later
+        // randomization alone.
+        if (p != null) state = p.get_randstate();
+        // lookup_regex(), not lookup_name(): VCS's lookup_name() drops each
+        // entry that does not outrank the first match, so an accepted entry
+        // under a rejected one of equal precedence would never be seen.
+        q        = rp.lookup_regex(field, c.get_full_name());
+        accepted = new();
+        if (p != null) p.set_randstate(state);
+        r = rp.get_highest_precedence(q);
+        if (r == null) return 0;
+        if (a2c_read_config(c, r, as_flag, value)) return 1;
+        for (int i = 0; i < q.size(); i++) begin
+            if (a2c_read_config(null, q.get(i), as_flag, unused)) accepted.push_back(q.get(i));
+        end
+        r = rp.get_highest_precedence(accepted);
+        if (r == null) begin
+            `uvm_warning("A2C_CFG", $sformatf("%s: the config_db entry that sets %s is not of type %s, so it is ignored and the knob keeps %0d. %s",
+                                              c.get_full_name(), field, types, value, fix))
+            return 0;
+        end
+        void'(a2c_read_config(c, r, as_flag, value));
+        `uvm_warning("A2C_CFG", $sformatf("%s: the config_db entry that sets %s is not of type %s, so it is ignored and the knob takes %0d from the next entry of an accepted type. %s",
+                                          c.get_full_name(), field, types, value, fix))
+        return 1;
+    endfunction
+
+    function automatic bit a2c_get_config_int(uvm_component c, string field, ref int unsigned value);
+        return a2c_config_get(c, field, 1'b0, value);
+    endfunction
+
+    // As a2c_get_config_int() for a flag that bit is accepted for too; any
     // non-zero value sets the flag.
     function automatic void a2c_get_config_bit(uvm_component c, string field, ref bit value);
-        uvm_resource_base  r = a2c_config_lookup(c, field);
-        uvm_resource#(bit) as_bit;
-        int unsigned       n;
-        if (r != null && $cast(as_bit, r)) begin
-            value = as_bit.read(c);
-        end else if (a2c_get_config_int(c, field, n)) begin
-            value = (n != 0);
-        end
+        int unsigned n = value;
+        if (a2c_config_get(c, field, 1'b1, n)) value = (n != 0);
     endfunction
 
     `uvm_analysis_imp_decl(_a2c_dut)
@@ -298,6 +336,19 @@ package a2c_uvm_pkg;
     // a2c_replay_drain ends after transaction s, and uncut() undoes it. A
     // comparator a replay log drives must override both; this cut() stops
     // the run with A2C_CFG, so a comparator cannot ignore a cut by omission.
+    //
+    // lane_dead(), which a Mode B master calls when it declares a lane
+    // dead, ends the comparison there: check_pair() compares the pairs
+    // completed up to and including the time step of the death, whatever
+    // the order of the monitor and the master in that step, and none after
+    // it, so the dead lane causes no mismatch. The master's A2C_SKEW error
+    // has failed the run, so check_phase() reports the death as one
+    // UVM_MEDIUM line: the lane, the time, and per lane the items it
+    // delivered that were never compared, its seen[] count less the pairs.
+    // Only a subclass that reports through check_pair() and counts each
+    // lane's items in seen[] gets this; lane_dead() is virtual, so a
+    // subclass may override it. is_dead() and died_at() let any checker
+    // that holds the comparator ask about a lane.
     virtual class a2c_comparator_base extends uvm_component;
         int unsigned midstream_beats = 64;
         int unsigned max_reported = 10;
@@ -313,12 +364,45 @@ package a2c_uvm_pkg;
         protected int unsigned mismatches;
         protected int unsigned unprinted;
         protected int unsigned unprinted_errors;
+        // Indexed by a2c_lane_e.
+        protected bit          dead[2];
+        protected realtime     dead_at[2];
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
 
         virtual function void stable_point();
+        endfunction
+
+        virtual function void lane_dead(a2c_lane_e lane);
+            if (dead[lane]) return;
+            dead[lane]    = 1;
+            dead_at[lane] = $realtime;
+        endfunction
+
+        function bit stopped();
+            return dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE];
+        endfunction
+
+        function bit is_dead(a2c_lane_e lane);
+            return dead[lane];
+        endfunction
+
+        // The time of the lane's death, or 0 while it lives.
+        function realtime died_at(a2c_lane_e lane);
+            return dead[lane] ? dead_at[lane] : 0;
+        endfunction
+
+        // Whether a lane died before the current time step.
+        protected function bit past_death();
+            foreach (dead[l]) if (dead[l] && dead_at[l] < $realtime) return 1;
+            return 0;
+        endfunction
+
+        // The items lane delivered that were never compared.
+        function int unsigned uncompared(a2c_lane_e lane);
+            return (seen[lane] > pairs) ? seen[lane] - pairs : 0;
         endfunction
 
         virtual function void cut(int unsigned s);
@@ -353,6 +437,7 @@ package a2c_uvm_pkg;
         protected function void check_pair(bit same, uvm_object dut, uvm_object model, string key = "");
             string what;
             bit    midstream;
+            if (past_death()) return;
             pairs++;
             midstream = in_midstream_window();
             if (same && pairs != inject_pair) return;
@@ -379,32 +464,53 @@ package a2c_uvm_pkg;
 
         virtual function void check_phase(uvm_phase phase);
             string what;
-            if (unprinted == 0) return;
-            what = $sformatf("%s: %0d mismatches in all, %0d not printed, %0d of those outside a midstream window",
-                             get_full_name(), mismatches, unprinted, unprinted_errors);
-            if (unprinted_errors > 0) `uvm_error("A2C_MODEL_CMP", what)
-            else `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", what)
+            if (unprinted != 0) begin
+                what = $sformatf("%s: %0d mismatches in all, %0d not printed, %0d of those outside a midstream window",
+                                 get_full_name(), mismatches, unprinted, unprinted_errors);
+                if (unprinted_errors > 0) `uvm_error("A2C_MODEL_CMP", what)
+                else `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", what)
+            end
+            if (!stopped()) return;
+            what = "";
+            foreach (dead[lane]) begin
+                if (!dead[lane]) continue;
+                what = {what, (what == "") ? "" : " and ", $sformatf("the %s lane dead at %0t", a2c_lane_name(a2c_lane_e'(lane)), dead_at[lane])};
+            end
+            `uvm_info("A2C_MODEL_CMP", $sformatf("%s: the comparison stopped after %0d pairs: the master declared %s. %0d DUT and %0d model items were not compared",
+                                             get_full_name(), pairs, what, uncompared(A2C_DUT_LANE), uncompared(A2C_MODEL_LANE)), UVM_MEDIUM)
         endfunction
     endclass : a2c_comparator_base
 
-    // Pairs the DUT's item n with the model's item n, in arrival order on
-    // each side, and compares them with T's compare(), as UVM's
+    // Pairs the DUT's item n with the model's item n, in arrival order on each
+    // side, and compares them with T's compare(), as UVM's
     // uvm_in_order_comparator does, but reports a mismatch as an error.
     // check_phase() reports the items either side has left unpaired as
-    // A2C_MODEL_CMP, unless counted is set. A subclass that overrides key()
-    // pairs in order per key instead, for a protocol that orders only within
-    // an ID, such as AXI; the key also appears in the mismatch message. After
-    // cut(s) each side's items after its first s are held, never compared,
-    // and dropped at the end of the test unless uncut() releases them.
+    // A2C_MODEL_CMP, unless counted is set or a lane is dead. A subclass that
+    // overrides key() pairs in order per key instead, for a protocol that
+    // orders only within an ID, such as AXI; the key also appears in the
+    // mismatch message. After cut(s) the DUT side's items after its first s
+    // are held, and of each key the model side keeps as many items as the DUT
+    // side's first s carry with that key and holds the rest, so the sides may
+    // complete different keys in different orders across the cut. Without a
+    // key that keeps the model side's first s. Held items are never compared,
+    // and are dropped at the end of the test unless uncut() releases them.
     class a2c_in_order_comparator #(type T = uvm_sequence_item) extends a2c_comparator_base;
         uvm_analysis_imp_a2c_dut #(T, a2c_in_order_comparator#(T))   dut_export;
         uvm_analysis_imp_a2c_model #(T, a2c_in_order_comparator#(T)) model_export;
 
-        // An item and its place in its side's arrival order, from 1.
+        // An item, its place in its side's arrival order, from 1, and its
+        // key.
         typedef struct {
             T            t;
             int unsigned n;
+            string       k;
         } entry_t;
+
+        // A DUT item with a key that is not "", and its place.
+        typedef struct {
+            string       k;
+            int unsigned n;
+        } keyed_t;
 
         // Items waiting for their pair, per key. One side's queue for a key
         // is empty whenever the other side's is not.
@@ -414,6 +520,14 @@ package a2c_uvm_pkg;
         protected entry_t held[2][$];
         // The pair the comparison ends after, or 0.
         protected int unsigned limit;
+        // The DUT items with a key, in arrival order. An unkeyed
+        // comparator records none.
+        protected keyed_t      dut_keyed[$];
+        // Per key: the model items not held, and after a cut the DUT items
+        // within its first limit. Those not arrived yet count under key "",
+        // so without a key the model side keeps its first limit at once.
+        protected int unsigned model_kept[string];
+        protected int unsigned quota[string];
 
         `uvm_component_param_utils(a2c_in_order_comparator#(T))
 
@@ -432,8 +546,25 @@ package a2c_uvm_pkg;
             seen[A2C_DUT_LANE]++;
             e.t = t;
             e.n = seen[A2C_DUT_LANE];
-            if (limit != 0 && e.n > limit) held[A2C_DUT_LANE].push_back(e);
-            else pair_dut(e);
+            e.k = key(t);
+            if (e.k != "") dut_keyed.push_back('{k: e.k, n: e.n});
+            if (limit != 0 && e.n > limit) begin
+                held[A2C_DUT_LANE].push_back(e);
+                return;
+            end
+            pair_dut(e);
+            if (limit == 0 || e.k == "") return;
+            quota[e.k]++;
+            quota[""]--;
+            release_model(e.k);
+        endfunction
+
+        protected function int unsigned kept_of(string k);
+            return model_kept.exists(k) ? model_kept[k] : 0;
+        endfunction
+
+        protected function int unsigned quota_of(string k);
+            return quota.exists(k) ? quota[k] : 0;
         endfunction
 
         virtual function void write_a2c_model(T t);
@@ -441,29 +572,47 @@ package a2c_uvm_pkg;
             seen[A2C_MODEL_LANE]++;
             e.t = t;
             e.n = seen[A2C_MODEL_LANE];
-            if (limit != 0 && e.n > limit) held[A2C_MODEL_LANE].push_back(e);
-            else pair_model(e);
+            e.k = key(t);
+            if (limit != 0 && kept_of(e.k) >= quota_of(e.k)) begin
+                held[A2C_MODEL_LANE].push_back(e);
+                return;
+            end
+            model_kept[e.k]++;
+            pair_model(e);
+        endfunction
+
+        // Pairs the model side's held items of key k that its quota now
+        // covers, oldest first.
+        protected function void release_model(string k);
+            for (int i = 0; i < held[A2C_MODEL_LANE].size() && kept_of(k) < quota_of(k); ) begin
+                entry_t e = held[A2C_MODEL_LANE][i];
+                if (e.k != k) begin
+                    i++;
+                    continue;
+                end
+                held[A2C_MODEL_LANE].delete(i);
+                model_kept[k]++;
+                pair_model(e);
+            end
         endfunction
 
         protected function void pair_dut(entry_t e);
-            string  k = key(e.t);
             entry_t m;
-            if (model_q.exists(k) && model_q[k].size() > 0) begin
-                m = model_q[k].pop_front();
-                compare_pair(e.t, m.t, k);
+            if (model_q.exists(e.k) && model_q[e.k].size() > 0) begin
+                m = model_q[e.k].pop_front();
+                compare_pair(e.t, m.t, e.k);
             end else begin
-                dut_q[k].push_back(e);
+                dut_q[e.k].push_back(e);
             end
         endfunction
 
         protected function void pair_model(entry_t e);
-            string  k = key(e.t);
             entry_t d;
-            if (dut_q.exists(k) && dut_q[k].size() > 0) begin
-                d = dut_q[k].pop_front();
-                compare_pair(d.t, e.t, k);
+            if (dut_q.exists(e.k) && dut_q[e.k].size() > 0) begin
+                d = dut_q[e.k].pop_front();
+                compare_pair(d.t, e.t, e.k);
             end else begin
-                model_q[k].push_back(e);
+                model_q[e.k].push_back(e);
             end
         endfunction
 
@@ -478,16 +627,39 @@ package a2c_uvm_pkg;
             held[lane] = {later, held[lane]};
         endfunction
 
+        // A model item already compared stays compared, so a key whose
+        // model side has gone past its quota holds only its waiting items.
         virtual function void cut(int unsigned s);
+            entry_t later[$];
             limit = s;
+            quota.delete();
+            quota[""] = s;
+            foreach (dut_keyed[i]) begin
+                if (dut_keyed[i].n > s) break;
+                quota[dut_keyed[i].k]++;
+                quota[""]--;
+            end
             hold_after(dut_q, A2C_DUT_LANE, s);
-            hold_after(model_q, A2C_MODEL_LANE, s);
+            foreach (model_q[k]) begin
+                while (model_q[k].size() > 0 && kept_of(k) > quota_of(k)) begin
+                    later.push_back(model_q[k].pop_back());
+                    model_kept[k]--;
+                end
+            end
+            later = {later, held[A2C_MODEL_LANE]};
+            later.sort with (item.n);
+            held[A2C_MODEL_LANE] = later;
         endfunction
 
         virtual function void uncut();
             limit = 0;
+            quota.delete();
             while (held[A2C_DUT_LANE].size() > 0) pair_dut(held[A2C_DUT_LANE].pop_front());
-            while (held[A2C_MODEL_LANE].size() > 0) pair_model(held[A2C_MODEL_LANE].pop_front());
+            while (held[A2C_MODEL_LANE].size() > 0) begin
+                entry_t e = held[A2C_MODEL_LANE].pop_front();
+                model_kept[e.k]++;
+                pair_model(e);
+            end
         endfunction
 
         // A subclass may hold a pair and check it when a later one arrives.
@@ -514,7 +686,7 @@ package a2c_uvm_pkg;
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (counted) return;
+            if (counted || stopped()) return;
             report_unpaired("DUT", dut_q);
             report_unpaired("model", model_q);
         endfunction
@@ -741,6 +913,67 @@ package a2c_uvm_pkg;
     endclass : a2c_replay_lanes
 
     typedef class a2c_replay_drain;
+    typedef class a2c_replay_log_base;
+
+    // A monitor that a Mode B master tells when it declares the lane of the
+    // monitor's pin set dead.
+    interface class a2c_lane_watch;
+        pure virtual function void lane_dead();
+    endclass : a2c_lane_watch
+
+    // The passive agents on one pin set, which the active agent of its port
+    // tells of a death and of a cut as it tells its own monitors and
+    // model_cmp. A Mode B master declaring lane l dead tells mons of lane
+    // l's pin set and cmps of the DUT lane's; the replay log of a Mode B
+    // slave cuts cmps of its DUT lane's pin set with its own cmp, and a
+    // passive monitor takes log, the slave's log, to read the cut.
+    class a2c_pin_watchers;
+        // The passive agents' monitors on this pin set.
+        a2c_lane_watch      mons[$];
+        // The model_cmps of the passive Mode B agents whose DUT lane is this
+        // pin set.
+        a2c_comparator_base cmps[$];
+        // The replay log of the active Mode B slave with a lane on this pin
+        // set, or null.
+        a2c_replay_log_base log;
+        // The full name of the active Mode B agent whose DUT lane is this
+        // pin set, or "".
+        string              owner;
+    endclass : a2c_pin_watchers
+
+    // Finds a pin set's watchers by the pin set's virtual interface, so the
+    // agents of a port meet however the env arranges them, whatever their
+    // number and build order. Each virtual interface type has its own table.
+    // An agent registers in connect_phase and reads log and owner from
+    // end_of_elaboration_phase on, when every agent has registered. Two
+    // handles match only if they point at one interface instance: a second
+    // instance bound to the same nets gets an entry of its own. A uvm_pool
+    // cannot hold these, as an associative array cannot take a virtual
+    // interface for its index.
+    class a2c_pin_registry #(type VIF_T = int);
+        protected static VIF_T            vifs[$];
+        protected static a2c_pin_watchers sets[$];
+
+        static function a2c_pin_watchers of(VIF_T vif);
+            a2c_pin_watchers w;
+            foreach (vifs[i]) if (vifs[i] == vif) return sets[i];
+            w = new();
+            vifs.push_back(vif);
+            sets.push_back(w);
+            return w;
+        endfunction
+
+        // For a passive Mode B agent at end_of_elaboration_phase. A port the
+        // env leaves to other drivers, such as an internal port of a top
+        // design, has no owner and needs none, so this is an info. It names
+        // the config field, not the instance: %p of a virtual interface
+        // prints a handle on Xcelium and every signal on VCS.
+        static function void note_unowned(VIF_T vif, uvm_component agent, string port_name);
+            if (of(vif).owner != "") return;
+            `uvm_info_context("A2C_PASSIVE", $sformatf("%s: no active Mode B agent has the interface instance in this agent's cfg.vif as its own, so the agent learns of no lane death and no drain cut on the port. If an active agent drives the port, give it this same interface instance: another instance on the same nets does not match",
+                                                       port_name), UVM_LOW, agent)
+        endfunction
+    endclass : a2c_pin_registry
 
     // What a2c_replay_drain reads of an a2c_replay_log, whatever its
     // response type.
@@ -749,6 +982,9 @@ package a2c_uvm_pkg;
         virtual a2c_clk_if  clk_vif;
         // The agent's model_cmp, which a cut also cuts.
         a2c_comparator_base cmp;
+        // The passive agents on the DUT lane's pin set, whose model_cmps a
+        // cut also cuts, or null.
+        a2c_pin_watchers    watchers;
         // In cycles of clk_vif.
         int unsigned        drain_quiet_cycles = 1000;
         int unsigned        drain_deadline_cycles = 200000;
@@ -769,13 +1005,24 @@ package a2c_uvm_pkg;
         int unsigned        since_start;
 
         protected int unsigned replayed;
-        // The transaction the model lane waits for, counted from 0, or -1.
+        // The transaction the model lane waits for, counted from 0, or -1,
+        // and since when.
         protected int          waiting = -1;
-        // The transactions the run keeps when the drain cut it, or 0.
+        protected realtime     waiting_since;
+        // The transactions the run keeps when the drain cut it, or 0, and
+        // when it cut. catchup_end is when the drain gave up waiting for the
+        // lanes to reach the cut, at the end of drain_catchup_cycles or on a
+        // stopped clock, or 0.
         protected int unsigned cut_at;
+        protected realtime     cut_time;
+        protected realtime     catchup_end;
         // Whether the drain cut the log on its first clock because its DUT
         // lane had not paused since an earlier drain cut it.
         protected bit          recut;
+        // Set by the driver before check_phase() when the model lane holds a
+        // pick whose request it has not made, which the driver reports. A
+        // cut that pick blocks is not short of catch-up clocks.
+        bit                    pick_blocked;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -841,14 +1088,29 @@ package a2c_uvm_pkg;
         endfunction
 
         // What keeps the log from settling, for the drain's A2C_DRAIN
-        // warnings.
+        // warnings. Names a busy lane before the quiet window; a larger
+        // window does not help a lane stuck inside a transaction.
         function string unsettled();
             string why = "";
+            string busy = "";
             if (cut_at != 0) return $sformatf("the lanes have not both completed the %0d transactions the cut keeps; %s", cut_at, lane_counts());
             if (model_waiting()) why = $sformatf("the model lane waits for transaction %0d, which the DUT lane has not recorded", waiting + 1);
             if (pending() > 0) begin
                 if (why != "") why = {why, ", and "};
                 why = {why, $sformatf("%0d transactions the DUT lane recorded wait for the model lane", pending())};
+            end
+            for (int l = 0; l < 2; l++) begin
+                a2c_lane_e lane = a2c_lane_e'(l);
+                if (!driver.lane_busy(lane)) continue;
+                if (busy != "") busy = {busy, " and "};
+                busy = {busy, $sformatf("the %s lane (%0d started, %0d done)", a2c_lane_name(lane), driver.lane_starts(lane),
+                                        driver.lane_done(lane))};
+            end
+            if (busy != "") begin
+                if (why != "") why = {why, ", and "};
+                why = {why, busy, (driver.lane_busy(A2C_DUT_LANE) && driver.lane_busy(A2C_MODEL_LANE)) ? " are" : " is",
+                       " inside a transaction"};
+                return why;
             end
             if (why == "") begin
                 why = $sformatf("the lanes were never idle for drain_quiet_cycles (+a2c_drain_quiet_cycles), %0d clocks, in a row",
@@ -860,15 +1122,18 @@ package a2c_uvm_pkg;
         // Keeps the transactions the DUT lane has started, on both lanes,
         // and drops the later ones of either lane at the end of the test.
         function void cut(bit first_clock);
-            cut_at = driver.lane_starts(A2C_DUT_LANE);
-            recut  = first_clock;
+            cut_at   = driver.lane_starts(A2C_DUT_LANE);
+            cut_time = $realtime;
+            recut    = first_clock;
             if (cmp != null) cmp.cut(cut_at);
+            if (watchers != null) foreach (watchers.cmps[i]) watchers.cmps[i].cut(cut_at);
         endfunction
 
         function void uncut();
             cut_at = 0;
             recut  = 0;
             if (cmp != null) cmp.uncut();
+            if (watchers != null) foreach (watchers.cmps[i]) watchers.cmps[i].uncut();
         endfunction
 
         function int unsigned get_cut();
@@ -877,6 +1142,10 @@ package a2c_uvm_pkg;
 
         function bit cut_reached();
             return cut_at != 0 && driver.lane_done(A2C_DUT_LANE) >= cut_at && driver.lane_done(A2C_MODEL_LANE) >= cut_at;
+        endfunction
+
+        function void end_catchup();
+            catchup_end = $realtime;
         endfunction
 
         // Only the end of the run phase drains. UVM 1.2 calls the run
@@ -893,15 +1162,24 @@ package a2c_uvm_pkg;
 
         // A cut that a lane did not reach is an A2C_REPLAY error, and the
         // transactions a cut drops an A2C_CUT warning, or UVM_INFO with
-        // drain_cut_expected set.
+        // drain_cut_expected set. A cut that dropped nothing names no death.
+        // The A2C_REPLAY error names the deaths up to the drain's give-up, as
+        // a death during the catch-up can be what kept the lanes short. A
+        // phase jump that ends the run phase during the catch-up leaves no
+        // give-up, so the error is then dated now.
         virtual function void check_phase(uvm_phase phase);
             int unsigned dropped[2];
             string       what;
+            string       death = a2c_replay_drain::death_context(cut_time);
+            string       by_give_up = a2c_replay_drain::death_context((catchup_end != 0) ? catchup_end : $realtime);
             super.check_phase(phase);
             if (cut_at == 0) return;
-            if (!cut_reached()) begin
-                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it in the %0d clocks after the cut (drain_catchup_cycles, +a2c_drain_catchup_cycles): %s",
-                                                   get_full_name(), cut_at, catchup_cycles(), lane_counts()))
+            if (!cut_reached() && pick_blocked) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it, because the model lane holds a pick whose request it has not made, which the driver reports: %s%s",
+                                                   get_full_name(), cut_at, lane_counts(), by_give_up))
+            end else if (!cut_reached()) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it in the %0d clocks after the cut (drain_catchup_cycles, +a2c_drain_catchup_cycles): %s%s",
+                                                   get_full_name(), cut_at, catchup_cycles(), lane_counts(), by_give_up))
             end
             foreach (dropped[l]) begin
                 int unsigned n = driver.lane_starts(a2c_lane_e'(l));
@@ -912,11 +1190,11 @@ package a2c_uvm_pkg;
             if (dropped[A2C_DUT_LANE] + dropped[A2C_MODEL_LANE] == 0) begin
                 `uvm_info("A2C_CUT", what, UVM_LOW)
             end else if (drain_cut_expected) begin
-                `uvm_info("A2C_CUT", {what, "; drain_cut_expected (+a2c_drain_cut_expected) is set"}, UVM_LOW)
+                `uvm_info("A2C_CUT", {what, "; drain_cut_expected (+a2c_drain_cut_expected) is set", death}, UVM_LOW)
             end else if (recut) begin
-                `uvm_warning("A2C_CUT", {what, ". An earlier drain cut the run, and the DUT lane had not paused for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks since, so this drain cut it again on its first clock; set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy"})
+                `uvm_warning("A2C_CUT", {what, ". An earlier drain cut the run, and the DUT lane had not paused for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks since, so this drain cut it again on its first clock; set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy", death})
             end else begin
-                `uvm_warning("A2C_CUT", {what, ". The DUT lane did not pause for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks before the deadline; lower +a2c_drain_deadline_cycles (drain_deadline_cycles) to cut sooner, or set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy"})
+                `uvm_warning("A2C_CUT", {what, ". The DUT lane did not pause for drain_quiet_cycles (+a2c_drain_quiet_cycles) clocks before the deadline; lower +a2c_drain_deadline_cycles (drain_deadline_cycles) to cut sooner, or set +a2c_drain_cut_expected=1 (drain_cut_expected) where the ports are meant to stay busy", death})
             end
         endfunction
     endclass : a2c_replay_log_base
@@ -928,13 +1206,13 @@ package a2c_uvm_pkg;
     // a2c_replay_drain then holds the end of the run phase while the model
     // lane catches up.
     class a2c_replay_log #(type T = uvm_sequence_item) extends a2c_replay_log_base;
-        typedef struct {
-            T            rsp;
-            int unsigned delay;
-        } record_t;
-
-        // Recorded and not yet replayed, oldest first.
-        protected record_t records[$];
+        // Recorded and not yet replayed, oldest first, with each record's
+        // delay and time. Parallel queues, not one of a struct holding T:
+        // VCS W-2024.09 gives every specialization one struct type, so a log
+        // of one T rejects the T of another.
+        protected T            records[$];
+        protected int unsigned delays[$];
+        protected realtime     recorded_at[$];
 
         `uvm_component_param_utils(a2c_replay_log#(T))
 
@@ -943,10 +1221,9 @@ package a2c_uvm_pkg;
         endfunction
 
         function void record(T rsp, int unsigned delay);
-            record_t r;
-            r.rsp   = rsp;
-            r.delay = delay;
-            records.push_back(r);
+            records.push_back(rsp);
+            delays.push_back(delay);
+            recorded_at.push_back($realtime);
         endfunction
 
         virtual function int unsigned pending();
@@ -956,7 +1233,9 @@ package a2c_uvm_pkg;
         // Whether the model lane's next transaction is recorded. Until it
         // is, check_phase() counts the model lane as waiting for it.
         function bit can_replay();
-            waiting = (records.size() == 0) ? int'(replayed) : -1;
+            int w = (records.size() == 0) ? int'(replayed) : -1;
+            if (w >= 0 && w != waiting) waiting_since = $realtime;
+            waiting = w;
             return records.size() != 0;
         endfunction
 
@@ -967,9 +1246,9 @@ package a2c_uvm_pkg;
                 `uvm_fatal("A2C_REPLAY", $sformatf("%s: the model lane replays transaction %0d, which the DUT lane has not recorded",
                                                    get_full_name(), replayed + 1))
             end
-            rsp   = records[0].rsp;
-            delay = records[0].delay;
-            void'(records.pop_front());
+            rsp   = records.pop_front();
+            delay = delays.pop_front();
+            void'(recorded_at.pop_front());
             replayed++;
         endfunction
 
@@ -979,12 +1258,13 @@ package a2c_uvm_pkg;
             super.check_phase(phase);
             if (cut_at != 0) return;
             if (records.size() > 0) begin
-                `uvm_error("A2C_REPLAY", $sformatf("%s: end of test with %0d responses the DUT lane recorded and the model lane never replayed, from transaction %0d",
-                                               get_full_name(), records.size(), replayed + 1))
+                `uvm_error("A2C_REPLAY", $sformatf("%s: end of test with %0d responses the DUT lane recorded and the model lane never replayed, from transaction %0d%s",
+                                               get_full_name(), records.size(), replayed + 1,
+                                               a2c_replay_drain::death_context(recorded_at[0])))
             end
             if (waiting >= 0) begin
-                `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane waited for transaction %0d, which the DUT lane never recorded",
-                                               get_full_name(), waiting + 1))
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane waited for transaction %0d, which the DUT lane never recorded%s",
+                                               get_full_name(), waiting + 1, a2c_replay_drain::death_context(waiting_since)))
             end
         endfunction
     endclass : a2c_replay_log
@@ -1023,6 +1303,17 @@ package a2c_uvm_pkg;
     //     back, its check_phase() reports what the lanes have left by the
     //     end of the test, and the drain's end must not hang on a clock
     //     that may never return.
+    // A Mode B master that declares a lane dead tells lane_dead(), which
+    // only keeps the death for the reports: the drain goes on watching every
+    // log, since a master's port has no log of its own. A report of an event,
+    // such as a cut, a held pick or a record the model lane never replayed,
+    // ends with death_context() of the time the event happened, which names
+    // each death whose lane began to trail before it. The master declares a
+    // death lane_skew_cycles or lone_lane_cycles clocks after that, so a
+    // stall the event came out of may be declared long after the event. A
+    // lane that began to trail after the event cannot have caused it. The
+    // clause says only that the two may be related, since a stalled model
+    // may as well be what made the lane fall behind.
     class a2c_replay_drain;
         protected static a2c_replay_log_base logs[$];
         protected static bit                 running;
@@ -1036,9 +1327,42 @@ package a2c_uvm_pkg;
         protected static int unsigned        seen_starts[][2];
         // Counts the watchers' updates, so the drain wakes on each.
         protected static int unsigned        updates;
+        // Each death: the port whose master declared it, the lane, when the
+        // lane began to trail, and when the master declared it dead.
+        protected static string              dead_who[$];
+        protected static a2c_lane_e          dead_lane[$];
+        protected static realtime            dead_since[$];
+        protected static realtime            dead_time[$];
 
         static function void register(a2c_replay_log_base log);
             logs.push_back(log);
+        endfunction
+
+        // since is when the lane began to trail: the other lane's handshake
+        // or completion it did not follow, or, for a lane left alone, its
+        // last progress.
+        static function void lane_dead(a2c_lane_e lane, string who, realtime since = $realtime);
+            dead_who.push_back(who);
+            dead_lane.push_back(lane);
+            dead_since.push_back(since);
+            dead_time.push_back($realtime);
+        endfunction
+
+        // The clause that ends a report of an event at time at: the deaths
+        // whose lanes began to trail before at, leaving out those on port
+        // except, or "". A lane that began to trail in the event's own time
+        // step is left out, and so is a death declared in the time step the
+        // clause is made, so the clause does not depend on the order of the
+        // processes in either step.
+        static function string death_context(realtime at, string except = "");
+            string s = "";
+            foreach (dead_time[i]) begin
+                if (dead_since[i] >= at || dead_time[i] == $realtime || dead_who[i] == except) continue;
+                s = {s, (s == "") ? "; " : " and ",
+                     $sformatf("the %s lane of %s %swas declared dead at %0t (A2C_SKEW)", a2c_lane_name(dead_lane[i]), dead_who[i],
+                               (dead_since[i] < dead_time[i]) ? $sformatf("began to trail at %0t and ", dead_since[i]) : "", dead_time[i])};
+            end
+            return (s == "") ? "" : {s, ", which may be related"};
         endfunction
 
         static function void request(uvm_phase phase, a2c_replay_log_base log);
@@ -1098,7 +1422,8 @@ package a2c_uvm_pkg;
                 update(i);
                 return 1;
             end
-            `uvm_warning_context("A2C_DRAIN", $sformatf("the clock stopped before the log settled: %s", logs[i].unsettled()), logs[i])
+            `uvm_warning_context("A2C_DRAIN", $sformatf("the clock stopped before the log settled: %s%s", logs[i].unsettled(), death_context($realtime)),
+                                 logs[i])
             give_up(i);
             return 0;
         endfunction
@@ -1139,19 +1464,21 @@ package a2c_uvm_pkg;
                     deadline = log.drain_deadline_cycles;
                     continue;
                 end
-                `uvm_warning_context("A2C_DRAIN", $sformatf("the drain reached its deadline, drain_deadline_cycles (+a2c_drain_deadline_cycles), of %0d clocks before the log settled: %s",
-                                                            log.drain_deadline_cycles, log.unsettled()), log)
+                `uvm_warning_context("A2C_DRAIN", $sformatf("the drain reached its deadline, drain_deadline_cycles (+a2c_drain_deadline_cycles), of %0d clocks before the log settled: %s%s",
+                                                            log.drain_deadline_cycles, log.unsettled(), death_context($realtime)), log)
                 give_up(i);
                 return;
             end
             log.cut(cycles < log.drain_deadline_cycles);
             for (int unsigned c = 0; !log.cut_reached(); c++) begin
                 if (c == log.catchup_cycles()) begin
+                    log.end_catchup();
                     give_up(i);
                     break;
                 end
                 log.clk_vif.next_rise(stop, ticking);
                 if (!ticking) begin
+                    log.end_catchup();
                     void'(clock_stopped(i));
                     break;
                 end

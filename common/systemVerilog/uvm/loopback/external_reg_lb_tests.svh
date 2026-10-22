@@ -497,3 +497,35 @@
             if (dut >= seq.items.size()) `uvm_error("LB_MODE_B", "the DUT lane's peer ran out of writes, so the port paused")
         endfunction
     endclass : external_reg_mode_b_dst_drain_busy_test
+
+    // As external_reg_mode_b_dst_drain_busy_test, with a passive Mode B
+    // agent watching the port: the drain's cut must cut its model_cmp too,
+    // so it pairs what the agent pairs and reports no unpaired write.
+    class external_reg_mode_b_dst_busy_passive_test extends external_reg_mode_b_dst_drain_busy_test;
+        er_agent_t watcher;
+
+        `uvm_component_utils(external_reg_mode_b_dst_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            er_config_t cfg;
+            super.build_phase(phase);
+            cfg = lane_cfg("watcher_cfg", agent_cfg.vif, A2C_DST, "er");
+            cfg.model_vif = agent_cfg.model_vif;
+            cfg.is_active = UVM_PASSIVE;
+            uvm_config_db#(er_config_t)::set(this, "watcher", "cfg", cfg);
+            watcher = er_agent_t::type_id::create("watcher", this);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
+                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                                                  agent.model_cmp.get_pairs()))
+            end
+        endfunction
+    endclass : external_reg_mode_b_dst_busy_passive_test

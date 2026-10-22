@@ -382,6 +382,18 @@
         endfunction
     endclass : notify_ack_mode_b_dst_drain_busy_test
 
+    // As notify_ack_mode_b_dst_drain_busy_test, with a passive Mode B agent watching the port: the drain's
+    // cut must cut its model_cmp too, so it pairs what the agent pairs and
+    // reports no unpaired transfer.
+    class notify_ack_mode_b_dst_busy_passive_test extends notify_ack_mode_b_dst_drain_busy_test;
+        `uvm_component_utils(notify_ack_mode_b_dst_busy_passive_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            watch_passive = 1;
+        endfunction
+    endclass : notify_ack_mode_b_dst_busy_passive_test
+
     // The first drain expires with the model lane's late event pending,
     // and the test sends the last event after it: the model lane's start
     // since the expiry must bring a second drain that replays it. One more
