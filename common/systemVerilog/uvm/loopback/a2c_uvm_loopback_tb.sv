@@ -275,28 +275,6 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : lb_mode_b_base
 
-    // Turns each A2C_CFG fatal about a missing Mode B into UVM_INFO and keeps
-    // its text, for the tests of a layer's agents with no Mode B operations
-    // yet.
-    class lb_mode_b_fatal_catcher extends uvm_report_catcher;
-        string messages[$];
-
-        `uvm_object_utils(lb_mode_b_fatal_catcher)
-
-        function new(string name = "lb_mode_b_fatal_catcher");
-            super.new(name);
-        endfunction
-
-        virtual function action_e catch();
-            if (get_severity() == UVM_FATAL && get_id() == "A2C_CFG" && a2c_contains(get_message(), "has no Mode B operations yet")) begin
-                messages.push_back(get_message());
-                set_severity(UVM_INFO);
-                set_action(UVM_DISPLAY);
-            end
-            return THROW;
-        endfunction
-    endclass : lb_mode_b_fatal_catcher
-
     // Sends a prepared list of items in order.
     class lb_list_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
         T items[$];
