@@ -27,7 +27,10 @@ public:
 
     // blocking read/write
     virtual void reqReceive(bool &isWrite, R&, D& ) = 0;
-    virtual void complete(const D&) = 0; // completion only on read
+    virtual void complete(const D&, bool slverr = false) = 0;
+    // True when the last received request came from requestWithResponse() or
+    // requestNonBlockingWithResponse(), so its requester waits for complete().
+    virtual bool receivedWantsResponse() = 0;
     virtual bool isActive() = 0;
     virtual bool isNotActive() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
@@ -53,8 +56,13 @@ class apb_out_if
 public:
     // blocking req
     virtual void request(bool isWrite, const R&, D& ) = 0;
+    virtual bool requestWithResponse(bool isWrite, const R&, D& ) = 0;
     virtual void requestNonBlocking(bool isWrite, const R&, D& data ) = 0; // non-blocking req for tee use only
     virtual void waitComplete(D&) = 0; // completion only on read
+    // Response-aware non-blocking pair for tee use: the write is not posted,
+    // and waitCompleteWithResponse() returns PSLVERR for reads and writes.
+    virtual void requestNonBlockingWithResponse(bool isWrite, const R&, D& data ) = 0;
+    virtual bool waitCompleteWithResponse(D&) = 0;
 
 protected:
     // constructor
@@ -103,11 +111,15 @@ public:
 
     // requester interface
     virtual void request(bool isWrite, const R&, D& ) override;
+    virtual bool requestWithResponse(bool isWrite, const R&, D& ) override;
     virtual void requestNonBlocking(bool isWrite, const R&, D& data ) override; // non-blocking req for tee use only
     virtual void waitComplete(D&) override; // completion only on read
+    virtual void requestNonBlockingWithResponse(bool isWrite, const R&, D& data ) override;
+    virtual bool waitCompleteWithResponse(D&) override;
     // completer interface
     virtual void reqReceive(bool &isWrite, R&, D& ) override;
-    virtual void complete(const D&) override ;
+    virtual void complete(const D&, bool slverr = false) override;
+    virtual bool receivedWantsResponse() override { return m_received_wants_response; }
     virtual bool isActive() override { return(m_req_pending); }
     virtual bool isNotActive() override { return(!m_req_pending); }
     virtual void setExternalEvent( sc_event *event ) override
@@ -154,13 +166,20 @@ protected:
     // Protocol state:
     // - m_req_pending models APB PSEL: 1 outstanding request at a time.
     // - m_req_is_write models APB PWRITE for the outstanding request.
-    // - m_resp_pending models PRDATA valid for read responses.
+    // - m_resp_pending models a completed response, including PSLVERR.
     //
     // Events are wakeups only; state lives in these flags and must be checked in
     // guarded wait loops to avoid missed notifications.
     bool m_req_pending = false;
     bool m_req_is_write = false;
+    bool m_req_wait_response = false;
     bool m_resp_pending = false;
+    bool m_slverr = false;
+    // The last received request was a posted write, already acknowledged by
+    // reqReceive(). A complete() for it must not touch the requester's next
+    // request, which may already be pending.
+    bool m_received_posted_write = false;
+    bool m_received_wants_response = false;
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
     bool m_multi_writer = false;  //detect multiple writers
     bool m_external_arb = false;
@@ -215,7 +234,7 @@ inline void apb_channel<R, D>::reqReceive(bool &isWrite, R &req, D &data)
 
     if (m_req_is_write)
     {
-        // write: capture request payload and generate an ack
+        // Legacy writes acknowledge here; response-aware writes wait for complete().
         data = m_data;
         req = m_req_data;
         uint64_t tag = req.getStructValue();
@@ -229,12 +248,18 @@ inline void apb_channel<R, D>::reqReceive(bool &isWrite, R &req, D &data)
         req_interfaceBase.delay();
 
         m_value_written = false;
-        m_req_pending = false;
-        m_channel_comp_event.notify(SC_ZERO_TIME);
+        m_received_wants_response = m_req_wait_response;
+        m_received_posted_write = !m_req_wait_response;
+        if (!m_req_wait_response) {
+            m_req_pending = false;
+            m_channel_comp_event.notify(SC_ZERO_TIME);
+        }
         return;
     }
 
     // read: capture request fields; response arrives via complete()
+    m_received_wants_response = m_req_wait_response;
+    m_received_posted_write = false;
     req = m_req_data;
     uint64_t tag = req.getStructValue();
     if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
@@ -243,21 +268,25 @@ inline void apb_channel<R, D>::reqReceive(bool &isWrite, R &req, D &data)
 }
 
 
-// blocking read completion
-
-
-// blocking read completion
+// Blocking response completion.
 template <class R, class D>
-inline void apb_channel<R, D>::complete(const D& data )
+inline void apb_channel<R, D>::complete(const D& data, bool slverr)
 {
-    Q_ASSERT(m_req_is_write==false && m_req_pending==true, "complete only valid on read");
+    if (m_received_posted_write) {
+        m_received_posted_write = false;
+        return;
+    }
+    Q_ASSERT(m_req_pending, "complete without an outstanding APB request");
 
-    data_interfaceBase.delay();
-    m_data = data;
+    if (!m_req_is_write) {
+        data_interfaceBase.delay();
+        m_data = data;
+    }
+    m_slverr = slverr;
     m_resp_pending = true;
 
-    uint64_t tag = m_data.getStructValue();
-    if (data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
+    uint64_t tag = m_req_is_write ? m_req_data.getStructValue() : m_data.getStructValue();
+    if (!m_req_is_write && data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
         std::ostringstream oss;
         oss << "read req:" << m_req_data.prt(req_interfaceBase.isDebugLog)
             << " data:" << m_data.prt(data_interfaceBase.isDebugLog);
@@ -269,11 +298,7 @@ inline void apb_channel<R, D>::complete(const D& data )
 }
 
 
-// blocking request
-
-
-// blocking request
-
+// Blocking request.
 template <class R, class D>
 inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
 {
@@ -325,6 +350,54 @@ inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
     data = m_data;
     m_resp_pending = false;
     m_multi_writer = false;
+}
+
+// Blocking request that returns the response error bit for both reads and writes.
+template <class R, class D>
+inline bool apb_channel<R, D>::requestWithResponse(bool isWrite, const R& request, D& data)
+{
+    Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
+    m_multi_writer = true;
+
+    if (m_req_pending)
+    {
+        Q_ASSERT(m_req_is_write==true, "read in progress!");
+        while (m_req_pending)
+        {
+            sc_core::wait(m_channel_comp_event);
+        }
+    }
+
+    req_interfaceBase.delay();
+
+    m_req_pending = true;
+    m_req_is_write = isWrite;
+    m_req_wait_response = true;
+    m_resp_pending = false;
+    m_slverr = false;
+    m_req_data = request;
+    if (isWrite) {
+        m_value_written = true;
+        m_data = data;
+    }
+    m_channel_req_event.notify(SC_ZERO_TIME);
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
+
+    while (!m_resp_pending)
+    {
+        sc_core::wait(m_channel_comp_event);
+    }
+
+    if (!isWrite) {
+        data = m_data;
+    }
+    const bool slverr = m_slverr;
+    m_resp_pending = false;
+    m_req_wait_response = false;
+    m_multi_writer = false;
+    return slverr;
 }
 
 
@@ -393,6 +466,56 @@ inline void apb_channel<R, D>::waitComplete(D& data )
     // Leave m_resp_pending asserted so a subsequent waitComplete() (used by some adapters)
     // can return immediately without deadlocking.
     m_multi_writer = false;
+}
+
+template <class R, class D>
+inline void apb_channel<R, D>::requestNonBlockingWithResponse(bool isWrite, const R& request, D& data )
+{
+    Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
+    m_multi_writer = true;
+
+    if (m_req_pending)
+    {
+        Q_ASSERT(m_req_is_write==true, "read in progress!");
+        while (m_req_pending)
+        {
+            sc_core::wait(m_channel_comp_event);
+        }
+    }
+
+    req_interfaceBase.delay();
+
+    m_req_pending = true;
+    m_req_is_write = isWrite;
+    m_req_wait_response = true;
+    m_resp_pending = false;
+    m_slverr = false;
+    m_req_data = request;
+    if (isWrite) {
+        m_value_written = true;
+        m_data = data;
+    }
+    m_channel_req_event.notify(SC_ZERO_TIME);
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
+}
+
+template <class R, class D>
+inline bool apb_channel<R, D>::waitCompleteWithResponse(D& data )
+{
+    while (!m_resp_pending)
+    {
+        sc_core::wait(m_channel_comp_event);
+    }
+    if (!m_req_is_write) {
+        data = m_data;
+    }
+    const bool slverr = m_slverr;
+    m_resp_pending = false;
+    m_req_wait_response = false;
+    m_multi_writer = false;
+    return slverr;
 }
 
 

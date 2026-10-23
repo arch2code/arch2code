@@ -875,7 +875,8 @@ struct popAckProducerHarness : sc_core::sc_module
 // ===========================================================================
 template <template <class, class> class Chan, template <class, class> class InPort,
           template <class, class, class, class, bool, bool> class Thunker,
-          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData,
+          bool ResponseAware = false>
 struct reqCompConsumerHarness : sc_core::sc_module
 {
     Chan<UpA, UpD> upChan;
@@ -900,10 +901,20 @@ struct reqCompConsumerHarness : sc_core::sc_module
             UpD data;
             addr.value = addrVal( i );
             data.value = dataVal( i );
-            upChan.request( true, addr, data );
+            if constexpr (ResponseAware) {
+                const bool slverr = upChan.requestWithResponse( true, addr, data );
+                expectEqual( label, slverr ? 1u : 0u, i % 2 == 0 ? 1u : 0u );
+            } else {
+                upChan.request( true, addr, data );
+            }
             pace();
             UpD readData;
-            upChan.request( false, addr, readData );
+            if constexpr (ResponseAware) {
+                const bool slverr = upChan.requestWithResponse( false, addr, readData );
+                expectEqual( label, slverr ? 1u : 0u, i % 2 != 0 ? 1u : 0u );
+            } else {
+                upChan.request( false, addr, readData );
+            }
             expectEqual( label, readData.value, bridged( dataVal( i ), DirectData ) );
         }
     }
@@ -923,7 +934,17 @@ struct reqCompConsumerHarness : sc_core::sc_module
                 expectEqual( label, addr.value, bridged( addrVal( i ), DirectAddr ) );
                 if (isWrite) expectEqual( label, data.value, bridged( dataVal( i ), DirectData ) );
             }
-            if (!isWrite) {
+            // Alternate errored writes and reads so both response paths are checked.
+            const bool responseError = (t % 4 == 0) || (t % 4 == 3);
+            if constexpr (ResponseAware) {
+                if (isWrite) {
+                    childPort->complete( data, responseError );
+                } else {
+                    DownD resp;
+                    resp.value = dataVal( i );
+                    childPort->complete( resp, responseError );
+                }
+            } else if (!isWrite) {
                 DownD resp;
                 resp.value = dataVal( i );
                 childPort->complete( resp );
@@ -934,7 +955,8 @@ struct reqCompConsumerHarness : sc_core::sc_module
 
 template <template <class, class> class Chan, template <class, class> class OutPort,
           template <class, class, class, class, bool, bool> class Thunker,
-          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+          class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData,
+          bool ResponseAware = false>
 struct reqCompProducerHarness : sc_core::sc_module
 {
     Chan<UpA, UpD> upChan;
@@ -959,10 +981,20 @@ struct reqCompProducerHarness : sc_core::sc_module
             DownD data;
             addr.value = addrVal( i );
             data.value = dataVal( i );
-            childPort->request( true, addr, data );
+            if constexpr (ResponseAware) {
+                const bool slverr = childPort->requestWithResponse( true, addr, data );
+                expectEqual( label, slverr ? 1u : 0u, i % 2 == 0 ? 1u : 0u );
+            } else {
+                childPort->request( true, addr, data );
+            }
             pace();
             DownD readData;
-            childPort->request( false, addr, readData );
+            if constexpr (ResponseAware) {
+                const bool slverr = childPort->requestWithResponse( false, addr, readData );
+                expectEqual( label, slverr ? 1u : 0u, i % 2 != 0 ? 1u : 0u );
+            } else {
+                childPort->request( false, addr, readData );
+            }
             expectEqual( label, readData.value, bridged( dataVal( i ), DirectData ) );
         }
     }
@@ -981,7 +1013,17 @@ struct reqCompProducerHarness : sc_core::sc_module
                 expectEqual( label, addr.value, bridged( addrVal( i ), DirectAddr ) );
                 if (isWrite) expectEqual( label, data.value, bridged( dataVal( i ), DirectData ) );
             }
-            if (!isWrite) {
+            // Alternate errored writes and reads so both response paths are checked.
+            const bool responseError = (t % 4 == 0) || (t % 4 == 3);
+            if constexpr (ResponseAware) {
+                if (isWrite) {
+                    upChan.complete( data, responseError );
+                } else {
+                    UpD resp;
+                    resp.value = dataVal( i );
+                    upChan.complete( resp, responseError );
+                }
+            } else if (!isWrite) {
                 UpD resp;
                 resp.value = dataVal( i );
                 upChan.complete( resp );
@@ -998,10 +1040,17 @@ using memoryProducerHarness = reqCompProducerHarness<memory_channel, memory_out,
                                                      UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
 template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
 using apbConsumerHarness = reqCompConsumerHarness<apb_channel, apb_in, apb_port_thunker,
-                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData, true>;
 template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
 using apbProducerHarness = reqCompProducerHarness<apb_channel, apb_out, apb_port_thunker,
-                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData>;
+                                                  UpA, UpD, DownA, DownD, DirectAddr, DirectData, true>;
+// Posted writes: plain request(), forwarded posted, never completed.
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using apbPostedConsumerHarness = reqCompConsumerHarness<apb_channel, apb_in, apb_port_thunker,
+                                                        UpA, UpD, DownA, DownD, DirectAddr, DirectData, false>;
+template <class UpA, class UpD, class DownA, class DownD, bool DirectAddr, bool DirectData>
+using apbPostedProducerHarness = reqCompProducerHarness<apb_channel, apb_out, apb_port_thunker,
+                                                        UpA, UpD, DownA, DownD, DirectAddr, DirectData, false>;
 
 // ===========================================================================
 // external_reg - the register-write leg and the read-back leg are independent,
@@ -1887,6 +1936,10 @@ int sc_main( int, char*[] )
         apbUnfilledC( "apbUnfilledC", "apb in unfilled read data" );
     apbProducerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
         apbUnfilledP( "apbUnfilledP", "apb out unfilled read data" );
+    apbPostedConsumerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        apbPostedC( "apbPostedC", "apb in posted writes" );
+    apbPostedProducerHarness<maskASt, unfilledASt, maskBSt, unfilledBSt, false, false>
+        apbPostedP( "apbPostedP", "apb out posted writes" );
 
     // -- axi_read / axi_write: matching optional types, id width 6 ---------
     axiReadConsumerHarness axiRdSame( "axiRdSame" );
@@ -1965,6 +2018,8 @@ int sc_main( int, char*[] )
     expectEqual( "memUnfilledP beats", memUnfilledP.beats, 2 * TRANSFERS );
     expectEqual( "apbUnfilledC beats", apbUnfilledC.beats, 2 * TRANSFERS );
     expectEqual( "apbUnfilledP beats", apbUnfilledP.beats, 2 * TRANSFERS );
+    expectEqual( "apbPostedC beats", apbPostedC.beats, 2 * TRANSFERS );
+    expectEqual( "apbPostedP beats", apbPostedP.beats, 2 * TRANSFERS );
     expectEqual( "axiRdSame beats", axiRdSame.beats, TRANSFERS );
     expectEqual( "axiWrSame beats", axiWrSame.beats, TRANSFERS );
     expectEqual( "unfilled read data converted", g_unfilledPacks, 0 );

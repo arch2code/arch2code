@@ -522,6 +522,7 @@ def section_02b_regs(reg_data):
         elif reg_data['regType'] == 'ext':
             s_1 += [ f"{addr_expr} : begin" ]
             s_1 += [ f"    {reg_intf}.write = {1<<n};" ]
+            s_1 += [ f"    nxt_wr_slverr = {reg_intf}.pslverr;" ]
             for s_seg in segments_enum:
                 _, (_, s_u, s_l, _, _) = s_seg
                 if s_seg == seg:
@@ -867,8 +868,10 @@ module {{ modulename }}
     assign rd_select = {{regs_intf}}.psel & {{regs_intf}}.penable & !{{regs_intf}}.pwrite & {{regs_rst}};
 
     logic nxt_wr_ready, wr_ready;
+    logic nxt_wr_slverr, wr_slverr;
     always_comb begin
         nxt_wr_ready = 1'b0;
+        nxt_wr_slverr = 1'b0;
         {{ section_02a | indent(8) }}
         if (wr_select) begin
             case (apb_addr) inside
@@ -898,16 +901,17 @@ module {{ modulename }}
         end
     end
 
-    // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return
-    // 32'hBADD_C0DE.
+    // Update APB ready, read data and write errors. The bus is never stalled.
+    // External-register writes may return PSLVERR; other accesses do not.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_slverr,  nxt_wr_slverr,  '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_ready,   nxt_rd_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
+            assign wr_slverr  = nxt_wr_slverr;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
         end
@@ -916,7 +920,7 @@ module {{ modulename }}
     // Update the APB interface
     assign {{regs_intf}}.prdata  = rd_data;
     assign {{regs_intf}}.pready  = rd_ready | wr_ready;
-    assign {{regs_intf}}.pslverr = 1'b0;
+    assign {{regs_intf}}.pslverr = wr_slverr;
 
 endmodule : {{ modulename }}
 """
