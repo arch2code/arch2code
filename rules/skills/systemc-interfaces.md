@@ -26,7 +26,7 @@ Pick the right port call for each interface family in a SystemC model.
 | `pop_ack` | `pop(v)` | `popReceive()`, then `ack(v)` |
 | `req_ack` | `req(reqV, ackV)` | `reqReceive(reqV)`, then `ack(ackV)` |
 | `notify_ack` | `notify()` | `waitNotify()`, then `ack()` |
-| `apb` | `request(isWrite, addr, data)` | `reqReceive(isWrite, addr, data)`, then `complete(data)` on reads only |
+| `apb` | `request(isWrite, addr, data)` (a write is posted); `requestWithResponse(...)` waits and returns `PSLVERR` | `reqReceive(isWrite, addr, data)`, then `complete(data, slverr)`; required for reads and response-aware writes, ignored for posted writes |
 | `memory` | `request(isWrite, addr, data)` | `reqReceive(isWrite, addr, data)`, then `complete(data)` on reads only |
 | `axi_read` | `sendAddr(a)`, `receiveData(r)` | `receiveAddr(a)`, `sendData(r)` |
 | `axi_write` | `sendAddr(a)`, `sendData(d)`, `receiveResp(b)` | `receiveAddr(a)`, `receiveData(d)`, `sendResp(b)` |

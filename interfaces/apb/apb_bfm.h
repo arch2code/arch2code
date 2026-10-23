@@ -57,9 +57,10 @@ public:
             if( is_write ) {
                 data.sc_unpack(hdl_if_p->pwdata);
             }
-            if_p->request(is_write, addr, data);
+            slverr = if_p->requestWithResponse(is_write, addr, data);
             wait(clk.posedge_event());
             hdl_if_p->pready = true;
+            hdl_if_p->pslverr = slverr;
             if( !is_write ) {
                 hdl_if_p->prdata = VL_DATA_T(data.sc_pack());
             }
@@ -101,7 +102,7 @@ public:
             ADDR_T addr;
             DATA_T data;
             bool is_write;
-            bool slverr;
+            bool slverr = false;
             if_p->reqReceive(is_write, addr, data);
             hdl_if_p->psel = true;
             hdl_if_p->paddr = addr.sc_pack();
@@ -116,32 +117,30 @@ public:
             for (;;) {
                 wait(clk.posedge_event());
                 if (hdl_if_p->pready) {
+                    slverr = hdl_if_p->pslverr;
+                    if (!is_write) {
+                        data.sc_unpack(hdl_if_p->prdata);
+                    }
                     break;
                 }
                 if (wait_cycles < 255u) {
                     ++wait_cycles;
                 }
             }
-            if ( !is_write ) {
-                data.sc_unpack(hdl_if_p->prdata);
-            }
             hdl_if_p->penable = false;
-            slverr = hdl_if_p->pslverr;
-            if( !is_write ) if_p->complete(data);
+            if_p->complete(data, slverr);
 
             if (!observe_ifc.empty()) {
                 const uint32_t addr_u = static_cast<uint32_t>(addr._getAddress());
                 const uint32_t data_u = static_cast<uint32_t>(data._getData());
                 socket_observe_apb_resp(observe_ifc, is_write, addr_u, data_u,
-                                        static_cast<uint8_t>(wait_cycles), true);
+                                        static_cast<uint8_t>(wait_cycles), true, slverr);
             }
 
             hdl_if_p->psel = false;
             hdl_if_p->paddr = VL_ADDR_T(0);
             hdl_if_p->pwrite = false;
             hdl_if_p->pwdata = VL_DATA_T(0);
-            // PSLVERR is legal for unmapped APB (rev3 §11.5); do not fatal.
-            (void)slverr;
         }
     }
 

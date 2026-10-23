@@ -2434,16 +2434,16 @@ def check_router_and_handler_share_the_bus_domain(emitted):
     return True
 
 
-def check_regs_handler_pslverr_tied_low(emitted):
-    """The handler never asserts pslverr: every access ACKs, and an unmapped
+def check_regs_handler_default_pslverr_low(emitted):
+    """A handler without external registers returns no error; an unmapped
     read returns 32'hBADD_C0DE."""
     text = emitted[REGS_HANDLER]
-    _expect(text, "pslverr = 1'b0;", 'the handler never asserts pslverr',
-            'leafA_regs')
-    _expect(text, 'The bus is never stalled and slave', 'the handler '
-            'keeps its APB-ready comment', 'leafA_regs')
-    _refute(text, 'slverr;', 'the handler drives pslverr from no slverr signal',
-            'leafA_regs')
+    _expect(text, "nxt_wr_slverr = 1'b0;",
+            'writes default to no APB error', 'leafA_regs')
+    _expect(text, ".pslverr = wr_slverr;",
+            'the handler connects its write error response to APB', 'leafA_regs')
+    _expect(text, 'External-register writes may return PSLVERR',
+            'the handler documents external write errors', 'leafA_regs')
     return True
 
 
@@ -2953,8 +2953,8 @@ def main():
              check_router_non_default_domain),
             ('the router and its handler share one bus domain',
              check_router_and_handler_share_the_bus_domain),
-            ("the handler keeps pslverr 1'b0",
-             check_regs_handler_pslverr_tied_low),
+            ("a handler without external registers defaults pslverr low",
+             check_regs_handler_default_pslverr_low),
         )]
     finally:
         remove_tree(fixture)
@@ -2968,8 +2968,8 @@ def main():
              check_regs_handler_off_bus_flops_on_bus_domain),
             ("the leaf binds that handler's bus pair only",
              check_leaf_binds_its_generated_handler),
-            ("that handler keeps pslverr 1'b0",
-             check_regs_handler_pslverr_tied_low),
+            ("that handler defaults pslverr low without external registers",
+             check_regs_handler_default_pslverr_low),
             ('the memory binds port B to the register clock and port A to its '
              'own clock', check_memory_instance_off_bus_binds),
             ('that handler and its leaf lint clean under verilator',

@@ -61,6 +61,9 @@ public:
         m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, nullptr, nullptr));
     }
     void cpu_write(uint64_t address, uint32_t val) {
+        (void)cpu_write_with_error(address, val);
+    }
+    bool cpu_write_with_error(uint64_t address, uint32_t val) {
         m_lastWriteAddress = address;
         auto it = find(address);
         if (it->m_type == addressElementType::REG) {
@@ -68,11 +71,11 @@ public:
         } else {
             if (it->m_accessFunc) {
                 it->m_accessFunc(true, address, val);
-                return;
+                return false;
             }
             log_.logPrint([&]() { return std::format("Mem {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         }
-        it->m_ptr->cpu_write((address - it->m_address), val);
+        return it->m_ptr->cpu_write_with_error((address - it->m_address), val);
     }
     uint32_t cpu_read(uint64_t address) {
         auto it = find(address);
@@ -142,16 +145,17 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
                 // truncated to a data bus narrower than 32 bits
                 constexpr uint64_t dataMask = DATA::_bitWidth >= 32 ? 0xFFFFFFFFull : (1ull << DATA::_bitWidth) - 1;
                 data._setData(0xBADDC0DEull & dataMask);
-                apbIn->complete(data);
             }
+            apbIn->complete(data, false);
             continue;
         }
         if (isWrite)
         {
-            regs.cpu_write(address, data._getData());
+            const bool slverr = regs.cpu_write_with_error(address, data._getData());
+            apbIn->complete(data, slverr);
         } else {
             data._setData(regs.cpu_read(address));
-            apbIn->complete(data);
+            apbIn->complete(data, false);
         }
     }
 }
