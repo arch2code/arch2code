@@ -813,6 +813,12 @@ python3 test_external_reg_dst_bfm.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: rtl.f names no include directory for an interface-only context"
+echo "------------------------------------------------------------------------"
+python3 test_rtldotf_interface_only_context.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: raw writer is released when the reader consumes, with or without an external event"
 echo "------------------------------------------------------------------------"
 python3 test_raw_external_event.py || FAILED=1

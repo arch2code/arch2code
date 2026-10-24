@@ -8,8 +8,13 @@ def render(args, prj, data):
     # that cross-project contexts resolve to the owning child's rtl/ output
     # rather than its yaml source tree. The template only formats these dirs.
     contextRtlDir = data['contextRtlDir']
+    # A context that only defines interfaces generates nothing into an RTL
+    # directory, so it gets no +incdir+.
+    interfaceOnly = data.get('interfaceOnlyContexts', set())
     incdirs = dict()
     for context in data['compileContexts']:
+        if context in interfaceOnly:
+            continue
         relDir = contextRtlDir[context]
         incName = '.' if relDir == '.' else './' + relDir
         incdirs[incName] = incName
