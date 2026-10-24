@@ -288,11 +288,13 @@ Different interface names with the same packed form are therefore accepted.
   footprint. Words of a parameterizable register above the bound variant's
   width are elaborated away and read 0. A parameterizable memory decodes only
   the bound depth, and rows past it fall to the default arm. The default arm
-  ACKs with `32'hBADD_C0DE`. `pslverr` is tied `0`. Under the default module
-  parameter `APB_READY_1WS = 0`, `pready` never stalls; setting it to 1
-  registers ready and read data, adding one wait state.
+  ACKs with `32'hBADD_C0DE`. For an `ext` register write, the handler forwards that
+  register interface's `pslverr`; other accesses return `pslverr` low. Under
+  the default module parameter `APB_READY_1WS = 0`, `pready` never stalls;
+  setting it to 1 registers ready, read data and error, adding one wait state.
 - **Handler model** (`templates/systemc/blockRegs.py`, `hwRegisterIf` /
-  `addressMap`). Binds the port named by `registerBusPort`.
+  `addressMap`). Binds the port named by `registerBusPort`; a write-error
+  callback can return `PSLVERR` through a response-aware APB transaction.
 - **Firmware address enum.** The `types:` row from `generateAddressEnums`
   is emitted into the router file's `includeFW` header inside
   `fw_ns::<owner>_<includeName>`, folded into `fw_ns` by `using namespace`

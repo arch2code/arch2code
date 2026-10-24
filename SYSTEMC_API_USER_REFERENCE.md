@@ -503,8 +503,15 @@ Request/response protocol for register and memory access. Supports single outsta
 - `myPort->request(isWrite, addr, data)` - Blocking request (write or read)
   - For writes: `data` contains write data
   - For reads: `data` receives read data on return
+  - A write is posted: it returns once the completer receives it, and any
+    `complete()` the completer issues for it is ignored.
+- `myPort->requestWithResponse(isWrite, addr, data)` - Wait for the APB response
+  to a read or write and return `PSLVERR`; read data is returned through `data`.
 - `myPort->requestNonBlocking(isWrite, addr, data)` - Non-blocking request, for tee use only
 - `myPort->waitComplete(data)` - Wait for the non-blocking read to complete, for tee use only
+- `myPort->requestNonBlockingWithResponse(isWrite, addr, data)` /
+  `myPort->waitCompleteWithResponse(data)` - Response-aware non-blocking pair,
+  for tee use only; returns `PSLVERR` for reads and writes
 
 **Example - APB Master:**
 
@@ -531,7 +538,11 @@ void myModule::apbMaster() {
 **API:**
 - `myPort->reqReceive(isWrite, addr, data)` - Wait for and receive request
   - Returns `isWrite` flag and request data
-- `myPort->complete(data)` - Send read response data
+- `myPort->complete(data, slverr)` - Complete a read, or a response-aware write;
+  `data` is used for reads and `slverr` is returned by `requestWithResponse`.
+  Calling it for a posted write is allowed and has no effect.
+- `myPort->receivedWantsResponse()` - True when the last received request came
+  from `requestWithResponse()`; an adapter forwards the request in the same mode
 - `myPort->isActive()` / `myPort->isNotActive()` - Check whether a request is pending
 - `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration (see `rules/skills/systemc-synchronization.md` Section 1)
 

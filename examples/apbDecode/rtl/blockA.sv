@@ -76,6 +76,7 @@ memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .POR
     end
 
     assign extA.rdata = extAReg;
+    assign extA.pslverr = 1'b0;
 
     // blockATable1[0x5] = 0x2a782d645e49c378: one-shot local write on port A
     // after power-up, then leave port A idle so a bus (port B) read sees it.

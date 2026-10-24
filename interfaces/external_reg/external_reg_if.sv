@@ -4,11 +4,12 @@ interface external_reg_if();
     data_t wdata;
     data_t rdata;
     write_t write;
+    logic pslverr;
 
     // Source
-    modport src (output write, wdata, input rdata);
+    modport src (output write, wdata, input rdata, pslverr);
 
     // Destination
-    modport dst (input write, wdata, output rdata);
+    modport dst (input write, wdata, output rdata, pslverr);
 
 endinterface : external_reg_if
