@@ -17,7 +17,12 @@ export class endOfTestState {
     friend class endOfTest;  // Declare endOfTest as a friend class
 
 public:
-    static endOfTestState &GetInstance() {
+    // `inline` is required: in a named module a member defined in the class is
+    // not implicitly inline. Without it clang 17 at -O2 inlines this function
+    // into importers with a private copy of `instance` each (15 in one build),
+    // so voters register in one copy and the watchdog reads another. An inline
+    // function's local static is one entity across translation units.
+    static inline endOfTestState &GetInstance() {
         static endOfTestState instance;
         return instance;
     }
