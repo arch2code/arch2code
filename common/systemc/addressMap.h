@@ -8,6 +8,7 @@
 #include "apb_channel.h"
 #include "addressBase.h"
 #include "q_assert.h"
+#include "synchLock.h"
 
 
 
@@ -111,7 +112,17 @@ public:
         }
         return false;
     }
+    // A block whose own threads change registers the bus also reads passes a
+    // synchLock here and takes it around those changes. registerHandler then
+    // takes it around each access, so tandem replays the order of a bus access
+    // and the block's update (lock values kLockSiteBusRead/Write; the block
+    // uses its own).
+    void setSynchLock(std::shared_ptr<synchLock<>> lock) { m_lock = std::move(lock); }
+    synchLock<> *busLock(void) const { return m_lock.get(); }
+    static constexpr uint64_t kLockSiteBusRead  = 0xA2C0B5D0ull;
+    static constexpr uint64_t kLockSiteBusWrite = 0xA2C0B5D1ull;
 private:
+    std::shared_ptr<synchLock<>> m_lock;
     std::vector<addressElement> m_addressMap;
     uint64_t m_lastWriteAddress=0;
     logBlock &log_;  // parents logging reference
@@ -146,11 +157,16 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
             }
             continue;
         }
+        synchLock<> *lock = regs.busLock();
         if (isWrite)
         {
+            if (lock) lock->lock(addressMap::kLockSiteBusWrite);
             regs.cpu_write(address, data._getData());
+            if (lock) lock->unlock();
         } else {
+            if (lock) lock->lock(addressMap::kLockSiteBusRead);
             data._setData(regs.cpu_read(address));
+            if (lock) lock->unlock();
             apbIn->complete(data);
         }
     }
