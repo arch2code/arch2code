@@ -105,7 +105,10 @@ def render(args, prj, data):
         section_02a=section_02a(data),
         section_02b=section_02b(data),
         section_03a=section_03a(data),
-        section_03b=section_03b(data)
+        section_03b=section_03b(data),
+        # Only an external register can refuse a write (its pslverr), so only a
+        # block with one gets the write-error flop; the rest drive pslverr 0.
+        has_ext=any(r.get('regType') == 'ext' for r in data['registers'].values())
     ))
 
 def address_const_name(data, entry, name_field):
@@ -868,10 +871,14 @@ module {{ modulename }}
     assign rd_select = {{regs_intf}}.psel & {{regs_intf}}.penable & !{{regs_intf}}.pwrite & {{regs_rst}};
 
     logic nxt_wr_ready, wr_ready;
+{%- if has_ext %}
     logic nxt_wr_slverr, wr_slverr;
+{%- endif %}
     always_comb begin
         nxt_wr_ready = 1'b0;
+{%- if has_ext %}
         nxt_wr_slverr = 1'b0;
+{%- endif %}
         {{ section_02a | indent(8) }}
         if (wr_select) begin
             case (apb_addr) inside
@@ -901,17 +908,23 @@ module {{ modulename }}
         end
     end
 
-    // Update APB ready, read data and write errors. The bus is never stalled.
-    // External-register writes may return PSLVERR; other accesses do not.
+    // Update APB ready{% if has_ext %}, read data and write errors. The bus is never stalled.
+    // External-register writes may return PSLVERR; other accesses do not.{% else %} and read data. The bus is never stalled and slave
+    // error is never asserted: every access ACKs, unmapped reads return
+    // 32'hBADD_C0DE.{% endif %}
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
+{%- if has_ext %}
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_slverr,  nxt_wr_slverr,  '0)
+{%- endif %}
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_ready,   nxt_rd_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
+{%- if has_ext %}
             assign wr_slverr  = nxt_wr_slverr;
+{%- endif %}
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
         end
@@ -920,7 +933,11 @@ module {{ modulename }}
     // Update the APB interface
     assign {{regs_intf}}.prdata  = rd_data;
     assign {{regs_intf}}.pready  = rd_ready | wr_ready;
+{%- if has_ext %}
     assign {{regs_intf}}.pslverr = wr_slverr;
+{%- else %}
+    assign {{regs_intf}}.pslverr = 1'b0;
+{%- endif %}
 
 endmodule : {{ modulename }}
 """
