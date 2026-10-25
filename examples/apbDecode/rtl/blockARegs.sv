@@ -96,8 +96,10 @@ module blockARegs
     assign rd_select = apbReg.psel & apbReg.penable & !apbReg.pwrite & rst_n;
 
     logic nxt_wr_ready, wr_ready;
+    logic nxt_wr_slverr, wr_slverr;
     always_comb begin
         nxt_wr_ready = 1'b0;
+        nxt_wr_slverr = 1'b0;
         rwUn0A_reg_update_0 = 1'b0;
         rwUn0A_reg_update_1 = 1'b0;
         extA.write = '0;
@@ -118,6 +120,7 @@ module blockARegs
                 end
                 REG_BLOCKA_EXTA : begin
                     extA.write = 1;
+                    nxt_wr_slverr = extA.pslverr;
                     extA.wdata[31:0] = apbReg.pwdata[31:0];
                 end
                 [REG_BLOCKA_BLOCKATABLE0:REG_BLOCKA_BLOCKATABLE0 + REG_BLOCKA_BLOCKATABLE0_SIZE - 32'd4]: begin
@@ -239,16 +242,17 @@ module blockARegs
         end
     end
 
-    // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return
-    // 32'hBADD_C0DE.
+    // Update APB ready, read data and write errors. The bus is never stalled.
+    // External-register writes may return PSLVERR; other accesses do not.
     generate if (APB_READY_1WS)
         begin
             `DFFR_DOM(clk, rst_n, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM(clk, rst_n, wr_slverr,  nxt_wr_slverr,  '0)
             `DFFR_DOM(clk, rst_n, rd_ready,   nxt_rd_ready,   '0)
             `DFFR_DOM(clk, rst_n, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
+            assign wr_slverr  = nxt_wr_slverr;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
         end
@@ -257,7 +261,7 @@ module blockARegs
     // Update the APB interface
     assign apbReg.prdata  = rd_data;
     assign apbReg.pready  = rd_ready | wr_ready;
-    assign apbReg.pslverr = 1'b0;
+    assign apbReg.pslverr = wr_slverr;
 
 endmodule : blockARegs
 // GENERATED_CODE_END
