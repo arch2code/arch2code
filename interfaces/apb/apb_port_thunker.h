@@ -31,15 +31,12 @@
 //
 // APB handshake notes (see apb_channel.h):
 //   * The completer side accepts a transaction via
-//     reqReceive(isWrite, addrIn, dataIn). For write transactions the
-//     channel already acknowledges by clearing the pending request, so
-//     no complete() call is issued by the thunker for writes. For read
-//     transactions the thunker pack-converts the response data and
-//     calls complete() with the converted data.
-//   * The requester side issues a single round trip per transaction via
-//     request(isWrite, addrOut, dataInOut). The function blocks until the
-//     response is in dataInOut for reads, and returns after acknowledging
-//     the write for writes.
+//     reqReceive(isWrite, addrIn, dataIn) and forwards it in the mode it
+//     arrived in. A posted write stays posted: the channel acknowledged it in
+//     reqReceive(), and its complete() is ignored. A response-aware request
+//     (requestWithResponse) is forwarded with requestWithResponse, and its
+//     data and PSLVERR are passed back through complete().
+//   * Reads always complete with the pack-converted response data.
 //
 // Four construction shapes are supported, spanning a 2x2 family: the child
 // (down) end is either a consumer (apb_in<DownA, DownD>&) or a producer
@@ -162,18 +159,20 @@ private:
                 static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "apb data_t direct copy requires equal payload size" );
                 copyPayload<DirectData>( dataOut, dataIn );
             }
-            // request() blocks until the read response arrives, or until
-            // the write ack is observed for writes.
-            m_down_channel.request( isWrite, addrOut, dataOut );
+            // Forward in the mode received: a posted write stays posted.
+            bool slverr = false;
+            if (upIn->receivedWantsResponse()) {
+                slverr = m_down_channel.requestWithResponse( isWrite, addrOut, dataOut );
+            } else {
+                m_down_channel.request( isWrite, addrOut, dataOut );
+            }
             if (!isWrite) {
-                // Convert the downstream read response back to up-side
-                // typing and complete the transaction. Writes are
-                // already acknowledged by apb_channel::reqReceive() —
-                // calling complete() on a write would trip its assertion.
                 UpD dataUp;
                 static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "apb data_t direct copy requires equal payload size" );
                 copyPayload<DirectData>( dataUp, dataOut );
-                upIn->complete( dataUp );
+                upIn->complete( dataUp, slverr );
+            } else {
+                upIn->complete( dataIn, slverr );
             }
         }
     }
@@ -184,8 +183,8 @@ private:
         // into the owned m_down_channel; bridge each transaction and
         // issue the request onto the parent-side channel. This is
         // thunkIn() with the consumer and producer objects swapped and
-        // every Up<->Down type swapped, preserving the same APB handshake
-        // asymmetry (complete() only on reads). Resolve the up-side
+        // every Up<->Down type swapped, preserving both read data and
+        // PSLVERR. Resolve the up-side
         // interface once, from the eager channel iface or (port shape) the
         // lazily-bound parent out port.
         apb_out_if<UpA, UpD>* upOut =
@@ -205,18 +204,20 @@ private:
                 static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "apb data_t direct copy requires equal payload size" );
                 copyPayload<DirectData>( dataOut, dataIn );
             }
-            // request() blocks until the read response arrives, or until
-            // the write ack is observed for writes.
-            upOut->request( isWrite, addrOut, dataOut );
+            // Forward in the mode received: a posted write stays posted.
+            bool slverr = false;
+            if (m_down_channel.receivedWantsResponse()) {
+                slverr = upOut->requestWithResponse( isWrite, addrOut, dataOut );
+            } else {
+                upOut->request( isWrite, addrOut, dataOut );
+            }
             if (!isWrite) {
-                // Convert the up-side read response back to down-side
-                // typing and complete the transaction. Writes are
-                // already acknowledged by apb_channel::reqReceive() —
-                // calling complete() on a write would trip its assertion.
                 DownD respDown;
                 static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "apb data_t direct copy requires equal payload size" );
                 copyPayload<DirectData>( respDown, dataOut );
-                m_down_channel.complete( respDown );
+                m_down_channel.complete( respDown, slverr );
+            } else {
+                m_down_channel.complete(dataIn, slverr);
             }
         }
     }

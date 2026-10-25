@@ -19,7 +19,7 @@ struct socket_apb_obs_st {
     uint8_t is_write;
     uint8_t wait_cycles;       // access-phase cycles with PREADY low (0 = no wait states)
     uint8_t wait_cycles_valid; // 1 if counted at pin BFM; 0 if TLM socket placeholder
-    uint8_t pad;
+    uint8_t pslverr;
     uint32_t address;
     uint32_t data;
 };
@@ -123,6 +123,7 @@ inline void socket_observe_apb_req(const std::string &interface_name, bool is_wr
     obs.is_write = is_write ? 1 : 0;
     obs.wait_cycles = 0;
     obs.wait_cycles_valid = 0;
+    obs.pslverr = 0;
     obs.address = addr;
     obs.data = is_write ? wdata : 0;
 
@@ -139,25 +140,27 @@ inline void socket_observe_apb_req(const std::string &interface_name, bool is_wr
 
 inline void socket_observe_apb_resp(const std::string &interface_name, bool is_write, uint32_t addr,
                                     uint32_t rdata, uint8_t wait_cycles = 0,
-                                    bool wait_cycles_valid = false)
+                                    bool wait_cycles_valid = false, bool slverr = false)
 {
     socket_apb_obs_st obs{};
     obs.sc_time_ns = socket_sc_time_ns();
     obs.is_write = is_write ? 1 : 0;
     obs.wait_cycles = wait_cycles;
     obs.wait_cycles_valid = wait_cycles_valid ? 1 : 0;
+    obs.pslverr = slverr ? 1 : 0;
     obs.address = addr;
     obs.data = rdata;
 
     logging::GetInstance().logDirect(std::format(
-        "APB_OBS {} RESP @ {}ns {} addr={:#x} data={:#x} wait_cycles={}{}",
+        "APB_OBS {} RESP @ {}ns {} addr={:#x} data={:#x} wait_cycles={}{} pslverr={}",
         interface_name,
         obs.sc_time_ns,
         is_write ? "WRITE" : "READ",
         addr,
         rdata,
         wait_cycles,
-        wait_cycles_valid ? "" : " (n/a)"), LOG_NORMAL);
+        wait_cycles_valid ? "" : " (n/a)",
+        slverr ? 1 : 0), LOG_NORMAL);
 
     socket_observe_apb_push(interface_name, MSG_APB_OBS_RESP, obs);
 }

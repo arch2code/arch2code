@@ -1,6 +1,8 @@
 #ifndef HWREGISTER_H
 #define HWREGISTER_H
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 #include "asyncEvent.h"
 #include "addressBase.h"
@@ -54,6 +56,15 @@ public:
             m_event->notify();
         }
     }
+    bool cpu_write_with_error(uint64_t address, uint32_t val) override
+    {
+        cpu_write(address, val);
+        return m_writeErrorHandler ? m_writeErrorHandler(address, val) : false;
+    }
+    void setWriteErrorHandler(std::function<bool(uint64_t, uint32_t)> handler)
+    {
+        m_writeErrorHandler = std::move(handler);
+    }
     REG_DATA read(void)
     {
         return m_val;
@@ -76,6 +87,8 @@ public:
     }
     REG_DATA m_val;
     sc_event *m_event=nullptr;
+private:
+    std::function<bool(uint64_t, uint32_t)> m_writeErrorHandler;
 private:
     sc_bv<N*8> m_val_sc;
 };
@@ -120,6 +133,15 @@ public:
             (*m_port)->reg_write_cmd(m_val);
         }
     }
+    bool cpu_write_with_error(uint64_t address, uint32_t val) override
+    {
+        cpu_write(address, val);
+        return m_writeErrorHandler ? m_writeErrorHandler(address, val) : false;
+    }
+    void setWriteErrorHandler(std::function<bool(uint64_t, uint32_t)> handler)
+    {
+        m_writeErrorHandler = std::move(handler);
+    }
     void copy(REG_DATA& to)
     {
         to = *this;
@@ -128,6 +150,7 @@ public:
 private:
     sc_bv<N*8> m_val_sc;
     PORT *m_port;
+    std::function<bool(uint64_t, uint32_t)> m_writeErrorHandler;
 };
 
 #endif //(HWREGISTER_H)
