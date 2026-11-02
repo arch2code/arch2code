@@ -11,11 +11,14 @@
 //
 // Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
-// each beat on both lanes at one drive point, and each lane drops tvalid
-// once its own beat has transferred; the next beat starts when both have.
-// The A2C_DST driver gives both lanes the same tready. On the A2C_DST role
-// model_cmp compares the beats of the two lanes in order, every field
-// do_compare covers. What the DUT produces that is not compared:
+// each beat on both lanes at one drive point, and each lane drops tvalid once
+// its own beat has transferred; the next beat starts when both have. A lane of
+// the A2C_SRC driver that trails the other by lane_skew_cycles clocks, or
+// stalls, is declared dead as for the AXI masters (a2c_lane_watchdog), and the
+// other lane serves the sequence alone. The A2C_DST driver gives both lanes
+// the same tready. On the A2C_DST role model_cmp compares the beats of the two
+// lanes in order, every field do_compare covers. What the DUT produces that is
+// not compared:
 //   DUT dst port, A2C_SRC agent: `tready` timing
 //   DUT src port, A2C_DST agent: `tvalid` timing
 package axi4_stream_uvm_pkg;
@@ -102,7 +105,7 @@ package axi4_stream_uvm_pkg;
 
     class axi4_stream_driver #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
                                type tdest_t = logic [7:0], type tuser_t = logic)
-            extends uvm_driver #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t));
+            extends uvm_driver #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)) implements a2c_lane_waits;
         typedef virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) vif_t;
 
         axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t) cfg;
@@ -110,6 +113,10 @@ package axi4_stream_uvm_pkg;
         // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
         protected vif_t        lane[2];
         protected int unsigned lanes;
+        // src role: bounds how long one lane may trail the other and how
+        // long the lanes may stall in Mode B, and keeps which lanes are
+        // dead.
+        a2c_lane_watchdog      wd;
 
         `uvm_component_param_utils(axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -129,13 +136,15 @@ package axi4_stream_uvm_pkg;
         endtask
 
         protected function void drive_tvalid(bit tvalid);
-            for (int l = 0; l < lanes; l++) lane[l].tvalid <= tvalid;
+            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].tvalid <= tvalid;
         endfunction
 
         // Each loop iteration starts at a drive point. try_next_item lets
         // back-to-back items go out on consecutive clocks, and tvalid drops on
         // the first drive point with no item.
         protected virtual task run_src();
+            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
+            wd.configure();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].tvalid <= 1'b0;
                 lane[l].tdata  <= '0;
@@ -148,6 +157,11 @@ package axi4_stream_uvm_pkg;
             end
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
+            if (lanes == 2) begin
+                fork
+                    release_dead();
+                join_none
+            end
             forever begin
                 seq_item_port.try_next_item(req);
                 if (req == null) begin
@@ -160,6 +174,7 @@ package axi4_stream_uvm_pkg;
                     cfg.clk_vif.drive_edge();
                 end
                 for (int l = 0; l < lanes; l++) begin
+                    if (wd.dead[l]) continue;
                     lane[l].tvalid <= 1'b1;
                     lane[l].tdata  <= req.tdata;
                     lane[l].tlast  <= req.tlast;
@@ -174,26 +189,48 @@ package axi4_stream_uvm_pkg;
             end
         endtask
 
-        // Returns at the drive point after the last lane's beat transferred,
-        // which is the rising edge before it. A lane whose beat has
-        // transferred holds tvalid low from the next drive point on.
+        // Returns at the drive point after the last live lane's beat
+        // transferred, which is the rising edge before it. A lane whose beat
+        // has transferred holds tvalid low from the next drive point on. In
+        // Mode B wd bounds how long one lane may trail the other and how long
+        // the lanes may stall (a2c_lane_watchdog), and a lane it declares dead
+        // drops out of the wait.
         protected task wait_transfer();
-            bit          pending[2];
-            int unsigned left = lanes;
-            for (int l = 0; l < lanes; l++) pending[l] = 1'b1;
+            bit    pending[2];
+            bit    took[2];
+            bit    finished[2];
+            wd.begin_item();
+            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
             forever begin
                 cfg.clk_vif.sample_edge();
                 for (int l = 0; l < lanes; l++) begin
-                    if (pending[l] && lane[l].tready === 1'b1) begin
-                        pending[l] = 1'b0;
-                        left--;
-                    end
+                    took[l]     = pending[l] && lane[l].tready === 1'b1;
+                    pending[l] &= !took[l];
+                    finished[l] |= took[l];
                 end
+                wd.step(took, pending);
                 cfg.clk_vif.drive_edge();
-                if (left == 0) return;
+                if (!pending[A2C_DUT_LANE] && !pending[A2C_MODEL_LANE]) return;
                 for (int l = 0; l < lanes; l++) begin
-                    if (!pending[l]) lane[l].tvalid <= 1'b0;
+                    if (finished[l]) lane[l].tvalid <= 1'b0;
                 end
+            end
+        endtask
+
+        virtual function string waiting_for(a2c_lane_e l);
+            return {"the transfer of ", req.convert2string()};
+        endfunction
+
+        // Mode B: a dead lane keeps an asserted tvalid and its payload until
+        // that transfer happens, as the protocol requires, and drops tvalid at
+        // the drive point after it. No later item drives the lane.
+        protected task release_dead();
+            bit took[2];
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < 2; l++) took[l] = wd.dead[l] && lane[l].tvalid === 1'b1 && lane[l].tready === 1'b1;
+                cfg.clk_vif.drive_edge();
+                for (int l = 0; l < 2; l++) if (took[l]) lane[l].tvalid <= 1'b0;
             end
         endtask
 
@@ -260,6 +297,8 @@ package axi4_stream_uvm_pkg;
                     end
                     continue;
                 end
+                // Each transfer counts for the joint stall rule (a2c_joint_watch).
+                a2c_joint_watch::handshake();
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),
                                              $sformatf("%0h", item.tdata)), UVM_MEDIUM)
                 ap.write(item);

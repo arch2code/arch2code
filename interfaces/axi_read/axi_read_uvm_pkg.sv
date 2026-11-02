@@ -31,30 +31,29 @@
 // beside the DUT's and monitors it with model_mon, and model_cmp, an
 // axi_read_comparator, compares the bursts the two lanes report in order per
 // ID: AR fields and every beat's rdata, rresp and ruser. The master puts each
-// AR on both lanes at one drive point, each lane drops arvalid once its own
-// AR has transferred, and the next item starts when both have; up to
+// AR on both lanes at one drive point, each lane drops arvalid once its own AR
+// has transferred, and the next item starts when both have; up to
 // cfg.max_outstanding bursts are in flight on each lane. rready has the same
 // level on both lanes. A burst's response returns once both lanes have its
 // last beat, with the DUT lane's beats. A lane that trails the other by
-// lane_skew_cycles clocks on a burst's AR or last beat is declared dead in
-// one A2C_SKEW error (axi_read_master_driver::declare_dead()), and the master
-// serves the sequence from the other lane alone from then on. The slave
+// lane_skew_cycles clocks on a burst's AR or last beat is declared dead in one
+// A2C_SKEW error, and the master serves the sequence from the other lane alone
+// from then on; a2c_lane_watchdog has this rule and the stall rules. The slave
 // serves both lanes from the one cfg.mem. The DUT lane chooses each burst it
 // serves, reads its beats from the memory and records them in its replay log;
 // the model lane never chooses and never reads the memory. It serves the DUT
 // lane's picks in order, each as its own AR with the same ID and the same
-// place among that ID's ARs, after the delay the DUT lane drew, with the
-// beats the DUT lane read. A model lane that leads waits for the DUT lane's
-// pick, and then for each beat the DUT lane has not read yet. Since the
-// model lane follows the DUT lane's order, the model must keep as many ARs
-// outstanding as the RTL. One that holds an AR back until an earlier
-// response leaves the model lane holding a pick, a model defect the slave
-// reports. arready has the same level on both lanes. A burst one lane issues
-// and the other never does is an A2C_REPLAY error at the end of the run. The
-// replay log holds the end of the run phase while the model lane catches up
-// (a2c_replay_drain). A passive agent on either pin set learns of a death and
-// of a cut through a2c_pin_registry. What the DUT produces that is not
-// compared:
+// place among that ID's ARs, after the delay the DUT lane drew, with the beats
+// the DUT lane read. A model lane that leads waits for the DUT lane's pick,
+// and then for each beat the DUT lane has not read yet. Since the model lane
+// follows the DUT lane's order, the model must keep as many ARs outstanding as
+// the RTL. One that holds an AR back until an earlier response leaves the
+// model lane holding a pick, a model defect the slave reports. arready has the
+// same level on both lanes. A burst one lane issues and the other never does
+// is an A2C_REPLAY error at the end of the run. The replay log holds the end
+// of the run phase while the model lane catches up (a2c_replay_drain). A
+// passive agent on either pin set learns of a death and of a cut through
+// a2c_pin_registry. What the DUT produces that is not compared:
 //   DUT axi_read dst port, A2C_SRC master: valid and ready timing, order across IDs
 //   DUT axi_read src port, A2C_DST slave: none
 package axi_read_uvm_pkg;
@@ -284,7 +283,7 @@ package axi_read_uvm_pkg;
 
     class axi_read_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                                    type ruser_t = logic, type id_t = logic [3:0])
-        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t));
+        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t)) implements a2c_lane_waits;
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
         typedef virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
@@ -302,16 +301,11 @@ package axi_read_uvm_pkg;
         // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
         protected vif_t        lane[2];
         protected int unsigned lanes;
-        // Mode B: the clocks a lane may trail the other on a burst's AR or
-        // its last beat before the master declares it dead, and, once the
-        // other lane is dead, the clocks the live lane may go without an AR
-        // or a beat while it has one to take; 0 turns either rule off.
-        // a2c_lane_skew_cycles and a2c_lone_lane_cycles in the uvm_config_db
-        // set them. They are independent: a lone lane's stall is a slave's
-        // latency or the DUT's backpressure, which a tight skew bound does
-        // not limit.
-        int unsigned           lane_skew_cycles = 200000;
-        int unsigned           lone_lane_cycles = 200000;
+        // Mode B: bounds how long a lane may trail the other on a burst's AR
+        // or its last beat, how long the lane left after a death may go
+        // without an AR or a beat while it has one to take, and how long
+        // both may, and keeps which lanes are dead.
+        a2c_lane_watchdog      wd;
 
         // Bursts waiting for their beats on each live lane, oldest first per
         // ID; every burst not yet returned, in AR order; the bursts one lane
@@ -326,14 +320,8 @@ package axi_read_uvm_pkg;
         protected open_t       ar_cur;
         // A dead lane is never driven or read again, apart from an arvalid
         // it had raised, which drops at the drive point after that AR
-        // transfers. stuck counts the clocks the one live lane has gone
-        // without progress, and moved_at is when each lane last made
-        // progress.
-        protected bit          dead[2];
-        protected realtime     died_at[2];
+        // transfers.
         protected bit          drop_ar[2];
-        protected int unsigned stuck;
-        protected realtime     moved_at[2];
 
         `uvm_component_param_utils(axi_read_master_driver#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -345,8 +333,12 @@ package axi_read_uvm_pkg;
             lane[A2C_DUT_LANE]   = cfg.vif;
             lane[A2C_MODEL_LANE] = cfg.model_vif;
             lanes = (cfg.model_vif != null) ? 2 : 1;
-            void'(a2c_get_config_int(this, "a2c_lane_skew_cycles", lane_skew_cycles));
-            void'(a2c_get_config_int(this, "a2c_lone_lane_cycles", lone_lane_cycles));
+            wd = new(this, cfg.port_name, lanes, "burst", "every open and later burst returns to the sequence with no beats");
+            wd.cmp      = cmp;
+            wd.mons[A2C_DUT_LANE]   = mons[A2C_DUT_LANE];
+            wd.mons[A2C_MODEL_LANE] = mons[A2C_MODEL_LANE];
+            wd.watchers = watchers;
+            wd.configure();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].arvalid <= 1'b0;
                 lane[l].arid    <= '0;
@@ -376,24 +368,13 @@ package axi_read_uvm_pkg;
             return rsp;
         endfunction
 
-        protected function bit all_dead();
-            return lanes == 2 && dead[A2C_DUT_LANE] && dead[A2C_MODEL_LANE];
-        endfunction
-
-        // Whether lane l still leads a skew: a lane that died on an earlier
-        // clock leads none, so neither process's order within one time step
-        // decides whether both lanes die on it.
-        protected function bit counts(int l);
-            return !dead[l] || died_at[l] == $realtime;
-        endfunction
-
         protected function void drive_arvalid(bit v);
-            for (int l = 0; l < lanes; l++) if (!dead[l]) lane[l].arvalid <= v;
+            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].arvalid <= v;
         endfunction
 
         protected function bit slot_free();
             for (int l = 0; l < lanes; l++) begin
-                if (!dead[l] && outstanding[l] >= cfg.max_outstanding) return 0;
+                if (!wd.dead[l] && outstanding[l] >= cfg.max_outstanding) return 0;
             end
             return 1;
         endfunction
@@ -442,7 +423,7 @@ package axi_read_uvm_pkg;
                 rsp = b.rsp[A2C_DUT_LANE];
                 opened.push_back(b);
                 for (int l = 0; l < lanes; l++) begin
-                    if (dead[l]) continue;
+                    if (wd.dead[l]) continue;
                     pending[l][id_key_t'(rsp.id)].push_back(b);
                     outstanding[l]++;
                     lane[l].arvalid <= 1'b1;
@@ -474,28 +455,28 @@ package axi_read_uvm_pkg;
                 all = 1;
                 led = 0;
                 for (int l = 0; l < lanes; l++) begin
-                    if (!dead[l] && lane[l].arready === 1'b1) b.ar_taken[l] = 1'b1;
-                    all &= b.ar_taken[l] || dead[l];
-                    led |= b.ar_taken[l] && counts(l);
+                    if (!wd.dead[l] && lane[l].arready === 1'b1) b.ar_taken[l] = 1'b1;
+                    all &= b.ar_taken[l] || wd.dead[l];
+                    led |= b.ar_taken[l] && wd.counts(l);
                 end
                 if (!all && led) begin
                     if (lag == 0) led_at = $realtime;
-                    if (lag == lane_skew_cycles && lane_skew_cycles != 0) begin
+                    if (lag == wd.lane_skew_cycles && wd.lane_skew_cycles != 0) begin
                         for (int l = 0; l < lanes; l++) begin
-                            if (b.ar_taken[l] || dead[l]) continue;
+                            if (b.ar_taken[l] || wd.dead[l]) continue;
                             declare_dead(a2c_lane_e'(l), $sformatf("the %s lane has not taken the AR of %s %0d clocks after the %s lane did",
                                                            a2c_lane_name(a2c_lane_e'(l)), b.rsp[A2C_DUT_LANE].convert2string(),
-                                                           lane_skew_cycles, a2c_lane_name(a2c_lane_e'(1 - l))), led_at);
+                                                           wd.lane_skew_cycles, a2c_lane_name(a2c_lane_e'(1 - l))), led_at);
                         end
                     end
                     lag++;
                 end
                 cfg.clk_vif.drive_edge();
                 all = 1;
-                for (int l = 0; l < lanes; l++) all &= b.ar_taken[l] || dead[l];
+                for (int l = 0; l < lanes; l++) all &= b.ar_taken[l] || wd.dead[l];
                 if (all) break;
                 for (int l = 0; l < lanes; l++) begin
-                    if (b.ar_taken[l] && !dead[l]) lane[l].arvalid <= 1'b0;
+                    if (b.ar_taken[l] && !wd.dead[l]) lane[l].arvalid <= 1'b0;
                 end
             end
             ar_cur = null;
@@ -512,17 +493,17 @@ package axi_read_uvm_pkg;
                 for (int l = 0; l < lanes; l++) begin
                     if (drop_ar[l]) lane[l].arvalid <= 1'b0;
                     drop_ar[l] = 0;
-                    lane[l].rready <= ready && !dead[l];
+                    lane[l].rready <= ready && !wd.dead[l];
                 end
-                while (all_dead() && opened.size() > 0) settle(opened[0]);
+                while (wd.all_dead() && opened.size() > 0) settle(opened[0]);
                 cfg.clk_vif.sample_edge();
                 clocks++;
                 for (int l = 0; l < lanes; l++) begin
-                    if (counts(l) && lane[l].rvalid === 1'b1 && lane[l].rready === 1'b1) take_beat(l);
+                    if (wd.counts(l) && lane[l].rvalid === 1'b1 && lane[l].rready === 1'b1) take_beat(l);
                 end
                 release_skewed();
-                watch_lone();
-                for (int l = 0; l < lanes; l++) if (dead[l]) note_ar_transfer(l);
+                watch_stall();
+                for (int l = 0; l < lanes; l++) if (wd.dead[l]) note_ar_transfer(l);
                 cfg.clk_vif.drive_edge();
             end
         endtask
@@ -546,13 +527,13 @@ package axi_read_uvm_pkg;
             void'(pending[l][id].pop_front());
             outstanding[l]--;
             b.done[l] = 1'b1;
-            if (lanes == 2 && !dead[1 - l] && !b.done[1 - l]) begin
+            if (lanes == 2 && !wd.dead[1 - l] && !b.done[1 - l]) begin
                 b.first_done = clocks;
                 b.first_at   = $realtime;
                 skewed.push_back(b);
                 return;
             end
-            if (lanes == 2 && dead[1 - l]) settle_owed();
+            if (lanes == 2 && wd.dead[1 - l]) settle_owed();
             settle(b);
         endfunction
 
@@ -563,7 +544,7 @@ package axi_read_uvm_pkg;
         // of an older one of its ID.
         protected function void settle_owed();
             for (int i = 0; i < skewed.size(); ) begin
-                if (dead[skewed[i].done[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE]) settle(skewed[i]);
+                if (wd.dead[skewed[i].done[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE]) settle(skewed[i]);
                 else i++;
             end
         endfunction
@@ -574,7 +555,7 @@ package axi_read_uvm_pkg;
         // here once from each lane's take_beat(), as does one the dying lane
         // completes after settle_owed() returned it, so b returns only once.
         protected function void settle(open_t b);
-            item_t rsp = b.rsp[dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE];
+            item_t rsp = b.rsp[wd.dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE];
             if (b.settled) return;
             b.settled = 1;
             foreach (opened[i]) begin
@@ -589,7 +570,7 @@ package axi_read_uvm_pkg;
                     break;
                 end
             end
-            if (all_dead()) begin
+            if (wd.all_dead()) begin
                 rsp.data  = new[0];
                 rsp.resp  = new[0];
                 rsp.ruser = new[0];
@@ -606,14 +587,14 @@ package axi_read_uvm_pkg;
                 open_t     b    = skewed[i];
                 a2c_lane_e lead = b.done[A2C_DUT_LANE] ? A2C_DUT_LANE : A2C_MODEL_LANE;
                 a2c_lane_e late = a2c_lane_e'(1 - lead);
-                if (!dead[late] && counts(lead) && lane_skew_cycles != 0 && clocks - b.first_done >= lane_skew_cycles) begin
+                if (!wd.dead[late] && wd.counts(lead) && wd.lane_skew_cycles != 0 && clocks - b.first_done >= wd.lane_skew_cycles) begin
                     declare_dead(late, $sformatf("the %s lane has not returned the last R beat of %s %0d clocks after the %s lane did",
-                                         a2c_lane_name(late), b.rsp[lead].convert2string(), lane_skew_cycles,
+                                         a2c_lane_name(late), b.rsp[lead].convert2string(), wd.lane_skew_cycles,
                                          a2c_lane_name(lead)), b.first_at);
                 end
-                if (dead[late]) begin
+                if (wd.dead[late]) begin
                     settle(b);
-                end else if (!counts(lead)) begin
+                end else if (!wd.counts(lead)) begin
                     b.first_done = -1;
                     skewed.delete(i);
                 end else begin
@@ -622,44 +603,35 @@ package axi_read_uvm_pkg;
             end
         endfunction
 
-        // Once one lane is dead, the other must take an AR or a beat at least
-        // once every lone_lane_cycles clocks while it has an AR on the bus
-        // or a burst outstanding, or it is declared dead too, so a live lane
-        // that stops, perhaps waiting on the dead one, ends the run.
-        protected function void watch_lone();
-            int    l;
-            string what;
-            if (lanes != 2) return;
-            for (int k = 0; k < 2; k++) if (!dead[k] && moved(k)) moved_at[k] = $realtime;
-            if (lone_lane_cycles == 0 || dead[A2C_DUT_LANE] == dead[A2C_MODEL_LANE]) return;
-            l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
-            if (moved(l)) begin
-                stuck = 0;
-                return;
+        // Applies the lone and joint stall rules. Once one lane is dead, the
+        // other must take an AR or a beat at least once every
+        // lone_lane_cycles clocks while it has an AR on the bus or a burst
+        // outstanding, or it is declared dead too, so a live lane that
+        // stops, perhaps waiting on the dead one, ends the run; and two live
+        // lanes end it too once no port has moved for joint_stall_cycles
+        // clocks.
+        protected function void watch_stall();
+            bit took[2];
+            bit idle[2];
+            bit trailing;
+            for (int k = 0; k < lanes; k++) begin
+                took[k] = (lane[k].arvalid === 1'b1 && lane[k].arready === 1'b1) || (lane[k].rvalid === 1'b1 && lane[k].rready === 1'b1);
+                idle[k] = outstanding[k] == 0 && lane[k].arvalid !== 1'b1;
             end
-            if (++stuck < lone_lane_cycles) return;
-            what = "a burst";
-            if (lane[l].arvalid === 1'b1 && ar_cur != null) begin
-                what = {"the AR of ", ar_cur.rsp[A2C_DUT_LANE].convert2string()};
-            end else begin
-                foreach (opened[i]) begin
-                    if (opened[i].done[l]) continue;
-                    what = {"the R beats of ", opened[i].rsp[l].convert2string()};
-                    break;
-                end
-            end
-            declare_dead(a2c_lane_e'(l), $sformatf("the %s lane, alone since the %s lane died, has taken no AR and returned no R beat for %0d clocks, waiting for %s",
-                                           a2c_lane_name(a2c_lane_e'(l)), a2c_lane_name(a2c_lane_e'(1 - l)), lone_lane_cycles, what),
-                         moved_at[l], "lone_lane_cycles, +a2c_lone_lane_cycles",
-                         $sformatf("This is likely a consequence of the earlier A2C_SKEW, which declared the %s lane dead at %0t. ",
-                                   a2c_lane_name(a2c_lane_e'(1 - l)), died_at[1 - l]));
+            trailing = skewed.size() != 0 || (ar_cur != null && ar_cur.ar_taken[A2C_DUT_LANE] != ar_cur.ar_taken[A2C_MODEL_LANE]);
+            case (wd.progress(took, idle, trailing))
+                A2C_LONE_STALL: wd.declare_lone("has taken no AR and returned no R beat");
+                A2C_BOTH_STALL: wd.declare_joint();
+                default: ;
+            endcase
         endfunction
 
-        // Whether lane l has nothing to wait for, or took an AR or an R beat
-        // on this clock.
-        protected function bit moved(int l);
-            return (outstanding[l] == 0 && lane[l].arvalid !== 1'b1) || (lane[l].arvalid === 1'b1 && lane[l].arready === 1'b1)
-                   || (lane[l].rvalid === 1'b1 && lane[l].rready === 1'b1);
+        virtual function string waiting_for(a2c_lane_e l);
+            if (lane[l].arvalid === 1'b1 && ar_cur != null) return {"the AR of ", ar_cur.rsp[A2C_DUT_LANE].convert2string()};
+            foreach (opened[i]) begin
+                if (!opened[i].done[l]) return {"the R beats of ", opened[i].rsp[l].convert2string()};
+            end
+            return "a burst";
         endfunction
 
         // The AR a dead lane takes at the coming rising edge is the one its
@@ -668,41 +640,13 @@ package axi_read_uvm_pkg;
             if (lane[l].arvalid === 1'b1 && lane[l].arready === 1'b1) drop_ar[l] = 1;
         endfunction
 
-        // One A2C_SKEW error per lane, at its death. It names the knob that
-        // bounded it, for the second death the first, and the deaths other
-        // ports declared before it, since a stall of the DUT or the model
-        // can spread from one port to another. From then on the lane keeps
-        // an asserted arvalid and its payload until that AR transfers, holds
-        // rready low, so it takes no response, and gets no new AR; the
-        // master serves the sequence from the other lane alone. The rising
-        // edge after the death may still move an AR or a beat on the lane,
-        // and take_beat() records it. The passive agents on the port learn
-        // of the death as the agent's own monitor and model_cmp do. since is
-        // when the lane began to trail, which dates the death for the
-        // drain's clause in other ports' reports.
-        protected function void declare_dead(a2c_lane_e l, string why, realtime since,
-                                             string knob = "lane_skew_cycles, +a2c_lane_skew_cycles", string cause = "");
-            string fate;
-            if (dead[l]) return;
-            dead[l]    = 1;
-            died_at[l] = $realtime;
-            stuck      = 0;
-            fate = dead[1 - l] ? "No lane is left, so every open and later burst returns to the sequence with no beats."
-                               : {"The ", a2c_lane_name(a2c_lane_e'(1 - l)), " lane serves every burst from now on."};
-            `uvm_error("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s",
-                                             cfg.port_name, why, knob, a2c_lane_name(l),
-                                             a2c_replay_drain::death_context($realtime, who()), cause, fate))
-            note_ar_transfer(l);
-            if (cmp != null) cmp.lane_dead(l);
-            if (mons[l] != null) mons[l].lane_dead();
-            if (watchers[l] != null) foreach (watchers[l].mons[i]) watchers[l].mons[i].lane_dead();
-            if (watchers[A2C_DUT_LANE] != null) foreach (watchers[A2C_DUT_LANE].cmps[i]) watchers[A2C_DUT_LANE].cmps[i].lane_dead(l);
-            a2c_replay_drain::lane_dead(l, who(), since);
-        endfunction
-
-        // How the drain's reports name this master's port.
-        protected function string who();
-            return $sformatf("%s (%s)", cfg.port_name, get_full_name());
+        // From a lane's death on, the lane keeps an asserted arvalid and its
+        // payload until that AR transfers, holds rready low, so it takes no
+        // response, and gets no new AR; the master serves the sequence from
+        // the other lane alone. The rising edge after the death may still
+        // move an AR or a beat on the lane, and take_beat() records it.
+        protected function void declare_dead(a2c_lane_e l, string why, realtime since);
+            if (wd.declare_dead(l, why, since)) note_ar_transfer(l);
         endfunction
     endclass : axi_read_master_driver
 
@@ -724,7 +668,8 @@ package axi_read_uvm_pkg;
     // lane follows.
     class axi_read_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                                   type ruser_t = logic, type id_t = logic [3:0])
-        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t)) implements a2c_replay_lanes;
+        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t))
+        implements a2c_replay_lanes, a2c_replay_holder;
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
         typedef virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
@@ -979,6 +924,10 @@ package axi_read_uvm_pkg;
             return queue[l].size() != 0 || cur[l] != null || (l == A2C_MODEL_LANE && held != null);
         endfunction
 
+        virtual function bit lane_holding(a2c_lane_e l);
+            return l == A2C_MODEL_LANE && held != null && queue[l].size() == 0 && cur[l] == null;
+        endfunction
+
         virtual function int unsigned lane_done(a2c_lane_e l);
             return done[l];
         endfunction
@@ -1062,9 +1011,11 @@ package axi_read_uvm_pkg;
         // The replay log of the Mode B slave on this monitor's pin set, or
         // null. A run the drain cut ends with bursts open on purpose.
         a2c_replay_log_base                                       replay;
-        // When the master declared this monitor's lane dead, or 0. A dead
-        // lane ends the run with bursts open on purpose too.
+        // When the master declared this monitor's lane dead, or 0, and the
+        // ID of the error that declared it. A dead lane ends the run with
+        // bursts open on purpose too.
         realtime                                                  died_at;
+        string                                                    died_by;
 
         // Bursts whose AR has transferred and whose last beat has not, oldest
         // first per ID.
@@ -1114,6 +1065,9 @@ package axi_read_uvm_pkg;
                 ar_stalled = vif.arvalid === 1'b1 && vif.arready !== 1'b1;
                 held_r     = r_pins();
                 held_ar    = ar_pins();
+                // Each AR and R beat counts for the joint stall rule (a2c_joint_watch).
+                if ((vif.rvalid === 1'b1 && vif.rready === 1'b1) || (vif.arvalid === 1'b1 && vif.arready === 1'b1))
+                    a2c_joint_watch::handshake();
                 if (vif.rvalid === 1'b1 && vif.rready === 1'b1) take_beat();
                 if (vif.arvalid === 1'b1 && vif.arready === 1'b1) take_ar();
             end
@@ -1189,8 +1143,10 @@ package axi_read_uvm_pkg;
         endfunction
 
         // The master calls it when it declares this monitor's lane dead.
-        virtual function void lane_dead();
-            if (died_at == 0) died_at = $realtime;
+        virtual function void lane_dead(string id);
+            if (died_at != 0) return;
+            died_at = $realtime;
+            died_by = id;
         endfunction
 
         // Every burst must have received its last beat by the end of a run
@@ -1201,7 +1157,7 @@ package axi_read_uvm_pkg;
             foreach (open[id]) left += open[id].size();
             if (left == 0) return;
             what = $sformatf("%s: the run ended with %0d bursts still waiting for their last beat", cfg.port_name, left);
-            if (died_at != 0) `uvm_info("A2C_PROTO", $sformatf("%s, on a lane the master declared dead at %0t (A2C_SKEW)", what, died_at), UVM_LOW)
+            if (died_at != 0) `uvm_info("A2C_PROTO", $sformatf("%s, on a lane the master declared dead at %0t (%s)", what, died_at, died_by), UVM_LOW)
             else if (replay != null && replay.get_cut() != 0) `uvm_info("A2C_PROTO", {what, ", after the drain cut it"}, UVM_LOW)
             else `uvm_error("A2C_PROTO", what)
         endfunction

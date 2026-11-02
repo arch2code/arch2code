@@ -10,18 +10,20 @@
 // follows a2c_clk_if: drive at drive_edge(), sample at sample_edge().
 //
 // Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
-// beside the DUT's and monitors it with model_mon, and model_cmp compares
-// the transfers the two lanes report, in order: write, addr, data (prdata on
-// a read) and slverr. The master starts each transfer on both lanes at one
-// drive point, each lane's access phase ends at its own pready, and the item
-// completes when both have, with the DUT lane's prdata and pslverr in req.
-// The slave serves both lanes from the one cfg.mem. The DUT lane applies
-// every transfer and the model lane follows: it gets the DUT lane's
-// response to transfer n after the same wait clocks, whatever its own
-// transfer asks for, and a model lane that reaches transfer n first holds
-// pready low until the DUT lane has applied it. When the run phase is ready
-// to end, the slave's replay log holds it while the model lane catches up
-// (a2c_replay_drain). What the DUT produces that is not compared:
+// beside the DUT's and monitors it with model_mon, and model_cmp compares the
+// transfers the two lanes report, in order: write, addr, data (prdata on a
+// read) and slverr. The master starts each transfer on both lanes at one drive
+// point, each lane's access phase ends at its own pready, and the item
+// completes when both have, with the DUT lane's prdata and pslverr in req. A
+// lane of the master that trails the other by lane_skew_cycles clocks, or
+// stalls, is declared dead as for the AXI masters (a2c_lane_watchdog), and the
+// other lane serves the sequence alone. The slave serves both lanes from the
+// one cfg.mem. The DUT lane applies every transfer and the model lane follows:
+// it gets the DUT lane's response to transfer n after the same wait clocks,
+// whatever its own transfer asks for, and a model lane that reaches transfer n
+// first holds pready low until the DUT lane has applied it. When the run phase
+// is ready to end, the slave's replay log holds it while the model lane
+// catches up (a2c_replay_drain). What the DUT produces that is not compared:
 //   DUT apb dst port, A2C_SRC master: wait states
 //   DUT apb src port, A2C_DST slave: none
 package apb_uvm_pkg;
@@ -86,10 +88,19 @@ package apb_uvm_pkg;
         endfunction
     endclass : apb_config
 
-    class apb_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_driver #(apb_item);
+    class apb_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_driver #(apb_item)
+        implements a2c_lane_waits;
         typedef virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif_t;
 
         apb_config#(addr_t, data_t) cfg;
+        // Mode B: the agent's model_cmp, and the passive agents on each
+        // lane's pin set, indexed by a2c_lane_e, which the master tells of a
+        // dead lane.
+        a2c_comparator_base         cmp;
+        a2c_pin_watchers            watchers[2];
+        // Bounds how long one lane may trail the other and how long the
+        // lanes may stall in Mode B, and keeps which lanes are dead.
+        a2c_lane_watchdog           wd;
 
         // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
         protected vif_t        lane[2];
@@ -107,6 +118,10 @@ package apb_uvm_pkg;
             lane[A2C_DUT_LANE] = cfg.vif;
             lane[A2C_MODEL_LANE] = cfg.model_vif;
             lanes = (cfg.model_vif != null) ? 2 : 1;
+            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once, a read with the data it was sent with");
+            wd.cmp      = cmp;
+            wd.watchers = watchers;
+            wd.configure();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].psel    <= 1'b0;
                 lane[l].penable <= 1'b0;
@@ -115,10 +130,16 @@ package apb_uvm_pkg;
                 lane[l].pwdata  <= data_t'(32'h0);
             end
             cfg.clk_vif.wait_reset_release();
+            if (lanes == 2) begin
+                fork
+                    release_dead();
+                join_none
+            end
             forever begin
                 seq_item_port.get_next_item(req);
                 cfg.clk_vif.drive_edge();
                 for (int l = 0; l < lanes; l++) begin
+                    if (wd.dead[l]) continue;
                     lane[l].psel    <= 1'b1;
                     lane[l].penable <= 1'b0;
                     lane[l].pwrite  <= req.write;
@@ -126,36 +147,69 @@ package apb_uvm_pkg;
                     lane[l].pwdata  <= data_t'(req.write ? req.data : 32'h0);
                 end
                 cfg.clk_vif.drive_edge();
-                for (int l = 0; l < lanes; l++) lane[l].penable <= 1'b1;
+                for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].penable <= 1'b1;
                 wait_access();
                 seq_item_port.item_done();
             end
         endtask
 
-        // Returns at the drive point after the last lane's access phase
-        // ended. Each lane returns to idle at the drive point after its own
-        // pready.
+        // Returns at the drive point after the last live lane's access
+        // phase ended, with the DUT lane's read data and PSLVERR in req, or
+        // the model lane's once the DUT lane is dead. Each lane returns to
+        // idle at the drive point after its own pready. In Mode B wd bounds
+        // how long one lane may trail the other and how long the lanes may
+        // stall (a2c_lane_watchdog), and a lane it declares dead drops out of
+        // the wait.
         protected task wait_access();
-            bit          pending[2];
-            bit          ended[2];
-            int unsigned left = lanes;
-            for (int l = 0; l < lanes; l++) pending[l] = 1'b1;
-            while (left > 0) begin
+            bit        pending[2];
+            bit        ended[2];
+            bit        finished[2];
+            bit [31:0] prdata[2];
+            bit        pslverr[2];
+            wd.begin_item();
+            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
+            while (pending[A2C_DUT_LANE] || pending[A2C_MODEL_LANE]) begin
                 cfg.clk_vif.sample_edge();
                 for (int l = 0; l < lanes; l++) begin
-                    ended[l] = pending[l] && lane[l].pready === 1'b1;
+                    ended[l]     = pending[l] && lane[l].pready === 1'b1;
+                    pending[l]  &= !ended[l];
+                    finished[l] |= ended[l];
                     if (!ended[l]) continue;
-                    if (l == A2C_DUT_LANE) begin
-                        if (!req.write) begin
-                            req.data = 32'(lane[l].prdata);
-                        end
-                        req.slverr = lane[l].pslverr;
-                    end
-                    pending[l] = 1'b0;
-                    left--;
+                    prdata[l]  = 32'(lane[l].prdata);
+                    pslverr[l] = lane[l].pslverr;
+                    if (l != A2C_DUT_LANE) continue;
+                    if (!req.write) req.data = prdata[l];
+                    req.slverr = pslverr[l];
                 end
+                wd.step(ended, pending);
                 cfg.clk_vif.drive_edge();
                 for (int l = 0; l < lanes; l++) begin
+                    if (!ended[l]) continue;
+                    lane[l].psel    <= 1'b0;
+                    lane[l].penable <= 1'b0;
+                    lane[l].pwrite  <= 1'b0;
+                end
+            end
+            if (finished[A2C_DUT_LANE] || !finished[A2C_MODEL_LANE]) return;
+            if (!req.write) req.data = prdata[A2C_MODEL_LANE];
+            req.slverr = pslverr[A2C_MODEL_LANE];
+        endtask
+
+        virtual function string waiting_for(a2c_lane_e l);
+            return $sformatf("the %s of address 0x%08h", a2c_access_name(req.write), req.addr);
+        endfunction
+
+        // Mode B: a dead lane stays in its access phase, with its address,
+        // direction and write data, until pready ends it, as the protocol
+        // requires, and returns to idle at the drive point after it. No
+        // later item drives the lane.
+        protected task release_dead();
+            bit ended[2];
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < 2; l++) ended[l] = wd.dead[l] && lane[l].psel === 1'b1 && lane[l].penable === 1'b1 && lane[l].pready === 1'b1;
+                cfg.clk_vif.drive_edge();
+                for (int l = 0; l < 2; l++) begin
                     if (!ended[l]) continue;
                     lane[l].psel    <= 1'b0;
                     lane[l].penable <= 1'b0;
@@ -364,6 +418,8 @@ package apb_uvm_pkg;
                 held_wdata  = vif.pwdata;
                 in_transfer = setup || (access && vif.pready !== 1'b1);
                 if (!(access && vif.pready === 1'b1)) continue;
+                // Each transfer counts for the joint stall rule (a2c_joint_watch).
+                a2c_joint_watch::handshake();
                 item = apb_item::type_id::create("item");
                 item.write  = vif.pwrite;
                 item.addr   = 32'(vif.paddr);
@@ -435,7 +491,8 @@ package apb_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
-            apb_slave_driver#(addr_t, data_t) slave;
+            apb_slave_driver#(addr_t, data_t)  slave;
+            apb_master_driver#(addr_t, data_t) master;
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
@@ -447,15 +504,22 @@ package apb_uvm_pkg;
                     slave.replay.watchers = registry_t::of(cfg.vif);
                     registry_t::of(cfg.vif).owner = get_full_name();
                 end
+                if (drv != null && $cast(master, drv)) begin
+                    master.cmp                      = model_cmp;
+                    master.watchers[A2C_DUT_LANE]   = registry_t::of(cfg.vif);
+                    master.watchers[A2C_MODEL_LANE] = registry_t::of(cfg.model_vif);
+                    registry_t::of(cfg.vif).owner   = get_full_name();
+                end
                 if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
         endfunction
 
-        // A passive Mode B agent says so when no active responder has claimed
-        // its pin set, since its model_cmp then misses the drain's cuts.
+        // A passive Mode B agent says so when no active agent has claimed its
+        // pin set, since its model_cmp then misses the drain's cuts or the
+        // master's lane deaths.
         virtual function void end_of_elaboration_phase(uvm_phase phase);
             super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : apb_agent
 

@@ -751,3 +751,23 @@
             end
         endfunction
     endclass : req_ack_mode_b_dst_expiry_slow_test
+
+    // lb_withdraw_waiting on a req_ack port.
+    class req_ack_mode_b_dst_withdraw_waiting_test extends lb_withdraw_waiting #(ra_agent_t, ra_config_t, ra_vif_t);
+        `uvm_component_utils(req_ack_mode_b_dst_withdraw_waiting_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "ra";
+            want_text.push_back("ra: req dropped before ack of ");
+        endfunction
+
+        virtual function void request_pins(ra_vif_t v, bit on);
+            v.req  <= on;
+            v.data <= on ? '{tag: 4'h3, value: 20'h12345} : '0;
+        endfunction
+
+        virtual function bit acked(ra_vif_t v);
+            return v.ack === 1'b1;
+        endfunction
+    endclass : req_ack_mode_b_dst_withdraw_waiting_test

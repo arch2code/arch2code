@@ -59,11 +59,21 @@
     //     the default lone lane bound, and with the rule off;
     //   - AXB_LAG: the model lane's slave answers every burst lag clocks
     //     after its address, a skew under the bound;
-    //   - AXB_SKEW_OFF: as AXB_LAG with the bound off.
+    //   - AXB_SKEW_OFF: as AXB_LAG with the bound off;
+    //   - AXB_JOINT: both lanes' slaves answer no burst from both_at on, so
+    //     neither lane trails and both die in one A2C_JOINT_STALL once
+    //     neither has moved for joint_stall clocks.
+    // With joint_under set, AXB_MUTE, AXB_DEAF and AXB_DEAF_W run with the
+    // joint stall bound below the skew bound, and in AXB_DEAF and AXB_DEAF_W
+    // the DUT lane's slave answers burst 0 only after the skew bound. Each
+    // then reaches a clock with no handshake on any lane while the model
+    // lane trails on a burst's completion, its address or its W beats
+    // alone, which must stay the skew bound's: one A2C_SKEW, no
+    // A2C_JOINT_STALL.
     typedef enum {AXB_MATCH, AXB_MISMATCH, AXB_DUT_EXTRA, AXB_MODEL_EXTRA, AXB_BUSY, AXB_CROSS, AXB_SERIAL, AXB_DUT_MID,
                   AXB_SKIP_CUT, AXB_DEAD_DRAIN, AXB_MUTE, AXB_DEAF, AXB_DEAF_W, AXB_DUT_LATE, AXB_MODEL_LATE, AXB_STALL,
                   AXB_HALF, AXB_BOTH_DEAD, AXB_ORDER_A, AXB_ORDER_W, AXB_LONE_STALL, AXB_LONE_OFF, AXB_LAG,
-                  AXB_SKEW_OFF} lb_axb_variant_e;
+                  AXB_SKEW_OFF, AXB_JOINT} lb_axb_variant_e;
 
     // Keeps every message with one ID, whatever its severity.
     class lb_id_texts extends uvm_report_catcher;
@@ -251,6 +261,14 @@
         int unsigned         stall_at;
         int unsigned         half_at;
         int unsigned         both_at;
+        // AXB_JOINT: the master's joint stall bound.
+        int unsigned         joint_stall = 300;
+        // The joint stall bound, and the skew bound above it, with
+        // joint_under set. The joint stall bound is above the slaves' longest
+        // response delay, so a burst in flight never stalls.
+        bit                  joint_under;
+        int unsigned         joint_under_cycles = 60;
+        int unsigned         joint_under_skew = 400;
         // AXB_BOTH_DEAD: the DUT lane dies first.
         bit                  dut_first;
         // AXB_ORDER_A and AXB_ORDER_W: 0, the model lane's slave answers
@@ -404,7 +422,12 @@
 
         protected function bit dies();
             return variant inside {AXB_MUTE, AXB_DEAF, AXB_DEAF_W, AXB_DUT_LATE, AXB_MODEL_LATE, AXB_STALL, AXB_HALF,
-                                   AXB_BOTH_DEAD, AXB_ORDER_A, AXB_ORDER_W, AXB_LONE_STALL, AXB_LONE_OFF};
+                                   AXB_BOTH_DEAD, AXB_ORDER_A, AXB_ORDER_W, AXB_LONE_STALL, AXB_LONE_OFF, AXB_JOINT};
+        endfunction
+
+        // The variants in which both lanes die.
+        protected function bit both_die();
+            return variant inside {AXB_BOTH_DEAD, AXB_JOINT};
         endfunction
 
         // The lane that dies first.
@@ -499,6 +522,10 @@
             int unsigned stall_left;
             forever begin
                 clk_vif.drive_edge();
+                if (joint_under && variant inside {AXB_DEAF, AXB_DEAF_W}) begin
+                    lane_delay(A2C_DUT_LANE, (drawn_count(A2C_DUT_LANE) == 0) ? lane_skew + 100 : 0);
+                    continue;
+                end
                 case (variant)
                     AXB_DUT_LATE: lane_delay(A2C_DUT_LANE, (drawn_count(A2C_DUT_LANE) == late_at) ? late_by : 0);
                     AXB_MODEL_LATE: begin
@@ -521,6 +548,11 @@
                         if (stalled && stall_left != 0 && --stall_left == 0) lane_accept(1, 1);
                     end
                     AXB_BOTH_DEAD: if (drawn_count(A2C_DUT_LANE) == both_at) lane_delay(A2C_DUT_LANE, 1000000);
+                    AXB_JOINT: begin
+                        for (int l = 0; l < 2; l++) begin
+                            if (drawn_count(a2c_lane_e'(l)) == both_at) lane_delay(a2c_lane_e'(l), 1000000);
+                        end
+                    end
                     AXB_LONE_STALL, AXB_LONE_OFF: begin
                         lane_delay(A2C_DUT_LANE, (drawn_count(A2C_DUT_LANE) inside {[stall_at:stall_at + 3]}) ? lane_skew + 150 : 0);
                     end
@@ -550,7 +582,7 @@
             bit          busy = variant inside {AXB_BUSY, AXB_SKIP_CUT};
             int unsigned tail = busy ? 10 * n_items : 0;
             if (variant inside {AXB_DUT_EXTRA, AXB_MODEL_EXTRA, AXB_SERIAL, AXB_DUT_MID, AXB_SKIP_CUT, AXB_DEAD_DRAIN}) demote_id = "A2C_REPLAY";
-            if (skews()) demote_id = "A2C_SKEW";
+            if (skews()) demote_id = (variant == AXB_JOINT) ? "A2C_JOINT_STALL" : "A2C_SKEW";
             mismatch_at = $urandom_range(n_items - 1, 0);
             super.build_phase(phase);
             if (clk_name != "clk" && !uvm_config_db#(virtual a2c_clk_if)::get(this, "", clk_name, clk_vif)) begin
@@ -654,10 +686,14 @@
                     want_errors    = 2;
                     want_text.push_back(held_text(items[lone_at], 1));
                     want_text.push_back("uvm_test_top.agent.drv.replay: the drain cut the run after transaction ");
-                    want_text.push_back("because the model lane holds a pick whose request it has not made");
+                    want_text.push_back("because the model lane holds a response or pick whose request it has not made");
                 end
                 // The model lane dies on the first burst and completes none.
                 AXB_MUTE, AXB_DEAF, AXB_DEAF_W, AXB_LONE_STALL, AXB_LONE_OFF: begin
+                    if (joint_under) begin
+                        lane_skew = joint_under_skew;
+                        uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_joint_stall_cycles", joint_under_cycles);
+                    end
                     if (stray) foreach (items[i]) if (items[i].id === '1) items[i].id = '0;
                     if (variant inside {AXB_LONE_STALL, AXB_LONE_OFF}) stall_at = n_items / 2;
                     want_errors = 1;
@@ -739,6 +775,18 @@
                     want_text.push_back("No lane is left, so every open and later burst returns to the sequence with no beats.");
                     uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_lone_lane_cycles", 150);
                 end
+                // Neither lane trails, so the skew bound never fires and the
+                // joint stall bound ends the run.
+                AXB_JOINT: begin
+                    both_at     = n_items / 2;
+                    want_errors = 1;
+                    want_text.push_back($sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s (uvm_test_top.agent.drv), ",
+                                                  port, joint_stall, port));
+                    want_text.push_back("(uvm_test_top.agent.drv), both lanes waiting for the ");
+                    want_text.push_back(". Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead");
+                    want_text.push_back("serves its open and later items as it does once both lanes are dead.");
+                    uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_joint_stall_cycles", joint_stall);
+                end
                 // The model lane dies on burst 3's address or W beat.
                 AXB_ORDER_A, AXB_ORDER_W: begin
                     order_items();
@@ -813,7 +861,7 @@
                 peer_open.demote_id   = "A2C_PROTO";
                 peer_open.demote_text = "the run ended with";
                 for (int l = 0; l < 2; l++) begin
-                    if (variant != AXB_BOTH_DEAD && l != dead_lane()) continue;
+                    if (!both_die() && l != dead_lane()) continue;
                     uvm_report_cb::add((l == A2C_DUT_LANE) ? peer.mon : model_peer.mon, peer_open);
                 end
             end
@@ -1019,7 +1067,7 @@
             end
             for (int l = 0; l < 2; l++) begin
                 a2c_lane_e lane = a2c_lane_e'(l);
-                bit        want = (variant == AXB_BOTH_DEAD) || lane != live;
+                bit        want = both_die() || lane != live;
                 if (is_dead(lane) != want) begin
                     `uvm_error("LB_MODE_B", $sformatf("the master %s the %s lane dead", want ? "did not declare" : "declared", a2c_lane_name(lane)))
                 end
@@ -1051,6 +1099,12 @@
                 a2c_lane_e first = dut_first ? A2C_DUT_LANE : A2C_MODEL_LANE;
                 check_since(first, lane_skew);
                 check_since(a2c_lane_e'(1 - first), 150);
+            end else if (variant == AXB_JOINT) begin
+                check_since(A2C_DUT_LANE, joint_stall);
+                check_since(A2C_MODEL_LANE, joint_stall);
+                if (died(A2C_DUT_LANE) != died(A2C_MODEL_LANE)) begin
+                    `uvm_error("LB_MODE_B", $sformatf("the lanes died at %0t and %0t, expected together", died(A2C_DUT_LANE), died(A2C_MODEL_LANE)))
+                end
             end else begin
                 check_since(dead_lane(), lane_skew);
             end
@@ -1083,6 +1137,16 @@
                                                       empties(), items.size() - got[last].items.size(), a2c_lane_name(last)))
                 end
                 if (addr_count(A2C_DUT_LANE) < both_at) `uvm_error("LB_MODE_B", "the DUT lane died before it took address both_at")
+                return;
+            end
+            if (variant == AXB_JOINT) begin
+                if (got[A2C_DUT_LANE].items.size() != both_at || got[A2C_MODEL_LANE].items.size() != both_at) begin
+                    `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d and %0d bursts, expected the %0d before the stall",
+                                                      got[A2C_DUT_LANE].items.size(), got[A2C_MODEL_LANE].items.size(), both_at))
+                end
+                if (empties() != items.size() - both_at) begin
+                    `uvm_error("LB_MODE_B", $sformatf("%0d bursts returned with no beats, expected %0d", empties(), items.size() - both_at))
+                end
                 return;
             end
             if (empties() != 0) `uvm_error("LB_MODE_B", $sformatf("%0d bursts returned with no beats", empties()))
@@ -1189,6 +1253,11 @@
                     end
                     if (variant == AXB_DEAD_DRAIN && (drains.messages.size() != 1 || drains.count(death_text()) != 1)) begin
                         `uvm_error("LB_MODE_B", $sformatf("expected one A2C_DRAIN report, naming the death: %p", drains.messages))
+                    end
+                    // The model lane has taken the extra burst's pick and has
+                    // no burst of its own, so lane_holding() names it.
+                    if (variant == AXB_DUT_EXTRA && drains.count(") is idle and holds a response or pick whose request it has not made") != 1) begin
+                        `uvm_error("LB_MODE_B", $sformatf("expected one A2C_DRAIN report saying the model lane is idle and holds a pick: %p", drains.messages))
                     end
                     // "; " separates the requests the held report lists.
                     if (variant == AXB_DUT_MID) begin
@@ -1311,11 +1380,11 @@
         endfunction
 
         function bit is_dead(int l);
-            return dead[l];
+            return wd.dead[l];
         endfunction
 
         function realtime died(int l);
-            return died_at[l];
+            return wd.died_at[l];
         endfunction
 
         function void kill_again(int l);
@@ -1747,7 +1816,7 @@
             seq.list        = list;
             seq.mem         = mem;
             seq.id_unbound  = id_unbound;
-            seq.allow_empty = (variant == AXB_BOTH_DEAD);
+            seq.allow_empty = both_die();
             if (role == A2C_DST) seq.error_ranges = agent_cfg.error_ranges;
             seqs[lane] = seq;
             seq.start(src.sqr);
@@ -1991,6 +2060,28 @@
         endfunction
     endclass : axi_read_mode_b_master_deaf_test
 
+    // As axi_read_mode_b_master_mute_test with the joint stall bound below
+    // the skew bound: the model lane trails on a burst's last beat.
+    class axi_read_mode_b_master_mute_joint_under_test extends axi_read_mode_b_master_mute_test;
+        `uvm_component_utils(axi_read_mode_b_master_mute_joint_under_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_under = 1;
+        endfunction
+    endclass : axi_read_mode_b_master_mute_joint_under_test
+
+    // As axi_read_mode_b_master_deaf_test with the joint stall bound below
+    // the skew bound: the model lane trails on the AR alone.
+    class axi_read_mode_b_master_deaf_joint_under_test extends axi_read_mode_b_master_deaf_test;
+        `uvm_component_utils(axi_read_mode_b_master_deaf_joint_under_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_under = 1;
+        endfunction
+    endclass : axi_read_mode_b_master_deaf_joint_under_test
+
     // The DUT lane answers one burst past the bound and dies, and the model
     // lane serves that burst and the rest.
     class axi_read_mode_b_master_dut_late_test extends axi_read_mode_b_master_test;
@@ -2059,6 +2150,18 @@
             dut_first = 1;
         endfunction
     endclass : axi_read_mode_b_master_both_dead_test
+
+    // Both lanes' slaves stop answering at one burst, so neither lane
+    // trails: the joint stall bound declares both dead in one
+    // A2C_JOINT_STALL.
+    class axi_read_mode_b_master_joint_test extends axi_read_mode_b_master_test;
+        `uvm_component_utils(axi_read_mode_b_master_joint_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant = AXB_JOINT;
+        endfunction
+    endclass : axi_read_mode_b_master_joint_test
 
     // The model lane dies on an AR while the DUT lane returns three bursts
     // of one ID around the death, and the sequence must get them back in
@@ -2343,11 +2446,11 @@
         endfunction
 
         function bit is_dead(int l);
-            return dead[l];
+            return wd.dead[l];
         endfunction
 
         function realtime died(int l);
-            return died_at[l];
+            return wd.died_at[l];
         endfunction
 
         function void kill_again(int l);
@@ -2720,7 +2823,7 @@
             axw_list_seq seq = axw_list_seq::type_id::create($sformatf("seq%0d", lane));
             seq.list               = list;
             seq.id_unbound         = id_unbound;
-            seq.allow_empty        = (variant == AXB_BOTH_DEAD);
+            seq.allow_empty        = both_die();
             seq.model              = new();
             seq.model.error_ranges = (role == A2C_DST) ? agent_cfg.error_ranges : peer_cfg.error_ranges;
             seqs[lane] = seq;
@@ -3013,6 +3116,39 @@
         endfunction
     endclass : axi_write_mode_b_master_deaf_w_test
 
+    // As axi_write_mode_b_master_mute_test with the joint stall bound below
+    // the skew bound: the model lane trails on a B.
+    class axi_write_mode_b_master_mute_joint_under_test extends axi_write_mode_b_master_mute_test;
+        `uvm_component_utils(axi_write_mode_b_master_mute_joint_under_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_under = 1;
+        endfunction
+    endclass : axi_write_mode_b_master_mute_joint_under_test
+
+    // As axi_write_mode_b_master_deaf_test with the joint stall bound below
+    // the skew bound: the model lane trails on the AW.
+    class axi_write_mode_b_master_deaf_joint_under_test extends axi_write_mode_b_master_deaf_test;
+        `uvm_component_utils(axi_write_mode_b_master_deaf_joint_under_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_under = 1;
+        endfunction
+    endclass : axi_write_mode_b_master_deaf_joint_under_test
+
+    // As axi_write_mode_b_master_deaf_w_test with the joint stall bound
+    // below the skew bound: the model lane trails on its W beats.
+    class axi_write_mode_b_master_deaf_w_joint_under_test extends axi_write_mode_b_master_deaf_w_test;
+        `uvm_component_utils(axi_write_mode_b_master_deaf_w_joint_under_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_under = 1;
+        endfunction
+    endclass : axi_write_mode_b_master_deaf_w_joint_under_test
+
     // The DUT lane answers one burst past the bound and dies, and the model
     // lane serves that burst and the rest.
     class axi_write_mode_b_master_dut_late_test extends axi_write_mode_b_master_test;
@@ -3092,6 +3228,18 @@
             variant = AXB_BOTH_DEAD;
         endfunction
     endclass : axi_write_mode_b_master_both_dead_test
+
+    // Both lanes' slaves stop answering at one burst, so neither lane
+    // trails: the joint stall bound declares both dead in one
+    // A2C_JOINT_STALL.
+    class axi_write_mode_b_master_joint_test extends axi_write_mode_b_master_test;
+        `uvm_component_utils(axi_write_mode_b_master_joint_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant = AXB_JOINT;
+        endfunction
+    endclass : axi_write_mode_b_master_joint_test
 
     // The model lane dies on an AW while the DUT lane returns the B of three
     // bursts of one ID around the death, and the sequence must get them
@@ -3553,12 +3701,15 @@
     // internal port of a top design: each raises one A2C_PASSIVE info that
     // names its port and cfg.vif. A passive A2C_SRC agent of pop_ack,
     // req_ack and memory, the families that build a model_cmp in that role,
-    // shares each of those ports' pins and raises none, as no active agent
-    // of that role would claim the pin set. The two AXI agents' monitors
+    // shares each of those ports' pins. The pop_ack and req_ack ones raise
+    // one each too, as an active A2C_SRC agent there would claim the pin set
+    // to tell them of its lane deaths. The memory one raises none, as its
+    // master drives both lanes in lockstep and declares no death. The two
+    // AXI agents' monitors
     // keep the replay log the test gives them in connect_phase, as a
     // hand-written env may.
     class mode_b_unowned_passive_test extends lb_mode_b_base;
-        string                ports[9] = '{"pa", "na", "ra", "po", "mem", "er", "apb", "axr", "axw"};
+        string                ports[11] = '{"pa", "na", "ra", "po", "mem", "er", "apb", "axr", "axw", "ra_src", "po_src"};
         axr_agent_t           axr;
         axw_agent_t           axw;
         a2c_replay_log #(bit) kept;
@@ -3568,7 +3719,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            want_unowned = 9;
+            want_unowned = 11;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);

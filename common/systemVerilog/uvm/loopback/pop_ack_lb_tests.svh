@@ -632,3 +632,22 @@
             variant = LB_AFTER_EXPIRY;
         endfunction
     endclass : pop_ack_mode_b_dst_after_expiry_test
+
+    // lb_withdraw_waiting on a pop_ack port.
+    class pop_ack_mode_b_dst_withdraw_waiting_test extends lb_withdraw_waiting #(po_agent_t, po_config_t, po_vif_t);
+        `uvm_component_utils(pop_ack_mode_b_dst_withdraw_waiting_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "po";
+            want_text.push_back("po: pop dropped before ack");
+        endfunction
+
+        virtual function void request_pins(po_vif_t v, bit on);
+            v.pop <= on;
+        endfunction
+
+        virtual function bit acked(po_vif_t v);
+            return v.ack === 1'b1;
+        endfunction
+    endclass : pop_ack_mode_b_dst_withdraw_waiting_test

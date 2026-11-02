@@ -1477,3 +1477,139 @@
             end
         endfunction
     endclass : push_ack_mode_b_dst_main_phase_test
+
+    // Pins driven by hand on both lanes against the agent of a push_ack,
+    // notify_ack, req_ack or pop_ack port as A2C_DST. The model lane's
+    // requester raises its request on the first clock, before the DUT lane
+    // has any, and withdraws it on the next; the DUT lane's requester then
+    // makes the same request, and the model lane's makes it again once the
+    // DUT lane has its ack. The driver must notice the withdrawal when it
+    // happens, while the model lane waits for the DUT lane: no ack on the
+    // model lane in the 12 clocks after it, and no wait for a record at
+    // their end, though the DUT lane has recorded one by then; one A2C_HOLD
+    // for it, which a family's test names in want_text; and each lane
+    // starts and completes one transfer, which model_cmp pairs. A family's
+    // test defines the pin accessors.
+    virtual class lb_withdraw_waiting #(type AGENT_T = uvm_agent, type CFG_T = uvm_object, type VIF_T = int) extends lb_mode_b_base;
+        string  port;
+        AGENT_T agent;
+        VIF_T   vif;
+        VIF_T   model_vif;
+        // Whether the model lane's ack rose while its request was withdrawn,
+        // and whether its replay log still waited for a record 12 clocks
+        // after.
+        bit     acked_withdrawn;
+        bit     waited_withdrawn;
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            demote_id   = "A2C_HOLD";
+            want_errors = 1;
+        endfunction
+
+        // Drives v's request, with its payload when on is set, from the next
+        // drive point.
+        pure virtual function void request_pins(VIF_T v, bit on);
+        pure virtual function bit acked(VIF_T v);
+
+        virtual function void build_phase(uvm_phase phase);
+            CFG_T cfg;
+            super.build_phase(phase);
+            if (!uvm_config_db#(VIF_T)::get(this, "", port, vif)) `uvm_fatal("LB_CFG", {"no interface ", port})
+            if (!uvm_config_db#(VIF_T)::get(this, "", {port, "_model"}, model_vif)) `uvm_fatal("LB_CFG", {"no interface ", port, "_model"})
+            cfg = CFG_T::type_id::create("cfg");
+            cfg.vif       = vif;
+            cfg.model_vif = model_vif;
+            cfg.clk_vif   = clk_vif;
+            cfg.role      = A2C_DST;
+            cfg.port_name = port;
+            uvm_config_db#(CFG_T)::set(this, "agent", "cfg", cfg);
+            agent = AGENT_T::type_id::create("agent", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            agent.drv.replay.drain_quiet_cycles    = 5;
+            agent.drv.replay.drain_deadline_cycles = 40;
+        endfunction
+
+        // One request on v after gap idle clocks, held until its ack.
+        task request(VIF_T v, int unsigned gap);
+            repeat (gap) clk_vif.drive_edge();
+            request_pins(v, 1);
+            do clk_vif.sample_edge(); while (!acked(v));
+            clk_vif.drive_edge();
+            request_pins(v, 0);
+        endtask
+
+        virtual task run_phase(uvm_phase phase);
+            bit finished[2];
+            phase.raise_objection(this);
+            request_pins(vif, 0);
+            request_pins(model_vif, 0);
+            clk_vif.wait_reset_release();
+            clk_vif.drive_edge();
+            fork
+                begin
+                    request(vif, 3);
+                    finished[A2C_DUT_LANE] = 1;
+                end
+                begin
+                    request_pins(model_vif, 1);
+                    clk_vif.drive_edge();
+                    request_pins(model_vif, 0);
+                    repeat (12) begin
+                        clk_vif.sample_edge();
+                        acked_withdrawn |= acked(model_vif);
+                    end
+                    waited_withdrawn = agent.drv.replay.model_waiting();
+                    wait (finished[A2C_DUT_LANE]);
+                    request(model_vif, 0);
+                    finished[A2C_MODEL_LANE] = 1;
+                end
+            join_none
+            for (int unsigned c = 0; !(finished[A2C_DUT_LANE] && finished[A2C_MODEL_LANE]); c++) begin
+                if (c == 100) begin
+                    `uvm_error("LB_MODE_B", "a requester still waits for ack 100 clocks after reset")
+                    disable fork;
+                    break;
+                end
+                clk_vif.sample_edge();
+            end
+            repeat (2) clk_vif.sample_edge();
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (acked_withdrawn) `uvm_error("LB_MODE_B", "the model lane acked the request its requester had withdrawn")
+            if (waited_withdrawn) `uvm_error("LB_MODE_B", "the model lane still waited for a record 12 clocks after its requester withdrew")
+            for (int l = 0; l < 2; l++) begin
+                a2c_lane_e lane = a2c_lane_e'(l);
+                if (agent.drv.lane_starts(lane) != 1 || agent.drv.lane_done(lane) != 1) begin
+                    `uvm_error("LB_MODE_B", $sformatf("the %s lane started %0d and completed %0d transfers, expected 1 and 1", a2c_lane_name(lane),
+                                                      agent.drv.lane_starts(lane), agent.drv.lane_done(lane)))
+                end
+            end
+            if (agent.model_cmp.get_pairs() != 1) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected 1", agent.model_cmp.get_pairs()))
+            if (agent.drv.replay.pending() != 0) `uvm_error("LB_MODE_B", $sformatf("%0d responses left to replay", agent.drv.replay.pending()))
+        endfunction
+    endclass : lb_withdraw_waiting
+
+    class push_ack_mode_b_dst_withdraw_waiting_test extends lb_withdraw_waiting #(pa_agent_t, pa_config_t, pa_vif_t);
+        `uvm_component_utils(push_ack_mode_b_dst_withdraw_waiting_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            port = "pa";
+            want_text.push_back("pa: push dropped before ack of ");
+        endfunction
+
+        virtual function void request_pins(pa_vif_t v, bit on);
+            v.push <= on;
+            v.data <= on ? '{tag: 4'h3, value: 20'h12345} : '0;
+        endfunction
+
+        virtual function bit acked(pa_vif_t v);
+            return v.ack === 1'b1;
+        endfunction
+    endclass : push_ack_mode_b_dst_withdraw_waiting_test

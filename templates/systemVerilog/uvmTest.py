@@ -41,6 +41,7 @@ def render_header(args, prj, data, uvm):
 def render_tests(uvm):
     cls = uvm['baseTestClass']
     counters = [port for port in uvm['ports'] if port['counter']]
+    inputs = [port for port in uvm['ports'] if port['role'] == 'dst']
     lines = ["// Waits for reset, runs run_body(), then waits for every output's",
              "// expected transactions. A test sets its own default deadline, quiet",
              "// window and clock stop in its constructor; +a2c_output_deadline_cycles,",
@@ -53,12 +54,17 @@ def render_tests(uvm):
              "// Left at -1, the window and deadline take quiet_cycles and",
              "// output_deadline_cycles, and the catch-up takes each replay log's",
              "// deadline. +a2c_drain_cut_expected=1 reports the drain's cuts as",
-             "// UVM_INFO. An AXI master in Mode B declares a lane dead when it",
-             "// trails the other by lane_skew_cycles clocks, and the other lane",
-             "// dead too when, left alone, it makes no progress for",
-             "// lone_lane_cycles clocks. Left at -1 each keeps the master's own",
-             "// 200000, +a2c_lane_skew_cycles and +a2c_lone_lane_cycles override",
-             "// them, and 0 turns a rule off.",
+             "// UVM_INFO. A master in Mode B declares a lane dead when it trails",
+             "// the other by lane_skew_cycles clocks, the other lane dead too",
+             "// when, left alone, it makes no progress for lone_lane_cycles",
+             "// clocks, and the masters declare every live lane dead when no",
+             "// port makes a handshake for joint_stall_cycles clocks while a",
+             "// lane waits. Left at -1 each keeps the master's own",
+             "// 200000, +a2c_lane_skew_cycles, +a2c_lone_lane_cycles and",
+             "// +a2c_joint_stall_cycles override them, and 0 turns a rule off. A",
+             "// run that sends nothing on an input and expects no output",
+             "// transaction warns at check_phase, unless no_stimulus_expected",
+             "// (+a2c_no_stimulus_expected=1) is set.",
              f"class {cls} extends uvm_test;",
              f"    {uvm['tbEnvClass']} env;",
              '    int unsigned output_deadline_cycles = 200000;',
@@ -70,6 +76,8 @@ def render_tests(uvm):
              '    bit          drain_cut_expected;',
              '    int          lane_skew_cycles = -1;',
              '    int          lone_lane_cycles = -1;',
+             '    int          joint_stall_cycles = -1;',
+             '    bit          no_stimulus_expected;',
              '',
              f"    `uvm_component_utils({cls})",
              '',
@@ -90,6 +98,8 @@ def render_tests(uvm):
              '        void\'($value$plusargs("a2c_drain_cut_expected=%d", drain_cut_expected));',
              '        void\'($value$plusargs("a2c_lane_skew_cycles=%d", lane_skew_cycles));',
              '        void\'($value$plusargs("a2c_lone_lane_cycles=%d", lone_lane_cycles));',
+             '        void\'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));',
+             '        void\'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));',
              '        uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);',
              '        uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);',
              '        uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);',
@@ -102,6 +112,9 @@ def render_tests(uvm):
              '        end',
              '        if (lone_lane_cycles >= 0) begin',
              '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lone_lane_cycles", lone_lane_cycles);',
+             '        end',
+             '        if (joint_stall_cycles >= 0) begin',
+             '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_joint_stall_cycles", joint_stall_cycles);',
              '        end',
              f'        env = {uvm["tbEnvClass"]}::type_id::create("env", this);',
              '    endfunction',
@@ -130,6 +143,26 @@ def render_tests(uvm):
               '            env.model_stable_point();',
               '        end',
               '    endtask',
+              '',
+              '    // Warns about a run that sent nothing on any input and declared no',
+              '    // transaction on any output, as the scaffolded smoke test does until',
+              '    // its run_body() sends stimulus. A Mode B comparator or a check of the',
+              "    // test's own may still have run, so the warning claims no more.",
+              '    virtual function void check_phase(uvm_phase phase);',
+              '        super.check_phase(phase);',
+              '        if (no_stimulus_expected || stimulus_sent() != 0) return;']
+    lines += [f"        if (env.{port['counter']}.declared() != 0) return;" for port in counters]
+    lines += ['        `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
+              '                                                  get_type_name()))',
+              '    endfunction',
+              '',
+              "    // The items the input ports' agents have sent, through their",
+              "    // sequencers or, for a status input, their drivers.",
+              '    function int unsigned stimulus_sent();',
+              '        int unsigned n = 0;']
+    lines += [f"        n += a2c_items_sent#({port['name']}_item_t)::of(env.{port['agent']});" for port in inputs]
+    lines += ['        return n;',
+              '    endfunction',
               f"endclass : {cls}"]
     return '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
 

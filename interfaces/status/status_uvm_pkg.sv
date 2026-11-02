@@ -70,9 +70,13 @@ package status_uvm_pkg;
     endclass : status_config
 
     // src role only. data follows cfg.value from time 0, one drive point
-    // after each change.
-    class status_driver #(type data_t = logic) extends uvm_component;
+    // after each change. A test drives a status input through cfg.value, not
+    // a sequencer, so the driver counts the values it applies for the base
+    // test's A2C_NO_STIMULUS check.
+    class status_driver #(type data_t = logic) extends uvm_component implements a2c_items_driven;
         status_config#(data_t) cfg;
+
+        protected int unsigned changes;
 
         `uvm_component_param_utils(status_driver#(data_t))
 
@@ -81,12 +85,19 @@ package status_uvm_pkg;
         endfunction
 
         virtual task run_phase(uvm_phase phase);
+            data_t applied = '0;
             forever begin
-                cfg.vif.data <= cfg.value;
-                if (cfg.model_vif != null) cfg.model_vif.data <= cfg.value;
+                if (cfg.value !== applied) changes++;
+                applied = cfg.value;
+                cfg.vif.data <= applied;
+                if (cfg.model_vif != null) cfg.model_vif.data <= applied;
                 cfg.clk_vif.drive_edge();
             end
         endtask
+
+        virtual function int unsigned items_driven();
+            return changes;
+        endfunction
     endclass : status_driver
 
     class status_monitor #(type data_t = logic) extends uvm_monitor;

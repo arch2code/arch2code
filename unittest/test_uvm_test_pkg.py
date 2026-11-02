@@ -18,7 +18,11 @@ the drain's included: only a drain window or deadline left at -1 takes the
 quiet window or output deadline, and a catch-up left at -1 is not set, so
 each replay log takes its own deadline. In
 Mode B, which the env reads from a2c_dual_dut, each return of
-wait_for_outputs() is a stable point for the model comparators. The fail test
+wait_for_outputs() is a stable point for the model comparators. At its
+check_phase a run whose input agents sent no item, through their sequencers
+or a status input's driver, and whose counters were declared no transaction
+warns A2C_NO_STIMULUS, unless
+no_stimulus_expected is set, as the scaffolded smoke test does. The fail test
 adds the missing transactions to the first counted output after the smoke
 stimulus, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
 in Mode B, with each lane's pending count equal to the missing count. A block
@@ -42,7 +46,8 @@ with the stable point alone, as every copy's does.
 The loopback simulates the template's base test too:
 common/systemVerilog/uvm/loopback/a2c_gen_base_test_lb_tests.svh holds
 render_tests() of it for a stand-in env between its RENDERED markers, and
-must match the template's current text.
+must match the template's current text. The stand-in env has a status
+input, whose agent has no sequencer, so the copy also renders its count.
 """
 
 import os
@@ -108,6 +113,8 @@ BASE_TEST = [
     'int          drain_deadline_cycles = -1;',
     'int          drain_catchup_cycles = -1;',
     'bit          drain_cut_expected;',
+    'int          joint_stall_cycles = -1;',
+    'bit          no_stimulus_expected;',
     '`uvm_component_utils(ubDut_base_test)',
     'void\'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));',
     'void\'($value$plusargs("a2c_quiet_cycles=%d", quiet_cycles));',
@@ -118,12 +125,16 @@ BASE_TEST = [
     'void\'($value$plusargs("a2c_drain_deadline_cycles=%d", drain_deadline_cycles));',
     'void\'($value$plusargs("a2c_drain_catchup_cycles=%d", drain_catchup_cycles));',
     'void\'($value$plusargs("a2c_drain_cut_expected=%d", drain_cut_expected));',
+    'void\'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));',
+    'void\'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);',
     'if (drain_catchup_cycles >= 0) begin',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);',
     'uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);',
+    'if (joint_stall_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_joint_stall_cycles", joint_stall_cycles);',
     'env = ubDut_tb_env::type_id::create("env", this);',
     'virtual task run_phase(uvm_phase phase);',
     'phase.raise_objection(this);',
@@ -144,6 +155,21 @@ STABLE_POINT = [
     'env.model_stable_point();',
     'end',
     'endtask',
+]
+NO_STIMULUS = [
+    'virtual function void check_phase(uvm_phase phase);',
+    'super.check_phase(phase);',
+    'if (no_stimulus_expected || stimulus_sent() != 0) return;',
+]
+OUTPUT_DECLARED = ['if (env.out_counter.declared() != 0) return;']
+STIMULUS_SENT = [
+    '`uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
+    'endfunction',
+    'function int unsigned stimulus_sent();',
+    'int unsigned n = 0;',
+    'n += a2c_items_sent#(in_item_t)::of(env.in_agent);',
+    'return n;',
+    'endfunction',
     'endclass : ubDut_base_test',
 ]
 
@@ -199,7 +225,11 @@ FOOTER = ['endpackage : ubDut_uvm_test_pkg', '`endif // UBDUT_UVM_TEST_PKG_SV']
 USER_LINE = '// a user line in the env span'
 
 LOOPBACK_COPY = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'loopback', 'a2c_gen_base_test_lb_tests.svh')
-LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env', 'ports': [],
+LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env',
+                'ports': [{'name': 'lb_in', 'agent': 'lb_in_agent', 'role': 'dst', 'counter': None},
+                          {'name': 'lb_st', 'agent': 'lb_st_agent', 'role': 'dst', 'counter': None},
+                          {'name': 'lb_out', 'agent': 'lb_out_agent', 'role': 'src', 'counter': 'lb_out_counter',
+                           'clockVif': 'clk_vif'}],
                 'clocks': [{'vif': 'clk_vif'}]}
 
 
@@ -237,14 +267,15 @@ def check_layout(path, hasOutput, hasModel=True):
     if kinds != ['header', 'user', 'tests', 'user', 'footer']:
         return [f"{name} has the regions {kinds}, expected header, user, tests, user, footer"]
     (_, header), (_, span1), (_, tests), (_, span2), (_, footer) = layout
-    baseTest = BASE_TEST + (OUTPUT_WAIT if hasOutput else []) + STABLE_POINT
+    baseTest = (BASE_TEST + (OUTPUT_WAIT if hasOutput else []) + STABLE_POINT + NO_STIMULUS
+                + (OUTPUT_DECLARED if hasOutput else []) + STIMULUS_SENT)
     footerTests = (FAIL_TEST if hasOutput else []) + (MISMATCH_TEST if hasOutput and hasModel else [])
     for what, lines, expected in (('header', header, HEADER), ('env span', span1, SPAN_1),
                                   ('tests section', tests, baseTest), ('smoke span', span2, SPAN_2),
                                   ('footer', footer, footerTests + FOOTER)):
         if not in_order(lines, expected):
             problems.append(f"{name} {what} is\n    {lines}\n  expected in order\n    {expected}")
-    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + FAIL_TEST[:1]):
+    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + OUTPUT_DECLARED + FAIL_TEST[:1]):
         problems.append(f"{name} waits on an output or declares a fail test, and the block has no counted output")
     if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")

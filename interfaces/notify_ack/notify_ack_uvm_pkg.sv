@@ -11,14 +11,17 @@
 //
 // Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver raises
-// notify on both lanes at one drive point, and each lane drops it once its
-// own event has completed; the next item starts when both have. The A2C_DST
-// driver acks each lane's event n after the delay the DUT lane drew for it:
-// the DUT lane draws and records the delay, and a model lane that reaches
-// event n first waits until the DUT lane has. Its replay log holds the end of
-// the run phase while the model lane catches up (a2c_replay_drain). On the
-// A2C_DST role model_cmp pairs the events of the two lanes, so it checks
-// their count. What the DUT produces that is not compared:
+// notify on both lanes at one drive point, and each lane drops it once its own
+// event has completed; the next item starts when both have. A lane of the
+// A2C_SRC driver that trails the other by lane_skew_cycles clocks, or stalls,
+// is declared dead as for the AXI masters (a2c_lane_watchdog), and the other
+// lane serves the sequence alone. The A2C_DST driver acks each lane's event n
+// after the delay the DUT lane drew for it: the DUT lane draws and records the
+// delay, and a model lane that reaches event n first waits until the DUT lane
+// has. Its replay log holds the end of the run phase while the model lane
+// catches up (a2c_replay_drain). On the A2C_DST role model_cmp pairs the
+// events of the two lanes, so it checks their count. What the DUT produces
+// that is not compared:
 //   DUT dst port, A2C_SRC agent: `ack` timing
 //   DUT src port, A2C_DST agent: none
 package notify_ack_uvm_pkg;
@@ -78,7 +81,7 @@ package notify_ack_uvm_pkg;
         endfunction
     endclass : notify_ack_config
 
-    class notify_ack_driver extends uvm_driver #(notify_ack_item) implements a2c_replay_lanes;
+    class notify_ack_driver extends uvm_driver #(notify_ack_item) implements a2c_replay_lanes, a2c_lane_waits;
         typedef virtual notify_ack_if vif_t;
         typedef a2c_replay_log #(bit) replay_t;
         // LANE_NOTIFIED: a lane that has seen notify and has no ack delay
@@ -92,6 +95,10 @@ package notify_ack_uvm_pkg;
         // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
         protected vif_t        lane[2];
         protected int unsigned lanes;
+        // src role: bounds how long one lane may trail the other and how
+        // long the lanes may stall in Mode B, and keeps which lanes are
+        // dead.
+        a2c_lane_watchdog      wd;
         protected lane_state_e state[2];
         protected int unsigned starts[2];
         // The transactions each lane has completed, each counted at the
@@ -124,16 +131,23 @@ package notify_ack_uvm_pkg;
         endtask
 
         protected function void drive_notify(bit notify);
-            for (int l = 0; l < lanes; l++) lane[l].notify <= notify;
+            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].notify <= notify;
         endfunction
 
         // Each loop iteration starts at a drive point. try_next_item lets
         // back-to-back items go out on consecutive clocks, and notify drops
         // on the first drive point with no item.
         protected virtual task run_src();
+            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
+            wd.configure();
             drive_notify(1'b0);
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
+            if (lanes == 2) begin
+                fork
+                    release_dead();
+                join_none
+            end
             forever begin
                 seq_item_port.try_next_item(req);
                 if (req == null) begin
@@ -151,26 +165,48 @@ package notify_ack_uvm_pkg;
             end
         endtask
 
-        // Returns at the drive point after the last lane's event completed,
-        // which is the rising edge before it. A lane whose event has
-        // completed holds notify low from the next drive point on.
+        // Returns at the drive point after the last live lane's event
+        // completed, which is the rising edge before it. A lane whose event
+        // has completed holds notify low from the next drive point on. In Mode
+        // B wd bounds how long one lane may trail the other and how long the
+        // lanes may stall (a2c_lane_watchdog), and a lane it declares dead
+        // drops out of the wait.
         protected task wait_event();
-            bit          pending[2];
-            int unsigned left = lanes;
-            for (int l = 0; l < lanes; l++) pending[l] = 1'b1;
+            bit    pending[2];
+            bit    took[2];
+            bit    finished[2];
+            wd.begin_item();
+            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
             forever begin
                 cfg.clk_vif.sample_edge();
                 for (int l = 0; l < lanes; l++) begin
-                    if (pending[l] && lane[l].ack === 1'b1) begin
-                        pending[l] = 1'b0;
-                        left--;
-                    end
+                    took[l]     = pending[l] && lane[l].ack === 1'b1;
+                    pending[l] &= !took[l];
+                    finished[l] |= took[l];
                 end
+                wd.step(took, pending);
                 cfg.clk_vif.drive_edge();
-                if (left == 0) return;
+                if (!pending[A2C_DUT_LANE] && !pending[A2C_MODEL_LANE]) return;
                 for (int l = 0; l < lanes; l++) begin
-                    if (!pending[l]) lane[l].notify <= 1'b0;
+                    if (finished[l]) lane[l].notify <= 1'b0;
                 end
+            end
+        endtask
+
+        virtual function string waiting_for(a2c_lane_e l);
+            return "the ack of a notify";
+        endfunction
+
+        // Mode B: a dead lane keeps an asserted notify until its ack, as the
+        // protocol requires, and drops notify at the drive point after it.
+        // No later item drives the lane.
+        protected task release_dead();
+            bit took[2];
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < 2; l++) took[l] = wd.dead[l] && lane[l].notify === 1'b1 && lane[l].ack === 1'b1;
+                cfg.clk_vif.drive_edge();
+                for (int l = 0; l < 2; l++) if (took[l]) lane[l].notify <= 1'b0;
             end
         endtask
 
@@ -195,6 +231,16 @@ package notify_ack_uvm_pkg;
                         starts[l]++;
                     end
                     if (state[l] != LANE_NOTIFIED) continue;
+                    // The model lane's requester withdrew the request it
+                    // waited on, which the monitor reports as A2C_HOLD.
+                    // Nothing was taken for it, so the lane goes back to idle
+                    // and waits for no record.
+                    if (l == A2C_MODEL_LANE && lane[l].notify !== 1'b1) begin
+                        starts[l]--;
+                        replay.cancel_wait();
+                        state[l] = LANE_IDLE;
+                        continue;
+                    end
                     if (l == A2C_DUT_LANE) begin
                         delay[l] = $urandom_range(cfg.ack_delay_max, cfg.ack_delay_min);
                         if (replay != null) replay.record(1'b0, delay[l]);
@@ -278,6 +324,8 @@ package notify_ack_uvm_pkg;
                     continue;
                 end
                 if (notify !== 1'b1 || ack !== 1'b1) continue;
+                // Each transfer counts for the joint stall rule (a2c_joint_watch).
+                a2c_joint_watch::handshake();
                 item = notify_ack_item::type_id::create("item");
                 // An event has no payload, so the hex field is always 0.
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(), "0"),
@@ -353,11 +401,14 @@ package notify_ack_uvm_pkg;
             end
         endfunction
 
-        // A passive Mode B agent says so when no active responder has claimed
-        // its pin set, since its model_cmp then misses the drain's cuts.
+        // A passive A2C_DST Mode B agent says so when no active responder
+        // has claimed its pin set, since its model_cmp then misses the
+        // drain's cuts. An A2C_SRC agent has no model_cmp, as only the DUT's
+        // ack timing differs between the lanes there, so an active one tells
+        // a passive one of no death and claims no pin set.
         virtual function void end_of_elaboration_phase(uvm_phase phase);
             super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : notify_ack_agent
 

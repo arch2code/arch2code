@@ -277,7 +277,9 @@ package a2c_uvm_loopback_pkg;
 
     // Sends a prepared list of items in order.
     class lb_list_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
-        T items[$];
+        T        items[$];
+        // When finish_item() returned for each item.
+        realtime done_at[$];
 
         `uvm_object_param_utils(lb_list_seq#(T))
 
@@ -289,6 +291,7 @@ package a2c_uvm_loopback_pkg;
             foreach (items[i]) begin
                 start_item(items[i]);
                 finish_item(items[i]);
+                done_at.push_back($realtime);
             end
         endtask
     endclass : lb_list_seq
@@ -825,6 +828,7 @@ package a2c_uvm_loopback_pkg;
     `include "axi_read_lb_tests.svh"
     `include "axi_write_lb_tests.svh"
     `include "axi_mode_b_lb_tests.svh"
+    `include "a2c_lane_watchdog_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_mem_model_lb_tests.svh"

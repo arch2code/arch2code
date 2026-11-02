@@ -167,6 +167,10 @@ package memory_uvm_pkg;
         memory_config#(addr_t, data_t) cfg;
         // dst role in Mode B only.
         replay_t                       replay;
+        // check_phase() reports this many early reads whose word differs
+        // from the DUT lane's one by one, and the rest in one A2C_REPLAY
+        // with their count.
+        int unsigned                   max_reported = 10;
 
         // src role: responses to the reads taken on the last rising edge,
         // waiting for read_data. Each is built when its read is accepted,
@@ -191,6 +195,16 @@ package memory_uvm_pkg;
         protected data_t       ahead_word[bit [63:0]];
         protected int unsigned ahead_n[bit [63:0]];
         protected early_t      retire[$];
+        // The first max_reported early reads whose word differs from the
+        // DUT lane's, and when the DUT lane made each access, for
+        // check_phase(); then the count of the rest, and the first of them
+        // with its time. A model that reads early on every access so keeps
+        // at most max_reported messages.
+        protected string       stale[$];
+        protected realtime     stale_at[$];
+        protected int unsigned stale_more;
+        protected int unsigned stale_more_n;
+        protected realtime     stale_more_at;
 
         `uvm_component_param_utils(memory_driver#(addr_t, data_t))
 
@@ -281,9 +295,8 @@ package memory_uvm_pkg;
         endtask
 
         // The model lane's accesses served early, matched against the DUT
-        // lane's records as they arrive. A mismatch's A2C_REPLAY names the
-        // deaths before the DUT lane's access, the first time the mismatch
-        // is known.
+        // lane's records as they arrive. A mismatch is known when the DUT
+        // lane makes the access, and check_phase() reports it.
         protected function void settle_early();
             rsp_t        rsp;
             int unsigned delay;
@@ -293,10 +306,31 @@ package memory_uvm_pkg;
                 e = early.pop_front();
                 if (e.write) retire.push_back(e);
                 if (!e.write && !rsp.write && e.word !== rsp.word) begin
-                    `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane read index 0x%0h at access %0d before the DUT lane made that access, and got %p; the DUT lane's access %0d returns %p%s",
-                                                       cfg.port_name, e.index, e.n + 1, e.word, e.n + 1, rsp.word,
-                                                       a2c_replay_drain::death_context($realtime)))
+                    if (stale.size() < max_reported) begin
+                        stale.push_back($sformatf("%s: the model lane read index 0x%0h at access %0d before the DUT lane made that access, and got %p; the DUT lane's access %0d, made at %0t, returns %p",
+                                                  cfg.port_name, e.index, e.n + 1, e.word, e.n + 1, $realtime, rsp.word));
+                        stale_at.push_back($realtime);
+                    end else begin
+                        if (stale_more == 0) begin
+                            stale_more_n  = e.n + 1;
+                            stale_more_at = $realtime;
+                        end
+                        stale_more++;
+                    end
                 end
+            end
+        endfunction
+
+        // At check_phase, rather than when the DUT lane made the access, so
+        // that the death clause also names a death that a master declared
+        // later, for a lane that began to trail before the access.
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            foreach (stale[i]) `uvm_error("A2C_REPLAY", {stale[i], a2c_replay_drain::death_context(stale_at[i])})
+            if (stale_more != 0) begin
+                `uvm_error("A2C_REPLAY", $sformatf("%s: %0d more of the model lane's early reads got a word that differs from the DUT lane's, beyond the first %0d reported one by one (max_reported). The first of them is access %0d, which the DUT lane made at %0t%s",
+                                                   cfg.port_name, stale_more, max_reported, stale_more_n, stale_more_at,
+                                                   a2c_replay_drain::death_context(stale_more_at)))
             end
         endfunction
 
@@ -416,6 +450,8 @@ package memory_uvm_pkg;
                     read = null;
                 end
                 if (vif.enable !== 1'b1) continue;
+                // Each access counts for the joint stall rule (a2c_joint_watch).
+                a2c_joint_watch::handshake();
                 item = memory_item#(addr_t, data_t)::type_id::create("item");
                 item.write = (vif.wr_en === 1'b1);
                 item.addr  = vif.addr;

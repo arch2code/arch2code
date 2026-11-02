@@ -850,6 +850,7 @@
             want_errors = 1;
             // The read follows the write at index k, counting from 0.
             want_text.push_back($sformatf("mem: the model lane read index 0x21 at access %0d before the DUT lane made that access", k + 2));
+            want_text.push_back($sformatf("; the DUT lane's access %0d, made at ", k + 2));
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
@@ -866,6 +867,31 @@
             check_memory();
         endfunction
     endclass : memory_mode_b_dst_stale_test
+
+    // As memory_mode_b_dst_stale_test with max_reported 0, so the early
+    // read is reported only in the count of those beyond it, with its access
+    // and the time the DUT lane made it.
+    class memory_mode_b_dst_stale_count_test extends memory_mode_b_dst_stale_test;
+        `uvm_component_utils(memory_mode_b_dst_stale_count_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_streams();
+            int unsigned k = seq.items.size();
+            super.build_streams();
+            want_text.delete();
+            want_text.push_back($sformatf("mem: 1 more of the model lane's early reads got a word that differs from the DUT lane's, beyond the first 0 reported one by one (max_reported). The first of them is access %0d, which the DUT lane made at ",
+                                          k + 2));
+            unwant_text.push_back("before the DUT lane made that access");
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            agent.drv.max_reported = 0;
+        endfunction
+    endclass : memory_mode_b_dst_stale_count_test
 
     // As memory_mode_b_dst_stale_test after a master elsewhere declared the
     // model lane dead on the first clock, so the report names the death.
@@ -905,6 +931,33 @@
             a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
         endtask
     endclass : memory_mode_b_dst_stale_dead_after_test
+
+    // As memory_mode_b_dst_stale_test with a death declared after the run
+    // that dates the lane's trailing from the first clock, before the read.
+    // The report waits for check_phase, so it names that death.
+    class memory_mode_b_dst_stale_late_death_test extends memory_mode_b_dst_stale_test;
+        realtime first_clock;
+
+        `uvm_component_utils(memory_mode_b_dst_stale_late_death_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_text.push_back("; the model lane of uvm_test_top began to trail at ");
+            want_text.push_back(" (A2C_SKEW), which may be related");
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            fork
+                begin
+                    clk_vif.wait_reset_release();
+                    clk_vif.sample_edge();
+                    first_clock = $realtime;
+                end
+            join_none
+            super.run_phase(phase);
+            a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top", first_clock);
+        endtask
+    endclass : memory_mode_b_dst_stale_late_death_test
 
     // The model lane's peer makes one access more, which the DUT lane never
     // records: the drain runs to its deadline, and the replay log reports

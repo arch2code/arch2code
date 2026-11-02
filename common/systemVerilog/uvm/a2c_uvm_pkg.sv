@@ -155,6 +155,9 @@ package a2c_uvm_pkg;
         protected int unsigned received[2];
         // Reported missing and not yet arrived.
         protected int unsigned missing[2];
+        // Every count expect_count() has added, which a report does not
+        // lower.
+        protected int unsigned n_declared;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -190,10 +193,16 @@ package a2c_uvm_pkg;
         endfunction
 
         function void expect_count(int unsigned n);
+            n_declared += n;
             foreach (expected[lane]) begin
                 expected[lane] += n;
                 missing[lane]   = 0;
             end
+        endfunction
+
+        // The transactions per lane that expect_count() has declared in all.
+        function int unsigned declared();
+            return n_declared;
         endfunction
 
         protected function int unsigned lane_outstanding(int lane);
@@ -281,6 +290,41 @@ package a2c_uvm_pkg;
             end
         endfunction
     endclass : a2c_txn_counter_base
+
+    // An input agent's driver that takes no items from a sequencer, such as
+    // status_driver, which holds the level a test sets in its config,
+    // implements this so the base test can count what it applied.
+    interface class a2c_items_driven;
+        // The values the driver has applied that differ from the one before,
+        // counting from 0.
+        pure virtual function int unsigned items_driven();
+    endclass : a2c_items_driven
+
+    // The items an input agent has sent: those its sequencer, sqr, has sent,
+    // or for an agent without one those its driver, drv, counts through
+    // a2c_items_driven. A generated base test sums it over the input ports'
+    // agents to tell a run that sent no stimulus. The generator always
+    // passes an active agent and its own item type, so an agent that has
+    // neither, or a sequencer of another type, is an A2C_CFG error rather
+    // than a count of 0, which would raise a false A2C_NO_STIMULUS.
+    class a2c_items_sent #(type T = uvm_sequence_item);
+        static function int unsigned of(uvm_component agent);
+            uvm_sequencer_param_base #(T) sqr;
+            a2c_items_driven              drv;
+            if (agent == null) begin
+                `uvm_error("A2C_CFG", "a2c_items_sent::of() was given no agent")
+                return 0;
+            end
+            if (agent.has_child("sqr")) begin
+                if ($cast(sqr, agent.get_child("sqr"))) return sqr.get_num_reqs_sent();
+                `uvm_error("A2C_CFG", $sformatf("%s: the sequencer sqr does not send the item type the base test counts", agent.get_full_name()))
+                return 0;
+            end
+            if (agent.has_child("drv") && $cast(drv, agent.get_child("drv"))) return drv.items_driven();
+            `uvm_error("A2C_CFG", $sformatf("%s has no sequencer sqr and no driver drv that counts its items (a2c_items_driven)", agent.get_full_name()))
+            return 0;
+        endfunction
+    endclass : a2c_items_sent
 
     class a2c_txn_counter #(type T = uvm_sequence_item) extends a2c_txn_counter_base;
         // The DUT lane.
@@ -912,13 +956,26 @@ package a2c_uvm_pkg;
         pure virtual function int unsigned lane_done(a2c_lane_e l);
     endclass : a2c_replay_lanes
 
+    // A responder driver whose model lane can hold a response, or a pick,
+    // for a request its master has not made, implements this beside
+    // a2c_replay_lanes, so the drain's A2C_DRAIN warning tells a lane that
+    // only holds one from a lane inside a transaction. A driver that does
+    // not implement it has every busy lane reported as inside a
+    // transaction.
+    interface class a2c_replay_holder;
+        // Whether lane_busy(l) is true only because the lane holds such a
+        // response or pick.
+        pure virtual function bit lane_holding(a2c_lane_e l);
+    endclass : a2c_replay_holder
+
     typedef class a2c_replay_drain;
     typedef class a2c_replay_log_base;
+    typedef class a2c_joint_watch;
 
     // A monitor that a Mode B master tells when it declares the lane of the
-    // monitor's pin set dead.
+    // monitor's pin set dead, with the ID of the error that declared it.
     interface class a2c_lane_watch;
-        pure virtual function void lane_dead();
+        pure virtual function void lane_dead(string id);
     endclass : a2c_lane_watch
 
     // The passive agents on one pin set, which the active agent of its port
@@ -1020,8 +1077,8 @@ package a2c_uvm_pkg;
         // lane had not paused since an earlier drain cut it.
         protected bit          recut;
         // Set by the driver before check_phase() when the model lane holds a
-        // pick whose request it has not made, which the driver reports. A
-        // cut that pick blocks is not short of catch-up clocks.
+        // response or pick whose request it has not made, which the driver
+        // reports. A cut that it blocks is not short of catch-up clocks.
         bit                    pick_blocked;
 
         function new(string name, uvm_component parent);
@@ -1076,6 +1133,13 @@ package a2c_uvm_pkg;
             return waiting >= 0;
         endfunction
 
+        // For a driver whose model lane's master withdrew the request it
+        // waited to replay a response for, so the lane waits for no record
+        // until its next request calls can_replay() again.
+        function void cancel_wait();
+            waiting = -1;
+        endfunction
+
         // Neither lane is inside a transaction, no recorded response waits
         // for the model lane, and the model lane waits for no record.
         function bit idle();
@@ -1091,9 +1155,13 @@ package a2c_uvm_pkg;
         // warnings. Names a busy lane before the quiet window; a larger
         // window does not help a lane stuck inside a transaction.
         function string unsettled();
-            string why = "";
-            string busy = "";
+            string            why = "";
+            string            busy = "";
+            string            holding = "";
+            int unsigned      n_busy = 0;
+            a2c_replay_holder holder;
             if (cut_at != 0) return $sformatf("the lanes have not both completed the %0d transactions the cut keeps; %s", cut_at, lane_counts());
+            void'($cast(holder, driver));
             if (model_waiting()) why = $sformatf("the model lane waits for transaction %0d, which the DUT lane has not recorded", waiting + 1);
             if (pending() > 0) begin
                 if (why != "") why = {why, ", and "};
@@ -1101,16 +1169,23 @@ package a2c_uvm_pkg;
             end
             for (int l = 0; l < 2; l++) begin
                 a2c_lane_e lane = a2c_lane_e'(l);
+                string     counts;
                 if (!driver.lane_busy(lane)) continue;
+                counts = $sformatf("the %s lane (%0d started, %0d done)", a2c_lane_name(lane), driver.lane_starts(lane), driver.lane_done(lane));
+                if (holder != null && holder.lane_holding(lane)) begin
+                    holding = {counts, " is idle and holds a response or pick whose request it has not made"};
+                    continue;
+                end
                 if (busy != "") busy = {busy, " and "};
-                busy = {busy, $sformatf("the %s lane (%0d started, %0d done)", a2c_lane_name(lane), driver.lane_starts(lane),
-                                        driver.lane_done(lane))};
+                busy = {busy, counts};
+                n_busy++;
             end
+            if (busy != "") busy = {busy, (n_busy == 2) ? " are" : " is", " inside a transaction"};
+            if (busy != "" && holding != "") busy = {busy, ", and "};
+            busy = {busy, holding};
             if (busy != "") begin
                 if (why != "") why = {why, ", and "};
-                why = {why, busy, (driver.lane_busy(A2C_DUT_LANE) && driver.lane_busy(A2C_MODEL_LANE)) ? " are" : " is",
-                       " inside a transaction"};
-                return why;
+                return {why, busy};
             end
             if (why == "") begin
                 why = $sformatf("the lanes were never idle for drain_quiet_cycles (+a2c_drain_quiet_cycles), %0d clocks, in a row",
@@ -1175,7 +1250,7 @@ package a2c_uvm_pkg;
             super.check_phase(phase);
             if (cut_at == 0) return;
             if (!cut_reached() && pick_blocked) begin
-                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it, because the model lane holds a pick whose request it has not made, which the driver reports: %s%s",
+                `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it, because the model lane holds a response or pick whose request it has not made, which the driver reports: %s%s",
                                                    get_full_name(), cut_at, lane_counts(), by_give_up))
             end else if (!cut_reached()) begin
                 `uvm_error("A2C_REPLAY", $sformatf("%s: the drain cut the run after transaction %0d, and the lanes did not both complete it in the %0d clocks after the cut (drain_catchup_cycles, +a2c_drain_catchup_cycles): %s%s",
@@ -1309,11 +1384,11 @@ package a2c_uvm_pkg;
     // such as a cut, a held pick or a record the model lane never replayed,
     // ends with death_context() of the time the event happened, which names
     // each death whose lane began to trail before it. The master declares a
-    // death lane_skew_cycles or lone_lane_cycles clocks after that, so a
-    // stall the event came out of may be declared long after the event. A
-    // lane that began to trail after the event cannot have caused it. The
-    // clause says only that the two may be related, since a stalled model
-    // may as well be what made the lane fall behind.
+    // death lane_skew_cycles, lone_lane_cycles or joint_stall_cycles clocks
+    // after that, so a stall the event came out of may be declared long
+    // after the event. A lane that began to trail after the event cannot
+    // have caused it. The clause says only that the two may be related,
+    // since a stalled model may as well be what made the lane fall behind.
     class a2c_replay_drain;
         protected static a2c_replay_log_base logs[$];
         protected static bit                 running;
@@ -1328,11 +1403,13 @@ package a2c_uvm_pkg;
         // Counts the watchers' updates, so the drain wakes on each.
         protected static int unsigned        updates;
         // Each death: the port whose master declared it, the lane, when the
-        // lane began to trail, and when the master declared it dead.
+        // lane began to trail, when the master declared it dead, and the ID
+        // of the error that did.
         protected static string              dead_who[$];
         protected static a2c_lane_e          dead_lane[$];
         protected static realtime            dead_since[$];
         protected static realtime            dead_time[$];
+        protected static string              dead_id[$];
 
         static function void register(a2c_replay_log_base log);
             logs.push_back(log);
@@ -1341,11 +1418,12 @@ package a2c_uvm_pkg;
         // since is when the lane began to trail: the other lane's handshake
         // or completion it did not follow, or, for a lane left alone, its
         // last progress.
-        static function void lane_dead(a2c_lane_e lane, string who, realtime since = $realtime);
+        static function void lane_dead(a2c_lane_e lane, string who, realtime since = $realtime, string id = "A2C_SKEW");
             dead_who.push_back(who);
             dead_lane.push_back(lane);
             dead_since.push_back(since);
             dead_time.push_back($realtime);
+            dead_id.push_back(id);
         endfunction
 
         // The clause that ends a report of an event at time at: the deaths
@@ -1359,8 +1437,9 @@ package a2c_uvm_pkg;
             foreach (dead_time[i]) begin
                 if (dead_since[i] >= at || dead_time[i] == $realtime || dead_who[i] == except) continue;
                 s = {s, (s == "") ? "; " : " and ",
-                     $sformatf("the %s lane of %s %swas declared dead at %0t (A2C_SKEW)", a2c_lane_name(dead_lane[i]), dead_who[i],
-                               (dead_since[i] < dead_time[i]) ? $sformatf("began to trail at %0t and ", dead_since[i]) : "", dead_time[i])};
+                     $sformatf("the %s lane of %s %swas declared dead at %0t (%s)", a2c_lane_name(dead_lane[i]), dead_who[i],
+                               (dead_since[i] < dead_time[i]) ? $sformatf("began to trail at %0t and ", dead_since[i]) : "", dead_time[i],
+                               dead_id[i])};
             end
             return (s == "") ? "" : {s, ", which may be related"};
         endfunction
@@ -1548,6 +1627,355 @@ package a2c_uvm_pkg;
         endtask
     endclass : a2c_replay_drain
 
+    // What a2c_lane_watchdog::progress() found on one clock.
+    typedef enum {A2C_PROGRESS, A2C_LONE_STALL, A2C_BOTH_STALL} a2c_stall_e;
+
+    // Every master that owns an a2c_lane_watchdog implements this, so the
+    // watchdog's reports can say what a lane waits for. The watchdog asks
+    // only when it reports, so a master builds no text per item.
+    interface class a2c_lane_waits;
+        // What lane l waits for, such as "the transfer of 'h5". Asked only
+        // while the master waits on the lane.
+        pure virtual function string waiting_for(a2c_lane_e l);
+    endclass : a2c_lane_waits
+
+    // The lane-death rules every Mode B master shares, so that the masters
+    // of all protocols bound a lane the same way and report it in the same
+    // words. A master owns one whatever its lane count, calls configure()
+    // at the start of its run phase, and skips a dead lane from then on:
+    //   - lane_skew_cycles: a live lane that trails the other on one step of
+    //     the protocol by this many clocks is declared dead with A2C_SKEW;
+    //   - lone_lane_cycles: once one lane is dead, the live lane may go this
+    //     many clocks in a row without progress while it has something to
+    //     wait for, or it is declared dead too, as A2C_SKEW naming the first
+    //     death as the likely cause;
+    //   - joint_stall_cycles: both lanes live, at least one waiting, neither
+    //     trailing the other while the skew bound is on, and no handshake on
+    //     any lane of any port (a2c_joint_watch) for this many of the port's
+    //     clocks in a row ends the run in one A2C_JOINT_STALL for the whole
+    //     environment. A port that waits while another port moves never
+    //     stalls, however long it waits. Without the rule a Mode B run that
+    //     stops waits for UVM's global timeout. The bound decides only
+    //     whether this port can raise the stall: once any port raises it,
+    //     every Mode B port's live lanes die, and those that wait are named.
+    // 0 turns a rule off. A lane that has nothing to wait for counts as
+    // making progress, so an idle port never stalls. A master declares a
+    // lane dead only in Mode B. With one lane the calls do nothing.
+    class a2c_lane_watchdog;
+        int unsigned        lane_skew_cycles = 200000;
+        int unsigned        lone_lane_cycles = 200000;
+        int unsigned        joint_stall_cycles = 200000;
+        // The component that reports, the port's name in its messages, and
+        // its lane count, 2 in Mode B.
+        uvm_component       master;
+        string              port_name;
+        int unsigned        lanes;
+        // What the master serves, "burst" or "item", and what becomes of
+        // them once both lanes are dead, for the message's last sentence.
+        string              unit;
+        string              none_left;
+        // The master, which says what a lane waits for.
+        a2c_lane_waits      waits;
+        // The agent's model_cmp and monitors, indexed by a2c_lane_e, and the
+        // passive agents on each lane's pin set; any may be null.
+        a2c_comparator_base cmp;
+        a2c_lane_watch      mons[2];
+        a2c_pin_watchers    watchers[2];
+        // Indexed by a2c_lane_e: whether the lane is dead, when it died and
+        // the ID of the error that declared it, and when it last made
+        // progress.
+        bit                 dead[2];
+        realtime            died_at[2];
+        string              died_by[2];
+        realtime            moved_at[2];
+        // The clocks in a row the lone live lane, or the two live lanes
+        // with no handshake anywhere, have gone without progress.
+        protected int unsigned stuck;
+        protected int unsigned both_stuck;
+        // The last progress() call's time, which starts the next one's
+        // window of a2c_joint_watch, the lanes that waited then, and whether
+        // a live lane waited with no handshake anywhere in that window. A
+        // death clears stalled, since a master that holds no further item
+        // may never call progress() again to refresh it.
+        protected realtime     window_at;
+        protected bit          waited[2];
+        protected bit          stalled;
+        // step(): the clocks one lane has led the other on the current item,
+        // and since when.
+        protected int unsigned lag;
+        protected realtime     led_at;
+
+        function new(uvm_component master, string port_name, int unsigned lanes, string unit, string none_left);
+            this.master    = master;
+            this.port_name = port_name;
+            this.lanes     = lanes;
+            this.unit      = unit;
+            this.none_left = none_left;
+            if (!$cast(waits, master)) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: the master of an a2c_lane_watchdog must implement a2c_lane_waits", master.get_full_name()))
+            end
+            window_at = $realtime;
+            a2c_joint_watch::register(this);
+        endfunction
+
+        // Reads a2c_lane_skew_cycles, a2c_lone_lane_cycles and
+        // a2c_joint_stall_cycles on the master's path, as a generated base
+        // test sets them from the plusargs of the same names.
+        function void configure();
+            void'(a2c_get_config_int(master, "a2c_lane_skew_cycles", lane_skew_cycles));
+            void'(a2c_get_config_int(master, "a2c_lone_lane_cycles", lone_lane_cycles));
+            void'(a2c_get_config_int(master, "a2c_joint_stall_cycles", joint_stall_cycles));
+        endfunction
+
+        function bit all_dead();
+            return lanes == 2 && dead[A2C_DUT_LANE] && dead[A2C_MODEL_LANE];
+        endfunction
+
+        // Whether lane l still leads a skew: a lane that died on an earlier
+        // clock leads none, so the order of a master's processes within one
+        // time step does not decide whether both lanes die in it.
+        function bit counts(int l);
+            return !dead[l] || died_at[l] == $realtime;
+        endfunction
+
+        // How the drain's reports name this master's port.
+        function string who();
+            return $sformatf("%s (%s)", port_name, master.get_full_name());
+        endfunction
+
+        // One error per lane, at its death, that names the knob that bounded
+        // it, for a lone death the first death, and the deaths other ports
+        // declared before it, since a stall of the DUT or the model can
+        // spread from one port to another. The passive agents on the port
+        // learn of the death as the agent's own monitors and model_cmp do.
+        // since is when the lane began to trail, which dates the death for
+        // the drain's clause in other ports' reports. Returns whether the
+        // lane was live.
+        function bit declare_dead(a2c_lane_e l, string why, realtime since, string knob = "lane_skew_cycles, +a2c_lane_skew_cycles",
+                                  string cause = "");
+            string fate;
+            if (dead[l]) return 0;
+            mark(l, "A2C_SKEW");
+            fate = dead[1 - l] ? {"No lane is left, so ", none_left, "."}
+                               : {"The ", a2c_lane_name(a2c_lane_e'(1 - l)), " lane serves every ", unit, " from now on."};
+            `uvm_error_context("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s",
+                                                     port_name, why, knob, a2c_lane_name(l),
+                                                     a2c_replay_drain::death_context($realtime, who()), cause, fate), master)
+            tell(l, since);
+            return 1;
+        endfunction
+
+        // Called by the master once per clock at its sample point, after its
+        // skew checks, with whether each lane made a handshake on that clock
+        // or has nothing to wait for, and whether one lane leads the other
+        // on a step the skew bound counts. Returns the stall rule that fired,
+        // for the master to declare with declare_lone() or declare_joint().
+        function a2c_stall_e progress(bit took[2], bit idle[2], bit trailing);
+            bit moved[2];
+            bit waiting = 0;
+            bit quiet;
+            int l;
+            if (lanes != 2) return A2C_PROGRESS;
+            quiet     = !a2c_joint_watch::moved_since(window_at);
+            window_at = $realtime;
+            for (int k = 0; k < 2; k++) begin
+                moved[k]  = took[k] || idle[k];
+                waited[k] = !dead[k] && !moved[k];
+                waiting  |= waited[k];
+                if (!dead[k] && moved[k]) moved_at[k] = $realtime;
+            end
+            stalled = waiting && quiet;
+            if (dead[A2C_DUT_LANE] && dead[A2C_MODEL_LANE]) return A2C_PROGRESS;
+            if (dead[A2C_DUT_LANE] != dead[A2C_MODEL_LANE]) begin
+                l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
+                if (lone_lane_cycles == 0 || moved[l]) begin
+                    stuck = 0;
+                    return A2C_PROGRESS;
+                end
+                return (++stuck >= lone_lane_cycles) ? A2C_LONE_STALL : A2C_PROGRESS;
+            end
+            // A lane that trails is the skew bound's while it is on, so the
+            // two rules never race on one stall.
+            if (joint_stall_cycles == 0 || !waiting || !quiet || (trailing && lane_skew_cycles != 0)) begin
+                both_stuck = 0;
+                return A2C_PROGRESS;
+            end
+            return (++both_stuck >= joint_stall_cycles) ? A2C_BOTH_STALL : A2C_PROGRESS;
+        endfunction
+
+        // Declares the lone live lane dead after A2C_LONE_STALL. idle says
+        // what the lane has not done, such as "has taken no AR and returned
+        // no R beat".
+        function void declare_lone(string idle);
+            a2c_lane_e l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
+            a2c_lane_e d = a2c_lane_e'(1 - l);
+            void'(declare_dead(l, $sformatf("the %s lane, alone since the %s lane died, %s for %0d clocks, waiting for %s",
+                                            a2c_lane_name(l), a2c_lane_name(d), idle, lone_lane_cycles, waits.waiting_for(l)),
+                               moved_at[l], "lone_lane_cycles, +a2c_lone_lane_cycles",
+                               $sformatf("This is likely a consequence of the earlier %s, which declared the %s lane dead at %0t. ",
+                                         died_by[d], a2c_lane_name(d), died_at[d])));
+        endfunction
+
+        // After A2C_BOTH_STALL: the whole environment has stopped, which
+        // a2c_joint_watch reports once for every port.
+        function void declare_joint();
+            a2c_joint_watch::stall(this);
+        endfunction
+
+        // Whether a live lane waited, with no handshake anywhere, on the
+        // port's last clock, whatever the port's joint_stall_cycles.
+        function bit joint_waiting();
+            return stalled;
+        endfunction
+
+        // The port and what its lanes waited for, for the A2C_JOINT_STALL
+        // report.
+        function string wait_text();
+            string w[2];
+            for (int l = 0; l < 2; l++) if (waited[l]) w[l] = waits.waiting_for(a2c_lane_e'(l));
+            if (dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE]) begin
+                a2c_lane_e l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
+                return $sformatf("%s, the %s lane, alone, waiting for %s", who(), a2c_lane_name(l), w[l]);
+            end
+            if (waited[A2C_DUT_LANE] && waited[A2C_MODEL_LANE]) begin
+                if (w[A2C_DUT_LANE] == w[A2C_MODEL_LANE]) return $sformatf("%s, both lanes waiting for %s", who(), w[A2C_DUT_LANE]);
+                return $sformatf("%s, the DUT lane waiting for %s and the model lane for %s", who(), w[A2C_DUT_LANE], w[A2C_MODEL_LANE]);
+            end
+            if (waited[A2C_DUT_LANE]) return $sformatf("%s, the DUT lane waiting for %s", who(), w[A2C_DUT_LANE]);
+            return $sformatf("%s, the model lane waiting for %s", who(), w[A2C_MODEL_LANE]);
+        endfunction
+
+        // Declares each live lane dead for a2c_joint_watch, whatever this
+        // port's joint_stall_cycles.
+        function void die_jointly();
+            bit fell[2];
+            if (lanes != 2) return;
+            for (int l = 0; l < 2; l++) begin
+                if (dead[l]) continue;
+                mark(a2c_lane_e'(l), "A2C_JOINT_STALL");
+                fell[l] = 1;
+            end
+            for (int l = 0; l < 2; l++) if (fell[l]) tell(a2c_lane_e'(l), moved_at[l]);
+        endfunction
+
+        // For a master that puts one item on both lanes and waits for each
+        // live lane to complete it before the next, from the drive point
+        // that raises the item's request.
+        function void begin_item();
+            lag = 0;
+            for (int l = 0; l < 2; l++) if (!dead[l]) moved_at[l] = $realtime;
+        endfunction
+
+        // Called by that master once per clock at its sample point with, per
+        // lane, whether it completed the item on this clock and whether it
+        // still owes it, which a dead lane does not. Applies all three rules
+        // and clears pending[] of a lane that is dead, whether this
+        // watchdog or another port's joint stall declared it.
+        function void step(bit took[2], ref bit pending[2]);
+            bit led = 0;
+            bit lags;
+            bit idle[2];
+            if (lanes != 2) begin
+                void'(progress(took, idle, 0));
+                return;
+            end
+            for (int l = 0; l < 2; l++) if (dead[l]) pending[l] = 0;
+            for (int l = 0; l < 2; l++) led |= !pending[l] && !dead[l];
+            lags = led && (pending[A2C_DUT_LANE] || pending[A2C_MODEL_LANE]);
+            if (lags) begin
+                if (lag == 0) led_at = $realtime;
+                if (lag == lane_skew_cycles && lane_skew_cycles != 0) begin
+                    for (int l = 0; l < 2; l++) begin
+                        if (!pending[l]) continue;
+                        void'(declare_dead(a2c_lane_e'(l), $sformatf("the %s lane has not completed %s %0d clocks after the %s lane did",
+                                                                     a2c_lane_name(a2c_lane_e'(l)), waits.waiting_for(a2c_lane_e'(l)),
+                                                                     lane_skew_cycles, a2c_lane_name(a2c_lane_e'(1 - l))), led_at));
+                        pending[l] = 0;
+                    end
+                end
+                lag++;
+            end
+            for (int l = 0; l < 2; l++) idle[l] = !took[l] && !pending[l];
+            case (progress(took, idle, lags))
+                A2C_LONE_STALL: begin
+                    declare_lone("has completed nothing");
+                    pending = '{0, 0};
+                end
+                A2C_BOTH_STALL: begin
+                    declare_joint();
+                    pending = '{0, 0};
+                end
+                default: ;
+            endcase
+        endfunction
+
+        protected function void mark(a2c_lane_e l, string id);
+            dead[l]    = 1;
+            died_at[l] = $realtime;
+            died_by[l] = id;
+            stuck      = 0;
+            both_stuck = 0;
+            stalled    = 0;
+        endfunction
+
+        protected function void tell(a2c_lane_e l, realtime since);
+            if (cmp != null) cmp.lane_dead(l);
+            if (mons[l] != null) mons[l].lane_dead(died_by[l]);
+            if (watchers[l] != null) foreach (watchers[l].mons[i]) watchers[l].mons[i].lane_dead(died_by[l]);
+            if (watchers[A2C_DUT_LANE] != null) foreach (watchers[A2C_DUT_LANE].cmps[i]) watchers[A2C_DUT_LANE].cmps[i].lane_dead(l);
+            a2c_replay_drain::lane_dead(l, who(), since, died_by[l]);
+        endfunction
+    endclass : a2c_lane_watchdog
+
+    // The joint stall rule's view of the whole environment. The monitor of
+    // every interface with a handshake, of either role and any lane count,
+    // calls handshake() for each transfer it sees; status and raw have no
+    // handshake and count nothing. A watchdog asks on each clock its port
+    // waits whether a handshake came since it last asked, so the rule fires
+    // only when no port moves at all. A handshake counted in the same time
+    // step as the asking watchdog is left to that watchdog's next ask,
+    // whether its monitor ran first or not, so the order of the processes
+    // in a time step never moves the bound. It reports once for the run:
+    // the first watchdog to reach its bound calls stall(), which names
+    // every port whose live lanes waited and declares every live lane of
+    // every Mode B port dead, so no port can stall again.
+    class a2c_joint_watch;
+        // The time of the latest handshake, and of the latest one before
+        // that time step.
+        protected static realtime          last_at = -1;
+        protected static realtime          before_at = -1;
+        protected static a2c_lane_watchdog dogs[$];
+
+        static function void handshake();
+            if ($realtime == last_at) return;
+            before_at = last_at;
+            last_at   = $realtime;
+        endfunction
+
+        // Whether a handshake came at or after since and before the current
+        // time step.
+        static function bit moved_since(realtime since);
+            realtime latest = (last_at < $realtime) ? last_at : before_at;
+            return latest >= since;
+        endfunction
+
+        static function void register(a2c_lane_watchdog wd);
+            dogs.push_back(wd);
+        endfunction
+
+        static function void stall(a2c_lane_watchdog by);
+            string ports = "";
+            foreach (dogs[i]) begin
+                if (!dogs[i].joint_waiting()) continue;
+                ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
+            end
+            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead%s, and serves its open and later items as it does once both lanes are dead.",
+                                                            by.port_name, by.joint_stall_cycles, ports,
+                                                            a2c_replay_drain::death_context($realtime)), by.master)
+            foreach (dogs[i]) dogs[i].die_jointly();
+        endfunction
+    endclass : a2c_joint_watch
+
     // What a2c_mem_model returns for a word nothing has written.
     typedef enum {A2C_MEM_FILL_ZERO, A2C_MEM_FILL_RANDOM, A2C_MEM_FILL_FIXED} a2c_mem_fill_e;
 
@@ -1617,6 +2045,13 @@ package a2c_uvm_pkg;
             return data;
         endfunction
     endclass : a2c_mem_model
+
+    // "write" or "read". A ?: of the two literals is a packed value as wide
+    // as the longer one, so it would print "read" with a leading pad.
+    function automatic string a2c_access_name(bit write);
+        if (write) return "write";
+        return "read";
+    endfunction
 
     function automatic bit a2c_contains(string s, string sub);
         for (int i = 0; i + sub.len() <= s.len(); i++) begin
