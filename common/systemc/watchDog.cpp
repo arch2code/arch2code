@@ -16,6 +16,7 @@ sc_time watchDog::timeout = sc_time(30, SC_US);
 bool watchDog::isTimeout = false;
 uint64_t watchDog::enablers = 0;
 uint64_t watchDog::enableVotes = 0;
+bool watchDog::stallCheckDisabledByUvm = false;
 
 
 void watchDog::enableWatchdog(void)
@@ -115,7 +116,8 @@ static uint64_t elapsedNsec(struct timespec &start, bool &running)
 // clock advances simulation time forever.
 //
 // Stall: armed once every registered enabler has voted it on; every tickle
-// restarts its timer, since a tickle is evidence of progress.
+// restarts its timer, since a tickle is evidence of progress. Never armed
+// under watchDog::stallCheckDisabledByUvm, though the votes still count.
 //
 // No terminator: no end-of-test voter, no --scTimeLimit and no latched
 // end-of-test (forceEndOfTest() ends a run without a voter). A static property
@@ -127,6 +129,11 @@ void watchDogHandler(void)
     logging &lg = logging::GetInstance();
     logBlock log_("watchDog");
     endOfTestState &eot = endOfTestState::GetInstance();
+    if (watchDog::stallCheckDisabledByUvm)
+    {
+        log_.logPrint("SystemC watchdog stall check is off; the UVM checks bound stalls "
+                      "(specs/SIMULATOR_INTEGRATION.md section 9.11)", LOG_ALWAYS);
+    }
     wait(simController::startupDelay); // wait for the system to start up
     bool timerRunning = false;
     bool noTerminatorTimerRunning = false;
@@ -135,7 +142,7 @@ void watchDogHandler(void)
     while(true)
     {
         wait(watchDog::timeout); // use a large timeout so if we are busy the watchdog isnt using up much time
-        if (watchDog::tickled || watchDog::enabled == false)
+        if (watchDog::tickled || watchDog::enabled == false || watchDog::stallCheckDisabledByUvm)
         {
             watchDog::tickled = false;
             timerRunning = false;

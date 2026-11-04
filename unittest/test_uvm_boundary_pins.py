@@ -51,8 +51,8 @@ model class at the factory as a container does for a child typed by its
 Config. With a model it carries each port through a BFM of the swapped role
 on the port's clock domain, when the run's DUT set holds the model. Its config
 must accept both only for a block with a model, set the run's rtlDut and
-modelDut from --uvmDut, create the wrapper under the block's name at the
-scaffolded variant, and its
+modelDut from --uvmDut, turn off the SystemC watchdog's stall check, create
+the wrapper under the block's name at the scaffolded variant, and its
 registrar must register one wrapper per variant over that variant's shell and
 Config.
 
@@ -551,6 +551,7 @@ def check_sc_files(work, design):
         with open(os.path.join(uvmDir, configFile)) as f:
             lines = [line.strip() for line in f]
         expected = ['#if defined(XCELIUM) || defined(VCS)', f'#include "{block}_uvm_sc_wrapper.h"',
+                    '#include "watchDog.h"', 'watchDog::stallCheckDisabledByUvm = true;',
                     f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";',
                     f'{block}_uvm_run::modelDut = m_uvmDut == "model" || m_uvmDut == "both";',
                     'if (m_uvmDut != "model" && m_uvmDut != "rtl" && m_uvmDut != "both") {' if HAS_MDL[block]
@@ -562,6 +563,10 @@ def check_sc_files(work, design):
                     'inline static const std::map<std::string, std::string> s_topVariants = {'
                     + ', '.join('{"%s", "%s"}' % (f'{block}_{v}' if v else block, v) for v in configs) + '};']
         problems += [f"{configFile} lacks the line {line!r}" for line in expected if line not in lines]
+        flag = 'watchDog::stallCheckDisabledByUvm = true;'
+        start = lines.index('bool createTestBench(void) override')
+        if flag in lines and not start < lines.index(flag) < lines.index('return true;', start):
+            problems.append(f"{configFile} does not set {flag!r} in createTestBench()")
 
         registrarFile = f'{block}UvmRegistrar.cpp'
         with open(os.path.join(uvmDir, registrarFile)) as f:

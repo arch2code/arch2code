@@ -11,6 +11,9 @@ public:
     static bool isTimeout;
     static uint64_t enablers;
     static uint64_t enableVotes;
+    // Set by the UVM testbench config: the models may idle while the UVM test
+    // waits, and the UVM flow bounds stalls itself.
+    static bool stallCheckDisabledByUvm;
     static void registerEnabler(void) {enablers++;}; // to enable or disable the watchdog you must be an enabler
     static void tickleWatchdog(void) {tickled = true;}; // tickle the watchdog to prevent timeout
     static bool watchDogIsExpired(void) {return isTimeout;};

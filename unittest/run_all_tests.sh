@@ -722,6 +722,12 @@ python3 test_watchdog_no_terminator.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: UVM flow turns off the watchdog stall check"
+echo "------------------------------------------------------------------------"
+python3 test_watchdog_uvm_stall_check.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: Q_ASSERT exit path per context"
 echo "------------------------------------------------------------------------"
 python3 test_assert_exit_path.py || FAILED=1

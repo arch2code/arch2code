@@ -1121,6 +1121,18 @@ With the model DUT, the generated wrapper drives the pins through the SystemC BF
 
 Tests and end-of-test voters live outside the DUT. The UVM testbench config never calls `set_test_names`, so a model that calls `register_test_name` or `ADD_TEST` exits with `the test list is empty`.
 
+#### The SystemC watchdog
+
+`sc_main` runs `watchDogHandler()` in every flow. Once every registered enabler has voted it on, its stall check fails the run with a `Q_ASSERT` if no model tickles it for one second of wall clock. Under UVM the test drives the DUT, so a model can idle while UVM waits, and the `Q_ASSERT` would end the run before the report phase. The UVM config's `createTestBench()` therefore sets `watchDog::stallCheckDisabledByUvm`, and the handler logs at startup, at every verbosity, that the check is off. The no-terminator check stays on.
+
+The UVM checks that bound a stall instead depend on the DUT:
+
+- Mode B: the lane skew, lone lane and joint stall rules (section 9.10), then the output deadline and the drain (section 9.6).
+- Mode A, `rtl` or `model`: the output deadline, once `run_body()` returns, and the run timeout (section 9.6). A DUT that stops taking input blocks `run_body()`, so only the run timeout reports it.
+- A test that does not extend `<block>_base_test` has neither the output deadline nor the run timeout.
+
+A model whose tickles stand for internal progress that no port shows loses that check under UVM. Report the stall from the model with `errorCode::fail`, or expose the progress on a port the test checks.
+
 #### Builder layers
 
 A builder layer ships its agents through `A2C_LAYER_UVM_F_FILES`, a list of `-F` files of agent packages, each path relative to its list. Under `USE_UVM` the flow compiles them after `a2c_uvm.f`, which lists `a2c_clk_if.sv` and `a2c_uvm_pkg.sv` first, so a layer package can import `a2c_uvm_pkg`. Make reads each list with `$(file <)`, which needs GNU Make 4.2, and makes the lists and every file they name prerequisites of the snapshot. Pro adds `pro/common/systemVerilog/uvm/a2cPro_uvm.f` in `a2cPro.mk`, and its checkers through the `-y` line of `a2cPro.f` and `A2C_LAYER_VCS_LIB_SV_FILES`.

@@ -5,6 +5,9 @@
 # run for UVM errors. When UVM never finishes, as when a UVM_FATAL calls
 # $finish, final() fails the run under Xcelium, where sc_start returns. Under
 # VCS the $finish skips final(), and main.cpp's exit_handler fails the run.
+# It turns off the SystemC watchdog's stall check, whose Q_ASSERT would end
+# the run with no UVM report while the models idle and UVM waits; the UVM
+# flow bounds stalls itself.
 # Only the Xcelium and VCS builds compile it, because it selects the
 # <block>_uvm factory entry that only the registrar registers, and the
 # registrar is built only there.
@@ -36,6 +39,7 @@ def render(args, prj, data):
         '#include "bfmContractCheck.h"',
         '#include "instanceFactory.h"',
         '#include "testBenchConfigFactory.h"',
+        '#include "watchDog.h"',
         f'#include "{uvm["scWrapperHeader"]}"',
         '',
         'namespace {',
@@ -66,6 +70,7 @@ def render(args, prj, data):
         '    bool createTestBench(void) override',
         '    {',
         '        bfmContractCheck::failOnBreak = true;',
+        '        watchDog::stallCheckDisabledByUvm = true;',
         f'        {run}::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";',
         f'        {run}::modelDut = m_uvmDut == "model" || m_uvmDut == "both";',
         f'        instanceFactory::registerInstance("{blockName}", "uvm");',
