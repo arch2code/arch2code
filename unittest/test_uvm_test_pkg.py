@@ -22,7 +22,13 @@ wait_for_outputs() is a stable point for the model comparators. At its
 check_phase a run whose input agents sent no item, through their sequencers
 or a status input's driver, and whose counters were declared no transaction
 warns A2C_NO_STIMULUS, unless
-no_stimulus_expected is set, as the scaffolded smoke test does. The fail test
+no_stimulus_expected is set, as the scaffolded smoke test does. The base
+test implements a2c_run_work, so its run timeout, an a2c_run_timeout child
+on the block's first clock, can derive its budget from the items sent and
+the transactions the counters expect. It hands that child
+run_timeout_cycles, run_timeout_floor_cycles and run_timeout_factor through
+the config_db, each from its plusarg, when 0 or more; left at -1 each takes
+the child's default. The fail test
 adds the missing transactions to the first counted output after the smoke
 stimulus, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
 in Mode B, with each lane's pending count equal to the missing count. A block
@@ -47,7 +53,8 @@ The loopback simulates the template's base test too:
 common/systemVerilog/uvm/loopback/a2c_gen_base_test_lb_tests.svh holds
 render_tests() of it for a stand-in env between its RENDERED markers, and
 must match the template's current text. The stand-in env has a status
-input, whose agent has no sequencer, so the copy also renders its count.
+input, whose agent has no sequencer, so the copy also renders its count, and
+a second clock, so the copy shows the run timeout on the first.
 """
 
 import os
@@ -104,7 +111,7 @@ SPAN_1 = [
 ]
 
 BASE_TEST = [
-    'class ubDut_base_test extends uvm_test;',
+    'class ubDut_base_test extends uvm_test implements a2c_run_work;',
     'ubDut_tb_env env;',
     'int unsigned output_deadline_cycles = 200000;',
     'int unsigned quiet_cycles = 1000;',
@@ -115,6 +122,10 @@ BASE_TEST = [
     'bit          drain_cut_expected;',
     'int          joint_stall_cycles = -1;',
     'bit          no_stimulus_expected;',
+    'int          run_timeout_cycles = -1;',
+    'int          run_timeout_floor_cycles = -1;',
+    'int          run_timeout_factor = -1;',
+    'a2c_run_timeout run_timeout;',
     '`uvm_component_utils(ubDut_base_test)',
     'void\'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));',
     'void\'($value$plusargs("a2c_quiet_cycles=%d", quiet_cycles));',
@@ -127,6 +138,9 @@ BASE_TEST = [
     'void\'($value$plusargs("a2c_drain_cut_expected=%d", drain_cut_expected));',
     'void\'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));',
     'void\'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));',
+    'void\'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));',
+    'void\'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));',
+    'void\'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);',
@@ -135,7 +149,19 @@ BASE_TEST = [
     'uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);',
     'if (joint_stall_cycles >= 0) begin',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_joint_stall_cycles", joint_stall_cycles);',
+    'if (run_timeout_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_cycles", run_timeout_cycles);',
+    'if (run_timeout_floor_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_floor_cycles", run_timeout_floor_cycles);',
+    'if (run_timeout_factor >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_factor", run_timeout_factor);',
     'env = ubDut_tb_env::type_id::create("env", this);',
+    'run_timeout = a2c_run_timeout::type_id::create("run_timeout", this);',
+    'virtual function void connect_phase(uvm_phase phase);',
+    'super.connect_phase(phase);',
+    'run_timeout.clk_vif = env.clk_vif;',
+    'run_timeout.clock   = "clk";',
+    'run_timeout.work    = this;',
     'virtual task run_phase(uvm_phase phase);',
     'phase.raise_objection(this);',
     'env.clk_vif.wait_reset_release();',
@@ -165,13 +191,16 @@ OUTPUT_DECLARED = ['if (env.out_counter.declared() != 0) return;']
 STIMULUS_SENT = [
     '`uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
     'endfunction',
-    'function int unsigned stimulus_sent();',
+    'virtual function int unsigned stimulus_sent();',
     'int unsigned n = 0;',
     'n += a2c_items_sent#(in_item_t)::of(env.in_agent);',
     'return n;',
     'endfunction',
-    'endclass : ubDut_base_test',
+    'virtual function int unsigned outputs_declared();',
+    'int unsigned n = 0;',
 ]
+OUTPUT_WORK = ['n += env.out_counter.declared();']
+WORK_END = ['return n;', 'endfunction', 'endclass : ubDut_base_test']
 
 # The Mode B tail of wait_for_outputs(), whole and in order.
 MODE_B_TAIL = ['if (env.dual_dut) begin', 'env.model_stable_point();', 'end', 'endtask']
@@ -230,7 +259,7 @@ LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env',
                           {'name': 'lb_st', 'agent': 'lb_st_agent', 'role': 'dst', 'counter': None},
                           {'name': 'lb_out', 'agent': 'lb_out_agent', 'role': 'src', 'counter': 'lb_out_counter',
                            'clockVif': 'clk_vif'}],
-                'clocks': [{'vif': 'clk_vif'}]}
+                'clocks': [{'clock': 'clk', 'vif': 'clk_vif'}, {'clock': 'clk2', 'vif': 'clk2_vif'}]}
 
 
 def regions(path):
@@ -268,14 +297,14 @@ def check_layout(path, hasOutput, hasModel=True):
         return [f"{name} has the regions {kinds}, expected header, user, tests, user, footer"]
     (_, header), (_, span1), (_, tests), (_, span2), (_, footer) = layout
     baseTest = (BASE_TEST + (OUTPUT_WAIT if hasOutput else []) + STABLE_POINT + NO_STIMULUS
-                + (OUTPUT_DECLARED if hasOutput else []) + STIMULUS_SENT)
+                + (OUTPUT_DECLARED if hasOutput else []) + STIMULUS_SENT + (OUTPUT_WORK if hasOutput else []) + WORK_END)
     footerTests = (FAIL_TEST if hasOutput else []) + (MISMATCH_TEST if hasOutput and hasModel else [])
     for what, lines, expected in (('header', header, HEADER), ('env span', span1, SPAN_1),
                                   ('tests section', tests, baseTest), ('smoke span', span2, SPAN_2),
                                   ('footer', footer, footerTests + FOOTER)):
         if not in_order(lines, expected):
             problems.append(f"{name} {what} is\n    {lines}\n  expected in order\n    {expected}")
-    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + OUTPUT_DECLARED + FAIL_TEST[:1]):
+    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + OUTPUT_DECLARED + OUTPUT_WORK + FAIL_TEST[:1]):
         problems.append(f"{name} waits on an output or declares a fail test, and the block has no counted output")
     if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")

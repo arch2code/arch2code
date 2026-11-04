@@ -121,7 +121,7 @@ package rdy_vld_uvm_pkg;
         // first drive point with no item.
         protected virtual task run_src();
             wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
-            wd.configure();
+            wd.configure(cfg.clk_vif);
             for (int l = 0; l < lanes; l++) begin
                 lane[l].vld  <= 1'b0;
                 lane[l].data <= '0;

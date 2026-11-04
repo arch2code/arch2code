@@ -878,7 +878,11 @@
     //     the lone_lane_cycles-th clock, and 0 turns the rule off;
     //   - after one quiet clock, wait_text() names the lanes that waited in
     //     each of its forms, and joint_waiting() says whether one did,
-    //     whatever joint_stall_cycles.
+    //     whatever joint_stall_cycles;
+    //   - waiting_now() says whether a live lane waited on the last clock,
+    //     after a handshake elsewhere too, with one lane as with two, and
+    //     not once every lane that waited is dead; wait_text() of one lane
+    //     names no lane.
     class a2c_lane_watchdog_rules_test extends lb_base_test;
         lb_wd_master master;
 
@@ -970,7 +974,28 @@
             #1ns;
         endtask
 
+        // Feeds wd one clock with a handshake elsewhere in the environment
+        // and the lanes as took and idle say, with dead lanes as dut_dead and
+        // model_dead say after it, and checks waiting_now(), and with
+        // want_text set wait_text() too.
+        protected task expect_now(string what, a2c_lane_watchdog wd, bit took[2], bit idle[2], bit dut_dead, bit model_dead,
+                                  bit want, string want_text = "");
+            master.waits_for = '{"x", "y"};
+            #1ns;
+            a2c_joint_watch::handshake();
+            void'(wd.progress(took, idle, 0));
+            if (dut_dead || model_dead) wd.dead = '{dut_dead, model_dead};
+            if (wd.waiting_now() != want) begin
+                `uvm_error("LB_WD", $sformatf("%s: waiting_now() is %0d, expected %0d", what, wd.waiting_now(), want))
+            end
+            if (want_text != "" && wd.wait_text() != want_text) begin
+                `uvm_error("LB_WD", $sformatf("%s: wait_text() is '%s', expected '%s'", what, wd.wait_text(), want_text))
+            end
+            #1ns;
+        endtask
+
         virtual task run_phase(uvm_phase phase);
+            a2c_lane_watchdog one;
             phase.raise_objection(this);
             expect_rule("joint", make(10, 3, 5), 20, 0, 0, 5, A2C_BOTH_STALL);
             expect_rule("joint after a move", make(10, 3, 5), 20, 0, 4, 10, A2C_BOTH_STALL);
@@ -992,6 +1017,16 @@
             expect_text("the DUT lane alone", make(10, 3, 5, 1), 0, 0, "x", "y", "unit (uvm_test_top.master), the DUT lane, alone, waiting for x");
             expect_text("joint off", make(10, 3, 0), 0, 0, "x", "x", "unit (uvm_test_top.master), both lanes waiting for x");
             expect_text("both lanes idle", make(10, 3, 5), 1, 1, "x", "y", "", 0);
+            expect_now("now, both lanes waiting", make(10, 3, 5), '{0, 0}, '{0, 0}, 0, 0, 1,
+                       "unit (uvm_test_top.master), the DUT lane waiting for x and the model lane for y");
+            expect_now("now, the model lane waiting", make(10, 3, 5), '{1, 0}, '{0, 0}, 0, 0, 1);
+            expect_now("now, both lanes moved", make(10, 3, 5), '{1, 0}, '{0, 1}, 0, 0, 0);
+            expect_now("now, the model lane dead", make(10, 3, 5), '{0, 0}, '{0, 0}, 0, 1, 1);
+            expect_now("now, both lanes dead", make(10, 3, 5), '{0, 0}, '{0, 0}, 1, 1, 0);
+            one = new(master, "unit", 1, "item", "nothing");
+            expect_now("now, one lane waiting", one, '{0, 0}, '{0, 0}, 0, 0, 1, "unit (uvm_test_top.master), waiting for x");
+            expect_now("now, one lane moved", one, '{1, 0}, '{0, 0}, 0, 0, 0);
+            expect_now("now, one lane idle", one, '{0, 0}, '{1, 0}, 0, 0, 0);
             phase.drop_objection(this);
         endtask
     endclass : a2c_lane_watchdog_rules_test

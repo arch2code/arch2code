@@ -390,7 +390,7 @@ package axi_write_uvm_pkg;
             wd.mons[A2C_DUT_LANE]   = mons[A2C_DUT_LANE];
             wd.mons[A2C_MODEL_LANE] = mons[A2C_MODEL_LANE];
             wd.watchers             = watchers;
-            wd.configure();
+            wd.configure(cfg.clk_vif);
             for (int l = 0; l < lanes; l++) begin
                 lane[l].awvalid <= 1'b0;
                 lane[l].awid    <= '0;

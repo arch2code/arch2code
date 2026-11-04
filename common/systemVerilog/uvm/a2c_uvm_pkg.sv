@@ -123,6 +123,22 @@ package a2c_uvm_pkg;
         if (a2c_config_get(c, field, 1'b1, n)) value = (n != 0);
     endfunction
 
+    // When the run timeout ended the run phase, or -1. An end-of-test
+    // report of missing or unpaired items appends a2c_run_timeout_clause(),
+    // since what it finds missing may be the timeout's doing rather than a
+    // cause of its own. The clause is empty until the run phase is done, so
+    // a report the run phase raises in the timeout's own time step, after
+    // the timeout, does not cite it.
+    realtime a2c_run_timed_out_at = -1;
+
+    function automatic string a2c_run_timeout_clause();
+        uvm_phase run;
+        if (a2c_run_timed_out_at < 0) return "";
+        run = uvm_domain::get_common_domain().find(uvm_run_phase::get());
+        if (run.get_state() != UVM_PHASE_DONE) return "";
+        return $sformatf("; the run timeout ended the run phase at %0t (A2C_RUN_TIMEOUT), which may account for this", a2c_run_timed_out_at);
+    endfunction
+
     `uvm_analysis_imp_decl(_a2c_dut)
     `uvm_analysis_imp_decl(_a2c_model)
 
@@ -158,9 +174,27 @@ package a2c_uvm_pkg;
         // Every count expect_count() has added, which a report does not
         // lower.
         protected int unsigned n_declared;
+        // While a wait_for_count() counts toward its deadline, its clock, the
+        // clocks left and its process, for the run timeout; deadline_clk is
+        // null once it returns. A wait killed by a disable fork or a phase
+        // end never clears it, so deadline_counting() asks the process.
+        virtual a2c_clk_if     deadline_clk;
+        int unsigned           deadline_left;
+        protected process      deadline_waiter;
+        protected static a2c_txn_counter_base counters[$];
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+            counters.push_back(this);
+        endfunction
+
+        static function void get_counters(output a2c_txn_counter_base found[$]);
+            found = counters;
+        endfunction
+
+        function bit deadline_counting();
+            if (deadline_clk == null || deadline_waiter == null) return 0;
+            return deadline_waiter.status() != process::FINISHED && deadline_waiter.status() != process::KILLED;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);
@@ -241,10 +275,14 @@ package a2c_uvm_pkg;
             bit          failed = 0;
             bit          running = 1;
             string       why;
+            deadline_clk    = clk_vif;
+            deadline_waiter = process::self();
             while (outstanding() > 0 && cycles < deadline_cycles && running) begin
+                deadline_left = deadline_cycles - cycles;
                 clk_vif.next_sample(clock_stop_cycles, running);
                 if (running) cycles++;
             end
+            deadline_clk = null;
             if (running) why = $sformatf("deadline of %0d clocks passed", deadline_cycles);
             else why = $sformatf("the clock stopped after %0d clocks", cycles);
             for (int lane = 0; lane < lanes(); lane++) begin
@@ -280,8 +318,8 @@ package a2c_uvm_pkg;
         virtual function void check_phase(uvm_phase phase);
             for (int lane = 0; lane < lanes(); lane++) begin
                 if (received[lane] < expected[lane]) begin
-                    `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test with %0d of %0d expected transactions outstanding, which no wait_for_count covered",
-                                                      where(lane), lane_outstanding(lane), expected[lane]))
+                    `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test with %0d of %0d expected transactions outstanding, which no wait_for_count covered%s",
+                                                      where(lane), lane_outstanding(lane), expected[lane], a2c_run_timeout_clause()))
                 end
                 if (received[lane] > expected[lane]) begin
                     `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test: received %0d transactions, expected %0d (%0d extra)",
@@ -724,8 +762,8 @@ package a2c_uvm_pkg;
             end
             if (n == 0) return;
             if (first_key != "") first = {"in key order, key ", first_key, ", ", first};
-            `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with %0d %s items unpaired after %0d pairs, first %s",
-                                              get_full_name(), n, side, pairs, first))
+            `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with %0d %s items unpaired after %0d pairs, first %s%s",
+                                              get_full_name(), n, side, pairs, first, a2c_run_timeout_clause()))
         endfunction
 
         virtual function void check_phase(uvm_phase phase);
@@ -1042,6 +1080,10 @@ package a2c_uvm_pkg;
         // The passive agents on the DUT lane's pin set, whose model_cmps a
         // cut also cuts, or null.
         a2c_pin_watchers    watchers;
+        // While the drain watches the log, the clocks of clk_vif left before
+        // its deadline and catch-up both run out, for the run timeout; 0
+        // once the log is settled or given up.
+        int unsigned        drain_left;
         // In cycles of clk_vif.
         int unsigned        drain_quiet_cycles = 1000;
         int unsigned        drain_deadline_cycles = 200000;
@@ -1415,6 +1457,16 @@ package a2c_uvm_pkg;
             logs.push_back(log);
         endfunction
 
+        // The logs registered, and whether a drain runs, for the run
+        // timeout.
+        static function void get_logs(output a2c_replay_log_base found[$]);
+            found = logs;
+        endfunction
+
+        static function bit draining();
+            return running;
+        endfunction
+
         // since is when the lane began to trail: the other lane's handshake
         // or completion it did not follow, or, for a lane left alone, its
         // last progress.
@@ -1441,7 +1493,8 @@ package a2c_uvm_pkg;
                                (dead_since[i] < dead_time[i]) ? $sformatf("began to trail at %0t and ", dead_since[i]) : "", dead_time[i],
                                dead_id[i])};
             end
-            return (s == "") ? "" : {s, ", which may be related"};
+            if (s != "") s = {s, ", which may be related"};
+            return {s, a2c_run_timeout_clause()};
         endfunction
 
         static function void request(uvm_phase phase, a2c_replay_log_base log);
@@ -1489,6 +1542,7 @@ package a2c_uvm_pkg;
         endfunction
 
         protected static function void give_up(int unsigned i);
+            logs[i].drain_left = 0;
             settled[i]  = 0;
             given_up[i] = 1;
             update(i);
@@ -1522,6 +1576,7 @@ package a2c_uvm_pkg;
             int unsigned        starts = log.driver.lane_starts(A2C_DUT_LANE);
             bit                 ticking;
             if (!recut) log.since_start = quiet;
+            log.drain_left = log.drain_deadline_cycles + log.catchup_cycles();
             forever begin
                 log.clk_vif.next_rise(stop, ticking);
                 if (!ticking) begin
@@ -1535,6 +1590,7 @@ package a2c_uvm_pkg;
                 idle = (log.idle() && !started(i)) ? idle + 1 : 0;
                 count_start(log, starts);
                 settled[i] = idle >= quiet;
+                log.drain_left = settled[i] ? 0 : ((cycles < log.drain_deadline_cycles) ? log.drain_deadline_cycles - cycles : 0) + log.catchup_cycles();
                 update(i);
                 if (settled[i] || cycles < deadline) continue;
                 if (log.since_start < quiet) break;
@@ -1550,6 +1606,7 @@ package a2c_uvm_pkg;
             end
             log.cut(cycles < log.drain_deadline_cycles);
             for (int unsigned c = 0; !log.cut_reached(); c++) begin
+                log.drain_left = log.catchup_cycles() - c;
                 if (c == log.catchup_cycles()) begin
                     log.end_catchup();
                     give_up(i);
@@ -1563,6 +1620,7 @@ package a2c_uvm_pkg;
                 end
                 count_start(log, starts);
             end
+            log.drain_left = 0;
             if (!given_up[i]) begin
                 settled[i] = 1;
                 update(i);
@@ -1613,6 +1671,7 @@ package a2c_uvm_pkg;
                 wait (updates != seen);
             end
             disable fork;
+            foreach (logs[i]) logs[i].drain_left = 0;
             drained = 1;
             foreach (logs[i]) begin
                 automatic a2c_replay_log_base log = logs[i];
@@ -1639,6 +1698,9 @@ package a2c_uvm_pkg;
         pure virtual function string waiting_for(a2c_lane_e l);
     endclass : a2c_lane_waits
 
+    // The joint stall rule's default bound.
+    localparam int unsigned A2C_JOINT_STALL_CYCLES = 200000;
+
     // The lane-death rules every Mode B master shares, so that the masters
     // of all protocols bound a lane the same way and report it in the same
     // words. A master owns one whatever its lane count, calls configure()
@@ -1660,11 +1722,12 @@ package a2c_uvm_pkg;
     //     every Mode B port's live lanes die, and those that wait are named.
     // 0 turns a rule off. A lane that has nothing to wait for counts as
     // making progress, so an idle port never stalls. A master declares a
-    // lane dead only in Mode B. With one lane the calls do nothing.
+    // lane dead only in Mode B. With one lane the calls only keep whether
+    // the lane waits, for the run timeout's report.
     class a2c_lane_watchdog;
         int unsigned        lane_skew_cycles = 200000;
         int unsigned        lone_lane_cycles = 200000;
-        int unsigned        joint_stall_cycles = 200000;
+        int unsigned        joint_stall_cycles = A2C_JOINT_STALL_CYCLES;
         // The component that reports, the port's name in its messages, and
         // its lane count, 2 in Mode B.
         uvm_component       master;
@@ -1704,6 +1767,11 @@ package a2c_uvm_pkg;
         // and since when.
         protected int unsigned lag;
         protected realtime     led_at;
+        // Whether the last progress() call had one lane trailing the other.
+        protected bit          trailing_now;
+        // The port's clock, which the rules count, for the run timeout; null
+        // when the master gives none.
+        virtual a2c_clk_if     clk_vif;
 
         function new(uvm_component master, string port_name, int unsigned lanes, string unit, string none_left);
             this.master    = master;
@@ -1720,8 +1788,10 @@ package a2c_uvm_pkg;
 
         // Reads a2c_lane_skew_cycles, a2c_lone_lane_cycles and
         // a2c_joint_stall_cycles on the master's path, as a generated base
-        // test sets them from the plusargs of the same names.
-        function void configure();
+        // test sets them from the plusargs of the same names, and keeps the
+        // port's clock.
+        function void configure(virtual a2c_clk_if clk_vif);
+            this.clk_vif = clk_vif;
             void'(a2c_get_config_int(master, "a2c_lane_skew_cycles", lane_skew_cycles));
             void'(a2c_get_config_int(master, "a2c_lone_lane_cycles", lone_lane_cycles));
             void'(a2c_get_config_int(master, "a2c_joint_stall_cycles", joint_stall_cycles));
@@ -1775,13 +1845,16 @@ package a2c_uvm_pkg;
             bit waiting = 0;
             bit quiet;
             int l;
+            for (int k = 0; k < lanes; k++) begin
+                moved[k]  = took[k] || idle[k];
+                waited[k] = !dead[k] && !moved[k];
+            end
             if (lanes != 2) return A2C_PROGRESS;
+            trailing_now = trailing;
             quiet     = !a2c_joint_watch::moved_since(window_at);
             window_at = $realtime;
             for (int k = 0; k < 2; k++) begin
-                moved[k]  = took[k] || idle[k];
-                waited[k] = !dead[k] && !moved[k];
-                waiting  |= waited[k];
+                waiting |= waited[k];
                 if (!dead[k] && moved[k]) moved_at[k] = $realtime;
             end
             stalled = waiting && quiet;
@@ -1801,6 +1874,30 @@ package a2c_uvm_pkg;
                 return A2C_PROGRESS;
             end
             return (++both_stuck >= joint_stall_cycles) ? A2C_BOTH_STALL : A2C_PROGRESS;
+        endfunction
+
+        // The rule counting toward its bound on this port, if any, and the
+        // clocks it has left, for the run timeout: with one lane live, the
+        // lone lane rule while that lane makes no progress; with both live,
+        // the skew rule while one trails, which some masters count
+        // themselves, so at most a whole bound, or else the joint stall rule
+        // while no port moves. "" when none is counting. A master resets
+        // the counts on the clock its lanes make progress or finish.
+        function string counting(output int unsigned left);
+            left = 0;
+            if (lanes != 2 || all_dead()) return "";
+            if (dead[A2C_DUT_LANE] != dead[A2C_MODEL_LANE]) begin
+                if (lone_lane_cycles == 0 || stuck == 0 || stuck >= lone_lane_cycles) return "";
+                left = lone_lane_cycles - stuck;
+                return "lone lane rule (lone_lane_cycles)";
+            end
+            if (trailing_now && lane_skew_cycles != 0) begin
+                left = lane_skew_cycles - ((lag < lane_skew_cycles) ? lag : 0);
+                return "lane skew rule (lane_skew_cycles)";
+            end
+            if (joint_stall_cycles == 0 || both_stuck == 0 || both_stuck >= joint_stall_cycles) return "";
+            left = joint_stall_cycles - both_stuck;
+            return "joint stall rule (joint_stall_cycles)";
         endfunction
 
         // Declares the lone live lane dead after A2C_LONE_STALL. idle says
@@ -1828,11 +1925,22 @@ package a2c_uvm_pkg;
             return stalled;
         endfunction
 
-        // The port and what its lanes waited for, for the A2C_JOINT_STALL
-        // report.
+        // Whether a live lane waited on the port's last clock, whether or
+        // not a handshake came anywhere. A master calls progress() on every
+        // clock it holds an item, so one that holds none is not waiting.
+        function bit waiting_now();
+            for (int l = 0; l < lanes; l++) if (waited[l] && !dead[l]) return 1;
+            return 0;
+        endfunction
+
+        // The port and what its lanes waited for on its last clock, for the
+        // A2C_JOINT_STALL and A2C_RUN_TIMEOUT reports.
         function string wait_text();
             string w[2];
-            for (int l = 0; l < 2; l++) if (waited[l]) w[l] = waits.waiting_for(a2c_lane_e'(l));
+            if (lanes != 2) return $sformatf("%s, waiting for %s", who(), waits.waiting_for(A2C_DUT_LANE));
+            // A dead lane is never asked: a2c_lane_waits answers only for a
+            // live lane, which a hand-written master may rely on.
+            for (int l = 0; l < 2; l++) if (waited[l] && !dead[l]) w[l] = waits.waiting_for(a2c_lane_e'(l));
             if (dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE]) begin
                 a2c_lane_e l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
                 return $sformatf("%s, the %s lane, alone, waiting for %s", who(), a2c_lane_name(l), w[l]);
@@ -1963,6 +2071,11 @@ package a2c_uvm_pkg;
             dogs.push_back(wd);
         endfunction
 
+        // The watchdogs registered, for the run timeout's floor.
+        static function void get_dogs(output a2c_lane_watchdog found[$]);
+            found = dogs;
+        endfunction
+
         static function void stall(a2c_lane_watchdog by);
             string ports = "";
             foreach (dogs[i]) begin
@@ -1974,7 +2087,371 @@ package a2c_uvm_pkg;
                                                             a2c_replay_drain::death_context($realtime)), by.master)
             foreach (dogs[i]) dogs[i].die_jointly();
         endfunction
+
+        // The ports whose live lanes wait now, whatever the joint stall's
+        // quiet window, in any mode, for the run timeout's report.
+        static function string waiting_now();
+            string ports = "";
+            foreach (dogs[i]) begin
+                if (!dogs[i].waiting_now()) continue;
+                ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
+            end
+            return (ports == "") ? "none" : ports;
+        endfunction
     endclass : a2c_joint_watch
+
+    // What a generated base test has declared so far, from which the run
+    // timeout derives its budget.
+    interface class a2c_run_work;
+        // The items the input agents have sent.
+        pure virtual function int unsigned stimulus_sent();
+        // The transactions the output counters expect, summed over them.
+        pure virtual function int unsigned outputs_declared();
+    endclass : a2c_run_work
+
+    // The derived run timeout's defaults. A run takes about a + b x W
+    // clocks: a is fixed overhead, chiefly the output quiet windows, and b
+    // the clocks per unit of work. The floor covers a: it exceeds the
+    // progress rules' default bounds together and ten times the longest
+    // measured run. The factor covers b: it exceeds the steepest measured
+    // slope. specs/SIMULATOR_INTEGRATION.md has the measurement.
+    localparam int unsigned A2C_RUN_TIMEOUT_FLOOR_CYCLES = 2500000;
+    localparam int unsigned A2C_RUN_TIMEOUT_FACTOR = 20;
+    // The clocks a deferred run timeout waits after the last progress rule
+    // it defers to is due, so the rule's report comes first.
+    localparam int unsigned A2C_RUN_TIMEOUT_DEFER_MARGIN = 10;
+
+    typedef class a2c_run_timeout;
+
+    // Ends each task phase that begins after the run timeout has expired,
+    // for a2c_run_timeout. A callback rather than a process, because the
+    // run phase kills the processes forked under it when it ends.
+    class a2c_run_timeout_phase_cb extends uvm_phase_cb;
+        a2c_run_timeout timeout;
+
+        function new(string name = "a2c_run_timeout_phase_cb");
+            super.new(name);
+        endfunction
+
+        virtual function void phase_state_change(uvm_phase phase, uvm_phase_state_change change);
+            timeout.phase_changed(phase, change.get_state());
+        endfunction
+    endclass : a2c_run_timeout_phase_cb
+
+    // The run timeout of a generated base test, a backstop so that a run
+    // that never ends gives a report rather than a farm kill with none; the
+    // progress rules are what detect a stop. It counts rising edges of
+    // clk_vif from its reset release, so the bound needs no clock period. A
+    // clock that stops stops the count.
+    //
+    // The budget is a2c_run_timeout_cycles when that is set above 0, and
+    // none when it is 0, or what a test that computes it from its stimulus
+    // passes to fix(). Left unset, it is a2c_run_timeout_floor_cycles plus
+    // a2c_run_timeout_factor times W, the work the test has declared: the
+    // items its inputs have sent plus the transactions its outputs expect.
+    // A sum rather than a max, because a test's phases, such as register
+    // configuration and then a frame, run one after the other. The count
+    // derives W again each time it reaches the budget, so the budget grows
+    // with the stimulus sent meanwhile.
+    //
+    // The progress rules report a stop in their own words, so a rule that
+    // is counting toward its bound when a derived budget is reached may
+    // fire first, whatever its bound: the output deadline of a
+    // wait_for_count(), a Mode B master's lane skew, lone lane or joint
+    // stall rule, and the drain's deadline and catch-up. The count then
+    // collects the rules counting at that clock, each with the clocks it
+    // may still take to report, which for an output deadline or a drain
+    // covers its clock stopping, converted into clocks of clk_vif by the
+    // two clocks' periods and rounded up, and defers once, to the last of
+    // them plus A2C_RUN_TIMEOUT_DEFER_MARGIN clocks, with an
+    // A2C_RUN_TIMEOUT info naming them. At that clock it expires unless W
+    // has grown the budget meanwhile, and it never defers again. No bound
+    // enters the budget, so changing a bound never makes a run time out
+    // before its budget, but the deferral covers only the rules counting
+    // when the budget is reached, not the rest of the run: a rule that
+    // starts counting after that, or starts again with a new bound, gets
+    // no extra time, so a run of long waits, such as frames, sizes its
+    // budget with fix() instead. A fixed budget, from
+    // a2c_run_timeout_cycles or fix(), is the test's own sizing and does
+    // not defer.
+    //
+    // At the budget it reports A2C_RUN_TIMEOUT and ends the run phase, and
+    // every other task phase that is running, prematurely, so extract_phase
+    // and check_phase still run and report what is missing, which a
+    // UVM_FATAL or UVM's PH_TIMEOUT would skip. From then on,
+    // a2c_run_timeout_phase_cb ends each task phase other than run as it
+    // begins, a runtime phase or a user-defined one: UVM's own timeout
+    // lives in the run phase and ends with it, so nothing else would bound
+    // a later phase that waits. Ending prematurely skips the Mode B drain,
+    // and UVM clears the objections still raised with an OBJTN_CLEAR
+    // warning. A run that ends in time logs its length against the budget.
+    // Verified on UVM 1.2.
+    class a2c_run_timeout extends uvm_component;
+        // Set by the base test in connect_phase.
+        virtual a2c_clk_if         clk_vif;
+        string                     clock;
+        a2c_run_work               work;
+        // Whether a2c_run_timeout_cycles fixes the budget, and its value.
+        bit                        fixed;
+        int unsigned               cycles;
+        int unsigned               floor_cycles = A2C_RUN_TIMEOUT_FLOOR_CYCLES;
+        int unsigned               factor = A2C_RUN_TIMEOUT_FACTOR;
+        // Whether fix() fixes the budget, and its value. They are kept apart
+        // from the knob, so a fix() made before build_phase reads the knob
+        // survives that read.
+        protected bit              fix_set;
+        protected int unsigned     fix_cycles;
+        // The rising edges of clk_vif since its reset release.
+        protected longint unsigned elapsed;
+        protected bit              started;
+        protected bit              expired;
+        protected longint unsigned budget;
+        // The work last derived, and its two parts.
+        protected longint unsigned work_now;
+        protected int unsigned     sent_now;
+        protected int unsigned     declared_now;
+        // The task phases ended as they began, until each has ended.
+        protected bit              ended_late[uvm_phase];
+        // Whether the count has used its one deferral, and the clock it was
+        // reached at and the clock it defers to.
+        protected bit              deferred;
+        protected longint unsigned deferred_at;
+        protected longint unsigned defer_to;
+
+        `uvm_component_utils(a2c_run_timeout)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            fixed = a2c_get_config_int(this, "a2c_run_timeout_cycles", cycles);
+            void'(a2c_get_config_int(this, "a2c_run_timeout_floor_cycles", floor_cycles));
+            void'(a2c_get_config_int(this, "a2c_run_timeout_factor", factor));
+        endfunction
+
+        // Fixes the budget at n clocks from the reset release, 0 for none,
+        // from any phase, taking effect from the next clock. It overrides
+        // every uvm_config_db setting of a2c_run_timeout_cycles, and yields
+        // only to +a2c_run_timeout_cycles.
+        function void fix(int unsigned n);
+            int unsigned given;
+            if ($value$plusargs("a2c_run_timeout_cycles=%d", given)) return;
+            fix_set    = 1;
+            fix_cycles = n;
+            derive();
+        endfunction
+
+        protected function bit is_fixed();
+            return fix_set || fixed;
+        endfunction
+
+        protected function bit is_off();
+            return is_fixed() && budget == 0;
+        endfunction
+
+        protected function void derive();
+            sent_now     = 0;
+            declared_now = 0;
+            if (work != null) begin
+                sent_now     = work.stimulus_sent();
+                declared_now = work.outputs_declared();
+            end
+            work_now = longint'(sent_now) + declared_now;
+            if (fix_set) budget = fix_cycles;
+            else if (fixed) budget = cycles;
+            else budget = floor_cycles + factor * work_now;
+        endfunction
+
+        // n clocks of a clock of period p in clocks of clk_vif, rounded up.
+        protected function longint unsigned in_clocks(longint unsigned n, realtime p);
+            if (p == 0 || clk_vif == null || clk_vif.period == 0) return n;
+            return longint'($ceil(n * p / clk_vif.period));
+        endfunction
+
+        // The progress rules counting now, by name and the clocks each has
+        // left, and the most clocks of clk_vif any of them has left.
+        protected function longint unsigned pending(output string names);
+            a2c_txn_counter_base counters[$];
+            a2c_lane_watchdog    dogs[$];
+            a2c_replay_log_base  logs[$];
+            longint unsigned     most = 0;
+            names = "";
+            a2c_txn_counter_base::get_counters(counters);
+            // A rule whose clock stops reports clock_stop_cycles and a half
+            // of its periods after its last edge instead of at its bound, so
+            // a counter's or log's clocks left take clock_stop_cycles + 1
+            // more.
+            foreach (counters[i]) begin
+                if (!counters[i].deadline_counting()) continue;
+                note(names, most, $sformatf("the output deadline of %s (%s)", counters[i].port_name, counters[i].get_full_name()),
+                     in_clocks(longint'(counters[i].deadline_left) + counters[i].clock_stop_cycles + 1, counters[i].deadline_clk.period));
+            end
+            a2c_joint_watch::get_dogs(dogs);
+            foreach (dogs[i]) begin
+                int unsigned left;
+                string       rule;
+                rule = dogs[i].counting(left);
+                if (rule == "") continue;
+                note(names, most, {"the ", rule, " of ", dogs[i].who()}, in_clocks(left, (dogs[i].clk_vif == null) ? 0 : dogs[i].clk_vif.period));
+            end
+            a2c_replay_drain::get_logs(logs);
+            foreach (logs[i]) begin
+                if (!a2c_replay_drain::draining() || logs[i].drain_left == 0) continue;
+                note(names, most, $sformatf("the drain deadline and catch-up of %s", logs[i].get_full_name()),
+                     in_clocks(longint'(logs[i].drain_left) + logs[i].clock_stop_cycles + 1, logs[i].clk_vif.period));
+            end
+            return most;
+        endfunction
+
+        protected function void note(ref string names, ref longint unsigned most, input string rule, input longint unsigned left);
+            names = {names, (names == "") ? "" : "; ", $sformatf("%s, %0d clocks left", rule, left)};
+            if (left > most) most = left;
+        endfunction
+
+        // How the budget was set.
+        protected function string how();
+            if (fix_set) return "The budget is fixed by run_timeout.fix() in the test";
+            if (fixed) return "The budget is fixed by run_timeout_cycles (+a2c_run_timeout_cycles)";
+            return $sformatf("The budget is run_timeout_floor_cycles %0d + run_timeout_factor %0d x %0d, the work the test has declared (input items sent %0d, output transactions expected %0d)%s",
+                             floor_cycles, factor, work_now, sent_now, declared_now,
+                             (defer_to > deferred_at) ? $sformatf(", deferred at %0d clocks by %0d to the progress rules then counting", deferred_at, defer_to - deferred_at) : "");
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            if (clk_vif == null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s has no clk_vif; a test that overrides connect_phase() must call super.connect_phase()", get_full_name()))
+            end
+            clk_vif.wait_reset_release();
+            started = 1;
+            derive();
+            forever begin
+                @(posedge clk_vif.clk);
+                elapsed++;
+                if (is_off() || elapsed < budget || elapsed < defer_to) continue;
+                derive();
+                if (is_off() || elapsed < budget) continue;
+                if (!deferred && !is_fixed()) begin
+                    string           names;
+                    longint unsigned left = pending(names);
+                    deferred = 1;
+                    if (left != 0) begin
+                        deferred_at = elapsed;
+                        defer_to    = elapsed + left + A2C_RUN_TIMEOUT_DEFER_MARGIN;
+                        `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run phase has not ended after %0d clocks of %s, its run timeout, while progress rules count toward their own reports: %s. The run timeout defers to them, once, for %0d clocks, and then ends the run phase if it is still running",
+                                                               elapsed, clock, names, defer_to - elapsed), UVM_NONE)
+                        continue;
+                    end
+                end
+                expire(phase);
+                return;
+            end
+        endtask
+
+        // The objectors of p's objection, in name order, leaving out those
+        // that have dropped all they raised while one below them still
+        // objects, which get_objectors() also lists.
+        protected function string objectors(uvm_phase p);
+            uvm_objection objection = p.get_objection();
+            uvm_object    objs[$];
+            string        names[$];
+            string        s = "";
+            if (objection == null) return "";
+            objection.get_objectors(objs);
+            foreach (objs[i]) if (objection.get_objection_count(objs[i]) != 0) names.push_back(objs[i].get_full_name());
+            names.sort();
+            foreach (names[i]) s = {s, (i == 0) ? "" : ", ", names[i]};
+            return s;
+        endfunction
+
+        // Whether the timeout ends p: a task phase other than run, which
+        // expire() ends itself.
+        protected function bit ends(uvm_phase p);
+            uvm_task_phase t;
+            if (p.get_phase_type() != UVM_PHASE_NODE || p.get_imp() == uvm_run_phase::get()) return 0;
+            return $cast(t, p.get_imp());
+        endfunction
+
+        protected function string label(uvm_phase p);
+            uvm_domain domain = p.get_domain();
+            return {p.get_name(), " phase", (domain == uvm_domain::get_uvm_domain()) ? "" : {" of domain ", domain.get_name()}};
+        endfunction
+
+        // The task phases the timeout ends that are running, found by
+        // walking the whole phase graph, in domain and then phase name
+        // order.
+        protected function void running_phases(ref uvm_phase found[$]);
+            uvm_phase todo[$];
+            bit       seen[uvm_phase];
+            todo.push_back(uvm_domain::get_common_domain());
+            while (todo.size() != 0) begin
+                uvm_phase p = todo.pop_front();
+                uvm_phase next[];
+                if (seen.exists(p)) continue;
+                seen[p] = 1;
+                if (ends(p) && p.get_state() inside {UVM_PHASE_EXECUTING, UVM_PHASE_READY_TO_END}) found.push_back(p);
+                p.get_adjacent_successor_nodes(next);
+                foreach (next[k]) todo.push_back(next[k]);
+            end
+            found.sort with ({item.get_domain_name(), " ", item.get_name()});
+        endfunction
+
+        // From a2c_run_timeout_phase_cb, after the timeout: ends a task
+        // phase as it begins, and when it ends names what objected in it.
+        function void phase_changed(uvm_phase p, uvm_phase_state state);
+            if (state == UVM_PHASE_EXECUTING && ends(p)) begin
+                ended_late[p] = 1;
+                p.end_prematurely();
+            end else if (state == UVM_PHASE_ENDED && ended_late.exists(p)) begin
+                string by = objectors(p);
+                ended_late.delete(p);
+                if (by != "") begin
+                    `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run timeout, which expired at %0t, ended the %s as it began. Objections raised by: %s",
+                                                           a2c_run_timed_out_at, label(p), by), UVM_NONE)
+                end
+            end
+        endfunction
+
+        protected function void expire(uvm_phase phase);
+            uvm_component            test = get_parent();
+            uvm_phase                held[$];
+            a2c_run_timeout_phase_cb cb = new();
+            string                   raised = objectors(phase);
+            string                   rate = "no work declared";
+            string        raise = "Raise run_timeout_factor or run_timeout_floor_cycles, or fix the budget with run_timeout_cycles or fix(), if the test is legitimately longer.";
+            if (is_fixed()) raise = "Raise run_timeout_cycles, or the value the test passes to fix(), if the test is legitimately longer.";
+            expired              = 1;
+            a2c_run_timed_out_at = $realtime;
+            if (work_now != 0) rate = $sformatf("%0.1f clocks per unit of the work declared, W %0d", real'(elapsed) / work_now, work_now);
+            running_phases(held);
+            foreach (held[i]) begin
+                string by = objectors(held[i]);
+                if (by == "") continue;
+                raised = {raised, (raised == "") ? "" : "; ", label(held[i]), ": ", by};
+            end
+            `uvm_error_context("A2C_RUN_TIMEOUT", $sformatf("%s: the run phase has not ended after %0d clocks of %s, its run timeout: %s. %s. Ports waiting now: %s. Objections still raised by: %s. %s",
+                                                            test.get_type_name(), elapsed, clock, rate, how(), a2c_joint_watch::waiting_now(),
+                                                            (raised == "") ? "none" : raised, raise), test)
+            cb.timeout = this;
+            uvm_callbacks#(uvm_phase, uvm_phase_cb)::add(null, cb);
+            phase.end_prematurely();
+            foreach (held[i]) held[i].end_prematurely();
+        endfunction
+
+        virtual function void extract_phase(uvm_phase phase);
+            super.extract_phase(phase);
+            if (!started || expired) return;
+            if (is_off()) begin
+                `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run phase ended after %0d clocks of %s, with no run timeout. %s at 0",
+                                                       elapsed, clock, how()), UVM_LOW)
+                return;
+            end
+            derive();
+            `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run phase ended after %0d clocks of %s, within its run timeout of %0d. %s",
+                                                   elapsed, clock, (defer_to > budget) ? defer_to : budget, how()), UVM_LOW)
+        endfunction
+    endclass : a2c_run_timeout
 
     // What a2c_mem_model returns for a word nothing has written.
     typedef enum {A2C_MEM_FILL_ZERO, A2C_MEM_FILL_RANDOM, A2C_MEM_FILL_FIXED} a2c_mem_fill_e;

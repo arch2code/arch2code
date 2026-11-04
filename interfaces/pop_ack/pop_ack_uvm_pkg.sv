@@ -190,7 +190,7 @@ package pop_ack_uvm_pkg;
             wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once, with the rdata it was sent with");
             wd.cmp      = cmp;
             wd.watchers = watchers;
-            wd.configure();
+            wd.configure(cfg.clk_vif);
             drive_pop(1'b0);
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();

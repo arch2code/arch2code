@@ -139,7 +139,7 @@ package notify_ack_uvm_pkg;
         // on the first drive point with no item.
         protected virtual task run_src();
             wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
-            wd.configure();
+            wd.configure(cfg.clk_vif);
             drive_notify(1'b0);
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();

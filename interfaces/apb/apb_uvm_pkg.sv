@@ -121,7 +121,7 @@ package apb_uvm_pkg;
             wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once, a read with the data it was sent with");
             wd.cmp      = cmp;
             wd.watchers = watchers;
-            wd.configure();
+            wd.configure(cfg.clk_vif);
             for (int l = 0; l < lanes; l++) begin
                 lane[l].psel    <= 1'b0;
                 lane[l].penable <= 1'b0;
