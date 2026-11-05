@@ -783,8 +783,10 @@ registers:
       section: structures
       field: structure
   wordLines: optionalConst(0)
+  count: optionalConst()   # absent: a scalar register; present: an array of count elements
   offset: optional(0)
   decodeSize: optional(0)   # filled out by calcAddresses for memory-type registers; bytes of memory-decoded address range (worst case)
+  stride: optional(0)   # filled out by calcAddresses; bytes between array elements, 0 for a scalar
   defaultValue: optional(0)
   isParameterizable: auto(regIsParameterizable)
   maxBytes: auto(regMaxBytes)
@@ -843,7 +845,7 @@ memoryConnections:
 
 
 registerConnections:
-  _attribs: [flat]
+  _attribs: [flat, post(validateRegisterConnection)]
   register: required
   block:
     _type: required
@@ -863,6 +865,7 @@ registerConnections:
     _validate:
       section: instances
       field: instance
+  index: optionalConst()   # the one element of an array register this instance takes
   isParameterizable: auto(registerConnectionIsParameterizable)
   # A registerConnections row carries no clock: of its own; the register's
   # domain is that of the bus reaching its owning block's register port, and

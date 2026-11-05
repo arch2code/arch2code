@@ -59,7 +59,7 @@ def get_intf_data(data, prj_data):
 def get_channel_name(data):
     channel_base = data["interfaceName"]
     if data.get('channelCount', 0) > 1:
-        channel_base = f"{channel_base}_{data['index']}"
+        channel_base = f"{channel_base}_{data['channelIndex']}"
     return channel_base
 
 def sv_type_width_expression(type_info, prj):

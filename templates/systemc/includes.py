@@ -225,8 +225,12 @@ def includeRegAddresses(args, prj, data):
     out = list()
     out.append("//register addresses")
 
-    for key, value in prj.data['registers'].items():
+    for value in prj.getRegisterAddressRows():
         out.append(f"#define REG_{ value['block'].upper() }_{ value['register'].upper() } {  ' ' * ( 30 - (len(value['block'])) - (len(value['register']))) }0x{(int(value['offset'])):x}")
+        if value['countValue'] is not None:
+            for suffix, text in (('_STRIDE', f"0x{int(value['stride']):x}"), ('_COUNT', f"{value['countValue']}")):
+                name = value['register'] + suffix
+                out.append(f"#define REG_{ value['block'].upper() }_{ name.upper() } {  ' ' * ( 30 - (len(value['block'])) - (len(name))) }{text}")
 
     out.append("//memories base addresses")
     for key, value in prj.data['memories'].items():
