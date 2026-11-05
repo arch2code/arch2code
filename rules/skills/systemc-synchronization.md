@@ -47,10 +47,19 @@ void blk::serviceThread(void)
 }
 ```
 
-Which ports are active when the thread wakes depends on timing. In a block that runs in tandem, pass the choice through `arb()` before servicing it, as in the `arb` example in section 2.
+Which ports are active when the thread wakes depends on timing. In a block that runs in tandem, pass the choice through `arb()` before servicing it, as in the `arb` example in section 2. In RTL-model tandem this works only where the RTL arbitrates between the same ports: an `arb()` with no RTL arbiter behind it waits for ever.
 
 ## 2. `synchLock`
-`synchLock<T>` (default `T = uint64_t`) is a mutex that also records decisions for tandem. Outside tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`. Tandem is an A2C Pro feature. There, two copies of a block run side by side. The first copy to create a lock records each `lock()` and `arb()` value, and the second copy replays them in the same order.
+`synchLock<T>` (default `T = uint64_t`) is a mutex that also records decisions for tandem. Outside tandem, `lock()` and `unlock()` are a plain mutex and `arb(v)` returns `v`.
+
+Tandem is an A2C Pro feature that runs two implementations of a block side by side. It has two modes:
+
+*   **Model-model.** Two copies of the model. The copy that creates a lock first is the primary.
+*   **RTL-model.** The RTL beside the model. The RTL is always the primary: its arbiters send their decisions to the model's locks through DPI.
+
+In both modes the primary sends each `lock()` and `arb()` decision, and the receiving copy waits for each one and replays them in order. In RTL-model tandem the model is always the receiving copy. Put the model's `lock()` and `arb()` calls where the RTL arbitrates, with the same choices. A call the RTL has no counterpart for waits for a decision that never comes.
+
+The UVM Mode B testbench follows the same rule for the responses and arbitration choices its agents make, such as which AXI burst a slave answers next: the RTL's lane decides and the model's lane replays (`specs/SIMULATOR_INTEGRATION.md` section 9.12).
 
 ### Creating a lock
 Declare a member and initialize it in the constructor's initializer slot:
@@ -68,7 +77,7 @@ std::shared_ptr<synchLock<>> stateLock;
 *   For a non-integral `T`, the factory logs values with `T::prt()`, so `T` must have one.
 
 ### `lock` and `unlock`
-*   `lock(v)` takes the mutex. In tandem, the second copy waits until the first copy's next recorded value equals `v`. The value is the match key, not a debug label, so give each call site its own value.
+*   `lock(v)` takes the mutex. In tandem, the receiving copy waits until the primary's next recorded value equals `v`. The value is the match key, not a debug label, so give each call site its own value.
 *   `unlock()` takes no argument. There is no RAII guard, so unlock on every path out.
 
 ```cpp
@@ -80,9 +89,9 @@ stateLock->unlock();
 `LOCK_SITE_SCHEDULE` is a constant the block defines, one per call site.
 
 ### `arb`
-*   `arb(v)` records the winner your code chose. It adds no fairness. Outside tandem it returns `v` at once. In tandem, the second copy waits for the first copy's value and returns it, so both copies take the same branch.
+*   `arb(v)` records the winner your code chose. It adds no fairness. Outside tandem it returns `v` at once. In tandem, the receiving copy waits for the primary's value and returns it, so both copies take the same branch.
 *   Choose the winner with plain code that models the RTL policy, priority or round-robin, then pass it through `arb()` and branch on the result.
-*   Use `arb()` wherever the decision depends on timing.
+*   Use `arb()` wherever the decision depends on timing and the RTL makes the same decision in an arbiter. A timing-dependent choice the RTL does not arbitrate cannot pass through `arb()` in RTL-model tandem, because no decision arrives for it; restructure the model so the choice follows the RTL's.
 
 `srcArb` is a second `synchLock<>` created as above. Keep `arb()` and `lock()` on separate locks, because in tandem one lock's `lock()` and `arb()` calls share a single replay queue. `SRC_*` are constants the block defines.
 
