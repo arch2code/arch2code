@@ -37,6 +37,8 @@ package a2c_uvm_loopback_pkg;
     bit lb_clk7_runt;
     // Clearing it stops clk8 low at the end of its burst and gap then.
     bit lb_clk8_run = 1;
+    // Clearing it stops clk9 at its level then.
+    bit lb_clk9_run = 1;
 
     virtual class lb_scoreboard_base extends uvm_component;
         int unsigned matched;
@@ -847,6 +849,17 @@ module a2c_uvm_loopback_tb;
     bit rst_n;
 
     always #5 clk = ~clk;
+    // A gated clock of clk3's period whose rising edges fall on clk's, so
+    // a test can put the run timeout's budget exactly a whole number of
+    // half periods after its last rising edge.
+    bit clk9;
+    initial begin
+        #5;
+        forever begin
+            if (lb_clk9_run) clk9 = ~clk9;
+            #10;
+        end
+    end
     // pa2's clock in push_ack_mode_b_dst_two_clock_test.
     bit clk2;
     always #15 clk2 = ~clk2;
@@ -907,6 +920,7 @@ module a2c_uvm_loopback_tb;
     a2c_clk_if clk6_if(.clk(clk6), .rst_n(rst_n));
     a2c_clk_if clk7_if(.clk(clk7), .rst_n(rst_n));
     a2c_clk_if clk8_if(.clk(clk8), .rst_n(rst_n));
+    a2c_clk_if clk9_if(.clk(clk9), .rst_n(rst_n));
     rdy_vld_if #(.data_t(lb_data_t)) rv();
     axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis();
     raw_if #(.data_t(lb_data_t)) raw();
@@ -952,6 +966,7 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk6", clk6_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk7", clk7_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk8", clk8_if);
+        uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk9", clk9_if);
         uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv", rv);
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis", axis);
         uvm_config_db#(raw_vif_t)::set(null, "uvm_test_top", "raw", raw);

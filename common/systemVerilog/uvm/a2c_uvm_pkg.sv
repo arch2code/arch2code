@@ -142,6 +142,20 @@ package a2c_uvm_pkg;
     `uvm_analysis_imp_decl(_a2c_dut)
     `uvm_analysis_imp_decl(_a2c_model)
 
+    // One wait_for_count() counting toward its deadline, for the run
+    // timeout: the process that counts, its clock and the clocks left.
+    class a2c_deadline_wait;
+        process            waiter;
+        virtual a2c_clk_if clk;
+        int unsigned       left;
+
+        // A wait killed by a disable, a disable fork or a phase end never
+        // removes its entry, so the process says whether it still counts.
+        function bit alive();
+            return waiter.status() != process::FINISHED && waiter.status() != process::KILLED;
+        endfunction
+    endclass : a2c_deadline_wait
+
     // Counts the transactions one output port delivers against the number
     // the test expects, with no check of their content. Each
     // wait_for_count() holds the test until every expected transaction has
@@ -174,13 +188,11 @@ package a2c_uvm_pkg;
         // Every count expect_count() has added, which a report does not
         // lower.
         protected int unsigned n_declared;
-        // While a wait_for_count() counts toward its deadline, its clock, the
-        // clocks left and its process, for the run timeout; deadline_clk is
-        // null once it returns. A wait killed by a disable fork or a phase
-        // end never clears it, so deadline_counting() asks the process.
-        virtual a2c_clk_if     deadline_clk;
-        int unsigned           deadline_left;
-        protected process      deadline_waiter;
+        // Every wait_for_count() counting toward its deadline, for the run
+        // timeout, however many overlap. Each wait runs in a child process
+        // of its caller, so a disable of a block that holds the wait kills
+        // it even when the caller's process goes on.
+        protected a2c_deadline_wait waits[$];
         protected static a2c_txn_counter_base counters[$];
 
         function new(string name, uvm_component parent);
@@ -192,9 +204,13 @@ package a2c_uvm_pkg;
             found = counters;
         endfunction
 
-        function bit deadline_counting();
-            if (deadline_clk == null || deadline_waiter == null) return 0;
-            return deadline_waiter.status() != process::FINISHED && deadline_waiter.status() != process::KILLED;
+        // The waits still counting toward their deadlines, dropping those
+        // killed.
+        function void deadline_waits(output a2c_deadline_wait found[$]);
+            a2c_deadline_wait live[$];
+            foreach (waits[i]) if (waits[i].alive()) live.push_back(waits[i]);
+            waits = live;
+            found = live;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);
@@ -271,18 +287,34 @@ package a2c_uvm_pkg;
         // periods has stopped: a shortfall is reported then, and a quiet
         // window ends.
         task wait_for_count(virtual a2c_clk_if clk_vif, int unsigned deadline_cycles, int unsigned quiet_cycles);
-            int unsigned cycles = 0;
-            bit          failed = 0;
-            bit          running = 1;
-            string       why;
-            deadline_clk    = clk_vif;
-            deadline_waiter = process::self();
+            // A wait started on the budget's own edge may add its entry after
+            // the run timeout has looked, and counts as starting after it.
+            fork
+                wait_body(clk_vif, deadline_cycles, quiet_cycles);
+            join
+        endtask
+
+        // The whole wait in one process, so the shortfall check follows the
+        // deadline loop with no scheduling point between them that a count()
+        // on the same edge could slip into.
+        protected task wait_body(virtual a2c_clk_if clk_vif, int unsigned deadline_cycles, int unsigned quiet_cycles);
+            int unsigned      cycles = 0;
+            bit               failed = 0;
+            bit               running = 1;
+            string            why;
+            a2c_deadline_wait w = new();
+            w.waiter = process::self();
+            w.clk    = clk_vif;
+            waits.push_back(w);
             while (outstanding() > 0 && cycles < deadline_cycles && running) begin
-                deadline_left = deadline_cycles - cycles;
+                w.left = deadline_cycles - cycles;
                 clk_vif.next_sample(clock_stop_cycles, running);
                 if (running) cycles++;
             end
-            deadline_clk = null;
+            foreach (waits[i]) if (waits[i] == w) begin
+                waits.delete(i);
+                break;
+            end
             if (running) why = $sformatf("deadline of %0d clocks passed", deadline_cycles);
             else why = $sformatf("the clock stopped after %0d clocks", cycles);
             for (int lane = 0; lane < lanes(); lane++) begin
@@ -1551,6 +1583,9 @@ package a2c_uvm_pkg;
         // Returns whether the log settled.
         protected static function bit clock_stopped(int unsigned i);
             if (logs[i].get_cut() == 0 && logs[i].idle()) begin
+                // The drain may run on for other logs, and the run timeout
+                // must not defer to this one.
+                logs[i].drain_left = 0;
                 settled[i] = 1;
                 update(i);
                 return 1;
@@ -1772,6 +1807,9 @@ package a2c_uvm_pkg;
         // The port's clock, which the rules count, for the run timeout; null
         // when the master gives none.
         virtual a2c_clk_if     clk_vif;
+        // A port clock with no rising edge for this many of its periods and
+        // a half has stopped, as for the output counters and replay logs.
+        int unsigned           clock_stop_cycles = 1000;
 
         function new(uvm_component master, string port_name, int unsigned lanes, string unit, string none_left);
             this.master    = master;
@@ -1786,15 +1824,21 @@ package a2c_uvm_pkg;
             a2c_joint_watch::register(this);
         endfunction
 
-        // Reads a2c_lane_skew_cycles, a2c_lone_lane_cycles and
-        // a2c_joint_stall_cycles on the master's path, as a generated base
-        // test sets them from the plusargs of the same names, and keeps the
-        // port's clock.
+        // Reads a2c_lane_skew_cycles, a2c_lone_lane_cycles,
+        // a2c_joint_stall_cycles and a2c_clock_stop_cycles on the master's
+        // path, as a generated base test sets them from the plusargs of the
+        // same names, and keeps the port's clock.
         function void configure(virtual a2c_clk_if clk_vif);
             this.clk_vif = clk_vif;
             void'(a2c_get_config_int(master, "a2c_lane_skew_cycles", lane_skew_cycles));
             void'(a2c_get_config_int(master, "a2c_lone_lane_cycles", lone_lane_cycles));
             void'(a2c_get_config_int(master, "a2c_joint_stall_cycles", joint_stall_cycles));
+            void'(a2c_get_config_int(master, "a2c_clock_stop_cycles", clock_stop_cycles));
+        endfunction
+
+        // Whether the port's clock has stopped, as next_rise() judges it.
+        function bit clock_stopped();
+            return clk_vif != null && clk_vif.stopped(clock_stop_cycles);
         endfunction
 
         function bit all_dead();
@@ -2154,26 +2198,25 @@ package a2c_uvm_pkg;
     // derives W again each time it reaches the budget, so the budget grows
     // with the stimulus sent meanwhile.
     //
-    // The progress rules report a stop in their own words, so a rule that
-    // is counting toward its bound when a derived budget is reached may
-    // fire first, whatever its bound: the output deadline of a
-    // wait_for_count(), a Mode B master's lane skew, lone lane or joint
-    // stall rule, and the drain's deadline and catch-up. The count then
-    // collects the rules counting at that clock, each with the clocks it
-    // may still take to report, which for an output deadline or a drain
-    // covers its clock stopping, converted into clocks of clk_vif by the
-    // two clocks' periods and rounded up, and defers once, to the last of
-    // them plus A2C_RUN_TIMEOUT_DEFER_MARGIN clocks, with an
+    // The progress rules report a stop in their own words, so a rule that is
+    // counting toward its bound when a derived budget is reached may fire
+    // first, whatever its bound: the output deadline of a wait_for_count(),
+    // a Mode B master's lane skew, lone lane or joint stall rule, and the
+    // drain's deadline and catch-up. The count then collects the rules
+    // counting at that clock, leaving out a lane rule whose clock has
+    // stopped, each with the clocks it may still take to report, which
+    // covers its clock stopping or pausing, converted into clocks of clk_vif
+    // by the two clocks' periods and rounded up, and defers once, to the
+    // last of them plus A2C_RUN_TIMEOUT_DEFER_MARGIN clocks, with an
     // A2C_RUN_TIMEOUT info naming them. At that clock it expires unless W
     // has grown the budget meanwhile, and it never defers again. No bound
     // enters the budget, so changing a bound never makes a run time out
     // before its budget, but the deferral covers only the rules counting
     // when the budget is reached, not the rest of the run: a rule that
-    // starts counting after that, or starts again with a new bound, gets
-    // no extra time, so a run of long waits, such as frames, sizes its
-    // budget with fix() instead. A fixed budget, from
-    // a2c_run_timeout_cycles or fix(), is the test's own sizing and does
-    // not defer.
+    // starts counting after that, or starts again with a new bound, gets no
+    // extra time, so a run of long waits, such as frames, sizes its budget
+    // with fix() instead. A fixed budget, from a2c_run_timeout_cycles or
+    // fix(), is the test's own sizing and does not defer.
     //
     // At the budget it reports A2C_RUN_TIMEOUT and ends the run phase, and
     // every other task phase that is running, prematurely, so extract_phase
@@ -2217,6 +2260,9 @@ package a2c_uvm_pkg;
         protected bit              deferred;
         protected longint unsigned deferred_at;
         protected longint unsigned defer_to;
+        // The lane rules counting at the budget that the deferral left out
+        // because their clocks had stopped.
+        protected string           left_out;
 
         `uvm_component_utils(a2c_run_timeout)
 
@@ -2277,16 +2323,26 @@ package a2c_uvm_pkg;
             a2c_lane_watchdog    dogs[$];
             a2c_replay_log_base  logs[$];
             longint unsigned     most = 0;
-            names = "";
+            names    = "";
+            left_out = "";
             a2c_txn_counter_base::get_counters(counters);
-            // A rule whose clock stops reports clock_stop_cycles and a half
-            // of its periods after its last edge instead of at its bound, so
-            // a counter's or log's clocks left take clock_stop_cycles + 1
-            // more.
+            // A counter or log whose clock stops reports clock_stop_cycles
+            // and a half of its periods after its last edge instead of at its
+            // bound. A lane rule never reports a stop: its counts hold still
+            // while its clock is stopped, so it is left out then, but a clock
+            // that pauses just short of a stop delays its report by as long.
+            // So every rule's clocks left take clock_stop_cycles + 1 more. A
+            // counter's overlapping waits count as the one that ends last.
             foreach (counters[i]) begin
-                if (!counters[i].deadline_counting()) continue;
-                note(names, most, $sformatf("the output deadline of %s (%s)", counters[i].port_name, counters[i].get_full_name()),
-                     in_clocks(longint'(counters[i].deadline_left) + counters[i].clock_stop_cycles + 1, counters[i].deadline_clk.period));
+                a2c_deadline_wait waits[$];
+                longint unsigned  left = 0;
+                counters[i].deadline_waits(waits);
+                if (waits.size() == 0) continue;
+                foreach (waits[k]) begin
+                    longint unsigned l = in_clocks(longint'(waits[k].left) + counters[i].clock_stop_cycles + 1, waits[k].clk.period);
+                    if (l > left) left = l;
+                end
+                note(names, most, $sformatf("the output deadline of %s (%s)", counters[i].port_name, counters[i].get_full_name()), left);
             end
             a2c_joint_watch::get_dogs(dogs);
             foreach (dogs[i]) begin
@@ -2294,7 +2350,12 @@ package a2c_uvm_pkg;
                 string       rule;
                 rule = dogs[i].counting(left);
                 if (rule == "") continue;
-                note(names, most, {"the ", rule, " of ", dogs[i].who()}, in_clocks(left, (dogs[i].clk_vif == null) ? 0 : dogs[i].clk_vif.period));
+                if (dogs[i].clock_stopped()) begin
+                    left_out = {left_out, (left_out == "") ? "" : "; ", "the ", rule, " of ", dogs[i].who()};
+                    continue;
+                end
+                note(names, most, {"the ", rule, " of ", dogs[i].who()},
+                     in_clocks(longint'(left) + dogs[i].clock_stop_cycles + 1, (dogs[i].clk_vif == null) ? 0 : dogs[i].clk_vif.period));
             end
             a2c_replay_drain::get_logs(logs);
             foreach (logs[i]) begin
@@ -2308,6 +2369,11 @@ package a2c_uvm_pkg;
         protected function void note(ref string names, ref longint unsigned most, input string rule, input longint unsigned left);
             names = {names, (names == "") ? "" : "; ", $sformatf("%s, %0d clocks left", rule, left)};
             if (left > most) most = left;
+        endfunction
+
+        // Carries its own leading separator, so a message appends it as is.
+        protected function string stopped_rules();
+            return (left_out == "") ? "" : {". Left out, clock stopped: ", left_out};
         endfunction
 
         // How the budget was set.
@@ -2339,8 +2405,8 @@ package a2c_uvm_pkg;
                     if (left != 0) begin
                         deferred_at = elapsed;
                         defer_to    = elapsed + left + A2C_RUN_TIMEOUT_DEFER_MARGIN;
-                        `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run phase has not ended after %0d clocks of %s, its run timeout, while progress rules count toward their own reports: %s. The run timeout defers to them, once, for %0d clocks, and then ends the run phase if it is still running",
-                                                               elapsed, clock, names, defer_to - elapsed), UVM_NONE)
+                        `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run phase has not ended after %0d clocks of %s, its run timeout, while progress rules count toward their own reports: %s. The run timeout defers to them, once, for %0d clocks, and then ends the run phase if it is still running%s",
+                                                               elapsed, clock, names, defer_to - elapsed, stopped_rules()), UVM_NONE)
                         continue;
                     end
                 end
@@ -2430,8 +2496,8 @@ package a2c_uvm_pkg;
                 if (by == "") continue;
                 raised = {raised, (raised == "") ? "" : "; ", label(held[i]), ": ", by};
             end
-            `uvm_error_context("A2C_RUN_TIMEOUT", $sformatf("%s: the run phase has not ended after %0d clocks of %s, its run timeout: %s. %s. Ports waiting now: %s. Objections still raised by: %s. %s",
-                                                            test.get_type_name(), elapsed, clock, rate, how(), a2c_joint_watch::waiting_now(),
+            `uvm_error_context("A2C_RUN_TIMEOUT", $sformatf("%s: the run phase has not ended after %0d clocks of %s, its run timeout: %s. %s%s. Ports waiting now: %s. Objections still raised by: %s. %s",
+                                                            test.get_type_name(), elapsed, clock, rate, how(), stopped_rules(), a2c_joint_watch::waiting_now(),
                                                             (raised == "") ? "none" : raised, raise), test)
             cb.timeout = this;
             uvm_callbacks#(uvm_phase, uvm_phase_cb)::add(null, cb);

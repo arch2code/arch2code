@@ -649,9 +649,11 @@
         endtask
     endclass : a2c_items_sent_cfg_test
 
-    // A recording demoter that keeps the time of each message too.
+    // Also records the time of each message of `severity`; only errors are
+    // demoted.
     class lb_timed_demoter extends lb_recording_demoter;
-        realtime at[$];
+        realtime     at[$];
+        uvm_severity severity = UVM_ERROR;
 
         `uvm_object_utils(lb_timed_demoter)
 
@@ -660,7 +662,7 @@
         endfunction
 
         virtual function action_e catch();
-            if (get_severity() == UVM_ERROR && get_id() == demote_id) at.push_back($realtime);
+            if (get_severity() == severity && get_id() == demote_id) at.push_back($realtime);
             return super.catch();
         endfunction
     endclass : lb_timed_demoter
@@ -1443,13 +1445,17 @@
     endclass : lb_timed_info_recorder
 
     // The run timeout's one deferral to the progress rules counting at its
-    // budget, on lb_gen_hang_env with a derived budget of 100 + 10 x W.
-    // run_body() is each test's own. Checks:
+    // budget, on lb_gen_hang_env with a derived budget of 100 + 10 x W and
+    // a clock stop of 20, which every rule's deferral covers, so a rule on
+    // clk reports 21 clocks and the margin before the timeout; the default
+    // rule_slack allows that and 3 more. run_body() is each test's own.
+    // Checks:
     //   - want_defers deferral infos, 1 or 0, the one at the budget of
     //     want_budget clocks, naming want_rule;
-    //   - with rule_id set, that the rule's first error came after the
-    //     budget, and with want_timeout, before the timeout, by at most
-    //     the margin and rule_slack clocks, and want_rule_errors of them;
+    //   - with rule_id set, that the rule's first error, or warning with
+    //     rule_severity UVM_WARNING, came after the budget, and with
+    //     want_timeout, before the timeout, by at most the margin and
+    //     rule_slack clocks, and want_rule_errors errors of them;
     //   - one A2C_RUN_TIMEOUT error with want_timeout, and none without;
     //   - that extract_phase and check_phase run once each.
     class lb_gen_defer_base extends lb_gen_base;
@@ -1461,7 +1467,8 @@
         bit                    want_timeout = 1;
         int unsigned           want_budget = 100;
         int unsigned           want_defers = 1;
-        int unsigned           rule_slack = 3;
+        int unsigned           rule_slack = 24;
+        uvm_severity           rule_severity = UVM_ERROR;
         lb_timed_demoter       timeouts;
         lb_timed_demoter       rules;
         lb_timed_info_recorder infos;
@@ -1476,6 +1483,7 @@
             super.new(name, parent);
             lb_gen_env::type_id::set_type_override(lb_gen_hang_env::get_type());
             quiet_cycles             = 5;
+            clock_stop_cycles        = 20;
             run_timeout_floor_cycles = 100;
             run_timeout_factor       = 10;
         endfunction
@@ -1490,6 +1498,7 @@
                 if (ids[i] == rule_id) begin
                     rules = lb_timed_demoter::type_id::create({"demote_", rule_id});
                     rules.demote_id = rule_id;
+                    rules.severity  = rule_severity;
                     uvm_report_cb::add(null, rules);
                 end else begin
                     lb_recording_demoter d = lb_recording_demoter::type_id::create({"demote_", ids[i]});
@@ -1603,11 +1612,14 @@
 
     // As defer_output with the wait on clk3, of twice clk's period, and a
     // clock stop of 100: run_body() stops clk3 just before the budget of
-    // 130, when the deadline has 5 clocks of clk3 left, so the counter
-    // reports the stop about 100.5 clocks of clk3 later, past the
-    // deadline, and the deferral must cover that. The stop leaves the
-    // deadline's last clocks unused, so the report may come up to 12
-    // clocks of clk further before the timeout.
+    // 130, when the deadline has 6 clocks of clk3 left, so the counter
+    // reports the stop 100.5 clocks of clk3 after clk3's last falling
+    // edge, past the deadline, and the deferral must cover that. The
+    // deferral counts 6 + 100 + 1 clocks of clk3 from the budget, and the
+    // report comes 14.5 clocks of clk before that: the deadline's 6
+    // unused clocks of clk3 are 12, the stop's half clock of clk3 against
+    // the deferral's whole one is 1, and the last falling edge came 1.5
+    // before the budget.
     class gen_base_run_timeout_defer_stopped_test extends lb_gen_defer_base;
         virtual a2c_clk_if clk3_vif;
 
@@ -1676,12 +1688,14 @@
 
     // As defer_joint with rv on clk2, of three times clk's period: the
     // joint stall bound of 100 clocks of clk2 is 300 clocks of clk, which
-    // the deferral counts.
+    // the deferral counts, and so are the 21 clocks of clk2 it covers for a
+    // clock stop, 63 of clk.
     class gen_base_run_timeout_defer_clk2_test extends gen_base_run_timeout_defer_joint_test;
         `uvm_component_utils(gen_base_run_timeout_defer_clk2_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+            rule_slack = 66;
         endfunction
 
         protected virtual function int unsigned joint_bound();
@@ -1780,6 +1794,141 @@
         endfunction
     endclass : gen_base_run_timeout_defer_lone_test
 
+    // A lane rule whose clock pauses short of a stop still reports first:
+    // as defer_joint with rv on clk3, of twice clk's period, and a joint
+    // stall bound of 100 clocks of clk3, run_body() stops clk3 at clock 90
+    // of clk and starts it again 30 clocks later, 15 of clk3's periods,
+    // short of the 20.5 that make a stop. clk3 stays stopped for 10 of its
+    // periods past the budget of 100, so the joint stall, counting then,
+    // reports that much later than its clocks left at the budget give. The
+    // deferral's 21 clocks of clk3 for a clock stop cover that, and the
+    // report comes 11 clocks of clk3 and the margin before the timeout.
+    class gen_base_run_timeout_defer_dog_paused_test extends gen_base_run_timeout_defer_joint_test;
+        virtual a2c_clk_if clk3_vif;
+        int unsigned       bound = 100;
+        int unsigned       pause_at = 90;
+        // 0 leaves clk3 stopped.
+        int unsigned       pause_for = 30;
+        // Above 0, rv runs on clk9 instead, which stops for good on the
+        // rising edge this long before the budget, and the pause knobs are
+        // unused.
+        realtime           stop_gap;
+
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_paused_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        protected virtual function int unsigned joint_bound();
+            return bound;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", (stop_gap > 0) ? "clk9" : "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3' or 'clk9'")
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            lb_gen_hang_env e;
+            super.connect_phase(phase);
+            void'($cast(e, env));
+            e.rv_agent.cfg.clk_vif = clk3_vif;
+        endfunction
+
+        virtual task run_body();
+            if (stop_gap > 0) fork
+                begin
+                    realtime stop_at;
+                    wait (released_at > 0);
+                    stop_at = released_at + 10ns * want_budget - stop_gap;
+                    do @(posedge clk3_vif.clk); while ($realtime < stop_at);
+                    lb_clk9_run = 0;
+                    if ($realtime != stop_at) `uvm_fatal("LB_GEN", $sformatf("clk9 rose at %0t, not at %0t", $realtime, stop_at))
+                end
+            join_none
+            else fork
+                begin
+                    repeat (pause_at) @(posedge env.clk_vif.clk);
+                    lb_clk3_run = 0;
+                    if (pause_for != 0) begin
+                        repeat (pause_for) @(posedge env.clk_vif.clk);
+                        lb_clk3_run = 1;
+                    end
+                end
+            join_none
+            hang_rv();
+        endtask
+    endclass : gen_base_run_timeout_defer_dog_paused_test
+
+    // A lane rule whose clock has stopped is left out: as defer_dog_paused
+    // with a clock stop of 10 and a joint stall bound of 300 clocks of
+    // clk3, clk3 stops at clock 60 for good, so at the budget of 100 it
+    // has not risen for 20 of its periods, and the joint stall, which
+    // cannot count on, gets no deferral. The timeout comes at the budget
+    // and names the joint stall as left out.
+    class gen_base_run_timeout_defer_dog_stopped_test extends gen_base_run_timeout_defer_dog_paused_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_stopped_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            clock_stop_cycles = 10;
+            bound             = 300;
+            pause_at          = 60;
+            pause_for         = 0;
+            want_defers       = 0;
+            want_rule_errors  = 0;
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (timeouts.at.size() != 1 || timeouts.at[0] != released_at + 10ns * 100) begin
+                `uvm_error("LB_GEN", $sformatf("expected the timeout at the budget of 100 clocks, at %0t: %p", released_at + 10ns * 100, timeouts.at))
+            end
+            if (timeouts.messages.size() != 0 && !a2c_contains(timeouts.messages[0], "Left out, clock stopped: the joint stall rule (joint_stall_cycles) of rv")) begin
+                `uvm_error("LB_GEN", $sformatf("the timeout does not name the joint stall as left out: %s", timeouts.messages[0]))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_run_timeout_defer_dog_stopped_test
+
+    // The stop boundary, from the side that reads as stopped: as
+    // defer_dog_stopped on clk9, whose last rising edge comes 10.5 of its
+    // periods, the stop limit exactly, before the budget.
+    class gen_base_run_timeout_defer_dog_stop_edge_test extends gen_base_run_timeout_defer_dog_stopped_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_stop_edge_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            stop_gap = 210ns;
+        endfunction
+    endclass : gen_base_run_timeout_defer_dog_stop_edge_test
+
+    // The stop boundary, from the side that does not: clk9's last rising
+    // edge comes 10 of its periods before a budget of 101, half a period
+    // short of a stop, so the joint stall is counted and the run timeout
+    // defers to it. clk9 never returns, so the timeout comes at the end of
+    // the deferral and leaves no rule out.
+    class gen_base_run_timeout_defer_dog_stop_short_test extends gen_base_run_timeout_defer_dog_paused_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_stop_short_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            clock_stop_cycles        = 10;
+            bound                    = 300;
+            stop_gap                 = 200ns;
+            run_timeout_floor_cycles = 101;
+            want_budget              = 101;
+            want_rule_errors         = 0;
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (timeouts.messages.size() != 0 && a2c_contains(timeouts.messages[0], "Left out")) begin
+                `uvm_error("LB_GEN", $sformatf("the timeout leaves a rule out: %s", timeouts.messages[0]))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_run_timeout_defer_dog_stop_short_test
+
     // Scenario (a) for the drain: in Mode B the model lane never replays
     // the 2 responses the DUT lane recorded, so the drain runs to its
     // deadline of 300, past the budget of 100, and gives up. The run phase
@@ -1848,6 +1997,99 @@
             super.run_body();
         endtask
     endclass : gen_base_run_timeout_defer_drain_stopped_test
+
+    // The drain's deferral ends where it should: as defer_drain with a
+    // catch-up of 5, the drain gives the log up at its deadline of 300
+    // with an A2C_DRAIN warning, and the test then raises an objection
+    // that holds the run phase, so the timeout comes at the end of the
+    // deferral. The deferral counts the deadline left at the budget, the
+    // catch-up, which a log given up at its deadline does not use, and 21
+    // clocks for a clock stop, so the warning must come at most those 26
+    // clocks, the margin and a clock before the timeout.
+    class gen_base_run_timeout_defer_drain_held_test extends lb_gen_defer_base;
+        bit held;
+
+        `uvm_component_utils(gen_base_run_timeout_defer_drain_held_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b                 = 1;
+            no_stimulus_expected   = 1;
+            quiet_cycles           = 20;
+            output_deadline_cycles = 300;
+            drain_catchup_cycles   = 5;
+            rule_id                = "A2C_DRAIN";
+            rule_severity          = UVM_WARNING;
+            want_rule_errors       = 0;
+            rule_slack             = 27;
+            want_rule              = "the drain deadline and catch-up of uvm_test_top.env.replay";
+        endfunction
+
+        virtual task run_body();
+            repeat (2) env.replay.record(1'b1, 0);
+        endtask
+
+        // Called again once the drain drops its objection, after its
+        // warning.
+        virtual function void phase_ready_to_end(uvm_phase phase);
+            super.phase_ready_to_end(phase);
+            if (held || phase.get_imp() != uvm_run_phase::get() || rules.at.size() == 0) return;
+            held = 1;
+            phase.raise_objection(this, "holds the run phase past the drain");
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (rules.at.size() != 1) `uvm_error("LB_GEN", $sformatf("expected one A2C_DRAIN warning, got them at %p", rules.at))
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_run_timeout_defer_drain_held_test
+
+    // A log that settles while the drain watches another gives the run
+    // timeout nothing to defer to: as defer_drain_held with a second log,
+    // replay2, on clk3, of twice clk's period, with nothing recorded, and
+    // clk3 stopped at clock 10. The drain finds replay2's clock stopped
+    // and settles the log before the budget of 100, so the deferral names
+    // env.replay alone and ends where defer_drain_held's does.
+    class gen_base_run_timeout_defer_drain_settled_test extends gen_base_run_timeout_defer_drain_held_test;
+        virtual a2c_clk_if clk3_vif;
+        lb_bit_log_t       replay2;
+
+        `uvm_component_utils(gen_base_run_timeout_defer_drain_settled_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            lb_fake_lanes lanes = new();
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3'")
+            replay2 = lb_bit_log_t::type_id::create("replay2", env);
+            replay2.driver = lanes;
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            replay2.clk_vif = clk3_vif;
+        endfunction
+
+        virtual task run_body();
+            fork
+                begin
+                    repeat (10) @(posedge env.clk_vif.clk);
+                    lb_clk3_run = 0;
+                end
+            join_none
+            super.run_body();
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            foreach (infos.messages[i]) begin
+                if (a2c_contains(infos.messages[i], "replay2")) `uvm_error("LB_GEN", $sformatf("an info names the settled log: %s", infos.messages[i]))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_run_timeout_defer_drain_settled_test
 
     // Scenario (b): a correct run. Its first frame waits for 3
     // transactions, which come at clock 200, with a deadline of 300 that
@@ -1953,6 +2195,162 @@
             super.report_phase(phase);
         endfunction
     endclass : gen_base_run_timeout_defer_killed_test
+
+    // As defer_killed with the wait in a named block that another process
+    // disables 20 clocks later, after which run_body()'s own process goes
+    // on and waits for ever: the disable ends the deadline as the kill does.
+    class gen_base_run_timeout_defer_disabled_test extends gen_base_run_timeout_defer_killed_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_disabled_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual task run_body();
+            repeat (50) @(posedge env.clk_vif.clk);
+            env.lb_out_counter.expect_count(3);
+            fork
+                begin
+                    repeat (20) @(posedge env.clk_vif.clk);
+                    disable waiting;
+                end
+            join_none
+            begin : waiting
+                env.lb_out_counter.wait_for_count(env.clk_vif, 1000, quiet_cycles);
+            end
+            wait (0);
+        endtask
+    endclass : gen_base_run_timeout_defer_disabled_test
+
+    // Two waits on one counter overlap: run_body() starts one with a
+    // deadline of 40 at clock 50 and another with a deadline of 300 a
+    // clock later. The first reports its shortfall before the budget and
+    // then declares 3 transactions more, so the second goes on counting,
+    // and the first's end must leave it counted at the budget of 160. It
+    // reports inside the deferral, and the run ends with no timeout.
+    class gen_base_run_timeout_defer_overlap_test extends lb_gen_defer_base;
+        `uvm_component_utils(gen_base_run_timeout_defer_overlap_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_budget  = 160;
+            want_timeout = 0;
+            want_rule    = "the output deadline of lb_out (uvm_test_top.env.lb_out_counter)";
+        endfunction
+
+        virtual task run_body();
+            repeat (50) @(posedge env.clk_vif.clk);
+            env.lb_out_counter.expect_count(3);
+            fork
+                begin
+                    env.lb_out_counter.wait_for_count(env.clk_vif, 40, quiet_cycles);
+                    env.lb_out_counter.expect_count(3);
+                end
+            join_none
+            @(posedge env.clk_vif.clk);
+            env.lb_out_counter.wait_for_count(env.clk_vif, 300, quiet_cycles);
+        endtask
+    endclass : gen_base_run_timeout_defer_overlap_test
+
+    // As defer_overlap with both waits counting at the budget of 130: the
+    // first, on clk2 with a deadline of 50, has about 7 clocks of clk2
+    // left then, and the second, on clk3 with a deadline of 150, about 87
+    // clocks of clk3. clk2's last falling edge before the budget comes 10
+    // ns after clk3's, so the first wait samples last, and the deferral
+    // must still count the second's clocks left. The first reports its
+    // shortfall after the budget and then declares 3 transactions more,
+    // so the second goes on, reports inside the deferral, and the run
+    // ends with no timeout.
+    class gen_base_run_timeout_defer_overlap_left_test extends lb_gen_defer_base;
+        virtual a2c_clk_if clk3_vif;
+
+        `uvm_component_utils(gen_base_run_timeout_defer_overlap_left_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_budget  = 130;
+            want_timeout = 0;
+            want_rule    = "the output deadline of lb_out (uvm_test_top.env.lb_out_counter)";
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3'")
+        endfunction
+
+        virtual task run_body();
+            env.lb_out_counter.expect_count(3);
+            fork
+                begin
+                    env.lb_out_counter.wait_for_count(env.clk2_vif, 50, quiet_cycles);
+                    env.lb_out_counter.expect_count(3);
+                end
+            join_none
+            @(posedge env.clk_vif.clk);
+            env.lb_out_counter.wait_for_count(clk3_vif, 150, quiet_cycles);
+        endtask
+    endclass : gen_base_run_timeout_defer_overlap_left_test
+
+    // defer_overlap in the reverse order: run_body() starts a wait with a
+    // deadline of 300 at clock 50 and one with a deadline of 40 a clock
+    // later. The second reports its shortfall before the budget of 160 and
+    // declares 3 transactions more, and its end must leave the first
+    // counted, which reports inside the deferral.
+    class gen_base_run_timeout_defer_overlap_reverse_test extends lb_gen_defer_base;
+        `uvm_component_utils(gen_base_run_timeout_defer_overlap_reverse_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_budget  = 160;
+            want_timeout = 0;
+            want_rule    = "the output deadline of lb_out (uvm_test_top.env.lb_out_counter)";
+        endfunction
+
+        virtual task run_body();
+            repeat (50) @(posedge env.clk_vif.clk);
+            env.lb_out_counter.expect_count(3);
+            fork
+                begin
+                    @(posedge env.clk_vif.clk);
+                    env.lb_out_counter.wait_for_count(env.clk_vif, 40, quiet_cycles);
+                    env.lb_out_counter.expect_count(3);
+                end
+            join_none
+            env.lb_out_counter.wait_for_count(env.clk_vif, 300, quiet_cycles);
+        endtask
+    endclass : gen_base_run_timeout_defer_overlap_reverse_test
+
+    // As defer_overlap_reverse with the later wait, deadline 1000, killed
+    // 20 clocks after it starts: the kill must leave the first wait counted
+    // at the budget of 130.
+    class gen_base_run_timeout_defer_overlap_killed_test extends lb_gen_defer_base;
+        `uvm_component_utils(gen_base_run_timeout_defer_overlap_killed_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_budget  = 130;
+            want_timeout = 0;
+            want_rule    = "the output deadline of lb_out (uvm_test_top.env.lb_out_counter)";
+        endfunction
+
+        virtual task run_body();
+            process p;
+            repeat (50) @(posedge env.clk_vif.clk);
+            env.lb_out_counter.expect_count(3);
+            fork
+                begin
+                    p = process::self();
+                    @(posedge env.clk_vif.clk);
+                    env.lb_out_counter.wait_for_count(env.clk_vif, 1000, quiet_cycles);
+                end
+                begin
+                    repeat (21) @(posedge env.clk_vif.clk);
+                    p.kill();
+                end
+            join_none
+            env.lb_out_counter.wait_for_count(env.clk_vif, 300, quiet_cycles);
+        endtask
+    endclass : gen_base_run_timeout_defer_overlap_killed_test
 
     // The counter receives one transaction more than it expects; its
     // A2C_TXN_COUNT of the extra one does not name the timeout, which cannot

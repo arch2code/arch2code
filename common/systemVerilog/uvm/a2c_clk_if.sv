@@ -113,13 +113,31 @@ interface a2c_clk_if (input logic clk, input logic rst_n);
         edge_or_stop(1'b0, 1'b0, periods, running);
     endtask
 
+    // Whether the clock has stopped for a waiter with a limit of periods, as
+    // next_rise() judges it at this moment. A clock with no period yet has
+    // not.
+    function automatic bit stopped(int unsigned periods);
+        return period != 0 && $realtime >= stop_time(last_edge(1'b1), periods);
+    endfunction
+
+    // The last rising or falling edge, counting one now whose always block
+    // has not run yet.
+    function automatic realtime last_edge(bit rising);
+        if (rising && clk === 1'b1 && last_rise < last_fall) return $realtime;
+        if (!rising && clk === 1'b0 && last_fall < last_rise) return $realtime;
+        return rising ? last_rise : last_fall;
+    endfunction
+
+    // When a clock whose last edge came at last reads as stopped, for a
+    // waiter with a limit of periods.
+    function automatic realtime stop_time(realtime last, int unsigned periods);
+        return last + (((periods > 0) ? periods : 1) + 0.5) * period;
+    endfunction
+
     task automatic edge_or_stop(bit rising, bit unrisen_stops, int unsigned periods, output bit running);
-        realtime last = rising ? last_rise : last_fall;
+        realtime last = last_edge(rising);
         realtime limit;
         bit      got = 1'b0;
-        // Called at an edge whose always block has not run yet.
-        if (rising && clk === 1'b1 && last_rise < last_fall) last = $realtime;
-        if (!rising && clk === 1'b0 && last_fall < last_rise) last = $realtime;
         running = 1'b0;
         if (period == 0) begin
             if (!risen && unrisen_stops) return;
@@ -128,7 +146,7 @@ interface a2c_clk_if (input logic clk, input logic rst_n);
             running = 1'b1;
             return;
         end
-        limit = last + (((periods > 0) ? periods : 1) + 0.5) * period - $realtime;
+        limit = stop_time(last, periods) - $realtime;
         if (limit <= 0) return;
         fork
             begin
