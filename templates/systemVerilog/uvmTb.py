@@ -130,6 +130,9 @@ def render_body(prj, data, variant, top):
              for clock in data['uvm']['clocks']]
     sets = [f'        {line}' for line in sets]
     dual = 'uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_dual_dut", 1\'b{});'
+    # Whether the one DUT is the SystemC model, whose timing an
+    # a2c_rt_checker only measures.
+    model = 'uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_model_dut", 1\'b{});'
     if 'both' in duts:
         sets.append('`ifdef A2C_UVM_BOTH_DUT')
         sets += [f'        uvm_config_db#({top["pkgName"]}::{port["name"]}_vif_t)::set(null, "uvm_test_top.*", '
@@ -137,6 +140,14 @@ def render_body(prj, data, variant, top):
         sets += [f'        {dual.format(1)}', '`else', f'        {dual.format(0)}', '`endif']
     else:
         sets.append(f'        {dual.format(0)}')
+    if 'model' in duts:
+        branches = ['A2C_UVM_BOTH_DUT'] if 'both' in duts else []
+        branches.append('A2C_UVM_RTL_DUT')
+        for index, define in enumerate(branches):
+            sets += [f"`{'ifdef' if index == 0 else 'elsif'} {define}", f'        {model.format(0)}']
+        sets += ['`else', f'        {model.format(1)}', '`endif']
+    else:
+        sets.append(f'        {model.format(0)}')
     out += [
         '    // run_test() returns after the report phase because finish_on_completion',
         '    // is off, and SystemC ends the simulation through its end-of-test vote.',

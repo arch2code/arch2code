@@ -220,11 +220,17 @@ package rdy_vld_uvm_pkg;
         endtask
     endclass : rdy_vld_driver
 
-    class rdy_vld_monitor #(type data_t = logic) extends uvm_monitor;
+    class rdy_vld_monitor #(type data_t = logic) extends uvm_monitor implements a2c_flow_counts;
         rdy_vld_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual rdy_vld_if #(.data_t(data_t))      vif;
         uvm_analysis_port #(rdy_vld_item#(data_t)) ap;
+
+        // The counts a2c_rt_checker reads (a2c_flow_counts), from the reset release.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_valid;
+        protected longint unsigned n_ready;
+        protected longint unsigned n_transfers;
 
         `uvm_component_param_utils(rdy_vld_monitor#(data_t))
 
@@ -246,6 +252,10 @@ package rdy_vld_uvm_pkg;
                 vld  = vif.vld;
                 rdy  = vif.rdy;
                 data = vif.data;
+                n_samples++;
+                n_valid     += (vld === 1'b1);
+                n_ready     += (rdy === 1'b1);
+                n_transfers += (vld === 1'b1 && rdy === 1'b1);
                 // A stalled source must hold vld and data until the beat transfers.
                 if (stalled && (vld !== 1'b1 || data !== held)) begin
                     string what = (vld !== 1'b1) ? "vld dropped" : "data changed";
@@ -279,6 +289,22 @@ package rdy_vld_uvm_pkg;
                 ap.write(item);
             end
         endtask
+
+        virtual function void flow_counts(output longint unsigned samples, output longint unsigned valid,
+                                          output longint unsigned ready, output longint unsigned transfers);
+            samples   = n_samples;
+            valid     = n_valid;
+            ready     = n_ready;
+            transfers = n_transfers;
+        endfunction
+
+        virtual function a2c_clk_vif_t flow_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual function string flow_port();
+            return cfg.port_name;
+        endfunction
     endclass : rdy_vld_monitor
 
     class rdy_vld_agent #(type data_t = logic) extends uvm_agent;

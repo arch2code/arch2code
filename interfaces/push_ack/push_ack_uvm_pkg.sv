@@ -295,11 +295,17 @@ package push_ack_uvm_pkg;
         endfunction
     endclass : push_ack_driver
 
-    class push_ack_monitor #(type data_t = logic) extends uvm_monitor;
+    class push_ack_monitor #(type data_t = logic) extends uvm_monitor implements a2c_flow_counts;
         push_ack_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual push_ack_if #(.data_t(data_t))      vif;
         uvm_analysis_port #(push_ack_item#(data_t)) ap;
+
+        // The counts a2c_rt_checker reads (a2c_flow_counts), from the reset release.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_valid;
+        protected longint unsigned n_ready;
+        protected longint unsigned n_transfers;
 
         `uvm_component_param_utils(push_ack_monitor#(data_t))
 
@@ -321,6 +327,12 @@ package push_ack_uvm_pkg;
                 push = vif.push;
                 ack  = vif.ack;
                 data = vif.data;
+                // ack means nothing without push, so a clock with push low
+                // counts as one the sink did not refuse.
+                n_samples++;
+                n_valid     += (push === 1'b1);
+                n_ready     += (ack === 1'b1 || push !== 1'b1);
+                n_transfers += (push === 1'b1 && ack === 1'b1);
                 // A source waiting for ack must hold push and data until the transfer.
                 if (waiting && (push !== 1'b1 || data !== held)) begin
                     string what = (push !== 1'b1) ? "push dropped" : "data changed";
@@ -351,6 +363,22 @@ package push_ack_uvm_pkg;
                 ap.write(item);
             end
         endtask
+
+        virtual function void flow_counts(output longint unsigned samples, output longint unsigned valid,
+                                          output longint unsigned ready, output longint unsigned transfers);
+            samples   = n_samples;
+            valid     = n_valid;
+            ready     = n_ready;
+            transfers = n_transfers;
+        endfunction
+
+        virtual function a2c_clk_vif_t flow_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual function string flow_port();
+            return cfg.port_name;
+        endfunction
     endclass : push_ack_monitor
 
     class push_ack_agent #(type data_t = logic) extends uvm_agent;

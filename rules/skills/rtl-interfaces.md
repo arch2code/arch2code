@@ -40,7 +40,7 @@ Every interface has two modports and no others:
 The SV definitions are in `builder/base/interfaces/<name>/<name>_if.sv`.
 
 ### 3. `rdy_vld_if`
-A transfer happens in a cycle where `vld && rdy`. The source holds `vld` and `data` until then. A pass-through stage passes backpressure upstream:
+A transfer happens in a cycle where `vld && rdy`. The source must not wait for `rdy` before raising `vld`, and once `vld` is high it holds `vld` and `data` until the transfer completes; `rdy` may wait for `vld`. A FIFO whose `vld` follows its occupancy complies: it does not wait for `rdy` to offer what it holds. The same holds for `push` against `ack` on `push_ack_if`, and for `tvalid` against `tready` on `axi4_stream_if`, as AMBA requires. The UVM real-time checks read a clock with valid high and ready low as an offered beat the destination refused. A pass-through stage passes backpressure upstream:
 
 ```systemverilog
 always_comb begin

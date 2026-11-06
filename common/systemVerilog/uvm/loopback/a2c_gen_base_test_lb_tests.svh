@@ -165,7 +165,12 @@
     // first; run_timeout_cycles above 0 fixes it and 0 turns it off, as
     // does run_timeout.fix(), from any phase.
     // +a2c_run_timeout_cycles, +a2c_run_timeout_floor_cycles and
-    // +a2c_run_timeout_factor override them.
+    // +a2c_run_timeout_factor override them. rt_gap_cycles,
+    // rt_latency_cycles, rt_lag_cycles, rt_refusal_cycles and
+    // rt_on_model set the real-time rules of every a2c_rt_checker the
+    // env holds; left at -1 each keeps the checker's own, and
+    // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
+    // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them.
     class lb_gen_base extends uvm_test implements a2c_run_work;
         lb_gen_env env;
         int unsigned output_deadline_cycles = 200000;
@@ -182,6 +187,11 @@
         int          run_timeout_cycles = -1;
         int          run_timeout_floor_cycles = -1;
         int          run_timeout_factor = -1;
+        int          rt_gap_cycles = -1;
+        int          rt_latency_cycles = -1;
+        int          rt_lag_cycles = -1;
+        int          rt_refusal_cycles = -1;
+        int          rt_on_model = -1;
         a2c_run_timeout run_timeout;
 
         `uvm_component_utils(lb_gen_base)
@@ -208,6 +218,11 @@
             void'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));
             void'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));
             void'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));
+            void'($value$plusargs("a2c_rt_gap_cycles=%d", rt_gap_cycles));
+            void'($value$plusargs("a2c_rt_latency_cycles=%d", rt_latency_cycles));
+            void'($value$plusargs("a2c_rt_lag_cycles=%d", rt_lag_cycles));
+            void'($value$plusargs("a2c_rt_refusal_cycles=%d", rt_refusal_cycles));
+            void'($value$plusargs("a2c_rt_on_model=%d", rt_on_model));
             uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);
             uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);
             uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);
@@ -232,6 +247,21 @@
             end
             if (run_timeout_factor >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_factor", run_timeout_factor);
+            end
+            if (rt_gap_cycles >= 0) begin
+                uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_gap_cycles", rt_gap_cycles);
+            end
+            if (rt_latency_cycles >= 0) begin
+                uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_latency_cycles", rt_latency_cycles);
+            end
+            if (rt_lag_cycles >= 0) begin
+                uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_lag_cycles", rt_lag_cycles);
+            end
+            if (rt_refusal_cycles >= 0) begin
+                uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_refusal_cycles", rt_refusal_cycles);
+            end
+            if (rt_on_model >= 0) begin
+                uvm_config_db#(bit)::set(this, "env*", "a2c_rt_on_model", rt_on_model != 0);
             end
             env = lb_gen_env::type_id::create("env", this);
             run_timeout = a2c_run_timeout::type_id::create("run_timeout", this);

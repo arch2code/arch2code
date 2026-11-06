@@ -40,6 +40,33 @@ package a2c_uvm_loopback_pkg;
     // Clearing it stops clk9 at its level then.
     bit lb_clk9_run = 1;
 
+    // What each lb_rt_pipe does, indexed by its ID (lb_rt_pipe_e), set by a
+    // test at build_phase. A beat accepted at clock c of the output clock is
+    // offered from clock c + latency + 1 on, latency 1 or more. Output:
+    // at most emit_n beats per emit_m clocks (emit_m 0: no limit); after
+    // stall_after beats, nothing offered for stall_len clocks (stall_after 0:
+    // never); beats after the first pass_limit are taken and dropped (0: no
+    // limit). Input: refused on one clock in every refuse_every (0: never)
+    // and while it holds depth beats (0: no limit). vld never depends on rdy.
+    typedef enum {LB_RT_RV, LB_RT_RV_MODEL, LB_RT_AXIS, LB_RT_AXIS_MODEL} lb_rt_pipe_e;
+    typedef struct {
+        int unsigned latency;
+        int unsigned emit_n;
+        int unsigned emit_m;
+        int unsigned stall_after;
+        int unsigned stall_len;
+        int unsigned pass_limit;
+        int unsigned refuse_every;
+        int unsigned depth;
+    } lb_rt_pipe_cfg_t;
+    lb_rt_pipe_cfg_t lb_rt_pipe_cfg[4] = '{default: '{latency: 4, default: 0}};
+    // Puts the axis pipe's output, and its model twin's, on clk2.
+    bit lb_rt_axis_clk2;
+    // Put the rv pipe's input or output, not its model twin's, on clk3, the
+    // gated clock of twice clk's period.
+    bit lb_rt_rv_in_clk3;
+    bit lb_rt_rv_out_clk3;
+
     virtual class lb_scoreboard_base extends uvm_component;
         int unsigned matched;
 
@@ -837,8 +864,133 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_model_cmp_lb_tests.svh"
     `include "a2c_replay_drain_lb_tests.svh"
     `include "a2c_gen_base_test_lb_tests.svh"
+    `include "a2c_rt_checker_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
+
+// A stand-in DUT for the real-time checker tests, configured by
+// lb_rt_pipe_cfg[ID]. It drives its outputs from registers on its clocks, so
+// out_vld depends on no input of the same clock. Both sides of one clock run
+// in one time step in either order: the occupancy the input side reads
+// counts the pops of earlier clocks only, and a beat pushed on a clock is
+// never offered on it.
+module lb_rt_pipe #(type T = logic, int ID = 0) (
+    input  bit   in_clk,
+    input  bit   out_clk,
+    input  bit   rst_n,
+    input  logic in_vld,
+    output logic in_rdy,
+    input  T     in_data,
+    output logic out_vld,
+    input  logic out_rdy,
+    output T     out_data
+);
+    import a2c_uvm_loopback_pkg::*;
+
+    T                q[$];
+    longint unsigned q_at[$];
+    longint unsigned out_cnt;
+    longint unsigned in_cnt;
+    longint unsigned pushed;
+    longint unsigned popped;
+    longint unsigned emitted;
+    longint unsigned accepted;
+    longint unsigned stall_until;
+    bit              stalled;
+    int unsigned     credit;
+
+    initial begin
+        in_rdy   = 1'b0;
+        out_vld  = 1'b0;
+        out_data = '0;
+    end
+
+    always @(posedge in_clk) begin
+        lb_rt_pipe_cfg_t c;
+        c = lb_rt_pipe_cfg[ID];
+        if (rst_n) begin
+            if (in_vld === 1'b1 && in_rdy === 1'b1) begin
+                accepted++;
+                if (c.pass_limit == 0 || accepted <= c.pass_limit) begin
+                    q.push_back(in_data);
+                    q_at.push_back(out_cnt);
+                    pushed++;
+                end
+            end
+            in_cnt++;
+            in_rdy <= !(c.depth != 0 && pushed - popped >= c.depth) && !(c.refuse_every != 0 && in_cnt % c.refuse_every == 0);
+        end
+    end
+
+    always @(posedge out_clk) begin
+        lb_rt_pipe_cfg_t c;
+        bit              go;
+        c = lb_rt_pipe_cfg[ID];
+        if (rst_n) begin
+            out_cnt <= out_cnt + 1;
+            if (out_vld === 1'b1 && out_rdy === 1'b1) begin
+                void'(q.pop_front());
+                void'(q_at.pop_front());
+                popped <= popped + 1;
+                emitted++;
+                if (c.stall_after != 0 && emitted == c.stall_after && !stalled) begin
+                    stalled     = 1'b1;
+                    stall_until = out_cnt + c.stall_len;
+                end
+            end
+            // Credit for one beat more than a beat's worth, so a pipe of
+            // emit_n per emit_m keeps that rate once busy, bursting by at
+            // most one beat after an idle spell.
+            if (c.emit_m != 0) credit = (credit + c.emit_n > 2 * c.emit_m - 1) ? 2 * c.emit_m - 1 : credit + c.emit_n;
+            if (!(out_vld === 1'b1 && out_rdy !== 1'b1)) begin
+                go = q.size() != 0 && out_cnt >= q_at[0] + c.latency && out_cnt >= stall_until
+                     && (c.emit_m == 0 || credit >= c.emit_m);
+                if (go && c.emit_m != 0) credit -= c.emit_m;
+                out_vld <= go;
+                if (go) out_data <= q[0];
+            end
+        end
+    end
+endmodule : lb_rt_pipe
+
+// Joins two pin sets through an lb_rt_pipe. The pipe's outputs reach the
+// interfaces through processes, because the agents' classes write the other
+// variables of the same interfaces. Each copies first and then waits, so it
+// keeps the pipe's time-0 value whichever initial block runs first.
+`define LB_RT_RV_PIPE(inst, id, in, out, iclk, oclk) \
+    logic     inst``_in_rdy; \
+    logic     inst``_out_vld; \
+    lb_data_t inst``_out_data; \
+    lb_rt_pipe #(.T(lb_data_t), .ID(id)) inst (.in_clk(iclk), .out_clk(oclk), .rst_n(rst_n), \
+        .in_vld(in.vld), .in_rdy(inst``_in_rdy), .in_data(in.data), \
+        .out_vld(inst``_out_vld), .out_rdy(out.rdy), .out_data(inst``_out_data)); \
+    initial forever begin \
+        in.rdy = inst``_in_rdy; \
+        @(inst``_in_rdy); \
+    end \
+    initial forever begin \
+        out.vld  = inst``_out_vld; \
+        out.data = inst``_out_data; \
+        @(inst``_out_vld or inst``_out_data); \
+    end
+
+`define LB_RT_AXIS_PIPE(inst, id, in, out) \
+    logic          inst``_in_rdy; \
+    logic          inst``_out_vld; \
+    lb_axis_beat_t inst``_out_data; \
+    lb_rt_pipe #(.T(lb_axis_beat_t), .ID(id)) inst (.in_clk(clk), .out_clk(axis_out_clk), .rst_n(rst_n), \
+        .in_vld(in.tvalid), .in_rdy(inst``_in_rdy), \
+        .in_data({in.tdata, in.tstrb, in.tkeep, in.tlast, in.tid, in.tdest, in.tuser}), \
+        .out_vld(inst``_out_vld), .out_rdy(out.tready), .out_data(inst``_out_data)); \
+    initial forever begin \
+        in.tready = inst``_in_rdy; \
+        @(inst``_in_rdy); \
+    end \
+    initial forever begin \
+        out.tvalid = inst``_out_vld; \
+        {out.tdata, out.tstrb, out.tkeep, out.tlast, out.tid, out.tdest, out.tuser} = inst``_out_data; \
+        @(inst``_out_vld or inst``_out_data); \
+    end
 
 module a2c_uvm_loopback_tb;
 
@@ -956,6 +1108,27 @@ module a2c_uvm_loopback_tb;
     axi_write_if #(.addr_t(lb_axw_addr_t), .data_t(lb_axw_data_t), .strb_t(lb_axw_strb_t), .awuser_t(lb_axw_awuser_t),
                    .wuser_t(lb_axw_wuser_t), .buser_t(lb_axw_buser_t), .id_t(lb_axw_id_t)) axw_model();
 
+    // The real-time checker tests' pin sets, each pair joined by an
+    // lb_rt_pipe: rv_in to rv_out and axis_in to axis_out, with model twins.
+    rdy_vld_if #(.data_t(lb_data_t)) rv_in();
+    rdy_vld_if #(.data_t(lb_data_t)) rv_out();
+    rdy_vld_if #(.data_t(lb_data_t)) rv_in_model();
+    rdy_vld_if #(.data_t(lb_data_t)) rv_out_model();
+    axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_in();
+    axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_out();
+    axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_in_model();
+    axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_out_model();
+    bit axis_out_clk;
+    assign axis_out_clk = lb_rt_axis_clk2 ? clk2 : clk;
+    bit rv_in_clk;
+    bit rv_out_clk;
+    assign rv_in_clk  = lb_rt_rv_in_clk3 ? clk3 : clk;
+    assign rv_out_clk = lb_rt_rv_out_clk3 ? clk3 : clk;
+    `LB_RT_RV_PIPE(u_rt_rv, LB_RT_RV, rv_in, rv_out, rv_in_clk, rv_out_clk)
+    `LB_RT_RV_PIPE(u_rt_rv_model, LB_RT_RV_MODEL, rv_in_model, rv_out_model, clk, clk)
+    `LB_RT_AXIS_PIPE(u_rt_axis, LB_RT_AXIS, axis_in, axis_out)
+    `LB_RT_AXIS_PIPE(u_rt_axis_model, LB_RT_AXIS_MODEL, axis_in_model, axis_out_model)
+
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk2", clk2_if);
@@ -996,6 +1169,14 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(axw_vif_t)::set(null, "uvm_test_top", "axw", axw);
         uvm_config_db#(axr_vif_t)::set(null, "uvm_test_top", "axr_model", axr_model);
         uvm_config_db#(axw_vif_t)::set(null, "uvm_test_top", "axw_model", axw_model);
+        uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv_in", rv_in);
+        uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv_out", rv_out);
+        uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv_in_model", rv_in_model);
+        uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv_out_model", rv_out_model);
+        uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_in", axis_in);
+        uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_out", axis_out);
+        uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_in_model", axis_in_model);
+        uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_out_model", axis_out_model);
         run_test();
     end
 

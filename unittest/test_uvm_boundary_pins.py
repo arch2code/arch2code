@@ -39,8 +39,9 @@ the direction the DUT sees it. Under A2C_UVM_BOTH_DUT it holds the RTL on
 the port interfaces, carries each signal across through a second interface
 per port, <port>_model, and publishes those too. Each branch is checked on
 its own: it drives rtl_dut and model_dut to its DUT set and sets a2c_dual_dut
-in the config_db. A block without a model always holds the RTL and sets
-a2c_dual_dut to 0.
+in the config_db, and a2c_model_dut is set only when the model is the one DUT.
+A block without a model always holds the RTL and sets a2c_dual_dut and
+a2c_model_dut to 0.
 
 Each block's SystemC wrapper must include the BFM header that declares its
 pin bridges, bind every testbench pin, check the shell's payload pin types,
@@ -420,6 +421,7 @@ def check_testbenches(work, design):
         modelSets = [f'uvm_config_db#({pkg}::{port}_vif_t)::set(null, "uvm_test_top.*", "{port}_model", {port}_model);'
                      for port, *_ in UVM_PORTS[block]]
         dual = 'uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_dual_dut", 1\'b{});'
+        model = 'uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_model_dut", 1\'b{});'
 
         # Each section's lines: the module text outside any `ifdef, then each
         # branch of the body group and of the config_db group by its DUT.
@@ -431,13 +433,18 @@ def check_testbenches(work, design):
                 'body rtl': {'assigns': ties + flags(True, False), 'binds': binds, 'intfs': [], 'sets': []},
                 'body model': {'assigns': carry('') + flags(False, True), 'binds': [], 'intfs': [], 'sets': []},
                 'sets both': {'assigns': [], 'binds': [], 'intfs': [], 'sets': modelSets + [dual.format(1)]},
-                'sets other': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [dual.format(0)]}})
-            groups = [['body both', 'body rtl', 'body model'], ['sets both', 'sets other']]
+                'sets other': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [dual.format(0)]},
+                'model both': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [model.format(0)]},
+                'model rtl': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [model.format(0)]},
+                'model other': {'assigns': [], 'binds': [], 'intfs': [], 'sets': [model.format(1)]}})
+            groups = [['body both', 'body rtl', 'body model'], ['sets both', 'sets other'],
+                      ['model both', 'model rtl', 'model other']]
             expectedDirectives = ['`ifdef A2C_UVM_BOTH_DUT', '`elsif A2C_UVM_RTL_DUT', '`else', '`endif',
-                                  '`ifdef A2C_UVM_BOTH_DUT', '`else', '`endif']
+                                  '`ifdef A2C_UVM_BOTH_DUT', '`else', '`endif',
+                                  '`ifdef A2C_UVM_BOTH_DUT', '`elsif A2C_UVM_RTL_DUT', '`else', '`endif']
         else:
             expected['common'].update({'assigns': ties + flags(True, False), 'binds': binds,
-                                       'sets': sets + [dual.format(0)]})
+                                       'sets': sets + [dual.format(0), model.format(0)]})
             groups = []
             expectedDirectives = []
         directives = [line for line in lines if line.startswith(('`if', '`el', '`endif'))]

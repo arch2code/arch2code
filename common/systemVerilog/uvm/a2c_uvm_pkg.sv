@@ -2144,6 +2144,844 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_joint_watch
 
+    typedef virtual a2c_clk_if a2c_clk_vif_t;
+
+    // The per-clock flow of one stream port, which a2c_rt_checker reads to
+    // tell the clocks the DUT owes from those the testbench caused. A
+    // monitor counts at each sample point from its reset release, in the
+    // same step as the item it reports on that clock, so a reader at the
+    // next rising edge sees the counts and the item together.
+    interface class a2c_flow_counts;
+        // Cumulative counts: clocks sampled; clocks the source offered a
+        // beat (vld, tvalid, push high); clocks the sink did not refuse one
+        // (rdy or tready high; on push_ack, ack high or push low, because ack
+        // means nothing without push); and transfers.
+        pure virtual function void flow_counts(output longint unsigned samples, output longint unsigned valid,
+                                               output longint unsigned ready, output longint unsigned transfers);
+        pure virtual function a2c_clk_vif_t flow_clock();
+        pure virtual function string flow_port();
+    endclass : a2c_flow_counts
+
+    // Marks the end of a unit of a stream, such as a frame or a line. A unit
+    // opens at the first beat after the previous unit closed and closes at
+    // the ends_per_unit-th beat for which is_unit_end() returns 1. A user
+    // rule for a struct payload is a subclass whose is_unit_end() returns the
+    // end-of-unit field, such as t.data.last. The unit is the contract's
+    // granularity: a per-line contract takes a second checker with an
+    // end-of-line rule.
+    virtual class a2c_unit_rule #(type T = uvm_sequence_item) extends uvm_object;
+        int unsigned ends_per_unit = 1;
+
+        function new(string name = "a2c_unit_rule");
+            super.new(name);
+        endfunction
+
+        pure virtual function bit is_unit_end(T t);
+
+        // The end markers that close one unit.
+        virtual function int unsigned marks_per_unit();
+            return ends_per_unit;
+        endfunction
+    endclass : a2c_unit_rule
+
+    // Every beat is an end marker and a unit is beats_per_unit beats, for a
+    // stream that marks no end, or only its start.
+    class a2c_beat_count_rule #(type T = uvm_sequence_item) extends a2c_unit_rule #(T);
+        int unsigned beats_per_unit = 1;
+
+        `uvm_object_param_utils(a2c_beat_count_rule#(T))
+
+        function new(string name = "a2c_beat_count_rule");
+            super.new(name);
+        endfunction
+
+        virtual function bit is_unit_end(T t);
+            return 1;
+        endfunction
+
+        virtual function int unsigned marks_per_unit();
+            return beats_per_unit;
+        endfunction
+    endclass : a2c_beat_count_rule
+
+    `uvm_analysis_imp_decl(_a2c_rt_in)
+    `uvm_analysis_imp_decl(_a2c_rt_out)
+
+    // The real-time rules on one output port of the DUT, against one input
+    // port; a2c_rt_checker adds the item types. Monitors measure and the
+    // checker judges. Each rule is off at 0, and each bound is the first
+    // value that fails, as for lane_skew_cycles:
+    //   - gap_cycles: an open output unit, from its first transfer to its
+    //     end, goes this many clocks without a beat while its sink is ready,
+    //     less the starvation credit below;
+    //   - lag_cycles: output unit k ends this many clocks after its anchor
+    //     input unit ended, less a credit for the clocks its sink refused an
+    //     offered beat: all of those after the input end, and those before
+    //     it, from unit k's first offered beat, less the clocks the DUT
+    //     refused offered input from the earlier of that beat and the input
+    //     unit's start, never below 0. A stall
+    //     the DUT turned into refusals has already moved the input end later,
+    //     so crediting it too would hide that much real lag. Every count
+    //     restarts when the output sits idle with its sink ready: the DUT had
+    //     caught up, so no earlier stall can have moved the end. A DUT that
+    //     also refuses for its own reasons, or idles while holding a
+    //     backlog, reads high, never low.
+    //     Once the input unit has entered the DUT the testbench cannot starve
+    //     it, so its pacing, blanking and Mode B throttling cannot cause a
+    //     failure, and a pipeline's fill is counted once, in the bound;
+    //   - refusal_cycles: within one input unit the DUT refuses this many
+    //     clocks of input the testbench offered, leaving out the clocks on
+    //     which the sink stalled the output, when the DUT may refuse.
+    // Together the lag and refusal rules check throughput: a DUT that takes
+    // all its input but falls behind lags more each unit, and one that keeps
+    // up only by back-pressuring its source refuses.
+    //
+    // Starvation credit: the gap is the clocks since the last output transfer
+    // on which the unit was open, the sink ready and no beat offered, less
+    // the clocks in (last transfer - latency_cycles, now] on which the
+    // testbench offered no input beat while the open output unit's anchor
+    // input unit had not ended. Pipeline latency moves the output's idle
+    // later than the input's, so a mask on the same clock would false-fail;
+    // the window credits the input idle that caused it, and a real stall is
+    // reported at most one window of testbench idle late. latency_cycles 0
+    // takes lag_cycles. With no input connected there is no credit.
+    //
+    // Counting is on the output port's clock: the checker counts its rising
+    // edges from the reset release and reads both monitors' counts on each.
+    // A stopped clock holds every count still. An input on another clock is
+    // stamped with the output clock's count when its events arrive, which is
+    // exact to one clock.
+    //
+    // It judges only the DUT lane, agent.mon, and never compares the timing
+    // of the two lanes, which the model does not keep. Once a Mode B master
+    // declares the DUT lane dead it stops, and the summary says so. On the
+    // model DUT (a2c_model_dut) it measures and raises no error unless
+    // on_model is set.
+    //
+    // Every failure is a UVM_ERROR that does not stop the run. The first
+    // max_reported print; check_phase reports how many did not as one more
+    // UVM_ERROR, and an A2C_RT summary at UVM_LOW. A deadline reached raises
+    // A2C_RT_DEADLINE at once, so a hang is reported; the unit's late end
+    // adds an info, so a slow design reads apart from a hung one. A unit
+    // whose deadline had not passed when the run ended raises nothing.
+    // While a rule counts toward its bound, the run timeout's deferral waits
+    // for it as for any progress rule.
+    virtual class a2c_rt_checker_base extends uvm_component;
+        int unsigned gap_cycles;
+        int unsigned latency_cycles;
+        int unsigned lag_cycles;
+        int unsigned refusal_cycles;
+        bit          on_model;
+        int unsigned in_units_per_out = 1;
+        int unsigned out_units_per_in = 1;
+        int unsigned max_reported = 10;
+        // All three rules off for the whole run, whatever sets them later:
+        // a2c_rt_off, which the generated fail test sets.
+        bit          off;
+        int unsigned clock_stop_cycles = 1000;
+        // The output port's a2c_txn_counter and the output agent's model_cmp,
+        // from connect_out(); either may be null.
+        a2c_txn_counter_base counter;
+        a2c_comparator_base  cmp;
+
+        protected a2c_flow_counts in_fc;
+        protected a2c_flow_counts out_fc;
+        protected a2c_clk_vif_t   clk_vif;
+        protected bit             model_dut;
+        protected bit             dual;
+        protected bit             judging = 1;
+        // Rising edges of the output clock since its reset release; every
+        // stamp below is one of these.
+        protected longint unsigned clocks;
+        // The monitors' counts at the last edge.
+        protected longint unsigned out_prev[4];
+        protected longint unsigned in_prev[4];
+        // Unit end events the monitors reported since the last edge, and the
+        // end markers of the unit each side has open.
+        protected int unsigned     in_end_events;
+        protected int unsigned     out_end_events;
+        protected int unsigned     in_marks;
+        protected int unsigned     out_marks;
+        // Input side: units ended, the stamp of the last end, whether a unit
+        // is open, its refused and excluded clocks, and whether its refusal
+        // was reported.
+        protected int unsigned     in_ended;
+        protected longint unsigned last_in_end;
+        protected bit              in_open;
+        protected bit              in_withheld;
+        protected longint unsigned in_refused;
+        protected longint unsigned in_excluded;
+        protected bit              refusal_reported;
+        // Output side: units ended, whether a unit is open (from its first
+        // transfer) and started (from its first offered beat), the stall
+        // and input refusal counts when it started, its beats, its last
+        // transfer,
+        // the idle clocks since then, and whether its gap was reported.
+        protected int unsigned     out_ended;
+        protected bit              out_open;
+        protected bit              out_started;
+        protected longint unsigned out_start_cum;
+        protected longint unsigned out_start_refused;
+        protected longint unsigned out_beats;
+        protected longint unsigned last_xfer;
+        protected realtime         last_xfer_at;
+        protected longint unsigned idle;
+        protected bit              gap_reported;
+        // Counter-based activity, with no output unit rule.
+        protected bit              counter_active;
+        // The deadline credit's counts, cumulative: the clocks the sink
+        // refused an offered output beat, and the clocks the DUT refused
+        // offered input. The restart is the last clock the output sat idle
+        // with its sink ready, with both counts then: the DUT had caught up,
+        // so no stall before it can have moved a unit's end.
+        protected longint unsigned stall_cum;
+        protected longint unsigned refused_cum;
+        protected longint unsigned in_refused_start;
+        protected bit              restarted;
+        protected longint unsigned restart_at;
+        protected realtime         restart_time;
+        protected longint unsigned restart_stall;
+        protected longint unsigned restart_refused;
+        // The stamps of the clocks the testbench withheld input that the
+        // gap's credit window may still reach.
+        protected longint unsigned withheld_at[$];
+        // The output units whose anchor input unit has ended and which have
+        // not ended, in unit order; the next output unit to be due.
+        typedef struct {
+            int unsigned     unit;
+            int unsigned     anchor;
+            longint unsigned in_end;
+            realtime         in_end_at;
+            longint unsigned cum_start;
+            longint unsigned cum_in_end;
+            longint unsigned refused_start;
+            longint unsigned refused_end;
+            int unsigned     limit;
+            bit              reported;
+        } deadline_t;
+        protected deadline_t       due[$];
+        protected int unsigned     next_due;
+        // Statistics for the summary.
+        protected longint unsigned lag_first;
+        protected longint unsigned lag_last;
+        protected longint unsigned lag_worst;
+        protected int unsigned     lag_worst_unit;
+        protected int unsigned     lags;
+        protected longint unsigned gap_now;
+        protected longint unsigned gap_worst;
+        protected int unsigned     gap_worst_unit;
+        protected longint unsigned refusal_worst;
+        protected int unsigned     refusal_worst_unit;
+        protected longint unsigned period_min;
+        protected longint unsigned period_max;
+        protected longint unsigned in_open_samples;
+        protected longint unsigned in_withheld_samples;
+        protected int unsigned     late_done;
+        protected int unsigned     failures;
+        protected int unsigned     unprinted;
+        protected int unsigned     unjudged;
+        protected bit              stopped;
+        protected realtime         stopped_at;
+        protected a2c_lane_watchdog dogs[$];
+        protected static a2c_rt_checker_base checkers[$];
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            checkers.push_back(this);
+        endfunction
+
+        static function void get_checkers(output a2c_rt_checker_base found[$]);
+            found = checkers;
+        endfunction
+
+        pure virtual protected function bit has_in_rule();
+        pure virtual protected function bit has_out_rule();
+
+        // The input unit whose end anchors output unit j: the last of its
+        // group of in_units_per_out, or the one that out_units_per_in output
+        // units share. Override it for any other pairing, such as an output
+        // one unit behind its input (j + 1). It must not decrease with j and
+        // must grow without bound: an input unit end creates a deadline for
+        // every output unit j with anchor(j) at or below it, so a constant
+        // never stops.
+        virtual function int unsigned anchor(int unsigned j);
+            if (in_units_per_out > 1) return j * in_units_per_out + in_units_per_out - 1;
+            return j / out_units_per_in;
+        endfunction
+
+        // Changes the bounds during a run; a negative value leaves one alone,
+        // and so does a plusarg that sets it or the off switch. The lag bound
+        // applies to the output units whose anchor input unit ends after the
+        // call, the others from the next clock.
+        function void set_limits(int gap, int lag, int refusal);
+            int unsigned given;
+            if (off) return;
+            if (gap >= 0 && !$value$plusargs("a2c_rt_gap_cycles=%d", given)) gap_cycles = gap;
+            if (lag >= 0 && !$value$plusargs("a2c_rt_lag_cycles=%d", given)) lag_cycles = lag;
+            if (refusal >= 0 && !$value$plusargs("a2c_rt_refusal_cycles=%d", given)) refusal_cycles = refusal;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            void'(a2c_get_config_int(this, "a2c_rt_gap_cycles", gap_cycles));
+            void'(a2c_get_config_int(this, "a2c_rt_latency_cycles", latency_cycles));
+            void'(a2c_get_config_int(this, "a2c_rt_lag_cycles", lag_cycles));
+            void'(a2c_get_config_int(this, "a2c_rt_refusal_cycles", refusal_cycles));
+            a2c_get_config_bit(this, "a2c_rt_on_model", on_model);
+            a2c_get_config_bit(this, "a2c_rt_off", off);
+            void'(a2c_get_config_int(this, "a2c_clock_stop_cycles", clock_stop_cycles));
+            void'(uvm_config_db#(bit)::get(this, "", "a2c_dual_dut", dual));
+            void'(uvm_config_db#(bit)::get(this, "", "a2c_model_dut", model_dut));
+        endfunction
+
+        // The monitor's a2c_flow_counts, or null with an A2C_CFG error.
+        protected function a2c_flow_counts flow_of(uvm_component mon, string what);
+            a2c_flow_counts fc;
+            if (mon != null && $cast(fc, mon)) return fc;
+            `uvm_error("A2C_CFG", $sformatf("%s: %s was given %s, which is not a monitor that implements a2c_flow_counts (rdy_vld, axi4_stream or push_ack)",
+                                            get_full_name(), what, (mon == null) ? "null" : mon.get_full_name()))
+            return null;
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            judging = !model_dut || on_model;
+            // After build, so a bound set on the fields is turned off too.
+            if (off) begin
+                gap_cycles     = 0;
+                lag_cycles     = 0;
+                refusal_cycles = 0;
+            end
+            if (out_fc == null) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: no output connected; call connect_out() in the env's connect_phase", get_full_name()))
+                return;
+            end
+            if (in_units_per_out == 0 || out_units_per_in == 0 || (in_units_per_out > 1 && out_units_per_in > 1)) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: in_units_per_out %0d and out_units_per_in %0d: each must be 1 or more and at most one above 1; override anchor() for any other pairing",
+                                                get_full_name(), in_units_per_out, out_units_per_in))
+            end
+            if (lag_cycles != 0 && (in_fc == null || !has_in_rule() || !has_out_rule())) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: rt_lag_cycles %0d needs an input from connect_in() and both in_rule and out_rule; missing: %s%s%s",
+                                                get_full_name(), lag_cycles, (in_fc == null) ? "the input " : "",
+                                                has_in_rule() ? "" : "in_rule ", has_out_rule() ? "" : "out_rule"))
+            end
+            if (refusal_cycles != 0 && (in_fc == null || !has_in_rule())) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: rt_refusal_cycles %0d needs an input from connect_in() and an in_rule; missing: %s%s",
+                                                get_full_name(), refusal_cycles, (in_fc == null) ? "the input " : "", has_in_rule() ? "" : "in_rule"))
+            end
+            if (gap_cycles != 0 && !has_out_rule() && counter == null) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: rt_gap_cycles %0d needs an out_rule, or the output's a2c_txn_counter passed to connect_out()",
+                                                get_full_name(), gap_cycles))
+            end
+            if (!judging && (gap_cycles != 0 || lag_cycles != 0 || refusal_cycles != 0)) begin
+                `uvm_info("A2C_RT", $sformatf("%s: the DUT is the SystemC model, whose timing is approximate; the real-time rules report measurements only (rt_on_model, +a2c_rt_on_model=1 judges them)",
+                                              port()), UVM_LOW)
+            end
+        endfunction
+
+        protected function string port();
+            string p = (out_fc == null) ? get_full_name() : out_fc.flow_port();
+            return dual ? {p, " DUT lane"} : p;
+        endfunction
+
+        protected function string in_port();
+            return (in_fc == null) ? "no input" : in_fc.flow_port();
+        endfunction
+
+        // How the run timeout's reports name this checker.
+        function string who();
+            return $sformatf("%s (%s)", port(), get_full_name());
+        endfunction
+
+        // A failure: printed up to max_reported, counted beyond, and only
+        // measured where the checker does not judge.
+        protected function void fail(string id, string msg);
+            // A bound a test writes to the fields during the run measures
+            // but never fails under a2c_rt_off.
+            if (off) return;
+            if (!judging) begin
+                unjudged++;
+                return;
+            end
+            failures++;
+            if (failures > max_reported) begin
+                if (unprinted == 0) begin
+                    `uvm_info("A2C_RT", $sformatf("%s: %0d real-time failures printed; later ones are counted and reported at check_phase",
+                                                  port(), max_reported), UVM_NONE)
+                end
+                unprinted++;
+                return;
+            end
+            `uvm_error(id, msg)
+        endfunction
+
+        // Called by the item exports: whether the beat is a unit end marker.
+        protected function void in_beat(bit mark, int unsigned per_unit);
+            if (!mark) return;
+            if (++in_marks < per_unit) return;
+            in_marks = 0;
+            in_end_events++;
+        endfunction
+
+        protected function void out_beat(bit mark, int unsigned per_unit);
+            out_beats++;
+            if (!mark) return;
+            if (++out_marks < per_unit) return;
+            out_marks = 0;
+            out_end_events++;
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            if (out_fc == null) return;
+            clk_vif = out_fc.flow_clock();
+            clk_vif.wait_reset_release();
+            // Every Mode B master's watchdog exists once the run phase has
+            // passed its first clock.
+            a2c_joint_watch::get_dogs(dogs);
+            out_fc.flow_counts(out_prev[0], out_prev[1], out_prev[2], out_prev[3]);
+            if (in_fc != null) in_fc.flow_counts(in_prev[0], in_prev[1], in_prev[2], in_prev[3]);
+            forever begin
+                @(clk_vif.cb);
+                clocks++;
+                if (dual && dut_dead()) begin
+                    stopped    = 1;
+                    stopped_at = $realtime;
+                    return;
+                end
+                step();
+            end
+        endtask
+
+        protected function bit dut_dead();
+            if (cmp != null && cmp.is_dead(A2C_DUT_LANE)) return 1;
+            foreach (dogs[i]) if (dogs[i].lanes == 2 && dogs[i].dead[A2C_DUT_LANE]) return 1;
+            return 0;
+        endfunction
+
+        protected function longint unsigned window();
+            return (latency_cycles != 0) ? latency_cycles : lag_cycles;
+        endfunction
+
+        // Whether the anchor of the open output unit, or of the next one,
+        // has yet to end, so the testbench can still starve it.
+        protected function bit anchor_open();
+            if (!has_in_rule()) return 1;
+            return in_ended <= anchor(out_ended);
+        endfunction
+
+        // One output clock.
+        protected function void step();
+            longint unsigned o[4];
+            longint unsigned i[4];
+            longint unsigned di[4];
+            bit              o_valid;
+            bit              o_ready;
+            bit              o_xfer;
+            bit              stall;
+            longint unsigned floor;
+            longint unsigned refused = 0;
+            out_fc.flow_counts(o[0], o[1], o[2], o[3]);
+            o_valid = o[1] != out_prev[1];
+            o_ready = o[2] != out_prev[2];
+            o_xfer  = o[3] != out_prev[3];
+            stall   = o_valid && !o_ready;
+            if (stall) stall_cum++;
+            if (o_ready && !o_valid) begin
+                restarted       = 1;
+                restart_at      = clocks;
+                restart_time    = $realtime;
+                restart_stall   = stall_cum;
+                restart_refused = refused_cum;
+            end
+            out_prev = o;
+            // The input side first, so an input unit that ends on the clock
+            // its output unit ends is its anchor in time.
+            if (in_fc != null) begin
+                in_fc.flow_counts(i[0], i[1], i[2], i[3]);
+                foreach (di[k]) di[k] = i[k] - in_prev[k];
+                in_prev = i;
+                // An input clock slower than the output's samples on some
+                // output clocks only, which keep its last state.
+                if (di[0] != 0) in_withheld = (di[1] == 0);
+                if (di[1] != 0) in_open = 1;
+                if (in_open) begin
+                    in_open_samples     += di[0];
+                    in_withheld_samples += di[0] - di[1];
+                end
+                refused = di[1] - di[3];
+                refused_cum += refused;
+                if (refused != 0) begin
+                    if (stall) in_excluded += refused;
+                    else in_refused += refused;
+                end
+                if (refusal_cycles != 0 && has_in_rule() && !refusal_reported && in_refused >= refusal_cycles) begin
+                    refusal_reported = 1;
+                    fail("A2C_RT_REFUSAL", $sformatf("%s: the DUT refused %0d clocks of input unit %0d that the testbench offered on %s (rt_refusal_cycles %0d, +a2c_rt_refusal_cycles), not counting %0d refused clocks on which the sink stalled the output",
+                                                     port(), in_refused, in_ended, in_port(), refusal_cycles, in_excluded));
+                end
+                while (in_end_events != 0) begin
+                    in_end_events--;
+                    input_unit_ended();
+                end
+                if (in_withheld && anchor_open()) withheld_at.push_back(clocks);
+            end
+            if (o_xfer) begin
+                last_xfer    = clocks;
+                last_xfer_at = $realtime;
+                idle         = 0;
+                gap_now      = 0;
+            end
+            if (o_valid && !out_started) begin
+                out_started   = 1;
+                out_start_cum = stall_cum - stall;
+                out_start_refused = refused_cum - refused;
+            end
+            if (has_out_rule()) begin
+                if (o_xfer) out_open = 1;
+                // A unit that ends on the clock its lag reaches the bound
+                // has failed it, so the deadlines are judged before the end
+                // retires its entry.
+                if (out_end_events != 0) check_deadlines();
+                while (out_end_events != 0) begin
+                    out_end_events--;
+                    output_unit_ended();
+                end
+            end else if (counter != null) begin
+                bit active = counter.lane_pending(A2C_DUT_LANE) > 0;
+                if (o_xfer && active) out_open = 1;
+                if (counter_active && !active) close_out_unit();
+                counter_active = active;
+            end
+            // A ready clock with no transfer had no beat offered.
+            if (out_open && !o_xfer && o_ready) idle++;
+            // The credit window: clocks after last_xfer - window() while a
+            // unit is open, else clocks a transfer from now could still
+            // reach. Pruning while no unit is open keeps withheld_at to one
+            // window across a long blank.
+            floor = out_open ? last_xfer : clocks;
+            floor = (floor > window()) ? floor - window() : 0;
+            while (withheld_at.size() != 0 && withheld_at[0] <= floor) void'(withheld_at.pop_front());
+            if (out_open) begin
+                gap_now = (idle > withheld_at.size()) ? idle - withheld_at.size() : 0;
+                if (gap_now > gap_worst) begin
+                    gap_worst      = gap_now;
+                    gap_worst_unit = out_ended;
+                end
+                if (gap_cycles != 0 && !gap_reported && gap_now >= gap_cycles) begin
+                    gap_reported = 1;
+                    fail("A2C_RT_GAP", $sformatf("%s: output unit %0d has gone %0d clocks with no beat while its sink was ready (rt_gap_cycles %0d, +a2c_rt_gap_cycles): %0d beats of the unit so far, the last at %0t; %0d idle clocks less a starvation credit of %0d input clocks the testbench withheld in the %0d-clock window (rt_latency_cycles)",
+                                                 port(), out_ended, gap_now, gap_cycles, out_beats, last_xfer_at, idle,
+                                                 withheld_at.size(), window()));
+                end
+            end
+            check_deadlines();
+        endfunction
+
+        protected function void input_unit_ended();
+            int unsigned     a = in_ended;
+            longint unsigned refused_start = in_refused_start;
+            if (in_ended != 0) begin
+                longint unsigned p = clocks - last_in_end;
+                if (in_ended == 1 || p < period_min) period_min = p;
+                if (p > period_max) period_max = p;
+            end
+            if (in_refused > refusal_worst || in_ended == 0) begin
+                refusal_worst      = in_refused;
+                refusal_worst_unit = in_ended;
+            end
+            in_refused_start = refused_cum;
+            in_ended++;
+            last_in_end      = clocks;
+            in_open          = 0;
+            in_refused       = 0;
+            in_excluded      = 0;
+            refusal_reported = 0;
+            if (!has_out_rule()) return;
+            while (anchor(next_due) <= a) begin
+                deadline_t d;
+                // An output unit that ended before this input unit was
+                // reported as A2C_RT_UNIT, and gets no deadline.
+                if (next_due >= out_ended) begin
+                    d.unit      = next_due;
+                    d.anchor    = a;
+                    d.in_end    = clocks;
+                    d.in_end_at = $realtime;
+                    d.cum_start     = (next_due == out_ended && out_started) ? out_start_cum : stall_cum;
+                    d.cum_in_end    = stall_cum;
+                    // Refusals net the stalls over the same window, so they
+                    // count from the output's first offered beat when that
+                    // came before the anchor input unit started.
+                    d.refused_start = (next_due == out_ended && out_started && out_start_refused < refused_start) ? out_start_refused : refused_start;
+                    d.refused_end   = refused_cum;
+                    d.limit     = lag_cycles;
+                    due.push_back(d);
+                end
+                next_due++;
+            end
+        endfunction
+
+        // The input clocks the DUT refused up to d's input end, from the
+        // earlier of the anchor input unit's start and the output unit's
+        // first offered beat, and not before the restart; raw, because the
+        // clocks the refusal rule leaves out moved the input end too.
+        protected function longint unsigned refused_of(deadline_t d);
+            if (restarted && restart_at >= d.in_end) return 0;
+            return d.refused_end - ((restarted && restart_refused > d.refused_start) ? restart_refused : d.refused_start);
+        endfunction
+
+        // The stalls since the restart: after the input end, and before it
+        // from the output unit's first offered beat less the refusals,
+        // never below 0. A stall the DUT turned into refusals has already
+        // moved the input end.
+        protected function longint unsigned credit_of(deadline_t d);
+            longint unsigned from  = (restarted && restart_stall > d.cum_start) ? restart_stall : d.cum_start;
+            longint unsigned early = 0;
+            longint unsigned late  = d.cum_in_end;
+            longint unsigned refused = refused_of(d);
+            if (restarted && restart_at >= d.in_end) late = restart_stall;
+            else early = d.cum_in_end - from;
+            early = (early > refused) ? early - refused : 0;
+            return stall_cum - late + early;
+        endfunction
+
+        protected function string restart_text();
+            return restarted ? $sformatf("%0t", restart_time) : "never";
+        endfunction
+
+        protected function longint unsigned lag_of(deadline_t d);
+            longint unsigned held = credit_of(d);
+            longint unsigned span = clocks - d.in_end;
+            return (span > held) ? span - held : 0;
+        endfunction
+
+        protected function void output_unit_ended();
+            int unsigned k = out_ended;
+            if (due.size() != 0 && due[0].unit == k) begin
+                longint unsigned lag = lag_of(due[0]);
+                if (lags == 0) lag_first = lag;
+                lag_last = lag;
+                if (lags == 0 || lag > lag_worst) begin
+                    lag_worst      = lag;
+                    lag_worst_unit = k;
+                end
+                lags++;
+                if (due[0].reported) begin
+                    late_done++;
+                    if (judging) begin
+                        `uvm_info("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d, reported late, ended %0d clocks after its deadline, with a lag of %0d against rt_lag_cycles %0d, less a stall credit of %0d clocks counted since the output last sat idle with its sink ready at %s",
+                                                               port(), k, lag - due[0].limit, lag, due[0].limit, credit_of(due[0]), restart_text()), UVM_LOW)
+                    end
+                end
+                void'(due.pop_front());
+            end else if (has_in_rule() && in_fc != null && lag_cycles != 0) begin
+                fail("A2C_RT_UNIT", $sformatf("%s: output unit %0d ended at %0t before input unit %0d of %s, its anchor, had ended; %0d input units have ended. The pairing (in_units_per_out %0d, out_units_per_in %0d, anchor()) does not match the design",
+                                              port(), k, $realtime, anchor(k), in_port(), in_ended, in_units_per_out, out_units_per_in));
+            end
+            close_out_unit();
+        endfunction
+
+        protected function void close_out_unit();
+            out_ended++;
+            out_open     = 0;
+            out_started  = 0;
+            out_beats    = 0;
+            idle         = 0;
+            gap_now      = 0;
+            gap_reported = 0;
+        endfunction
+
+        // Each unreported deadline reached raises A2C_RT_DEADLINE now. Every
+        // entry is checked: set_limits() can give a later unit a lower bound
+        // than an earlier one still pending.
+        protected function void check_deadlines();
+            foreach (due[n]) begin
+                longint unsigned lag;
+                if (due[n].reported || due[n].limit == 0) continue;
+                lag = lag_of(due[n]);
+                if (lag < due[n].limit) continue;
+                due[n].reported = 1;
+                fail("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d has not ended %0d clocks after input unit %0d of %s ended at %0t (rt_lag_cycles %0d, +a2c_rt_lag_cycles), less a stall credit of %0d clocks the sink refused an offered beat, net of %0d input clocks refused before the input end, counted since the output last sat idle with its sink ready at %s; %0s. Lag of unit 0: %s, worst completed so far: %s",
+                                                  port(), due[n].unit, lag, due[n].anchor, in_port(), due[n].in_end_at, due[n].limit,
+                                                  credit_of(due[n]), refused_of(due[n]), restart_text(),
+                                                  (due[n].unit == out_ended && out_beats != 0) ? $sformatf("%0d beats of the unit so far, the last at %0t", out_beats, last_xfer_at)
+                                                                                                 : "no beat of the unit yet",
+                                                  (lags == 0) ? "none yet" : $sformatf("%0d", lag_first),
+                                                  (lags == 0) ? "none" : $sformatf("%0d (unit %0d)", lag_worst, lag_worst_unit)));
+            end
+        endfunction
+
+        // The rules counting toward a report now, each with the clocks of the
+        // output clock it may still take, for the run timeout's deferral. A
+        // clock the sink holds ready low, or input the testbench withholds,
+        // adds to that, as a pause does.
+        function void counting(ref string rules[$], ref longint unsigned lefts[$]);
+            longint unsigned most = 0;
+            bit              any = 0;
+            if (off || !judging || stopped || out_fc == null) return;
+            foreach (due[n]) begin
+                longint unsigned lag;
+                if (due[n].reported || due[n].limit == 0) continue;
+                lag = lag_of(due[n]);
+                // The rule may not have run yet on this edge.
+                lag = (lag < due[n].limit) ? due[n].limit - lag : 0;
+                if (!any || lag < most) most = lag;
+                any = 1;
+            end
+            if (any) begin
+                rules.push_back("real-time deadline rule (rt_lag_cycles)");
+                lefts.push_back(most);
+            end
+            if (out_open && gap_cycles != 0 && !gap_reported && gap_now != 0) begin
+                rules.push_back("real-time gap rule (rt_gap_cycles)");
+                lefts.push_back((gap_now < gap_cycles) ? gap_cycles - gap_now : 0);
+            end
+            if (refusal_cycles != 0 && has_in_rule() && !refusal_reported && in_refused != 0) begin
+                rules.push_back("real-time refusal rule (rt_refusal_cycles)");
+                lefts.push_back((in_refused < refusal_cycles) ? refusal_cycles - in_refused : 0);
+            end
+        endfunction
+
+        // Whether the output clock has stopped for clock_stop_cycles and a
+        // half of its periods; the counts then hold still.
+        function bit clock_stopped();
+            return clk_vif != null && clk_vif.stopped(clock_stop_cycles);
+        endfunction
+
+        function realtime clock_period();
+            return (clk_vif == null) ? 0 : clk_vif.period;
+        endfunction
+
+        // The measured lags, for a test to read.
+        function longint unsigned worst_lag();
+            return lag_worst;
+        endfunction
+
+        function longint unsigned worst_gap();
+            return gap_worst;
+        endfunction
+
+        function longint unsigned worst_refusal();
+            return (in_refused > refusal_worst) ? in_refused : refusal_worst;
+        endfunction
+
+        function int unsigned units_checked();
+            return lags;
+        endfunction
+
+        function int unsigned failures_seen();
+            return failures + unjudged;
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned never = 0;
+            int unsigned pending = 0;
+            string       what;
+            super.check_phase(phase);
+            if (out_fc == null) return;
+            foreach (due[n]) begin
+                if (due[n].reported) never++;
+                else if (due[n].limit != 0) pending++;
+            end
+            what = $sformatf("%s: %0d output units ended against their input units; lag first %s, worst %s, last %s against rt_lag_cycles %0d; worst gap %0d (unit %0d) against rt_gap_cycles %0d; worst refusal %0d (input unit %0d) against rt_refusal_cycles %0d; input unit period %0d to %0d clocks; the testbench withheld %0.1f%% of the input clocks inside units; %0d late but completed, %0d never completed (see A2C_TXN_COUNT), %0d pending with the deadline not reached",
+                             port(), lags, (lags == 0) ? "none" : $sformatf("%0d", lag_first),
+                             (lags == 0) ? "none" : $sformatf("%0d (unit %0d)", lag_worst, lag_worst_unit),
+                             (lags == 0) ? "none" : $sformatf("%0d", lag_last), lag_cycles, gap_worst, gap_worst_unit, gap_cycles,
+                             worst_refusal(), (in_refused > refusal_worst) ? in_ended : refusal_worst_unit, refusal_cycles,
+                             period_min, period_max,
+                             (in_open_samples == 0) ? 0.0 : 100.0 * in_withheld_samples / in_open_samples,
+                             late_done, never, pending);
+            if (!judging) what = {what, $sformatf("; measured only, on the model DUT: %0d failures not raised", unjudged)};
+            if (stopped) what = {what, $sformatf("; stopped judging at %0t, when a Mode B master declared the DUT lane dead", stopped_at)};
+            if (pending != 0) what = {what, a2c_run_timeout_clause()};
+            `uvm_info("A2C_RT", what, UVM_LOW)
+            if (unprinted != 0) begin
+                `uvm_error("A2C_RT", $sformatf("%s: %0d real-time failures in all, %0d not printed", port(), failures, unprinted))
+            end
+        endfunction
+    endclass : a2c_rt_checker_base
+
+    // The real-time rules of a2c_rt_checker_base between an input stream of
+    // IN_T items and an output stream of OUT_T items. The user creates one
+    // per output in the tb_env's user region, sets in_rule and out_rule,
+    // and in connect_phase calls connect_in() with the input agent's mon and
+    // connect_out() with the output agent's mon, its counter and its
+    // model_cmp. An input monitor may feed several checkers.
+    class a2c_rt_checker #(type IN_T = uvm_sequence_item, type OUT_T = uvm_sequence_item) extends a2c_rt_checker_base;
+        typedef a2c_rt_checker #(IN_T, OUT_T) this_t;
+        typedef uvm_port_component #(uvm_port_base #(uvm_tlm_if_base #(IN_T, IN_T)))   in_port_t;
+        typedef uvm_port_component #(uvm_port_base #(uvm_tlm_if_base #(OUT_T, OUT_T))) out_port_t;
+
+        uvm_analysis_imp_a2c_rt_in #(IN_T, this_t)   in_export;
+        uvm_analysis_imp_a2c_rt_out #(OUT_T, this_t) out_export;
+        a2c_unit_rule #(IN_T)                        in_rule;
+        a2c_unit_rule #(OUT_T)                       out_rule;
+
+        `uvm_component_param_utils(a2c_rt_checker#(IN_T, OUT_T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            in_export  = new("in_export", this);
+            out_export = new("out_export", this);
+        endfunction
+
+        protected virtual function bit has_in_rule();
+            return in_rule != null;
+        endfunction
+
+        protected virtual function bit has_out_rule();
+            return out_rule != null;
+        endfunction
+
+        // Connects the monitor's analysis port ap, found as its child
+        // component, and keeps its flow counts.
+        function void connect_in(uvm_component mon);
+            in_port_t pc;
+            in_fc = flow_of(mon, "connect_in()");
+            if (in_fc == null) return;
+            if (!$cast(pc, mon.get_child("ap"))) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: %s has no analysis port ap of the checker's input item type", get_full_name(), mon.get_full_name()))
+                return;
+            end
+            pc.get_port().connect(in_export);
+        endfunction
+
+        function void connect_out(uvm_component mon, a2c_txn_counter_base counter = null, a2c_comparator_base cmp = null);
+            out_port_t pc;
+            out_fc = flow_of(mon, "connect_out()");
+            this.counter = counter;
+            this.cmp     = cmp;
+            if (out_fc == null) return;
+            if (!$cast(pc, mon.get_child("ap"))) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: %s has no analysis port ap of the checker's output item type", get_full_name(), mon.get_full_name()))
+                out_fc = null;
+                return;
+            end
+            pc.get_port().connect(out_export);
+        endfunction
+
+        // A unit rule with 0 end markers per unit is a configuration error.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (in_rule != null && in_rule.marks_per_unit() == 0) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: in_rule %s closes a unit at 0 end markers; ends_per_unit or beats_per_unit must be 1 or more",
+                                                get_full_name(), in_rule.get_type_name()))
+            end
+            if (out_rule != null && out_rule.marks_per_unit() == 0) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: out_rule %s closes a unit at 0 end markers; ends_per_unit or beats_per_unit must be 1 or more",
+                                                get_full_name(), out_rule.get_type_name()))
+            end
+        endfunction
+
+        virtual function void write_a2c_rt_in(IN_T t);
+            if (in_rule == null) return;
+            in_beat(in_rule.is_unit_end(t), in_rule.marks_per_unit());
+        endfunction
+
+        virtual function void write_a2c_rt_out(OUT_T t);
+            out_beat(out_rule != null && out_rule.is_unit_end(t), (out_rule == null) ? 1 : out_rule.marks_per_unit());
+        endfunction
+    endclass : a2c_rt_checker
+
     // What a generated base test has declared so far, from which the run
     // timeout derives its budget.
     interface class a2c_run_work;
@@ -2201,10 +3039,10 @@ package a2c_uvm_pkg;
     // The progress rules report a stop in their own words, so a rule that is
     // counting toward its bound when a derived budget is reached may fire
     // first, whatever its bound: the output deadline of a wait_for_count(),
-    // a Mode B master's lane skew, lone lane or joint stall rule, and the
-    // drain's deadline and catch-up. The count then collects the rules
-    // counting at that clock, leaving out a lane rule whose clock has
-    // stopped, each with the clocks it may still take to report, which
+    // a Mode B master's lane skew, lone lane or joint stall rule, the
+    // drain's deadline and catch-up, and an a2c_rt_checker's real-time
+    // rules. The count then collects the rules counting at that clock,
+    // leaving out a lane rule or checker whose clock has stopped, each with the clocks it may still take to report, which
     // covers its clock stopping or pausing, converted into clocks of clk_vif
     // by the two clocks' periods and rounded up, and defers once, to the
     // last of them plus A2C_RUN_TIMEOUT_DEFER_MARGIN clocks, with an
@@ -2322,6 +3160,7 @@ package a2c_uvm_pkg;
             a2c_txn_counter_base counters[$];
             a2c_lane_watchdog    dogs[$];
             a2c_replay_log_base  logs[$];
+            a2c_rt_checker_base  rts[$];
             longint unsigned     most = 0;
             names    = "";
             left_out = "";
@@ -2356,6 +3195,22 @@ package a2c_uvm_pkg;
                 end
                 note(names, most, {"the ", rule, " of ", dogs[i].who()},
                      in_clocks(longint'(left) + dogs[i].clock_stop_cycles + 1, (dogs[i].clk_vif == null) ? 0 : dogs[i].clk_vif.period));
+            end
+            // A checker's counts hold still while its output clock is
+            // stopped, as a lane rule's do.
+            a2c_rt_checker_base::get_checkers(rts);
+            foreach (rts[i]) begin
+                string           rules[$];
+                longint unsigned lefts[$];
+                rts[i].counting(rules, lefts);
+                foreach (rules[k]) begin
+                    if (rts[i].clock_stopped()) begin
+                        left_out = {left_out, (left_out == "") ? "" : "; ", "the ", rules[k], " of ", rts[i].who()};
+                        continue;
+                    end
+                    note(names, most, {"the ", rules[k], " of ", rts[i].who()},
+                         in_clocks(lefts[k] + rts[i].clock_stop_cycles + 1, rts[i].clock_period()));
+                end
             end
             a2c_replay_drain::get_logs(logs);
             foreach (logs[i]) begin

@@ -7,6 +7,9 @@
  *                                      __
  *  dst.ack   _________________________/  \__
  *
+ * The source must not wait for ack before raising push, and once push is
+ * high it holds push and data until the transfer completes. ack may wait
+ * for push.
  */
 
 interface push_ack_if #(

@@ -252,11 +252,17 @@ package axi4_stream_uvm_pkg;
     endclass : axi4_stream_driver
 
     class axi4_stream_monitor #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
-                                type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_monitor;
+                                type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_monitor implements a2c_flow_counts;
         axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t)                     cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) vif;
         uvm_analysis_port #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)) ap;
+
+        // The counts a2c_rt_checker reads (a2c_flow_counts), from the reset release.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_valid;
+        protected longint unsigned n_ready;
+        protected longint unsigned n_transfers;
 
         `uvm_component_param_utils(axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -271,6 +277,10 @@ package axi4_stream_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                n_samples++;
+                n_valid     += (vif.tvalid === 1'b1);
+                n_ready     += (vif.tready === 1'b1);
+                n_transfers += (vif.tvalid === 1'b1 && vif.tready === 1'b1);
                 item = null;
                 if (vif.tvalid === 1'b1) begin
                     item = axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)::type_id::create("item");
@@ -304,6 +314,22 @@ package axi4_stream_uvm_pkg;
                 ap.write(item);
             end
         endtask
+
+        virtual function void flow_counts(output longint unsigned samples, output longint unsigned valid,
+                                          output longint unsigned ready, output longint unsigned transfers);
+            samples   = n_samples;
+            valid     = n_valid;
+            ready     = n_ready;
+            transfers = n_transfers;
+        endfunction
+
+        virtual function a2c_clk_vif_t flow_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual function string flow_port();
+            return cfg.port_name;
+        endfunction
     endclass : axi4_stream_monitor
 
     class axi4_stream_agent #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
@@ -358,6 +384,24 @@ package axi4_stream_uvm_pkg;
             end
         endfunction
     endclass : axi4_stream_agent
+
+    // An a2c_rt_checker unit rule that ends a unit on tlast. In AMD UG934
+    // video tlast marks the end of a line, so a frame is ends_per_unit
+    // lines.
+    class axi4_stream_tlast_rule #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
+                                   type tdest_t = logic [7:0], type tuser_t = logic)
+        extends a2c_unit_rule #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t));
+
+        `uvm_object_param_utils(axi4_stream_tlast_rule#(tdata_t, tid_t, tdest_t, tuser_t))
+
+        function new(string name = "axi4_stream_tlast_rule");
+            super.new(name);
+        endfunction
+
+        virtual function bit is_unit_end(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t) t);
+            return t.tlast;
+        endfunction
+    endclass : axi4_stream_tlast_rule
 
 endpackage : axi4_stream_uvm_pkg
 

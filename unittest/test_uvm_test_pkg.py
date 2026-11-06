@@ -28,9 +28,12 @@ on the block's first clock, can derive its budget from the items sent and
 the transactions the counters expect. It hands that child
 run_timeout_cycles, run_timeout_floor_cycles and run_timeout_factor through
 the config_db, each from its plusarg, when 0 or more; left at -1 each takes
-the child's default. The fail test
+the child's default. It hands the env's a2c_rt_checker components the real-time
+knobs rt_gap_cycles, rt_latency_cycles, rt_lag_cycles, rt_refusal_cycles and
+rt_on_model the same way. The fail test
 adds the missing transactions to the first counted output after the smoke
-stimulus, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
+stimulus, turns the real-time rules off with a2c_rt_off, because
+the missing transaction never closes its unit, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
 in Mode B, with each lane's pending count equal to the missing count. A block
 with a model, and so a both DUT, also gets `<block>_model_mismatch_test`,
 which injects a mismatch on that output's model comparator, stops with A2C_CFG
@@ -125,6 +128,11 @@ BASE_TEST = [
     'int          run_timeout_cycles = -1;',
     'int          run_timeout_floor_cycles = -1;',
     'int          run_timeout_factor = -1;',
+    'int          rt_gap_cycles = -1;',
+    'int          rt_latency_cycles = -1;',
+    'int          rt_lag_cycles = -1;',
+    'int          rt_refusal_cycles = -1;',
+    'int          rt_on_model = -1;',
     'a2c_run_timeout run_timeout;',
     '`uvm_component_utils(ubDut_base_test)',
     'void\'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));',
@@ -141,6 +149,11 @@ BASE_TEST = [
     'void\'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));',
     'void\'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));',
     'void\'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));',
+    'void\'($value$plusargs("a2c_rt_gap_cycles=%d", rt_gap_cycles));',
+    'void\'($value$plusargs("a2c_rt_latency_cycles=%d", rt_latency_cycles));',
+    'void\'($value$plusargs("a2c_rt_lag_cycles=%d", rt_lag_cycles));',
+    'void\'($value$plusargs("a2c_rt_refusal_cycles=%d", rt_refusal_cycles));',
+    'void\'($value$plusargs("a2c_rt_on_model=%d", rt_on_model));',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_clock_stop_cycles", clock_stop_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_quiet_cycles", drain_quiet_cycles);',
     'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_deadline_cycles", drain_deadline_cycles);',
@@ -155,6 +168,16 @@ BASE_TEST = [
     'uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_floor_cycles", run_timeout_floor_cycles);',
     'if (run_timeout_factor >= 0) begin',
     'uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_factor", run_timeout_factor);',
+    'if (rt_gap_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_gap_cycles", rt_gap_cycles);',
+    'if (rt_latency_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_latency_cycles", rt_latency_cycles);',
+    'if (rt_lag_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_lag_cycles", rt_lag_cycles);',
+    'if (rt_refusal_cycles >= 0) begin',
+    'uvm_config_db#(int unsigned)::set(this, "env*", "a2c_rt_refusal_cycles", rt_refusal_cycles);',
+    'if (rt_on_model >= 0) begin',
+    'uvm_config_db#(bit)::set(this, "env*", "a2c_rt_on_model", rt_on_model != 0);',
     'env = ubDut_tb_env::type_id::create("env", this);',
     'run_timeout = a2c_run_timeout::type_id::create("run_timeout", this);',
     'virtual function void connect_phase(uvm_phase phase);',
@@ -220,6 +243,7 @@ FAIL_TEST = [
     'void\'($value$plusargs("a2c_fail_missing_count=%d", missing_count));',
     'demoter.demote_id = "A2C_TXN_COUNT";',
     'uvm_report_cb::add(null, demoter);',
+    'uvm_config_db#(bit)::set(this, "env*", "a2c_rt_off", 1\'b1);',
     'super.run_body();',
     'env.out_counter.expect_count(missing_count);',
     'int unsigned want = 1;',

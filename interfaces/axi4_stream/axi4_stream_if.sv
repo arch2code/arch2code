@@ -1,4 +1,7 @@
 // AMBA AXI4-Stream Protocol
+// As the AMBA specification requires, the source must not wait for TREADY
+// before asserting TVALID, and once TVALID is asserted it holds TVALID and
+// the payload until the transfer completes. TREADY may wait for TVALID.
 // The TUSER sideband parameter is optional. It defaults to a plain one-bit
 // `logic` placeholder, so a stream that binds no TUSER type carries a single
 // undriven bit that nothing in the design ever references.
