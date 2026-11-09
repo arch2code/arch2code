@@ -108,7 +108,12 @@ public:
                 std::lock_guard<std::mutex> lock(m_pending_mutex);
                 m_pending_w_beats = static_cast<int>(aw_data.awlen) + 1;
             }
+            // A delayed send blocks across clock edges, and the HDL must not
+            // transfer on them, as rdy_vld_src_bfm. A send that returns in
+            // this timestep leaves the next edge the ready it had.
+            hdl_if_p->awready = 0;
             if_p->sendAddr(aw_data);
+            hdl_if_p->awready = 1;
             wait(clk.posedge_event());
         }
     }
@@ -156,7 +161,13 @@ public:
                     --m_pending_w_beats;
                 }
             }
+            // A delayed send blocks across clock edges, and the HDL must not
+            // transfer on them: with wready left high it would hand over beats
+            // this thread never samples. As rdy_vld_src_bfm, a send that
+            // returns in this timestep leaves the next edge the ready it had.
+            hdl_if_p->wready = 0;
             if_p->sendDataCycle(w_data);
+            hdl_if_p->wready = 1;
             wait(clk.posedge_event());
         }
     }

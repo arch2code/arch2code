@@ -807,6 +807,12 @@ python3 test_status_dst_bfm.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: axi_write src BFM holds awready/wready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_write_src_bfm_delayed_send.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
 echo "------------------------------------------------------------------------"
 python3 test_external_reg_dst_bfm.py || FAILED=1
