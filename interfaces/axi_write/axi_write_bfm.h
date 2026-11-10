@@ -284,7 +284,12 @@ public:
             b_data.bid = (ID) hdl_if_p->bid.read().to_uint();
             b_data.bresp = (_axiResponseT) hdl_if_p->bresp.read().to_uint();
             if constexpr (hasOptionalPayload<BU>) { b_data.user.sc_unpack(hdl_if_p->buser); }
+            // A delayed send blocks across clock edges, and the HDL must not
+            // transfer on them, as rdy_vld_src_bfm. A send that returns in
+            // this timestep leaves the next edge the ready it had.
+            hdl_if_p->bready = 0;
             if_p->sendRespCycle(b_data);
+            hdl_if_p->bready = 1;
             wait(clk.posedge_event());
         }
     }

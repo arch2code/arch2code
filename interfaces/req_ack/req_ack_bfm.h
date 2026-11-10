@@ -80,8 +80,11 @@ public:
                 wait(clk.posedge_event());
             } while (!hdl_if_p->ack);
             rdata.sc_unpack(hdl_if_p->rdata);
-            if_p->ack(rdata);
+            // A delayed ack blocks across clock edges, and req_ack_if.sv's
+            // waveform drops req after the ack cycle: held up, the HDL would
+            // take it as a new request.
             hdl_if_p->req = false;
+            if_p->ack(rdata);
             wait(clk.posedge_event());
         }
     }
