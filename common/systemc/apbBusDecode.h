@@ -60,17 +60,23 @@ public:
             auto port = blockAddress < blockPorts.size() ? blockPorts[blockAddress] : nullptr;
             if (port != nullptr)
             {
-                if (isWrite)
+                // Forward in the mode received: a posted write stays posted,
+                // and only a response-aware request waits for PSLVERR.
+                if (apbIn->receivedWantsResponse())
                 {
-                    (*port)->request(isWrite, addr, data);
+                    const bool slverr = (*port)->requestWithResponse(isWrite, addr, data);
+                    apbIn->complete(data, slverr);
                 } else {
                     (*port)->request(isWrite, addr, data);
-                    apbIn->complete(data);
+                    if (!isWrite) {
+                        apbIn->complete(data);
+                    }
                 }
             } else if (isWrite) {
                 // An empty slot drops the write and reads 0xBADDC0DE, as the generated RTL does
                 logging::GetInstance().logDirect(std::format("{}: firmware write to unmapped address 0x{:x} dropped",
                                                              apbIn.get_parent_object()->name(), address), LOG_ALWAYS);
+                apbIn->complete(data, false);
             } else {
                 logging::GetInstance().logDirect(std::format("{}: firmware read of unmapped address 0x{:x} returns 0xBADDC0DE",
                                                              apbIn.get_parent_object()->name(), address), LOG_ALWAYS);
@@ -78,7 +84,7 @@ public:
                 constexpr uint64_t dataMask = DATA::_bitWidth >= 32 ? 0xFFFFFFFFull : (1ull << DATA::_bitWidth) - 1;
                 DATA badCode;
                 badCode._setData(0xBADDC0DEull & dataMask);
-                apbIn->complete(badCode);
+                apbIn->complete(badCode, false);
             }
         }
     }
