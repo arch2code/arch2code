@@ -801,6 +801,30 @@ python3 test_hw_register_ro_render.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: req_ack dst BFM drops req before a delayed ack()"
+echo "------------------------------------------------------------------------"
+python3 test_req_ack_dst_bfm_delayed_ack.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: axi_read src BFM holds arready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_read_src_bfm_delayed_send.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: axi_read dst BFM holds rready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_read_dst_bfm_delayed_send.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: axi_write dst BFM holds bready low while a delayed send blocks"
+echo "------------------------------------------------------------------------"
+python3 test_axi_write_dst_bfm_delayed_send.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: status_dst_bfm drives the latest status value"
 echo "------------------------------------------------------------------------"
 python3 test_status_dst_bfm.py || FAILED=1
