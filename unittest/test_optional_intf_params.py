@@ -39,6 +39,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from pysrc.processYaml import projectOpen
+from _tmp_helpers import temp_dir
 import pysrc.intf_gen_utils as intf_gen_utils
 
 
@@ -923,7 +924,7 @@ def test_typestruct_datatype_rejects_mismatched_kind():
     structure" message.
     """
     print("\n[negative] a type bound to a datatype: struct parameter is rejected")
-    with tempfile.TemporaryDirectory(prefix='optional_params_negative_') as tmpdir:
+    with temp_dir(prefix='optional_params_negative_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
@@ -1098,7 +1099,7 @@ def test_param_type_payload_builds_and_generates():
     `KeyError` on a `'types'`-kind payload (a plain type bound to a
     `datatype: type`/`typeStruct` parameter, not wrapped in a structure)."""
     print("\n[positive] a parameterizable type payload builds and generates")
-    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_') as tmpdir:
+    with temp_dir(prefix='optional_params_param_type_') as tmpdir:
         result, _projectPath, dbPath = _build_param_type_project(
             tmpdir, producer_params='PW', consumer_params='PW')
         if result.returncode != 0:
@@ -1225,7 +1226,7 @@ def test_param_type_variant_channel_width():
     an unknown type."""
     print("\n[positive] a parameterizable type payload's channel width follows "
           "the same per-variant Config as its own name")
-    with tempfile.TemporaryDirectory(
+    with temp_dir(
             prefix='optional_params_param_type_variant_') as tmpdir:
         result, _projectPath, dbPath = _build_param_type_variant_project(tmpdir)
         if result.returncode != 0:
@@ -1265,7 +1266,7 @@ def test_param_type_payload_missing_backing_param():
     `'types'`-kind payload was never found, `needed` stayed empty, and the
     endpoint backing-parameter check was silently skipped."""
     print("\n[negative] a type payload endpoint missing its backing parameter is rejected")
-    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_missing_') as tmpdir:
+    with temp_dir(prefix='optional_params_param_type_missing_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
         # An unrelated backing constant/param on the consumer only, in place
@@ -1390,7 +1391,7 @@ def test_param_type_payload_connectionmap_missing_backing_param():
     `_validateParameterizedConnectionEndpoints` must reach the `types`-kind
     payload the same way the connection loop does."""
     print("\n[negative] a connectionMap child missing a type payload's backing parameter is rejected")
-    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_connmap_') as tmpdir:
+    with temp_dir(prefix='optional_params_param_type_connmap_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
@@ -1505,7 +1506,7 @@ def test_param_type_payload_thunker_spelling():
     imported contexts as the type name. The parameterizable side spells the
     alias template and its width against the consumer's per-variant Config."""
     print("\n[thunker] a type payload spells the fixed and the parameterizable arm")
-    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_thunker_') as tmpdir:
+    with temp_dir(prefix='optional_params_param_type_thunker_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
@@ -1561,7 +1562,7 @@ def test_cross_interface_bind_kind_mismatch():
     `structPackedFields`/`typeWidth` with the wrong assumption and reported
     an internal error instead of a user-facing one."""
     print("\n[negative] cross-interface bind with mismatched structureKind is rejected")
-    with tempfile.TemporaryDirectory(prefix='optional_params_kind_mismatch_') as tmpdir:
+    with temp_dir(prefix='optional_params_kind_mismatch_') as tmpdir:
         projDir = os.path.join(tmpdir, 'proj')
         os.makedirs(projDir)
         with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
