@@ -1,8 +1,10 @@
 """Temp-directory cleanup shared by the unit tests."""
 
+import contextlib
 import os
 import shutil
 import sys
+import tempfile
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if base_dir not in sys.path:
@@ -22,3 +24,13 @@ def close_db():
 def remove_tree(path):
     close_db()
     shutil.rmtree(path)
+
+
+@contextlib.contextmanager
+def temp_dir(**kwargs):
+    """tempfile.TemporaryDirectory that closes the database before removal."""
+    path = tempfile.mkdtemp(**kwargs)
+    try:
+        yield path
+    finally:
+        remove_tree(path)

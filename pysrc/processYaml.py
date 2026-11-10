@@ -550,6 +550,11 @@ class projectOpen:
             exit(warningAndErrorReport())
         # for open we open the database read only to allow concurrency via makefile
         openString = f"file:{dbFile}?mode=ro"
+        # Close the connection this replaces. Once unreferenced it stays open
+        # until the cyclic garbage collector runs, keeping its file open (on
+        # NFS that blocks removing the file's directory).
+        if g.db is not None:
+            g.db.close()
         g.db = sqlite3.connect(openString, uri = True)
         if g.debug:
             # in debug mode, dont use the sqlite optimized row factory as its a pain in the debugger
