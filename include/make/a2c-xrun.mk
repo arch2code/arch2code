@@ -2,8 +2,8 @@
 # into its shared library, elaborates and writes one snapshot per DUT topology in
 # XRUN_RUNDIR. Xcelium fixes the SystemC topology at elaboration, so the snapshot
 # is elaborated with the topology's testbench arguments and build/run_<topology>
-# is a script that re-simulates it with the test's arguments, so the command
-# line matches the other flows.
+# is a script that simulates it with the test's arguments, so the command line
+# matches the other flows.
 
 # xrun links the SystemC objects with the GCC release named by -gcc_vers, which
 # must match the libstdc++ they were compiled against; the install-specific
@@ -15,10 +15,14 @@ endif
 XRUN ?= xrun
 XRUN_OPTS ?= -64bit -sv -sysc -sc_main -timescale 1ns/1ps
 XRUN_OPTS += -gcc_vers $(XRUN_GCC_VERS)
-# UVM 1.2; without -uvmhome xrun picks CDNS-1.1d. A UVM snapshot stops at
-# elaboration, because simulating with no +UVM_TESTNAME ends in a UVM_FATAL.
+# The build stops at elaboration and so takes no simulation licence; only the
+# run script's xrun -R does. Without -elaborate, xrun would also simulate the
+# elaboration arguments' testbench to the end, and a UVM snapshot, which has no
+# +UVM_TESTNAME there, would end in a UVM_FATAL.
+XRUN_OPTS += -elaborate
+# UVM 1.2; without -uvmhome xrun picks CDNS-1.1d.
 ifdef USE_UVM
-XRUN_OPTS += -uvm -uvmhome CDNS-1.2 -elaborate
+XRUN_OPTS += -uvm -uvmhome CDNS-1.2
 # The registrar includes every UVM top's shell from .gen/vl.
 $(A2C_UVM_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
 endif

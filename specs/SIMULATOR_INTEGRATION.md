@@ -140,7 +140,7 @@ In a VCS install the GCC 13 build of SystemC 2.3.4 sits under `$VCS_HOME/etc/sys
 ### 2.5 Licences
 
 - VCS reads its licence from the Synopsys licence variables, for example `SNPSLMD_LICENSE_FILE`. The default `VCS_OPTS` and `VLOGAN_OPTS` carry `+vcs+lic+wait`, so a build or run waits for a free licence. Every VCS binary, `run_model` included, is a `simv` and takes a runtime licence.
-- Xcelium reads `LM_LICENSE_FILE`. The build writes the value set at build time into each run script, so a run started outside the build environment finds the same servers. The script captures no other licence variable.
+- Xcelium reads `LM_LICENSE_FILE`. The snapshot build stops at elaboration, so it never simulates and checks out no simulation licence. Each test's `xrun -R` run takes the licence. The build writes the value set at build time into each run script, so a run started outside the build environment finds the same servers. The script captures no other licence variable.
 - Keep regression parallelism within the licence seats the site holds under its vendor agreements (section 5.5).
 
 ## 3. Environment variables
@@ -215,7 +215,7 @@ The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in secti
 | `XCELIUM_TOOLS` | checked (parse time) | none | the install's tools directory, the one holding `bin/xrun`, `systemc/include`, `include` and `inca/include` | `/opt/cadence/xcelium/26.03/tools` |
 | `XRUN_GCC_VERS` | checked (parse time) | none | `-gcc_vers` release of a bundled GCC under `$XCELIUM_TOOLS/cdsgcc/gcc` | `12.4` |
 | `XRUN` | optional | `xrun` | `xrun` command, also written into each run script | `$XCELIUM_TOOLS/bin/xrun` |
-| `XRUN_OPTS` | optional | `-64bit -sv -sysc -sc_main -timescale 1ns/1ps` | snapshot build options. `-gcc_vers $(XRUN_GCC_VERS)` is appended | |
+| `XRUN_OPTS` | optional | `-64bit -sv -sysc -sc_main -timescale 1ns/1ps` | snapshot build options. `-gcc_vers $(XRUN_GCC_VERS)` and `-elaborate` are appended (section 5.3) | |
 | `XRUN_R_OPTS` | optional | `-64bit -nolog` | per-simulation options in the run script. `-nolog` keeps concurrent runs off one `xrun.log` | |
 | `XRUN_DUT_LIB` | optional | `a2c_dut` | `-makelib` library that holds the HDL | |
 | `XRUN_RUNDIR` | optional | `$(PROJECT_RUNDIR)` | working directory of `xrun`, where the snapshots live | |
@@ -323,7 +323,7 @@ Run every command from the project's `rundir/`.
 ### 5.3 What the Xcelium flow runs
 
 1. Clang compiles the C++ with the Cadence defines and `-fPIC` into `build_xrun/<project>.build/`.
-2. One `xrun $(XRUN_OPTS) -gcc_vers $(XRUN_GCC_VERS) -clean -xmlibdirname xcelium_<topology>.d $(EXTRA_XRUN_OPTS) -makelib a2c_dut -F a2c.f <HDL hooks> $(EXTRA_XRUN_LIB_OPTS) -F rtl.f <RTL modules> <wrapper tops> -endlib <objects> -Wld,<each link token> +systemc_args+<each DUT_ELAB_ARGS word>` in `XRUN_RUNDIR`, log `xrun_xcelium_<topology>.log`. It compiles the HDL, links the objects into a shared library, and elaborates the snapshot.
+2. One `xrun $(XRUN_OPTS) -gcc_vers $(XRUN_GCC_VERS) -elaborate -clean -xmlibdirname xcelium_<topology>.d $(EXTRA_XRUN_OPTS) -makelib a2c_dut -F a2c.f <HDL hooks> $(EXTRA_XRUN_LIB_OPTS) -F rtl.f <RTL modules> <wrapper tops> -endlib <objects> -Wld,<each link token> +systemc_args+<each DUT_ELAB_ARGS word>` in `XRUN_RUNDIR`, log `xrun_xcelium_<topology>.log`. It compiles the HDL, links the objects into a shared library, and elaborates the snapshot. It stops after elaboration, so the build never simulates and checks out no simulation licence. Each test's `xrun -R` run (step 3) takes the licence.
 3. The build writes `build_xrun/run_<topology>`, a shell script that exports the captured `LM_LICENSE_FILE`, turns each argument into `+systemc_args+<arg>`, and runs `cd <XRUN_RUNDIR> && exec xrun -R -xmlibdirname xcelium_<topology>.d $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS)`.
 4. No `-top` is passed. xmelab takes `sc_main` and elaborates every uninstantiated HDL unit as an idle top-level, the unused wrapper tops included.
 
@@ -465,8 +465,7 @@ Harmless warnings: Xcelium `*W,SCK910` on `sc_start(0)`, `SPDUSD` and `LIBNOU` f
 
 - Under Xcelium, `sc_main` runs twice: once under xmelab during the snapshot build, up to the first `sc_start`, and again under xmsim for each run. Code before `sc_start` runs in both, so side effects such as file writes happen at build time too.
 - The HDL wrappers fail a run on an X or Z at a port whose interface type has a UVM agent (section 9.4). That applies to every VCS and Xcelium run with an RTL DUT, not only to UVM runs.
-- `xrun_snapshots` runs each topology's testbench while it builds the snapshot, so an X or Z in that run fails the snapshot build, before any regression test starts.
-- `--vlTrace` has no effect under VCS or Xcelium. Under VCS, build with `VCS_DEBUG=1` and run with `+fsdbTrace` for FSDB waveforms. This needs Verdi's FSDB support in the VCS install. The Xcelium flow has no built-in waveform switch; pass the site's probe options through `EXTRA_XRUN_R_OPTS` or `EXTRA_XRUN_OPTS`.
+- `--vlTrace` has no effect under VCS or Xcelium. Under VCS, build with `VCS_DEBUG=1` and run with `+fsdbTrace` for FSDB waveforms. This needs Verdi's FSDB support in the VCS install. The Xcelium flow has no built-in waveform switch. Elaboration access options such as `-access` go on `EXTRA_XRUN_OPTS`, and the site's probe commands on `EXTRA_XRUN_R_OPTS`, since the snapshot build simulates nothing.
 
 ## 8. Verification
 
@@ -600,7 +599,7 @@ The HDL wrapper's pins and the testbench module's pins are two-state `bit`, so a
 
 - The checks run in every VCS and Xcelium run with an RTL DUT, UVM or not.
 - Verilator never compiles them. The instances sit inside `` `ifndef VERILATOR ``.
-- Under Xcelium, `xrun_snapshots` runs each topology's testbench once while it builds the snapshot, so a real X fails the snapshot build itself. A UVM snapshot is built with `-elaborate` and does not simulate at build time.
+- Under Xcelium the snapshot build stops at elaboration and simulates no time, so an X or Z fails a test run, never the build.
 - The run's summary line shows the `A2C_XZ` reason unless a later `errorCode::fail` replaced it, because `errorCode::fail` keeps only the last reason. The `A2C_XZ` `$display` in the log always names the port and signal.
 
 The per-type rules are in section 9.10, and what a new type's checker must ship is in `rules/dev-skills/authoring-interface-definitions.md`.
@@ -893,7 +892,7 @@ The test package reaches the build through the manifest, as `A2C_UVM_TEST_SV_<to
 
 Vendor recipe items, under `ifdef USE_UVM`:
 
-- Xcelium (`a2c-xrun.mk`): `-uvm -uvmhome CDNS-1.2 -elaborate`. Without `-uvmhome`, xrun picks UVM 1.1d. Without `-elaborate`, the snapshot build would simulate with no `+UVM_TESTNAME` and end in a `UVM_FATAL`. The registrar objects depend on the boundary stamp, because they include every top's shell from `.gen/vl`.
+- Xcelium (`a2c-xrun.mk`): `-uvm -uvmhome CDNS-1.2`. Without `-uvmhome`, xrun picks UVM 1.1d. Every Xcelium snapshot build takes `-elaborate` (section 5.3). Without it, a UVM build would simulate with no `+UVM_TESTNAME` and end in a `UVM_FATAL`. The registrar objects depend on the boundary stamp, because they include every top's shell from `.gen/vl`.
 - VCS (`a2c-vcs.mk`): `-ntb_opts uvm-1.2` on `vlogan` and `vcs`. In the `vlogan` flow that option only adds the UVM include directories, so a `vlogan` run with no source files analyses `uvm_pkg` first. Its stamp `AN.DB/uvm_pkg.a2c_stamp` sits in `AN.DB`, which a failed link deletes, and an options file re-analyses it when the `vlogan` options or `VCS_HOME` change.
 - VCS: after the wrapper tops' `-sc_model` runs, one `-sc_model` run per UVM top makes every top's shell, because the registrar includes them all. The defines are repeated, because `A2C_UVM_RTL_DUT` and `A2C_UVM_BOTH_DUT` change the testbench module's body. Before the shells, each other top's variant package is analysed, and each other block's test package is analysed once, with `A2C_UVM_PKG` naming one of that block's variant packages. These steps take the RTL analysis's options, defines and library files (`a2c.f` and the HDL arguments, `a2c_uvm.f` among them), minus the selected top's `A2C_UVM_PKG`, so the library units they re-analyse into `AN.DB` match the RTL analysis. They leave out `rtl.f` and the other SV files, which the RTL analysis has already put in `AN.DB`. Other tops are never elaborated.
 - VCS: `common/systemc/uvm/uvmVcsElabStub.cpp` gives the `-syscelab` discovery link a weak `m__uvm_report_dpi`. `-ntb_opts uvm-1.2` puts the UVM DPI C code into both links, and only the simv link defines that SV export. The stub aborts if it is ever called.

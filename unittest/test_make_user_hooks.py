@@ -30,7 +30,8 @@ appends one distinct value to every tool hook. Checks:
   the layer's then the project's link flags on the vcs link;
 - under USE_XCELIUM=1: EXTRA_XRUN_OPTS before -makelib, EXTRA_XRUN_LIB_OPTS
   inside the DUT library after the HDL hooks, the layer's then the project's
-  link flags on the link, EXTRA_XRUN_R_OPTS in the run script;
+  link flags on the link, EXTRA_XRUN_R_OPTS in the run script, and -elaborate
+  on the snapshot build only, so the build never simulates;
 - each hook's value in the parse-time stamp that records its command, and the
   HDL files and lists as prerequisites of the verilate, the vlogan analysis and
   the xrun snapshot, and the layer's VCS library files, which xrun reaches
@@ -402,13 +403,13 @@ def main():
                                ['-gcc_vers', '-DHOOK_XRUN', '-makelib', a2cF, *hdl, '-DHOOK_XLIB',
                                 rtlF, '-endlib', f'-Wld,{LAYER_LD_FLAG}', f'-Wld,{LD_FLAG}'])
         failures += checkFileLists('xrun snapshot', snapshots, lists)
-        failures += checkTokens('xrun snapshot', snapshots, [],
+        failures += checkTokens('xrun snapshot', snapshots, ['-elaborate'],
                                 VERILATOR_HOOKS | VCS_HOOKS | {'+hook_r'})
         # The run script carries the xrun -R command inside one quoted argument.
         simulations = [shlex.split(c) for c in re.findall(r"exec (\S*xrun -R [^']*)'", xcelium)]
         failures += checkOrder('xrun -R', simulations, ['-nolog', '+hook_r'])
         failures += checkTokens('xrun -R', simulations, [],
-                                set(hdl) | {'-DHOOK_XRUN', '-DHOOK_XLIB'})
+                                set(hdl) | {'-DHOOK_XRUN', '-DHOOK_XLIB', '-elaborate'})
         xrunStampDir = os.path.dirname(single('xrun', os.path.join(
             rundir, 'build_xrun', '*.build', 'xrun', '*.d', 'opts')))
         failures += checkStamp('xrun snapshot', os.path.join(xrunStampDir, 'opts'),
