@@ -1215,6 +1215,7 @@ registers:
     structure: <structure_name>
     addressStruct: <structure_name> # Optional structure for memory reg
     wordLines: <depth_or_param>      # Required for regType: memory
+    count: <integer_or_constant>     # Optional, rw/ro/ext only: an array of count elements
     desc: "<description>"
 ```
 
@@ -1230,6 +1231,7 @@ registers:
 4. **Memory Register Depth**: For `regType: memory`, `wordLines` is a literal integer or a constant
 5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users. A parameterizable `rw` or `ro` register decodes every word of that allocation in every variant, in the RTL and the model. Words above the bound variant's width read 0 and drop writes
 6. **Description**: Required for documentation
+7. **Array Registers**: `count` makes an `rw`, `ro` or `ext` register an array, even at 1. It is an integer or a constant that is not parameterizable and resolves to at least 1. `make db` rejects a block parameter, and `count` on `regType: memory`. The array is one contiguous range of `count * stride` bytes, where the stride is the element's 4-byte-rounded decode size rounded up to the `addressObjects.registers` alignment. `regAddresses.h` gets `REG_<BLOCK>_<REG>` (element 0), `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`, and firmware addresses element k at `BASE_ADDR_<INSTANCE> + REG_<BLOCK>_<REG> + k * REG_<BLOCK>_<REG>_STRIDE`. RTL ports are interface arrays (`status_if.src rwArr [REGARR_N]`), indexed only with constants or genvars. SystemC ports and channels are `sc_vector`. See `design-architecture.md` (Register connections) and `manage-address-space.md`
 
 #### Automatic Block-Level Register Handler Generation
 
@@ -1383,15 +1385,34 @@ A register connection wires a register the container block owns to one of its ch
 ```yaml
 registerConnections:
   - {register: <register_name>, block: <owning_container_block>, instance: <child_instance>}
+  - {register: <array_register>, block: <owning_container_block>, instance: <child_instance>, index: <element>}  # one element of an array
 ```
 
-**Example** (`examples/mixed`: container `blockB` owns `rwD` and forwards it to its child `uBlockF0`):
+**Example** (`examples/mixed`: container `blockB` owns `rwD` and forwards it to its children `uBlockF0`, `uBlockF1` and `uBlockD`):
 ```yaml
 registers:
   - {register: rwD, regType: rw, block: blockB, structure: dRegSt, desc: "A Read Write register"}
 
 registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
+  - {register: rwD, block: blockB, instance: uBlockF1}
+  - {register: rwD, block: blockB, instance: uBlockD}
+```
+
+**Array registers.** An array reaches its users in one of three forms. With no row, the owner uses the array itself. A row without `index` gives the child the whole array as an array port named after the register, bound `.rwArr (rwArr)`. A row with `index: k` gives the child a scalar port of the same name, bound `.rwArr (rwArr[k])`. `index` is allowed only on a register with `count`, and must resolve to 0 to `count - 1`. Slices and instance arrays are not supported. See `design-architecture.md` (Register connections). `make db` rejects:
+- a second row for the same register and instance
+- rows for one child block in one container that mix `index` and no `index`, or that leave an instance of that block without a row (scalars included)
+- an `ro` or `ext` element with other than one consumer: a whole `ro`/`ext` array goes to one instance, and with `index` rows each element has exactly one. An `rw` element may have any number of readers
+- owners that give one child block's port a different `regType`, structure, `count` or form
+- a register or `regAccess` memory of the owner whose define matches the array's `_STRIDE` or `_COUNT` define, or whose name is an element name `<reg>_<k>`
+- a port named `<reg>_<k>` on a block that takes the whole array
+
+```yaml
+registerConnections:   # examples/mixed: rwArr and extArr have count: REGARR_N
+  - {register: rwArr, block: blockB, instance: uBlockF0}            # whole
+  - {register: rwArr, block: blockB, instance: uBlockF1}            # whole, every blockF instance has a row
+  - {register: rwArr, block: blockB, instance: uBlockD, index: 2}   # element 2
+  - {register: extArr, block: blockB, instance: uBlockD}            # whole, its one consumer
 ```
 
 ### Memory Definitions

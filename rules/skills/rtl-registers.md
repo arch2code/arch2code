@@ -30,6 +30,18 @@ Write the RTL a routed leaf needs behind its registers. The generator writes the
 
 `external_reg_if` has no read strobe, so reading an `ext` register cannot trigger logic such as clear-on-read.
 
+An array register (`count:` in YAML) is an interface array with one instance per element. The block that owns it declares `status_if #(.data_t(arrRegSt)) rwArr [REGARR_N]();`, and the handler takes it as the port `status_if.src rwArr [REGARR_N]`. A child that takes the whole array gets the port `status_if.dst rwArr [REGARR_N]`. A child that takes one element with `index:` gets a scalar `status_if.dst rwArr`, and the container binds it to `rwArr[k]`. `ext` arrays use `external_reg_if` the same way.
+
+Index an interface array with a constant or a genvar only, never a variable. The index must be known at elaboration, so `rwArr[i]` with `i` a signal, or a plain loop variable in `always_comb`, is an error. Use a `for (genvar ...)` block. In `examples/apbDecode/rtl/blockA.sv`, `blockA` owns both arrays and derives `roArr` from `rwArr`:
+
+```systemverilog
+for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_roArr
+    assign roArr[gi].data.d = rwArr[(gi + 1) % REGARR_N].data.d + u16T'(gi) + u16T'(ROARR_BIAS);
+end
+```
+
+`(gi + 1) % REGARR_N` is a constant expression of the genvar, so it is a legal index. Lint and synthesis support for interface-array ports varies by tool. Verilator lints and simulates the examples. Check your synthesis tool before you depend on an interface-array port at a block boundary.
+
 ### 2. Register clock domain
 The handler runs on the block's register clock and reset. For a top-down leaf, these are the leaf's synchronous input reset bound to the serving router's bus reset, and the clock that owns that reset. A `registerPorts:` row can name them instead. `design-register-decode.md` covers both.
 

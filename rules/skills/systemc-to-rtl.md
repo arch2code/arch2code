@@ -24,6 +24,7 @@ Convert a SystemC model (`model/<block>.cppm`) into synthesizable SystemVerilog 
 | `rdy_vld` output, `port->write()` | `rdy_vld_if.src` |
 | `status` input, `readNonBlocking()` | `status_if.dst`, read `.data` |
 | Owned `rw` register, `reg.read()` | `status_if` instance, read `<reg>.data` |
+| Owned `rw` array register, `rwArr[i].read()` | `status_if` interface array, read `rwArr[gi].data` inside a `for (genvar gi ...)` block. Index only with a constant or genvar (`rtl-registers.md`) |
 | Owned memory, `hwMemory` `read(i)` / `write(i, v)` | generated `memory_if` instance named after the memory |
 | `memory` port, `port->request(isWrite, addr, data)` | `memory_if.src` port |
 

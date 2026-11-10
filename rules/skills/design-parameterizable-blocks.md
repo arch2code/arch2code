@@ -289,6 +289,8 @@ memories:
 
 Only a register or a `regAccess` memory gets an address.
 
+An array register's `count:` and a `registerConnections:` row's `index:` are never parameterizable. An array has one size in every variant. See "Register connections" in `design-architecture.md`.
+
 ## Validation
 
 Run `make db` after YAML edits.

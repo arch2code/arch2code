@@ -225,8 +225,11 @@ Grouped by role:
 **Storage and addressing**
 - `registers`, `memories` — addressable objects owned by a block, typed by a
   structure, with a register type (`ro`/`rw`/`ext`/`memory`) and word count.
+  A register with `count` is an array. `calcAddresses` stores its element 0
+  `offset` and its `stride`.
 - `registerConnections`, `memoryConnections` — which instance reaches which
-  register/memory block.
+  register/memory block. A `registerConnections` row with `index` reaches one
+  element of an array register.
 
 ### The two identity axes
 

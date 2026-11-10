@@ -16,6 +16,33 @@ Pick the right port call for each interface family in a SystemC model.
 *   Call a port's methods through `->`, as in `dataIn->read(v)`.
 *   A register or memory the block owns is a member, not a port. See **systemc-core**.
 
+### Register array ports
+A child that takes a whole array register (`count:`, a `registerConnections:` row without `index:`) gets an `sc_vector` of ports. A child that takes one element (`index: k`) gets a plain port. The owner holds an `sc_vector` of channels. From `examples/mixed`:
+
+```cpp
+// blockFBase: the whole array
+sc_vector< status_in< dRegSt > > rwArr;
+// blockDBase: element 2 of rwArr
+status_in< dRegSt > rwArr;
+// blockB, the owner
+sc_vector< status_channel< dRegSt > > rwArr;
+
+// blockB constructor: the whole form binds the vector, the element form binds one channel
+uBlockF0->rwArr.bind(rwArr);
+uBlockD->rwArr(rwArr[2]);
+```
+
+*   Call an element as `rwArr[i]->read()`. Each element is its own `status` or `external_reg` port, with the calls in the table below.
+*   To wait on every element, spawn one thread per element, as `blockF` does in its constructor:
+
+    ```cpp
+    for (size_t i = 0; i < REGARR_N; i++) {
+        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
+    }
+    ```
+
+*   See **systemc-core** for an owned array.
+
 ## Calls per family
 "Src" is the side that starts a transaction. "Dst" is the side that answers it.
 

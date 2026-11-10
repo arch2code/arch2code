@@ -49,6 +49,14 @@ addressObjects:
 *   **`sortDescending`.** Places the largest objects first within each block.
     Without it, objects keep their declaration order, so offsets change only
     when you change the YAML.
+*   **Array registers.** A register with `count:` takes one contiguous range
+    of `count * stride` bytes, placed and sorted as a single object, so an
+    array never splits. The stride is the element's decode size rounded up to
+    the `registers` `alignment`. The decode size is the element width rounded
+    up to the 4-byte register bus. Elements never overlap, even at an
+    alignment of 1 or 2. In `examples/apbDecode` an element of `rwArr` is 16
+    bits, so its decode size is 4 bytes, and `alignment: 8` gives a stride of
+    8. Element k sits at the array's offset plus k times the stride.
 
 Parameterizable registers and memories are placed at their worst-case size.
 A row's width comes from its structure's `maxBitwidth`. A memory whose
@@ -118,6 +126,26 @@ To keep the file project-owned instead, leave the entry out. Write the file
 with a `GENERATED_CODE_PARAM --project=<projectName>` line and the `includes`
 template's `addresses` and `regAddresses` regions, then list it on
 `EXTRA_SC_GEN_FILES` in `include/make/shared.mk`. See `manage-build.md`.
+
+Each instance gets `BASE_ADDR_<INSTANCE>`, and each register gets
+`REG_<BLOCK>_<REG>`, its offset inside the block. An array register gets three
+defines and none per element. `REG_<BLOCK>_<REG>` is the offset of element 0,
+`_STRIDE` the bytes between elements, and `_COUNT` the element count. From
+`examples/mixed/model/regAddresses.h`:
+
+```c
+#define REG_BLOCKB_RWARR                    0x140
+#define REG_BLOCKB_RWARR_STRIDE             0x8
+#define REG_BLOCKB_RWARR_COUNT              4
+```
+
+Firmware addresses element k at
+`BASE_ADDR_<INSTANCE> + REG_<BLOCK>_<REG> + k * REG_<BLOCK>_<REG>_STRIDE`, as
+`examples/mixed/model/cpu.cppm` does:
+
+```cpp
+auto rwAddr = [](uint32_t i) { return BASE_ADDR_UBLOCKB + REG_BLOCKB_RWARR + i * REG_BLOCKB_RWARR_STRIDE; };
+```
 
 ## References
 *   Decode hierarchy, `regAccess`, group naming and parameterizable sizing:
