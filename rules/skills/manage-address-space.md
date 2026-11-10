@@ -43,7 +43,10 @@ addressObjects:
     registers.
 *   **`alignment`.** An integer aligns each object to that many bytes.
     `memsize`, for memories, aligns each memory to its own size, which keeps
-    the decode simple. Pair it with `sizeRoundUpPowerOf2: true`.
+    the decode simple. Pair it with `sizeRoundUpPowerOf2: true`. The
+    register bus decodes 32-bit words, so the `registers` alignment is an
+    integer that is a multiple of 4, and defaults to 4. `make db` rejects any
+    other value, `memsize` included.
 *   **`sizeRoundUpPowerOf2`.** Rounds a memory's size up to a power of two, at
     least 4 bytes.
 *   **`sortDescending`.** Places the largest objects first within each block.
@@ -53,10 +56,10 @@ addressObjects:
     of `count * stride` bytes, placed and sorted as a single object, so an
     array never splits. The stride is the element's decode size rounded up to
     the `registers` `alignment`. The decode size is the element width rounded
-    up to the 4-byte register bus. Elements never overlap, even at an
-    alignment of 1 or 2. In `examples/apbDecode` an element of `rwArr` is 16
-    bits, so its decode size is 4 bytes, and `alignment: 8` gives a stride of
-    8. Element k sits at the array's offset plus k times the stride.
+    up to the 4-byte register bus. In `examples/apbDecode` an element of
+    `rwArr` is 16 bits, so its decode size is 4 bytes, and `alignment: 8`
+    gives a stride of 8. Element k sits at the array's offset plus k times the
+    stride.
 
 Parameterizable registers and memories are placed at their worst-case size.
 A row's width comes from its structure's `maxBitwidth`. A memory whose

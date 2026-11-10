@@ -6245,7 +6245,7 @@ instances:
     uCpu:      { container: top_tb, instanceType: cpu }
     uRouter:   { container: top_tb, instanceType: router }
     uRegOwner: { container: top_tb, instanceType: regOwner, addressGroup: top }
-    uAccessor: { container: top_tb, instanceType: accessor,
+    uAccessor: { container: regOwner, instanceType: accessor,
                  clocks: { {accessorMap}clkO: ~ } }
 
 connections:
@@ -7534,9 +7534,9 @@ def run_object_access_name_cases():
     assert ownMemory != objectAccess, "the memory insertion did not match"
     # Two instances of regAccessor each receive register cfgA.
     twoAccessors = objectAccess.replace(
-        "    uMemAccessor: { container: top, instanceType: memAccessor }",
-        "    uMemAccessor: { container: top, instanceType: memAccessor }\n"
-        "    uRegAccessor2: { container: top, instanceType: regAccessor }").replace(
+        "    uMemAccessor: { container: leafA, instanceType: memAccessor }",
+        "    uMemAccessor: { container: leafA, instanceType: memAccessor }\n"
+        "    uRegAccessor2: { container: leafA, instanceType: regAccessor }").replace(
         "    - { register: cfgA, block: leafA, instance: uRegAccessor }",
         "    - { register: cfgA, block: leafA, instance: uRegAccessor }\n"
         "    - { register: cfgA, block: leafA, instance: uRegAccessor2 }")

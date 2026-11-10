@@ -388,9 +388,9 @@ fileGeneration:
 # parameterizable registers and memories, the two memory access sequences, and
 # the APB ready pipeline.
 #
-# regAccessor reaches the register from the DEFAULT domain, so the leaf spans two
-# clocks while its handler spans one - which is what separates the handler's own
-# derived set from its owning block's.
+# regAccessor, a child of the leaf, reaches the register from the DEFAULT
+# domain, so the leaf spans two clocks while its handler spans one - which is
+# what separates the handler's own derived set from its owning block's.
 REGS_DESIGN = """include:
     - shared.yaml
 
@@ -426,7 +426,7 @@ instances:
     uCPU:         {{ container: top, instanceType: cpu }}
     uAPBDecode:   {{ container: top, instanceType: apbDecode{routerMap} }}
     uLeafA:       {{ container: top, instanceType: leafA, addressGroup: top, variant: wide{leafMap} }}
-    uRegAccessor: {{ container: top, instanceType: regAccessor }}
+    uRegAccessor: {{ container: leafA, instanceType: regAccessor }}
 
 connections:
     - {{ interface: apbReg, src: uCPU, dst: uAPBDecode{feed_clock} }}
@@ -2501,17 +2501,19 @@ endmodule
 
 
 def check_regs_handler_off_bus_lints_clean(fixture, emitted):
-    """The emitted handler, and the leaf instantiating it and its memories,
-    lint clean under verilator (--lint-only --no-timing, no -Wall, the
+    """The emitted handler, and the leaf instantiating it, its memories and
+    regAccessor, lint clean under verilator (--lint-only --no-timing, no -Wall, the
     default reset style). CFG_WIDTH is bound in the wrapper because the
     wrapper is the elaborated top."""
     db = os.path.join(fixture, 'regs.db')
     shared_pkg = os.path.join(fixture, 'rtl', 'shared_package.sv')
-    gen = _arch2code('--db', db, '-r', '--systemVerilog', '--file', shared_pkg,
-                     cwd=fixture)
-    if gen.returncode != 0:
-        raise AssertionError(
-            f"generating rtl/shared_package.sv failed:\n{gen.stdout}\n{gen.stderr}")
+    accessor = os.path.join(fixture, 'rtl', 'regAccessor.sv')
+    for path in (shared_pkg, accessor):
+        gen = _arch2code('--db', db, '-r', '--systemVerilog', '--file', path,
+                         cwd=fixture)
+        if gen.returncode != 0:
+            raise AssertionError(
+                f"generating {os.path.relpath(path, fixture)} failed:\n{gen.stdout}\n{gen.stderr}")
 
     leaf_module_match = re.search(r'(?m)^module\s+(\w+)', emitted[REGS_LEAF])
     if not leaf_module_match:
@@ -2536,6 +2538,7 @@ def check_regs_handler_off_bus_lints_clean(fixture, emitted):
                 FLOPS_SV, ASSERTS_SVH, shared_pkg,
                 os.path.join(fixture, 'rtl', 'top_package.sv'),
                 os.path.join(fixture, REGS_HANDLER),
+                accessor,
                 os.path.join(fixture, REGS_LEAF),
                 wrapper_path])
         result = subprocess.run(cmd, capture_output=True, text=True)

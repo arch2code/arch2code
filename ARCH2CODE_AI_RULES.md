@@ -1401,7 +1401,9 @@ registerConnections:
 
 **Array registers.** An array reaches its users in one of three forms. With no row, the owner uses the array itself. A row without `index` gives the child the whole array as an array port named after the register, bound `.rwArr (rwArr)`. A row with `index: k` gives the child a scalar port of the same name, bound `.rwArr (rwArr[k])`. `index` is allowed only on a register with `count`, and must resolve to 0 to `count - 1`. Slices and instance arrays are not supported. See `design-architecture.md` (Register connections). `make db` rejects:
 - a second row for the same register and instance
-- rows for one child block in one container that mix `index` and no `index`, or that leave an instance of that block without a row (scalars included)
+- a row whose `instance` is not a child of `block`, such as a sibling of the owner or the topInstance (scalars included)
+- rows for one child block in one container that mix `index` and no `index`
+- an instance of a child block, in a container this project builds, with no row from its own container giving it a register its block takes as a port elsewhere (scalars included)
 - an `ro` or `ext` element with other than one consumer: a whole `ro`/`ext` array goes to one instance, and with `index` rows each element has exactly one. An `rw` element may have any number of readers
 - owners that give one child block's port a different `regType`, structure, `count` or form
 - a register or `regAccess` memory of the owner whose define matches the array's `_STRIDE` or `_COUNT` define, or whose name is an element name `<reg>_<k>`
@@ -1545,6 +1547,7 @@ addressObjects:
 
 - Key order sets placement. Within each block, offsets start at 0 and the first key's objects take the low offsets.
 - `alignment` is a byte count, or `memsize` for memories to align each memory to its own size. Pair `memsize` with `sizeRoundUpPowerOf2: true`.
+- The register bus decodes 32-bit words, so the `registers` alignment is an integer that is a multiple of 4, and defaults to 4. `make db` rejects any other value, `memsize` included.
 - `sizeRoundUpPowerOf2` rounds a memory's size up to a power of two, at least 4 bytes.
 - `sortDescending` places the largest objects first. Without it, objects keep their declaration order.
 - A `regType: memory` register is placed with the `registers` key but takes its alignment and rounding from the `memories` row, so a project with one needs both rows.

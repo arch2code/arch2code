@@ -12,12 +12,12 @@ plain `memoryConnections:` row. Neither kind of row has an interface a
 exemption in the completeness loop.
 
 `container` owns the register and the memory, the way `debayer` owns
-`bayer_pattern`; `sink`, a sibling instance, is the connection target
-and the block under test. Address bookkeeping needs an address group to
-exist in the project even for this unrouted register, so the fixture
-carries the same minimal APB router/leaf pair the sibling
-`test_register_ports_independent_of_ports.py` uses, unconnected to
-`cfg` or `tbl`.
+`bayer_pattern`; `sink`, a child of `container` beside `producer` and
+`consumer`, is the connection target and the block under test. Address
+bookkeeping needs an address group to exist in the project even for this
+unrouted register, so the fixture carries the same minimal APB router/leaf
+pair the sibling `test_register_ports_independent_of_ports.py` uses,
+unconnected to `cfg` or `tbl`.
 
 A second build proves the skip is scoped correctly: dropping the real
 interface port from `sink`'s `ports:` map must still be rejected, so
@@ -115,10 +115,10 @@ instances:
     uTop:        { container: top, instanceType: top }
     uAPBDecode:  { container: top, instanceType: apbDecode }
     uRegLeaf:    { container: top, instanceType: regLeaf, addressGroup: top }
-    uProducer:   { container: top, instanceType: producer }
-    uConsumer:   { container: top, instanceType: consumer }
     uContainer:  { container: top, instanceType: container, addressGroup: top }
-    uSink:       { container: top, instanceType: sink }
+    uProducer:   { container: container, instanceType: producer }
+    uConsumer:   { container: container, instanceType: consumer }
+    uSink:       { container: container, instanceType: sink }
 
 connections:
     - { interface: pixIf, src: uProducer, srcport: pixOut, dst: uSink, dstport: pixIn }

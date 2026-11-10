@@ -163,15 +163,18 @@ connections:
 
 {REG_CLK_REGISTER}"""
 
-# The routed leaf's register and memory reached from two other blocks, each
-# declaring and binding its OWN clock (nothing is derived onto a block from a
-# connection); the leaf itself carries both its bus domain and theirs. leafA
-# additionally declares objClk so its memory (whose clock: must name one of
-# the OWNING block's clocks)
-# can be put in the same domain as the memory accessor reaching it.
+# The routed leaf's register and memory reached from two of its children,
+# each declaring and binding its OWN clock (nothing is derived onto a block
+# from a connection); the leaf itself carries both its bus domain and theirs.
+# leafA additionally declares objClk and objRst_n so its memory (whose clock:
+# must name one of the OWNING block's clocks) can be put in the same domain as
+# the memory accessor reaching it, and so its children bind them by name.
 _LEAFA_TWO_CLOCKS = ("        clocks:\n"
                     "            clk:    { default: true }\n"
-                    "            objClk: { }\n")
+                    "            objClk: { }\n"
+                    "        resets:\n"
+                    "            rst_n:    { clock: clk }\n"
+                    "            objRst_n: { clock: objClk }\n")
 OBJECT_ACCESS = f"""include:
     - shared.yaml
 
@@ -217,8 +220,8 @@ instances:
     uCPU:         {{ container: top, instanceType: cpu }}
     uAPBDecode:   {{ container: top, instanceType: apbDecode }}
     uLeafA:       {{ container: top, instanceType: leafA, addressGroup: top }}
-    uRegAccessor: {{ container: top, instanceType: regAccessor }}
-    uMemAccessor: {{ container: top, instanceType: memAccessor }}
+    uRegAccessor: {{ container: leafA, instanceType: regAccessor }}
+    uMemAccessor: {{ container: leafA, instanceType: memAccessor }}
 
 connections:
     - {{ interface: apbReg, src: uCPU, dst: uAPBDecode }}

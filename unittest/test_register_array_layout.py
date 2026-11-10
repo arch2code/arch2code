@@ -4,8 +4,8 @@ firmware header describe it.
 
 An array of count elements is one allocation unit of count * stride bytes. The
 stride is the element's decoded footprint, whole 4-byte bus words, rounded up
-to the addressObjects.registers alignment, so elements never overlap however
-small the alignment. sortDescending orders by unit size, so a large array goes
+to the addressObjects.registers alignment, a multiple of 4, so elements never
+overlap. sortDescending orders by unit size, so a large array goes
 below a scalar that would precede it in declaration order. The registers row
 persists offset (element 0) and stride; a scalar's stride is 0.
 
@@ -72,7 +72,8 @@ ARCH = _arch("""    - { register: wide,  regType: rw, block: owner, structure: w
     - { register: roArr, block: owner, instance: uA1, index: 0 }
 """)
 
-# With alignment 2 a 48-bit element is 6 bytes but decodes two 4-byte words.
+# With alignment 4, the smallest make db accepts, a 48-bit element is 6 bytes
+# and decodes two 4-byte words.
 SMALL_ALIGNMENT_ARCH = _arch("""    - { register: small, regType: rw, block: owner, structure: cfgRegSt, desc: "16-bit scalar, 2 bytes" }
     - { register: one,   regType: rw, block: owner, structure: cfgRegSt, count: 1, desc: "1 x 4 bytes" }
     - { register: wArr,  regType: rw, block: owner, structure: wideRegSt, count: 2, desc: "2 x 8 bytes" }
@@ -162,21 +163,22 @@ def check_small_alignment(failures):
         aligned8 = "    registers:\n        alignment: 8\n"
         assert aligned8 in text, "make_project no longer sets the register alignment this test edits"
         with open(project_path, 'w') as f:
-            f.write(text.replace(aligned8, "    registers:\n        alignment: 2\n"))
+            f.write(text.replace(aligned8, "    registers:\n        alignment: 4\n"))
         result = run_arch2code(project_path, db_path)
         if result.returncode != 0:
-            failures.append(f"alignment 2 build failed:\n{result.stdout}{result.stderr}")
+            failures.append(f"alignment 4 build failed:\n{result.stdout}{result.stderr}")
             return
         prj = projectOpen(db_path)
         regs = {row['register']: row for row in prj.data['registers'].values()}
-        # sortDescending by unit size: wArr 2 x 8, one 1 x 4, small 2
-        for name, offset, stride in (('wArr', 0, 8), ('one', 16, 4), ('small', 20, 0)):
-            _check(failures, f"alignment 2 {name} offset", regs[name]['offset'], offset)
-            _check(failures, f"alignment 2 {name} stride", regs[name]['stride'], stride)
+        # sortDescending by unit size: wArr 2 x 8, then small and one, 4 each, in
+        # declaration order
+        for name, offset, stride in (('wArr', 0, 8), ('small', 16, 0), ('one', 20, 4)):
+            _check(failures, f"alignment 4 {name} offset", regs[name]['offset'], offset)
+            _check(failures, f"alignment 4 {name} stride", regs[name]['stride'], stride)
         header = includes.includeRegAddresses({}, prj, {}).splitlines()
-        _check(failures, "alignment 2 regAddresses defines", header[1:8], [
-            "#define REG_OWNER_SMALL                     0x14",
-            "#define REG_OWNER_ONE                       0x10",
+        _check(failures, "alignment 4 regAddresses defines", header[1:8], [
+            "#define REG_OWNER_SMALL                     0x10",
+            "#define REG_OWNER_ONE                       0x14",
             "#define REG_OWNER_ONE_STRIDE                0x4",
             "#define REG_OWNER_ONE_COUNT                 1",
             "#define REG_OWNER_WARR                      0x0",

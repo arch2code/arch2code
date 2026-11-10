@@ -9,8 +9,14 @@ row with index: hands one element of it to an instance. make db rejects:
 - an index on a register without count, an index outside [0, count), and a
   parameterizable index constant;
 - two rows giving one register to one instance;
+- a row naming an instance that is not a child of the register's owner, the
+  topInstance included;
 - instances of one child block that take a register in different forms, with
-  index and without, or an instance of that block left out;
+  index and without;
+- an instance of a child block, in a container this project builds, that
+  takes no register of a register port's name while another instance of the
+  block has that port. A child project's harness is not checked; a container
+  the project declares and nothing instantiates is;
 - an ro or ext element, or an ro or ext scalar, with more than one consumer,
   and an ro or ext array element no row covers;
 - a child block that takes one register port name from two owners whose
@@ -19,19 +25,24 @@ row with index: hands one element of it to an instance. make db rejects:
 - REG_<BLOCK>_<REG>_STRIDE or _COUNT equal to the define of another register
   or regAccess memory of the block;
 - an element name <reg>_<k> that is the name of another register or regAccess
-  memory of the block, or of a port of a block that takes the whole array.
+  memory of the block, or of a port of a block that takes the whole array;
+- an addressObjects registers alignment that is not an integer multiple of 4,
+  written as a number or a quoted number, a float and null included.
 
 Each diagnostic names the file, the register, the block and the fix. An rw
 array whose whole and index rows go to different child blocks builds, as does
-an index named by a constant, one register port fed alike by two owners, and
-an owner port named like an element of an array the owner uses itself.
+an index named by a constant, one register port fed alike by two owners, an
+owner port named like an element of an array the owner uses itself, a row to a
+child of the owner beside a sibling of the owner, a child project's harness
+that leaves its instance without a row, register alignment 4, 8 and "8", and no
+register alignment, which places registers on 4-byte words.
 """
 
 import os
-import shutil
 import sys
 import tempfile
 
+import test_register_decode_clock as regdecode
 from _addrctl_helpers import (
     APB_PREAMBLE,
     build_database,
@@ -42,6 +53,8 @@ from _addrctl_helpers import (
     run_arch2code,
     test_dir,
 )
+from _tmp_helpers import remove_tree
+from pysrc.processYaml import projectOpen
 
 
 PREAMBLE = APB_PREAMBLE.replace(
@@ -74,7 +87,7 @@ registers:
 
 def _two_owner_arch(reg_x, reg_y, conn_x, conn_y, structure_y='cfgRegSt'):
     """childA is instanced in both ownerX and ownerY, and each owner gives it a
-    register named cfg."""
+    register named cfg. conn_y None leaves uAy without a row."""
     return PREAMBLE.rstrip() + """
 
 blocks:
@@ -96,7 +109,30 @@ registers:
 registerConnections:
     - {{ register: cfg, block: ownerX, instance: uAx0{conn_x[0]} }}
     - {{ register: cfg, block: ownerX, instance: uAx1{conn_x[1]} }}
-    - {{ register: cfg, block: ownerY, instance: uAy{conn_y} }}
+""" + ('' if conn_y is None else f"""    - {{ register: cfg, block: ownerY, instance: uAy{conn_y} }}
+""")
+
+
+def _sibling_arch(instance):
+    """owner holds uB, and its sibling uS sits beside it in top. owner gives
+    register cfg to the named instance."""
+    return PREAMBLE.rstrip() + """
+
+blocks:
+""" + render_plain_block('top') + render_router('apbDecode', 'top') + render_leaf('owner') \
+        + render_plain_block('childB') + render_plain_block('sibling') + f"""
+instances:
+    uTop:       {{ container: top, instanceType: top }}
+    uAPBDecode: {{ container: top, instanceType: apbDecode }}
+    uOwner:     {{ container: top, instanceType: owner, addressGroup: top }}
+    uS:         {{ container: top, instanceType: sibling }}
+    uB:         {{ container: owner, instanceType: childB }}
+
+registers:
+    - {{ register: cfg, regType: rw, block: owner, structure: cfgRegSt, desc: "cfg" }}
+
+registerConnections:
+    - {{ register: cfg, block: owner, instance: {instance} }}
 """
 
 
@@ -225,9 +261,12 @@ def _run_duplicate_across_files():
         ["extra.yaml", "register 'arr'", "instance 'uB'", "repeats the entry at main.yaml"])
 
 
-def _run_project(label, files, needles):
-    """Build the named files as one project in a temporary directory and
-    expect make db to reject it with every needle in the diagnostic."""
+def _run_project(label, files, needles, alignment='8', check=None):
+    """Build the named files as one project in a temporary directory, with
+    the given addressObjects registers alignment text, or none for None.
+    Expect make db to reject it with every needle in the diagnostic, or to
+    build it when needles is None, and then check(db_path) to return no
+    failures."""
     project_dir = tempfile.mkdtemp(prefix='regarray_', dir=test_dir)
     try:
         for name, content in files.items():
@@ -236,10 +275,22 @@ def _run_project(label, files, needles):
         project = os.path.join(project_dir, 'project.yaml')
         with open(project, 'w') as f:
             f.write("yamlFormat: 2\nprojectName: regarray\ntopInstance: uTop\n\ndirs:\n    root: .\n\n"
-                    "addressObjects:\n    registers:\n        alignment: 8\n\nprojectFiles:\n"
+                    "addressObjects:\n    registers:"
+                    + (" {}" if alignment is None else f"\n        alignment: {alignment}")
+                    + "\n\nprojectFiles:\n"
                     + ''.join(f"    - {name}\n" for name in files))
         result = run_arch2code(project, os.path.join(project_dir, 'project.db'))
         combined = result.stdout + result.stderr
+        if needles is None:
+            if result.returncode != 0:
+                print(f"FAIL: {label}: arch2code.py failed\n{combined}")
+                return False
+            failures = check(os.path.join(project_dir, 'project.db')) if check else []
+            if failures:
+                print(f"FAIL: {label}: {failures}")
+                return False
+            print(f"PASS: {label}")
+            return True
         if result.returncode == 0:
             print(f"FAIL: {label}: arch2code.py succeeded unexpectedly")
             return False
@@ -250,7 +301,7 @@ def _run_project(label, files, needles):
         print(f"PASS: {label}")
         return True
     finally:
-        shutil.rmtree(project_dir)
+        remove_tree(project_dir)
 
 
 def _run_case(label, arch, expect_success, needles=(), block='owner', absent=()):
@@ -285,6 +336,81 @@ IP_PARAMS = """ipParameters:
 """
 
 
+def _run_alignment(alignment, needles):
+    files = {'arch.yaml': _arch(_reg('cfg') + _reg('arr', extra=', count: 2'), _conn('arr', 'uB'))}
+    verdict = 'builds' if needles is None else 'is rejected'
+    return _run_project(f"register alignment {alignment} {verdict}", files, needles, alignment)
+
+
+def _run_default_alignment():
+    """Three 16-bit registers in declaration order, with no alignment, start
+    on consecutive 4-byte words."""
+    def offsets(db_path):
+        prj = projectOpen(db_path)
+        got = {row['register']: row['offset'] for row in prj.data['registers'].values()}
+        want = {'a': 0, 'b': 4, 'c': 8}
+        return [] if got == want else [f"offsets {got}, want {want}"]
+    files = {'arch.yaml': _arch(_reg('a') + _reg('b') + _reg('c'), '')}
+    return _run_project("no register alignment builds and places registers on 4-byte words",
+                        files, None, None, offsets)
+
+
+CHILD_HARNESS_ROOT = """include:
+    - shared.yaml
+    - ../ip/yaml/childIp.yaml
+
+blocks:
+""" + render_plain_block('top') + render_plain_block('cpu') + render_router('apbDecode', 'top') \
+    + render_leaf('owner') + "{spare}" + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uCPU:       { container: top, instanceType: cpu }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uOwner:     { container: top, instanceType: owner, addressGroup: top }
+    uX:         { container: owner, instanceType: ipX }
+{spareInstance}
+connections:
+    - { interface: apbReg, src: uCPU, dst: uAPBDecode }
+
+registers:
+    - { register: cfg, regType: rw, block: owner, structure: cfgRegSt, desc: "cfg" }
+
+registerConnections:
+    - { register: cfg, block: owner, instance: uX }
+"""
+
+CHILD_HARNESS_IP = """include:
+    - ../../yaml/shared.yaml
+
+blocks:
+""" + render_plain_block('ipX') + render_plain_block('ipHarness') + "{harnessInstance}"
+
+
+def _run_child_project_case(label, spare, harness, needles):
+    """owner gives register cfg to uX, an instance of child-project block
+    ipX. harness puts hX of ipX in the child project's ipHarness, which the
+    root never instantiates. spare puts sX of ipX in the root-project block
+    spare, which nothing instantiates. needles None expects a build."""
+    design = CHILD_HARNESS_ROOT.replace(
+        '{spare}', render_plain_block('spare') if spare else '').replace(
+        '{spareInstance}', "    sX:         { container: spare, instanceType: ipX }\n" if spare else '')
+    child = CHILD_HARNESS_IP.replace(
+        '{harnessInstance}', "\ninstances:\n    hX: { container: ipHarness, instanceType: ipX }\n"
+        if harness else '')
+    label = f"{label} {'builds' if needles is None else 'is rejected'}"
+    fixture, project_path, db_path = regdecode._make_fixture(design, child=child)
+    try:
+        code, output = regdecode._build(project_path, db_path)
+    finally:
+        remove_tree(fixture)
+    if needles is None:
+        ok = code == 0
+    else:
+        ok = code != 0 and all(n in output for n in needles) and 'Traceback' not in output
+    print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f"\n{output}"))
+    return ok
+
+
 def run_all_tests():
     cases = [
         # count itself
@@ -309,6 +435,12 @@ def run_all_tests():
         ("a parameterizable index constant",
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uB', 'N_PARAM'), ip_params=IP_PARAMS), False,
          ["register 'arr'", "instance 'uB'", "index: N_PARAM, a parameterizable constant"]),
+        ("a row naming a sibling of the owner", _sibling_arch('uS'), False,
+         ["register 'cfg'", "names instance 'uS', which sits in block 'top', not in 'owner'",
+          "Name an instance contained in 'owner', or move 'uS' into 'owner'"]),
+        ("a row naming the topInstance", _arch(_reg('cfg'), _conn('cfg', 'uTop')), False,
+         ["register 'cfg'", "names topInstance 'uTop'", "is in no block",
+          "Name an instance contained in 'owner'"], 'owner', ['Traceback']),
         ("a duplicate registerConnections row",
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uB', 0) + _conn('arr', 'uB', 1)), False,
          ["register 'arr'", "instance 'uB'", "repeats the entry", "Remove one of the two entries"]),
@@ -318,10 +450,30 @@ def run_all_tests():
          ["register 'arr'", "block 'childA'", "two forms", "an index, or none"]),
         ("an array connected to one of two instances of a block",
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uA0', 0)), False,
-         ["register 'arr'", "block 'childA'", "uA1", "add a registerConnections row for uA1"]),
+         ["register 'arr'", "block 'childA'", "uA1", "Add a registerConnections row for uA1"]),
         ("a scalar connected to one of two instances of a block",
          _arch(_reg('scalar'), _conn('scalar', 'uA1')), False,
-         ["register 'scalar'", "block 'childA'", "uA0", "add a registerConnections row for uA0"]),
+         ["register 'scalar'", "block 'childA'", "uA0", "Add a registerConnections row for uA0"]),
+        ("a scalar port given in one owner and missing in another",
+         _two_owner_arch('regType: rw', 'regType: rw', ('', ''), None), False,
+         ["register 'cfg' of block 'ownerX'", "gives block 'childA' register port 'cfg'",
+          "uAy in 'ownerY' (", "of block 'childA' take no register 'cfg'",
+          "Add a registerConnections row for uAy"], 'childA'),
+        ("an array port given in one owner and missing in another",
+         _two_owner_arch('regType: rw, count: 2', 'regType: rw, count: 2', (', index: 0', ', index: 1'), None),
+         False, ["gives block 'childA' register port 'cfg'", "uAy in 'ownerY'",
+                 "Add a registerConnections row for uAy"], 'childA'),
+        ("a scalar ro register given to one of two instances of a block in one container",
+         _arch(_reg('status', 'ro'), _conn('status', 'uA0')), False,
+         ["register 'status'", "uA1 in 'owner'", "An ro register has one consumer",
+          "so uA1 cannot take it", "Make 'status' an array with count", "use a separate block for uA1"], 'owner',
+         ["Add a registerConnections row for uA1"]),
+        ("an ro scalar missing beside its consumer and in another owner",
+         _two_owner_arch('regType: ro', 'regType: ro', ('', ''), None).replace(
+             "    - { register: cfg, block: ownerX, instance: uAx1 }\n", ''), False,
+         ["uAx1 in 'ownerX' (", "uAy in 'ownerY' (", "Add a registerConnections row for uAy that",
+          "so uAx1 cannot take it", "use a separate block for uAx1"], 'childA',
+         ["row for uAx1", "row for uAy, uAx1", "row for uAx1, uAy"]),
         # rule 2: an ro or ext element has one consumer
         ("an ro element given to two instances",
          _arch(_reg('arr', 'ro', ', count: 2'), _conn('arr', 'uA0', 0) + _conn('arr', 'uA1', 0)), False,
@@ -396,6 +548,9 @@ connections:
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uB', 'N_FIXED')), True, []),
         ("one child block's port fed alike by two owners",
          _two_owner_arch('regType: rw, count: 2', 'regType: rw, count: 2', ('', ''), ''), True, []),
+        ("one child block's scalar port fed by both owners",
+         _two_owner_arch('regType: rw', 'regType: rw', ('', ''), ''), True, []),
+        ("a row naming a child of the owner beside a sibling of the owner", _sibling_arch('uB'), True, []),
         ("a register named past the last element",
          _arch(_reg('arr', extra=', count: 2') + _reg('arr_2'), ''), True, []),
         ("an array register beside a memoryConnections row with no instance",
@@ -410,7 +565,22 @@ memoryConnections:
         ("a count of 1",
          _arch(_reg('arr', 'ext', ', count: 1'), _conn('arr', 'uB')), True, []),
     ]
-    results = [_run_case(*case) for case in cases] + [_run_same_named_structures(), _run_duplicate_across_files()]
+    alignment = ["project.yaml", "addressObjects registers sets alignment",
+                 "must be an integer that is a multiple of 4", "for the default of 4"]
+    results = [_run_case(*case) for case in cases] + [
+        _run_same_named_structures(), _run_duplicate_across_files(),
+        _run_alignment(1, alignment + ["alignment: 1."]), _run_alignment(2, alignment + ["alignment: 2."]),
+        _run_alignment(6, alignment + ["alignment: 6."]),
+        _run_alignment('memsize', alignment + ["alignment: 'memsize'."]),
+        _run_alignment('"word"', alignment + ["alignment: 'word'."]),
+        _run_alignment('8.0', alignment + ["alignment: 8.0."]),
+        _run_alignment('~', alignment + ["alignment: None."]),
+        _run_alignment(4, None), _run_alignment(8, None), _run_alignment('"8"', None),
+        _run_default_alignment(),
+        _run_child_project_case("a child project's harness leaving its instance without a row",
+                                False, True, None),
+        _run_child_project_case("a root-project container nothing instantiates leaving its instance without a row",
+                                True, False, ["block 'ipX'", "sX in 'spare'", "take no register 'cfg'"])]
     return 0 if all(results) else 1
 
 

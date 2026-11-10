@@ -6263,7 +6263,7 @@ class projectCreate:
                     if alignmentModeValue:
                         size = ((size + alignment - 1) // alignment ) * alignment
                 elif addressType == 'registers':
-                    alignment = convert_value(self.addressObjects['registers'].get('alignment', 1))
+                    alignment = convert_value(self.addressObjects['registers'].get('alignment', 4))
                     alignmentModeValue = True if isinstance(alignment, int) else False
                     # Regular register: width is in bits so convert to bytes and ensure alignment
                     #        bits to bytes              round up to alignment
@@ -7771,6 +7771,22 @@ class projectCreate:
         if not self._validateProjectAddressRows(
                 'addressObjects', projRows, allowedFields, 'object'):
             return
+        # The register bus decodes 32-bit words. An alignment that is a
+        # multiple of 4 starts every register on a word, since each register
+        # takes whole alignment units.
+        registers = projRows.get('registers')
+        if registers is not None and 'alignment' in registers:
+            alignment = registers['alignment']
+            if isinstance(alignment, str):
+                alignment = convert_value(alignment)
+            if isinstance(alignment, bool) or not isinstance(alignment, int) or alignment <= 0 \
+                    or alignment % 4:
+                self.logError(
+                    f"In {self.diagnosticLocation(self.projFile, registers.lc)}, addressObjects "
+                    f"registers sets alignment: {alignment!r}. Registers are placed on 32-bit "
+                    f"register-bus words, so the register alignment must be an integer that is a "
+                    f"multiple of 4. Set alignment: 4, 8 or another multiple of 4, or remove it "
+                    f"for the default of 4.")
 
         addressConfig[sectionKey] = projRows
         self.addressObjects = projRows
@@ -10425,13 +10441,15 @@ class projectCreate:
         return item
 
     def _validateRegisterConnectionForms(self):
-        """Check every registerConnections row of one register together: the
-        instances of one child block take the register the same way, and an ro
-        or ext element has one consumer. Check the names an array creates: its
-        firmware defines and its element names take no other register's,
-        regAccess memory's or port's name."""
+        """Check every registerConnections row of one register together: each
+        row names a child instance of the owner, the instances of one child
+        block take the register the same way, and an ro or ext element has one
+        consumer. Check the names an array creates: its firmware defines and
+        its element names take no other register's, regAccess memory's or
+        port's name."""
         rowsByRegister = dict()
         for row in self.flatData['registerConnections'].values():
+            self._validateRegisterConnectionInstance(row)
             rowsByRegister.setdefault(row['registerBlockKey'], []).append(row)
         for registerKey, register in self.flatData['registers'].items():
             rows = rowsByRegister.get(registerKey, [])
@@ -10441,11 +10459,34 @@ class projectCreate:
                 self._validateRegisterArrayNames(register, rows)
         self._validateRegisterPortAgreement()
 
+    def _validateRegisterConnectionInstance(self, row):
+        """A registerConnections row wires a register to a child instance of
+        the register's owner. The generator builds the channel inside the
+        owner, so an instance anywhere else keeps its register port unbound."""
+        instance = self.flatData['instances'][row['instanceKey']]
+        if instance['containerKey'] == row['blockKey']:
+            return
+        where = (f"In {self.diagnosticLocation(row['_context'], row.get('lc'))}, registerConnections "
+                 f"entry for register '{row['register']}' of block '{row['block']}'")
+        if instance['container'] == '_topInstance':
+            self.logError(
+                f"{where} names topInstance '{row['instance']}'. A register connects only to a "
+                f"child instance of the block that owns it, and the topInstance, the topmost "
+                f"instance, is in no block. Name an instance contained in '{row['block']}'.")
+        container = self.flatData['blocks'][instance['containerKey']]['block']
+        self.logError(
+            f"{where} names instance "
+            f"'{row['instance']}', which sits in block '{container}', not in '{row['block']}'. "
+            f"A register connects only to a child instance of the block that owns it. Name an "
+            f"instance contained in '{row['block']}', or move '{row['instance']}' into "
+            f"'{row['block']}'.")
+
     def _validateRegisterPortAgreement(self):
         """A block's register port, named by the register, is one port for
         every instance of the block, so every owner that gives the block a
         register of that name gives it the same regType, structure, count and
-        form."""
+        form, and every instance of the block in a container this project
+        builds takes a register of that name from its own container."""
         def describe(register, shape, withFile):
             regType, structureKey, count, isElement = shape
             if count is None:
@@ -10461,11 +10502,15 @@ class projectCreate:
             return f"block '{register['block']}' gives it {form}, regType {regType}, {structure}"
 
         firstByPort = dict()
+        connected = set()
+        takenIn = dict()
         for row in self.flatData['registerConnections'].values():
+            connected.add((row['instanceKey'], row['register']))
             register = self.flatData['registers'][row['registerBlockKey']]
             count = None if register['count'] == '' else self._registerArrayConst(register, 'count')['value']
             shape = (register['regType'], register['structureKey'], count, row['index'] != '')
             childKey = self.flatData['instances'][row['instanceKey']]['instanceTypeKey']
+            takenIn.setdefault((childKey, row['register']), set()).add(row['blockKey'])
             firstRow, firstRegister, firstShape = firstByPort.setdefault(
                 (childKey, row['register']), (row, register, shape))
             if firstShape == shape:
@@ -10483,6 +10528,63 @@ class projectCreate:
                 f"and {describe(register, shape, sameName)}.{twoFiles} A block has one port of that "
                 f"name for every instance, so give both registers the same regType, structure and "
                 f"count, and connect both the same way, with index or without. Otherwise rename one register.")
+        # This project builds every container it declares, instantiated or
+        # not. A child project's harness is that project's own build.
+        instances = self.flatData['instances']
+        blocks = self.flatData['blocks']
+        rootProject = self.config.getConfig('PROJECTNAME')
+        inScope = self.reachableInstanceKeys() | {
+            key for key, inst in instances.items()
+            if inst['container'] != '_topInstance'
+            and self.contextOwningProject[blocks[inst['containerKey']]['_context']] == rootProject}
+        instancesByBlock = dict()
+        for key, inst in instances.items():
+            if key in inScope:
+                instancesByBlock.setdefault(inst['instanceTypeKey'], []).append(key)
+        for (childKey, portName), (firstRow, _register, shape) in firstByPort.items():
+            missingKeys = [key for key in instancesByBlock.get(childKey, [])
+                           if (key, portName) not in connected]
+            missing = [instances[key] for key in missingKeys]
+            if not missing:
+                continue
+            child = blocks[childKey]['block']
+            where = ', '.join(f"{inst['instance']} in '{inst['container']}' "
+                              f"({self.diagnosticLocation(inst['_context'], inst.get('lc'))})"
+                              for inst in missing)
+            regType, _structureKey, count, isElement = shape
+            # A whole ro or ext register has one consumer, so a missing
+            # instance beside the one that takes it cannot take it too.
+            singleConsumer = regType in ('ro', 'ext') and not isElement
+            blockedKeys = [key for key in missingKeys if singleConsumer
+                           and instances[key]['containerKey'] in takenIn[(childKey, portName)]]
+            addable = [instances[key]['instance'] for key in missingKeys if key not in blockedKeys]
+            blocked = [instances[key]['instance'] for key in blockedKeys]
+            fixes = []
+            if addable:
+                fixes.append(f"Add a registerConnections row for {', '.join(addable)} that gives "
+                             f"it a register '{portName}' of its own container, with the same "
+                             f"regType, structure and count.")
+            if blocked:
+                if count is None:
+                    what = f"An {regType} register"
+                    split = (f"Make '{portName}' an array with count and give each instance its "
+                             f"own element with an index row")
+                else:
+                    what = f"A whole {regType} array"
+                    split = "Give each instance its own elements with index rows"
+                containers = ', '.join(dict.fromkeys(f"'{instances[key]['container']}'"
+                                                     for key in blockedKeys))
+                fixes.append(f"{what} has one consumer, and in {containers} it is already taken "
+                             f"by another instance of '{child}', so {', '.join(blocked)} cannot "
+                             f"take it. {split}, or use a separate block for {', '.join(blocked)}.")
+            fix = ' '.join(fixes)
+            self.logError(
+                f"In {self.diagnosticLocation(firstRow['_context'], firstRow.get('lc'))}, "
+                f"registerConnections for register '{portName}' of block '{firstRow['block']}' "
+                f"gives block '{child}' register port '{portName}' through instance "
+                f"'{firstRow['instance']}', but instance(s) {where} of block '{child}' take no "
+                f"register '{portName}', so the port stays unbound. Every instance of one block "
+                f"has the same ports. {fix}")
 
     def _validateRegisterConnectionRows(self, register, rows):
         instances = self.flatData['instances']
@@ -10505,16 +10607,6 @@ class projectCreate:
                     f"with index ({', '.join(indexed)}) and without ({', '.join(whole)}). Every "
                     f"instance of one block takes a register the same way, so give every row "
                     f"for block '{child}' an index, or none.")
-            connected = {row['instanceKey'] for row in childRows}
-            missing = [row['instance'] for key, row in instances.items()
-                       if row['containerKey'] == register['blockKey']
-                       and row['instanceTypeKey'] == childKey and key not in connected]
-            if missing:
-                self.logError(
-                    f"{where(childRows[0])}: instance(s) {', '.join(row['instance'] for row in childRows)} "
-                    f"of block '{child}' take it, but {', '.join(missing)} of the same block in "
-                    f"'{register['block']}' do not. Every instance of one block has the same "
-                    f"ports, so add a registerConnections row for {', '.join(missing)}.")
         if register['regType'] not in ('ro', 'ext'):
             return
         owner = "drives" if register['regType'] == 'ro' else "answers"
