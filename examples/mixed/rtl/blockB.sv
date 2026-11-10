@@ -27,6 +27,8 @@ import mixed_package::*;
     status_if #(.data_t(bSizeRegSt)) roBsize();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableExt();
     memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockBTable37Bit();
+    status_if #(.data_t(dRegSt)) rwArr [REGARR_N]();
+    external_reg_if #(.data_t(dRegSt)) extArr [REGARR_N]();
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();
@@ -54,6 +56,8 @@ blockD uBlockD (
     .roBsize (roBsize),
     .blockBTableExt (blockBTableExt),
     .blockBTable37Bit (blockBTable37Bit),
+    .rwArr (rwArr[2]),
+    .extArr (extArr),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -64,6 +68,7 @@ blockF #(.bob(BOB0), .fred(0)) uBlockF0 (
     .dSin (loopDF),
     .dSout (loopFF),
     .rwD (rwD),
+    .rwArr (rwArr),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -74,6 +79,7 @@ blockF #(.bob(BOB1), .fred(1)) uBlockF1 (
     .dSin (loopFF),
     .dSout (loopFD),
     .rwD (rwD),
+    .rwArr (rwArr),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -93,6 +99,8 @@ blockBRegs uBlockBRegs (
     .roBsize (roBsize),
     .blockBTableExt (blockBTableExt),
     .blockBTable37Bit (blockBTable37Bit),
+    .rwArr (rwArr),
+    .extArr (extArr),
     .clk (clk),
     .rst_n (rst_n)
 );

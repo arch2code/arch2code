@@ -17,11 +17,14 @@ row with index: hands one element of it to an instance. make db rejects:
   registers differ in regType, structure, count or form. When two structures
   share a name, the diagnostic names the file declaring each;
 - REG_<BLOCK>_<REG>_STRIDE or _COUNT equal to the define of another register
-  or regAccess memory of the block.
+  or regAccess memory of the block;
+- an element name <reg>_<k> that is the name of another register or regAccess
+  memory of the block, or of a port of a block that takes the whole array.
 
 Each diagnostic names the file, the register, the block and the fix. An rw
 array whose whole and index rows go to different child blocks builds, as does
-an index named by a constant and one register port fed alike by two owners.
+an index named by a constant, one register port fed alike by two owners, and
+an owner port named like an element of an array the owner uses itself.
 """
 
 import os
@@ -94,6 +97,67 @@ registerConnections:
     - {{ register: cfg, block: ownerX, instance: uAx0{conn_x[0]} }}
     - {{ register: cfg, block: ownerX, instance: uAx1{conn_x[1]} }}
     - {{ register: cfg, block: ownerY, instance: uAy{conn_y} }}
+"""
+
+
+def _instance_port_arch():
+    """owner gives arr whole to uB and maps its own port side to uB's port
+    arr_1, which is the name of arr's element 1."""
+    return PREAMBLE.rstrip() + """
+    cfgStream:
+        desc: "cfg stream"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: cfgRegSt, structureType: data_t }
+
+blocks:
+""" + render_plain_block('top') + render_router('apbDecode', 'top') + render_leaf('owner') \
+        + render_plain_block('childB') + render_plain_block('srcBlk') + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uOwner:     { container: top, instanceType: owner, addressGroup: top }
+    uX:         { container: top, instanceType: srcBlk }
+    uB:         { container: owner, instanceType: childB }
+
+connections:
+    - { interface: cfgStream, src: uX, dst: uOwner, dstport: side }
+
+connectionMaps:
+    - { interface: cfgStream, block: owner, port: side, direction: dst, instance: uB, instancePort: arr_1 }
+
+registers:
+    - { register: arr, regType: rw, block: owner, structure: cfgRegSt, count: 2, desc: "array" }
+
+registerConnections:
+    - { register: arr, block: owner, instance: uB }
+"""
+
+
+def _owner_port_arch():
+    """owner uses arr itself, with no registerConnections row, and takes a
+    connection on its own port arr_1, the name of arr's element 1."""
+    return PREAMBLE.rstrip() + """
+    cfgStream:
+        desc: "cfg stream"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: cfgRegSt, structureType: data_t }
+
+blocks:
+""" + render_plain_block('top') + render_router('apbDecode', 'top') + render_leaf('owner') \
+        + render_plain_block('srcBlk') + """
+instances:
+    uTop:       { container: top, instanceType: top }
+    uAPBDecode: { container: top, instanceType: apbDecode }
+    uOwner:     { container: top, instanceType: owner, addressGroup: top }
+    uX:         { container: top, instanceType: srcBlk }
+
+connections:
+    - { interface: cfgStream, src: uX, dst: uOwner, dstport: arr_1 }
+
+registers:
+    - { register: arr, regType: rw, block: owner, structure: cfgRegSt, count: 2, desc: "array" }
 """
 
 
@@ -303,6 +367,23 @@ def run_all_tests():
 memories:
     - { memory: arr_count, block: owner, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 4, regAccess: rw, desc: "table" }
 """), False, ["register 'arr'", "REG_OWNER_ARR_COUNT", "memory 'arr_count'"]),
+        # element names
+        ("an array element named like another register",
+         _arch(_reg('arr', extra=', count: 2') + _reg('arr_1'), ''), False,
+         ["array register 'arr'", "element 1 'arr_1'", "register 'arr_1'", "Rename one of them"]),
+        ("an array element named like a regAccess memory",
+         _arch(_reg('arr', extra=', count: 2'), '', memories="""
+memories:
+    - { memory: arr_0, block: owner, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 4, regAccess: rw, desc: "table" }
+"""), False, ["array register 'arr'", "element 0 'arr_0'", "memory 'arr_0'"]),
+        ("an array element named like a port of a block taking the whole array",
+         _arch(_reg('arr', extra=', count: 2'), _conn('arr', 'uB'), memories="""
+connections:
+    - { interface: apbReg, src: uA0, dst: uB, dstport: arr_1 }
+"""), False, ["array register 'arr'", "element 1 'arr_1'", "port 'arr_1' of block 'childB'"]),
+        ("an array element named like a child's connectionMap port, on a block taking the whole array",
+         _instance_port_arch(), False,
+         ["array register 'arr'", "element 1 'arr_1'", "port 'arr_1' of block 'childB'"]),
         # accepted forms
         ("an rw array taken whole by one block and by element by another",
          _arch(_reg('arr', extra=', count: N_FIXED'), _conn('arr', 'uB') + _conn('arr', 'uA0', 1) + _conn('arr', 'uA1', 1)),
@@ -315,6 +396,17 @@ memories:
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uB', 'N_FIXED')), True, []),
         ("one child block's port fed alike by two owners",
          _two_owner_arch('regType: rw, count: 2', 'regType: rw, count: 2', ('', ''), ''), True, []),
+        ("a register named past the last element",
+         _arch(_reg('arr', extra=', count: 2') + _reg('arr_2'), ''), True, []),
+        ("an array register beside a memoryConnections row with no instance",
+         _arch(_reg('arr', extra=', count: 2'), _conn('arr', 'uB'), memories="""
+memories:
+    - { memory: tbl, block: owner, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 4, ports: [p0], desc: "table" }
+
+memoryConnections:
+    - { memory: tbl, block: owner, port: p0 }
+"""), True, []),
+        ("an owner port named arr_1 beside a form-1 arr", _owner_port_arch(), True, []),
         ("a count of 1",
          _arch(_reg('arr', 'ext', ', count: 1'), _conn('arr', 'uB')), True, []),
     ]

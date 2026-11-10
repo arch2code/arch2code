@@ -86,6 +86,7 @@ def get_hwregs(prj, data):
                 "port_name": inst[name_field],
                 # A regType: memory register has no regAccess and is always rw.
                 "fw_access": FW_ACCESS_ENUM.get(inst['regAccess']) if name_field == 'memory' else None,
+                "count": None,
                 "descr": inst['desc']
             })
         else:
@@ -110,6 +111,10 @@ def get_hwregs(prj, data):
                 "port_type": port_type,
                 "port_name": inst['register'],
                 "default": hex(prj.getConst(inst['defaultValue'])) if inst['regType'] == 'rw' else None,
+                # An array register holds one hwRegisterIf per element of its port vector.
+                "count": inst['count'] if inst['countValue'] is not None else None,
+                "elements": range(inst['countValue']) if inst['countValue'] is not None else None,
+                "stride_value": hex(inst['stride']) if inst['countValue'] is not None else None,
                 "descr": inst['desc']
             })
     return hwregs
@@ -235,6 +240,8 @@ public:
     {% for entry in hwregs -%}
     {% if entry.is_memory -%}
     hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}}{% if entry.row_bytes %}, {{entry.row_bytes}}{% endif %} > {{entry.name}}; // {{entry.descr}}
+    {% elif entry.count is not none -%}
+    std::array< hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}>, {{entry.count}} > {{entry.name}}; // {{entry.descr}}
     {% else -%}
     hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endif -%}
@@ -263,6 +270,8 @@ SC_HAS_PROCESS({{blockname}});
         ,{{entry.name}}({{thisq}}{{entry.port_name}}, {{entry.fw_access}}, std::string(this->name()) + ".{{entry.port_name}}")
         {% elif entry.is_memory -%}
         ,{{entry.name}}({{thisq}}{{entry.port_name}})
+        {% elif entry.count is not none -%}
+        ,{{entry.name}}{ { {% for k in entry.elements %}{&{{thisq}}{{entry.port_name}}[{{k}}]{% if entry.default %}, {{entry.packedst_typename}}{{entry.datatype_inclass}}::_packedSt({{entry.default}}){% endif %}}{% if not loop.last %}, {% endif %}{% endfor %} } }
         {% elif entry.default -%}
         ,{{entry.name}}(&{{thisq}}{{entry.port_name}}, {{entry.packedst_typename}}{{entry.datatype_inclass}}::_packedSt({{entry.default}}))
         {% else -%}
@@ -277,6 +286,9 @@ block_regs_body_section_template = '''\
     // Generated register/memory address offsets
     {% for entry in hwregs -%}
     constexpr uint64_t {{entry.const_name}} = {{entry.offset_value}};
+    {% if entry.count is not none -%}
+    constexpr uint64_t {{entry.const_name}}_STRIDE = {{entry.stride_value}};
+    {% endif -%}
     {% endfor %}
     {% endif -%}
     {% set memory_items = hwregs | selectattr('is_memory', 'equalto', true) | list -%}
@@ -294,7 +306,12 @@ block_regs_body_section_template = '''\
     {% if register_items -%}
     // register registers for FW access
     {% for entry in register_items -%}
+    {% if entry.count is not none -%}
+    for (uint32_t i = 0; i < {{entry.count}}; i++)
+        _a2cRegs.addRegister({{entry.offset}} + i * {{entry.offset}}_STRIDE, {{entry.size}}, std::format("{{entry.port_name}}[{}]", i), &{{entry.name}}[i] );
+    {% else -%}
     _a2cRegs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% endif -%}
     {% endfor -%}
     {% endif -%}
     SC_THREAD(regHandler);

@@ -121,7 +121,7 @@ def port_decl_block(prj, data, mp_sig, sc_bv):
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
-            s += f'// {intf_type}.{intf_dir}\n'
+            s += f"// {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
             s += ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
                              for decl, name in zip(mp_sig[port]['ports'], mp_sig[port]['names']))
             s += ',\n'
@@ -144,14 +144,14 @@ def intf_reconstruction(prj, data, mp_sig):
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
-            s += f'// {intf_type}.{intf_dir}\n'
+            s += f"// {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
             s += mp_sig[port]['intf_decl'] + '\n'*2
             s += '\n'.join(mp_sig[port]['assign'])
             s += '\n'
             s += '\n'
     return s
 
-def dut_instantiation(prj, data, blk_name, blk_param):
+def dut_instantiation(prj, data, mp_sig, blk_name, blk_param):
     s = f"{data['blockSvModuleName']}{blk_param} dut (\n"
     s_1 = ''
     for port_type in data['ports']:
@@ -161,7 +161,7 @@ def dut_instantiation(prj, data, blk_name, blk_param):
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
-            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
+            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}{mp_sig[port]['array_suffix']}\n"
     s_1 += ',\n'.join(intf_gen_utils.sv_clock_reset_binds(data)) + '\n'
     s_1 = textwrap.indent(s_1, ' '*4)
     s += s_1 + ');'
@@ -214,7 +214,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
 
     blk_param = ' #(' + ", ".join([f".{p}({p})" for p in params]) + ')'
-    out += textwrap.indent(dut_instantiation(prj, data, blk_name, blk_param), ' '*4) + '\n'
+    out += textwrap.indent(dut_instantiation(prj, data, mp_sig, blk_name, blk_param), ' '*4) + '\n'
 
     out += f'\nendmodule : {module_name}\n'
     return out
@@ -308,7 +308,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
 
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
 
-    out += textwrap.indent(dut_instantiation(prj, data, blk_name, ''), ' '*4) + '\n'
+    out += textwrap.indent(dut_instantiation(prj, data, mp_sig, blk_name, ''), ' '*4) + '\n'
 
     out += f'\nendmodule : {module_name}\n'
     return out

@@ -129,8 +129,9 @@ def _test_testbench_emitters_route_through_the_helper():
     # A channel constructor emitted with a hardcoded f-string that closes
     # right after the owning-block name carries no multicycle arguments;
     # every channel-constructing emitter must route through the shared
-    # helper. The emissions span several source lines, so match the whole
-    # file text.
+    # helper. An emitter either closes the constructor itself or hands its
+    # arguments to sc_channel_init, which closes it. The emissions span
+    # several source lines, so match the whole file text.
     template_path = os.path.join(base_dir, 'templates', 'systemc',
                                   'testbench.py')
     with open(template_path) as f:
@@ -142,7 +143,7 @@ def _test_testbench_emitters_route_through_the_helper():
 
     # An owning-block argument closing the constructor immediately is a
     # constructor emitted without the multicycle arguments.
-    truncated = re.findall(r'"\{(?:instName|srcInst)\}"\)', template)
+    truncated = re.findall(r'"\{(?:instName|srcInst)\}"(?:\)|\')', template)
     if truncated:
         print(f"FAIL: {len(truncated)} channel constructor emission(s) close "
               "right after the block name, so they carry no multicycle "
@@ -153,7 +154,7 @@ def _test_testbench_emitters_route_through_the_helper():
     # ext_sec_init) must be present. The backpressure argument, when the
     # interface takes one, sits between the block name and the multicycle
     # arguments.
-    complete = re.findall(r'"\{(?:instName|srcInst)\}"(?:\{[^{}]+\})?\{extra\}\{autoMode\}\)',
+    complete = re.findall(r'"\{(?:instName|srcInst)\}"(?:\{[^{}]+\})?\{extra\}\{autoMode\}(?:\)|\'\)\))',
                           template)
     if len(complete) < 2:
         print(f"FAIL: expected 2 channel constructor emissions carrying the "

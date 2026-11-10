@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_own_config_import, sc_channel_header_includes, cpp_container_typed_instance_arg, sc_instance_config_imports, BLOCK_CONFIG_PARAM, sc_multicycle_ctor_args, sc_thunker_backpressure_arg
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_channel_init, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_own_config_import, sc_channel_header_includes, cpp_container_typed_instance_arg, sc_instance_config_imports, BLOCK_CONFIG_PARAM, sc_multicycle_ctor_args, sc_thunker_backpressure_arg
 
 from jinja2 import Template
 
@@ -332,10 +332,9 @@ def ext_sec_init(args, prj, data):
                 # segfaults.
                 extra, autoMode = sc_multicycle_ctor_args(
                     data_, chnlData['multicycle_types'], prj, warn=False)
-                s = '   ,{chnlName}("{chnlName}", "{instName}"{backpressure}{extra}{autoMode})'
-                out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst,
-                                    backpressure=chnlData['backpressure_arg'],
-                                    extra=extra, autoMode=autoMode))
+                out.append('   ,' + sc_channel_init(
+                    chnlData['chnl_name'], f'"{chnlData["chnl_name"]}"', data_['arrayCount'],
+                    chnlData['channel_type'], f', "{srcInst}"{chnlData["backpressure_arg"]}{extra}{autoMode}'))
                 # Mirror the DUT's cross-interface thunker emission inside the
                 # external pseudo-block. Without these entries the consumer-side
                 # port whose interface is bridged by a thunker in the DUT would

@@ -17,6 +17,8 @@ import mixed_package::*;
     status_if.src roBsize,
     memory_if.dst blockBTableExt,
     memory_if.dst blockBTable37Bit,
+    status_if.dst rwArr,
+    external_reg_if.dst extArr [REGARR_N],
     memory_if.src blockBTable1,
     memory_if.src blockBTableSP,
     input clk, rst_n
@@ -79,5 +81,13 @@ assign blockBTable1.enable     = rst_n & ~blockBTable1_seeded;
 assign blockBTable1.wr_en      = rst_n & ~blockBTable1_seeded;
 assign blockBTable1.addr       = '0;
 assign blockBTable1.write_data = BLOCKBTABLE1_SEED;
+
+
+// extArr element i reads back its last write + rwArr + i.
+for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_extArr
+    dRegSt extWdata;
+    `DFFEN(extWdata, extArr[gi].wdata, |extArr[gi].write)
+    assign extArr[gi].rdata.d = extWdata.d + rwArr.data.d + sevenBitT'(gi);
+end
 
 endmodule: blockD

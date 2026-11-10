@@ -11,6 +11,7 @@ module;
 #include "addressMap.h"
 #include "hwMemory.h"
 // GENERATED_CODE_END
+#include "testController.h"
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockF.block;
@@ -39,6 +40,7 @@ public:
     using blockFBase<Config>::dSin;
     using blockFBase<Config>::dSout;
     using blockFBase<Config>::rwD;
+    using blockFBase<Config>::rwArr;
 
 
     memories mems;
@@ -55,6 +57,7 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
+    void rwWatch(size_t i, status_in<dRegSt>& p);
 
 };
 
@@ -70,5 +73,22 @@ blockF<Config>::blockF(sc_module_name blockName, const char * variant, blockBase
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
+    for (size_t i = 0; i < REGARR_N; i++) {
+        sc_spawn([this, i]() { rwWatch(i, rwArr[i]); }, sc_gen_unique_name("rwWatch", false));
+    }
 };
+
+template<typename Config>
+void blockF<Config>::rwWatch(size_t i, status_in<dRegSt>& p)
+{
+    while (true) {
+        dRegSt v = p->read();
+        log_.logPrint(std::format("{} rwArr[{}] = 0x{:02x}", this->name(), i, static_cast<unsigned>(v.d)), LOG_ALWAYS);
+        // Encodes the stimulus of test_reg_cpu_arr: 0 or RWARR_SEED + i. Another test that writes rwArr fails here.
+        if (v.d != 0 && v.d != RWARR_SEED + i) {
+            log_.logPrint(std::format("{} rwArr[{}] expected 0x{:02x}", this->name(), i, RWARR_SEED + i), LOG_ALWAYS);
+            errorCode::fail("blockF rwArr element misrouted");
+        }
+    }
+}
 

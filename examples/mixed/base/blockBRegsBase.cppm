@@ -5,6 +5,7 @@
 module;
 #include "systemc.h"
 #include "apb_channel.h"
+#include "external_reg_channel.h"
 #include "memory_channel.h"
 #include "status_channel.h"
 
@@ -30,6 +31,10 @@ public:
     memory_out< bSizeSt, seeSt > blockBTableExt;
     // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
     memory_out< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // blockB->reg(rwArr) A Read Write register array
+    sc_vector< status_out< dRegSt > > rwArr;
+    // blockB->reg(extArr) An External register array
+    sc_vector< external_reg_out< dRegSt > > extArr;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_out< bSizeSt, bigSt > blockBTable1;
 
@@ -44,6 +49,8 @@ public:
         rwD("rwD")
         ,blockBTableExt("blockBTableExt")
         ,blockBTable37Bit("blockBTable37Bit")
+        ,rwArr("rwArr", REGARR_N)
+        ,extArr("extArr", REGARR_N)
         ,blockBTable1("blockBTable1")
         ,apbReg("apbReg")
         ,roBsize("roBsize")
@@ -53,6 +60,8 @@ public:
         rwD->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
         blockBTable37Bit->setTimed(nsec, mode);
+        for (auto & p : rwArr) p->setTimed(nsec, mode);
+        for (auto & p : extArr) p->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
@@ -63,6 +72,8 @@ public:
         rwD->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
         blockBTable37Bit->setLogging(verbosity);
+        for (auto & p : rwArr) p->setLogging(verbosity);
+        for (auto & p : extArr) p->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
@@ -78,6 +89,10 @@ public:
     memory_in< bSizeSt, seeSt > blockBTableExt;
     // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
     memory_in< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // blockB->reg(rwArr) A Read Write register array
+    sc_vector< status_in< dRegSt > > rwArr;
+    // blockB->reg(extArr) An External register array
+    sc_vector< external_reg_in< dRegSt > > extArr;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_in< bSizeSt, bigSt > blockBTable1;
 
@@ -92,6 +107,8 @@ public:
         rwD(("rwD"+name).c_str())
         ,blockBTableExt(("blockBTableExt"+name).c_str())
         ,blockBTable37Bit(("blockBTable37Bit"+name).c_str())
+        ,rwArr(("rwArr"+name).c_str(), REGARR_N)
+        ,extArr(("extArr"+name).c_str(), REGARR_N)
         ,blockBTable1(("blockBTable1"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
@@ -101,6 +118,8 @@ public:
         rwD->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
         blockBTable37Bit->setTimed(nsec, mode);
+        for (auto & p : rwArr) p->setTimed(nsec, mode);
+        for (auto & p : extArr) p->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
@@ -111,6 +130,8 @@ public:
         rwD->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
         blockBTable37Bit->setLogging(verbosity);
+        for (auto & p : rwArr) p->setLogging(verbosity);
+        for (auto & p : extArr) p->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
@@ -126,6 +147,10 @@ public:
     memory_channel< bSizeSt, seeSt > blockBTableExt;
     // External 37-bit memory register - firmware accessible with 8-byte stride
     memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // A Read Write register array
+    sc_vector< status_channel< dRegSt > > rwArr;
+    // An External register array
+    sc_vector< external_reg_channel< dRegSt > > extArr;
     // Dual Port with one connection
     memory_channel< bSizeSt, bigSt > blockBTable1;
 
@@ -140,6 +165,8 @@ public:
     rwD(("rwD"+name).c_str(), srcName)
     ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
     ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
+    ,rwArr(("rwArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, srcName); })
+    ,extArr(("extArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, srcName); })
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
@@ -152,6 +179,10 @@ public:
         b->blockBTableExt( blockBTableExt );
         a->blockBTable37Bit( blockBTable37Bit );
         b->blockBTable37Bit( blockBTable37Bit );
+        a->rwArr.bind( rwArr );
+        b->rwArr.bind( rwArr );
+        a->extArr.bind( extArr );
+        b->extArr.bind( extArr );
         a->blockBTable1( blockBTable1 );
         b->blockBTable1( blockBTable1 );
         a->apbReg( apbReg );

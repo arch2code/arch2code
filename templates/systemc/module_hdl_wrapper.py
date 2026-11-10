@@ -221,10 +221,15 @@ def render_sc(args, prj, data):
                 intf_name = port_data['name']
                 bfm_name = mp_sig[port]['bfm_inst_name']
                 hdl_intf_name = mp_sig[port]['hdl_inst_name']
-                s_.append(f'{bfm_name}.if_p(this->{intf_name});')
-                s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
-                s_.append(f'{bfm_name}.clk({port_data["domainClock"]});')
-                s_.append(f'{bfm_name}.rst_n({port_data["domainReset"]});')
+                count = mp_sig[port]['array_count']
+                index = '' if count is None else '[i]'
+                s_.append(f'{bfm_name}{index}.if_p(this->{intf_name}{index});')
+                s_.append(f'{bfm_name}{index}.hdl_if_p({hdl_intf_name}{index});')
+                s_.append(f'{bfm_name}{index}.clk({port_data["domainClock"]});')
+                s_.append(f'{bfm_name}{index}.rst_n({port_data["domainReset"]});')
+                if count is not None:
+                    # One BFM per element of the port vector
+                    s_ = [f'for (size_t i = 0; i < {count}; i++) {{'] + ['    ' + line for line in s_] + ['}']
                 s.append('\n'.join(s_))
         s = '\n\n'.join(s)
         return s

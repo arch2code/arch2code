@@ -807,6 +807,12 @@ python3 test_register_array_layout.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: a testbench External re-creates a whole register array's channel as a vector"
+echo "------------------------------------------------------------------------"
+python3 test_register_array_tb_external.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: generated model declares a read-only register read-only"
 echo "------------------------------------------------------------------------"
 python3 test_hw_register_ro_render.py || FAILED=1

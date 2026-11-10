@@ -139,6 +139,17 @@ def sv_signal_type(row, prj):
             width_expr = sv_boundary_width_expression(binding['kind'], binding['structureKey'], prj)
             return f"bit [((({width_expr})+7)/8)-1:0]"
 
+def sv_array_suffix(count):
+    # Unpacked dimension of an interface array, empty for a single interface.
+    return '' if count is None else f" [{count}]"
+
+def sv_pin_prefixes(port_data, intf_ref):
+    # Each flat pin prefix of a port, paired with the reference to the
+    # interface it carries, element k of an interface array or the interface.
+    if port_data['arrayCountValue'] is None:
+        return [(port_data['pinPrefixes'][0], intf_ref)]
+    return [(prefix, f"{intf_ref}[{k}]") for k, prefix in enumerate(port_data['pinPrefixes'])]
+
 def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out = {}
     connectionData = port_data.get('connection', {})
@@ -172,7 +183,8 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # Interface ports declaration
     intf_ports_decl = ''
 
-    out['intf_decl'] = f"{intf_type}_if #({parameters_decl}) {intf_name}({intf_ports_decl});"
+    out['array_suffix'] = sv_array_suffix(port_data['arrayCount'])
+    out['intf_decl'] = f"{intf_type}_if #({parameters_decl}) {intf_name}{out['array_suffix']}({intf_ports_decl});"
 
     out['intf_modp'] = intf_modp
 
@@ -181,20 +193,23 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out['ports'] = []
     out['names'] = []
     rows = prj.getIntfSignals(intf_def, intf_data['structures'], intf_modp)
-    for row in rows:
-        port_name = f"{intf_name}_{row['signal']}"
-        decl = f"{row['direction']} {sv_signal_type(row, prj)} {port_name}"
-        out['ports'].append(decl)
-        out['names'].append(port_name)
+    prefixes = sv_pin_prefixes(port_data, intf_name)
+    for pin_prefix, _intf_ref in prefixes:
+        for row in rows:
+            port_name = f"{pin_prefix}_{row['signal']}"
+            decl = f"{row['direction']} {sv_signal_type(row, prj)} {port_name}"
+            out['ports'].append(decl)
+            out['names'].append(port_name)
 
     # Assignment port <-> interface
     out['assign'] = []
-    for row in rows:
-        intf_sig = row['signal']
-        is_input = row['direction'] == 'input'
-        assign_lhs = f"{intf_name}.{intf_sig}" if is_input else f"{intf_name}_{intf_sig}"
-        assign_rhs = f"{intf_name}_{intf_sig}" if is_input else f"{intf_name}.{intf_sig}"
-        out['assign'].append(f"assign `A2C_HDL_BOUNDARY_DLY {assign_lhs} = {assign_rhs};")
+    for pin_prefix, intf_ref in prefixes:
+        for row in rows:
+            intf_sig = row['signal']
+            is_input = row['direction'] == 'input'
+            assign_lhs = f"{intf_ref}.{intf_sig}" if is_input else f"{pin_prefix}_{intf_sig}"
+            assign_rhs = f"{pin_prefix}_{intf_sig}" if is_input else f"{intf_ref}.{intf_sig}"
+            out['assign'].append(f"assign `A2C_HDL_BOUNDARY_DLY {assign_lhs} = {assign_rhs};")
 
     return out
 
@@ -255,7 +270,7 @@ def sv_gen_ports(data, prj, indent):
             connectionData = port_data.get('connection', {})
             intf_data = get_intf_data(connectionData, prj)
             intf_type = get_intf_type(intf_data['interfaceType'], data)
-            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
+            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']}{sv_array_suffix(port_data['arrayCount'])},")
     out.append(f"{indent}{sv_clock_reset_input(data)}")
     out.append(");\n")
     return out
@@ -287,8 +302,32 @@ def sc_connect_channel_type(data, indent, block_data, prj=None):
         for end, endvalue in value["ends"].items():
             if end in suppressed:
                 continue
-            out.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ channelBase });')
+            out.append(f'{indent}{sc_channel_bind(value, endvalue, endvalue["instance"] + "->" + endvalue["portName"], channelBase)};')
     return out
+
+def sc_channel_bind(conn_data, end_data, port_ref, channel_ref):
+    # A whole array port binds the channel vector; an element port binds one
+    # element of it.
+    if conn_data['arrayCount'] is None:
+        return f'{port_ref}({channel_ref})'
+    if end_data['indexValue'] is None:
+        return f'{port_ref}.bind({channel_ref})'
+    return f'{port_ref}({channel_ref}[{end_data["indexValue"]}])'
+
+def sc_channel_init(member, name_expr, array_count, channel_type, ctor_args):
+    # Member initializer of a channel. ctor_args follows the name, each
+    # argument with a leading comma. The elements of a channel vector take
+    # those arguments too, so a creator builds each one.
+    if array_count is None:
+        return f'{member}({name_expr}{ctor_args})'
+    return (f'{member}({name_expr}, {array_count}, '
+            f'[&](const char * nm, size_t) {{ return new {channel_type}(nm{ctor_args}); }})')
+
+def sc_vector_of(type_name, count):
+    # The member type of one interface, or of a register array's interfaces.
+    if count is None:
+        return type_name
+    return f"sc_vector< {type_name} >"
 
 def sc_instance_includes(data, prj):
     out = []
@@ -914,9 +953,12 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     chnl_type = intf_def['sc_channel']['type'] + '_channel'
     port_type = intf_def['sc_channel']['type'] + '_' + chnl_dir
 
+    # A port that takes a whole register array is a vector of ports.
+    out['array_count'] = port_data['arrayCount']
     #out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name}_chnl;"
-    out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name};"
-    out['port_decl'] = f"{port_type}<{chnl_params}> {intf_name};"
+    out['channel_type'] = f"{chnl_type}<{chnl_params}>"
+    out['channel_decl'] = f"{sc_vector_of(out['channel_type'], out['array_count'])} {intf_name};"
+    out['port_decl'] = f"{sc_vector_of(f'{port_type}<{chnl_params}>', out['array_count'])} {intf_name};"
 
     hdl_intf_type = intf_def['sc_channel']['type'] + '_hdl_if'
     hdl_intf_name, bfm_name = sc_hdl_member_names(intf_name)
@@ -947,7 +989,11 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 
-    out['hdl_if_decl'] = f"{hdl_intf_type}<{hdl_if_params}> {hdl_intf_name};"
+    hdl_if_type = f"{hdl_intf_type}<{hdl_if_params}>"
+    if out['array_count'] is None:
+        out['hdl_if_decl'] = f"{hdl_if_type} {hdl_intf_name};"
+    else:
+        out['hdl_if_decl'] = f"std::array<{hdl_if_type}, {out['array_count']}> {hdl_intf_name};"
 
     # The BFM splices the bridge group before the optional payload group, so
     # every optional bridge slot must stay occupied, an unbound one at its
@@ -970,17 +1016,19 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     chnl_dir = intf_modp
     chnl_type = intf_def['sc_channel']['type'] + '_' + chnl_dir + '_bfm'
 
-    out['bfm_decl'] = f"{chnl_type}<{chnl_params}> {bfm_name};"
-    out['bfm_ctor_init'] = f"{bfm_name}(\"" + bfm_name + "\")"
+    out['bfm_decl'] = f"{sc_vector_of(f'{chnl_type}<{chnl_params}>', out['array_count'])} {bfm_name};"
+    if out['array_count'] is None:
+        out['bfm_ctor_init'] = f"{bfm_name}(\"" + bfm_name + "\")"
+    else:
+        out['bfm_ctor_init'] = f"{bfm_name}(\"{bfm_name}\", {out['array_count']})"
 
     out['intf_modp'] = intf_modp
 
-    # Blasted interface ports
+    # Blasted interface ports, one flat pin set per array element
     out['dut_ports_decl'] = []
-    for intf_sig in intf_def['signals']:
-        dut_port_name = f"{intf_name}_{intf_sig}"
-        hdl_if_sig_name = f"{hdl_intf_name}.{intf_sig}"
-        out['dut_ports_decl'].append(f"dut_hdl->{dut_port_name}({hdl_if_sig_name});")
+    for pin_prefix, hdl_ref in sv_pin_prefixes(port_data, hdl_intf_name):
+        for intf_sig in intf_def['signals']:
+            out['dut_ports_decl'].append(f"dut_hdl->{pin_prefix}_{intf_sig}({hdl_ref}.{intf_sig});")
 
     # Assignment port <-> interface
     out['assign'] = []
@@ -1117,7 +1165,8 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     chnl_type = intf_def['sc_channel']['type'] + '_channel'
 
     #out['channel_decl'] = f"{chnl_type}<{chnl_params}> {chnl_name}_chnl;"
-    out['channel_decl'] = f"{chnl_type}<{chnl_params}> {chnl_name};"
+    out['channel_type'] = f"{chnl_type}<{chnl_params}>"
+    out['channel_decl'] = f"{sc_vector_of(out['channel_type'], conn_data['arrayCount'])} {chnl_name};"
 
     return out
 

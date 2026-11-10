@@ -220,14 +220,22 @@ def render_registers_section(prj, data, block_name):
             struct_ref = f"xref:#{struct_name}[{struct_name}]"
         else:
             struct_ref = "unknown"
+
+        # Array count: the constant with its value, or a literal; empty for a scalar
+        if reg_data['countValue'] is None:
+            count_str = ""
+        elif reg_data['countKey']:
+            count_str = f"{reg_data['count']} ({reg_data['countValue']})"
+        else:
+            count_str = str(reg_data['countValue'])
         
-        rows.append([reg_name, reg_type, str(bytes_val), struct_ref, desc])
+        rows.append([reg_name, reg_type, str(bytes_val), struct_ref, count_str, desc])
     
     out += render_adoc_table(
         title=f"Registers in {block_name}",
-        headers=["Register Name", "Type", "Size (bytes)", "Structure", "Description"],
+        headers=["Register Name", "Type", "Size (bytes)", "Structure", "Count", "Description"],
         rows=rows,
-        cols="2, 1, 1, 2, 4"
+        cols="2, 1, 1, 2, 1, 4"
     )
     
     return out

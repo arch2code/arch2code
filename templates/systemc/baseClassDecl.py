@@ -171,7 +171,8 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        {comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})')
+                    count = '' if value['arrayCount'] is None else f', {value["arrayCount"]}'
+                    out.append(f'        {comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix}{count})')
                     comma = ','
     out.append( indent + '{};')
 
@@ -184,7 +185,7 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        { value["name"] }->setTimed(nsec, mode);')
+                    out.append(f'        { sc_each_port(value) }->setTimed(nsec, mode);')
     out.append( indent + '    setTimedLocal(nsec, mode);')
     out.append( indent + '};')
     out.append( indent + f'void setLogging(verbosity_e verbosity) override')
@@ -195,7 +196,7 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        { value["name"] }->setLogging(verbosity);')
+                    out.append(f'        { sc_each_port(value) }->setLogging(verbosity);')
     out.append( indent + '};')
 
     if ifMapping['addConsts']:
@@ -224,6 +225,13 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
 
     out.append( '};')
     return out
+
+def sc_each_port(port):
+    # The port expression a per-port call applies to: the port, or each
+    # element of a port vector.
+    if port['arrayCount'] is None:
+        return port['name']
+    return f'for (auto & p : {port["name"]}) p'
 
 def renderChannels(args, prj, data, isParameterizable=False):
     out = list()
@@ -283,7 +291,7 @@ def renderChannels(args, prj, data, isParameterizable=False):
                 if mp_sig[port]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types'], mp_sig[port]['backpressure_arg']) )
+                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]) )
                     comma = ','
     out.append( indent + '{};')
     cfg = '<Config>' if isParameterizable else ''
@@ -296,8 +304,9 @@ def renderChannels(args, prj, data, isParameterizable=False):
                 if mp_sig[port]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append( indent + f'a->{ value["name"] }( { value["name"] } );')
-                    out.append( indent + f'b->{ value["name"] }( { value["name"] } );')
+                    bind = '' if value['arrayCount'] is None else '.bind'
+                    out.append( indent + f'a->{ value["name"] }{bind}( { value["name"] } );')
+                    out.append( indent + f'b->{ value["name"] }{bind}( { value["name"] } );')
     indent = ' '*4
     out.append( indent +'};')
     out.append( '};\n')
@@ -312,7 +321,9 @@ autoModeMapping = {
     "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
 }
 
-def channelConstructor(args, prj, data, line, multicycle_types, backpressure_arg):
+def channelConstructor(args, prj, data, line, sig):
+    multicycle_types = sig['multicycle_types']
+    backpressure_arg = sig['backpressure_arg']
     extra = ''
 
     # we may have a multicycle interface
@@ -341,4 +352,5 @@ def channelConstructor(args, prj, data, line, multicycle_types, backpressure_arg
             if interface_size != "0" or tracker_type:
                 print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
-    return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{backpressure_arg}{extra}{auto_mode})')
+    return intf_gen_utils.sc_channel_init(line['name'], f'("{line["name"]}"+name).c_str()', line['arrayCount'],
+                                          sig['channel_type'], f', srcName{backpressure_arg}{extra}{auto_mode}')

@@ -37,6 +37,12 @@ module blockF_variant0_hdl_sv_wrapper
     // status_if.dst
     input bit [6:0] rwD_data,
 
+    // status_if.dst [REGARR_N]
+    input bit [6:0] rwArr_0_data,
+    input bit [6:0] rwArr_1_data,
+    input bit [6:0] rwArr_2_data,
+    input bit [6:0] rwArr_3_data,
+
     input clk,
     input rst_n
 );
@@ -57,6 +63,10 @@ module blockF_variant0_hdl_sv_wrapper
         .dSout_data(dSout_data),
         .dSout_rdy(dSout_rdy),
         .rwD_data(rwD_data),
+        .rwArr_0_data(rwArr_0_data),
+        .rwArr_1_data(rwArr_1_data),
+        .rwArr_2_data(rwArr_2_data),
+        .rwArr_3_data(rwArr_3_data),
         .clk(clk),
         .rst_n(rst_n)
     );

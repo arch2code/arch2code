@@ -7,6 +7,7 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "apb_channel.h"
+#include "external_reg_channel.h"
 #include "memory_channel.h"
 #include "status_channel.h"
 #include "addressMap.h"
@@ -41,6 +42,8 @@ public:
     hwMemoryPort< bSizeSt, bigSt > blockBTable1_adapter; // Dual Port with one connection
     hwMemoryPort< bSizeSt, test37BitRegSt > blockBTable37Bit_adapter; // External 37-bit memory register - firmware accessible with 8-byte stride
     hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter; // Memory register - firmware accessible memory-mapped storage
+    std::array< hwRegisterIf< dRegSt, status_out<dRegSt>, 4, false>, REGARR_N > rwArr_reg; // A Read Write register array
+    std::array< hwRegisterIf< dRegSt, external_reg_out<dRegSt>, 4, false>, REGARR_N > extArr_reg; // An External register array
     hwRegisterIf< dRegSt, status_out<dRegSt>, 4, false> rwD_reg; // A Read Write register
     hwRegisterIf< bSizeRegSt, status_in<bSizeRegSt>, 4, true> roBsize_reg; // A Read Only register with a structure that has a definition from an included context
     
@@ -76,6 +79,8 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
         ,blockBTable1_adapter(blockBTable1)
         ,blockBTable37Bit_adapter(blockBTable37Bit)
         ,blockBTableExt_adapter(blockBTableExt)
+        ,rwArr_reg{ { {&rwArr[0], dRegSt::_packedSt(0x0)}, {&rwArr[1], dRegSt::_packedSt(0x0)}, {&rwArr[2], dRegSt::_packedSt(0x0)}, {&rwArr[3], dRegSt::_packedSt(0x0)} } }
+        ,extArr_reg{ { {&extArr[0]}, {&extArr[1]}, {&extArr[2]}, {&extArr[3]} } }
         ,rwD_reg(&rwD, dRegSt::_packedSt(0x0))
         ,roBsize_reg(&roBsize)
 // GENERATED_CODE_END
@@ -85,14 +90,22 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
     constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLE1 = 0x0;
     constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLE37BIT = 0x80;
     constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLEEXT = 0x100;
-    constexpr uint64_t REG_ADDR_BLOCKB_RWD = 0x140;
-    constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x148;
+    constexpr uint64_t REG_ADDR_BLOCKB_RWARR = 0x140;
+    constexpr uint64_t REG_ADDR_BLOCKB_RWARR_STRIDE = 0x8;
+    constexpr uint64_t REG_ADDR_BLOCKB_EXTARR = 0x160;
+    constexpr uint64_t REG_ADDR_BLOCKB_EXTARR_STRIDE = 0x8;
+    constexpr uint64_t REG_ADDR_BLOCKB_RWD = 0x180;
+    constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x188;
     
     // register memories for FW access
     _a2cRegs.addMemory(REG_ADDR_BLOCKB_BLOCKBTABLE1, bigSt::_byteWidth, BSIZE, "blockBTable1", &blockBTable1_adapter );
     _a2cRegs.addMemory(REG_ADDR_BLOCKB_BLOCKBTABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, "blockBTable37Bit", &blockBTable37Bit_adapter );
     _a2cRegs.addMemory(REG_ADDR_BLOCKB_BLOCKBTABLEEXT, seeSt::_byteWidth, BSIZE, "blockBTableExt", &blockBTableExt_adapter );
     // register registers for FW access
+    for (uint32_t i = 0; i < REGARR_N; i++)
+        _a2cRegs.addRegister(REG_ADDR_BLOCKB_RWARR + i * REG_ADDR_BLOCKB_RWARR_STRIDE, 1, std::format("rwArr[{}]", i), &rwArr_reg[i] );
+    for (uint32_t i = 0; i < REGARR_N; i++)
+        _a2cRegs.addRegister(REG_ADDR_BLOCKB_EXTARR + i * REG_ADDR_BLOCKB_EXTARR_STRIDE, 1, std::format("extArr[{}]", i), &extArr_reg[i] );
     _a2cRegs.addRegister(REG_ADDR_BLOCKB_RWD, 1, "rwD", &rwD_reg );
     _a2cRegs.addRegister(REG_ADDR_BLOCKB_ROBSIZE, 1, "roBsize", &roBsize_reg );
     SC_THREAD(regHandler);

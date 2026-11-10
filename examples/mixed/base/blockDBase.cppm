@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
 module;
 #include "systemc.h"
+#include "external_reg_channel.h"
 #include "memory_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
@@ -51,6 +52,10 @@ public:
     memory_in< bSizeSt, seeSt > blockBTableExt;
     // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
     memory_in< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // blockB->reg(rwArr) A Read Write register array
+    status_in< dRegSt > rwArr;
+    // blockB->reg(extArr) An External register array
+    sc_vector< external_reg_in< dRegSt > > extArr;
 
 
     blockDBase(std::string name, const char * variant) :
@@ -66,6 +71,8 @@ public:
         ,rwD("rwD")
         ,blockBTableExt("blockBTableExt")
         ,blockBTable37Bit("blockBTable37Bit")
+        ,rwArr("rwArr")
+        ,extArr("extArr", REGARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -81,6 +88,8 @@ public:
         rwD->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
         blockBTable37Bit->setTimed(nsec, mode);
+        rwArr->setTimed(nsec, mode);
+        for (auto & p : extArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -97,6 +106,8 @@ public:
         rwD->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
         blockBTable37Bit->setLogging(verbosity);
+        rwArr->setLogging(verbosity);
+        for (auto & p : extArr) p->setLogging(verbosity);
     };
 };
 export class blockDInverted : public virtual blockPortBase
@@ -129,6 +140,10 @@ public:
     memory_out< bSizeSt, seeSt > blockBTableExt;
     // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
     memory_out< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // blockB->reg(rwArr) A Read Write register array
+    status_out< dRegSt > rwArr;
+    // blockB->reg(extArr) An External register array
+    sc_vector< external_reg_out< dRegSt > > extArr;
 
 
     blockDInverted(std::string name) :
@@ -144,6 +159,8 @@ public:
         ,rwD(("rwD"+name).c_str())
         ,blockBTableExt(("blockBTableExt"+name).c_str())
         ,blockBTable37Bit(("blockBTable37Bit"+name).c_str())
+        ,rwArr(("rwArr"+name).c_str())
+        ,extArr(("extArr"+name).c_str(), REGARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -159,6 +176,8 @@ public:
         rwD->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
         blockBTable37Bit->setTimed(nsec, mode);
+        rwArr->setTimed(nsec, mode);
+        for (auto & p : extArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -175,6 +194,8 @@ public:
         rwD->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
         blockBTable37Bit->setLogging(verbosity);
+        rwArr->setLogging(verbosity);
+        for (auto & p : extArr) p->setLogging(verbosity);
     };
 };
 export class blockDChannels
@@ -207,6 +228,10 @@ public:
     memory_channel< bSizeSt, seeSt > blockBTableExt;
     // External 37-bit memory register - firmware accessible with 8-byte stride
     memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
+    // A Read Write register array
+    status_channel< dRegSt > rwArr;
+    // An External register array
+    sc_vector< external_reg_channel< dRegSt > > extArr;
 
 
     blockDChannels(std::string name, std::string srcName) :
@@ -222,6 +247,8 @@ public:
     ,rwD(("rwD"+name).c_str(), srcName)
     ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
     ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
+    ,rwArr(("rwArr"+name).c_str(), srcName)
+    ,extArr(("extArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, srcName); })
     {};
     void bind( blockDBase *a, blockDInverted *b)
     {
@@ -249,6 +276,10 @@ public:
         b->blockBTableExt( blockBTableExt );
         a->blockBTable37Bit( blockBTable37Bit );
         b->blockBTable37Bit( blockBTable37Bit );
+        a->rwArr( rwArr );
+        b->rwArr( rwArr );
+        a->extArr.bind( extArr );
+        b->extArr.bind( extArr );
     };
 };
 

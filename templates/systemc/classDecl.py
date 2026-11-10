@@ -194,7 +194,10 @@ def render_default(args, prj, data):
         size = roundup_multiple(regData["maxBytes"], 4)
         regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
         ro = ', true' if regData['regType'] == 'ro' else ''
-        out.append( indent + f'hwRegister< { regType }, {size}{ro} > { regData["register"] }; // { regData["desc"] }')
+        hwReg = f'hwRegister< { regType }, {size}{ro} >'
+        if regData['countValue'] is not None:
+            hwReg = f'std::array< {hwReg}, {regData["count"]} >'
+        out.append( indent + f'{hwReg} { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):
         out.append('')

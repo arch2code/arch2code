@@ -66,7 +66,7 @@ def render(args, prj, data):
                 for item in intf_data['structures']:
                     params.append(f".{item['structureType']}({item['structure']})")
             s += ', '.join(params)
-            s += f") {intf_gen_utils.get_channel_name(value)}();"
+            s += f") {intf_gen_utils.get_channel_name(value)}{intf_gen_utils.sv_array_suffix(value['arrayCount'])}();"
             out.append(s)
     out.append("")
 
@@ -113,7 +113,9 @@ def render(args, prj, data):
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
-                        out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
+                        # An element port binds one interface of the array.
+                        element = '' if connValue['arrayCount'] is None or endValue['indexValue'] is None else f"[{endValue['indexValue']}]"
+                        out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}{element}),")
         # clockResetBinds (from the projectOpen view) pairs each of the child's own
         # clock/reset port names with the parent signal driving it, already in the
         # child's port-list order.

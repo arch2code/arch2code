@@ -20,6 +20,8 @@ export namespace apbDecode_ns {
 //constants
 inline constexpr uint32_t ASIZE = 29;  // The size of A
 inline constexpr uint32_t DWORD = 32;  // size of a double word
+inline constexpr uint32_t REGARR_N = 4;  // Number of elements of the rwArr and roArr register arrays
+inline constexpr uint32_t ROARR_BIAS = 4096;  // Added to each roArr element blockA derives from rwArr
 inline constexpr uint32_t MEMORYA_WORDS = 19;  // Address wordlines for memory A
 inline constexpr uint32_t MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
 inline constexpr uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
@@ -519,6 +521,84 @@ struct aSizeRegSt {
     explicit aSizeRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct arrRegSt {
+    u16T d; //Register array element payload
+
+    arrRegSt() {}
+
+    static constexpr uint16_t _bitWidth = 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    inline bool operator == (const arrRegSt & rhs) const {
+        bool ret = true;
+        ret = ret && (d == rhs.d);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const arrRegSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.d, NAME + ".d");
+    }
+    inline friend ostream& operator << ( ostream& os,  arrRegSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("d:0x{:04x}",
+           (uint64_t) d
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, sizeof(_ret));
+        _ret = d;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        d = (u16T)((_src));
+    }
+    // register functions
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
+    uint64_t _getValue(void)
+    {
+        uint64_t ret =
+        (( d & ((1ULL<<16)-1) ) << 0);
+        return( ret );
+    }
+    void _setValue(uint64_t packedValue)
+    {
+        d = ( u16T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        }
+    inline sc_bv<arrRegSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<arrRegSt::_bitWidth> packed_data;
+        _packedSt _packed;
+        pack(_packed);
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            packed_data.set_word(i, (sc_digit)((uint64_t)_packed >> (i * 32)));
+        }
+        constexpr int _last = (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE - 1;
+        Q_ASSERT_CTX((packed_data.get_word(_last) & (sc_digit)(~0ULL << (_bitWidth - _last * sc_dt::SC_DIGIT_SIZE))) == 0,
+                     "arrRegSt", "a field holds more bits than its type");
+        return packed_data;
+    }
+    inline void sc_unpack(const sc_bv<arrRegSt::_bitWidth> &packed_data)
+    {
+        uint64_t _word{0};
+        for (int i = 0; i < (_bitWidth + sc_dt::SC_DIGIT_SIZE - 1) / sc_dt::SC_DIGIT_SIZE; i++) {
+            _word |= (uint64_t)packed_data.get_word(i) << (i * 32);
+        }
+        unpack((_packedSt)_word);
+    }
+    explicit arrRegSt(const sc_bv<arrRegSt::_bitWidth> &packed_data) { sc_unpack(packed_data); }
+    explicit arrRegSt(
+        u16T d_) :
+        d(d_)
+    {}
+    explicit arrRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 struct apbAddrSt {
     apbAddrT address; //
 
@@ -954,6 +1034,8 @@ inline sc_bv<un0ExtRegSt::_bitWidth> testRefPack(const un0ExtRegSt &x);
 inline void testRefUnpack(un0ExtRegSt &x, const sc_bv<un0ExtRegSt::_bitWidth> &packed_data);
 inline sc_bv<aSizeRegSt::_bitWidth> testRefPack(const aSizeRegSt &x);
 inline void testRefUnpack(aSizeRegSt &x, const sc_bv<aSizeRegSt::_bitWidth> &packed_data);
+inline sc_bv<arrRegSt::_bitWidth> testRefPack(const arrRegSt &x);
+inline void testRefUnpack(arrRegSt &x, const sc_bv<arrRegSt::_bitWidth> &packed_data);
 inline sc_bv<apbAddrSt::_bitWidth> testRefPack(const apbAddrSt &x);
 inline void testRefUnpack(apbAddrSt &x, const sc_bv<apbAddrSt::_bitWidth> &packed_data);
 inline sc_bv<apbDataSt::_bitWidth> testRefPack(const apbDataSt &x);
@@ -1025,6 +1107,16 @@ inline sc_bv<aSizeRegSt::_bitWidth> testRefPack(const aSizeRegSt &x)
 inline void testRefUnpack(aSizeRegSt &x, const sc_bv<aSizeRegSt::_bitWidth> &packed_data)
 {
     x.index = (aSizeT) packed_data.range(0+ASIZE-1, 0).to_uint64();
+}
+inline sc_bv<arrRegSt::_bitWidth> testRefPack(const arrRegSt &x)
+{
+    sc_bv<arrRegSt::_bitWidth> packed_data;
+    packed_data.range(0+16-1, 0) = x.d;
+    return packed_data;
+}
+inline void testRefUnpack(arrRegSt &x, const sc_bv<arrRegSt::_bitWidth> &packed_data)
+{
+    x.d = (u16T) packed_data.range(0+16-1, 0).to_uint64();
 }
 inline sc_bv<apbAddrSt::_bitWidth> testRefPack(const apbAddrSt &x)
 {
@@ -1188,6 +1280,7 @@ void test_apbDecode_structs::test(void) {
     roundTrip<un0ARegSt>("un0ARegSt", patterns);
     roundTrip<un0ExtRegSt>("un0ExtRegSt", patterns);
     roundTrip<aSizeRegSt>("aSizeRegSt", patterns);
+    roundTrip<arrRegSt>("arrRegSt", patterns);
     roundTrip<apbAddrSt>("apbAddrSt", patterns);
     roundTrip<apbDataSt>("apbDataSt", patterns);
     roundTrip<aMemAddrSt>("aMemAddrSt", patterns);

@@ -157,7 +157,10 @@ def constructorInit(args, prj, data):
             else:
                 defaultValue = ''
 
-            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{chnl_table[chnl]["backpressure_arg"]}{extra}{autoMode}{defaultValue})')
+            ctorArgs = f', "{ src }"{chnl_table[chnl]["backpressure_arg"]}{extra}{autoMode}{defaultValue}'
+            out.append('        ,' + intf_gen_utils.sc_channel_init(
+                chnl_table[chnl]['chnl_name'], f'"{ channelTitle }"', chnlInfo['arrayCount'],
+                chnl_table[chnl]['channel_type'], ctorArgs))
 
             # Thunker entries are emitted after subBlockInstances below to
             # match classDecl.py declaration order, preserving the original
@@ -236,7 +239,11 @@ def constructorInit(args, prj, data):
             # enclosing class template parameter Config.
             typenameKw = 'typename ' if '<Config>' in regType else ''
             regType = bareParameterizedType(regType, hasOwnParams)
-            out.append(f'        ,{ regData["register"] }({typenameKw}{regType}::_packedSt({defaultValue}))')
+            initValue = f'{typenameKw}{regType}::_packedSt({defaultValue})'
+            if regData['countValue'] is None:
+                out.append(f'        ,{ regData["register"] }({initValue})')
+            else:
+                out.append(f'        ,{ regData["register"] }{{ {{ {", ".join([initValue] * regData["countValue"])} }} }}')
         else:
             out.append(f'        ,{ regData["register"] }()')
     if data['blockInfo']['isRegHandler']:
@@ -336,7 +343,9 @@ def constructorBody(args, prj, data):
                     'offset_value': f'0x{regData["offset"]:0x}',
                     'name': regData["register"],
                     'block': regData["block"],
-                    'size': regData["maxBytes"]
+                    'size': regData["maxBytes"],
+                    'count': regData["count"] if regData["countValue"] is not None else None,
+                    'stride_value': f'0x{regData["stride"]:0x}' if regData["countValue"] is not None else None
                 })
         
         # Sort all items by offset
@@ -347,6 +356,8 @@ def constructorBody(args, prj, data):
             out.append(f'    // Generated register/memory address offsets')
             for item in mem_reg_items:
                 out.append(f'    constexpr uint64_t {addressConstName(data, item)} = {item["offset_value"]};')
+                if item['type'] == 'register' and item['count'] is not None:
+                    out.append(f'    constexpr uint64_t {addressConstName(data, item)}_STRIDE = {item["stride_value"]};')
             out.append('')
         memory_comment_written = False
         register_comment_written = False
@@ -369,7 +380,11 @@ def constructorBody(args, prj, data):
                 if not register_comment_written:
                     register_comment_written = True
                     out.append(f'    // register registers for FW access')
-                out.append(f'    _a2cRegs.addRegister( {constName}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
+                if item['count'] is None:
+                    out.append(f'    _a2cRegs.addRegister( {constName}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
+                else:
+                    out.append(f'    for (uint32_t i = 0; i < {item["count"]}; i++)')
+                    out.append(f'        _a2cRegs.addRegister( {constName} + i * {constName}_STRIDE, {item["size"]}, std::format("{item["name"]}[{{}}]", i), &{item["name"]}[i] );')
 
         first = True
     for key, value in data["connectionMaps"].items():

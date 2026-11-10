@@ -6,6 +6,7 @@ module;
 #include "systemc.h"
 #include "logging.h"
 #include "instanceFactory.h"
+#include "external_reg_channel.h"
 #include "memory_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
@@ -49,6 +50,13 @@ public:
     // This services register accesses to blockBTable37Bit through the memory port.
     void blockBTable37BitModel(void);
     std::vector<test37BitRegSt> blockBTable37Bit_shadow_;
+
+    // extArr model, as the RTL: rdata = last written wdata + current rwArr + index, recomputed whenever either changes.
+    void extModel(int i, external_reg_in<dRegSt>& p);
+    void extRwTrack(void);
+    std::array<dRegSt, REGARR_N> extWdata_{};
+    // The bits of field d of dRegSt: unpacking all ones masks each field to its own width.
+    static inline const uint32_t D_MASK = [] { dRegSt m; m.unpack(dRegSt::_packedSt(~dRegSt::_packedSt(0))); return uint32_t(m.d); }();
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -77,6 +85,10 @@ blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbM
     ADD_TEST(test_mem_hier_blockd_read);
     SC_THREAD(blockBTableExtModel);
     SC_THREAD(blockBTable37BitModel);
+    for (size_t i = 0; i < REGARR_N; i++) {
+        sc_spawn([this, i]() { extModel(i, extArr[i]); }, sc_gen_unique_name("extModel", false));
+    }
+    SC_THREAD(extRwTrack);
     
     // Model-backed storage for memory register blockBTableExt (BSIZE wordlines).
     // Default init: all zeros.
@@ -118,6 +130,38 @@ void blockD::test_mem_hier_blockd_read(void)
         std::stringstream ss;
         ss << "BlockD Read verify failed. Expected 0x1234567812345678, got 0x" << std::hex << data.big;
         log_.logPrint(ss.str(), LOG_ALWAYS);
+    }
+}
+
+void blockD::extModel(int i, external_reg_in<dRegSt>& p)
+{
+    // Publish the readback for the stored wdata and the rwArr value that is current now.
+    auto publish = [this, i, &p]() {
+        dRegSt r;
+        r.d = (extWdata_[i].d + rwArr->readNonBlocking().d + i) & D_MASK;
+        p->update_mirror(r);
+    };
+    publish();
+    while (true) {
+        dRegSt w;
+        p->read(w);
+        extWdata_[i] = w;
+        publish();
+        log_.logPrint(std::format("{} extArr[{}] write 0x{:02x} rwArr 0x{:02x}", name(), i,
+                                  static_cast<unsigned>(w.d), static_cast<unsigned>(rwArr->readNonBlocking().d)), LOG_ALWAYS);
+    }
+}
+
+// A change of rwArr moves every ext readback, as the combinational RTL does.
+void blockD::extRwTrack(void)
+{
+    while (true) {
+        rwArr->read();
+        for (int i = 0; i < static_cast<int>(REGARR_N); i++) {
+            dRegSt r;
+            r.d = (extWdata_[i].d + rwArr->readNonBlocking().d + i) & D_MASK;
+            extArr[i]->update_mirror(r);
+        }
     }
 }
 

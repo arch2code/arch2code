@@ -15,6 +15,7 @@ import mixedBlockC_package::*;
     rdy_vld_if.dst dSin,
     rdy_vld_if.src dSout,
     status_if.dst rwD,
+    status_if.dst rwArr [REGARR_N],
     input clk, rst_n
 );
 
@@ -33,5 +34,13 @@ memory_dp #(.DEPTH(bob), .data_t(seeSt), .PORTA_READ_ONLY(1'b0), .PORTB_WRITE_ON
 );
 
 // GENERATED_CODE_END
+
+
+// Encodes the stimulus of test_reg_cpu_arr: element gi holds 0 or RWARR_SEED + gi. Another test that writes rwArr fails here.
+for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_rwArrChk
+    always_comb begin
+        `qAssertFatal(!rst_n || rwArr[gi].data.d == '0 || rwArr[gi].data.d == sevenBitT'(RWARR_SEED + gi), "blockF rwArr element misrouted")
+    end
+end
 
 endmodule: blockF

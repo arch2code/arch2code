@@ -36,6 +36,8 @@ public:
     rdy_vld_in< dSt > dSin;
     // blockB->reg(rwD) A Read Write register
     status_in< dRegSt > rwD;
+    // blockB->reg(rwArr) A Read Write register array
+    sc_vector< status_in< dRegSt > > rwArr;
 
 
     blockFBase(std::string name, const char * variant) :
@@ -44,6 +46,7 @@ public:
         ,dStuffIf("dStuffIf")
         ,dSin("dSin")
         ,rwD("rwD")
+        ,rwArr("rwArr", REGARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -52,6 +55,7 @@ public:
         dStuffIf->setTimed(nsec, mode);
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
+        for (auto & p : rwArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -61,6 +65,7 @@ public:
         dStuffIf->setLogging(verbosity);
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
+        for (auto & p : rwArr) p->setLogging(verbosity);
     };
 };
 export template<typename Config>
@@ -80,6 +85,8 @@ public:
     rdy_vld_out< dSt > dSin;
     // blockB->reg(rwD) A Read Write register
     status_out< dRegSt > rwD;
+    // blockB->reg(rwArr) A Read Write register array
+    sc_vector< status_out< dRegSt > > rwArr;
 
 
     blockFInverted(std::string name) :
@@ -88,6 +95,7 @@ public:
         ,dStuffIf(("dStuffIf"+name).c_str())
         ,dSin(("dSin"+name).c_str())
         ,rwD(("rwD"+name).c_str())
+        ,rwArr(("rwArr"+name).c_str(), REGARR_N)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -96,6 +104,7 @@ public:
         dStuffIf->setTimed(nsec, mode);
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
+        for (auto & p : rwArr) p->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -105,6 +114,7 @@ public:
         dStuffIf->setLogging(verbosity);
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
+        for (auto & p : rwArr) p->setLogging(verbosity);
     };
 };
 export template<typename Config>
@@ -124,6 +134,8 @@ public:
     rdy_vld_channel< dSt > dSin;
     // A Read Write register
     status_channel< dRegSt > rwD;
+    // A Read Write register array
+    sc_vector< status_channel< dRegSt > > rwArr;
 
 
     blockFChannels(std::string name, std::string srcName) :
@@ -132,6 +144,7 @@ public:
     ,dStuffIf(("dStuffIf"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,dSin(("dSin"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,rwD(("rwD"+name).c_str(), srcName)
+    ,rwArr(("rwArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, srcName); })
     {};
     void bind( blockFBase<Config> *a, blockFInverted<Config> *b)
     {
@@ -145,6 +158,8 @@ public:
         b->dSin( dSin );
         a->rwD( rwD );
         b->rwD( rwD );
+        a->rwArr.bind( rwArr );
+        b->rwArr.bind( rwArr );
     };
 };
 

@@ -14,6 +14,8 @@ import apbDecode_package::*;
     status_if #(.data_t(un0ARegSt)) rwUn0A();
     status_if #(.data_t(un0ARegSt)) roUn0A();
     external_reg_if #(.data_t(un0ExtRegSt)) extA();
+    status_if #(.data_t(arrRegSt)) rwArr [REGARR_N]();
+    status_if #(.data_t(arrRegSt)) roArr [REGARR_N]();
 
     // Memory Interfaces
     memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable0();
@@ -32,6 +34,8 @@ blockARegs ublockARegs (
     .rwUn0A (rwUn0A),
     .roUn0A (roUn0A),
     .extA (extA),
+    .rwArr (rwArr),
+    .roArr (roArr),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -60,6 +64,12 @@ memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt), .PORTA_READ_ONLY(1'b0), .POR
     assign roA.data.a = 37'h1063686172;
 
     assign roUn0A.data = rwUn0A.data;
+
+    // blockA owns rwArr and roArr and uses the arrays directly.
+    // roArr[i] = rwArr[(i+1) % N] + i + ROARR_BIAS, so a wrong element index shows up in the readback.
+    for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_roArr
+        assign roArr[gi].data.d = rwArr[(gi + 1) % REGARR_N].data.d + u16T'(gi) + u16T'(ROARR_BIAS);
+    end
 
     // LocalRegAccess parity: reproduce the model blockA startup thread so the
     // RTL block establishes the same power-up state the model seeds locally.
