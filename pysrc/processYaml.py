@@ -1269,6 +1269,7 @@ class projectOpen:
         ret['compileContexts'] = self.compileContexts
         includes = self.config.getConfig('INCLUDEFILES')
         ret['includeFiles'] = includes
+        ret['interfaceOnlyContexts'] = self._interfaceOnlyContexts(includes)
         # Canonicalize each context name (as it may appear on a
         # GENERATED_CODE_PARAM line) to its yamlContext key before use.
         for i, context in enumerate(contexts):
@@ -1402,6 +1403,20 @@ class projectOpen:
         deps = self.structureParamDeps[declKey] if declKind == 'structure' else self.typeParamDeps[declKey]
         constants = self.data['constants']
         return [constants[key] for key in deps]
+
+    def _interfaceOnlyContexts(self, includes):
+        # Compile contexts whose only content is interface_defs: no block and
+        # no package. Nothing is generated into their RTL directory, so rtl.f
+        # gives them no +incdir+; the interface's own SystemVerilog reaches the
+        # HDL flows through the project's EXTRA_HDL_FILES, as a2c's base
+        # interfaces do through a2c.f.
+        packages = includes.get('package_sv', dict())
+        definers = {v['_context'] for v in self.data.get('interface_defs', dict()).values()
+                    if isinstance(v, dict) and '_context' in v}
+        owners = {v['_context'] for v in self.data.get('blocks', dict()).values()
+                  if isinstance(v, dict) and '_context' in v}
+        return {c for c in self.compileContexts
+                if c in definers and c not in owners and c not in packages}
 
     def _contextRtlDirs(self, contexts):
         # Directory of each context's generated RTL, relative to the root
