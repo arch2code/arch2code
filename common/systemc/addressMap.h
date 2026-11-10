@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <string>
 #include <memory>
+#include <functional>
+#include "systemc.h"
 #include "logging.h"
 #include <format>
-#include "apb_channel.h"
 #include "addressBase.h"
 #include "q_assert.h"
 
@@ -61,6 +62,9 @@ public:
         m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, nullptr, nullptr));
     }
     void cpu_write(uint64_t address, uint32_t val) {
+        (void)cpu_write_with_error(address, val);
+    }
+    bool cpu_write_with_error(uint64_t address, uint32_t val) {
         m_lastWriteAddress = address;
         auto it = find(address);
         if (it->m_type == addressElementType::REG) {
@@ -68,11 +72,11 @@ public:
         } else {
             if (it->m_accessFunc) {
                 it->m_accessFunc(true, address, val);
-                return;
+                return false;
             }
             log_.logPrint([&]() { return std::format("Mem {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         }
-        it->m_ptr->cpu_write((address - it->m_address), val);
+        return it->m_ptr->cpu_write_with_error((address - it->m_address), val);
     }
     uint32_t cpu_read(uint64_t address) {
         auto it = find(address);
@@ -118,15 +122,20 @@ private:
 };
 
 
-template <class ADDR, class DATA>
-void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t addressMask)
+// Serves a register bus of any protocol whose completer interface BUS_IN_IF
+// provides reqReceive(isWrite, addr, data) and complete(data, error).
+// errorResponses: an unmapped access, and a write a register's write-error
+// handler refuses, complete with the bus error response. Otherwise every
+// access completes without it.
+template <class ADDR, class DATA, template <class, class> class BUS_IN_IF>
+void registerHandler(addressMap &regs, sc_port< BUS_IN_IF< ADDR, DATA > > &busIn, uint64_t addressMask, bool errorResponses = false)
 {
     ADDR addr;
     DATA data;
     bool isWrite;
     while(true)
     {
-        apbIn->reqReceive(isWrite, addr, data);
+        busIn->reqReceive(isWrite, addr, data);
         uint64_t address = addr._getAddress() & (addressMask);
         // An address no register or memory occupies drops the write and reads 0xBADDC0DE,
         // as an empty decoder slot and the generated RTL do
@@ -135,23 +144,24 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
             if (isWrite)
             {
                 logging::GetInstance().logDirect(std::format("{}: firmware write to unmapped address 0x{:x} dropped",
-                                                             apbIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
+                                                             busIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
             } else {
                 logging::GetInstance().logDirect(std::format("{}: firmware read of unmapped address 0x{:x} returns 0xBADDC0DE",
-                                                             apbIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
+                                                             busIn.get_parent_object()->name(), addr._getAddress()), LOG_ALWAYS);
                 // truncated to a data bus narrower than 32 bits
                 constexpr uint64_t dataMask = DATA::_bitWidth >= 32 ? 0xFFFFFFFFull : (1ull << DATA::_bitWidth) - 1;
                 data._setData(0xBADDC0DEull & dataMask);
-                apbIn->complete(data);
             }
+            busIn->complete(data, errorResponses);
             continue;
         }
         if (isWrite)
         {
-            regs.cpu_write(address, data._getData());
+            const bool slverr = regs.cpu_write_with_error(address, data._getData());
+            busIn->complete(data, errorResponses && slverr);
         } else {
             data._setData(regs.cpu_read(address));
-            apbIn->complete(data);
+            busIn->complete(data, false);
         }
     }
 }

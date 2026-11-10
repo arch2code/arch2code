@@ -97,56 +97,56 @@ def render_sc(args, prj, data):
         # A gated sc_signal, not an sc_clock: under socket lockstep every clock
         # must stop while the Python partner holds the quantum, and an sc_clock
         # cannot be paused.
-        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
+        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['wrapperClocks'])
 
     def sec_clock_ctor_init(args, prj, data):
-        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks'])
+        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['wrapperClocks'])
 
     def sec_clock_half_decl(args, prj, data):
         # An `output` block clock is produced by the DUT and observed, not
         # generated: it needs no half-period to toggle on.
         return '\n'.join(f"sc_time {row['clock']}_half_;"
-                         for row in data['clocks'] if row['direction'] == 'input')
+                         for row in data['wrapperClocks'] if row['direction'] == 'input')
 
     def sec_clock_half_ctor_init(args, prj, data):
         # Each clock runs at its own declared period; the half period is what the
         # generator toggles on.
         return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
                           f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)'
-                          for row in data['clocks'] if row['direction'] == 'input')
+                          for row in data['wrapperClocks'] if row['direction'] == 'input')
 
     def sec_clock_start(args, prj, data):
         return '\n'.join(f"{row['clock']}.write(true);"
-                         for row in data['clocks'] if row['direction'] == 'input')
+                         for row in data['wrapperClocks'] if row['direction'] == 'input')
 
     def sec_clock_threads(args, prj, data):
         return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});"
-                         for row in data['clocks'] if row['direction'] == 'input')
+                         for row in data['wrapperClocks'] if row['direction'] == 'input')
 
     def sec_clock_gens(args, prj, data):
         return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
-                         for row in data['clocks'] if row['direction'] == 'input')
+                         for row in data['wrapperClocks'] if row['direction'] == 'input')
 
     def sec_reset_decl(args, prj, data):
-        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
+        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['wrapperResets'])
 
     def sec_reset_ctor_init(args, prj, data):
         # Born released: the driver's first write(false) is then a real negedge,
         # which Verilator's async-reset processes need to see.
-        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
+        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['wrapperResets'])
 
     def sec_reset_threads(args, prj, data):
         # An `output` block reset is produced by the DUT and observed, not
         # driven: it gets no driver thread.
         return '\n'.join(f"SC_THREAD({resetDriverName(row)});"
-                         for row in data['resets'] if row['direction'] == 'input')
+                         for row in data['wrapperResets'] if row['direction'] == 'input')
 
     def sec_reset_drivers(args, prj, data):
         # One thunk per reset, counting edges of THAT reset's own clock: two
         # resets in domains of different periods must not be released together.
         return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
                          f'{row["clock"]}, {row["releaseCycles"]}); }}'
-                         for row in data['resets'] if row['direction'] == 'input')
+                         for row in data['wrapperResets'] if row['direction'] == 'input')
 
     def sec_edge_track_decl(args, prj, data):
         # End-of-run report: one edge counter per OUTPUT clock this
@@ -155,26 +155,26 @@ def render_sc(args, prj, data):
         # clocks and resets; internal nets elsewhere in the design are not
         # visible here.
         s = [f"int {row['clock']}_edges_ = 0;"
-            for row in data['clocks'] if row['direction'] == 'output']
+            for row in data['wrapperClocks'] if row['direction'] == 'output']
         s += [f"bool {row['reset']}_released_ = false;"
-             for row in data['resets'] if row['direction'] == 'output']
+             for row in data['wrapperResets'] if row['direction'] == 'output']
         return '\n'.join(s)
 
     def sec_edge_track_registrations(args, prj, data):
         s = [f"SC_METHOD({row['clock']}_edge_count); sensitive << {row['clock']}.value_changed_event(); "
             f"dont_initialize();"
-            for row in data['clocks'] if row['direction'] == 'output']
+            for row in data['wrapperClocks'] if row['direction'] == 'output']
         s += [f"SC_METHOD({row['reset']}_release_track); sensitive << {row['reset']}.value_changed_event(); "
              f"dont_initialize();"
-             for row in data['resets'] if row['direction'] == 'output']
+             for row in data['wrapperResets'] if row['direction'] == 'output']
         return '\n'.join(s)
 
     def sec_edge_track_methods(args, prj, data):
         s = [f"void {row['clock']}_edge_count() {{ {row['clock']}_edges_++; }}"
-            for row in data['clocks'] if row['direction'] == 'output']
+            for row in data['wrapperClocks'] if row['direction'] == 'output']
         s += [f"void {row['reset']}_release_track() {{ if ({row['reset']}.read()) "
              f"{row['reset']}_released_ = true; }}"
-             for row in data['resets'] if row['direction'] == 'output']
+             for row in data['wrapperResets'] if row['direction'] == 'output']
         return '\n'.join(s)
 
     def sec_end_of_simulation(args, prj, data):
@@ -183,11 +183,11 @@ def render_sc(args, prj, data):
         lines = [f'if (!{row["clock"]}_edges_) {{ std::cerr << "warning: '
                 f'clock \'{row["clock"]}\' produced no edge by end of run" '
                 f'<< std::endl; }}'
-                for row in data['clocks'] if row['direction'] == 'output']
+                for row in data['wrapperClocks'] if row['direction'] == 'output']
         lines += [f'if (!{row["reset"]}_released_) {{ std::cerr << "warning: '
                  f'output reset \'{row["reset"]}\' was never observed to '
                  f'release during the run" << std::endl; }}'
-                 for row in data['resets'] if row['direction'] == 'output']
+                 for row in data['wrapperResets'] if row['direction'] == 'output']
         return '\n'.join(lines)
 
     def sec_dut_connect(args, prj, data):
@@ -247,8 +247,8 @@ def render_sc(args, prj, data):
         # OUTPUT clock or reset (there is nothing this wrapper observes
         # rather than drives), so the override is emitted only then -
         # otherwise every hasVl wrapper gets an empty override body.
-        has_edge_track = any(row['direction'] == 'output' for row in data['clocks']) \
-            or any(row['direction'] == 'output' for row in data['resets'])
+        has_edge_track = any(row['direction'] == 'output' for row in data['wrapperClocks']) \
+            or any(row['direction'] == 'output' for row in data['wrapperResets'])
         # Each section below returns its joined entries with no trailing
         # comma, so an empty section (e.g. no resets) drops out cleanly
         # instead of leaving a bare ',' in the initialiser list.

@@ -159,12 +159,12 @@ types:
 ### 2. Missing Router for a Routed Leaf
 The register-bus decoder/router is a **generated** block. Declare it with a
 populated `addressBlock:` and instance it in the **same container** as the
-routed leaves it serves; its RTL comes from the `apbDecodeModule` template
+routed leaves it serves; its RTL comes from the `regBusDecodeModule` template
 (`make newmodule` selects it). Routed leaves tag their instance `addressGroup:`.
 ```yaml
 blocks:
   apb_decode:
-    desc: "APB router (RTL generated from apbDecodeModule)"
+    desc: "APB router (RTL generated from regBusDecodeModule)"
     addressBlock:
       addressGroup: system
       addressIncrement: 0x01000000

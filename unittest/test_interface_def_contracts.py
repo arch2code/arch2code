@@ -101,10 +101,20 @@ and the error names neither the interface nor its file.
 The schema makes `timing` required and both group fields required when the
 group is present. The pairing is the part it cannot express.
 
+Rule 10 - an addressBus definition names its SV register-bus front end.
+
+The generated router and register handler RTL take every protocol signal from
+the module `svRegBusFrontEnd:` names under templates/systemVerilog/regBus/
+(`sv_reg_bus_front_end` in pysrc/intf_gen_utils.py). An addressBus definition
+without one stops generation with a bare import error at the first router or
+handler, naming neither the interface nor its file. Any other definition is
+never a register bus, so a front end there misleads the reader.
+
 Interface definition files are discovered by walking the interface trees, so a
 newly authored interface is validated without anyone adding it to a list.
 """
 
+import importlib.util
 import inspect
 import os
 import shutil
@@ -402,6 +412,12 @@ BAD_ELASTIC_NO_BACKPRESSURE_ARCH_YAML = (BAD_FIXED_BACKPRESSURE_ARCH_YAML
     .replace('    timing: fixed\n    backpressure: {default: true, overridable: false}\n',
              '    timing: elastic\n'))
 
+# A register bus whose front end does not exist.
+BAD_REG_BUS_FRONT_END_ARCH_YAML = (BAD_FIXED_BACKPRESSURE_ARCH_YAML
+    .replace('bad_fixed_backpressure', 'bad_reg_bus_front_end')
+    .replace('    backpressure: {default: true, overridable: false}\n',
+             '    addressBus: true\n    svRegBusFrontEnd: no_such_front_end\n'))
+
 # A definition with no timing at all, which the schema rejects.
 BAD_NO_TIMING_ARCH_YAML = (BAD_FIXED_BACKPRESSURE_ARCH_YAML
     .replace('bad_fixed_backpressure', 'bad_no_timing')
@@ -629,6 +645,43 @@ def check_timing_backpressure(interfaceDefs, sourceFiles):
         if (row['backpressure'] is not None) != (row['timing'] == 'elastic'):
             errors.append(timing_backpressure_error(sourceFiles[interfaceType],
                                                     interfaceType, row['timing']))
+    return errors
+
+
+def reg_bus_front_end_error(sourceFile, interfaceType, addressBus, frontEnd):
+    """The message an author sees. It has to be enough on its own."""
+    if not addressBus:
+        return (
+            f"{sourceFile}: interface_defs '{interfaceType}' sets "
+            f"svRegBusFrontEnd: {frontEnd} but not addressBus: true. Only a "
+            f"register bus has a front end. Remove svRegBusFrontEnd: from "
+            f"'{interfaceType}', or mark it addressBus: true, in {sourceFile}.")
+    return (
+        f"{sourceFile}: interface_defs '{interfaceType}' has addressBus: true "
+        f"and svRegBusFrontEnd: '{frontEnd}', which names no module under "
+        f"templates/systemVerilog/regBus/. The generated router and register "
+        f"handler RTL take every protocol signal from that module, so "
+        f"generation stops at the first one. Write the front end, as "
+        f"templates/systemVerilog/regBus/apb.py does for apb, and name it in "
+        f"'{interfaceType}' in {sourceFile}.")
+
+
+def check_reg_bus_front_end(interfaceDefs, sourceFiles):
+    """svRegBusFrontEnd errors for every definition in sourceFiles."""
+    errors = []
+    for row in interfaceDefs.values():
+        interfaceType = row['interface_type']
+        if interfaceType not in sourceFiles:
+            continue
+        frontEnd = row['svRegBusFrontEnd']
+        if row['addressBus']:
+            ok = bool(frontEnd) and importlib.util.find_spec(
+                f"templates.systemVerilog.regBus.{frontEnd}") is not None
+        else:
+            ok = not frontEnd
+        if not ok:
+            errors.append(reg_bus_front_end_error(sourceFiles[interfaceType], interfaceType,
+                                                  row['addressBus'], frontEnd))
     return errors
 
 
@@ -878,6 +931,14 @@ def test_shipped_interface_defs(proj, sourceFiles):
     check(not errors,
           "every shipped interface declares backpressure exactly when its "
           "timing is elastic")
+
+    print("\n[regBus] an addressBus definition names its SV register-bus front end")
+    errors = check_reg_bus_front_end(interfaceDefs, sourceFiles)
+    for error in errors:
+        print(f"  {error}")
+    check(not errors,
+          "every shipped addressBus interface names a front end that exists, "
+          "and no other interface names one")
 
 
 def test_misdeclared_interface_is_reported():
@@ -1186,6 +1247,32 @@ def test_timing_backpressure_mismatch_is_reported():
             remove_tree(tmpdir)
 
 
+def test_missing_reg_bus_front_end_is_reported():
+    """The check fires, and its message stands on its own."""
+    print("\n[negative] an addressBus definition naming no front end is reported")
+    try:
+        dbPath, tmpdir = build_database(BAD_REG_BUS_FRONT_END_ARCH_YAML, 'badRegBusFrontEnd')
+    except RuntimeError as exc:
+        check(False, f"mis-declared fixture must build a database: {exc}")
+        return
+    try:
+        proj = projectOpen(dbPath)
+        archPath = os.path.join(tmpdir, 'proj', 'arch.yaml')
+        errors = check_reg_bus_front_end(proj.data['interface_defs'],
+                                         {'bad_reg_bus_front_end': archPath})
+        for error in errors:
+            print(f"  {error}")
+        if len(errors) != 1:
+            check(False, f"exactly one front end error is reported, got {len(errors)}")
+            return
+        message = errors[0]
+        check(archPath in message, "the message names the file to edit")
+        check("'bad_reg_bus_front_end'" in message, "the message names the interface")
+        check("names no module" in message, "the message states the violation")
+    finally:
+        remove_tree(tmpdir)
+
+
 def test_missing_timing_is_reported():
     """A definition with no timing fails the build at the schema."""
     print("\n[negative] a definition with no timing is reported")
@@ -1267,6 +1354,7 @@ def main():
     test_untyped_signal_is_reported()
     test_unused_hdlparam_is_reported()
     test_timing_backpressure_mismatch_is_reported()
+    test_missing_reg_bus_front_end_is_reported()
     test_missing_timing_is_reported()
     test_unsignalled_parameter_is_accepted()
 

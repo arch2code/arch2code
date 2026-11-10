@@ -49,7 +49,7 @@ build/run <testbench> --vlInst <instance path>
 *   The named instance and everything below it run as RTL. The rest stays as models, so to check each block against model neighbours, run once per instance.
 
 ## Clocks and resets
-The SC wrapper drives the RTL's input clocks and resets itself. It toggles each clock at the period declared in the YAML, holds each reset for that reset's `releaseCycles` edges of its own clock, then releases it. A clock or reset the RTL drives out is observed, not generated. The testbench drives none of them.
+The SC wrapper drives the RTL's input clocks and resets itself. It toggles each clock at the period declared in the YAML, holds each reset for that reset's `releaseCycles` edges of its own clock, then releases it. A clock or reset the RTL drives out is observed, not generated. The testbench drives none of them. For a block with `clocks: {}` the wrapper generates the project's default testbench clock and reset only to time its BFMs; the RTL gets neither.
 
 ## Tracing
 Add `--vlTrace` to the run command. It writes a VCD of the verilated instance to `simx.vcd` in the run directory. FST is not supported, and no make variable turns tracing on.

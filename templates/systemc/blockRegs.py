@@ -45,7 +45,8 @@ def get_reghandler_properties(prj, data):
         "port_name": rhd['registerBusPort'],
         "addr_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['addr_t'], 'structure', 'structureKey', prj), hasOwnParams),
         "data_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['data_t'], 'structure', 'structureKey', prj), hasOwnParams),
-        "addressmask" : f"(1<<({rhd['addressBits']}))-1"
+        "addressmask" : f"(1<<({rhd['addressBits']}))-1",
+        "error_responses" : prj.config.getConfig('FILEGENERATION')['regBusErrorResponses']
     }
     return reghandler
 
@@ -250,7 +251,7 @@ SC_HAS_PROCESS({{blockname}});
 {{registration}}
 
 {{templatePrefix}}void {{blockname}}{{cfg}}::regHandler(void) { //handle register decode
-    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(_a2cRegs, {{thisq}}{{reghandler.port_name}}, {{reghandler.addressmask}});
+    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(_a2cRegs, {{thisq}}{{reghandler.port_name}}, {{reghandler.addressmask}}{% if reghandler.error_responses %}, true{% endif %});
 }
 
 {{templatePrefix}}{{blockname}}{{cfg}}::{{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode)

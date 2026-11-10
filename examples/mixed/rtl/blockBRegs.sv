@@ -249,8 +249,8 @@ module blockBRegs
         end
     end
 
-    // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return
+    // Update APB ready and read data. Every access completes without
+    // error, though the front end may add wait states. Unmapped reads return
     // 32'hBADD_C0DE.
     generate if (APB_READY_1WS)
         begin

@@ -47,7 +47,7 @@ These hold for every arch2code design. When a design choice is unclear, prefer t
 | `addressBlock` | Makes the block a register-bus router. | |
 | `registerPorts` | The block's own register-bus port. | |
 
-*   A router's RTL is generated from the `apbDecodeModule` template. A router owns no registers or `regAccess` memories and declares no `registerPorts:`. `design-register-decode.md` lists the `addressBlock:` fields.
+*   A router's RTL is generated from the `regBusDecodeModule` template. A router owns no registers or `regAccess` memories and declares no `registerPorts:`. `design-register-decode.md` lists the `addressBlock:` fields.
 *   `registerPorts:` has at most one row, for example `registerPorts: { regs: { interface: ipReg } }`. A block with no `ports:` may omit it. Its register port is then inferred from what feeds it, the serving router or an enclosing passthrough container. See "Inferring the register bus" in `design-register-decode.md`, which also says when a block with `ports:` needs it.
 *   A `hasRtl: true` block may contain only `hasRtl: true` blocks. A model-only child (`hasRtl: false`) needs a model-only parent.
 *   A block that owns registers, `regAccess` memories or `registerPorts:` is a register consumer, and a router outside the block must serve it. `design-register-decode.md` says where the router goes and which instances carry `addressGroup:`.
@@ -257,6 +257,7 @@ blocks:
 *   `direction` is `input` (the default) or `output`.
 *   On a clock, `default: true` marks the block default clock. A block with one input clock does not need it. On a reset, `default: true` marks the selected reset of its clock. A clock with one candidate reset does not need it.
 *   A reset's `clock:` defaults to the block default clock. `resets: {}` means the block has no reset.
+*   `clocks: {}` makes a combinational block with no clock and no reset. `make db` rejects one that declares resets, registers, memories, `addressBlock:` or `registerPorts:`, that accesses a memory or register, or that contains a clocked child.
 *   `async: true` marks a reset input that the block samples in none of its own clocks, such as a synchroniser's raw input. It may bind to any container reset.
 *   `period` and `timeUnit` (`ps`, `ns` or `us`) on an input clock set the rate for a standalone build of the block. A declared `period` wins. Without one, the clock takes the period of the testbench clock that every instance of the block resolves it to. A `hasVl` block must declare `period` when its clock comes from another block's output, resolves to two testbench clocks, or has no instance in its own project. An odd `period` in `ps` is rejected.
 

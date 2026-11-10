@@ -114,20 +114,20 @@ def sc_bv_pins(prj, data, top_module):
 def port_decl_block(prj, data, mp_sig, sc_bv):
     # ANSI flattened port list shared by the canonical body and the Verilated
     # tops; pins named in sc_bv carry the marker.
-    s = ''
+    groups = []
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
-            s += f'// {intf_type}.{intf_dir}\n'
-            s += ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
-                             for decl, name in zip(mp_sig[port]['ports'], mp_sig[port]['names']))
-            s += ',\n'
-            s += '\n'
-    s += intf_gen_utils.sv_clock_reset_input_lines(data) + '\n'
-    return s
+            groups.append(f'// {intf_type}.{intf_dir}\n'
+                          + ',\n'.join(f"{decl} /*verilator sc_bv*/" if name in sc_bv else decl
+                                       for decl, name in zip(mp_sig[port]['ports'], mp_sig[port]['names'])))
+    # A block with no clock has no clock/reset group.
+    if data['clocks']:
+        groups.append(intf_gen_utils.sv_clock_reset_input_lines(data))
+    return ',\n\n'.join(groups) + '\n'
 
 def boundary_include(mp_sig):
     # The port assigns name `A2C_HDL_BOUNDARY_DLY; a wrapper without them skips the header.
@@ -153,7 +153,7 @@ def intf_reconstruction(prj, data, mp_sig):
 
 def dut_instantiation(prj, data, blk_name, blk_param):
     s = f"{data['blockSvModuleName']}{blk_param} dut (\n"
-    s_1 = ''
+    binds = []
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
             intf_name = port_data['name']
@@ -161,8 +161,10 @@ def dut_instantiation(prj, data, blk_name, blk_param):
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
-            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
-    s_1 += ',\n'.join(intf_gen_utils.sv_clock_reset_binds(data)) + '\n'
+            binds.append((f".{intf_name}({intf_name})", f" // {intf_type}.{intf_dir}"))
+    binds += [(bind, '') for bind in intf_gen_utils.sv_clock_reset_binds(data)]
+    s_1 = ''.join(f"{bind}{',' if index < len(binds) - 1 else ''}{comment}\n"
+                  for index, (bind, comment) in enumerate(binds))
     s_1 = textwrap.indent(s_1, ' '*4)
     s += s_1 + ');'
 

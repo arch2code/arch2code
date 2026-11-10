@@ -86,12 +86,13 @@ def constructorInit(args, prj, data):
 
     out.extend(blockRegistrarInitLines(args, prj, data, className, hasOwnParams))
 
-    if data['addressDecode']['isApbRouter']:
+    errorResponses = prj.config.getConfig('FILEGENERATION')['regBusErrorResponses']
+    if data['addressDecode']['isRegBusRouter']:
         if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::routerDecode(void) //handle apb routing for register\n{{')
         out.append(f'    log_.logPrint(std::format("SystemC Thread:{{}} started", __func__));')
-        out.append(f'    decoder.decodeThread();\n}}\n')
+        out.append(f'    decoder.decodeThread({"true" if errorResponses else ""});\n}}\n')
 
     if registerDecode:
         busPort = data["addressDecode"]["registerBusPort"]
@@ -104,7 +105,7 @@ def constructorInit(args, prj, data):
         if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::regHandler(void) {{ //handle register decode')
-        out.append(f'    registerHandler< {busStructs} >(_a2cRegs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
+        out.append(f'    registerHandler< {busStructs} >(_a2cRegs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1{", true" if errorResponses else ""}); }}\n')
 
     if hasOwnParams:
         out.append(templateDecl)
@@ -115,7 +116,7 @@ def constructorInit(args, prj, data):
 
     if registerDecode:
         out.append(f'        ,_a2cRegs(log_)')
-    if data['addressDecode']['isApbRouter']:
+    if data['addressDecode']['isRegBusRouter']:
         out += addressDecoder(args, prj, data)
 
     chnl_table = dict()
@@ -413,7 +414,7 @@ def constructorBody(args, prj, data):
 
     first = True
 
-    if data['addressDecode']['isApbRouter']:
+    if data['addressDecode']['isRegBusRouter']:
         out.append(f'    SC_THREAD(routerDecode);')
     if registerDecode:
         out.append(f'    SC_THREAD(regHandler);')

@@ -1,6 +1,6 @@
 ---
 name: rtl-interfaces
-description: Guide for using standard interface protocols (rdy_vld, push_ack, req_ack, pop_ack, notify_ack, status, external_reg, memory, apb, axi, axi4_stream, raw) in SystemVerilog RTL
+description: Guide for using standard interface protocols (rdy_vld, push_ack, req_ack, pop_ack, notify_ack, status, external_reg, memory, apb, ahb, axi, axi4_stream, raw) in SystemVerilog RTL
 ---
 # Skill: RTL interfaces
 
@@ -33,6 +33,7 @@ Every interface has two modports and no others:
 | `external_reg_if` | Register owned outside the handler | `write`, `wdata` from src; `rdata` from dst |
 | `memory_if` | Memory port | `addr`, `write_data`, `enable`, `wr_en` from src; `read_data` from dst |
 | `apb_if` | Register bus | `psel`, `penable`, `pwrite`, `paddr`, `pwdata` from src; `pready`, `prdata`, `pslverr` from dst |
+| `ahb_if` | AHB-Lite register bus | `hsel`, `haddr`, `htrans`, `hwrite`, `hsize`, `hwdata`, `hready` from src; `hreadyout`, `hresp`, `hrdata` from dst |
 | `axi_read_if`, `axi_write_if` | AXI4 | standard AXI4 channel signals |
 | `axi4_stream_if` | AXI4-Stream | `tvalid`, `tdata`, `tstrb`, `tkeep`, `tlast`, `tid`, `tdest`, `tuser`; `tready` from dst |
 | `raw_if` | Last resort, no handshake | `data` |

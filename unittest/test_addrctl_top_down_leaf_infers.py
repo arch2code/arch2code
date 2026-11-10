@@ -104,8 +104,8 @@ def _run():
         # ---- Leaf view: register bus resolved by inference ----
         leaf_view = prj.getBlockData(leaf_key)
         lad = leaf_view['addressDecode']
-        assert not bool(lad.get('isApbRouter')), \
-            f"leaf isApbRouter expected falsy, got {lad.get('isApbRouter')!r}"
+        assert not bool(lad.get('isRegBusRouter')), \
+            f"leaf isRegBusRouter expected falsy, got {lad.get('isRegBusRouter')!r}"
         assert bool(lad.get('hasDecoder')), \
             f"leaf hasDecoder expected truthy (one register), got {lad.get('hasDecoder')!r}"
         assert lad.get('registerBusInterface') == 'apbReg', \

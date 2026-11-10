@@ -1,0 +1,41 @@
+# AHB-Lite register bus: single transfers, one slave per link. The src end is
+# the master together with its decoder and response mux, so it drives hsel and
+# the slave's hready input as well as the address-phase signals.
+types:
+  _ahbTransT:
+    width: 2
+    desc: "HTRANS: 0 IDLE, 1 BUSY, 2 NONSEQ, 3 SEQ"
+  _ahbSizeT:
+    width: 3
+    desc: "HSIZE: bytes in the transfer encoded 0=1, 1=2, 2=4"
+
+interface_defs:
+  ahb :
+    timing: elastic
+    backpressure: { default: true, overridable: false }
+    addressBus : true
+    svRegBusFrontEnd : ahb
+    parameters :
+      addr_t : { datatype : struct }
+      data_t : { datatype : struct }
+    signals:
+      hsel : bool
+      haddr : addr_t
+      htrans : _ahbTransT
+      hwrite : bool
+      hsize : _ahbSizeT
+      hwdata : data_t
+      hready : bool
+      hreadyout : bool
+      hresp : bool
+      hrdata : data_t
+    modports :
+      src :
+        inputs : ['hreadyout', 'hresp', 'hrdata']
+        outputs: ['hsel', 'haddr', 'htrans', 'hwrite', 'hsize', 'hwdata', 'hready']
+      dst :
+        inputs : ['hsel', 'haddr', 'htrans', 'hwrite', 'hsize', 'hwdata', 'hready']
+        outputs: ['hreadyout', 'hresp', 'hrdata']
+    sc_channel :
+      type : 'ahb'
+      multicycle_types : []

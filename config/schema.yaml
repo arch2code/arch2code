@@ -140,6 +140,10 @@ interface_defs:
   interface_type: key
   # marks an interface_def as a register-bus / address-bus meta-protocol
   addressBus: optional(false)
+  # addressBus types only: the module under templates/systemVerilog/regBus/
+  # that turns this protocol's signals into the neutral register access the
+  # generated router and register handler RTL decode
+  svRegBusFrontEnd: optional
   parameters:
     _attribs: [optional, multiple]
     param: key
@@ -352,6 +356,8 @@ blocks:
   # clocks:/resets:.
   # A single-name list ('clocks: [clkSlow]') is accepted as the mapping form
   # with every field defaulted (processYaml.py::_normalizeClockResetShortForm).
+  # An empty `clocks: {}` or `clocks: []` means a combinational block with no
+  # clock and no reset, recorded as parse-time state like an empty resets:.
   clocks:
     _attribs: [optional, multiple, post(resolveBlockClockPeriod)]
     clock: key

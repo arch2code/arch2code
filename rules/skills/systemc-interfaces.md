@@ -1,6 +1,6 @@
 ---
 name: systemc-interfaces
-description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, memory, axi_read, axi_write, axi4_stream, status, external_reg, raw) in SystemC models, and for which ports a --delay run delays
+description: Guide for calling interface ports (rdy_vld, push_ack, pop_ack, req_ack, notify_ack, apb, ahb, memory, axi_read, axi_write, axi4_stream, status, external_reg, raw) in SystemC models, and for which ports a --delay run delays
 ---
 # Skill: SystemC interfaces
 
@@ -26,7 +26,8 @@ Pick the right port call for each interface family in a SystemC model.
 | `pop_ack` | `pop(v)` | `popReceive()`, then `ack(v)` |
 | `req_ack` | `req(reqV, ackV)` | `reqReceive(reqV)`, then `ack(ackV)` |
 | `notify_ack` | `notify()` | `waitNotify()`, then `ack()` |
-| `apb` | `request(isWrite, addr, data)` | `reqReceive(isWrite, addr, data)`, then `complete(data)` on reads only |
+| `apb` | `request(isWrite, addr, data)` (a write is posted); `requestWithResponse(...)` waits and returns `PSLVERR` | `reqReceive(isWrite, addr, data)`, then `complete(data, slverr)`; required for reads and response-aware writes, ignored for posted writes |
+| `ahb` | As `apb`; `requestWithResponse(...)` returns the AHB ERROR response | As `apb` |
 | `memory` | `request(isWrite, addr, data)` | `reqReceive(isWrite, addr, data)`, then `complete(data)` on reads only |
 | `axi_read` | `sendAddr(a)`, `receiveData(r)` | `receiveAddr(a)`, `sendData(r)` |
 | `axi_write` | `sendAddr(a)`, `sendData(d)`, `receiveResp(b)` | `receiveAddr(a)`, `receiveData(d)`, `sendResp(b)` |

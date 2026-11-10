@@ -421,6 +421,7 @@ All channels are created and connected in generated code. Users call methods on 
 |--------------|----------|----------|
 | `rdy_vld` | Ready/Valid handshake | Streaming data, FIFOs, pipelines |
 | `apb` | APB bus protocol | Register access, control |
+| `ahb` | AHB-Lite bus protocol | Register access, control |
 | `memory` | Memory access | Memory-mapped access |
 | `req_ack` | Request/Acknowledge | Command/response protocols |
 | `push_ack` | Push with ack | Data streaming with backpressure |
@@ -503,8 +504,15 @@ Request/response protocol for register and memory access. Supports single outsta
 - `myPort->request(isWrite, addr, data)` - Blocking request (write or read)
   - For writes: `data` contains write data
   - For reads: `data` receives read data on return
+  - A write is posted: it returns once the completer receives it, and any
+    `complete()` the completer issues for it is ignored.
+- `myPort->requestWithResponse(isWrite, addr, data)` - Wait for the APB response
+  to a read or write and return `PSLVERR`; read data is returned through `data`.
 - `myPort->requestNonBlocking(isWrite, addr, data)` - Non-blocking request, for tee use only
 - `myPort->waitComplete(data)` - Wait for the non-blocking read to complete, for tee use only
+- `myPort->requestNonBlockingWithResponse(isWrite, addr, data)` /
+  `myPort->waitCompleteWithResponse(data)` - Response-aware non-blocking pair,
+  for tee use only; returns `PSLVERR` for reads and writes
 
 **Example - APB Master:**
 
@@ -531,11 +539,17 @@ void myModule::apbMaster() {
 **API:**
 - `myPort->reqReceive(isWrite, addr, data)` - Wait for and receive request
   - Returns `isWrite` flag and request data
-- `myPort->complete(data)` - Send read response data
+- `myPort->complete(data, slverr)` - Complete a read, or a response-aware write;
+  `data` is used for reads and `slverr` is returned by `requestWithResponse`.
+  Calling it for a posted write is allowed and has no effect.
+- `myPort->receivedWantsResponse()` - True when the last received request came
+  from `requestWithResponse()`; an adapter forwards the request in the same mode
 - `myPort->isActive()` / `myPort->isNotActive()` - Check whether a request is pending
 - `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration (see `rules/skills/systemc-synchronization.md` Section 1)
 
 **Register bus ports:** When a block's `apb` port is its register bus, the generator writes the handler (`regHandler`, which calls `registerHandler(_a2cRegs, ...)`, and `SC_THREAD(regHandler)`). Never add a thread on the register bus port. See section 8.5.
+
+**AHB-Lite:** `ahb_channel`, with ports `ahb_out` and `ahb_in`, has the same API as `apb_channel`. Both derive from `regBusChannel` in `common/systemc/regBusChannel.h`. The error bit that `requestWithResponse()` returns and `complete()` takes is the AHB ERROR response (HRESP high). The channel carries word transfers only. The Verilator BFM stops the run with an assertion when RTL masters a model AHB slave with an HSIZE other than a word.
 
 ### 4.3 memory_channel - Memory Access Protocol
 

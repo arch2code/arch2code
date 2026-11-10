@@ -1,0 +1,112 @@
+# AHB-Lite register decode. The cpu reaches every register through the router
+# uRouter: leafA and leafB directly, and leafC through the nested router
+# uSubRouter inside subSys. Each router leaves one or more address spaces
+# empty, so the cpu can test an unmapped access at both levels.
+
+constants:
+  DWORD :     {value: 32, desc: "Register bus width"}
+  TBL_WORDS : {value: 8,  desc: "Rows in leafA's table"}
+
+types:
+  ahbAddrT: {width: DWORD, desc: "AHB address"}
+  ahbDataT: {width: DWORD, desc: "AHB data"}
+  u16T:     {width: 16,    desc: "sixteen bit integral type"}
+  u32T:     {width: 32,    desc: "thirty two bit integral type"}
+  tblAddrT: {width: 3,     desc: "leafA table row"}
+
+structures:
+  ahbAddrSt:
+    address: {varType: ahbAddrT, generator: address}
+  ahbDataSt:
+    data: {varType: ahbDataT, generator: data}
+  cfgRegSt:
+    value: {varType: u32T, generator: register}
+  statRegSt:
+    value: {varType: u16T, generator: register}
+  cmdRegSt:
+    value: {varType: u16T, generator: register}
+  tblSt:
+    data: {varType: u32T}
+  tblAddrSt:
+    address: {varType: tblAddrT}
+
+interfaces:
+  ahbReg:
+    desc: "CPU access to the registers in the design"
+    interfaceType: ahb
+    structures:
+      - {structure: ahbAddrSt, structureType: addr_t}
+      - {structure: ahbDataSt, structureType: data_t}
+
+blocks:
+  top:
+    desc: "Testbench container holding the CPU and the ahbSoc DUT"
+    hasRtl: false
+    hasMdl: false
+  cpu:
+    desc: "AHB master running the register test"
+    hasRtl: false
+  ahbSoc:
+    desc: "The DUT, holding the router and its leaves"
+    hasVl: true
+    hasTb: true
+  ahbRouter:
+    desc: "Decodes the cpu's AHB transfers to leafA, leafB and subSys"
+    hasVl: true
+    addressBlock:
+      addressGroup: top
+      addressIncrement: 0x1000
+      maxAddressSpaces: 4
+      varType: addr_id_ahb_top
+      enumPrefix: ADDR_ID_AHB_TOP_
+      upstreamPort: ahbReg
+      registerDecoderPort: ahbReg
+  subSys:
+    desc: "Holds the nested router and leafC"
+    hasVl: true
+  subRouter:
+    desc: "Decodes subSys's address space to leafC"
+    hasVl: true
+    addressBlock:
+      addressGroup: sub
+      addressIncrement: 0x100
+      maxAddressSpaces: 4
+      varType: addr_id_ahb_sub
+      enumPrefix: ADDR_ID_AHB_SUB_
+      upstreamPort: ahbReg
+      registerDecoderPort: ahbReg
+  leafA:
+    desc: "rw, ro and ext registers and a table"
+    hasVl: true
+  leafB:
+    desc: "One rw register"
+    hasVl: true
+
+instances:
+  top:
+    container:  top # self reference
+    instanceType: top
+    instGroup: top
+  uCPU:       {container: top,    instanceType: cpu,       instGroup: top}
+  uAhbSoc:    {container: top,    instanceType: ahbSoc,    instGroup: top}
+  uRouter:    {container: ahbSoc, instanceType: ahbRouter, instGroup: top}
+  uLeafA:     {container: ahbSoc, instanceType: leafA,     instGroup: top, addressGroup: top}
+  uLeafB:     {container: ahbSoc, instanceType: leafB,     instGroup: top, addressGroup: top}
+  uSubSys:    {container: ahbSoc, instanceType: subSys,    instGroup: top, addressGroup: top}
+  uSubRouter: {container: subSys, instanceType: subRouter, instGroup: top}
+  uLeafC:     {container: subSys, instanceType: leafB,     instGroup: top, addressGroup: sub}
+
+connections:
+  - {interface: ahbReg, src: uCPU, dst: uAhbSoc}
+
+connectionMaps:
+  - {interface: ahbReg, block: ahbSoc, direction: dst, instance: uRouter, instancePort: ahbReg}
+
+memories:
+  - {memory: tblA, block: leafA, structure: tblSt, wordLines: TBL_WORDS, addressStruct: tblAddrSt, memoryType: singlePort, regAccess: true, desc: "Table firmware reads and writes"}
+
+registers:
+  - {register: cfgA,  regType: rw,  block: leafA, structure: cfgRegSt,  defaultValue: 0x12345678, desc: "rw register"}
+  - {register: statA, regType: ro,  block: leafA, structure: statRegSt, desc: "ro register, reads 0x5a5a"}
+  - {register: cmdA,  regType: ext, block: leafA, structure: cmdRegSt,  desc: "ext register whose owner refuses a write of 0x0bad"}
+  - {register: cfgB,  regType: rw,  block: leafB, structure: cfgRegSt,  desc: "rw register"}

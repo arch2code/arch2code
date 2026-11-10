@@ -13,6 +13,7 @@
 #include "interfaceBase.h"
 #include "trackerBase.h"
 #include "portBase.h"
+#include "regBusChannel.h"
 
 
 // ----------------------------------------------------------------------------
@@ -27,7 +28,10 @@ public:
 
     // blocking read/write
     virtual void reqReceive(bool &isWrite, R&, D& ) = 0;
-    virtual void complete(const D&) = 0; // completion only on read
+    virtual void complete(const D&, bool slverr = false) = 0;
+    // True when the last received request came from requestWithResponse() or
+    // requestNonBlockingWithResponse(), so its requester waits for complete().
+    virtual bool receivedWantsResponse() = 0;
     virtual bool isActive() = 0;
     virtual bool isNotActive() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
@@ -53,8 +57,13 @@ class apb_out_if
 public:
     // blocking req
     virtual void request(bool isWrite, const R&, D& ) = 0;
+    virtual bool requestWithResponse(bool isWrite, const R&, D& ) = 0;
     virtual void requestNonBlocking(bool isWrite, const R&, D& data ) = 0; // non-blocking req for tee use only
     virtual void waitComplete(D&) = 0; // completion only on read
+    // Response-aware non-blocking pair for tee use: the write is not posted,
+    // and waitCompleteWithResponse() returns PSLVERR for reads and writes.
+    virtual void requestNonBlockingWithResponse(bool isWrite, const R&, D& data ) = 0;
+    virtual bool waitCompleteWithResponse(D&) = 0;
 
 protected:
     // constructor
@@ -67,388 +76,25 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-//  CLASS : apb_channel<T>
+//  CLASS : apb_channel<R, D>
 //
-//  The apb_channel<T> primitive channel class.
+//  The apb_channel<R, D> primitive channel class. regBusChannel holds the
+//  transfer behaviour, shared with the other register buses.
 // ----------------------------------------------------------------------------
 
 template <class R, class D>
 class apb_channel
-: public apb_in_if<R, D>,
-  public apb_out_if<R, D>,
-  public sc_prim_channel
+: public regBusChannel<R, D, apb_in_if<R, D>, apb_out_if<R, D>>
 {
 public:
     // constructor const char * module, std::string block
     explicit apb_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoModeReq=INTERFACE_AUTO_OFF, INTERFACE_AUTO_MODE autoModeData=INTERFACE_AUTO_OFF)
-      : sc_prim_channel( name_ ),
-        req_interfaceBase((std::string(name_) + "_req").c_str(), block_, autoModeReq, TIMED_DELAY_APPLIES),
-        data_interfaceBase((std::string(name_) + "_data").c_str(), block_, autoModeData, TIMED_DELAY_APPLIES),
-        m_channel_req_event( (std::string(name_) + "m_channel_req_event").c_str() ),
-        m_channel_comp_event( (std::string(name_) + "m_channel_comp_event").c_str() ),
-        m_reader(nullptr),
-        m_writer(nullptr),
-        m_value_written(false)
-        {
-            req_interfaceBase.setTracker(R::getValueType());
-            data_interfaceBase.setTracker(D::getValueType());
-            logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
-        }
-
-    // destructor
-    virtual ~apb_channel() { }
-
-    // interface methods
-    virtual void register_port( sc_port_base&, const char* ) override;
-
-    // requester interface
-    virtual void request(bool isWrite, const R&, D& ) override;
-    virtual void requestNonBlocking(bool isWrite, const R&, D& data ) override; // non-blocking req for tee use only
-    virtual void waitComplete(D&) override; // completion only on read
-    // completer interface
-    virtual void reqReceive(bool &isWrite, R&, D& ) override;
-    virtual void complete(const D&) override ;
-    virtual bool isActive() override { return(m_req_pending); }
-    virtual bool isNotActive() override { return(!m_req_pending); }
-    virtual void setExternalEvent( sc_event *event ) override
-    {
-        m_external_event_ptr = event;
-        m_external_arb = true;
-    }
-
-    void trace( sc_trace_file* tf ) const override;
-
-    virtual void print( ::std::ostream& = ::std::cout ) const override;
-    virtual void dump( ::std::ostream& = ::std::cout ) const override;
-    virtual void status(void);
+      : regBusChannel<R, D, apb_in_if<R, D>, apb_out_if<R, D>>( name_, block_, autoModeReq, autoModeData )
+        { }
 
     virtual const char* kind() const override
         { return "apb_channel"; }
-
-    // portBase overrides
-    void setMultiDriver(std::string name, std::function<std::string(const uint64_t &value)> prt = nullptr) override
-    {
-        req_interfaceBase.setMultiDriver(name, prt);
-        data_interfaceBase.setMultiDriver(name, prt);
-    }
-    std::shared_ptr<trackerBase> getTracker(void) override { return (data_interfaceBase.tracker_);} // just return the data tracker
-    virtual void setTeeBusy(bool busy) override { req_interfaceBase.teeBusy_ = busy; data_interfaceBase.teeBusy_ = busy;}
-    virtual void setTandem(void) override { req_interfaceBase.setTandem(); data_interfaceBase.setTandem(); }
-    virtual void setLogging(verbosity_e verbosity) override { req_interfaceBase.setLogging(verbosity); data_interfaceBase.setLogging(verbosity); }
-    virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); data_interfaceBase.setTimed(nsec, mode); }
-    virtual sc_prim_channel* getChannel(void) override { return this; }
-
-protected:
-    R   m_req_data; // typically this is the address field plus any user defined fields
-    D   m_data;     // read or write data
-    // for apb we can have trackers on both sides so instead of inheritance we use composition
-    interfaceBase req_interfaceBase; // for req
-    interfaceBase data_interfaceBase; // for data
-
-    sc_event m_channel_req_event;
-    sc_event m_channel_comp_event;
-
-    sc_port_base* m_reader; // used for static design rule checking
-    sc_port_base* m_writer; // used for static design rule checking
-
-    // Protocol state:
-    // - m_req_pending models APB PSEL: 1 outstanding request at a time.
-    // - m_req_is_write models APB PWRITE for the outstanding request.
-    // - m_resp_pending models PRDATA valid for read responses.
-    //
-    // Events are wakeups only; state lives in these flags and must be checked in
-    // guarded wait loops to avoid missed notifications.
-    bool m_req_pending = false;
-    bool m_req_is_write = false;
-    bool m_resp_pending = false;
-    bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
-    bool m_multi_writer = false;  //detect multiple writers
-    bool m_external_arb = false;
-    sc_event* m_external_event_ptr = nullptr;
-
-private:
-    // disabled
-    apb_channel( const apb_channel<R, D>& );
-    apb_channel& operator = ( const apb_channel<R, D>& );
 };
-
-template <class R, class D>
-inline void apb_channel<R, D>::register_port( sc_port_base& port_,
-                const char* if_typename_ )
-{
-    std::string nm( if_typename_ );
-    if( nm == typeid( apb_in_if<R, D> ).name() )
-    {
-        // only one reader can be connected
-        if( m_reader != 0 ) {
-            SC_REPORT_ERROR( SC_ID_MORE_THAN_ONE_FIFO_READER_, 0 );
-            // may continue, if suppressed
-        }
-        m_reader = &port_;
-    } else if( nm == typeid( apb_out_if<R, D> ).name() )
-    {
-        // only one writer can be connected
-        if( m_writer != 0 ) {
-            SC_REPORT_ERROR( SC_ID_MORE_THAN_ONE_FIFO_WRITER_, 0 );
-            // may continue, if suppressed
-        }
-        m_writer = &port_;
-    }
-    else
-    {
-        SC_REPORT_ERROR( SC_ID_BIND_IF_TO_PORT_,
-                         "apb_channel<R, D> port not recognized" );
-        // may continue, if suppressed
-    }
-}
-
-// blocking request
-template <class R, class D>
-inline void apb_channel<R, D>::reqReceive(bool &isWrite, R &req, D &data)
-{
-    while (!m_req_pending)
-    {
-        sc_core::wait(m_channel_req_event);
-    }
-
-    isWrite = m_req_is_write;
-
-    if (m_req_is_write)
-    {
-        // write: capture request payload and generate an ack
-        data = m_data;
-        req = m_req_data;
-        uint64_t tag = req.getStructValue();
-        if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-            req_interfaceBase.interfaceLog(std::string("write " ) + req.prt(req_interfaceBase.isDebugLog), tag);
-        }
-        tag = data.getStructValue();
-        if (data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-            data_interfaceBase.interfaceLog(std::string("write " ) + data.prt(data_interfaceBase.isDebugLog), tag);
-        }
-        req_interfaceBase.delay();
-
-        m_value_written = false;
-        m_req_pending = false;
-        m_channel_comp_event.notify(SC_ZERO_TIME);
-        return;
-    }
-
-    // read: capture request fields; response arrives via complete()
-    req = m_req_data;
-    uint64_t tag = req.getStructValue();
-    if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-        req_interfaceBase.interfaceLog(std::string("read " ) + req.prt(req_interfaceBase.isDebugLog), tag);
-    }
-}
-
-
-// blocking read completion
-
-
-// blocking read completion
-template <class R, class D>
-inline void apb_channel<R, D>::complete(const D& data )
-{
-    Q_ASSERT(m_req_is_write==false && m_req_pending==true, "complete only valid on read");
-
-    data_interfaceBase.delay();
-    m_data = data;
-    m_resp_pending = true;
-
-    uint64_t tag = m_data.getStructValue();
-    if (data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-        std::ostringstream oss;
-        oss << "read req:" << m_req_data.prt(req_interfaceBase.isDebugLog)
-            << " data:" << m_data.prt(data_interfaceBase.isDebugLog);
-        data_interfaceBase.interfaceLog(oss.str(), tag);
-    }
-
-    m_req_pending = false;
-    m_channel_comp_event.notify(SC_ZERO_TIME);
-}
-
-
-// blocking request
-
-
-// blocking request
-
-template <class R, class D>
-inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
-{
-    Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
-    m_multi_writer = true;
-
-    // Single outstanding transaction per channel.
-    if (m_req_pending)
-    {
-        Q_ASSERT(m_req_is_write==true, "read in progress!");
-        while (m_req_pending)
-        {
-            sc_core::wait(m_channel_comp_event);
-        }
-    }
-
-    req_interfaceBase.delay();
-
-    if (isWrite)
-    {
-        m_req_pending = true;
-        m_req_is_write = true;
-        m_value_written = true;
-        m_data = data;
-        m_req_data = request;
-        m_channel_req_event.notify(SC_ZERO_TIME);
-        if (m_external_arb) {
-            m_external_event_ptr->notify(SC_ZERO_TIME);
-        }
-        m_multi_writer = false;
-        return;
-    }
-
-    // read
-    m_req_pending = true;
-    m_req_is_write = false;
-    m_resp_pending = false;
-    m_req_data = request;
-    m_channel_req_event.notify(SC_ZERO_TIME);
-    if (m_external_arb) {
-        m_external_event_ptr->notify(SC_ZERO_TIME);
-    }
-
-    while (!m_resp_pending)
-    {
-        sc_core::wait(m_channel_comp_event);
-    }
-
-    data = m_data;
-    m_resp_pending = false;
-    m_multi_writer = false;
-}
-
-
-template <class R, class D>
-inline void apb_channel<R, D>::requestNonBlocking(bool isWrite, const R& request, D& data )
-{
-    Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
-    m_multi_writer = true;
-
-    if (m_req_pending)
-    {
-        Q_ASSERT(m_req_is_write==true, "read in progress!");
-        while (m_req_pending)
-        {
-            sc_core::wait(m_channel_comp_event);
-        }
-    }
-
-    req_interfaceBase.delay();
-
-    if (isWrite)
-    {
-        m_req_pending = true;
-        m_req_is_write = true;
-        m_value_written = true;
-        m_data = data;
-        m_req_data = request;
-        m_channel_req_event.notify(SC_ZERO_TIME);
-        if (m_external_arb) {
-            m_external_event_ptr->notify(SC_ZERO_TIME);
-        }
-        return;
-    }
-
-    // read
-    m_req_pending = true;
-    m_req_is_write = false;
-    m_resp_pending = false;
-    m_req_data = request;
-    m_channel_req_event.notify(SC_ZERO_TIME);
-    if (m_external_arb) {
-        m_external_event_ptr->notify(SC_ZERO_TIME);
-    }
-}
-
-
-template <class R, class D>
-inline void apb_channel<R, D>::waitComplete(D& data )
-{
-    if (m_req_is_write)
-    {
-        while (m_req_pending)
-        {
-            sc_core::wait(m_channel_comp_event);
-        }
-        m_multi_writer = false;
-        return;
-    }
-
-    while (!m_resp_pending)
-    {
-        sc_core::wait(m_channel_comp_event);
-    }
-
-    data = m_data;
-    // Leave m_resp_pending asserted so a subsequent waitComplete() (used by some adapters)
-    // can return immediately without deadlocking.
-    m_multi_writer = false;
-}
-
-
-
-
-template <class R, class D>
-void apb_channel<R, D>::status(void)
-{
-    if (m_req_pending || m_resp_pending)
-    {
-        req_interfaceBase.log_.logPrint(
-            std::format(
-                "{} has data/or no ack received req_pending:{} resp_pending:{} value_written:{} req_is_write:{} ",
-                name(),
-                (uint16_t)m_req_pending,
-                (uint16_t)m_resp_pending,
-                (uint16_t)m_value_written,
-                (uint16_t)m_req_is_write),
-            LOG_IMPORTANT);
-        dump();
-    }
-    req_interfaceBase.teeStatus();
-}
-
-
-template <class R, class D>
-inline void apb_channel<R, D>::trace( sc_trace_file* tf ) const
-{
-    (void) tf; /* ignore potentially unused parameter */
-}
-
-
-template <class R, class D>
-inline void apb_channel<R, D>::print( ::std::ostream& os ) const
-{
-    os << m_req_data.prt(req_interfaceBase.isDebugLog) << '\n';
-}
-
-template <class R, class D>
-inline void apb_channel<R, D>::dump( ::std::ostream& os ) const
-{
-    if (m_value_written)
-    {
-        os << m_req_data.prt(req_interfaceBase.isDebugLog) << '\n';
-    } else {
-        os << "no value" << '\n';
-    }
-}
-
-template <class R, class D>
-inline ::std::ostream& operator << ( ::std::ostream& os, const apb_channel< R, D>& a )
-{
-    a.print( os );
-    return os;
-}
-
 
 template <class R, class D>
 using apb_out = sc_port<apb_out_if< R, D > >;

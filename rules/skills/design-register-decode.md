@@ -27,13 +27,16 @@ Each of these builds. Copy patterns from them.
     nested router inside `ipBridge` (§10).
 *   `builder/base/examples/twoClk/`: a memory on a clock other than the
     register clock (§4).
+*   `builder/base/examples/ahbDecode/`: the same decode on an AHB-Lite bus,
+    with a nested router and `regBusErrorResponses: true` (§12).
 
 ---
 
 ## 1. The model and the decision rule
 
 A **router** is a block with an `addressBlock:`. `make newmodule` scaffolds its
-RTL from the `apbDecodeModule` template and `make gen` fills it. Never
+RTL from the `regBusDecodeModule` template and `make gen` fills it. A router
+file that names the earlier key, `apbDecodeModule`, generates the same RTL. Never
 hand-write decode logic or a demux. A router owns no registers and no
 `regAccess` memories.
 
@@ -345,9 +348,20 @@ gives the fix for each error.
 
 ## 7. Unmapped and out-of-range accesses
 
-Generated handlers and the router's unmapped response tie PSLVERR low. A
-hand-written leaf behind `registerPorts:` can raise it, and the router forwards
-it upstream. The read value depends on who answers:
+By default the generated routers and handlers tie PSLVERR low, so every access
+completes without an error. A hand-written leaf behind `registerPorts:` can
+still raise it, and the router forwards it upstream.
+
+Set `regBusErrorResponses: true` under `fileGeneration:` in `project.yaml` to
+have the generated RTL and model raise PSLVERR for the two unmapped cases
+below, the address space no instance fills and the address no register or
+memory claims, and for an `ext` register write its owner refuses
+(`rtl-registers.md` §5). A write to an `ro` register or an `ro` memory is
+still dropped without PSLVERR. The option covers the whole build. A model
+master sees PSLVERR only through `requestWithResponse()`. A plain `request()`
+write is posted and ignores it.
+
+The read value depends on who answers:
 
 *   **An address space no instance fills.** The router answers. Reads return
     `32'hBADD_C0DE` and writes are dropped.
@@ -498,6 +512,43 @@ If `wrapTD` declared a `ports:` section, it would also need one
 interface may be any `addressBus: true` interface with the router's
 `interfaceType` and field widths. The router's `upstreamPort` interface is the
 simple choice: `registerPorts: { apbReg: { interface: apbReg } }`.
+
+---
+
+## 12. An AHB-Lite register bus (`examples/ahbDecode`)
+
+Give the register-bus interface `interfaceType: ahb` instead of `apb`. The
+routers, handlers, dispatch connections and placement rules are the ones above.
+The `regBusDecodeModule` template generates the AHB router too.
+
+```yaml
+interfaces:
+  ahbReg:
+    interfaceType: ahb
+    structures:
+      - {structure: ahbAddrSt, structureType: addr_t}
+      - {structure: ahbDataSt, structureType: data_t}
+```
+
+What the generated RTL does with AHB-Lite transfers:
+
+*   A transfer starts when `hsel`, `htrans[1]` and `hready` are high, so
+    NONSEQ and SEQ each start one transfer at the address they carry. IDLE and
+    BUSY get a zero-wait OKAY.
+*   The bus is word wide. A read of any `hsize` returns the whole word. A write
+    with an `hsize` other than a word is not written, and gets the ERROR
+    response when `regBusErrorResponses` is on.
+*   An error is the two-cycle response: `hresp` high with `hreadyout` low, then
+    both high. Every error PSLVERR raises on APB (§7) is an ERROR response on
+    AHB. An `ext` register's owner still refuses a write through
+    `<reg>.pslverr`.
+*   Through one router, a register access takes two wait states and a memory
+    read four. Each router registers the transfer it forwards and the response
+    it returns, so every nested router adds more.
+
+A model master or slave on AHB uses the `apb` calls (`systemc-interfaces.md`).
+The Verilator BFM stops the run with an assertion when RTL masters a model AHB
+slave with an `hsize` other than a word.
 
 ---
 

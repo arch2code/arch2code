@@ -31,6 +31,7 @@ conversion of legacy `addressControl.yaml` projects
 | `registerPorts:` | `blocks` row | One row keyed by port name, with `interface` (resolved in the block's load-time scope) and optional `clock`/`reset`. Direction is implicitly `dst`. |
 | `addressGroup:` | `instances` row | `auto(addressGroup)`; the bare authored group name. Siblings: `addressMultiples` (default 1) and `addressID` (always computed, see §3). |
 | `addressBus:` | `interface_defs` row | `optional(false)`. Marks an interface type as a register-bus protocol. |
+| `svRegBusFrontEnd:` | `interface_defs` row | `optional`. Set exactly on `addressBus` types: the module under `templates/systemVerilog/regBus/` that spells the protocol in the router and handler RTL (§7). |
 | `instanceGroups:`, `addressObjects:` | root `project.yaml` | Loaded by `pysrc/processYaml.py::loadProjectAddressPolicy` from the root project file only. `addressObjects:` drives `calcAddresses` packing; `instanceGroups:` drives `instGroup:`/`instID`. |
 
 Parse-time block checks (`pysrc/processYaml.py::_post_validateBlockAddressDecl`,
@@ -251,7 +252,7 @@ Different interface names with the same packed form are therefore accepted.
   `hasDecoder` when any register or `regAccess` memory exists, with
   `addressBits` from the block's `maxAddress`. Adds `worstBitwidth` and, for
   memories, `rowBytes`.
-- **`getBDAddressDecode`.** For a router: `isApbRouter`, `addressGroupData`
+- **`getBDAddressDecode`.** For a router: `isRegBusRouter`, `addressGroupData`
   (the authored `addressBlock:`), `containerBlock`, `instanceWithRegApb`
   (`INSTANCES_WITH_REGAPB`), and `routedInstances`. `routedInstances` holds the
   reachable instances whose `(owning project, addressGroup)` equals the
@@ -261,7 +262,9 @@ Different interface names with the same packed form are therefore accepted.
   templates do not accept an empty list.
 - **`getBDAddressBus`.** For a router or a block with `hasDecoder`:
   `registerBusInterface`, `registerBusPort` and `registerBusStructs`
-  (`addr_t`, `data_t`). A router takes its `upstreamPort`. A handler reads the
+  (`addr_t`, `data_t`), plus `registerBusChannelType` (the interface type's
+  `sc_channel.type`) and `registerBusSvFrontEnd` (its `svRegBusFrontEnd`).
+  A router takes its `upstreamPort`. A handler reads the
   leaf-to-handler `connectionMap` from its instance side; a leaf reads the same
   map from its block side, picking the map whose interface type is
   `addressBus`. `registerPorts:` is not read here.
@@ -269,16 +272,39 @@ Different interface names with the same packed form are therefore accepted.
 
 ## 7. Generated outputs
 
-- **Router RTL** (`templates/systemVerilog/apbDecodeModule.py`, fileMap key
-  `apbDecodeModule`). Masks `paddr` with
+The router and handler RTL each split into a protocol front end and a shared
+core. The front end (`templates/systemVerilog/regBus/<svRegBusFrontEnd>.py`,
+loaded by `intf_gen_utils.sv_reg_bus_front_end`) writes every line that names
+a bus signal and hands the core a neutral access: an address, write data,
+write and read selects held until the core answers, and ready, read data and
+error back. The core owns the address decode, child select, read mux, write
+strobes, gap arms and error arms. The SystemC router and handler are templates
+over the bus channel's completer and requester interfaces.
+
+Two front ends ship. `regBus/apb.py` answers in the access phase. `regBus/ahb.py`
+registers the AHB-Lite address phase, runs the core in the data phase with
+`hreadyout` low until the core answers, and gives an error the two-cycle ERROR
+response. The router registers the transfer it forwards and the response it
+returns. The AHB handler skips the first cycle of a transfer whose address phase
+overlapped the previous data phase, so a memory read issued for that transfer
+is not taken for the previous one. It answers a write narrower than a word
+without reaching the core, with ERROR when `regBusErrorResponses` is true.
+`handlerAccess` takes the register clock, reset and that option. The APB front
+end uses none of them.
+
+- **Router RTL** (`templates/systemVerilog/regBusDecodeModule.py`, fileMap key
+  `regBusDecodeModule`, also mapped as `apbDecodeModule` for router files that
+  still name the earlier key). Masks `paddr` with
   `addressIncrement * maxAddressSpaces - 1`, decodes `routedInstances` that have
   a dispatch port into address arms by `offset`, and adds an arm for any
-  unfilled range. Child `pslverr` is forwarded. An unmapped access returns
-  `32'hBADD_C0DE` with `pslverr` low. Every flop runs on the router's bus
+  unfilled range. Child `pslverr` is forwarded. An unmapped read returns
+  `32'hBADD_C0DE`. An unmapped access has `pslverr` low, or high when
+  `fileGeneration.regBusErrorResponses` is true. Every flop runs on the router's bus
   clock and reset. An instance with `addressMultiples` above 1 gets one arm
   spanning all its slots.
 - **Router model** (`templates/systemc/constructor.py::addressDecoder`,
-  `common/systemc/apbBusDecode.h`). An `abpBusDecode` built with
+  `common/systemc/regBusDecode.h`). A `regBusDecode` over the bus type's
+  `<sc_channel.type>_in_if` and `_out_if`, built with
   `maxAddressSpaces`, `log2(addressIncrement)` and a channel array indexed by
   `addressID`, with `nullptr` for empty slots and for slots of instances not in
   `instanceWithRegApb`. An instance with `addressMultiples` above 1 fills that
@@ -288,11 +314,20 @@ Different interface names with the same packed form are therefore accepted.
   footprint. Words of a parameterizable register above the bound variant's
   width are elaborated away and read 0. A parameterizable memory decodes only
   the bound depth, and rows past it fall to the default arm. The default arm
-  ACKs with `32'hBADD_C0DE`. `pslverr` is tied `0`. Under the default module
-  parameter `APB_READY_1WS = 0`, `pready` never stalls; setting it to 1
-  registers ready and read data, adding one wait state.
+  ACKs with `32'hBADD_C0DE`. `pslverr` is tied `0` unless
+  `fileGeneration.regBusErrorResponses` is true. Then the default arm raises
+  it for reads and writes, an `ext` register write returns that register
+  interface's `pslverr`, and an `ro` register has an empty write arm so its
+  write completes without it. Under
+  the default module parameter `APB_READY_1WS = 0` (the APB front end's
+  name for it), `pready` never stalls;
+  setting it to 1 registers ready, read data and error, adding one wait state.
 - **Handler model** (`templates/systemc/blockRegs.py`, `hwRegisterIf` /
-  `addressMap`). Binds the port named by `registerBusPort`.
+  `addressMap`). Binds the port named by `registerBusPort`. With
+  `regBusErrorResponses`, `registerHandler` and `regBusDecode::decodeThread`
+  take `true` and return `PSLVERR` for an unmapped access and for a write a
+  register's write-error handler refuses. A model master sees it only through
+  a response-aware APB transaction.
 - **Firmware address enum.** The `types:` row from `generateAddressEnums`
   is emitted into the router file's `includeFW` header inside
   `fw_ns::<owner>_<includeName>`, folded into `fw_ns` by `using namespace`
@@ -325,6 +360,8 @@ Different interface names with the same packed form are therefore accepted.
 ## 9. Reference fixtures
 
 - `examples/apbDecode`: one router, two leaves.
+- `examples/ahbDecode`: the AHB-Lite front end, with a nested router.
+- `unittest/test_ahb_reg_bus.py`: AHB router and handler RTL transfer timing.
 - `examples/mixed`: a register-owning container served by a sibling router.
 - `examples/ip_test`: a reusable `registerPorts:` IP, a nested router in
   `ipBridge`, and the IP's standalone harness router `ipStdDecode`.

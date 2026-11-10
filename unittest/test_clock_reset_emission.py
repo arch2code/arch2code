@@ -451,7 +451,7 @@ parameters:
 REGS_HANDLER = 'rtl/leafA_regs.sv'
 REGS_LEAF = 'rtl/leafA.sv'
 # The generated router of the same decode tree. It is a second generator
-# (templates/systemVerilog/apbDecodeModule.py) reading the same bus domain, and
+# (templates/systemVerilog/regBusDecodeModule.py) reading the same bus domain, and
 # its own emission site for every flop in the dispatch path.
 REGS_ROUTER = 'rtl/apbDecode.sv'
 # The container instantiating both, whose binds carry each module's own port
@@ -2440,7 +2440,7 @@ def check_regs_handler_pslverr_tied_low(emitted):
     text = emitted[REGS_HANDLER]
     _expect(text, "pslverr = 1'b0;", 'the handler never asserts pslverr',
             'leafA_regs')
-    _expect(text, 'The bus is never stalled and slave', 'the handler '
+    _expect(text, 'Every access completes without', 'the handler '
             'keeps its APB-ready comment', 'leafA_regs')
     _refute(text, 'slverr;', 'the handler drives pslverr from no slverr signal',
             'leafA_regs')

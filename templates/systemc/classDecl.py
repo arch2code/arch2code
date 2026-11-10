@@ -100,12 +100,13 @@ def render_default(args, prj, data):
     if registerDecode:
         out.append('    void regHandler(void);')
         out.append('    addressMap _a2cRegs;')
-    if data['addressDecode']['isApbRouter']:
+    if data['addressDecode']['isRegBusRouter']:
         busStructs = ', '.join(
             intf_gen_utils.sc_structure_field_type(entry, 'structure', 'structureKey', prj)
             for entry in data["addressDecode"]["registerBusStructs"].values())
         out.append('    void routerDecode(void);')
-        out.append(f'    abpBusDecode< {busStructs} > decoder;')
+        channelType = data['addressDecode']['registerBusChannelType']
+        out.append(f'    regBusDecode< {busStructs}, {channelType}_in_if, {channelType}_out_if > decoder;')
     out.append('')
     indent = ' '*4
     # Registration moved out of the class body. Parameterized and

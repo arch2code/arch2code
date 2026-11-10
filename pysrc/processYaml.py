@@ -1317,6 +1317,7 @@ class projectOpen:
                         if value['enum']:
                             enums[key] = value
                             enums[key]['descSpaces'] = max(0, 20-len(value['type']))
+                            enums[key]['realwidth'] = self.resolveTypeWidth(value)
                             for myEnum in value['enum']:
                                 enumLen = len(myEnum['enumName'])+len(str(myEnum['value']))
                                 myEnum['descSpaces'] = max(0, 20-enumLen)
@@ -1629,12 +1630,18 @@ class projectOpen:
 
     def getBDClocksResets(self, ret):
         # The block's declared clocks then resets, in declaration order, from
-        # the blockClocksResets table. Every block has at least one clock row.
+        # the blockClocksResets table. A block declaring clocks: {} has no row
+        # and no register-bus role.
         ret['clocks'] = list()
         ret['resets'] = list()
         ret['defaultClock'] = None
         ret['defaultReset'] = None
-        for row in self.data['blockClocksResets'][ret['qualBlock']]:
+        ret['registerClock'] = None
+        ret['registerReset'] = None
+        ret['registerBusPort'] = None
+        ret['busClockPort'] = None
+        ret['busResetPort'] = None
+        for row in self.data['blockClocksResets'].get(ret['qualBlock'], []):
             # The register-bus fields are block-level, repeated on every row.
             ret['registerClock'] = row['registerClock']
             ret['registerReset'] = row['registerReset']
@@ -1660,6 +1667,23 @@ class projectOpen:
                                       'clock': row['clock'] or ret['defaultClock'],
                                       'async': bool(row['async']),
                                       'releaseCycles': row['releaseCycles']})
+        # The clocks and resets the co-simulation wrapper declares and drives.
+        # A block with no clock gets the default testbench clock and reset of
+        # its own project, which only its BFMs sample.
+        if ret['clocks']:
+            ret['wrapperClocks'] = ret['clocks']
+            ret['wrapperResets'] = ret['resets']
+        else:
+            owner = self.contextOwningProject[ret['blockInfo']['_context']]
+            clockRow = next(row for row in self.data['clocks'].values()
+                            if row['_context'] == owner and row['default'])
+            resetRow = next(row for row in self.data['resets'].values()
+                            if row['_context'] == owner and row['default'])
+            ret['wrapperClocks'] = [{'clock': clockRow['clock'], 'direction': 'input',
+                                     'period': clockRow['period'], 'timeUnit': clockRow['timeUnit']}]
+            ret['wrapperResets'] = [{'reset': resetRow['reset'], 'direction': 'input',
+                                     'clock': clockRow['clock'],
+                                     'releaseCycles': resetRow['releaseCycles']}]
 
     def getBDBusClockReset(self, ret):
         # Called for every block. busClock is the block's register-bus
@@ -2451,14 +2475,14 @@ class projectOpen:
         # instance is resolved by post-parse container-locality (see
         # postParseRegisterPorts.py) and is the single instance of this
         # block type, so any element of ret['instances'] identifies it.
-        isApbRouter = False
+        isRegBusRouter = False
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
         if addressBlock:
             qualDecoder = next(iter(ret['instances']))
             instanceWithRegApb = self.config.getConfig('INSTANCES_WITH_REGAPB')
-            isApbRouter = True
+            isRegBusRouter = True
             ret['addressDecode']['addressGroupData'] = dict(addressBlock)
             ret['addressDecode']['addressGroup'] = addressBlock['addressGroup']
             ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
@@ -2485,7 +2509,7 @@ class projectOpen:
             # A referenced child project's standalone harness router is outside
             # this build's tree; its view renders with no channels.
             ret['addressDecode']['routedInstances'] = routed
-        ret['addressDecode']['isApbRouter'] = isApbRouter
+        ret['addressDecode']['isRegBusRouter'] = isRegBusRouter
 
     # memory connections
     def getBDMemoryConnections(self, ret):
@@ -3253,12 +3277,15 @@ class projectOpen:
         one of its ports takes busClockPort/busResetPort, which honour an
         addressBlock: reset: that differs from the clock's selected reset.
         """
-        if ret['addressDecode']['isApbRouter']:
+        if ret['addressDecode']['isRegBusRouter']:
             portRow['domainClock'] = ret['busClockPort']
             portRow['domainReset'] = ret['busResetPort']
         elif portRow['name'] == ret['registerBusPort']:
             portRow['domainClock'] = ret['registerClock']
             portRow['domainReset'] = ret['registerReset']
+        elif not ret['clocks']:
+            portRow['domainClock'] = ret['wrapperClocks'][0]['clock']
+            portRow['domainReset'] = ret['wrapperResets'][0]['reset']
         else:
             portRow['domainClock'] = domainClock
             portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
@@ -3373,7 +3400,7 @@ class projectOpen:
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
 
-        if ret['addressDecode']['isApbRouter'] and addressBlock:
+        if ret['addressDecode']['isRegBusRouter'] and addressBlock:
             port = addressBlock['upstreamPort']
             interface = self._resolveRouterUpstreamInterface(blockRow, port)
             return interface, port
@@ -3440,15 +3467,15 @@ class projectOpen:
         blockRow = self.data['blocks'][qualBlock]
 
         # Router blocks expose their authored addressBlock through this view;
-        # isApbRouter is true only when the block authors addressBlock:.
+        # isRegBusRouter is true only when the block authors addressBlock:.
         # Non-router blocks see no addressBlock.
-        if not ret['addressDecode'].get('isApbRouter'):
+        if not ret['addressDecode'].get('isRegBusRouter'):
             return
 
         ret['addressBlock'] = dict(blockRow['addressBlock'])
 
     def getBDAddressBus(self, ret):
-        if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
+        if ret['addressDecode']['isRegBusRouter'] or ret['addressDecode']['hasDecoder']:
             ret['addressDecode']['registerBusStructs'] = dict()
             (interfaceName, portName) = self._registerBusInterfacePort(ret)
             # registerBusInterface names the interface definition used
@@ -3466,6 +3493,11 @@ class projectOpen:
                     ret['addressDecode']['registerBusStructs'].update(
                         { item['structureType'] :
                           {'structure': item['structure'], 'structureKey': item['structureKey']} } )
+                # The protocol facts the router and handler templates need:
+                # the SystemC channel name prefix and the SV front end.
+                intfDef = self.data['interface_defs'][regIf['interfaceTypeKey']]
+                ret['addressDecode']['registerBusChannelType'] = intfDef['sc_channel']['type']
+                ret['addressDecode']['registerBusSvFrontEnd'] = intfDef['svRegBusFrontEnd']
 
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
@@ -3553,7 +3585,7 @@ class projectOpen:
                 for payload in crossBind['thunker']['payloads']:
                     addStructOrTypeKey(payload['kind'], payload['structureKey'])
 
-        if ret['addressDecode'].get('isApbRouter') or ret['addressDecode'].get('hasDecoder'):
+        if ret['addressDecode'].get('isRegBusRouter') or ret['addressDecode'].get('hasDecoder'):
             # The router's upstream interface determines the register-bus
             # structures pulled into the class declaration. Walk the resolved
             # interface rather than the global table directly.
@@ -4418,13 +4450,13 @@ class projectCreate:
         # deriveParameterizedDeclSets and ValueResolver override evaluation.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
-        # Blocks whose resets: was authored as an explicitly empty {} or [],
-        # keyed by (yamlFile, block name) the same way _evalNodes is.
-        # Populated by _normalizeClockResetShortForm and consumed by
-        # clockTree.build(), which is the only reader of "no resets at
-        # all" versus "resets: omitted"; transient to this
-        # projectCreate.
+        # Blocks whose resets: or clocks: was authored as an explicitly empty
+        # {} or [], keyed by (yamlFile, block name) the same way _evalNodes
+        # is. Populated by _normalizeClockResetShortForm and consumed by
+        # clockTree.build(), which is the only reader of "none at all"
+        # versus "omitted"; transient to this projectCreate.
         self._blocksDeclaringNoResets = set()
+        self._blocksDeclaringNoClocks = set()
         # Per referenced child project file, its raw content and the absolute
         # directory of the child project file (so its dirs: resolve relative to
         # the child file, mirroring the root's relative-to-project-file rule).
@@ -4503,6 +4535,7 @@ class projectCreate:
             self.topInstance = self.proj['topInstance']
         self.projectDirs()
         self.validateLayout()
+        self.validateRegBusErrorResponses()
         self.buildLayout()
         self.configTemplates()
         #anything except for specific keys in the project file are all saved to the config for later use
@@ -4601,7 +4634,7 @@ class projectCreate:
              for key, row in self.flatData['memoryConnections'].items()},
             {key: memoryChannelName(row['memory'], 'reg') for key, row in self.flatData['memories'].items()},
             registerBusPassthroughs,
-            self._blocksDeclaringNoResets,
+            self._blocksDeclaringNoResets, self._blocksDeclaringNoClocks,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)
         # a memory of a block with no default clock must name its own clock
@@ -5467,6 +5500,13 @@ class projectCreate:
                 self.logError(
                     f"fileGeneration.layout must be one of {self.LAYOUT_MODES}, "
                     f"got '{mode}'")
+
+    def validateRegBusErrorResponses(self):
+        # The base config supplies the default, so the merged config carries it.
+        value = self.proj['fileGeneration']['regBusErrorResponses']
+        if not isinstance(value, bool):
+            self.logError(f"In {self.projFile}, fileGeneration.regBusErrorResponses must be true or false, "
+                          f"got '{value}'")
 
     # Keys in hierarchicalDirs that locate project-scope artifacts rather than a
     # fileMap basePath segment: the authored-YAML subdir of a node (yaml), the
@@ -8718,12 +8758,15 @@ class projectCreate:
         into several clocks with none marked default, which clockTree rejects.
 
         An explicitly empty `resets:` means "no reset", distinct from omitting
-        it (implicit rst_n). Generic field processing treats both as falsy, so
-        the distinction is recorded in parse-time state keyed by
-        (yamlFile, block name).
+        it (implicit rst_n), and an explicitly empty `clocks:` means "no clock",
+        distinct from omitting it (implicit clk). Generic field processing
+        treats both as falsy, so the distinction is recorded in parse-time
+        state keyed by (yamlFile, block name).
         """
         if 'resets' in item and not item['resets']:
             self._blocksDeclaringNoResets.add((yamlFile, anchor))
+        if 'clocks' in item and not item['clocks']:
+            self._blocksDeclaringNoClocks.add((yamlFile, anchor))
         for field in ('clocks', 'resets'):
             value = item.get(field)
             if isinstance(value, list):
@@ -9931,6 +9974,9 @@ class projectCreate:
 
         if computedWidth == 0:
             self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
+        elif enum and computedWidth < int(enumMax).bit_length():
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' {widthField} resolves to a {computedWidth}-bit width, "
+                          f"but its largest enum value {enumMax} needs {int(enumMax).bit_length()} bits")
 
         # Parameterizable type propagation.
         # Two paths to be parameterizable:

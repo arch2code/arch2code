@@ -20,6 +20,8 @@ APBDECODE_DIR = examples/apbDecode
 APBDECODE_DOT_DB_FILE = $(APBDECODE_DIR)/.apbDecode.db
 APBDECODE_DB_FILE = $(APBDECODE_DIR)/apbDecode.db
 
+AHBDECODE_DIR = examples/ahbDecode
+
 AXI4SDEMO_DIR = examples/axi4sDemo
 
 HIER_VL_DEMO_DIR = examples/hierVlDemo
@@ -516,6 +518,15 @@ apbDecode:
 	make -C $(APBDECODE_DIR)/rundir -j all
 	$(RUN_LIMIT) make -C $(APBDECODE_DIR)/rundir run
 
+.PHONY : ahbDecode
+# AHB-Lite register decode: a router, a nested router and their leaves, with
+# HRESP ERROR on. run-vl substitutes the RTL of each instance in turn.
+ahbDecode:
+	make -C $(AHBDECODE_DIR)/rtl lint -j
+	make -C $(AHBDECODE_DIR)/rundir -j all
+	$(RUN_LIMIT) make -C $(AHBDECODE_DIR)/rundir run
+	$(RUN_LIMIT) make -C $(AHBDECODE_DIR)/rundir run-vl
+
 .PHONY : mixed
 mixed: mixed-db
 	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
@@ -634,6 +645,7 @@ newmodule-all:
 	make -C $(AXISOCKET_SLAVE_DIR) -j newmodule && make -C $(AXISOCKET_SLAVE_DIR) -j gen
 	make -C $(XIF_DIR) -j newmodule && make -C $(XIF_DIR) -j gen
 	make -C $(APBDECODE_DIR) -j newmodule && make -C $(APBDECODE_DIR) -j gen
+	make -C $(AHBDECODE_DIR) -j newmodule && make -C $(AHBDECODE_DIR) -j gen
 	make -C $(AXI_DIR) -j newmodule && make -C $(AXI_DIR) -j gen
 	make -C $(AXI4SDEMO_DIR) -j newmodule && make -C $(AXI4SDEMO_DIR) -j gen
 	make -C $(HIER_VL_DEMO_DIR) -j newmodule && make -C $(HIER_VL_DEMO_DIR) -j gen
@@ -657,7 +669,7 @@ PIPELINE_JOBS ?= 8
 # then leave the simulation running.
 PIPELINE_RUN_TIMEOUT ?=
 RUN_LIMIT = $(if $(PIPELINE_RUN_TIMEOUT),timeout -k 30s $(PIPELINE_RUN_TIMEOUT))
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode ahbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

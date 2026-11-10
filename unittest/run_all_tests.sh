@@ -477,6 +477,12 @@ python3 test_param_type_signedness.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: enum width from width, widthLog2 or widthLog2minus1"
+echo "------------------------------------------------------------------------"
+python3 test_enum_width.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: parameterized interface across project boundaries"
 echo "------------------------------------------------------------------------"
 python3 test_param_cross_project_linkage.py || FAILED=1
@@ -669,6 +675,12 @@ python3 test_clock_local_nets.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: clockless blocks (clocks: {})"
+echo "------------------------------------------------------------------------"
+python3 test_clockless_block.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: interface definition data contracts"
 echo "------------------------------------------------------------------------"
 python3 test_interface_def_contracts.py || FAILED=1
@@ -723,6 +735,12 @@ python3 test_apb_decode_rtl_empty_slot.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: router files naming apbDecodeModule regenerate as regBusDecodeModule"
+echo "------------------------------------------------------------------------"
+python3 test_reg_bus_decode_template_alias.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: model register handler reads 0xBADDC0DE and drops writes at an address gap"
 echo "------------------------------------------------------------------------"
 python3 test_register_handler_gap.py || FAILED=1
@@ -732,6 +750,12 @@ echo ""
 echo "Test Suite ${idx}: generated RTL register block reads 32'hBADD_C0DE and drops writes at an address gap"
 echo "------------------------------------------------------------------------"
 python3 test_regs_rtl_gap_read.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: regBusErrorResponses raises PSLVERR for unmapped accesses and refused ext writes, RTL and model"
+echo "------------------------------------------------------------------------"
+python3 test_reg_bus_error_responses.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -810,6 +834,24 @@ echo ""
 echo "Test Suite ${idx}: external_reg_dst_bfm drives every back-to-back write to the RTL in order"
 echo "------------------------------------------------------------------------"
 python3 test_external_reg_dst_bfm.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: apb_channel keeps posted writes posted and carries PSLVERR on request"
+echo "------------------------------------------------------------------------"
+python3 test_apb_channel_response.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: ahb_channel keeps posted writes posted and carries HRESP ERROR on request"
+echo "------------------------------------------------------------------------"
+python3 test_ahb_channel_response.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated AHB router and register handler RTL answer AHB-Lite transfers"
+echo "------------------------------------------------------------------------"
+python3 test_ahb_reg_bus.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
