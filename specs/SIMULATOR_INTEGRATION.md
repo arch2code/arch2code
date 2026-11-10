@@ -616,7 +616,7 @@ The `items` section of the variant package holds both, generated whole. A projec
 - one `<port>_counter`, an `a2c_uvm_pkg::a2c_txn_counter`, per DUT output with a handshake: a `src` port of an elastic type that is not an address-bus type. Those types are `rdy_vld`, `axi4_stream`, `push_ack`, `notify_ack`, `req_ack`, `pop_ack`, `axi_read`, `axi_write` and Pro's `lmmi`. The counter counts the monitor's `ap` items, so on `pop_ack` it counts the DUT's pops, on `axi_read` its read bursts and on `axi_write` its write bursts. `connect_phase` connects the output monitor's `mon.ap` to its `analysis_export`;
 - one `virtual a2c_clk_if` per clock, as `<clock>_vif`;
 - with a register model, `regmodel`, the bus's `<type>_reg_adapter` as `adapter`, and a `uvm_reg_predictor` as `predictor`. `build_phase` builds the model and calls `regmodel.reset()`. `connect_phase` sets the bus agent's sequencer and the adapter on `default_map`, turns auto-prediction off, and feeds the predictor from the bus monitor, so the mirror follows bus traffic from any sequence;
-- `dual_dut`, read from the `bit` key `a2c_dual_dut` that the testbench module sets, and the Mode B wiring it turns on: each agent's `cfg.model_vif` from `<port>_model`, each counter's `dual` with its output agent's `model_mon.ap` connected to `model_export`, the list `comparators` of every agent's `model_cmp`, `model_stable_point()`, and, with a register model, `guard`, an `a2c_midstream_guard`, fed through `reg_writes`, an `a2c_reg_write_subscriber` on the bus monitor. Section 9.12 describes them. The predictor stays on the DUT lane's bus monitor, so register reads and the mirror test the RTL.
+- `dual_dut`, read from the `bit` key `a2c_dual_dut` that the testbench module sets, and the Mode B wiring it turns on: each agent's `cfg.model_vif` from `<port>_model`, each counter's `dual` with its output agent's `model_mon.ap` connected to `model_export`, the list `comparators` of every agent's `model_cmp`, `model_stable_point()`, and, with a register model, `guard`, an `a2c_midstream_guard`, fed through `reg_writes`, an `a2c_reg_write_subscriber` on the bus monitor. The env also gives the guard `regmodel.default_map` and gives the bus agent's `model_cmp` the guard, so the comparator can ask it about each read. Section 9.12 describes them. The predictor stays on the DUT lane's bus monitor, so register reads and the mirror test the RTL.
 
 `a2c_txn_counter #(T)` (`common/systemVerilog/uvm/a2c_uvm_pkg.sv`) is a `uvm_subscriber`. It counts transactions and checks nothing about their content. `expect_count(n)` adds n to the expected count. `wait_for_count(clk_vif, deadline_cycles, quiet_cycles)` waits for the expected count, reports a shortfall as `UVM_ERROR` id `A2C_TXN_COUNT` when the deadline passes, then waits the quiet window and reports any excess the same way. A clock with no edge for the counter's `clock_stop_cycles` periods (default 1000) has stopped, which reports the shortfall or ends the quiet window at once. `check_phase` reports what no wait covered. A transaction that arrives after its shortfall was reported is logged as late, not counted again, until the next `expect_count()`.
 
@@ -957,7 +957,7 @@ Base's checker test holds 154 cases over the 13 base types, and Pro's `lmmi_xche
 - `run_xcheck_test.sh` takes a testbench and the sources it needs. It builds the sources first and the testbench last, with the testbench file's stem as the top.
 - `run_loopback.sh` takes the seed second and layer lists after it. The seed must come first: a list path in its place is read as the seed. The script never reads `A2C_LAYER_UVM_F_FILES`, because exporting that variable for it would make every later `make` in the same shell add Pro's list a second time. Pro's `a2cPro_uvm_loopback.sv` binds its interfaces into the testbench and runs the tests of `lmmi_lb_tests.svh`.
 
-The loopback testbench includes one `<type>_lb_tests.svh` per agent type, plus `no_backpressure_lb_tests.svh`, `a2c_txn_counter_lb_tests.svh`, `a2c_mem_model_lb_tests.svh`, and the Mode B files `a2c_model_cmp_lb_tests.svh`, `a2c_replay_drain_lb_tests.svh`, `a2c_lane_watchdog_lb_tests.svh`, `a2c_gen_base_test_lb_tests.svh` and `axi_mode_b_lb_tests.svh`. Base holds 452 tests:
+The loopback testbench includes one `<type>_lb_tests.svh` per agent type, plus `no_backpressure_lb_tests.svh`, `a2c_txn_counter_lb_tests.svh`, `a2c_mem_model_lb_tests.svh`, and the Mode B files `a2c_model_cmp_lb_tests.svh`, `a2c_replay_drain_lb_tests.svh`, `a2c_lane_watchdog_lb_tests.svh`, `a2c_gen_base_test_lb_tests.svh`, `a2c_reg_read_lb_tests.svh` and `axi_mode_b_lb_tests.svh`. Base holds 540 tests:
 
 | Tests | What they check |
 | :--- | :--- |
@@ -974,6 +974,7 @@ The loopback testbench includes one `<type>_lb_tests.svh` per agent type, plus `
 | `a2c_mem_model_test` | reads, writes and the three fill policies, unwritten words reading the same in any order, one `A2C_MEM` line per model |
 | `lmmi_random_test`, `lmmi_reuse_test`, `lmmi_counter_test`, `lmmi_monitor_checks_test` (Pro) | as the other types |
 | `model_cmp_*`, `status_cmp_*`, `midstream_guard_*`, `replay_log_*` (`a2c_model_cmp_lb_tests.svh`) | the Mode B classes of section 9.12 on their own: match, mismatch, leftovers on either side, keyed order, injection, the report cap, cut and uncut, a dead lane; the three status policies; the guard's error and its `+a2c_predict_midstream` demotion; the replay log's record, replay and leftovers |
+| `reg_read_*` (`a2c_reg_read_lb_tests.svh`) | register reads in Mode B. A read of a volatile register, of a register with one volatile field, or of a read-only memory while outputs are pending, with and without `+a2c_predict_midstream`, its compare demoted per read and no window opened, also with `inject_mismatch()` and across `cut()` and `uncut()`. Volatile reads when quiescent, after a lane death, and non-volatile, read-write memory or unmapped reads while pending. The skip list by address, `skip_reg()` with and without a map and `skip_mem()`, each also with a map that does not hold the register or memory, with the response and writes still compared and the `A2C_REG_SKIP` lines. The same reads through a register model and the apb agent's pins in Mode B and Mode A |
 | `<type>_mode_b_test`, `<type>_mode_b_mismatch_test` and the other `<type>_mode_b_*` tests, every base type in both roles; `axi_mode_b_lb_tests.svh` for the AXI agents | two lanes of one interface type looped back, the same traffic compared on both and, where the type compares data, a mismatch forced on one lane; a lane that leads or trails; the responders' replay and drain; the AXI keyed compare and `reorder` with each lane leading in turn; lane deaths, lone lanes and passive agents |
 | `drain_*` (`a2c_replay_drain_lb_tests.svh`) | the end-of-test drain: settle, cut, re-cut, catch-up and clock stop, with deaths during each |
 | `a2c_lane_watchdog_rules_test`, `joint_stall_*` (`a2c_lane_watchdog_lb_tests.svh`) | the lane skew, lone lane and joint stall rules, and which transfers count as progress |
@@ -1270,7 +1271,7 @@ Each agent package header lists, for each role, what the DUT produces that is no
 | `raw` | either | nothing | `A2C_DST`: the word stream, which has no transfer boundary, and whose model lane is best effort (section 9.1) |
 | `status` | `A2C_SRC` | nothing: the agent drives the level, and the DUT produces nothing on the port | none |
 | `status` | `A2C_DST` | the value under the port's status policy | intermediate values under `stable` |
-| `apb` | master | `write`, `addr`, `data` (`prdata` on a read) and `slverr` | wait states |
+| `apb` | master | `write`, `addr`, `data` (`prdata` on a read) and `slverr`; `prdata` is left out on a read of an address on the skip list | wait states |
 | `apb` | slave | `write`, `addr` and `data` (the DUT's `pwdata` on a write) of each transfer the DUT makes. The item's `slverr`, and its `prdata` on a read, are compared too, but they are the slave's own response, which the model lane replays from the DUT lane, so they match by construction | none |
 | `push_ack` | `A2C_DST` | the pushed data | `A2C_SRC`: `ack` timing |
 | `notify_ack` | `A2C_DST` | the count of events, by pairing them | `A2C_SRC`: `ack` timing |
@@ -1283,7 +1284,7 @@ Each agent package header lists, for each role, what the DUT produces that is no
 | `axi_read` | slave | the AR bursts, in order per ID | none |
 | `axi_write` | master | each burst's AW fields, W beats, `bresp` and `buser`, in order per ID | channel timing, the order across IDs |
 | `axi_write` | slave | the AW bursts with their W data and strobes, in order per ID | none |
-| `lmmi` (Pro) | either | direction, offset and the word written or read | `A2C_SRC`: ready and `rdata_valid` timing |
+| `lmmi` (Pro) | either | direction, offset and the word written or read; the word is left out on a read of an offset on the skip list | `A2C_SRC`: ready and `rdata_valid` timing |
 
 #### Comparators
 
@@ -1292,6 +1293,7 @@ The comparator classes are in `common/systemVerilog/uvm/a2c_uvm_pkg.sv`:
 - `a2c_comparator_base` holds what every comparator shares: `midstream_beats` (64), `max_reported` (10), `auto_stable` (1), `counted` (0), `stable_point()`, `inject_mismatch()`, `get_pairs()`, `cut()`, `uncut()` and `lane_dead()`. The env's `comparators` list holds every agent's `model_cmp` as this type.
 - `a2c_in_order_comparator #(T)` pairs the DUT lane's item n with the model lane's item n, in arrival order on each lane, and compares them with `T::compare()`. A mismatch is an `A2C_MODEL_CMP` `UVM_ERROR` naming the comparator and the pair, with both items printed. After `max_reported` mismatches the rest are counted, and `check_phase` reports how many went unprinted. At `check_phase` items either lane left unpaired are `A2C_MODEL_CMP` errors, unless `counted` is set, which the env sets on a counted port because its counter already reports the shortfall or excess, or a lane is dead, because the `A2C_SKEW` or `A2C_JOINT_STALL` error that declared it dead has already failed the run and the comparison stopped at the death. A subclass that overrides `key()` pairs in order per key: the AXI comparators key by ID. `uvm_in_order_class_comparator` is not used, because it has no leftover check and none of these hooks.
 - `a2c_status_comparator #(T)` applies the status policy. `status_comparator` and `external_reg_comparator` extend it.
+- `a2c_reg_comparator #(T)` extends `a2c_in_order_comparator` for an agent that can carry register reads. It adds the skip list and asks the guard about each read. A subclass defines `is_read()`, which returns whether an item is a read and its address, and `same_but_data()`, which compares two items in everything but the read data. `apb_comparator` and Pro's `lmmi_comparator` are the `model_cmp` of their agents.
 
 **Status policy.** The model updates a status level sooner than the RTL, so a status value is not compared beat for beat. Each comparator of this kind has `policy`:
 
@@ -1311,13 +1313,39 @@ The RTL pipelines a beat and the model does not, so a register write while data 
 - The guard sees only traffic a test has declared with `expect_count()`. A test that streams before it declares its outputs escapes the guard.
 - `+a2c_predict_midstream=1` turns the rule into a debugging aid. The write is then an `A2C_MIDSTREAM` `UVM_INFO` at `UVM_LOW`, and opens a midstream window on every comparator. A mismatch inside the window is an `A2C_MODEL_CMP_MIDSTREAM` `UVM_WARNING` instead of an error. On an in-order comparator the window covers the pairs above the slower lane's item count at the write, up to the faster lane's count plus `midstream_beats`, so it holds the beats already in flight on either lane plus the pipeline. Set `midstream_beats` in the env subclass to the block's pipeline depth in output beats. On a status comparator the window covers the next stable point only. No regression entry should set the plusarg.
 
+Reads follow the same rule. Every read on the register bus is compared, and a read of a volatile register or a read-only memory counts as midstream, because the RTL and the model may update its value at different times. The register model marks a register volatile when its `regType` is `ro` or `ext`, and a memory with `regAccess: ro` is a `uvm_mem` with `RO` access, which only the design writes.
+
+- The bus agent's `model_cmp`, an `a2c_reg_comparator`, passes each DUT-lane read to the guard as it arrives. The comparator asks the guard rather than the guard listening to the bus monitor. A monitor's analysis port calls its subscribers in the order of their names, which the env does not choose, and the guard's verdict must reach the comparator before the pair is compared.
+- A read of a volatile register or a read-only memory while any output counter has transactions pending on either lane is an `A2C_MIDSTREAM` `UVM_ERROR`. It names the register or memory, the address and the pending counts. Read it after `wait_for_outputs()`, or put its address on the skip list.
+- Under `+a2c_predict_midstream=1` the read is an `A2C_MIDSTREAM` `UVM_INFO`, and a mismatch of that read alone is an `A2C_MODEL_CMP_MIDSTREAM` warning.
+- The read opens no window on the other comparators. That depends on nothing in the design seeing a read. The generated register handler's `external_reg_if` has no read strobe, and the SystemC external_reg channel gives the block no read event, so even an `ext` register cannot clear on read, and a data mismatch after a read is a real defect. A register interface that gains a read strobe, or a clear-on-read access policy, must make `judge_read()` open a window for that read.
+- The guard says nothing about a read of a register that is not volatile, of a memory with RW access (`regAccess: rw` or `regType: memory`), or of an unmapped address. Such a read is compared like any other transfer. A design can also write an `rw` memory through a port of its own, and the guard does not judge that memory's reads. Read it only when quiescent, or skip it.
+- A field's volatility comes from the register model. To exempt an `ext` register that is plain storage, call `set_volatility(0)` on each of its fields in the `<block>_tb_env` subclass.
+- After the time step of a lane death the comparison has stopped, and the comparator no longer asks the guard, so no later `A2C_MIDSTREAM` follows the `A2C_SKEW` or `A2C_JOINT_STALL` error. A read in that time step is still judged, because `check_pair()` still compares a pair that completes in it.
+
+**The skip list.** Some reads cannot be compared at any time, such as a free-running counter. List them on the register bus comparator in the `<block>_tb_env` subclass, in `connect_phase` under `if (dual_dut)`. `model_cmp` exists only in Mode B, so without the `if` the default Mode A run stops on a null `model_cmp`. Here the register-bus port is `regs`:
+
+```systemverilog
+if (dual_dut) begin
+    regs_agent.model_cmp.skip_reg(regmodel.cycle_count);  // every bus word of the register
+    regs_agent.model_cmp.skip_mem(regmodel.trace_buf);    // every bus word of the memory
+    regs_agent.model_cmp.skip_address('h40);
+end
+```
+
+- A read of a listed address is compared without its data. The direction, the address and the response (`slverr` on apb) are still compared, and the monitor still checks the protocol. The guard never sees the read. Writes to a listed address are compared in full.
+- `skip_reg(rg, map)` lists every bus word of `rg` in `map`, or in the register's default map. `skip_mem(m, map)` does the same for every row of a memory. Each call adds one entry, an address range, so a large memory costs no more than a register. A register or memory that the map does not hold, or holds unmapped, is an `A2C_CFG` `UVM_FATAL` naming it and the map. `is_skipped(addr)` reads the list.
+- At `check_phase` the comparator reports one `A2C_REG_SKIP` `UVM_INFO` at `UVM_LOW`, with one line per entry. Where entries overlap, a read counts only on the first entry that holds it. A line gives the register or memory name and its address range, or the address alone, and the number of reads it matched, 0 included.
+- The list is on `a2c_reg_comparator`, so any agent whose `model_cmp` extends it has one. Pro's lmmi agent has one too. No generated env uses lmmi as a register bus, because lmmi has no register adapter, so the guard never judges its reads.
+
 #### Messages
 
 | Id | Severity | Meaning | What to change |
 | :--- | :--- | :--- | :--- |
 | `A2C_MODEL_CMP` | `UVM_ERROR`; `UVM_INFO` at `UVM_NONE` for the line that says later mismatches are counted, and at `UVM_MEDIUM` for a comparison a lane death stopped | the model's output differs from the RTL's on a pair, a lane left items unpaired, or a status check failed | the RTL and the model disagree: find which matches the specification and fix the other. The message prints both items and the pair index |
-| `A2C_MODEL_CMP_MIDSTREAM` | `UVM_WARNING` | a mismatch inside a midstream window under `+a2c_predict_midstream=1` | expected near a midstream write; remove the write or the plusarg to check those beats |
-| `A2C_MIDSTREAM` | `UVM_ERROR`; `UVM_INFO` under `+a2c_predict_midstream=1` | a register write while outputs had transactions pending | move the write to after `wait_for_outputs()` |
+| `A2C_MODEL_CMP_MIDSTREAM` | `UVM_WARNING` | a mismatch inside a midstream window, or of a midstream read of a volatile register or read-only memory, under `+a2c_predict_midstream=1` | expected near a midstream write or read; remove the access or the plusarg to check those beats |
+| `A2C_MIDSTREAM` | `UVM_ERROR`; `UVM_INFO` under `+a2c_predict_midstream=1` | a register write, or a read of a volatile register or read-only memory, while outputs had transactions pending | move the access to after `wait_for_outputs()`, or skip the read's address on the register bus comparator |
+| `A2C_REG_SKIP` | `UVM_INFO` at `UVM_LOW` | at `check_phase`, the reads each entry of a register bus comparator's skip list matched, one line per entry | nothing |
 | `A2C_STATUS` | `UVM_INFO` at `UVM_MEDIUM` | a status value logged under the `off` policy | nothing |
 | `A2C_XZ` | `UVM_ERROR` | a status value with X or Z under the `bounds` policy | the lane named drives an unknown status |
 | `A2C_MISMATCH_TEST` | `UVM_ERROR`; `UVM_INFO` at `UVM_LOW` on a pass | `<block>_model_mismatch_test` did not see exactly one injected mismatch and nothing else (section 9.6) | read the other errors first; a comparator that compared fewer pairs than `mismatch_at` means the port received too little traffic |
@@ -1335,6 +1363,7 @@ The Mode B names follow the agent conventions of section 9.10. These depart from
 | the comparator inside the agent, not a scoreboard in the env | each type knows what it can compare; a generated per-port scoreboard would need a new interface definition key |
 | `a2c_in_order_comparator`, not `uvm_in_order_class_comparator` | it reports a mismatch as an error, reports leftovers, and has the cut, death, midstream and injection hooks |
 | `a2c_replay_log`, record and replay | the responder's DUT lane records and its model lane replays, as `synchLock` tandem does |
+| the skip list, an address list on `a2c_reg_comparator`, with `same_but_data()` comparing what a skipped read still checks | a DV engineer would first reach for the register model's field compare control, volatility or `set_compare(UVM_NO_CHECK)`. Owner ruling Q4 asks for an address list, and only an address list covers an unmapped address and lmmi, which has no register model |
 
 ## 10. Open items
 
@@ -1348,7 +1377,6 @@ The Mode B names follow the agent conventions of section 9.10. These depart from
 - Tandem: Pro's 1-in-2-out external_reg tee (`builder/pro/common/systemc/external_reg_port_tee.h`, `port_tee`) forwards a CPU write with `write()`, not `reg_write_cmd()`. A tandem dst model that waits in `read()` for CPU writes never sees one.
 - UVM: a second `make USE_UVM=1 USE_VCS=1 uvm_snapshots` is not a no-op. The model, rtl and both snapshots share one `AN.DB` and one analysis-options stamp, and the rtl build adds `+define+A2C_UVM_RTL_DUT` and the both build `+define+A2C_UVM_BOTH_DUT`, so each build re-analyses after the one before. A no-op needs a per-DUT analysis library or a DUT selection without a define. Xcelium is not affected.
 - UVM Mode B: a block whose outputs depend on when its inputs arrive, not only on their order, cannot be compared, because the transport that would replay the RTL's input timing to the model is not built (section 9.12).
-- UVM Mode B: a read of a volatile register (`ro` or `ext`) is compared as any other apb read. A read while outputs are pending is not treated as midstream, and the apb comparator has no list of addresses to skip, so a volatile value that the RTL and the model update at different times can fail the compare on timing alone.
 - UVM Mode B: a memory model-lane read made ahead of a write that another port's DUT lane has yet to make gets the old word and is reported as an `A2C_REPLAY` error, even when the design is correct (section 9.12, "memory responders").
 - UVM Mode B: the status policies run only in the loopback. Neither block on UVM has a status output or an external_reg port.
 - UVM: the VCS steps for a second `hasUvm` block are checked by unit tests only. The two IPs on UVM have one top each.

@@ -432,6 +432,24 @@ package apb_uvm_pkg;
         endtask
     endclass : apb_monitor
 
+    // The apb agent's model_cmp.
+    class apb_comparator extends a2c_reg_comparator #(apb_item);
+        `uvm_component_utils(apb_comparator)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function bit is_read(apb_item t, output uvm_reg_addr_t addr);
+            addr = t.addr;
+            return !t.write;
+        endfunction
+
+        virtual function bit same_but_data(apb_item dut, apb_item model);
+            return dut.write == model.write && dut.addr == model.addr && dut.slverr == model.slverr;
+        endfunction
+    endclass : apb_comparator
+
     class apb_agent #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_agent;
         typedef apb_item                    item_t;
         typedef apb_config#(addr_t, data_t) config_t;
@@ -447,8 +465,8 @@ package apb_uvm_pkg;
         uvm_sequencer #(apb_item)    sqr;
         apb_monitor#(addr_t, data_t) mon;
         // Mode B only.
-        apb_monitor#(addr_t, data_t)        model_mon;
-        a2c_in_order_comparator #(apb_item) model_cmp;
+        apb_monitor#(addr_t, data_t) model_mon;
+        apb_comparator               model_cmp;
 
         `uvm_component_param_utils(apb_agent#(addr_t, data_t))
 
@@ -468,7 +486,7 @@ package apb_uvm_pkg;
                 model_mon = apb_monitor#(addr_t, data_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
                 model_mon.vif = cfg.model_vif;
-                model_cmp = a2c_in_order_comparator#(apb_item)::type_id::create("model_cmp", this);
+                model_cmp = apb_comparator::type_id::create("model_cmp", this);
             end
             if (cfg.is_active != UVM_ACTIVE) return;
             if (cfg.role == A2C_SRC) begin

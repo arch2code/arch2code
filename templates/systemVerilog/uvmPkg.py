@@ -188,7 +188,8 @@ def env_class(uvm, hasRegModel, variant):
     if hasRegModel:
         lines += ["    // The register model's mirror follows the DUT lane's bus through the",
                   "    // explicit predictor, not the register calls' own prediction. In Mode B",
-                  "    // the guard sees every write on the DUT lane's bus."]
+                  "    // the guard sees every write on the DUT lane's bus, and the bus agent's",
+                  "    // comparator asks it about each read."]
     lines.append('    virtual function void connect_phase(uvm_phase phase);')
     lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
     if hasRegModel:
@@ -211,7 +212,9 @@ def env_class(uvm, hasRegModel, variant):
         lines += ['            reg_writes.map     = regmodel.default_map;',
                   '            reg_writes.adapter = adapter;',
                   f"            {bus['agent']}.mon.ap.connect(reg_writes.analysis_export);",
-                  '            reg_writes.ap.connect(guard.analysis_export);']
+                  '            reg_writes.ap.connect(guard.analysis_export);',
+                  '            guard.map = regmodel.default_map;',
+                  f"            {bus['agent']}.model_cmp.guard = guard;"]
         lines += [f"            guard.counters.push_back({port['counter']});" for port in counters]
         lines.append('            guard.comparators = comparators;')
     lines += ['        end',

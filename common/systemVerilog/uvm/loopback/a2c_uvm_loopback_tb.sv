@@ -866,6 +866,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_gen_base_test_lb_tests.svh"
     `include "a2c_rt_checker_lb_tests.svh"
     `include "a2c_joint_stall_lb_tests.svh"
+    `include "a2c_reg_read_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 

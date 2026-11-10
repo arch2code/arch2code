@@ -40,7 +40,9 @@ gives each counter the model monitor's stream, lists every agent's model_cmp
 that is set, marks the counted ports' comparators as counted, and creates the
 midstream guard over the counters and comparators. The guard hears every
 write on the DUT lane's register bus through a2c_reg_write_subscriber, which
-resolves it against the register map. None of this happens outside Mode B:
+resolves it against the register map. The guard gets the map, and the bus
+agent's comparator gets the guard, which judges each read it compares. None
+of this happens outside Mode B:
 the vif fetches, the guard and everything connect_phase adds sit under
 dual_dut, so a Mode A or rtl run builds and connects what it did before. The
 env's model_stable_point() calls stable_point() on each listed comparator
@@ -225,6 +227,8 @@ MODE_B_CONNECT = [
     'reg_writes.adapter = adapter;',
     'ubRegs_agent.mon.ap.connect(reg_writes.analysis_export);',
     'reg_writes.ap.connect(guard.analysis_export);',
+    'guard.map = regmodel.default_map;',
+    'ubRegs_agent.model_cmp.guard = guard;',
     'guard.counters.push_back(out_counter);',
     'guard.counters.push_back(rdM_counter);',
     'guard.comparators = comparators;',

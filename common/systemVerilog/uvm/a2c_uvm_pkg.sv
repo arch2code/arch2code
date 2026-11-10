@@ -551,6 +551,11 @@ package a2c_uvm_pkg;
             return pairs > window_lo && pairs <= window_hi;
         endfunction
 
+        // Why the pair just counted is midstream, for its warning.
+        protected virtual function string midstream_cause();
+            return "inside the midstream window of a register write";
+        endfunction
+
         protected function void check_pair(bit same, uvm_object dut, uvm_object model, string key = "");
             string what;
             bit    midstream;
@@ -573,7 +578,7 @@ package a2c_uvm_pkg;
             if (pairs == inject_pair) what = {what, " (injected mismatch)"};
             what = {what, ": DUT ", dut.convert2string(), ", model ", model.convert2string()};
             if (midstream) begin
-                `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", {what, "; inside the midstream window of a register write"})
+                `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", {what, "; ", midstream_cause()})
             end else begin
                 `uvm_error("A2C_MODEL_CMP", what)
             end
@@ -918,10 +923,21 @@ package a2c_uvm_pkg;
     // +a2c_predict_midstream=1 the write is logged as UVM_INFO instead and
     // opens the midstream window of every listed comparator. Traffic counts
     // only once a test has declared it with expect_count().
+    //
+    // The register bus's a2c_reg_comparator asks judge_read() about each
+    // DUT-lane read as it arrives. A read of a volatile register or a
+    // read-only memory in map while outputs are pending is midstream too,
+    // because the RTL and the model may update the value at different
+    // times. A read opens no window, because nothing in the design sees a
+    // read: external_reg_if has no read strobe, and the SystemC
+    // external_reg channel gives the block no read event. A register
+    // interface that gains a read strobe, or a clear-on-read access policy,
+    // must make judge_read() open a window for that read.
     class a2c_midstream_guard extends uvm_component;
         uvm_analysis_imp #(uvm_reg_item, a2c_midstream_guard) analysis_export;
         a2c_txn_counter_base                                  counters[$];
         a2c_comparator_base                                   comparators[$];
+        uvm_reg_map                                           map;
         bit                                                   predict_midstream;
 
         `uvm_component_utils(a2c_midstream_guard)
@@ -937,10 +953,9 @@ package a2c_uvm_pkg;
             if ($value$plusargs("a2c_predict_midstream=%d", v)) predict_midstream = (v != 0);
         endfunction
 
-        virtual function void write(uvm_reg_item t);
-            string target;
+        // The counters with pending transactions and their counts, or "".
+        protected function string pending_outputs();
             string busy = "";
-            if (t.kind != UVM_WRITE) return;
             foreach (counters[i]) begin
                 a2c_txn_counter_base c = counters[i];
                 if (c.pending() == 0) continue;
@@ -949,6 +964,14 @@ package a2c_uvm_pkg;
                                                     c.lane_pending(A2C_MODEL_LANE))};
                 else busy = {busy, $sformatf("%s (%0d)", c.port_name, c.pending())};
             end
+            return busy;
+        endfunction
+
+        virtual function void write(uvm_reg_item t);
+            string target;
+            string busy;
+            if (t.kind != UVM_WRITE) return;
+            busy = pending_outputs();
             if (busy == "") return;
             if (t.element != null) target = t.element.get_full_name();
             else target = $sformatf("address 0x%0h", t.offset);
@@ -961,7 +984,175 @@ package a2c_uvm_pkg;
                                              target, busy), UVM_LOW)
             foreach (comparators[i]) comparators[i].open_midstream_window();
         endfunction
+
+        // Raises the A2C_MIDSTREAM error, or under the plusarg the info, for
+        // a read of a volatile register or a read-only memory while outputs
+        // are pending. Returns whether the read's mismatch is demoted to
+        // A2C_MODEL_CMP_MIDSTREAM.
+        function bit judge_read(uvm_reg_addr_t addr);
+            uvm_reg       rg = map.get_reg_by_offset(addr);
+            uvm_mem       mem;
+            uvm_reg_field fields[$];
+            bit           vol = 0;
+            string        what;
+            string        busy;
+            if (rg != null) begin
+                rg.get_fields(fields);
+                foreach (fields[i]) vol |= fields[i].is_volatile();
+                what = {"volatile register ", rg.get_full_name()};
+            end else begin
+                mem = map.get_mem_by_offset(addr);
+                // Only the design writes an RO memory.
+                vol  = mem != null && mem.get_access(map) == "RO";
+                if (vol) what = {"read-only memory ", mem.get_full_name()};
+            end
+            if (!vol) return 0;
+            busy = pending_outputs();
+            if (busy == "") return 0;
+            if (!predict_midstream) begin
+                `uvm_error("A2C_MIDSTREAM", $sformatf("read of %s at 0x%0h while outputs have transactions pending: %s. The RTL and the model may update it at different times; read it after wait_for_outputs(), or skip its address on the register bus comparator; +a2c_predict_midstream=1 relaxes the rule for debugging",
+                                                  what, addr, busy))
+                return 0;
+            end
+            `uvm_info("A2C_MIDSTREAM", $sformatf("read of %s at 0x%0h while outputs have transactions pending: %s; +a2c_predict_midstream=1 demotes a mismatch of this read",
+                                             what, addr, busy), UVM_LOW)
+            return 1;
+        endfunction
     endclass : a2c_midstream_guard
+
+    // The Mode B comparator of a register bus agent. It compares a read on
+    // its skip list without the read data, and lets the guard demote a
+    // volatile read. The <block>_tb_env subclass fills the list in its
+    // connect_phase, in Mode B only, where model_cmp exists. A list entry is
+    // an address range, so a memory of any size costs one entry. The env
+    // sets guard in Mode B when the block has a register model. A demotion
+    // is keyed by the read's place in the DUT lane's arrival order, so a
+    // subclass must not override key().
+    virtual class a2c_reg_comparator #(type T = uvm_sequence_item) extends a2c_in_order_comparator #(T);
+        a2c_midstream_guard guard;
+
+        // What one skip_*() call listed, and the reads it has matched. A
+        // skip_address() entry has no name.
+        typedef struct {
+            uvm_reg_addr_t lo;
+            uvm_reg_addr_t hi;
+            string         name;
+            int unsigned   reads;
+        } skip_t;
+
+        protected skip_t skips[$];
+        // DUT-lane items, by their place in arrival order, that the guard
+        // demoted.
+        protected bit    demoted[int unsigned];
+        protected bit    demoting;
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        pure virtual function bit is_read(T t, output uvm_reg_addr_t addr);
+        pure virtual function bit same_but_data(T dut, T model);
+
+        protected function void skip_range(uvm_reg_addr_t lo, uvm_reg_addr_t hi, string name);
+            skips.push_back('{lo: lo, hi: hi, name: name, reads: 0});
+        endfunction
+
+        function void skip_address(uvm_reg_addr_t addr);
+            skip_range(addr, addr, "");
+        endfunction
+
+        // Every bus word of rg in map, or in rg's default map. A register
+        // that map does not hold, or holds unmapped, stops the run.
+        // get_addresses() then leaves the array empty, and its return value
+        // does not always show it, as uvm_mem's returns 0 for a memory
+        // outside map.
+        function void skip_reg(uvm_reg rg, uvm_reg_map map = null);
+            uvm_reg_addr_t addrs[];
+            void'(rg.get_addresses(map, addrs));
+            if (addrs.size() == 0) begin
+                `uvm_fatal("A2C_CFG", $sformatf("skip_reg(): %s has no address in %s", rg.get_full_name(), map_name(map)))
+                return;
+            end
+            addrs.sort();
+            skip_range(addrs[0], addrs[addrs.size() - 1], rg.get_full_name());
+        endfunction
+
+        // Every bus word of every row of m in map, or in m's default map,
+        // with skip_reg()'s fast fail.
+        function void skip_mem(uvm_mem m, uvm_reg_map map = null);
+            uvm_reg_addr_t first[];
+            uvm_reg_addr_t last[];
+            void'(m.get_addresses(0, map, first));
+            void'(m.get_addresses(m.get_size() - 1, map, last));
+            if (first.size() == 0 || last.size() == 0) begin
+                `uvm_fatal("A2C_CFG", $sformatf("skip_mem(): %s has no address in %s", m.get_full_name(), map_name(map)))
+                return;
+            end
+            first.sort();
+            last.sort();
+            skip_range(first[0], last[last.size() - 1], m.get_full_name());
+        endfunction
+
+        protected function string map_name(uvm_reg_map map);
+            return (map == null) ? "its default map" : map.get_full_name();
+        endfunction
+
+        // The first entry that holds addr, or -1.
+        protected function int skip_of(uvm_reg_addr_t addr);
+            foreach (skips[i]) if (addr >= skips[i].lo && addr <= skips[i].hi) return i;
+            return -1;
+        endfunction
+
+        function bit is_skipped(uvm_reg_addr_t addr);
+            return skip_of(addr) >= 0;
+        endfunction
+
+        virtual function void write_a2c_dut(T t);
+            uvm_reg_addr_t addr;
+            // check_pair() stops comparing after the time step of a lane
+            // death, so a read from then on needs no verdict; one in that
+            // time step still gets one.
+            if (guard != null && !past_death() && is_read(t, addr) && skip_of(addr) < 0 && guard.judge_read(addr)) begin
+                demoted[seen[A2C_DUT_LANE] + 1] = 1;
+            end
+            super.write_a2c_dut(t);
+        endfunction
+
+        protected virtual function void compare_pair(T dut, T model, string k);
+            uvm_reg_addr_t addr;
+            int            i = -1;
+            demoting = demoted.exists(pairs + 1);
+            if (demoting) demoted.delete(pairs + 1);
+            if (is_read(dut, addr)) i = skip_of(addr);
+            if (i >= 0) begin
+                skips[i].reads++;
+                check_pair(same_but_data(dut, model), dut, model, k);
+            end else begin
+                super.compare_pair(dut, model, k);
+            end
+            demoting = 0;
+        endfunction
+
+        protected virtual function bit in_midstream_window();
+            return demoting || super.in_midstream_window();
+        endfunction
+
+        protected virtual function string midstream_cause();
+            return demoting ? "a read of a volatile register or read-only memory while outputs had transactions pending" : super.midstream_cause();
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            string lines = "";
+            super.check_phase(phase);
+            if (skips.size() == 0) return;
+            foreach (skips[i]) begin
+                string where = (skips[i].lo == skips[i].hi) ? $sformatf("0x%0h", skips[i].lo) : $sformatf("0x%0h..0x%0h", skips[i].lo, skips[i].hi);
+                if (skips[i].name != "") where = {skips[i].name, " ", where};
+                lines = {lines, $sformatf("\n  %s: %0d", where, skips[i].reads)};
+            end
+            `uvm_info("A2C_REG_SKIP", $sformatf("%s: reads compared without their data, per skip list entry:%s", get_full_name(), lines), UVM_LOW)
+        endfunction
+    endclass : a2c_reg_comparator
 
     // Converts each write in the bus items a register bus monitor reports
     // into a uvm_reg_item for a2c_midstream_guard, as uvm_reg_predictor
