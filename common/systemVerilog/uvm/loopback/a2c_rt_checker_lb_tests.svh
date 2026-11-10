@@ -1676,6 +1676,45 @@
         endfunction
     endclass : rt_rv_defer_test
 
+    // rt_rv_defer_test with a2c_rt_off set and the lag bound of 600 written
+    // during the run: the deadline rule measures but counts toward no
+    // report, so the run timeout expires at its budget of 300 clocks with
+    // no deferral.
+    class rt_rv_defer_off_test extends rt_rv_defer_test;
+        realtime released_at;
+
+        `uvm_component_utils(rt_rv_defer_off_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void configure();
+            super.configure();
+            uvm_config_db#(bit)::set(this, "rt", "a2c_rt_off", 1'b1);
+            want.delete("A2C_RT_DEADLINE");
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            fork
+                begin
+                    clk_vif.wait_reset_release();
+                    released_at = $realtime;
+                    repeat (10) clk_vif.sample_edge();
+                    rt.lag_cycles = 600;
+                end
+            join_none
+            lb_rt_rv_base::run_phase(phase);
+        endtask
+
+        virtual function void check();
+            if (demoter.count("A2C_RUN_TIMEOUT", UVM_INFO, "defers to them") != 0) `uvm_error("LB_RT", $sformatf("the timeout deferred to a checker that is off: %p", demoter.msgs))
+            if (demoter.first_at("A2C_RUN_TIMEOUT") != released_at + 300 * 10ns) begin
+                `uvm_error("LB_RT", $sformatf("A2C_RUN_TIMEOUT came at %0t, expected the budget's %0t", demoter.first_at("A2C_RUN_TIMEOUT"), released_at + 300 * 10ns))
+            end
+        endfunction
+    endclass : rt_rv_defer_off_test
+
     // Output on clk3, which stops while the deadline rule counts, with no
     // other rule counting. The run timeout leaves the stopped checker out,
     // names it, and expires at its budget without a deferral.

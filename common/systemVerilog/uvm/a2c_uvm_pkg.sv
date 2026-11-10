@@ -123,20 +123,23 @@ package a2c_uvm_pkg;
         if (a2c_config_get(c, field, 1'b1, n)) value = (n != 0);
     endfunction
 
-    // When the run timeout ended the run phase, or -1. An end-of-test
-    // report of missing or unpaired items appends a2c_run_timeout_clause(),
-    // since what it finds missing may be the timeout's doing rather than a
-    // cause of its own. The clause is empty until the run phase is done, so
-    // a report the run phase raises in the timeout's own time step, after
-    // the timeout, does not cite it.
-    realtime a2c_run_timed_out_at = -1;
+    // When a2c_run_timeout ended the run phase, or -1, and what ended it,
+    // such as "the run timeout", with the id it reported under. An
+    // end-of-test report of missing or unpaired items appends
+    // a2c_run_ended_clause(), since what it finds missing may be that end's
+    // doing rather than a cause of its own. The clause is empty until the
+    // run phase is done, so a report the run phase raises in the end's own
+    // time step, after it, does not cite it.
+    realtime a2c_run_ended_at = -1;
+    string   a2c_run_ended_by;
+    string   a2c_run_ended_id;
 
-    function automatic string a2c_run_timeout_clause();
+    function automatic string a2c_run_ended_clause();
         uvm_phase run;
-        if (a2c_run_timed_out_at < 0) return "";
+        if (a2c_run_ended_at < 0) return "";
         run = uvm_domain::get_common_domain().find(uvm_run_phase::get());
         if (run.get_state() != UVM_PHASE_DONE) return "";
-        return $sformatf("; the run timeout ended the run phase at %0t (A2C_RUN_TIMEOUT), which may account for this", a2c_run_timed_out_at);
+        return $sformatf("; %s ended the run phase at %0t (%s), which may account for this", a2c_run_ended_by, a2c_run_ended_at, a2c_run_ended_id);
     endfunction
 
     `uvm_analysis_imp_decl(_a2c_dut)
@@ -351,7 +354,7 @@ package a2c_uvm_pkg;
             for (int lane = 0; lane < lanes(); lane++) begin
                 if (received[lane] < expected[lane]) begin
                     `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test with %0d of %0d expected transactions outstanding, which no wait_for_count covered%s",
-                                                      where(lane), lane_outstanding(lane), expected[lane], a2c_run_timeout_clause()))
+                                                      where(lane), lane_outstanding(lane), expected[lane], a2c_run_ended_clause()))
                 end
                 if (received[lane] > expected[lane]) begin
                     `uvm_error("A2C_TXN_COUNT", $sformatf("%s: end of test: received %0d transactions, expected %0d (%0d extra)",
@@ -795,7 +798,7 @@ package a2c_uvm_pkg;
             if (n == 0) return;
             if (first_key != "") first = {"in key order, key ", first_key, ", ", first};
             `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with %0d %s items unpaired after %0d pairs, first %s%s",
-                                              get_full_name(), n, side, pairs, first, a2c_run_timeout_clause()))
+                                              get_full_name(), n, side, pairs, first, a2c_run_ended_clause()))
         endfunction
 
         virtual function void check_phase(uvm_phase phase);
@@ -1526,7 +1529,7 @@ package a2c_uvm_pkg;
                                dead_id[i])};
             end
             if (s != "") s = {s, ", which may be related"};
-            return {s, a2c_run_timeout_clause()};
+            return {s, a2c_run_ended_clause()};
         endfunction
 
         static function void request(uvm_phase phase, a2c_replay_log_base log);
@@ -1736,10 +1739,10 @@ package a2c_uvm_pkg;
     // The joint stall rule's default bound.
     localparam int unsigned A2C_JOINT_STALL_CYCLES = 200000;
 
-    // The lane-death rules every Mode B master shares, so that the masters
-    // of all protocols bound a lane the same way and report it in the same
-    // words. A master owns one whatever its lane count, calls configure()
-    // at the start of its run phase, and skips a dead lane from then on:
+    // The lane rules every master shares, so that the masters of all
+    // protocols bound a lane the same way and report it in the same words.
+    // A master owns one whatever its lane count, calls configure() at the
+    // start of its run phase, and skips a dead lane from then on:
     //   - lane_skew_cycles: a live lane that trails the other on one step of
     //     the protocol by this many clocks is declared dead with A2C_SKEW;
     //   - lone_lane_cycles: once one lane is dead, the live lane may go this
@@ -1757,8 +1760,17 @@ package a2c_uvm_pkg;
     //     every Mode B port's live lanes die, and those that wait are named.
     // 0 turns a rule off. A lane that has nothing to wait for counts as
     // making progress, so an idle port never stalls. A master declares a
-    // lane dead only in Mode B. With one lane the calls only keep whether
-    // the lane waits, for the run timeout's report.
+    // lane dead only in Mode B. With one lane, in Mode A, only the joint
+    // stall rule applies, on the same bound and message. The master holds
+    // an item, and its lane waits, on each clock it calls progress() with
+    // the lane neither taking nor idle: from the drive point that raises
+    // the item's request to its handshake, or for a burst master while an
+    // address is on the bus or a burst is outstanding. An item the
+    // sequence has started that the driver has not yet put on the pins,
+    // in its gap clocks or at the sequencer, is not held, and a responder
+    // never holds one. No lane dies in Mode A: the stall ends the run
+    // through the test's a2c_run_timeout, and in a test with none the
+    // master goes on waiting and the port stops counting toward another.
     class a2c_lane_watchdog;
         int unsigned        lane_skew_cycles = 200000;
         int unsigned        lone_lane_cycles = 200000;
@@ -1893,15 +1905,20 @@ package a2c_uvm_pkg;
                 moved[k]  = took[k] || idle[k];
                 waited[k] = !dead[k] && !moved[k];
             end
-            if (lanes != 2) return A2C_PROGRESS;
-            trailing_now = trailing;
             quiet     = !a2c_joint_watch::moved_since(window_at);
             window_at = $realtime;
-            for (int k = 0; k < 2; k++) begin
+            for (int k = 0; k < lanes; k++) begin
                 waiting |= waited[k];
                 if (!dead[k] && moved[k]) moved_at[k] = $realtime;
             end
             stalled = waiting && quiet;
+            if (lanes != 2) begin
+                // The lane outlives the run's one stall, so it counts
+                // toward no other.
+                if (a2c_joint_watch::stalled()) return A2C_PROGRESS;
+                return joint_step(waiting && quiet);
+            end
+            trailing_now = trailing;
             if (dead[A2C_DUT_LANE] && dead[A2C_MODEL_LANE]) return A2C_PROGRESS;
             if (dead[A2C_DUT_LANE] != dead[A2C_MODEL_LANE]) begin
                 l = dead[A2C_DUT_LANE] ? A2C_MODEL_LANE : A2C_DUT_LANE;
@@ -1913,7 +1930,13 @@ package a2c_uvm_pkg;
             end
             // A lane that trails is the skew bound's while it is on, so the
             // two rules never race on one stall.
-            if (joint_stall_cycles == 0 || !waiting || !quiet || (trailing && lane_skew_cycles != 0)) begin
+            return joint_step(waiting && quiet && !(trailing && lane_skew_cycles != 0));
+        endfunction
+
+        // One clock of the joint stall rule, which still says whether the
+        // port waited with no handshake anywhere.
+        protected function a2c_stall_e joint_step(bit still);
+            if (joint_stall_cycles == 0 || !still) begin
                 both_stuck = 0;
                 return A2C_PROGRESS;
             end
@@ -1921,15 +1944,16 @@ package a2c_uvm_pkg;
         endfunction
 
         // The rule counting toward its bound on this port, if any, and the
-        // clocks it has left, for the run timeout: with one lane live, the
-        // lone lane rule while that lane makes no progress; with both live,
-        // the skew rule while one trails, which some masters count
-        // themselves, so at most a whole bound, or else the joint stall rule
-        // while no port moves. "" when none is counting. A master resets
-        // the counts on the clock its lanes make progress or finish.
+        // clocks it has left, for the run timeout: with one lane live of
+        // two, the lone lane rule while that lane makes no progress; with
+        // both live, the skew rule while one trails, which some masters
+        // count themselves, so at most a whole bound, or else the joint
+        // stall rule while no port moves, as with the one lane of Mode A.
+        // "" when none is counting. A master resets the counts on the clock
+        // its lanes make progress or finish.
         function string counting(output int unsigned left);
             left = 0;
-            if (lanes != 2 || all_dead()) return "";
+            if (all_dead()) return "";
             if (dead[A2C_DUT_LANE] != dead[A2C_MODEL_LANE]) begin
                 if (lone_lane_cycles == 0 || stuck == 0 || stuck >= lone_lane_cycles) return "";
                 left = lone_lane_cycles - stuck;
@@ -1998,7 +2022,7 @@ package a2c_uvm_pkg;
         endfunction
 
         // Declares each live lane dead for a2c_joint_watch, whatever this
-        // port's joint_stall_cycles.
+        // port's joint_stall_cycles. In Mode A no lane dies.
         function void die_jointly();
             bit fell[2];
             if (lanes != 2) return;
@@ -2027,8 +2051,10 @@ package a2c_uvm_pkg;
             bit led = 0;
             bit lags;
             bit idle[2];
+            // In Mode A pending[] stays set: the lane goes on waiting after a
+            // joint stall.
             if (lanes != 2) begin
-                void'(progress(took, idle, 0));
+                if (progress(took, idle, 0) == A2C_BOTH_STALL) declare_joint();
                 return;
             end
             for (int l = 0; l < 2; l++) if (dead[l]) pending[l] = 0;
@@ -2090,13 +2116,20 @@ package a2c_uvm_pkg;
     // in a time step never moves the bound. It reports once for the run:
     // the first watchdog to reach its bound calls stall(), which names
     // every port whose live lanes waited and declares every live lane of
-    // every Mode B port dead, so no port can stall again.
+    // every Mode B port dead, so no Mode B port can stall again. A Mode A
+    // port, whose lane cannot die, reads stalled() and counts no more, and
+    // with no Mode B port the stall ends the run through the test's
+    // a2c_run_timeout, as the timeout does.
+    typedef class a2c_run_timeout;
+
     class a2c_joint_watch;
         // The time of the latest handshake, and of the latest one before
         // that time step.
         protected static realtime          last_at = -1;
         protected static realtime          before_at = -1;
         protected static a2c_lane_watchdog dogs[$];
+        protected static bit               raised;
+        protected static a2c_run_timeout   timeout;
 
         static function void handshake();
             if ($realtime == last_at) return;
@@ -2120,16 +2153,40 @@ package a2c_uvm_pkg;
             found = dogs;
         endfunction
 
+        // The test's run timeout, which ends the run after a Mode A stall.
+        static function void register_timeout(a2c_run_timeout t);
+            timeout = t;
+        endfunction
+
+        // Whether the run's A2C_JOINT_STALL is out.
+        static function bit stalled();
+            return raised;
+        endfunction
+
         static function void stall(a2c_lane_watchdog by);
             string ports = "";
+            string after = (timeout != null) ? "With one DUT no lane dies, and the run ends here."
+                                             : "With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.";
+            bit    mode_b;
+            raised = 1;
+            foreach (dogs[i]) begin
+                if (dogs[i].lanes != 2) continue;
+                mode_b = 1;
+                after = $sformatf("Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead%s, and serves its open and later items as it does once both lanes are dead.",
+                                  a2c_replay_drain::death_context($realtime));
+                break;
+            end
             foreach (dogs[i]) begin
                 if (!dogs[i].joint_waiting()) continue;
                 ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
             end
-            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead%s, and serves its open and later items as it does once both lanes are dead.",
-                                                            by.port_name, by.joint_stall_cycles, ports,
-                                                            a2c_replay_drain::death_context($realtime)), by.master)
+            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s",
+                                                            by.port_name, by.joint_stall_cycles, ports, after), by.master)
             foreach (dogs[i]) dogs[i].die_jointly();
+            // Mode B lanes die and the test reaches its own end; a Mode A
+            // master would wait for ever. Without a run timeout, in a test
+            // that does not extend the generated base test, it does.
+            if (!mode_b && timeout != null) timeout.end_run(uvm_domain::get_common_domain().find(uvm_run_phase::get()), "the joint stall rule", "fired", "A2C_JOINT_STALL");
         endfunction
 
         // The ports whose live lanes wait now, whatever the joint stall's
@@ -2892,7 +2949,7 @@ package a2c_uvm_pkg;
                              late_done, never, pending);
             if (!judging) what = {what, $sformatf("; measured only, on the model DUT: %0d failures not raised", unjudged)};
             if (stopped) what = {what, $sformatf("; stopped judging at %0t, when a Mode B master declared the DUT lane dead", stopped_at)};
-            if (pending != 0) what = {what, a2c_run_timeout_clause()};
+            if (pending != 0) what = {what, a2c_run_ended_clause()};
             `uvm_info("A2C_RT", what, UVM_LOW)
             if (unprinted != 0) begin
                 `uvm_error("A2C_RT", $sformatf("%s: %0d real-time failures in all, %0d not printed", port(), failures, unprinted))
@@ -3005,7 +3062,7 @@ package a2c_uvm_pkg;
 
     typedef class a2c_run_timeout;
 
-    // Ends each task phase that begins after the run timeout has expired,
+    // Ends each task phase that begins after a2c_run_timeout::end_run(),
     // for a2c_run_timeout. A callback rather than a process, because the
     // run phase kills the processes forked under it when it ends.
     class a2c_run_timeout_phase_cb extends uvm_phase_cb;
@@ -3039,8 +3096,8 @@ package a2c_uvm_pkg;
     // The progress rules report a stop in their own words, so a rule that is
     // counting toward its bound when a derived budget is reached may fire
     // first, whatever its bound: the output deadline of a wait_for_count(),
-    // a Mode B master's lane skew, lone lane or joint stall rule, the
-    // drain's deadline and catch-up, and an a2c_rt_checker's real-time
+    // a Mode B master's lane skew or lone lane rule, a master's joint stall
+    // rule in either mode, the drain's deadline and catch-up, and an a2c_rt_checker's real-time
     // rules. The count then collects the rules counting at that clock,
     // leaving out a lane rule or checker whose clock has stopped, each with the clocks it may still take to report, which
     // covers its clock stopping or pausing, converted into clocks of clk_vif
@@ -3066,7 +3123,8 @@ package a2c_uvm_pkg;
     // a later phase that waits. Ending prematurely skips the Mode B drain,
     // and UVM clears the objections still raised with an OBJTN_CLEAR
     // warning. A run that ends in time logs its length against the budget.
-    // Verified on UVM 1.2.
+    // Verified on UVM 1.2. A Mode A A2C_JOINT_STALL ends the run the same
+    // way through end_run(), and then the count stops.
     class a2c_run_timeout extends uvm_component;
         // Set by the base test in connect_phase.
         virtual a2c_clk_if         clk_vif;
@@ -3101,6 +3159,8 @@ package a2c_uvm_pkg;
         // The lane rules counting at the budget that the deferral left out
         // because their clocks had stopped.
         protected string           left_out;
+        // What the cause that ended the run did, for phase_changed().
+        protected string           ended_how;
 
         `uvm_component_utils(a2c_run_timeout)
 
@@ -3111,6 +3171,7 @@ package a2c_uvm_pkg;
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             fixed = a2c_get_config_int(this, "a2c_run_timeout_cycles", cycles);
+            a2c_joint_watch::register_timeout(this);
             void'(a2c_get_config_int(this, "a2c_run_timeout_floor_cycles", floor_cycles));
             void'(a2c_get_config_int(this, "a2c_run_timeout_factor", factor));
         endfunction
@@ -3249,6 +3310,8 @@ package a2c_uvm_pkg;
             derive();
             forever begin
                 @(posedge clk_vif.clk);
+                // A Mode A joint stall ended the run earlier in this time step.
+                if (expired) return;
                 elapsed++;
                 if (is_off() || elapsed < budget || elapsed < defer_to) continue;
                 derive();
@@ -3318,7 +3381,7 @@ package a2c_uvm_pkg;
             found.sort with ({item.get_domain_name(), " ", item.get_name()});
         endfunction
 
-        // From a2c_run_timeout_phase_cb, after the timeout: ends a task
+        // From a2c_run_timeout_phase_cb, after end_run(): ends a task
         // phase as it begins, and when it ends names what objected in it.
         function void phase_changed(uvm_phase p, uvm_phase_state state);
             if (state == UVM_PHASE_EXECUTING && ends(p)) begin
@@ -3328,8 +3391,8 @@ package a2c_uvm_pkg;
                 string by = objectors(p);
                 ended_late.delete(p);
                 if (by != "") begin
-                    `uvm_info("A2C_RUN_TIMEOUT", $sformatf("the run timeout, which expired at %0t, ended the %s as it began. Objections raised by: %s",
-                                                           a2c_run_timed_out_at, label(p), by), UVM_NONE)
+                    `uvm_info(a2c_run_ended_id, $sformatf("%s, which %s at %0t, ended the %s as it began. Objections raised by: %s",
+                                                          a2c_run_ended_by, ended_how, a2c_run_ended_at, label(p), by), UVM_NONE)
                 end
             end
         endfunction
@@ -3337,13 +3400,10 @@ package a2c_uvm_pkg;
         protected function void expire(uvm_phase phase);
             uvm_component            test = get_parent();
             uvm_phase                held[$];
-            a2c_run_timeout_phase_cb cb = new();
             string                   raised = objectors(phase);
             string                   rate = "no work declared";
             string        raise = "Raise run_timeout_factor or run_timeout_floor_cycles, or fix the budget with run_timeout_cycles or fix(), if the test is legitimately longer.";
             if (is_fixed()) raise = "Raise run_timeout_cycles, or the value the test passes to fix(), if the test is legitimately longer.";
-            expired              = 1;
-            a2c_run_timed_out_at = $realtime;
             if (work_now != 0) rate = $sformatf("%0.1f clocks per unit of the work declared, W %0d", real'(elapsed) / work_now, work_now);
             running_phases(held);
             foreach (held[i]) begin
@@ -3354,9 +3414,28 @@ package a2c_uvm_pkg;
             `uvm_error_context("A2C_RUN_TIMEOUT", $sformatf("%s: the run phase has not ended after %0d clocks of %s, its run timeout: %s. %s%s. Ports waiting now: %s. Objections still raised by: %s. %s",
                                                             test.get_type_name(), elapsed, clock, rate, how(), stopped_rules(), a2c_joint_watch::waiting_now(),
                                                             (raised == "") ? "none" : raised, raise), test)
+            end_run(phase, "the run timeout", "expired", "A2C_RUN_TIMEOUT");
+        endfunction
+
+        // Ends the run phase and every other running task phase now, and
+        // from then on each task phase other than run as it begins, so
+        // extract_phase and check_phase run once. by names the cause, such
+        // as "the run timeout", for the end-of-test reports, how says what
+        // it did, such as "expired", and id is what it reported under.
+        // Reports nothing itself.
+        function void end_run(uvm_phase run, string by, string how, string id);
+            uvm_phase                held[$];
+            a2c_run_timeout_phase_cb cb = new();
+            if (expired) return;
+            expired          = 1;
+            a2c_run_ended_at = $realtime;
+            a2c_run_ended_by = by;
+            a2c_run_ended_id = id;
+            ended_how        = how;
+            running_phases(held);
             cb.timeout = this;
             uvm_callbacks#(uvm_phase, uvm_phase_cb)::add(null, cb);
-            phase.end_prematurely();
+            run.end_prematurely();
             foreach (held[i]) held[i].end_prematurely();
         endfunction
 

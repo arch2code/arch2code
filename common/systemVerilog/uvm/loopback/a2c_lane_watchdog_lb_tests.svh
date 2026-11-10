@@ -876,6 +876,9 @@
     //     on, and not once it is off;
     //   - lone: with one lane dead, the other stuck fires A2C_LONE_STALL on
     //     the lone_lane_cycles-th clock, and 0 turns the rule off;
+    //   - Mode A: the one lane waiting fires A2C_BOTH_STALL on the
+    //     joint_stall_cycles-th clock, a handshake elsewhere restarts the
+    //     count, an idle lane never stalls, and 0 turns the rule off;
     //   - after one quiet clock, wait_text() names the lanes that waited in
     //     each of its forms, and joint_waiting() says whether one did,
     //     whatever joint_stall_cycles;
@@ -903,6 +906,13 @@
             wd.lone_lane_cycles   = lone;
             wd.joint_stall_cycles = joint;
             wd.dead[A2C_MODEL_LANE] = model_dead;
+            return wd;
+        endfunction
+
+        // A Mode A watchdog, of one lane.
+        protected function a2c_lane_watchdog make_one(int unsigned joint);
+            a2c_lane_watchdog wd = new(master, "unit", 1, "item", "nothing");
+            wd.joint_stall_cycles = joint;
             return wd;
         endfunction
 
@@ -1009,6 +1019,10 @@
             expect_rule("joint while trailing, skew off", make(0, 3, 5), 20, 1, 0, 5, A2C_BOTH_STALL);
             expect_rule("lone", make(10, 3, 5, 1), 20, 0, 0, 3, A2C_LONE_STALL);
             expect_rule("lone off", make(10, 0, 5, 1), 100, 0, 0, 0, A2C_PROGRESS);
+            expect_rule("Mode A joint", make_one(5), 20, 0, 0, 5, A2C_BOTH_STALL);
+            expect_rule("Mode A joint after a handshake on another port", make_one(5), 20, 0, 0, 10, A2C_BOTH_STALL, 4);
+            expect_rule("Mode A joint, the lane idle", make_one(5), 100, 0, 0, 0, A2C_PROGRESS, 0, 1);
+            expect_rule("Mode A joint off", make_one(0), 100, 0, 0, 0, A2C_PROGRESS);
             expect_text("both lanes, one text", make(10, 3, 5), 0, 0, "x", "x", "unit (uvm_test_top.master), both lanes waiting for x");
             expect_text("both lanes, two texts", make(10, 3, 5), 0, 0, "x", "y",
                         "unit (uvm_test_top.master), the DUT lane waiting for x and the model lane for y");

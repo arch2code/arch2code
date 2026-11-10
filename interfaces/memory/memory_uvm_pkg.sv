@@ -512,7 +512,7 @@ package memory_uvm_pkg;
             if (held_dut == null) return;
             `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with a read of X or Z that no access followed, after %0d pairs: DUT %s, model %s%s",
                                               get_full_name(), pairs, held_dut.convert2string(), held_model.convert2string(),
-                                              a2c_run_timeout_clause()))
+                                              a2c_run_ended_clause()))
         endfunction
     endclass : memory_comparator
 

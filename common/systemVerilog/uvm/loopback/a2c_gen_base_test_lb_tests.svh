@@ -146,11 +146,13 @@
     // output_deadline_cycles, and the catch-up takes each replay log's
     // deadline. +a2c_drain_cut_expected=1 reports the drain's cuts as
     // UVM_INFO. A master in Mode B declares a lane dead when it trails
-    // the other by lane_skew_cycles clocks, the other lane dead too
+    // the other by lane_skew_cycles clocks, and the other lane dead too
     // when, left alone, it makes no progress for lone_lane_cycles
-    // clocks, and the masters declare every live lane dead when no
-    // port makes a handshake for joint_stall_cycles clocks while a
-    // lane waits. Left at -1 each keeps the master's own
+    // clocks. In either mode a master that holds an item while no port
+    // makes a handshake for joint_stall_cycles clocks raises one
+    // A2C_JOINT_STALL. In Mode B the masters then declare every live
+    // lane dead, and in Mode A the run ends there, as at the run
+    // timeout. Left at -1 each keeps the master's own
     // 200000, +a2c_lane_skew_cycles, +a2c_lone_lane_cycles and
     // +a2c_joint_stall_cycles override them, and 0 turns a rule off. A
     // run that sends nothing on an input and expects no output
@@ -878,7 +880,10 @@
     //     missing, n_declared and n_recorded, naming the timeout, and with
     //     n_extra the A2C_TXN_COUNT of the extra transactions, which does
     //     not name it;
-    //   - with want_joint, one A2C_JOINT_STALL before the timeout.
+    //   - with want_joint, one A2C_JOINT_STALL before the timeout;
+    //   - with joint_end, the Mode A joint stall's end of the run instead:
+    //     no A2C_RUN_TIMEOUT, check_phase in the stall's time step, and the
+    //     reports and infos above naming the joint stall rule.
     // This test fixes the budget at 500 clocks.
     class gen_base_run_timeout_mode_a_test extends lb_gen_base;
         bit                  mode_b;
@@ -903,13 +908,14 @@
         // timeout.
         string               want_cmp[$];
         bit                  want_joint;
+        bit                  joint_end;
         lb_timed_demoter     timeouts;
         lb_recording_demoter counts;
         lb_recording_demoter replays;
-        lb_recording_demoter joints;
+        lb_timed_demoter     joints;
         lb_recording_demoter cmps;
         lb_info_recorder     infos;
-        // a2c_run_timeout_clause() and death_context() in the timeout's time
+        // a2c_run_ended_clause() and death_context() in the timeout's time
         // step, after it, when the run phase may still raise a report.
         string               clause_in_step = "unset";
         string               death_in_step = "unset";
@@ -929,12 +935,15 @@
         endfunction
 
         // A derived budget of floor + factor x the work, which the test
-        // expects to be want_work, want_sent of it sent on the inputs. The
-        // output deadline, the one progress bound in Mode A, is kept below
-        // the floor, with a quiet window below it.
+        // expects to be want_work, want_sent of it sent on the inputs. Of
+        // the two progress bounds in Mode A, the output deadline is kept
+        // below the floor, with a quiet window below it, and the joint
+        // stall rule, which counts while rv waits, is off, so the budget
+        // alone ends the run.
         protected function void derive(int unsigned floor, int unsigned factor, int unsigned want_work, int unsigned want_sent);
             quiet_cycles             = 5;
             output_deadline_cycles   = 10;
+            joint_stall_cycles       = 0;
             run_timeout_cycles       = -1;
             run_timeout_floor_cycles = floor;
             run_timeout_factor       = factor;
@@ -956,10 +965,11 @@
             void'(demote("A2C_RUN_TIMEOUT", timeouts));
             counts   = demote("A2C_TXN_COUNT");
             replays  = demote("A2C_REPLAY");
-            joints   = demote("A2C_JOINT_STALL");
+            joints   = lb_timed_demoter::type_id::create("demote_A2C_JOINT_STALL");
+            void'(demote("A2C_JOINT_STALL", joints));
             cmps     = demote("A2C_MODEL_CMP");
             infos    = lb_info_recorder::type_id::create("infos");
-            infos.id = "A2C_RUN_TIMEOUT";
+            infos.id = joint_end ? "A2C_JOINT_STALL" : "A2C_RUN_TIMEOUT";
             uvm_report_cb::add(null, infos);
             uvm_config_db#(bit)::set(this, "env", "lb_mode_b", mode_b);
             super.build_phase(phase);
@@ -978,8 +988,8 @@
             super.start_of_simulation_phase(phase);
             fork
                 begin
-                    wait (a2c_run_timed_out_at >= 0);
-                    clause_in_step = a2c_run_timeout_clause();
+                    wait (a2c_run_ended_at >= 0);
+                    clause_in_step = a2c_run_ended_clause();
                     death_in_step  = a2c_replay_drain::death_context($realtime);
                 end
             join_none
@@ -1030,13 +1040,16 @@
 
         virtual function void report_phase(uvm_phase phase);
             uvm_report_server srv = uvm_report_server::get_server();
-            realtime          want_at = released_at + want_cycles * 10ns;
+            string            end_by = joint_end ? "the joint stall rule" : "the run timeout";
+            string            end_id = joint_end ? "A2C_JOINT_STALL" : "A2C_RUN_TIMEOUT";
+            string            end_how = joint_end ? "fired" : "expired";
+            realtime          want_at = !joint_end ? released_at + want_cycles * 10ns : (joints.at.size() != 0) ? joints.at[0] : -1;
             int unsigned      w = stimulus_sent() + outputs_declared();
             string            rate = (w == 0) ? "no work declared" : $sformatf("%0.1f clocks per unit of the work declared, W %0d", real'(want_cycles) / w, w);
             string            head = $sformatf("%s: the run phase has not ended after %0d clocks of clk, its run timeout: %s. %s. Ports waiting now: %s",
                                                get_type_name(), want_cycles, rate, want_how, want_ports);
             string            tail = {want_ports_end, ". Objections still raised by: ", want_objectors, ". ", want_raise};
-            string            cut = $sformatf("; the run timeout ended the run phase at %0t (A2C_RUN_TIMEOUT), which may account for this", want_at);
+            string            cut = $sformatf("; %s ended the run phase at %0t (%s), which may account for this", end_by, want_at, end_id);
             `uvm_info("LB_STATS", $sformatf("released at %0t, A2C_RUN_TIMEOUT at %p, check_phase at %0t, %0d extract and %0d check; %0d A2C_TXN_COUNT, %0d A2C_REPLAY, %0d A2C_JOINT_STALL: %p; infos %p",
                                             released_at, timeouts.at, checked_at, extracts, checks, counts.demoted, replays.demoted, joints.demoted,
                                             timeouts.messages, infos.messages), UVM_NONE)
@@ -1050,25 +1063,25 @@
                 if (infos.messages.size() != 1 || !(a2c_contains(infos.messages[0], ran) || a2c_contains(infos.messages[0], ran_before))) begin
                     `uvm_error("LB_GEN", $sformatf("expected one A2C_RUN_TIMEOUT info containing '%s', got %p", ran, infos.messages))
                 end
-            end else if (timeouts.demoted != 1) begin
-                `uvm_error("LB_GEN", $sformatf("expected one A2C_RUN_TIMEOUT, got %0d: %p", timeouts.demoted, timeouts.messages))
+            end else if (timeouts.demoted != !joint_end) begin
+                `uvm_error("LB_GEN", $sformatf("expected %0d A2C_RUN_TIMEOUT, got %0d: %p", !joint_end, timeouts.demoted, timeouts.messages))
             end else begin
-                if (timeouts.at[0] != want_at) `uvm_error("LB_GEN", $sformatf("A2C_RUN_TIMEOUT at %0t, expected %0t", timeouts.at[0], want_at))
-                if (checked_at != want_at + check_after) begin
-                    `uvm_error("LB_GEN", $sformatf("check_phase ran at %0t, expected %0t after the timeout, %0t", checked_at, check_after, want_at + check_after))
+                if (!joint_end && timeouts.at[0] != want_at) `uvm_error("LB_GEN", $sformatf("A2C_RUN_TIMEOUT at %0t, expected %0t", timeouts.at[0], want_at))
+                if (want_at < 0 || checked_at != want_at + check_after) begin
+                    `uvm_error("LB_GEN", $sformatf("check_phase ran at %0t, expected %0t after the end of the run, %0t", checked_at, check_after, want_at + check_after))
                 end
-                if (!a2c_contains(timeouts.messages[0], head) || !a2c_contains(timeouts.messages[0], tail)) begin
+                if (!joint_end && (!a2c_contains(timeouts.messages[0], head) || !a2c_contains(timeouts.messages[0], tail))) begin
                     `uvm_error("LB_GEN", $sformatf("A2C_RUN_TIMEOUT reads '%s', expected '%s...%s'", timeouts.messages[0], head, tail))
                 end
                 if (infos.messages.size() != want_late.size()) begin
-                    `uvm_error("LB_GEN", $sformatf("expected %0d A2C_RUN_TIMEOUT infos after the timeout, got %p", want_late.size(), infos.messages))
+                    `uvm_error("LB_GEN", $sformatf("expected %0d %s infos after the end of the run, got %p", want_late.size(), end_id, infos.messages))
                 end else begin
                     foreach (want_late[i]) begin
-                        string late = $sformatf("the run timeout, which expired at %0t, ended the %s", want_at, want_late[i]);
-                        if (infos.messages[i] != late) `uvm_error("LB_GEN", $sformatf("A2C_RUN_TIMEOUT info reads '%s', expected '%s'", infos.messages[i], late))
+                        string late = $sformatf("%s, which %s at %0t, ended the %s", end_by, end_how, want_at, want_late[i]);
+                        if (infos.messages[i] != late) `uvm_error("LB_GEN", $sformatf("%s info reads '%s', expected '%s'", end_id, infos.messages[i], late))
                     end
                 end
-                if (clause_in_step != "" || a2c_contains(death_in_step, "A2C_RUN_TIMEOUT")) begin
+                if (clause_in_step != "" || a2c_contains(death_in_step, end_id)) begin
                     `uvm_error("LB_GEN", $sformatf("a report in the timeout's own time step would cite it: clause '%s', death context '%s'", clause_in_step, death_in_step))
                 end
                 if (cmps.count(cut) != want_cmp.size()) `uvm_error("LB_GEN", $sformatf("A2C_MODEL_CMP does not name the timeout ('%s'): %p", cut, cmps.messages))
@@ -1432,6 +1445,51 @@
         endfunction
     endclass : gen_base_run_timeout_common_phase_test
 
+    // Mode A: rv's one lane waits, with a joint stall bound of 100 below
+    // the fixed budget of 500. The A2C_JOINT_STALL ends the run in its own
+    // time step as the timeout would, together with main_phase, which
+    // holder holds: no A2C_RUN_TIMEOUT, extract_phase and check_phase once,
+    // and the A2C_TXN_COUNT of the 3 missing transactions names the joint
+    // stall rule.
+    class gen_base_joint_end_mode_a_test extends gen_base_run_timeout_mode_a_test;
+        `uvm_component_utils(gen_base_joint_end_mode_a_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            joint_end          = 1;
+            want_joint         = 1;
+            joint_stall_cycles = 100;
+            hold_main          = 1;
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            if (joints.count("With one DUT no lane dies, and the run ends here.") != 1) begin
+                `uvm_error("LB_GEN", $sformatf("the A2C_JOINT_STALL does not say the run ends there: %p", joints.messages))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_joint_end_mode_a_test
+
+    // joint_end with lb_late_phase of the common schedule after the run
+    // phase, which holder holds: the stall ends it as it begins, and its
+    // info names the joint stall rule.
+    class gen_base_joint_end_common_phase_test extends gen_base_joint_end_mode_a_test;
+        `uvm_component_utils(gen_base_joint_end_common_phase_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            uvm_domain::get_common_domain().add(lb_late_phase::get(), .after_phase(uvm_run_phase::get()), .before_phase(uvm_extract_phase::get()));
+            want_late = '{"late phase of domain common as it began. Objections raised by: uvm_test_top.env.holder"};
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            lb_gen_hang_env e;
+            super.connect_phase(phase);
+            void'($cast(e, env));
+            e.holder.hold_late = 1;
+        endfunction
+    endclass : gen_base_joint_end_common_phase_test
+
     // Mode B: the timeout comes while the drain waits for the model lane to
     // replay the 2 responses the DUT lane recorded. The drain's objection
     // is named, the drain ends with the run phase and drops nothing after,
@@ -1487,6 +1545,8 @@
     //     want_timeout, before the timeout, by at most the margin and
     //     rule_slack clocks, and want_rule_errors errors of them;
     //   - one A2C_RUN_TIMEOUT error with want_timeout, and none without;
+    //   - with want_end_at_rule, that check_phase ran in the time step of
+    //     the rule's first error, which ended the run;
     //   - that extract_phase and check_phase run once each.
     class lb_gen_defer_base extends lb_gen_base;
         bit                    mode_b;
@@ -1499,6 +1559,9 @@
         int unsigned           want_defers = 1;
         int unsigned           rule_slack = 24;
         uvm_severity           rule_severity = UVM_ERROR;
+        // The rule's first error ends the run in its own time step.
+        bit                    want_end_at_rule;
+        realtime               checked_at = -1;
         lb_timed_demoter       timeouts;
         lb_timed_demoter       rules;
         lb_timed_info_recorder infos;
@@ -1580,6 +1643,7 @@
 
         virtual function void check_phase(uvm_phase phase);
             checks++;
+            checked_at = $realtime;
             super.check_phase(phase);
         endfunction
 
@@ -1607,6 +1671,9 @@
                     && !(rules.at[0] < timeouts.at[0] && timeouts.at[0] - rules.at[0] <= 10ns * (A2C_RUN_TIMEOUT_DEFER_MARGIN + rule_slack))) begin
                     `uvm_error("LB_GEN", $sformatf("%s at %0t is not just before the timeout at %0t", rule_id, rules.at[0], timeouts.at[0]))
                 end
+            end
+            if (want_end_at_rule && (rules == null || rules.at.size() == 0 || checked_at != rules.at[0])) begin
+                `uvm_error("LB_GEN", $sformatf("check_phase ran at %0t, not in the time step of the first %s", checked_at, rule_id))
             end
             if (extracts != 1 || checks != 1) `uvm_error("LB_GEN", $sformatf("extract_phase ran %0d times and check_phase %0d, expected once each", extracts, checks))
             if (srv.get_severity_count(UVM_ERROR) + srv.get_severity_count(UVM_FATAL) == 0) `uvm_info("LB_PASS", get_type_name(), UVM_NONE)
@@ -1958,6 +2025,45 @@
             super.report_phase(phase);
         endfunction
     endclass : gen_base_run_timeout_defer_dog_stop_short_test
+
+    // Mode A: rv's one lane waits, and the joint stall rule, the one lane
+    // rule of Mode A, counts toward the bound of 300 past the budget of 100
+    // and reports first. The stall ends the run, so the timeout, deferred
+    // to it, never expires.
+    class gen_base_run_timeout_defer_joint_mode_a_test extends gen_base_run_timeout_defer_joint_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_joint_mode_a_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b           = 0;
+            want_timeout     = 0;
+            want_end_at_rule = 1;
+        endfunction
+    endclass : gen_base_run_timeout_defer_joint_mode_a_test
+
+    // defer_dog_paused in Mode A: the deferral's clock-stop allowance
+    // covers the pause of the one lane's clock, and the stall ends the run.
+    class gen_base_run_timeout_defer_dog_paused_mode_a_test extends gen_base_run_timeout_defer_dog_paused_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_paused_mode_a_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b           = 0;
+            want_timeout     = 0;
+            want_end_at_rule = 1;
+        endfunction
+    endclass : gen_base_run_timeout_defer_dog_paused_mode_a_test
+
+    // defer_dog_stopped in Mode A: the joint stall rule of a lane whose
+    // clock has stopped is left out.
+    class gen_base_run_timeout_defer_dog_stopped_mode_a_test extends gen_base_run_timeout_defer_dog_stopped_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_stopped_mode_a_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b = 0;
+        endfunction
+    endclass : gen_base_run_timeout_defer_dog_stopped_mode_a_test
 
     // Scenario (a) for the drain: in Mode B the model lane never replays
     // the 2 responses the DUT lane recorded, so the drain runs to its
