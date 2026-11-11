@@ -17,7 +17,7 @@ Pick the right port call for each interface family in a SystemC model.
 *   A register or memory the block owns is a member, not a port. See **systemc-core**.
 
 ### Register array ports
-A child that takes a whole array register (`count:`, a `registerConnections:` row without `index:`) gets an `sc_vector` of ports. A child that takes one element (`index: k`) gets a plain port. The owner holds an `sc_vector` of channels. From `examples/mixed`:
+A child that takes a whole array register (`count:`, a `registerConnections:` row without `index:`) gets an `sc_vector` of ports. A child that takes one element (`index: k`) gets a plain port. A container that owns the array and gives it to children holds an `sc_vector` of channels. A leaf that owns the array and uses it itself holds `std::array< hwRegister<...>, N >` and no channels, as `blockA` in `examples/apbDecode` does. From `examples/mixed`:
 
 ```cpp
 // blockFBase: the whole array

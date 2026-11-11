@@ -195,7 +195,7 @@ connectionMaps:
 | `count` | Makes an `rw`, `ro` or `ext` register an array of `count` elements, even when `count` is 1. An integer or a constant that is not parameterizable, resolving to at least 1. `make db` rejects a block parameter, and `count` on `regType: memory`. Without it the register is a scalar. |
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. Every element of an array takes it. |
-| `offset` | Manual offset. Default `0`, auto-assigned. |
+| `offset` | Assigned by address generation, which overwrites an authored value. |
 
 ### Memories (`memories:`)
 
@@ -264,7 +264,7 @@ registerConnections:
   - {register: extArr, block: blockB, instance: uBlockD}
 ```
 
-An instance takes the whole array or one element. A slice, a run of elements to one instance, is not supported. Instance arrays are not supported either (see `count` under [Instances](#2-instances-instances)), so each consumer is its own instance with its own row. `examples/mixed` and `examples/apbDecode` test register arrays under SystemC and Verilator. The VCS and Xcelium flows have no register-array coverage.
+An instance takes the whole array or one element. A slice, a run of elements to one instance, is not supported. Instance arrays are not supported either (see `count` under [Instances](#2-instances-instances)), so each consumer is its own instance with its own row.
 
 `make db` checks the rows of each register together. Each rule below gives the fix:
 
@@ -277,7 +277,7 @@ An instance takes the whole array or one element. A slice, a run of elements to 
 *   **An `ro` or `ext` element has one consumer.** The consumer drives an `ro` element and answers an `ext` one. A whole `ro` or `ext` array goes to one instance, with no `index` rows beside it. With `index` rows, each element has exactly one. A scalar `ro` or `ext` register goes to one instance. Connect the whole array to one instance, or give each element its own `index` row.
 *   **An `rw` element may have any number of readers.** Whole and `index` rows may mix across different child blocks, as `rwArr` does above, but not within one block.
 *   **A child block's register port is one port.** Every owner that gives a block a register of a given name, in any container, gives it the same `regType`, structure, `count` and form. Align the two registers, connect both with `index` or both without, or rename one.
-*   **An array's names are its own.** The firmware header spells an array's stride and count as `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`. Element k is named `<reg>_<k>`. `make db` rejects a register or `regAccess` memory of the owner whose define or name matches one of these, and a port named `<reg>_<k>` on a block that takes the whole array. Rename one of them.
+*   **An array's names are its own.** The opt-in `regAddresses` firmware header (`manage-address-space.md` section 4) spells an array's stride and count as `REG_<BLOCK>_<REG>_STRIDE` and `REG_<BLOCK>_<REG>_COUNT`. Element k is named `<reg>_<k>` in the register handler's RTL and the Verilator wrapper's flat pins, and the model registers it as `<reg>[k]`. `make db` rejects a register or `regAccess` memory of the owner whose define matches one of these defines or whose name is an element name `<reg>_<k>`, and a port named `<reg>_<k>` on a block that takes the whole array. Rename one of them.
 
 ## 7. Clocks and resets
 
