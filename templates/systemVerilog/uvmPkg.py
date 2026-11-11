@@ -246,11 +246,15 @@ def agent_build(port, variant):
              '        if (dual_dut) begin',
              f'            if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}_model", {cfg}.model_vif)) begin',
              f'                `uvm_fatal("A2C_CFG", "no {vif} \'{name}_model\'")',
-             '            end',
-             '        end',
-             f"        {cfg}.clk_vif = {port['clockVif']};",
-             f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};",
-             f'        {cfg}.port_name = "{name}";']
+             '            end']
+    if port['modelCredit']:
+        lines += [f'            if (!uvm_config_db#(virtual a2c_credit_if)::get(this, "", "{name}_credit", {cfg}.credit_vif)) begin',
+                  f'                `uvm_fatal("A2C_CFG", "no virtual a2c_credit_if \'{name}_credit\'")',
+                  '            end']
+    lines += ['        end',
+              f"        {cfg}.clk_vif = {port['clockVif']};",
+              f"        {cfg}.role = a2c_uvm_pkg::{'A2C_SRC' if port['role'] == 'dst' else 'A2C_DST'};",
+              f'        {cfg}.port_name = "{name}";']
     if port['backpressureOverridable']:
         lines.append(f"        {cfg}.no_backpressure = {int(not port['backpressure'])};")
     if port['maxTransferBytes'] is not None:

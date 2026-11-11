@@ -36,6 +36,11 @@ def render_class(args, prj, data):
     ports = [(portData, intf_gen_utils.sc_gen_modport_signal_blast(portData, prj, data, swap_dir=True))
              for portGroup in data['ports'].values() for portData in portGroup.values()]
     pins = [pin for _, sig in ports for pin in sig['hdl_pins']]
+    credited = [port['name'] for port in uvm['ports'] if port['modelCredit']]
+    ordered = [port['name'] for port in uvm['ports'] if port['writeOrder']]
+    if len(ordered) < 2:
+        ordered = []
+    creditSignals = [name for port in credited for name in (f'{port}_model_credit', f'{port}_model_held')]
 
     out = ['#include <format>', '#include <memory>', '#include <string>',
            '#include <type_traits>', '#include "systemc.h"', '#include "blockBase.h"',
@@ -84,12 +89,14 @@ def render_class(args, prj, data):
                 ',\n'.join(f'{row["reset"]}("{row["reset"]}", false)' for row in data['resets']),
                 sec_clock_half_ctor_init(args, prj, data),
                 'uvm_done("uvm_done")', 'uvm_errors("uvm_errors")', 'rtl_dut("rtl_dut")', 'model_dut("model_dut")',
+                *[f'{name}("{name}")' for name in creditSignals],
                 'm_eot(true)']
     ctorInit = ',\n'.join(entry for entry in ctorInit if entry)
 
     binds = [f"tb_hdl.{pin['pin']}({sig['hdl_inst_name']}.{pin['signal']});"
              for _, sig in ports for pin in sig['hdl_pins']]
     binds += [f'tb_hdl.{name}({name});' for name in intf_gen_utils.clock_reset_port_names(data)]
+    binds += [f'tb_hdl.{name}({name});' for name in creditSignals]
     binds += [f'tb_hdl.{name}({name});' for name in ('uvm_done', 'uvm_errors', 'rtl_dut', 'model_dut')]
 
     out += ['public:',
@@ -120,6 +127,17 @@ def render_class(args, prj, data):
                       f"{bfm}->hdl_if_p({sig['hdl_inst_name']});",
                       f"{bfm}->clk({portData['domainClock']});",
                       f"{bfm}->rst_n({portData['domainReset']});"]
+            if portData['name'] in credited:
+                # Only Mode B has a DUT lane for the model lane to wait for.
+                model += [f'if ({run}::rtlDut) {{',
+                          f"    {bfm}->setModelCredit(&{portData['name']}_model_credit, &{portData['name']}_model_held);",
+                          '}']
+            if portData['name'] in ordered:
+                # With the RTL as well, the model lane replays the RTL's
+                # words, so the order would only delay it.
+                model += [f'if (!{run}::rtlDut) {{',
+                          f'    {bfm}->setWriteOrder(&m_writeOrder);',
+                          '}']
         out += ['',
                 "        // The model and its BFMs exist when the run's DUT set holds the model;",
                 '        // with the RTL alone the pins toward SystemC stay bound to idle signals.',
@@ -146,6 +164,7 @@ def render_class(args, prj, data):
             '    sc_signal<sc_bv<32>> uvm_errors;',
             '    sc_signal<bool> rtl_dut;',
             '    sc_signal<bool> model_dut;',
+            *[f'    sc_signal<sc_bv<32>> {port}_model_credit;\n    sc_signal<bool> {port}_model_held;' for port in credited],
             '',
             indented('\n'.join(sig['hdl_if_decl'] for _, sig in ports), 4)]
     if hasMdl:
@@ -153,6 +172,8 @@ def render_class(args, prj, data):
                 f'    std::unique_ptr<{blockName}Channels{cfg}> chnl;',
                 f'    std::shared_ptr<{blockName}Base{cfg}> dut;']
         out += [f"    std::unique_ptr<{sig['bfm_type']}> {sig['bfm_inst_name']};" for _, sig in ports]
+        if ordered:
+            out.append('    memory_write_order m_writeOrder;')
     out += ['',
             '    endOfTest m_eot;',
             '',

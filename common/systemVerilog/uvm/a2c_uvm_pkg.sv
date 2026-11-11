@@ -1401,6 +1401,11 @@ package a2c_uvm_pkg;
             return waiting >= 0;
         endfunction
 
+        // The wait model_waiting() reports, for the stall reports.
+        function string waiting_text();
+            return $sformatf("%s, for transaction %0d since %0t", get_full_name(), waiting + 1, waiting_since);
+        endfunction
+
         // For a driver whose model lane's master withdrew the request it
         // waited to replay a response for, so the lane waits for no record
         // until its next request calls can_replay() again.
@@ -1721,6 +1726,19 @@ package a2c_uvm_pkg;
             end
             if (s != "") s = {s, ", which may be related"};
             return {s, a2c_run_ended_clause()};
+        endfunction
+
+        // A sentence naming each responder whose model lane waits for a
+        // transaction the DUT lane has not made, or "". A model lane held
+        // there, such as a memory port's held for credit, can be what keeps
+        // a master's model lane from taking its next item.
+        static function string waiting_responders();
+            string s = "";
+            foreach (logs[i]) begin
+                if (!logs[i].model_waiting()) continue;
+                s = {s, (s == "") ? "" : "; ", logs[i].waiting_text()};
+            end
+            return (s == "") ? "" : {"Responders whose model lane waits for a transaction the DUT lane has not made: ", s, ". "};
         endfunction
 
         static function void request(uvm_phase phase, a2c_replay_log_base log);
@@ -2075,9 +2093,10 @@ package a2c_uvm_pkg;
             mark(l, "A2C_SKEW");
             fate = dead[1 - l] ? {"No lane is left, so ", none_left, "."}
                                : {"The ", a2c_lane_name(a2c_lane_e'(1 - l)), " lane serves every ", unit, " from now on."};
-            `uvm_error_context("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s",
+            `uvm_error_context("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s%s",
                                                      port_name, why, knob, a2c_lane_name(l),
-                                                     a2c_replay_drain::death_context($realtime, who()), cause, fate), master)
+                                                     a2c_replay_drain::death_context($realtime, who()), cause,
+                                                     a2c_replay_drain::waiting_responders(), fate), master)
             tell(l, since);
             return 1;
         endfunction
@@ -2371,8 +2390,9 @@ package a2c_uvm_pkg;
                 if (!dogs[i].joint_waiting()) continue;
                 ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
             end
-            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s",
-                                                            by.port_name, by.joint_stall_cycles, ports, after), by.master)
+            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s%s",
+                                                            by.port_name, by.joint_stall_cycles, ports,
+                                                            a2c_replay_drain::waiting_responders(), after), by.master)
             foreach (dogs[i]) dogs[i].die_jointly();
             // Mode B lanes die and the test reaches its own end; a Mode A
             // master would wait for ever. Without a run timeout, in a test

@@ -1,0 +1,101 @@
+# uvmMem reads and writes one memory through two ports. Each command reads a
+# word through the DUT's rd port, writes its own word through the wr port, and
+# the DUT sends the word it read on out, so a command reads what an earlier
+# command wrote. uStore holds the memory both ports reach in the SystemC
+# testbench; the UVM testbench serves both from one a2c_mem_model instead.
+
+constants:
+    UVM_MEM_WORDS: { value: 16, desc: "Words in the memory the wr and rd ports reach" }
+    UVM_MEM_ADDR_WIDTH: { eval: "$clog2($UVM_MEM_WORDS)", desc: "Memory address width in bits" }
+    UVM_MEM_CMDS: { value: 64, desc: "Commands uSrc sends in the SystemC testbench" }
+    UVM_MEM_DATA_BASE: { value: 4096, desc: "Word uSrc's command 0 writes; command i writes UVM_MEM_DATA_BASE + i" }
+
+types:
+    uvmMemAddrT: { width: UVM_MEM_ADDR_WIDTH, desc: "Memory word address" }
+    uvmMemDataT: { width: 32, desc: "Memory word" }
+
+structures:
+    uvmMemAddrSt:
+        address: { varType: uvmMemAddrT, generator: address }
+    uvmMemWordSt:
+        word: { varType: uvmMemDataT }
+    uvmMemCmdSt:
+        wrAddr: { varType: uvmMemAddrT, desc: "Address the command writes" }
+        rdAddr: { varType: uvmMemAddrT, desc: "Address the command reads before its write" }
+        data: { varType: uvmMemDataT, desc: "Word the command writes" }
+
+interfaces:
+    uvmMemCmdIf:
+        interfaceType: rdy_vld
+        desc: "Copy commands"
+        structures:
+            - { structure: uvmMemCmdSt, structureType: data_t }
+    uvmMemWordIf:
+        interfaceType: rdy_vld
+        desc: "Words read back"
+        structures:
+            - { structure: uvmMemWordSt, structureType: data_t }
+    uvmMemPortIf:
+        interfaceType: memory
+        desc: "One port of the shared memory"
+        structures:
+            - { structure: uvmMemAddrSt, structureType: addr_t }
+            - { structure: uvmMemWordSt, structureType: data_t }
+
+blocks:
+    uvmMem_tb:
+        desc: "Testbench container for uvmMem (root container)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    uvmMem:
+        desc: "DUT: reads through rd for each command, writes the command's word through wr and sends the word read on out"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: true
+        hasUvm: true
+        ports:
+            cmd: { interface: uvmMemCmdIf, direction: dst }
+            out: { interface: uvmMemWordIf, direction: src }
+            wr:  { interface: uvmMemPortIf, direction: src }
+            rd:  { interface: uvmMemPortIf, direction: src }
+    uvmMemSrc:
+        desc: "Sends UVM_MEM_CMDS commands; command i writes address i and reads address i - 1"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            cmd: { interface: uvmMemCmdIf, direction: src }
+    uvmMemSink:
+        desc: "Checks each word against the one the previous command wrote"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: uvmMemWordIf, direction: dst }
+    uvmMemStore:
+        desc: "The memory both DUT ports reach, zero at the start"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            wr: { interface: uvmMemPortIf, direction: dst }
+            rd: { interface: uvmMemPortIf, direction: dst }
+
+instances:
+    uvmMem_tb: { container: uvmMem_tb, instanceType: uvmMem_tb,   instGroup: top }
+    u_uvmMem:  { container: uvmMem_tb, instanceType: uvmMem,      instGroup: top }
+    uSrc:      { container: uvmMem_tb, instanceType: uvmMemSrc,   instGroup: top }
+    uSink:     { container: uvmMem_tb, instanceType: uvmMemSink,  instGroup: top }
+    uStore:    { container: uvmMem_tb, instanceType: uvmMemStore, instGroup: top }
+
+connections:
+    - { interface: uvmMemCmdIf,  src: uSrc,     srcport: cmd, dst: u_uvmMem, dstport: cmd }
+    - { interface: uvmMemWordIf, src: u_uvmMem, srcport: out, dst: uSink,    dstport: in }
+    - { interface: uvmMemPortIf, src: u_uvmMem, srcport: wr,  dst: uStore,   dstport: wr }
+    - { interface: uvmMemPortIf, src: u_uvmMem, srcport: rd,  dst: uStore,   dstport: rd }

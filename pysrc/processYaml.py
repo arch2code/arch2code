@@ -1846,6 +1846,15 @@ class projectOpen:
                     'counter': f"{portData['name']}_counter"
                                if isOutput and elastic and not intfDef['addressBus'] else None,
                     'maxTransferBytes': maxTransferBytes,
+                    # A DUT src port of a type with no handshake, on a block
+                    # with a model: its responder's model lane waits on the
+                    # port's credit pins in Mode B. validateUvmBlocks reserves
+                    # the pin names under the same hasMdl rule.
+                    'modelCredit': (bool(intfDef['uvmModelCredit']) and portData['direction'] == 'src'
+                                    and bool(ret['blockInfo']['hasMdl'])),
+                    # A DUT src port whose BFM, the model's dst BFM, keeps
+                    # the model's program order across ports.
+                    'writeOrder': bool(intfDef['bfmWriteOrder']) and portData['direction'] == 'src',
                     # A port that binds no ID parameter carries no ID in the
                     # design, so its agent sends every burst with ID 0.
                     'idUnbound': bool(intfDef['uvmIdParam']) and any(
@@ -4041,10 +4050,11 @@ class projectOpen:
         # Pin list of the UVM testbench top around the given HDL top. The
         # testbench drives what the DUT samples and samples what it drives,
         # while the SystemC side drives the clocks and resets into both. The
-        # completion pins the SystemC wrapper watches come last. kind is port,
-        # clockReset or completion. A port pin carries its port's interface
-        # type and DUT-side role, and a pin typed by a payload carries the type
-        # as uvmTypeRef names it.
+        # credit pins of each port the uvm view marks modelCredit follow, and
+        # the completion pins the SystemC wrapper watches come last. kind is
+        # port, clockReset, credit or completion. A port pin carries its
+        # port's interface type and DUT-side role, and a pin typed by a
+        # payload carries the type as uvmTypeRef names it.
         inverse = {'input': 'output', 'output': 'input'}
         variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']]['tops'].values()}[hdlTop]
         uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
@@ -4058,6 +4068,14 @@ class projectOpen:
             port = uvmPorts[pin['port']]
             pins.append(dict(pin, kind='port', direction=inverse[pin['direction']], type=pinType,
                              interfaceType=port['interfaceType'], role=port['role']))
+        # A credited port's Mode B rendezvous pins, toward the model's BFM
+        # (section 9.12 of specs/SIMULATOR_INTEGRATION.md).
+        for port in ret['uvm']['ports']:
+            if not port['modelCredit']:
+                continue
+            credit = {'kind': 'credit', 'port': port['name'], 'signal': None, 'payload': None, 'type': None}
+            pins += [{'pin': f"{port['name']}_model_credit", 'direction': 'output', 'width': 32, 'vector': True, **credit},
+                     {'pin': f"{port['name']}_model_held", 'direction': 'input', 'width': 1, 'vector': False, **credit}]
         completion = {'kind': 'completion', 'port': None, 'signal': None, 'payload': None, 'type': None}
         return pins + [
             {'pin': 'uvm_done', 'direction': 'output', 'width': 1, 'vector': False, **completion},
@@ -5826,12 +5844,17 @@ class projectCreate:
         # agent may ask for them.
         for row in self.flatData['interface_defs'].values():
             where = f"Interface type '{row['interface_type']}' (file {row['_context']})"
-            for field in ('uvmMaxTransferBytes', 'uvmIdParam'):
+            for field in ('uvmMaxTransferBytes', 'uvmIdParam', 'uvmModelCredit'):
                 if row[field] and not row['uvmAgent']:
                     printError(f"{where} sets {field} but not uvmAgent: true. The generated env answers "
                                f"{field} with a member of the type's agent config, and only a type with an "
                                f"agent has one; remove {field} or ship the agent.")
                     failed = True
+            if row['bfmWriteOrder'] and not row['uvmAgent']:
+                printError(f"{where} sets bfmWriteOrder but not uvmAgent: true. Only the UVM SystemC wrapper "
+                           f"uses the write order, on the DUT ports of a block with hasUvm: true, which "
+                           f"need an agent; remove bfmWriteOrder or ship the agent.")
+                failed = True
             if row['uvmIdParam'] and ('parameters' not in row or row['uvmIdParam'] not in row['parameters']):
                 printError(f"{where} sets uvmIdParam '{row['uvmIdParam']}', which is not one of its "
                            f"parameters. Name the parameter that carries the transaction ID.")
@@ -5927,6 +5950,13 @@ class projectCreate:
                 if blockRow['hasMdl']:
                     tbNames[f"{portName}_model"] = \
                         f"the model DUT's interface instance '{portName}_model' of port '{portName}'"
+                    # Reserved whatever the direction, since the ports that
+                    # memoryConnections and registerConnections rows give
+                    # carry none; only a src port uses them.
+                    if self.flatData['interface_defs'][typeKey]['uvmModelCredit']:
+                        tbNames.update({f"{portName}_{suffix}": f"the Mode B {what} '{portName}_{suffix}' of port '{portName}'"
+                                        for suffix, what in (('model_credit', 'credit pin'), ('model_held', 'held pin'),
+                                                             ('credit', 'a2c_credit_if instance'))})
             named = ([('port', name) for name in boundary]
                      + [('clock', name) for name in domain.clocks]
                      + [('reset', name) for name in domain.resets])

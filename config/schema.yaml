@@ -149,6 +149,14 @@ interface_defs:
   # the parameter that carries the transaction ID; a port that leaves it
   # unbound gets its agent config's id_unbound set
   uvmIdParam: optional()
+  # the type has no handshake to hold a Mode B model lane, so each port's
+  # model lane waits on a2c_credit_if pins, <port>_model_credit and
+  # <port>_model_held, for the DUT lane's transaction of the same index
+  uvmModelCredit: optional(false)
+  # the type's SystemC dst BFM declares setWriteOrder(): a UVM SystemC
+  # wrapper whose run holds the model alone gives the BFMs of two or more
+  # such ports one memory_write_order
+  bfmWriteOrder: optional(false)
   parameters:
     _attribs: [optional, multiple]
     param: key

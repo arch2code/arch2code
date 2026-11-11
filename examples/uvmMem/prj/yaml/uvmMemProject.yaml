@@ -1,0 +1,24 @@
+# uvmMem: a UVM testbench whose DUT reaches one memory through two ports, a
+# write port and a read port. The UVM testbench serves both ports from one
+# a2c_mem_model, so in Mode B the model's read through one port waits for the
+# RTL's write through the other (SIMULATOR_INTEGRATION.md section 9.12).
+
+yamlFormat: 2
+projectName: uvmMem
+
+projectFiles:
+    - ../../yaml/uvmMem.yaml
+
+topInstance: uvmMem_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"

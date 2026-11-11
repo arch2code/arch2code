@@ -63,6 +63,12 @@
 //     instance feeds a non-parameterized boundary at an excluded-instance
 //     (tb/DUT) boundary.
 //
+// In the producer shapes the owned channel passes each request's observation
+// (memory_in_if::setRequestObserver) up to the parent side as the child's
+// request() starts, so an observer there sees the child's program order, not
+// the order this thunker's thread relays in. The consumer shapes relay toward
+// a completer that observes its own owned channel, so they pass nothing.
+//
 // In every shape the child-side port bind to the owned channel must occur
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
@@ -118,6 +124,7 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
+        passObservation();
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
     }
 
@@ -136,10 +143,21 @@ public:
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
+        passObservation();
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
     }
 
 private:
+    memory_out_if<UpA, UpD>* upOut()
+    {
+        return m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
+    }
+
+    void passObservation()
+    {
+        m_down_channel.setRequestObserver( [this]( bool isWrite ) { upOut()->observeRelayed( isWrite ); } );
+    }
+
     void thunkIn()
     {
         // Resolve the up-side interface once. For the port shape, sc_port
@@ -187,8 +205,7 @@ private:
         // asymmetry (complete() only on reads). Resolve the up-side
         // interface once, from the eager channel iface or (port shape) the
         // lazily-bound parent out port.
-        memory_out_if<UpA, UpD>* upOut =
-            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
+        memory_out_if<UpA, UpD>* upOut = this->upOut();
         while (true) {
             bool  isWrite = false;
             DownA addrIn;

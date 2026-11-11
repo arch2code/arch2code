@@ -3,14 +3,22 @@
 
 The generated env sets `<port>_cfg.max_transfer_bytes` on every port of a type
 flagged `uvmMaxTransferBytes: true`, and `<port>_cfg.id_unbound` on a port that
-leaves the parameter named by the type's `uvmIdParam` unbound (`getBDUvm` in
-pysrc/processYaml.py, `templates/systemVerilog/uvmPkg.py`). A flag on a type
+leaves the parameter named by the type's `uvmIdParam` unbound, and in Mode B
+`<port>_cfg.credit_vif` on every DUT src port of a type flagged
+`uvmModelCredit: true` (`getBDUvm` in pysrc/processYaml.py,
+`templates/systemVerilog/uvmPkg.py`). A flag on a type
 whose `<type>_config` lacks the member passes `make db` and fails only when a
 simulator compiles the env. A config that has the member on an unflagged type
 is never set, so its agent runs without the limit the model's channel needs,
-or compares IDs a port never drives. Both flags need `uvmAgent: true`, since
+or compares IDs a port never drives, or stops in Mode B for want of the
+credit pins its testbench top never carries. Every flag needs `uvmAgent: true`, since
 only a type with an agent has a config, and `uvmIdParam` must name one of the
 type's parameters.
+
+`bfmWriteOrder: true` makes the UVM SystemC wrapper call `setWriteOrder()` on
+the type's dst BFM, so it must agree with `<type>_bfm.h` declaring it: a flag
+without the declaration fails only when the wrapper compiles, and a declaration
+without the flag is never used. It also needs `uvmAgent: true`.
 
 Definitions are discovered by walking the shipped interface trees, Pro's
 included when present, so a newly flagged type is checked without anyone
@@ -30,11 +38,11 @@ pro_dir = os.path.join(os.path.dirname(base_dir), 'pro')
 INTERFACE_ROOTS = (os.path.join(base_dir, 'interfaces'), os.path.join(pro_dir, 'interfaces'))
 
 # (definition field, config member) pairs
-FLAGS = (('uvmMaxTransferBytes', 'max_transfer_bytes'), ('uvmIdParam', 'id_unbound'))
+FLAGS = (('uvmMaxTransferBytes', 'max_transfer_bytes'), ('uvmIdParam', 'id_unbound'), ('uvmModelCredit', 'credit_vif'))
 
 
 def declaration(member):
-    return re.compile(rf'^\s*(?:int|bit|logic|longint|shortint|integer)\b[^;=]*\b{member}\b', re.MULTILINE)
+    return re.compile(rf'^\s*(?:int|bit|logic|longint|shortint|integer|virtual)\b[^;=]*\b{member}\b', re.MULTILINE)
 
 
 def definitions():
@@ -98,6 +106,24 @@ def run_all_tests():
             elif isFlagged:
                 print(f"  PASS: {intfType} ({os.path.relpath(path, base_dir)}) sets {field} and "
                       f"{intfType}_config declares {member}")
+    if not any(d.get('bfmWriteOrder') for t, p, d in found):
+        problems.append("no shipped interface definition sets bfmWriteOrder; the discovery walk found nothing "
+                        "to check")
+    for intfType, path, definition in found:
+        isFlagged = bool(definition.get('bfmWriteOrder'))
+        if isFlagged and not definition.get('uvmAgent'):
+            problems.append(f"interface type '{intfType}' ({path}) sets bfmWriteOrder without uvmAgent: true.")
+        bfm = os.path.join(os.path.dirname(path), f'{intfType}_bfm.h')
+        declares = os.path.isfile(bfm) and re.search(r'\bsetWriteOrder\s*\(', open(bfm).read()) is not None
+        if isFlagged and not declares:
+            problems.append(f"interface type '{intfType}' ({path}) sets bfmWriteOrder but {bfm} declares no "
+                            f"setWriteOrder(). The UVM SystemC wrapper calls it; add it or remove the field.")
+        elif declares and not isFlagged:
+            problems.append(f"{bfm} declares setWriteOrder() but interface type '{intfType}' ({path}) does not "
+                            f"set bfmWriteOrder, so the UVM SystemC wrapper never calls it. Add the field.")
+        elif isFlagged:
+            print(f"  PASS: {intfType} ({os.path.relpath(path, base_dir)}) sets bfmWriteOrder and {intfType}_bfm.h "
+                  f"declares setWriteOrder()")
     for problem in problems:
         print(f"  FAIL: {problem}")
     if problems:

@@ -19,8 +19,10 @@ one-bit payload pin is a scalar bit, as the simulator shell binds a bool. The
 testbench module also declares names of its own: the DUT instance `dut`, the
 completion pins, the report server `srv` and one `<clock>_if` per clock,
 beside one `<port>_<signal>` pin per port signal and, for a block with a
-model, the model DUT's `<port>_model` interface per port, so a port, clock or
-reset named like one of them is rejected. A block without a model may name a
+model, the model DUT's `<port>_model` interface per port and, per port of a
+type that sets uvmModelCredit, the Mode B credit names `<port>_model_credit`,
+`<port>_model_held` and `<port>_credit`, so a port, clock or reset named like
+one of them is rejected. A block without a model may name a
 port `<port>_model`. A UVM register or memory row holds at most
 64 bits, so a register, or a memory whose rows the register model pads to its
 decoder stride, over 64 bits at any standalone variant is rejected, and the
@@ -182,6 +184,18 @@ REJECTED = [
     ('a port named like another port\'s model interface', ROOT_PROJECT,
      [(ARCH, [('            out: {', '            in_model: {'), ('srcport: out,', 'srcport: in_model,')])],
      [WHERE, "its port 'in_model' has the name of the model DUT's interface instance 'in_model' of port 'in'"]),
+    ('a port named like a memory port\'s credit pin', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            tbl_model_held: {'), ('srcport: out,', 'srcport: tbl_model_held,'),
+              ('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
+              ('    ubAddrSt:', '    ubIdxSt:\n        idx: { varType: ubIdxT, desc: "Table index" }\n    ubAddrSt:'),
+              ('registers:\n',
+               'memories:\n'
+               '    - { memory: tbl, block: ubTb, structure: ubSt, wordLines: 16, '
+               'addressStruct: ubIdxSt, ports: [port1], desc: "Table" }\n\n'
+               'memoryConnections:\n'
+               '    - { memory: tbl, block: ubTb, instance: uDut, port: port1 }\n\n'
+               'registers:\n')])],
+     [WHERE, "its port 'tbl_model_held' has the name of the Mode B held pin 'tbl_model_held' of port 'tbl'"]),
     ('a register wider than 64 bits at one variant', ROOT_PROJECT,
      [(ARCH, [('\ntypes:\n',
                '\nipParameters:\n'

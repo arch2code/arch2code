@@ -3,6 +3,8 @@ interface_defs:
   memory : 
     timing: fixed
     uvmAgent: true
+    uvmModelCredit: true
+    bfmWriteOrder: true
     parameters : 
       addr_t : { datatype : struct }
       data_t : { datatype : struct }

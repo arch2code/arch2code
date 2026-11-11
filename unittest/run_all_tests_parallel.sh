@@ -69,6 +69,7 @@ EXAMPLE_READERS=(
     test_compdb_configured_compiler.py        # reads examples/helloWorld (copytree)
     test_missing_include_diagnostic.py        # reads examples/helloWorld (copytree)
     test_make_synthf.py                       # reads examples/hierVlDemo + examples/ip_test (copytree)
+    test_uvm_model_credit.py                  # reads examples/uvmMem (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.

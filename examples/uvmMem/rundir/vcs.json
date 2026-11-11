@@ -1,0 +1,14 @@
+{
+  "name": "vcs",
+  "description": "VCS simulator messages",
+  "filters": {
+    "vcs_error": {
+      "description": "VCS error or fatal message",
+      "re": "^(Error|Fatal)-\\[(?P<code>[^\\]]+)\\]\\s*(?P<msg>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": null,
+      "sev": "error"
+    }
+  },
+  "modifiers": {}
+}

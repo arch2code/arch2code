@@ -1100,6 +1100,10 @@ module a2c_uvm_loopback_tb;
     req_ack_if #(.data_t(lb_data_t), .rdata_t(lb_rdata_t)) ra_model();
     pop_ack_if #(.rdata_t(lb_data_t)) po_model();
     memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem_model();
+    memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem2_model();
+    // Mode B credit of mem and mem2, from the A2C_DST agent to the model lane's peer.
+    a2c_credit_if mem_credit();
+    a2c_credit_if mem2_credit();
     external_reg_if #(.data_t(lb_data_t)) er_model();
     axi_read_if #(.addr_t(lb_axr_addr_t), .data_t(lb_axr_data_t), .aruser_t(lb_axr_aruser_t),
                   .ruser_t(lb_axr_ruser_t), .id_t(lb_axr_id_t)) axr();
@@ -1166,6 +1170,9 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(ra_vif_t)::set(null, "uvm_test_top", "ra_model", ra_model);
         uvm_config_db#(po_vif_t)::set(null, "uvm_test_top", "po_model", po_model);
         uvm_config_db#(mem_vif_t)::set(null, "uvm_test_top", "mem_model", mem_model);
+        uvm_config_db#(mem_vif_t)::set(null, "uvm_test_top", "mem2_model", mem2_model);
+        uvm_config_db#(virtual a2c_credit_if)::set(null, "uvm_test_top", "mem_credit", mem_credit);
+        uvm_config_db#(virtual a2c_credit_if)::set(null, "uvm_test_top", "mem2_credit", mem2_credit);
         uvm_config_db#(er_vif_t)::set(null, "uvm_test_top", "er_model", er_model);
         uvm_config_db#(axr_vif_t)::set(null, "uvm_test_top", "axr", axr);
         uvm_config_db#(axw_vif_t)::set(null, "uvm_test_top", "axw", axw);

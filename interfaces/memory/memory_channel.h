@@ -8,6 +8,7 @@
 #include "sysc/kernel/sc_event.h"
 #include "sysc/kernel/sc_simcontext.h"
 #include "sysc/tracing/sc_trace.h"
+#include <functional>
 #include <typeinfo>
 #include <iostream>
 #include "interfaceBase.h"
@@ -31,6 +32,12 @@ public:
     virtual bool isActive() = 0;
     virtual bool isNotActive() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
+    // Called in the caller's thread as each request() or
+    // requestNonBlocking() starts, so the completer sees the requester's
+    // program order before it takes the request. For a request relayed by
+    // an adapter, it runs in the original caller's thread instead, through
+    // memory_out_if::observeRelayed().
+    virtual void setRequestObserver( std::function<void(bool isWrite)> observer ) = 0;
 
 protected:
     // constructor
@@ -55,6 +62,10 @@ public:
     virtual void request(bool isWrite, const A&, D& ) = 0;
     virtual void requestNonBlocking(bool isWrite, const A&, D& data ) = 0; // non-blocking req for tee use only
     virtual void waitComplete(D&) = 0; // completion only on read
+    // For an adapter that relays requests onto this channel: runs the request
+    // observer in the caller's thread for the request the adapter relays
+    // next, which the relay's own request() then does not observe again.
+    virtual void observeRelayed(bool isWrite) = 0;
 
 protected:
     // constructor
@@ -141,6 +152,17 @@ public:
         m_external_event_ptr = event;
         m_external_arb = true;
     }
+    virtual void setRequestObserver( std::function<void(bool isWrite)> observer ) override
+    {
+        m_request_observer = observer;
+    }
+    virtual void observeRelayed(bool isWrite) override
+    {
+        if (m_request_observer) {
+            m_request_observer(isWrite);
+            m_prestamped++;
+        }
+    }
 
     void trace( sc_trace_file* tf ) const override;
 
@@ -192,6 +214,8 @@ protected:
     bool m_multi_writer = false;  //detect multiple writers
     bool m_external_arb = false;
     sc_event* m_external_event_ptr = nullptr;
+    std::function<void(bool isWrite)> m_request_observer;
+    uint32_t m_prestamped = 0; // relayed requests already observed
 
 private:
     // disabled
@@ -300,6 +324,11 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
 {
     Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
     m_multi_writer = true;
+    if (m_prestamped > 0) {
+        m_prestamped--;
+    } else if (m_request_observer) {
+        m_request_observer(isWrite);
+    }
 
     // Single outstanding transaction per channel.
     if (m_req_pending) {
@@ -350,6 +379,11 @@ inline void memory_channel<A, D>::requestNonBlocking(bool isWrite, const A& addr
 {
     Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
     m_multi_writer = true;
+    if (m_prestamped > 0) {
+        m_prestamped--;
+    } else if (m_request_observer) {
+        m_request_observer(isWrite);
+    }
 
     if (m_req_pending) {
         Q_ASSERT(m_req_is_write==true, "read in progress!");

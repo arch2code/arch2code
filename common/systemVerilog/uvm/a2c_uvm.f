@@ -1,4 +1,5 @@
 a2c_clk_if.sv
+a2c_credit_if.sv
 a2c_uvm_pkg.sv
 ../../../interfaces/rdy_vld/rdy_vld_uvm_pkg.sv
 ../../../interfaces/apb/apb_uvm_pkg.sv

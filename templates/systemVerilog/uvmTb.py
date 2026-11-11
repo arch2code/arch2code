@@ -49,6 +49,8 @@ def group_comment(pin):
     match pin['kind']:
         case 'port':
             return f"// {pin['interfaceType']}_if.{pin['role']} on the DUT"
+        case 'credit':
+            return f"// Mode B credit of {pin['port']}, between its agent and the model's BFM"
         case 'completion':
             return '// completion, read by the SystemC side'
     return None
@@ -102,23 +104,34 @@ def render_body(prj, data, variant, top):
     binds += [f".{pin['pin']}({pin['pin']})" for pin in pins if pin['kind'] == 'clockReset']
     rtl = [f"{top['hdlTop']} dut ("]
     rtl += [f"    {bind}," for bind in binds[:-1]] + [f"    {binds[-1]}", ');', '']
+    creditPins = [pin for pin in pins if pin['kind'] == 'credit']
+    # Only Mode B has a model lane to hold, so elsewhere the credit stays 0
+    # and the wrapper gives the BFM no credit.
+    creditTies = [f"assign {pin['pin']} = '0;" for pin in creditPins if pin['direction'] == 'output']
     ties = list()
     for pin in portPins:
         if pin['direction'] == 'output':
             tie = "'0" if pin['vector'] else "1'b0"
             ties.append(f"assign {pin['pin']} = {tie};")
+    ties += creditTies
     if 'model' in duts:
         branches = list()
         if 'both' in duts:
             both = [intf_decl(port, variant, f"{port['name']}_model") for port in data['uvm']['ports']]
-            both += ['', *rtl, *pin_assigns(portPins, '_model'), *dut_flags(True, True)]
+            both += [f"a2c_credit_if {port['name']}_credit();" for port in data['uvm']['ports'] if port['modelCredit']]
+            both += ['', *rtl, *pin_assigns(portPins, '_model')]
+            for port in data['uvm']['ports']:
+                if port['modelCredit']:
+                    both += [f"assign {port['name']}_model_credit = {port['name']}_credit.credit;",
+                             f"assign {port['name']}_credit.held = {port['name']}_model_held;"]
+            both += dut_flags(True, True)
             branches.append(('A2C_UVM_BOTH_DUT', both))
         branches.append(('A2C_UVM_RTL_DUT', rtl + ties + dut_flags(True, False)))
         for index, (define, lines) in enumerate(branches):
             out.append(f"`{'ifdef' if index == 0 else 'elsif'} {define}")
             out += [f'    {line}' if line else '' for line in lines]
         out.append('`else')
-        out += [f'    {line}' for line in pin_assigns(portPins, '') + dut_flags(False, True)]
+        out += [f'    {line}' for line in pin_assigns(portPins, '') + creditTies + dut_flags(False, True)]
         out.append('`endif')
     else:
         out += [f'    {line}' if line else '' for line in rtl + ties + dut_flags(True, False)]
@@ -137,6 +150,8 @@ def render_body(prj, data, variant, top):
         sets.append('`ifdef A2C_UVM_BOTH_DUT')
         sets += [f'        uvm_config_db#({top["pkgName"]}::{port["name"]}_vif_t)::set(null, "uvm_test_top.*", '
                  f'"{port["name"]}_model", {port["name"]}_model);' for port in data['uvm']['ports']]
+        sets += [f'        uvm_config_db#(virtual a2c_credit_if)::set(null, "uvm_test_top.*", "{port["name"]}_credit", '
+                 f'{port["name"]}_credit);' for port in data['uvm']['ports'] if port['modelCredit']]
         sets += [f'        {dual.format(1)}', '`else', f'        {dual.format(0)}', '`endif']
     else:
         sets.append(f'        {dual.format(0)}')

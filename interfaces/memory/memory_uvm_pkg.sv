@@ -24,13 +24,15 @@
 // data included, under the next-access rule for an X or Z read word. The
 // A2C_DST driver serves both lanes from the one cfg.mem. The DUT lane
 // applies access n and records its read word, and the model lane's access n
-// gets that word and writes nothing. memory has no handshake, so a model lane
-// that reaches access n first cannot wait. Its write is kept aside for its
-// own later reads, never in cfg.mem, and its read takes that word or the
-// one cfg.mem holds then. When the DUT lane makes access n, an A2C_REPLAY
-// error reports any difference between the two reads. An early read of a
-// word that another port's DUT lane has yet to write gets the old word and
-// is reported as A2C_REPLAY, even when the design is correct. The A2C_DST
+// gets that word and writes nothing. memory has no handshake, so the model
+// lane waits before its pins instead: the driver drives cfg.credit_vif.credit
+// with the accesses the DUT lane has made, and the model's BFM holds access n
+// until credit exceeds n, raising held while it waits, as a tandem memory tee
+// holds the model for the RTL. So a read on one port that the DUT lane makes
+// after another port's write gets the written word on both lanes. A model
+// lane access made without credit breaks that contract and is an A2C_REPLAY
+// error. A model lane held for an access the DUT lane never makes is
+// reported as a model lane waiting for a record. The A2C_DST
 // driver's replay log holds the end of the run phase while the model lane
 // catches up (a2c_replay_drain), and its model_cmp compares the access
 // streams in order. A DUT lane still accessing the port at the drain's
@@ -89,6 +91,8 @@ package memory_uvm_pkg;
         virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) vif;
         // The model DUT's pin set in Mode B; null otherwise.
         virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) model_vif;
+        // dst role in Mode B: the model lane's credit and held pins.
+        virtual a2c_credit_if                                 credit_vif;
         virtual a2c_clk_if                                    clk_vif;
         uvm_active_passive_enum                               is_active = UVM_ACTIVE;
         a2c_role_e                                            role = A2C_SRC;
@@ -156,21 +160,10 @@ package memory_uvm_pkg;
             data_t word;
         } rsp_t;
         typedef a2c_replay_log #(rsp_t) replay_t;
-        // A model lane access served before the DUT lane made it.
-        typedef struct {
-            int unsigned n;
-            bit          write;
-            bit [63:0]   index;
-            data_t       word;
-        } early_t;
 
         memory_config#(addr_t, data_t) cfg;
         // dst role in Mode B only.
         replay_t                       replay;
-        // check_phase() reports this many early reads whose word differs
-        // from the DUT lane's one by one, and the rest in one A2C_REPLAY
-        // with their count.
-        int unsigned                   max_reported = 10;
 
         // src role: responses to the reads taken on the last rising edge,
         // waiting for read_data. Each is built when its read is accepted,
@@ -187,24 +180,18 @@ package memory_uvm_pkg;
         // before its clock, a read at the drive point after, where
         // read_data goes out for the next sample edge.
         protected int unsigned done[2];
-        protected early_t      early[$];
-        // The model lane's early writes, which cfg.mem never takes: per
-        // index, the last word written and the access that wrote it. Its
-        // early reads see them. An entry goes at the drive point where
-        // cfg.mem takes the DUT lane's write of the same access.
-        protected data_t       ahead_word[bit [63:0]];
-        protected int unsigned ahead_n[bit [63:0]];
-        protected early_t      retire[$];
-        // The first max_reported early reads whose word differs from the
-        // DUT lane's, and when the DUT lane made each access, for
-        // check_phase(); then the count of the rest, and the first of them
-        // with its time. A model that reads early on every access so keeps
-        // at most max_reported messages.
-        protected string       stale[$];
-        protected realtime     stale_at[$];
-        protected int unsigned stale_more;
-        protected int unsigned stale_more_n;
-        protected realtime     stale_more_at;
+        // The model lane's accesses made without credit, each answered from
+        // cfg.mem and dropped from the replay log when the DUT lane records
+        // it; the first, and when it came, for check_phase().
+        protected int unsigned uncredited;
+        protected int unsigned owed;
+        protected int unsigned uncredited_n;
+        protected realtime     uncredited_at;
+        // Mode B: the sample edges at which held was high, and the rises of
+        // held, one per access the model's BFM held for credit, however
+        // briefly.
+        protected int unsigned held_clocks;
+        protected int unsigned held_accesses;
 
         `uvm_component_param_utils(memory_driver#(addr_t, data_t))
 
@@ -215,6 +202,10 @@ package memory_uvm_pkg;
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             if (cfg.model_vif == null || cfg.role != A2C_DST) return;
+            if (cfg.credit_vif == null) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: a Mode B memory responder needs cfg.credit_vif, the model lane's credit and held pins",
+                                                cfg.port_name))
+            end
             replay = replay_t::type_id::create("replay", this);
             replay.driver  = this;
             replay.clk_vif = cfg.clk_vif;
@@ -294,44 +285,21 @@ package memory_uvm_pkg;
             end
         endtask
 
-        // The model lane's accesses served early, matched against the DUT
-        // lane's records as they arrive. A mismatch is known when the DUT
-        // lane makes the access, and check_phase() reports it.
-        protected function void settle_early();
-            rsp_t        rsp;
-            int unsigned delay;
-            early_t      e;
-            while (early.size() > 0 && replay.can_replay()) begin
-                replay.replay(rsp, delay);
-                e = early.pop_front();
-                if (e.write) retire.push_back(e);
-                if (!e.write && !rsp.write && e.word !== rsp.word) begin
-                    if (stale.size() < max_reported) begin
-                        stale.push_back($sformatf("%s: the model lane read index 0x%0h at access %0d before the DUT lane made that access, and got %p; the DUT lane's access %0d, made at %0t, returns %p",
-                                                  cfg.port_name, e.index, e.n + 1, e.word, e.n + 1, $realtime, rsp.word));
-                        stale_at.push_back($realtime);
-                    end else begin
-                        if (stale_more == 0) begin
-                            stale_more_n  = e.n + 1;
-                            stale_more_at = $realtime;
-                        end
-                        stale_more++;
-                    end
-                end
-            end
-        endfunction
-
-        // At check_phase, rather than when the DUT lane made the access, so
-        // that the death clause also names a death that a master declared
-        // later, for a lane that began to trail before the access.
+        // At check_phase, so that the death clause also names a death that
+        // a master declared later.
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            foreach (stale[i]) `uvm_error("A2C_REPLAY", {stale[i], a2c_replay_drain::death_context(stale_at[i])})
-            if (stale_more != 0) begin
-                `uvm_error("A2C_REPLAY", $sformatf("%s: %0d more of the model lane's early reads got a word that differs from the DUT lane's, beyond the first %0d reported one by one (max_reported). The first of them is access %0d, which the DUT lane made at %0t%s",
-                                                   cfg.port_name, stale_more, max_reported, stale_more_n, stale_more_at,
-                                                   a2c_replay_drain::death_context(stale_more_at)))
-            end
+            if (uncredited == 0) return;
+            `uvm_error("A2C_REPLAY", $sformatf("%s: the model lane made %0d accesses without credit, the first access %0d at %0t. The model's BFM must hold its access n until %s_model_credit exceeds n; the driver answered each from cfg.mem%s",
+                                               cfg.port_name, uncredited, uncredited_n, uncredited_at, cfg.port_name,
+                                               a2c_replay_drain::death_context(uncredited_at)))
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            super.report_phase(phase);
+            if (replay == null) return;
+            `uvm_info("A2C_CREDIT", $sformatf("%s: the model's BFM held %0d accesses for credit, with held high at %0d sample edges, and the model lane made %0d accesses without credit",
+                                              cfg.port_name, held_accesses, held_clocks, uncredited), UVM_MEDIUM)
         endfunction
 
         // A read takes its word at the sample edge, before any write the
@@ -339,16 +307,26 @@ package memory_uvm_pkg;
         // same clock through two agents sharing cfg.mem return the old word,
         // as memory_dp does. read_data holds until the next read. One
         // process serves every lane, sampling the DUT lane first, so the
-        // model lane's access n on the clock of the DUT lane's access n
-        // takes its recorded word.
+        // model lane's access n on the clock the credit lets it go finds
+        // the DUT lane's record.
         protected virtual task run_dst();
-            bit        is_write[2];
-            bit        active[2];
-            bit [63:0] index[2];
-            data_t     wdata[2];
-            data_t     rdata[2];
-            rsp_t      rsp;
+            bit          is_write[2];
+            bit          active[2];
+            bit [63:0]   index[2];
+            data_t       wdata[2];
+            data_t       rdata[2];
+            rsp_t        rsp;
+            int unsigned delay;
             for (int l = 0; l < lanes; l++) lane[l].read_data <= '0;
+            if (replay != null) begin
+                cfg.credit_vif.credit <= '0;
+                fork
+                    forever begin
+                        @(posedge cfg.credit_vif.held);
+                        held_accesses++;
+                    end
+                join_none
+            end
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
@@ -365,23 +343,36 @@ package memory_uvm_pkg;
                         if (!is_write[l]) rdata[l] = cfg.mem.read(index[l]);
                         if (replay != null) begin
                             replay.record('{write: is_write[l], word: is_write[l] ? data_t'('0) : rdata[l]}, 0);
-                            settle_early();
-                        end
-                    end else begin
-                        int unsigned delay;
-                        if (early.size() == 0 && replay.can_replay()) begin
-                            replay.replay(rsp, delay);
-                            rdata[l] = rsp.word;
-                        end else begin
-                            if (is_write[l]) begin
-                                ahead_word[index[l]] = wdata[l];
-                                ahead_n[index[l]]    = starts[l] - 1;
-                            end else begin
-                                rdata[l] = ahead_word.exists(index[l]) ? ahead_word[index[l]] : cfg.mem.read(index[l]);
+                            while (owed > 0 && replay.can_replay()) begin
+                                replay.replay(rsp, delay);
+                                owed--;
                             end
-                            early.push_back('{n: starts[l] - 1, write: is_write[l], index: index[l], word: rdata[l]});
+                            // can_replay() returned 0 for a model lane still
+                            // ahead, which waits for no record.
+                            if (owed > 0) replay.cancel_wait();
                         end
+                    end else if (replay.can_replay()) begin
+                        replay.replay(rsp, delay);
+                        rdata[l] = rsp.word;
+                    end else begin
+                        // Answered from cfg.mem, so the lane waits for no
+                        // record, which can_replay() just marked it as doing.
+                        replay.cancel_wait();
+                        if (uncredited == 0) begin
+                            uncredited_n  = starts[l];
+                            uncredited_at = $realtime;
+                        end
+                        uncredited++;
+                        owed++;
+                        if (!is_write[l]) rdata[l] = cfg.mem.read(index[l]);
                     end
+                end
+                if (replay != null && cfg.credit_vif.held === 1'b1) held_clocks++;
+                // A model lane its BFM holds waits for the DUT lane's next
+                // access, as a handshake responder's model lane waits for a
+                // record, so the drain and check_phase() see the wait.
+                if (replay != null && !active[A2C_MODEL_LANE] && owed == 0 && cfg.credit_vif.held === 1'b1) begin
+                    void'(replay.can_replay());
                 end
                 cfg.clk_vif.drive_edge();
                 for (int l = 0; l < lanes; l++) begin
@@ -394,13 +385,7 @@ package memory_uvm_pkg;
                         cfg.mem.write(index[l], wdata[l]);
                     end
                 end
-                foreach (retire[i]) begin
-                    if (ahead_n.exists(retire[i].index) && ahead_n[retire[i].index] == retire[i].n) begin
-                        ahead_word.delete(retire[i].index);
-                        ahead_n.delete(retire[i].index);
-                    end
-                end
-                retire.delete();
+                if (replay != null) cfg.credit_vif.credit <= 32'(starts[A2C_DUT_LANE]);
             end
         endtask
 
@@ -414,6 +399,24 @@ package memory_uvm_pkg;
 
         virtual function int unsigned lane_starts(a2c_lane_e l);
             return starts[l];
+        endfunction
+
+        function int unsigned held_clock_count();
+            return held_clocks;
+        endfunction
+
+        function int unsigned held_access_count();
+            return held_accesses;
+        endfunction
+
+        function int unsigned uncredited_count();
+            return uncredited;
+        endfunction
+
+        // Model lane accesses made without credit that the DUT lane has not
+        // yet matched.
+        function int unsigned owed_count();
+            return owed;
         endfunction
     endclass : memory_driver
 
