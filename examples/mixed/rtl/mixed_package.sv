@@ -20,6 +20,7 @@ localparam int unsigned DWORD = 32'h0000_0020;  // size of a double word
 localparam int unsigned DWORD_LOG2 = 32'h0000_0006;  // size of a double word log2
 localparam int unsigned REGARR_N = 32'h0000_0004;  // Number of elements of the rwArr and extArr register arrays
 localparam int unsigned RWARR_SEED = 32'h0000_0010;  // test_reg_cpu_arr writes RWARR_SEED + i to rwArr element i
+localparam int unsigned EXTFARR_N = 32'h0000_0002;  // Number of elements of the extFArr register array, one per blockF instance
 localparam int unsigned BOB0 = 32'h0000_0010;  // Memory size for instance 0
 localparam int unsigned BOB1 = 32'h0000_000F;  // Memory size for instance 1
 localparam int unsigned TESTCONST1 = 32'h0000_0001;  // A test constant

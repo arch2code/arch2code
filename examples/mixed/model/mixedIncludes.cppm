@@ -37,6 +37,7 @@ inline constexpr uint32_t DWORD = 32;  // size of a double word
 inline constexpr uint32_t DWORD_LOG2 = 6;  // size of a double word log2
 inline constexpr uint32_t REGARR_N = 4;  // Number of elements of the rwArr and extArr register arrays
 inline constexpr uint32_t RWARR_SEED = 16;  // test_reg_cpu_arr writes RWARR_SEED + i to rwArr element i
+inline constexpr uint32_t EXTFARR_N = 2;  // Number of elements of the extFArr register array, one per blockF instance
 inline constexpr uint32_t BOB0 = 16;  // Memory size for instance 0
 inline constexpr uint32_t BOB1 = 15;  // Memory size for instance 1
 inline constexpr uint32_t TESTCONST1 = 1;  // A test constant

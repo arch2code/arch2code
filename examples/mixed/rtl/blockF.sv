@@ -16,6 +16,7 @@ import mixedBlockC_package::*;
     rdy_vld_if.src dSout,
     status_if.dst rwD,
     status_if.dst rwArr [REGARR_N],
+    external_reg_if.dst extFArr,
     input clk, rst_n
 );
 
@@ -42,5 +43,10 @@ for (genvar gi = 0; gi < REGARR_N; gi++) begin : g_rwArrChk
         `qAssertFatal(!rst_n || rwArr[gi].data.d == '0 || rwArr[gi].data.d == sevenBitT'(RWARR_SEED + gi), "blockF rwArr element misrouted")
     end
 end
+
+// extFArr reads back its last write + fred, so each instance answers with its own offset.
+dRegSt extFWdata;
+`DFFEN(extFWdata, extFArr.wdata, |extFArr.write)
+assign extFArr.rdata.d = extFWdata.d + sevenBitT'(fred);
 
 endmodule: blockF

@@ -289,7 +289,7 @@ def sc_connect_channel_type(data, indent, block_data, prj=None):
     interface_defs = block_data['interface_defs']
     for key, value in data.items():
         channelBase = get_channel_name(value)
-        if (len(value['ends']) > 2):
+        if value['endsPerChannel'] > 2:
             intf_type = get_intf_type(value['interfaceType'], block_data)
             multiDst = interface_defs[intf_type]['multiDst']
             if not multiDst:

@@ -44,6 +44,7 @@ public:
     hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter; // Memory register - firmware accessible memory-mapped storage
     std::array< hwRegisterIf< dRegSt, status_out<dRegSt>, 4, false>, REGARR_N > rwArr_reg; // A Read Write register array
     std::array< hwRegisterIf< dRegSt, external_reg_out<dRegSt>, 4, false>, REGARR_N > extArr_reg; // An External register array
+    std::array< hwRegisterIf< dRegSt, external_reg_out<dRegSt>, 4, false>, EXTFARR_N > extFArr_reg; // An External register array with one element per blockF instance
     hwRegisterIf< dRegSt, status_out<dRegSt>, 4, false> rwD_reg; // A Read Write register
     hwRegisterIf< bSizeRegSt, status_in<bSizeRegSt>, 4, true> roBsize_reg; // A Read Only register with a structure that has a definition from an included context
     
@@ -81,6 +82,7 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
         ,blockBTableExt_adapter(blockBTableExt)
         ,rwArr_reg{ { {&rwArr[0], dRegSt::_packedSt(0x0)}, {&rwArr[1], dRegSt::_packedSt(0x0)}, {&rwArr[2], dRegSt::_packedSt(0x0)}, {&rwArr[3], dRegSt::_packedSt(0x0)} } }
         ,extArr_reg{ { {&extArr[0]}, {&extArr[1]}, {&extArr[2]}, {&extArr[3]} } }
+        ,extFArr_reg{ { {&extFArr[0]}, {&extFArr[1]} } }
         ,rwD_reg(&rwD, dRegSt::_packedSt(0x0))
         ,roBsize_reg(&roBsize)
 // GENERATED_CODE_END
@@ -94,8 +96,10 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
     constexpr uint64_t REG_ADDR_BLOCKB_RWARR_STRIDE = 0x8;
     constexpr uint64_t REG_ADDR_BLOCKB_EXTARR = 0x160;
     constexpr uint64_t REG_ADDR_BLOCKB_EXTARR_STRIDE = 0x8;
-    constexpr uint64_t REG_ADDR_BLOCKB_RWD = 0x180;
-    constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x188;
+    constexpr uint64_t REG_ADDR_BLOCKB_EXTFARR = 0x180;
+    constexpr uint64_t REG_ADDR_BLOCKB_EXTFARR_STRIDE = 0x8;
+    constexpr uint64_t REG_ADDR_BLOCKB_RWD = 0x190;
+    constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x198;
     
     // register memories for FW access
     _a2cRegs.addMemory(REG_ADDR_BLOCKB_BLOCKBTABLE1, bigSt::_byteWidth, BSIZE, "blockBTable1", &blockBTable1_adapter );
@@ -106,6 +110,8 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
         _a2cRegs.addRegister(REG_ADDR_BLOCKB_RWARR + i * REG_ADDR_BLOCKB_RWARR_STRIDE, 1, std::format("rwArr[{}]", i), &rwArr_reg[i] );
     for (uint32_t i = 0; i < REGARR_N; i++)
         _a2cRegs.addRegister(REG_ADDR_BLOCKB_EXTARR + i * REG_ADDR_BLOCKB_EXTARR_STRIDE, 1, std::format("extArr[{}]", i), &extArr_reg[i] );
+    for (uint32_t i = 0; i < EXTFARR_N; i++)
+        _a2cRegs.addRegister(REG_ADDR_BLOCKB_EXTFARR + i * REG_ADDR_BLOCKB_EXTFARR_STRIDE, 1, std::format("extFArr[{}]", i), &extFArr_reg[i] );
     _a2cRegs.addRegister(REG_ADDR_BLOCKB_RWD, 1, "rwD", &rwD_reg );
     _a2cRegs.addRegister(REG_ADDR_BLOCKB_ROBSIZE, 1, "roBsize", &roBsize_reg );
     SC_THREAD(regHandler);

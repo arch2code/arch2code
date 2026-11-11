@@ -18,6 +18,7 @@ using namespace mixed_mixedBlockC_ns;
 import mixed;
 using namespace mixed_ns;
 import mixed.blockF.config;
+#include "external_reg_bfm.h"
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 
@@ -37,6 +38,7 @@ public:
     rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm_inst;
     status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm_inst;
     sc_vector< status_dst_bfm<dRegSt, sc_bv<7>> > rwArr_bfm_inst;
+    external_reg_dst_bfm<dRegSt, sc_bv<7>> extFArr_bfm_inst;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -54,6 +56,7 @@ public:
         dSout_bfm_inst("dSout_bfm_inst"),
         rwD_bfm_inst("rwD_bfm_inst"),
         rwArr_bfm_inst("rwArr_bfm_inst", REGARR_N),
+        extFArr_bfm_inst("extFArr_bfm_inst"),
         rst_n("rst_n", true),
         clk_half_(sc_time(1, SC_NS) / 2)
     {
@@ -76,6 +79,9 @@ public:
         dut_hdl->rwArr_1_data(rwArr_hdl_inst[1].data);
         dut_hdl->rwArr_2_data(rwArr_hdl_inst[2].data);
         dut_hdl->rwArr_3_data(rwArr_hdl_inst[3].data);
+        dut_hdl->extFArr_wdata(extFArr_hdl_inst.wdata);
+        dut_hdl->extFArr_rdata(extFArr_hdl_inst.rdata);
+        dut_hdl->extFArr_write(extFArr_hdl_inst.write);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -111,6 +117,11 @@ public:
             rwArr_bfm_inst[i].rst_n(rst_n);
         }
 
+        extFArr_bfm_inst.if_p(this->extFArr);
+        extFArr_bfm_inst.hdl_if_p(extFArr_hdl_inst);
+        extFArr_bfm_inst.clk(clk);
+        extFArr_bfm_inst.rst_n(rst_n);
+
         clk.write(true);
         SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
@@ -135,6 +146,7 @@ private:
     rdy_vld_hdl_if<sc_bv<7>> dSout_hdl_inst;
     status_hdl_if<sc_bv<7>> rwD_hdl_inst;
     std::array<status_hdl_if<sc_bv<7>>, REGARR_N> rwArr_hdl_inst;
+    external_reg_hdl_if<sc_bv<7>> extFArr_hdl_inst;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

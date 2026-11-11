@@ -291,29 +291,31 @@ block_regs_body_section_template = '''\
     {% endif -%}
     {% endfor %}
     {% endif -%}
-    {% set memory_items = hwregs | selectattr('is_memory', 'equalto', true) | list -%}
-    {% if memory_items -%}
+    {% set comments = namespace(memory=false, register=false) -%}
+    {% for entry in hwregs -%}
+    {% if entry.is_memory -%}
+    {% if not comments.memory -%}
+    {% set comments.memory = true -%}
     // register memories for FW access
-    {% for entry in memory_items -%}
+    {% endif -%}
     {% if entry.row_bytes -%}
     _a2cRegs.addMemory({{entry.offset}}, {{entry.row_bytes}} * {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
     {% else -%}
     _a2cRegs.addMemory({{entry.offset}}, {{entry.datatype_inclass}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endif -%}
-    {% endfor -%}
-    {% endif -%}
-    {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}
-    {% if register_items -%}
+    {% else -%}
+    {% if not comments.register -%}
+    {% set comments.register = true -%}
     // register registers for FW access
-    {% for entry in register_items -%}
+    {% endif -%}
     {% if entry.count is not none -%}
     for (uint32_t i = 0; i < {{entry.count}}; i++)
         _a2cRegs.addRegister({{entry.offset}} + i * {{entry.offset}}_STRIDE, {{entry.size}}, std::format("{{entry.port_name}}[{}]", i), &{{entry.name}}[i] );
     {% else -%}
     _a2cRegs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endif -%}
-    {% endfor -%}
     {% endif -%}
+    {% endfor -%}
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
 '''

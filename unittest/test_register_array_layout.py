@@ -142,7 +142,7 @@ def check_layout_and_views(failures):
         interfaceKey = next(iter(prj.data['interfaces']))
         ret = {'connectDouble': {}, 'connectSingle': {}, 'registerConnections': {},
                'connectionMaps': {}, 'memoryConnections': {},
-               'connections': {name: {'interfaceName': 'shared', 'interfaceKey': interfaceKey}
+               'connections': {name: {'interfaceName': 'shared', 'interfaceKey': interfaceKey, 'ends': {}}
                                for name in ('c0', 'c1')}}
         prj.getBDConnectionsFinal(ret)
         rows = ret['connectDouble']['connections']

@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
 module;
 #include "systemc.h"
+#include "external_reg_channel.h"
 #include "rdy_vld_channel.h"
 #include "status_channel.h"
 
@@ -38,6 +39,8 @@ public:
     status_in< dRegSt > rwD;
     // blockB->reg(rwArr) A Read Write register array
     sc_vector< status_in< dRegSt > > rwArr;
+    // blockB->reg(extFArr) An External register array with one element per blockF instance
+    external_reg_in< dRegSt > extFArr;
 
 
     blockFBase(std::string name, const char * variant) :
@@ -47,6 +50,7 @@ public:
         ,dSin("dSin")
         ,rwD("rwD")
         ,rwArr("rwArr", REGARR_N)
+        ,extFArr("extFArr")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -56,6 +60,7 @@ public:
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
         for (auto & p : rwArr) p->setTimed(nsec, mode);
+        extFArr->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -66,6 +71,7 @@ public:
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
         for (auto & p : rwArr) p->setLogging(verbosity);
+        extFArr->setLogging(verbosity);
     };
 };
 export template<typename Config>
@@ -87,6 +93,8 @@ public:
     status_out< dRegSt > rwD;
     // blockB->reg(rwArr) A Read Write register array
     sc_vector< status_out< dRegSt > > rwArr;
+    // blockB->reg(extFArr) An External register array with one element per blockF instance
+    external_reg_out< dRegSt > extFArr;
 
 
     blockFInverted(std::string name) :
@@ -96,6 +104,7 @@ public:
         ,dSin(("dSin"+name).c_str())
         ,rwD(("rwD"+name).c_str())
         ,rwArr(("rwArr"+name).c_str(), REGARR_N)
+        ,extFArr(("extFArr"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -105,6 +114,7 @@ public:
         dSin->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
         for (auto & p : rwArr) p->setTimed(nsec, mode);
+        extFArr->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -115,6 +125,7 @@ public:
         dSin->setLogging(verbosity);
         rwD->setLogging(verbosity);
         for (auto & p : rwArr) p->setLogging(verbosity);
+        extFArr->setLogging(verbosity);
     };
 };
 export template<typename Config>
@@ -136,6 +147,8 @@ public:
     status_channel< dRegSt > rwD;
     // A Read Write register array
     sc_vector< status_channel< dRegSt > > rwArr;
+    // An External register array with one element per blockF instance
+    external_reg_channel< dRegSt > extFArr;
 
 
     blockFChannels(std::string name, std::string srcName) :
@@ -145,6 +158,7 @@ public:
     ,dSin(("dSin"+name).c_str(), srcName, BACKPRESSURE_ALLOWED)
     ,rwD(("rwD"+name).c_str(), srcName)
     ,rwArr(("rwArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, srcName); })
+    ,extFArr(("extFArr"+name).c_str(), srcName)
     {};
     void bind( blockFBase<Config> *a, blockFInverted<Config> *b)
     {
@@ -160,6 +174,8 @@ public:
         b->rwD( rwD );
         a->rwArr.bind( rwArr );
         b->rwArr.bind( rwArr );
+        a->extFArr( extFArr );
+        b->extFArr( extFArr );
     };
 };
 

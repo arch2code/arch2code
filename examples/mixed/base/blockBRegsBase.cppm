@@ -35,6 +35,8 @@ public:
     sc_vector< status_out< dRegSt > > rwArr;
     // blockB->reg(extArr) An External register array
     sc_vector< external_reg_out< dRegSt > > extArr;
+    // blockB->reg(extFArr) An External register array with one element per blockF instance
+    sc_vector< external_reg_out< dRegSt > > extFArr;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_out< bSizeSt, bigSt > blockBTable1;
 
@@ -51,6 +53,7 @@ public:
         ,blockBTable37Bit("blockBTable37Bit")
         ,rwArr("rwArr", REGARR_N)
         ,extArr("extArr", REGARR_N)
+        ,extFArr("extFArr", EXTFARR_N)
         ,blockBTable1("blockBTable1")
         ,apbReg("apbReg")
         ,roBsize("roBsize")
@@ -62,6 +65,7 @@ public:
         blockBTable37Bit->setTimed(nsec, mode);
         for (auto & p : rwArr) p->setTimed(nsec, mode);
         for (auto & p : extArr) p->setTimed(nsec, mode);
+        for (auto & p : extFArr) p->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
@@ -74,6 +78,7 @@ public:
         blockBTable37Bit->setLogging(verbosity);
         for (auto & p : rwArr) p->setLogging(verbosity);
         for (auto & p : extArr) p->setLogging(verbosity);
+        for (auto & p : extFArr) p->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
@@ -93,6 +98,8 @@ public:
     sc_vector< status_in< dRegSt > > rwArr;
     // blockB->reg(extArr) An External register array
     sc_vector< external_reg_in< dRegSt > > extArr;
+    // blockB->reg(extFArr) An External register array with one element per blockF instance
+    sc_vector< external_reg_in< dRegSt > > extFArr;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_in< bSizeSt, bigSt > blockBTable1;
 
@@ -109,6 +116,7 @@ public:
         ,blockBTable37Bit(("blockBTable37Bit"+name).c_str())
         ,rwArr(("rwArr"+name).c_str(), REGARR_N)
         ,extArr(("extArr"+name).c_str(), REGARR_N)
+        ,extFArr(("extFArr"+name).c_str(), EXTFARR_N)
         ,blockBTable1(("blockBTable1"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
@@ -120,6 +128,7 @@ public:
         blockBTable37Bit->setTimed(nsec, mode);
         for (auto & p : rwArr) p->setTimed(nsec, mode);
         for (auto & p : extArr) p->setTimed(nsec, mode);
+        for (auto & p : extFArr) p->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
@@ -132,6 +141,7 @@ public:
         blockBTable37Bit->setLogging(verbosity);
         for (auto & p : rwArr) p->setLogging(verbosity);
         for (auto & p : extArr) p->setLogging(verbosity);
+        for (auto & p : extFArr) p->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
@@ -151,6 +161,8 @@ public:
     sc_vector< status_channel< dRegSt > > rwArr;
     // An External register array
     sc_vector< external_reg_channel< dRegSt > > extArr;
+    // An External register array with one element per blockF instance
+    sc_vector< external_reg_channel< dRegSt > > extFArr;
     // Dual Port with one connection
     memory_channel< bSizeSt, bigSt > blockBTable1;
 
@@ -167,6 +179,7 @@ public:
     ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
     ,rwArr(("rwArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new status_channel< dRegSt >(nm, srcName); })
     ,extArr(("extArr"+name).c_str(), REGARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, srcName); })
+    ,extFArr(("extFArr"+name).c_str(), EXTFARR_N, [&](const char * nm, size_t) { return new external_reg_channel< dRegSt >(nm, srcName); })
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
@@ -183,6 +196,8 @@ public:
         b->rwArr.bind( rwArr );
         a->extArr.bind( extArr );
         b->extArr.bind( extArr );
+        a->extFArr.bind( extFArr );
+        b->extFArr.bind( extFArr );
         a->blockBTable1( blockBTable1 );
         b->blockBTable1( blockBTable1 );
         a->apbReg( apbReg );

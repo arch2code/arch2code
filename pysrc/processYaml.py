@@ -2574,6 +2574,8 @@ class projectOpen:
         regHandlerKey = ret.get('regHandler', None)
         regHandler = ''
         connected_regs = dict()
+        portRowKeys = dict()
+        portCountKeys = dict()
         if regHandlerKey:
             regHandler = self.data['instances'][regHandlerKey]['instance']
         if isRegHandler:
@@ -2615,13 +2617,18 @@ class projectOpen:
                 portName = val['register']
                 connected_regs[portName] = 0
                 regInfo = self.data['registers'][val['registerBlockKey']]
+                portCountKeys.setdefault(portName, set()).add(regInfo['countKey'])
+                # Several rows, from one owner or more, can reach one port. The
+                # row with the lowest key describes it, so row order never
+                # changes the port.
+                if portName in portRowKeys and portRowKeys[portName] < regConn:
+                    continue
+                portRowKeys[portName] = regConn
                 ret['registerPorts'][portName] = dict(regInfo, **connRow) # merge the two dicts
                 ret['registerPorts'][portName]['countValue'] = self.registerArrayValue(regInfo, 'count')
                 # One row stands for every instance of the block, and every
                 # row reaching the block on this port takes the same form.
                 ret['registerPorts'][portName]['isElementPort'] = val['index'] != ''
-                if regInfo['countKey']:
-                    ret['temp']['consts'][regInfo['countKey']] = 0
                 regType = regInfo['regType']
                 ret['registerPorts'][portName]['direction'] = self.regMapBlock.get(regType, None)
                 ifType = 'reg_' + regType
@@ -2629,6 +2636,15 @@ class projectOpen:
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][regInfo['structureKey']] = 0
+        # A port keeps its count constant only when every owner names the same
+        # one. Otherwise it takes the resolved count, which they agree on.
+        for portName, countKeys in portCountKeys.items():
+            port = ret['registerPorts'][portName]
+            if len(countKeys) > 1:
+                port['count'] = port['countValue']
+                port['countKey'] = ''
+            elif port['countKey']:
+                ret['temp']['consts'][port['countKey']] = 0
         # handle implied register connections. These interfaces connect any unconnected registers to the block
         implied_reg = dict()
         for reg_key, reg_data in ret['registers'].items():
@@ -3230,6 +3246,20 @@ class projectOpen:
             channelCount = duplicateCheck[channel]['count']
             for conn, connDisambiguate in duplicateCheck[channel]['conns'].items():
                 ret[connType][connSource][conn]['channelCount'] = channelCount
+        for connSource in self.connMapping['connectDouble']:
+            for connVal in ret['connectDouble'][connSource].values():
+                connVal['endsPerChannel'] = self._endsPerChannel(connVal)
+
+    @staticmethod
+    def _endsPerChannel(connVal):
+        """The most ends one channel binds. An end with an indexValue binds
+        one element of an array channel and an end without binds every
+        element, so an array's elements may each have two ends while the
+        array has more."""
+        if connVal['arrayCountValue'] is None:
+            return len(connVal['ends'])
+        return max(sum(1 for end in connVal['ends'].values() if end['indexValue'] in (None, k))
+                   for k in range(connVal['arrayCountValue']))
 
 
     def getBDPorts(self, ret):

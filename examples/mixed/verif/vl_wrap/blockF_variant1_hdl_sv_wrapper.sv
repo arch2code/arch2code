@@ -43,6 +43,11 @@ module blockF_variant1_hdl_sv_wrapper
     input bit [6:0] rwArr_2_data,
     input bit [6:0] rwArr_3_data,
 
+    // external_reg_if.dst
+    input bit [6:0] extFArr_wdata,
+    output bit [6:0] extFArr_rdata,
+    input bit [1:0] extFArr_write,
+
     input clk,
     input rst_n
 );
@@ -67,6 +72,9 @@ module blockF_variant1_hdl_sv_wrapper
         .rwArr_1_data(rwArr_1_data),
         .rwArr_2_data(rwArr_2_data),
         .rwArr_3_data(rwArr_3_data),
+        .extFArr_wdata(extFArr_wdata),
+        .extFArr_rdata(extFArr_rdata),
+        .extFArr_write(extFArr_write),
         .clk(clk),
         .rst_n(rst_n)
     );
