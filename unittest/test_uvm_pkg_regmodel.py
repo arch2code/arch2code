@@ -5,22 +5,26 @@ the RTL decoder serves, and an env that wires every port's agent.
 A register class that disagrees with the decoder on its width, a field's
 position or its access fails every register test against the RTL, and a
 uvm_mem that steps by a different stride from the decoder reads the wrong row.
-UVM steps a memory by ceil(n_bits / 32) bus words, so a row whose stride is 8
-bytes needs n_bits over 32 even when the row is narrower. The decoder flops
-padding like any field, so padding fields are modelled with the register's
-access and reset. The design drives ro and ext registers, so both are volatile.
+A memory's n_bits is its row width at the variant, since a wider n_bits makes
+a full-width write read back masked. The decoder sizes its row stride for the
+widest variant's row, which UVM 1.2 cannot derive from n_bits, so the default
+map is an a2c_reg_map and each memory gets set_mem_stride() with the decoder's
+stride. The decoder flops padding like any field, so padding fields are
+modelled with the register's access and reset. The design drives ro and ext
+registers, so both are volatile.
 
 uvm_mem accepts only RW or RO, so a write-only memory is RW with WO map
 rights. With one map UVM reports its access as RW, and the built-in memory
 sequences would read it back, so the register block must set NO_MEM_TESTS on
-it. A padded row holds bits the decoder does not store, so a padded memory
-that is not write-only must get NO_MEM_WALK_TEST.
+it, and on no other memory.
 
 The fixture is the two-variant register fixture of test_uvm_register_view.py,
 plus a default value on the padded register, an ext register with a default
-value, and two memories whose worst-case row is 40 bits, so their stride is 8
+value, two memories whose worst-case row is 40 bits, so their stride is 8
 bytes while both variants' rows are at most 32 bits: wtbl is write-only and
-ptbl is rw. ubDut also masters a second APB bus through port mst. Offsets
+ptbl is rw, and qtbl, whose worst-case row is 72 bits, so its stride is 16
+bytes while its rows are 48 and 64 bits, two bus words. ubDut also masters a
+second APB bus through port mst. Offsets
 come from the view, which test_uvm_register_view.py checks against the
 firmware header. Everything else is worked out here from the YAML.
 
@@ -77,6 +81,11 @@ EXTRA_EDITS = [
      '        x: { varType: ubPT, desc: "First parameter-width member" }\n'
      '        y: { varType: ubPT, desc: "Second parameter-width member" }\n'
      '        z: { varType: ubDataT, desc: "Fixed member" }\n'
+     '    ubQuadSt:\n'
+     '        w: { varType: ubWordT, desc: "Fixed word" }\n'
+     '        z: { varType: ubDataT, desc: "Fixed member" }\n'
+     '        x: { varType: ubPT, desc: "First parameter-width member" }\n'
+     '        y: { varType: ubPT, desc: "Second parameter-width member" }\n'
      '    ubAlignBaseSt:\n'),
     ('register: aligned, regType: rw, block: ubDut, structure: ubAlignSt,',
      'register: aligned, regType: rw, block: ubDut, structure: ubAlignSt, defaultValue: 0x030201,'),
@@ -86,7 +95,9 @@ EXTRA_EDITS = [
      '    - { memory: wtbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
      'regAccess: wo, desc: "Write-only table on an 8-byte stride" }\n'
      '    - { memory: ptbl, block: ubDut, structure: ubMemSt, wordLines: 4, addressStruct: ubIdxSt, '
-     'regAccess: rw, desc: "Padded table on an 8-byte stride" }\n'),
+     'regAccess: rw, desc: "Table on an 8-byte stride" }\n'
+     '    - { memory: qtbl, block: ubDut, structure: ubQuadSt, wordLines: 4, addressStruct: ubIdxSt, '
+     'regAccess: rw, desc: "Two-word table on a 16-byte stride" }\n'),
 ]
 
 # ubDut masters a second APB bus, port mst, served by uSlave.
@@ -165,21 +176,27 @@ def expected_regmodel(variant, offsets):
         'super.new(name, 8, UVM_NO_COVERAGE);',
         configure('data', 8, 0, 'RW', 1, 3, 1),
         'class ubDut_reg_block extends uvm_reg_block;',
+        'a2c_uvm_pkg::a2c_reg_map a2c_map;',
         'lut = new("lut", 8, 8, "RW", UVM_NO_COVERAGE);',
         f'tbl = new("tbl", {UB_D[variant]}, {8 + w}, "RO", UVM_NO_COVERAGE);',
         # Rows of 2 * UB_W + 8 bits, at most 32, on an 8-byte stride. uvm_mem
         # takes no WO, so the map rights say write-only and NO_MEM_TESTS keeps
-        # the memory sequences off it. ptbl's padding keeps the walk off it.
-        'wtbl = new("wtbl", 4, 33, "RW", UVM_NO_COVERAGE);',
+        # the memory sequences off it.
+        f'wtbl = new("wtbl", 4, {8 + 2 * w}, "RW", UVM_NO_COVERAGE);',
         'uvm_resource_db#(bit)::set({"REG::", wtbl.get_full_name()}, "NO_MEM_TESTS", 1, this);',
-        'ptbl = new("ptbl", 4, 33, "RW", UVM_NO_COVERAGE);',
-        'uvm_resource_db#(bit)::set({"REG::", ptbl.get_full_name()}, "NO_MEM_WALK_TEST", 1, this);',
-        "default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+        f'ptbl = new("ptbl", 4, {8 + 2 * w}, "RW", UVM_NO_COVERAGE);',
+        # Rows of 40 + 2 * UB_W bits, two bus words, on a 16-byte stride.
+        f'qtbl = new("qtbl", 4, {40 + 2 * w}, "RW", UVM_NO_COVERAGE);',
+        'a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
+        "a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+        'add_map(a2c_map);',
     ]
     for name, rights in (('ctrl', 'RW'), ('cfg', 'RW'), ('wide', 'RO'), ('aligned', 'RW'), ('ext', 'RW')):
         lines.append(f"default_map.add_reg({name}, 'h{offsets[name]:x}, \"{rights}\");")
-    for name, rights in (('lut', 'RW'), ('tbl', 'RO'), ('wtbl', 'WO'), ('ptbl', 'RW')):
-        lines.append(f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");")
+    for name, rights, rowBytes in (('lut', 'RW', 4), ('tbl', 'RO', 4), ('wtbl', 'WO', 8), ('ptbl', 'RW', 8),
+                                   ('qtbl', 'RW', 16)):
+        lines += [f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");",
+                  f"a2c_map.set_mem_stride({name}, {rowBytes});"]
     return lines
 
 
@@ -322,10 +339,11 @@ def check(project):
     (qualBlock,) = [key for key, row in prj.data['blocks'].items() if row['block'] == 'ubDut']
     uvm = prj.getBlockData(qualBlock)['uvm']
     offsets = {row['name']: row['offset'] for row in uvm['registers'] + uvm['memories']}
-    (wtbl,) = [row for row in uvm['memories'] if row['name'] == 'wtbl']
+    rowBytes = {row['name']: row['rowBytes'] for row in uvm['memories']}
     problems = []
-    if wtbl['rowBytes'] != 8:
-        problems.append(f"wtbl's decoder stride is {wtbl['rowBytes']} bytes, the fixture means it to be 8")
+    for name, want in (('wtbl', 8), ('ptbl', 8), ('qtbl', 16)):
+        if rowBytes[name] != want:
+            problems.append(f"{name}'s decoder stride is {rowBytes[name]} bytes, the fixture means it to be {want}")
     for variant, pkg in regView.PKG.items():
         path = os.path.join(project, 'uvm', f'{pkg}.sv')
         with open(path) as f:
@@ -339,15 +357,19 @@ def check(project):
         problems += check_mode_b(pkg, lines)
         # The resources come after their memory's configure() call, which
         # gives the memory the full name they are keyed by.
-        for mem in ('wtbl', 'ptbl'):
-            configured = lines.index(f'{mem}.configure(this);')
-            resource = [i for i, line in enumerate(lines) if line.startswith('uvm_resource_db') and f' {mem}.' in line]
-            if resource != [configured + 1]:
-                problems.append(f"{pkg}.sv sets {mem}'s resource at lines {resource}, expected just after "
-                                f"its configure() at line {configured}")
+        configured = lines.index('wtbl.configure(this);')
+        resource = [i for i, line in enumerate(lines) if line.startswith('uvm_resource_db') and ' wtbl.' in line]
+        if resource != [configured + 1]:
+            problems.append(f"{pkg}.sv sets wtbl's resource at lines {resource}, expected just after "
+                            f"its configure() at line {configured}")
         resources = [line for line in lines if line.startswith('uvm_resource_db')]
-        if len(resources) != 2:
-            problems.append(f"{pkg}.sv sets {len(resources)} resources, expected 2: {resources}")
+        if len(resources) != 1:
+            problems.append(f"{pkg}.sv sets {len(resources)} resources, expected 1: {resources}")
+        strides = [line for line in lines if line.startswith('a2c_map.set_mem_stride(')]
+        if len(strides) != 5:
+            problems.append(f"{pkg}.sv sets {len(strides)} row strides, expected one per memory: {strides}")
+        if any(line.startswith('default_map = create_map(') for line in lines):
+            problems.append(f"{pkg}.sv also creates a uvm_reg_map default_map")
         # The fields' configure calls sit in their own register's build(), in
         # declaration order.
         configures = [line for line in lines if '.configure(this, ' in line]
@@ -400,7 +422,8 @@ def run_all_tests():
         print("\nFAIL: a variant package's register model or env disagrees with the block")
         return 1
     print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
-    print("  PASS: NO_MEM_TESTS on the write-only memory, NO_MEM_WALK_TEST on the padded one")
+    print("  PASS: memories at their row width, each with the decoder's row stride, 8 and 16 bytes included")
+    print("  PASS: NO_MEM_TESTS on the write-only memory and no resource on any other")
     print("  PASS: agent typedefs with and without bound parameters")
     print("  PASS: env agents with their roles, the output transaction counter, a digest per port and the register predictor")
     print("  PASS: env Mode B wiring under dual_dut: model vifs, counter and digest model streams, comparators, digest pairing, guard")

@@ -13,14 +13,14 @@ each field must sit at its packed position: the first declared member is the
 most significant, as in an SV `typedef struct packed`. The decoder flops a
 padding member that alignment adds like any other, so it is a field too. Each
 field carries its share of the register's defaultValue as its reset, and each
-memory the n_bits that makes UVM step it by the decoder's row stride. A
+memory its row width at the variant and the decoder's row stride. A
 parameter can size a field or a memory depth, so widths and depths are checked
 at each variant.
 
 The view also carries the UVM spelling of each row's access: an ro register
 is RO and volatile, an rw register RW and not volatile, and a memory's
 uvm_mem access is RO or RW with its map rights as declared. None of these
-memories is write-only or padded, so none is kept off a built-in memory test.
+memories is write-only, so none is kept off a built-in memory test.
 
 A copy of `fixtures/uvm-blocks` gains params UB_W and UB_D on ubDut and two
 variants that bind them differently. ubDut gets a register whose low field is
@@ -193,17 +193,13 @@ def expected_registers():
 
 def expected_memories():
     # tbl's worst-case row is 8 + 16 bits, so 4 bytes, and its 64 worst-case
-    # rows fill 0x0-0xff; lut follows at 0x100 with 8 rows of 4 bytes. A
-    # 4-byte row needs no padding to step by one bus word, so nBits is the
-    # row width.
+    # rows fill 0x0-0xff; lut follows at 0x100 with 8 rows of 4 bytes.
     return [
         {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'access': 'rw', 'uvmAccess': 'RW', 'mapRights': 'RW',
-         'count': each(lambda v: 8), 'width': each(lambda v: 8), 'nBits': each(lambda v: 8),
-         'excludeTests': each(lambda v: []),
+         'count': each(lambda v: 8), 'width': each(lambda v: 8), 'excludeTests': [],
          'type': each(lambda v: {'name': 'ubSt', 'pkg': FILE_PKG})},
         {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'access': 'ro', 'uvmAccess': 'RO', 'mapRights': 'RO',
-         'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]),
-         'nBits': each(lambda v: 8 + UB_W[v]), 'excludeTests': each(lambda v: []),
+         'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]), 'excludeTests': [],
          'type': each(lambda v: {'name': 'ubPSt', 'pkg': PKG[v]})},
     ]
 

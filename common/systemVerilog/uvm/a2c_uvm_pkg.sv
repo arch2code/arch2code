@@ -1064,6 +1064,64 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_status_comparator
 
+    // A register map whose memories can place their rows further apart than
+    // the rows are wide. UVM 1.2 steps a memory by its n_bits rounded up to
+    // whole bus words, but a decoder sized for a wider variant's rows places
+    // rows at that variant's stride. set_mem_stride() gives a memory the
+    // decoder's stride in bytes and leaves n_bits at the row's width, so an
+    // access moves only the row's own words. The stride holds for bus
+    // accesses, get_address(), get_addresses() and get_mem_by_offset(), which
+    // counts a row's unused words as the memory's, as the decoder does.
+    // get_size() and a parent map's own lookup still use UVM's stride, so an
+    // a2c_reg_map must be a root map, and add_submap() of one is fatal.
+    class a2c_reg_map extends uvm_reg_map;
+        protected int unsigned strides[uvm_mem];
+
+        `uvm_object_utils(a2c_reg_map)
+
+        function new(string name = "a2c_reg_map");
+            super.new(name);
+        endfunction
+
+        function void set_mem_stride(uvm_mem mem, int unsigned stride_bytes);
+            int unsigned bus_bytes = get_n_bytes(UVM_NO_HIER);
+            int unsigned min_bytes = ((mem.get_n_bytes() - 1) / bus_bytes + 1) * bus_bytes;
+            if (stride_bytes % bus_bytes != 0 || stride_bytes < min_bytes) begin
+                `uvm_fatal("A2C_CFG", $sformatf("set_mem_stride(): %s needs a stride of whole %0d-byte bus words and at least %0d bytes, not %0d",
+                                                mem.get_full_name(), bus_bytes, min_bytes, stride_bytes))
+                return;
+            end
+            strides[mem] = stride_bytes;
+        endfunction
+
+        virtual function void add_parent_map(uvm_reg_map parent_map, uvm_reg_addr_t offset);
+            `uvm_fatal("A2C_CFG", $sformatf("%s is an a2c_reg_map, which must be a root map, so it cannot be a submap of %s",
+                                            get_full_name(), parent_map == null ? "null" : parent_map.get_full_name()))
+        endfunction
+
+        // UVM recomputes the info whenever the address map is rebuilt, so the
+        // stride goes back on at every read of it.
+        virtual function uvm_reg_map_info get_mem_map_info(uvm_mem mem, bit error = 1);
+            uvm_reg_map_info info = super.get_mem_map_info(mem, error);
+            if (info != null && !info.unmapped && strides.exists(mem)) begin
+                int unsigned unit = get_addr_unit_bytes();
+                info.mem_range.stride = strides[mem] / unit;
+                info.mem_range.max    = info.mem_range.min + (mem.get_size() * strides[mem] - get_n_bytes(UVM_NO_HIER)) / unit;
+            end
+            return info;
+        endfunction
+
+        virtual function uvm_mem get_mem_by_offset(uvm_reg_addr_t offset);
+            if (get_parent().is_locked()) begin
+                foreach (strides[mem]) begin
+                    uvm_reg_map_info info = get_mem_map_info(mem);
+                    if (info != null && !info.unmapped && info.mem_range.min <= offset && offset <= info.mem_range.max) return mem;
+                end
+            end
+            return super.get_mem_by_offset(offset);
+        endfunction
+    endclass : a2c_reg_map
+
     // Holds Mode B to configuration changes while the datapath is quiescent.
     // It takes the writes a2c_reg_write_subscriber converts. A write while any
     // listed counter has pending transactions on either lane, a reported

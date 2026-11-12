@@ -542,6 +542,8 @@ package apb_uvm_pkg;
     endclass : apb_agent
 
     // A register access is one 32-bit APB transfer; PSLVERR maps to UVM_NOT_OK.
+    // UVM passes each word of a memory burst as its own access, of kind
+    // UVM_BURST_WRITE or UVM_BURST_READ.
     class apb_reg_adapter extends uvm_reg_adapter;
         `uvm_object_utils(apb_reg_adapter)
 
@@ -553,7 +555,7 @@ package apb_uvm_pkg;
 
         virtual function uvm_sequence_item reg2bus(const ref uvm_reg_bus_op rw);
             apb_item item = apb_item::type_id::create("item");
-            item.write = (rw.kind == UVM_WRITE);
+            item.write = rw.kind inside {UVM_WRITE, UVM_BURST_WRITE};
             item.addr  = rw.addr;
             item.data  = rw.data;
             return item;

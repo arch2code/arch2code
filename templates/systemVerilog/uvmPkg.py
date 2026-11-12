@@ -108,26 +108,33 @@ def reg_block_class(uvm, variant):
               '    endfunction',
               '',
               '    virtual function void build();']
+    if uvm['memories']:
+        lines.append('        a2c_uvm_pkg::a2c_reg_map a2c_map;')
     for reg in uvm['registers']:
         name = reg['name']
         lines += [f'        {name} = {reg["className"]}::type_id::create("{name}");',
                   f"        {name}.configure(this);",
                   f"        {name}.build();"]
-    if uvm['memories']:
-        lines += ["        // n_bits pads a memory row so that UVM's stride of ceil(n_bits / 32)",
-                  "        // bus words is the decoder's row stride."]
     for mem in uvm['memories']:
         name = mem['name']
-        lines += [f'        {name} = new("{name}", {mem["count"][variant]}, {mem["nBits"][variant]}, '
+        lines += [f'        {name} = new("{name}", {mem["count"][variant]}, {mem["width"][variant]}, '
                   f'"{mem["uvmAccess"]}", UVM_NO_COVERAGE);',
                   f"        {name}.configure(this);"]
         lines += [f'        uvm_resource_db#(bit)::set({{"REG::", {name}.get_full_name()}}, "{resource}", 1, this);'
-                  for resource in mem['excludeTests'][variant]]
-    lines.append("        default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);")
+                  for resource in mem['excludeTests']]
+    if uvm['memories']:
+        lines += ["        // UVM would step each memory by its n_bits rounded up to bus words;",
+                  "        // a2c_reg_map steps it by the decoder's row stride.",
+                  '        a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
+                  "        a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+                  "        add_map(a2c_map);"]
+    else:
+        lines.append("        default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);")
     for reg in uvm['registers']:
         lines.append(f'        default_map.add_reg({reg["name"]}, \'h{reg["offset"]:x}, "{reg["uvmAccess"]}");')
     for mem in uvm['memories']:
-        lines.append(f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["mapRights"]}");')
+        lines += [f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["mapRights"]}");',
+                  f'        a2c_map.set_mem_stride({mem["name"]}, {mem["rowBytes"]});']
     lines += ['        lock_model();', '    endfunction', f"endclass : {cls}"]
     return lines
 

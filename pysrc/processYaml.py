@@ -76,7 +76,9 @@ UVM_REG_BLOCK_MEMBER_NAMES = UVM_OBJECT_MEMBER_NAMES | frozenset((
     'write_mem_by_name', 'read_mem_by_name', 'readmemh', 'writememh', 'set_backdoor',
     'get_backdoor', 'clear_hdl_path', 'add_hdl_path', 'has_hdl_path', 'get_hdl_path',
     'get_full_hdl_path', 'set_default_hdl_path', 'get_default_hdl_path', 'set_hdl_path_root',
-    'is_hdl_path_root', 'set_lock', 'add_block', 'add_reg', 'add_vreg', 'add_mem', 'add_map'))
+    'is_hdl_path_root', 'set_lock', 'add_block', 'add_reg', 'add_vreg', 'add_mem', 'add_map',
+    # The generated build()'s map variable.
+    'a2c_map'))
 
 def worstCaseBitwidth(width, maxBitwidth, isParameterizable):
     """Firmware reaches a register or memory row of every variant through one
@@ -1903,14 +1905,14 @@ class projectOpen:
         significant. The decoder flops the padding members alignment adds
         like any other, so they are fields too. Each field carries its share
         of defaultValue as reset. memories: one per memories: row with
-        regAccess, and one rw memory per regType memory register. rowBytes is
-        the decoder's stride between rows, and nBits the row size
-        resolveUvmRegisterWidths gives the model. Widths, depths and type
+        regAccess, and one rw memory per regType memory register. width is
+        the row's n_bits and rowBytes the decoder's stride between rows, which
+        is sized for the widest variant's row. Widths, depths and type
         packages are keyed by variant like paramTypes.
 
         uvm_mem takes only RW or RO, so a wo memory is RW with WO map rights,
         which UVM reports as RW when there is one map. excludeTests keeps the
-        built-in memory sequences off it, and the walk off padded rows.
+        built-in memory sequences off it.
         """
         widths = {variant: top['registerWidths'] for variant, top in tops.items()}
 
@@ -1935,16 +1937,11 @@ class projectOpen:
             return perVariant
 
         def memory(section, key, row, name, access):
-            rowWidth = width(section, key)
-            nBits = {variant: layout[section][key]['nBits'] for variant, layout in widths.items()}
-            excludeTests = {variant: ['NO_MEM_TESTS'] if access == 'wo'
-                            else ['NO_MEM_WALK_TEST'] if nBits[variant] > rowWidth[variant] else []
-                            for variant in widths}
             return {'name': name, 'offset': int(row['offset']), 'access': access,
                     'uvmAccess': 'RO' if access == 'ro' else 'RW', 'mapRights': access.upper(),
                     'rowBytes': row['rowBytes'],
                     'count': {variant: layout[section][key]['wordLines'] for variant, layout in widths.items()},
-                    'width': rowWidth, 'nBits': nBits, 'excludeTests': excludeTests,
+                    'width': width(section, key), 'excludeTests': ['NO_MEM_TESTS'] if access == 'wo' else [],
                     'type': typeRefs(row['structureKey'])}
 
         block = ret['blockInfo']['block']
@@ -5827,7 +5824,6 @@ class projectCreate:
         top per standalone variant. tree is the project's clockTree.
         """
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
-        structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.uvmRegisterWidths = dict()
         # The interface definition key of a memory port and of each register
         # port type alias, reg_<regType>.
@@ -6018,31 +6014,14 @@ class projectCreate:
                 for section, kind, nameField in (('registers', 'register', 'register'),
                                                  ('memories', 'memory', 'memory')):
                     for key, entry in widths[section].items():
-                        if entry['nBits'] <= UVM_REG_DATA_WIDTH:
+                        width = sum(member['width'] for member in entry['fields'])
+                        if width <= UVM_REG_DATA_WIDTH:
                             continue
                         objRow = self.flatData[section][key]
-                        width = sum(member['width'] for member in entry['fields'])
-                        size = f"is {width} bits wide{atVariant}"
-                        fix = "Narrow its structure"
-                        # A row within the limit exceeds it only through a
-                        # stride sized for a wider variant.
-                        if width <= UVM_REG_DATA_WIDTH:
-                            struct = self.flatData['structures'][objRow['structureKey']]
-                            params = [self.flatData['constants'][constKey]
-                                      for constKey in structureParamDeps[objRow['structureKey']]]
-                            drivers = ', '.join(f"{param['constant']} at its maxValue {param['maxValue']}"
-                                                for param in params)
-                            size = (f"has {width}-bit rows{atVariant}, which the register model "
-                                    f"pads to {entry['nBits']} bits so that UVM steps through "
-                                    f"them by the decoder's row stride. The decoder sizes that "
-                                    f"stride for the widest row of any variant, "
-                                    f"{struct['maxBitwidth']} bits with {drivers}")
-                            fix = (f"Lower the maxValue of {', '.join(param['constant'] for param in params)}, "
-                                   f"narrow its structure")
                         printError(
-                            f"{where} but its {kind} '{objRow[nameField]}' {size}. A UVM register "
-                            f"model holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) in a "
-                            f"register or memory row. {fix}, or clear hasUvm.")
+                            f"{where} but its {kind} '{objRow[nameField]}' is {width} bits wide{atVariant}. "
+                            f"A UVM register model holds at most {UVM_REG_DATA_WIDTH} bits (UVM_REG_DATA_WIDTH) "
+                            f"in a register or memory row. Narrow its structure, or clear hasUvm.")
                         failed = True
         if failed:
             exit(warningAndErrorReport())
@@ -6191,10 +6170,7 @@ class projectCreate:
         # structure member in declaration order, and the depth of a memory or
         # regType memory register. Members come from flatData, which holds
         # the padding a specialStructures entry adds beside the members it
-        # copies from its base structure. nBits is the n_bits the register
-        # model gives the row: a register's width, and for a memory the row
-        # width raised to the least value whose uvm_mem stride of
-        # ceil(n_bits / 32) bus words is the decoder's row stride.
+        # copies from its base structure.
         widths = {'registers': dict(), 'memories': dict()}
         for section, rows in widths.items():
             for key, objRow in self.flatData[section].items():
@@ -6206,18 +6182,11 @@ class projectCreate:
                 isMemory = section == 'memories' or objRow['regType'] == 'memory'
                 fields = [{'name': name, 'width': resolver.varWidth(varRow, field_name=name)}
                           for name, varRow in structVars.items()]
-                width = sum(field['width'] for field in fields)
                 rows[key] = {
                     'fields': fields,
                     'wordLines': resolver.value(objRow['wordLinesKey'] or objRow['wordLines'],
                                                 label=f"wordLines of '{key}'") if isMemory else None,
-                    'nBits': width,
                 }
-                if isMemory:
-                    struct = self.flatData['structures'][objRow['structureKey']]
-                    rowBytes = rowFootprintBytes(worstCaseBitwidth(
-                        struct['width'], struct['maxBitwidth'], struct['isParameterizable']))
-                    rows[key]['nBits'] = max(width, rowBytes * 8 - 31)
         return widths
 
     def validateSvDesignUnitNames(self):

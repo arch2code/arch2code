@@ -24,12 +24,13 @@ type that sets uvmModelCredit, the Mode B credit names `<port>_model_credit`,
 `<port>_model_held` and `<port>_credit`, so a port, clock or reset named like
 one of them is rejected. A block without a model may name a
 port `<port>_model`. A UVM register or memory row holds at most
-64 bits, so a register, or a memory whose rows the register model pads to its
-decoder stride, over 64 bits at any standalone variant is rejected, and the
-padded case names the parameter maxValue that sets the stride. A field is a
+64 bits, so a register or memory row over 64 bits at any standalone variant
+is rejected. A memory's row stride does not count, since the register model
+gives a memory its row width. A field is a
 member of its uvm_reg subclass and a register or memory a member of the
 uvm_reg_block subclass, so a name that would hide a member of that class or of
-uvm_object is rejected, once per block whatever the number of variants. A
+uvm_object is rejected, once per block whatever the number of variants, and
+so is a2c_map, the generated build()'s map variable. A
 register's class is `<block>_reg_<register>`, so a register named `block`
 would take the register block's class name and is rejected. A memory's
 structure members become no fields, so their names are not checked, and a name
@@ -217,34 +218,6 @@ REJECTED = [
                '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n'
                '    - { register: big, regType: rw, block: ubDut, structure: ubBigSt, desc: "Wide config" }\n')])],
      [WHERE, "its register 'big' is 72 bits wide at variant 'v1'", "UVM_REG_DATA_WIDTH"]),
-    ('a memory padded past 64 bits by its row stride', ROOT_PROJECT,
-     [(ARCH, [('\ntypes:\n',
-               '\nipParameters:\n'
-               '    constants:\n'
-               '        UB_W: { value: 8, maxValue: 64, desc: "Width knob" }\n\n'
-               'types:\n'
-               '    ubPT: { width: UB_W, desc: "Parameter-width field" }\n'
-               '    ubIdxT: { width: 4, desc: "Table index" }\n'),
-              ('\nstructures:\n',
-               '\nstructures:\n'
-               '    ubBigSt:\n'
-               '        word: { varType: ubWordT, desc: "Low word" }\n'
-               '        ext: { varType: ubPT, desc: "Parameter-width extension" }\n'
-               '    ubIdxSt:\n'
-               '        idx: { varType: ubIdxT, desc: "Table index" }\n'),
-              ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W]\n'),
-              ('instGroup: top, addressGroup: top }', 'instGroup: top, addressGroup: top, variant: v0 }'),
-              ('\nconnections:\n',
-               '\nparameters:\n    ubDut:\n        v0: { UB_W: 8 }\n\n'
-               'connections:\n'),
-              ('    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n',
-               '    - { register: ctrl, regType: rw, block: ubDut, structure: ubSt, desc: "Control" }\n\n'
-               'memories:\n'
-               '    - { memory: tbl, block: ubDut, structure: ubBigSt, wordLines: 4, addressStruct: ubIdxSt, '
-               'regAccess: rw, desc: "Table" }\n')])],
-     [WHERE, "its memory 'tbl' has 40-bit rows at variant 'v0', which the register model pads to 97 bits",
-      "by the decoder's row stride", "the widest row of any variant, 96 bits with UB_W at its maxValue 64",
-      "Lower the maxValue of UB_W, narrow its structure", "UVM_REG_DATA_WIDTH"]),
     ('a fixed memory row over 64 bits', ROOT_PROJECT,
      [(ARCH, [('    ubWordT:', '    ubIdxT: { width: 4, desc: "Table index" }\n    ubWordT:'),
               ('\nstructures:\n',
@@ -264,6 +237,9 @@ REJECTED = [
     ('a register named like a uvm_reg_block member', ROOT_PROJECT,
      [(ARCH, [('{ register: ctrl,', '{ register: mirror,')])],
      [WHERE, "its register 'mirror' has the name of a member of uvm_reg_block"]),
+    ('a register named like the register block\'s map variable', ROOT_PROJECT,
+     [(ARCH, [('{ register: ctrl,', '{ register: a2c_map,')])],
+     [WHERE, "its register 'a2c_map' has the name of a member of uvm_reg_block"]),
     ('a register whose class is the register block class', ROOT_PROJECT,
      [(ARCH, [('{ register: ctrl,', '{ register: block,')])],
      [WHERE, "has a register named 'block', whose generated class would be 'ubDut_reg_block'",

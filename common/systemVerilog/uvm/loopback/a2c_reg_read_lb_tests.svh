@@ -3,7 +3,8 @@
 // agent's apb_comparator. The reg_read_* tests write synthetic apb items
 // into a comparator by hand; the reg_read_pins_* tests read through a
 // register model and the apb agent on the apb pin sets, in Mode B and in
-// Mode A. Included in a2c_uvm_loopback_pkg after
+// Mode A, and reg_read_pins_stride_test moves a2c_reg_map memory rows over
+// them; reg_read_stride_cfg_test checks a2c_reg_map's fatals. Included in a2c_uvm_loopback_pkg after
 // a2c_joint_stall_lb_tests.svh, and uses the rdy_vld, apb and Mode B
 // classes of the files before it.
 
@@ -987,3 +988,194 @@
             super.report_phase(phase);
         endfunction
     endclass : reg_read_pins_mode_a_test
+
+    // In default_map, an a2c_reg_map: narrow, four 20-bit rows on an 8-byte
+    // stride at 0x200, and wide, four 40-bit rows on a 16-byte stride at
+    // 0x300. word_map, a word-addressed a2c_reg_map at word 0x1000, holds
+    // narrow again at word 0x80.
+    class lb_stride_block extends uvm_reg_block;
+        uvm_mem     narrow;
+        uvm_mem     wide;
+        a2c_reg_map word_map;
+
+        `uvm_object_utils(lb_stride_block)
+
+        function new(string name = "lb_strides");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            narrow = new("narrow", 4, 20, "RW", UVM_NO_COVERAGE);
+            narrow.configure(this);
+            wide = new("wide", 4, 40, "RW", UVM_NO_COVERAGE);
+            wide.configure(this);
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_mem(narrow, 'h200, "RW");
+            map.set_mem_stride(narrow, 8);
+            map.add_mem(wide, 'h300, "RW");
+            map.set_mem_stride(wide, 16);
+            word_map = a2c_reg_map::type_id::create("word_map", , get_full_name());
+            word_map.configure(this, 'h1000, 4, UVM_LITTLE_ENDIAN, 0);
+            add_map(word_map);
+            word_map.add_mem(narrow, 'h80, "RW");
+            word_map.set_mem_stride(narrow, 8);
+            lock_model();
+        endfunction
+    endclass : lb_stride_block
+
+    // Mode A: full-width rows written through narrow by one burst and through
+    // wide row by row land on the slave at the row stride, in the row's own
+    // words only, and read back whole. Each map finds a memory at every word
+    // of its rows, unused words of the last row included, and none past it.
+    class reg_read_pins_stride_test extends lb_reg_read_pins_base;
+        lb_stride_block strides;
+
+        `uvm_component_utils(reg_read_pins_stride_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b = 0;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            strides = lb_stride_block::type_id::create("lb_strides");
+            strides.build();
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            strides.default_map.set_sequencer(agent.sqr, adapter);
+            strides.default_map.set_auto_predict(1);
+        endfunction
+
+        // The slave's word at addr, or 'x when it holds none of its bytes.
+        function logic [31:0] slave_word(bit [31:0] addr);
+            logic [31:0] w = 'x;
+            for (int unsigned b = 0; b < 4; b++) if (peer_cfg.mem.exists(addr + b)) w[8 * b +: 8] = peer_cfg.mem.read(addr + b);
+            return w;
+        endfunction
+
+        function void expect_word(bit [31:0] addr, logic [31:0] want);
+            logic [31:0] got = slave_word(addr);
+            if (got !== want) `uvm_error("LB_REG_STRIDE", $sformatf("the slave holds 'h%0h at 'h%0h, expected 'h%0h", got, addr, want))
+        endfunction
+
+        function void expect_mem(uvm_reg_map map, uvm_reg_addr_t addr, uvm_mem want);
+            uvm_mem got = map.get_mem_by_offset(addr);
+            if (got != want) begin
+                `uvm_error("LB_REG_STRIDE", $sformatf("%s finds %s at 'h%0h, expected %s", map.get_full_name(),
+                                                      got == null ? "no memory" : got.get_full_name(), addr,
+                                                      want == null ? "none" : want.get_full_name()))
+            end
+        endfunction
+
+        function void expect_addresses(uvm_mem mem, uvm_reg_addr_t row, uvm_reg_map map, uvm_reg_addr_t want[]);
+            uvm_reg_addr_t got[];
+            bit            same;
+            void'(mem.get_addresses(row, map, got));
+            same = got.size() == want.size();
+            foreach (got[i]) same &= i < want.size() && got[i] == want[i];
+            if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("%s row %0d is at %p, expected %p", mem.get_full_name(), row, got, want))
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            uvm_status_e   status;
+            uvm_reg_data_t narrow_rows[] = {20'hfa5a0, 20'hfa5a1, 20'hfa5a2, 20'hfa5a3};
+            uvm_reg_data_t wide_rows[4];
+            phase.raise_objection(this);
+            clk_vif.wait_reset_release();
+            strides.narrow.burst_write(status, 0, narrow_rows);
+            if (status != UVM_IS_OK) `uvm_error("LB_REG_STRIDE", $sformatf("narrow burst write status %s", status.name()))
+            foreach (wide_rows[r]) begin
+                wide_rows[r] = 40'hc3_5a5a_0000 + r;
+                strides.wide.write(status, r, wide_rows[r]);
+                if (status != UVM_IS_OK) `uvm_error("LB_REG_STRIDE", $sformatf("wide[%0d] write status %s", r, status.name()))
+            end
+            for (int unsigned r = 0; r < 4; r++) begin
+                expect_word('h200 + 8 * r, narrow_rows[r]);
+                expect_word('h204 + 8 * r, 'x);
+                expect_word('h300 + 16 * r, wide_rows[r][31:0]);
+                expect_word('h304 + 16 * r, wide_rows[r][39:32]);
+                expect_word('h308 + 16 * r, 'x);
+                expect_word('h30c + 16 * r, 'x);
+            end
+            for (int unsigned r = 0; r < 4; r++) begin
+                uvm_reg_data_t value;
+                strides.narrow.read(status, r, value);
+                if (status != UVM_IS_OK || value != narrow_rows[r]) begin
+                    `uvm_error("LB_REG_STRIDE", $sformatf("narrow[%0d] read 'h%0h (%s), wrote 'h%0h", r, value, status.name(), narrow_rows[r]))
+                end
+                strides.wide.read(status, r, value);
+                if (status != UVM_IS_OK || value != wide_rows[r]) begin
+                    `uvm_error("LB_REG_STRIDE", $sformatf("wide[%0d] read 'h%0h (%s), wrote 'h%0h", r, value, status.name(), wide_rows[r]))
+                end
+            end
+            expect_mem(strides.default_map, 'h21c, strides.narrow);
+            expect_mem(strides.default_map, 'h220, null);
+            expect_mem(strides.default_map, 'h33c, strides.wide);
+            expect_mem(strides.default_map, 'h340, null);
+            expect_mem(strides.word_map, 'h1087, strides.narrow);
+            expect_mem(strides.word_map, 'h1088, null);
+            expect_addresses(strides.narrow, 3, null, {'h218});
+            expect_addresses(strides.wide, 2, null, {'h320, 'h324});
+            expect_addresses(strides.narrow, 3, strides.word_map, {'h1086});
+            phase.drop_objection(this);
+        endtask
+    endclass : reg_read_pins_stride_test
+
+    // A stride that is not whole bus words, one shorter than a row's words,
+    // and an a2c_reg_map added as a submap are each one A2C_CFG fatal, and a
+    // rejected stride leaves the memory's stride as it was.
+    class reg_read_stride_cfg_test extends lb_reg_read_base;
+        lb_cfg_fatal_catcher catcher;
+        lb_stride_block      strides;
+
+        `uvm_component_utils(reg_read_stride_cfg_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            uvm_reg_block top;
+            uvm_reg_block sub;
+            uvm_reg_map   top_map;
+            a2c_reg_map   sub_map;
+            uvm_reg_addr_t addrs[];
+            a2c_reg_map   map;
+            super.connect_phase(phase);
+            catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
+            uvm_report_cb::add(null, catcher);
+            strides = lb_stride_block::type_id::create("lb_strides");
+            strides.build();
+            void'($cast(map, strides.default_map));
+            map.set_mem_stride(strides.narrow, 6);
+            map.set_mem_stride(strides.wide, 4);
+            void'(strides.narrow.get_addresses(1, null, addrs));
+            if (addrs.size() != 1 || addrs[0] != 'h208) `uvm_error("LB_REG_STRIDE", $sformatf("narrow row 1 is at %p after the rejected stride, expected '{'h208}", addrs))
+            void'(strides.wide.get_addresses(1, null, addrs));
+            if (addrs.size() != 2 || addrs[0] != 'h310) `uvm_error("LB_REG_STRIDE", $sformatf("wide row 1 is at %p after the rejected stride, expected '{'h310, 'h314}", addrs))
+            // uvm_reg_block is virtual; these two are never built, so they hold no map of their own.
+            top = lb_stride_block::type_id::create("lb_top");
+            sub = lb_stride_block::type_id::create("lb_sub");
+            sub.configure(top);
+            top_map = top.create_map("top_map", 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            sub_map = a2c_reg_map::type_id::create("sub_map", , sub.get_full_name());
+            sub_map.configure(sub, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            sub.add_map(sub_map);
+            top_map.add_submap(sub_map, 'h100);
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            string want[$] = '{"set_mem_stride(): lb_strides.narrow needs a stride of whole 4-byte bus words and at least 4 bytes, not 6",
+                               "set_mem_stride(): lb_strides.wide needs a stride of whole 4-byte bus words and at least 8 bytes, not 4",
+                               "lb_top.lb_sub.sub_map is an a2c_reg_map, which must be a root map, so it cannot be a submap of lb_top.top_map"};
+            bit same = catcher.messages.size() == want.size();
+            foreach (want[i]) same &= i < catcher.messages.size() && catcher.messages[i] == want[i];
+            if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("expected the A2C_CFG fatals %p, got %p", want, catcher.messages))
+            super.report_phase(phase);
+        endfunction
+    endclass : reg_read_stride_cfg_test
