@@ -1913,3 +1913,336 @@
             super.report_phase(phase);
         endfunction
     endclass : vid_lane_watch_concurrent_test
+
+    // The random corner with cut_eof: every cut frame it draws ends with
+    // EOF on the input.
+    class vid_random_cut_eof_test extends lb_vid_c_test_random;
+        `uvm_component_utils(vid_random_cut_eof_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.width   = 8;
+            cfg.height  = 4;
+            cfg.frames  = 40;
+            cfg.cut_eof = 1;
+        endfunction
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned cuts = 0;
+            super.check_phase(phase);
+            foreach (video.plan[f]) begin
+                if (!video.plan[f].cut) continue;
+                cuts++;
+                if (!video.plan[f].eof) `uvm_error("LB_VID", $sformatf("random cut frame %0d has no EOF under cut_eof", f))
+            end
+            if (cuts == 0) `uvm_error("LB_VID", "the random corner drew no cut frame in 40 frames")
+        endfunction
+    endclass : vid_random_cut_eof_test
+
+    // Raises an LB_VID error for each frame between the first and the last
+    // whose corner is not in allowed, and one more if none has a corner.
+    function automatic void lb_vid_expect_corners(a2c_video_env v, string allowed[$]);
+        int unsigned with_corner = 0;
+        foreach (v.plan[f]) begin
+            if (f == 0 || f + 1 == v.plan.size()) continue;
+            with_corner += v.plan[f].corner != "";
+            if (!(v.plan[f].corner_name() inside {allowed})) begin
+                `uvm_error("LB_VID", $sformatf("frame %0d drew corner %s, which is not one of %p", f, v.plan[f].corner_name(), allowed))
+            end
+        end
+        if (with_corner == 0) `uvm_error("LB_VID", $sformatf("no frame of %0d drew a corner", v.plan.size()))
+    endfunction
+
+    // random_exclude keeps the line lengths equal: the random corner draws
+    // no short or long line, and every line is the configured width.
+    class vid_random_exclude_test extends lb_vid_c_test_random;
+        string allowed[$] = '{"none", "back_to_back", "cut_frame"};
+        bit    equal_lines = 1;
+
+        `uvm_component_utils(vid_random_exclude_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.width          = 8;
+            cfg.height         = 4;
+            cfg.frames         = 40;
+            cfg.random_exclude = '{"short_line", "long_line"};
+        endfunction
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            lb_vid_expect_corners(video, allowed);
+            if (equal_lines) foreach (video.plan[f]) foreach (video.plan[f].lines[y]) begin
+                if (video.plan[f].lines[y].px.size() != 8) begin
+                    `uvm_error("LB_VID", $sformatf("frame %0d line %0d: %0d pixels, expected 8", f, y, video.plan[f].lines[y].px.size()))
+                end
+            end
+        endfunction
+    endclass : vid_random_exclude_test
+
+    // The plusarg's list replaces the test's, and "none" leaves out the
+    // plain frame, so every frame between the first and the last draws a
+    // short or a long line.
+    // LB_PLUSARGS vid_random_exclude_plusarg_test +a2c_video_random_exclude=none,back_to_back,cut_frame
+    class vid_random_exclude_plusarg_test extends vid_random_exclude_test;
+        `uvm_component_utils(vid_random_exclude_plusarg_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            allowed     = '{"short_line", "long_line"};
+            equal_lines = 0;
+        endfunction
+    endclass : vid_random_exclude_plusarg_test
+
+    // min_cut_lines 5 on 8 lines: every random cut keeps 5 to 7 lines, both
+    // odd and even counts among them.
+    class vid_random_min_cut_test extends lb_vid_c_test_random;
+        int unsigned least = 5;
+
+        `uvm_component_utils(vid_random_min_cut_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.width         = 8;
+            cfg.height        = 8;
+            cfg.frames        = 40;
+            cfg.min_cut_lines = 5;
+        endfunction
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned kept[int unsigned];
+            super.check_phase(phase);
+            foreach (video.plan[f]) begin
+                if (!video.plan[f].cut) continue;
+                kept[video.plan[f].lines.size()]++;
+                if (video.plan[f].lines.size() < least) begin
+                    `uvm_error("LB_VID", $sformatf("random cut frame %0d keeps %0d lines, fewer than %0d", f, video.plan[f].lines.size(), least))
+                end
+            end
+            if (kept.num() == 0) `uvm_error("LB_VID", "the random corner drew no cut frame in 40 frames")
+            if (least == 5 && (!kept.exists(6) || !(kept.exists(5) || kept.exists(7)))) begin
+                `uvm_error("LB_VID", $sformatf("cut frames kept these line counts: %p; expected both odd and even", kept))
+            end
+        endfunction
+    endclass : vid_random_min_cut_test
+
+    // min_cut_lines 7 on 8 lines from the plusarg: every cut keeps 7 lines,
+    // the one count the range holds.
+    // LB_PLUSARGS vid_random_min_cut_plusarg_test +a2c_video_min_cut_lines=7
+    class vid_random_min_cut_plusarg_test extends vid_random_min_cut_test;
+        `uvm_component_utils(vid_random_min_cut_plusarg_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            least = 7;
+        endfunction
+    endclass : vid_random_min_cut_plusarg_test
+
+    class vid_reject_random_exclude_test extends vid_reject_base;
+        `uvm_component_utils(vid_reject_random_exclude_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function string rule();
+            return "random_exclude";
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.random_exclude = '{"blanking"};
+        endfunction
+    endclass : vid_reject_random_exclude_test
+
+    // Every corner a handshaked input allows, and none, left out.
+    class vid_reject_random_pool_test extends vid_reject_base;
+        `uvm_component_utils(vid_reject_random_pool_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function string rule();
+            return "random_pool";
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.random_corners = 1;
+            cfg.random_exclude = '{"none", "back_to_back", "long_line", "short_line", "cut_frame"};
+        endfunction
+    endclass : vid_reject_random_pool_test
+
+    class vid_reject_min_cut_lines_test extends vid_reject_base;
+        `uvm_component_utils(vid_reject_min_cut_lines_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function string rule();
+            return "min_cut_lines";
+        endfunction
+        virtual function void configure_video(a2c_video_cfg cfg);
+            cfg.random_corners = 1;
+            cfg.min_cut_lines  = 8;
+        endfunction
+    endclass : vid_reject_min_cut_lines_test
+
+    // Counts the A2C_VIDEO infos that log the contract an output checks.
+    class lb_vid_contract_log extends uvm_report_catcher;
+        int unsigned n;
+
+        `uvm_object_utils(lb_vid_contract_log)
+
+        function new(string name = "lb_vid_contract_log");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_id() == "A2C_VIDEO" && get_severity() == UVM_INFO && a2c_contains(get_message(), "checks the contract")) n++;
+            return THROW;
+        endfunction
+    endclass : lb_vid_contract_log
+
+    // edit_plan() gives every pixel a value no pixel_mode makes and drops
+    // frame 1's last line. The contract, checking pixels exactly, and the
+    // output counter must expect the edited frames, and the contract log
+    // line still prints once.
+    class vid_edit_plan_test extends lb_vid_c_test;
+        int unsigned        edits;
+        lb_vid_contract_log contract_log;
+
+        `uvm_component_utils(vid_edit_plan_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        static function uvm_bitstream_t edited(int unsigned f, int unsigned y, int unsigned x);
+            return 'h5a ^ ((x + 7 * y + 13 * f) & 'hff);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            contract             = a2c_video_contract::type_id::create("contract");
+            contract.pixel_check = A2C_VIDEO_PIX_EXACT;
+            contract_log         = lb_vid_contract_log::type_id::create("contract_log");
+            uvm_report_cb::add(null, contract_log);
+            super.build_phase(phase);
+        endfunction
+
+        virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
+            edits++;
+            foreach (plan[f]) foreach (plan[f].lines[y]) foreach (plan[f].lines[y].px[x]) plan[f].lines[y].px[x] = edited(f, y, x);
+            void'(plan[1].lines.pop_back());
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned unedited = 0;
+            super.check_phase(phase);
+            if (edits != 1) `uvm_error("LB_VID", $sformatf("edit_plan() ran %0d times for one run", edits))
+            lb_vid_expect_frame(video, 1, 7);
+            foreach (video.plan[f]) foreach (video.plan[f].lines[y]) foreach (video.plan[f].lines[y].px[x]) begin
+                unedited += video.plan[f].lines[y].px[x] != edited(f, y, x);
+            end
+            if (unedited != 0) `uvm_error("LB_VID", $sformatf("%0d planned pixels do not hold their edited value", unedited))
+            if (contract_log.n != 1) `uvm_error("LB_VID", $sformatf("the contract log line printed %0d times, expected 1", contract_log.n))
+        endfunction
+    endclass : vid_edit_plan_test
+
+    // edit_plan() edits the queue: it drops frame 1 and appends a frame of
+    // two lines with no cfg, which send_video() gives the run's cfg. The
+    // contract crops to the cfg's width and checks pixels exactly, and the
+    // output counter expects the edited frames' beats.
+    class vid_edit_plan_queue_test extends lb_vid_c_test;
+        a2c_video_frame appended;
+
+        `uvm_component_utils(vid_edit_plan_queue_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            contract             = a2c_video_contract::type_id::create("contract");
+            contract.crop_width  = 1;
+            contract.pixel_check = A2C_VIDEO_PIX_EXACT;
+            super.build_phase(phase);
+        endfunction
+
+        virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
+            appended       = a2c_video_frame::type_id::create("appended");
+            appended.index = 3;
+            for (int unsigned y = 0; y < 2; y++) begin
+                a2c_video_line l = new();
+                l.gap = (y == 0) ? 8 : 2;
+                for (int unsigned x = 0; x < cfg.width; x++) l.px.push_back(vid_edit_plan_test::edited(3, y, x));
+                appended.lines.push_back(l);
+            end
+            plan.delete(1);
+            plan.push_back(appended);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned sent[$];
+            super.check_phase(phase);
+            foreach (video.plan[f]) sent.push_back(video.plan[f].index);
+            if (sent.size() != 3 || sent[0] != 0 || sent[1] != 2 || video.plan[2] != appended) begin
+                `uvm_error("LB_VID", $sformatf("the plan sent frames %p; expected 0, 2 and the appended 3", sent))
+            end else if (appended.cfg != video.cfg) begin
+                `uvm_error("LB_VID", "the appended frame did not get the run's cfg")
+            end
+            if (outputs_declared() != 576) `uvm_error("LB_VID", $sformatf("the output counter expects %0d beats, not 576", outputs_declared()))
+        endfunction
+    endclass : vid_edit_plan_queue_test
+
+    // edit_plan() leaves no frame: send_video() raises one A2C_CFG fatal and
+    // sends nothing.
+    class vid_edit_plan_empty_test extends lb_vid_c_test;
+        `uvm_component_utils(vid_edit_plan_empty_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            catcher.demote = 1;
+            want("A2C_CFG", UVM_FATAL, "edit_plan() left the run with no frame", 1);
+        endfunction
+        virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
+            plan.delete();
+        endfunction
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (stimulus_sent() != 0) `uvm_error("LB_VID", $sformatf("an empty plan sent %0d items", stimulus_sent()))
+        endfunction
+    endclass : vid_edit_plan_empty_test
+
+    // A run planned with make_plan() and sent with in.send() directly, as a
+    // bench outside send_video() does: the plan carries its zero_gap_beats,
+    // and the lane watch finds every one offered back to back. Marking the
+    // plan again leaves it unchanged.
+    class vid_direct_send_test extends lb_vid_c_test_no_blank;
+        `uvm_component_utils(vid_direct_send_test)
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual task run_body();
+            a2c_video_frame p[$];
+            if (!video.valid) return;
+            configure_dut(video.cfg);
+            video.cfg.make_plan(p);
+            foreach (video.outs[i]) video.outs[i].counter.expect_count(video.outs[i].expected_beats(p));
+            foreach (p[f]) begin
+                video.plan.push_back(p[f]);
+                video.in.feed(p[f]);
+                foreach (video.outs[i]) video.outs[i].feed(p[f]);
+            end
+            video.in.send(video, video.cfg, p);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            int unsigned planned;
+            int unsigned dut;
+            int unsigned model;
+            int unsigned want_n = 0;
+            int unsigned again = 0;
+            bit          two;
+            video.in.exactness(planned, dut, model, two);
+            foreach (video.plan[f]) want_n += video.plan[f].zero_gap_beats.size();
+            video.cfg.mark_zero_gaps(video.plan);
+            foreach (video.plan[f]) again += video.plan[f].zero_gap_beats.size();
+            if (want_n == 0 || planned != want_n || dut != planned || again != want_n) begin
+                `uvm_error("LB_VID", $sformatf("planned back-to-back beats: %0d in the plan, %0d after marking it again, %0d watched, %0d offered so",
+                                               want_n, again, planned, dut))
+            end
+            super.report_phase(phase);
+        endfunction
+    endclass : vid_direct_send_test

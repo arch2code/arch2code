@@ -80,7 +80,9 @@ package a2c_video_pkg;
         // Handshaked: the frame's beats, counted from its first, that the plan
         // puts on the clock after the run's beat before. The run's first beat
         // is never one, since nothing in the plan times it against what the
-        // test sent before.
+        // test sent before. make_plan() sets it and send_video() sets it
+        // again after edit_plan(); a test that edits a plan and calls
+        // in.send() itself calls mark_zero_gaps() first.
         int unsigned   zero_gap_beats[$];
 
         `uvm_object_utils(a2c_video_frame)
@@ -172,10 +174,16 @@ package a2c_video_pkg;
         bit               fv_rise_line;
         int unsigned      lv_in_vblank;
         // One corner drawn for each frame but the first and the last, from
-        // those the input adapter allows. A cut drawn this way keeps an odd
-        // number of lines and the next an even number, or the reverse, so a
-        // design that tracks line parity across frames meets both.
+        // those the input adapter allows less random_exclude. A cut drawn
+        // this way keeps min_cut_lines to height - 1 lines, an odd number
+        // and the next an even number, or the reverse, where that range
+        // holds both, so a design that tracks line parity across frames
+        // meets both. Its cut frames end with EOF when cut_eof is set.
         bit               random_corners;
+        // Corners random_corners never draws, by name, with "none" for the
+        // plain frame.
+        string            random_exclude[$];
+        int unsigned      min_cut_lines = 1;
         // Copied from the input adapter by from_adapter().
         bit               clocked;
         bit               has_eof;
@@ -306,6 +314,8 @@ package a2c_video_pkg;
 
         function void apply_plusargs();
             int unsigned mode;
+            string       exclude;
+            int          from = 0;
             void'($value$plusargs("a2c_video_width=%d", width));
             void'($value$plusargs("a2c_video_height=%d", height));
             void'($value$plusargs("a2c_video_frames=%d", frames));
@@ -334,6 +344,16 @@ package a2c_video_pkg;
             void'($value$plusargs("a2c_video_fv_rise_line=%d", fv_rise_line));
             void'($value$plusargs("a2c_video_lv_in_vblank=%d", lv_in_vblank));
             void'($value$plusargs("a2c_video_random_corners=%d", random_corners));
+            void'($value$plusargs("a2c_video_min_cut_lines=%d", min_cut_lines));
+            // A comma-separated list, which replaces the test's.
+            if ($value$plusargs("a2c_video_random_exclude=%s", exclude)) begin
+                random_exclude.delete();
+                for (int i = 0; i <= exclude.len(); i++) begin
+                    if (i < exclude.len() && exclude[i] != ",") continue;
+                    if (i > from) random_exclude.push_back(exclude.substr(from, i - 1));
+                    from = i + 1;
+                end
+            end
         endfunction
 
         // Raises one A2C_CFG fatal naming every broken rule and returns 0, or
@@ -345,6 +365,10 @@ package a2c_video_pkg;
             bit          any_corner = back_to_back || short_line >= 0 || long_line >= 0 || cut_after_line >= 0 || fv_rise_line
                                       || lv_in_vblank != 0;
             bit          on_last = !random_corners && corner_frame + 1 == frames;
+            string       names[$];
+            string       unknown[$];
+            string       pool[$];
+            string       cuts[$];
             if (width == 0 || height == 0 || frames == 0 || pixels_per_beat == 0 || width % pixels_per_beat != 0) begin
                 broken.push_back($sformatf("rule geometry: width %0d, height %0d and frames %0d must be above 0, and width a multiple of the input adapter's %0d pixels per beat",
                                            width, height, frames, pixels_per_beat));
@@ -395,6 +419,22 @@ package a2c_video_pkg;
                 broken.push_back($sformatf("rule random_frames: random_corners leaves the first and the last frame plain, so frames %0d must be 3 or more",
                                            frames));
             end
+            random_names(names);
+            unknown = random_exclude.find(n) with (!(n inside {names}));
+            if (unknown.size() != 0) begin
+                broken.push_back($sformatf("rule random_exclude: %p names no corner random_corners draws; the names are %p",
+                                           unknown, names));
+            end
+            random_pool(pool);
+            cuts = pool.find(n) with (n inside {"cut_frame", "cut_lv_high"});
+            if (random_corners && pool.size() == 0) begin
+                broken.push_back($sformatf("rule random_pool: random_exclude %p leaves random_corners no corner this geometry and stream allow",
+                                           random_exclude));
+            end
+            if (random_corners && cuts.size() != 0 && (min_cut_lines == 0 || min_cut_lines >= height)) begin
+                broken.push_back($sformatf("rule min_cut_lines: min_cut_lines %0d must be 1 or more and below height %0d, since a cut frame keeps fewer lines than a whole one; or exclude cut_frame and cut_lv_high",
+                                           min_cut_lines, height));
+            end
             if (pixel_mode == A2C_PIX_CONST && pixel_bits != 0 && $isunknown(pixel_value & ((uvm_bitstream_t'(1) << pixel_bits) - 1))) begin
                 broken.push_back($sformatf("rule pixel_value: pixel_mode A2C_PIX_CONST needs pixel_value set in its low %0d bits",
                                            pixel_bits));
@@ -424,28 +464,39 @@ package a2c_video_pkg;
             return v & ((uvm_bitstream_t'(1) << pixel_bits) - 1);
         endfunction
 
-        // The corners make_plan() draws from for random_corners: those this
-        // geometry and the input's stream kind allow, and none.
-        protected function void random_pool(output string pool[$]);
-            pool = '{"", "back_to_back", "long_line"};
-            if (height > 1 && line_beats() > 1) pool.push_back("short_line");
-            if (height >= 2) pool.push_back("cut_frame");
-            if (!clocked) return;
-            pool.push_back("fv_rise_line");
-            pool.push_back("lv_vblank");
-            if (height >= 2) pool.push_back("cut_lv_high");
+        // The names random_exclude takes: every corner random_corners can
+        // draw, and none.
+        static function void random_names(output string names[$]);
+            names = '{"none", "back_to_back", "long_line", "short_line", "cut_frame", "fv_rise_line", "lv_vblank", "cut_lv_high"};
         endfunction
 
-        // A random cut_after_line that keeps an odd number of lines, or an
-        // even one, where the height allows both.
+        // The corners make_plan() draws from for random_corners: those this
+        // geometry and the input's stream kind allow, and none ("" here),
+        // less random_exclude.
+        protected function void random_pool(output string pool[$]);
+            string all[$] = '{"", "back_to_back", "long_line"};
+            if (height > 1 && line_beats() > 1) all.push_back("short_line");
+            if (height >= 2) all.push_back("cut_frame");
+            if (clocked) begin
+                all.push_back("fv_rise_line");
+                all.push_back("lv_vblank");
+                if (height >= 2) all.push_back("cut_lv_high");
+            end
+            pool = all.find(n) with (!(((n == "") ? string'("none") : n) inside {random_exclude}));
+        endfunction
+
+        // A random cut_after_line that keeps min_cut_lines to height - 1
+        // lines, an odd number of them or an even one, where that range
+        // holds both.
         protected function int random_cut(bit odd);
             int unsigned n;
-            do n = $urandom_range(height - 1, 1);
-            while (height > 2 && n % 2 != odd);
+            do n = $urandom_range(height - 1, min_cut_lines);
+            while (height - 1 > min_cut_lines && n % 2 != odd);
             return int'(n) - 1;
         endfunction
 
-        // Every frame of the run, with its blanking drawn.
+        // Every frame of the run, with its blanking drawn and its
+        // zero_gap_beats set.
         function void make_plan(output a2c_video_frame plan[$]);
             string           pool[$];
             bit              after_b2b = 0;
@@ -457,13 +508,13 @@ package a2c_video_pkg;
                 a2c_video_corner_t c = corner_knobs("");
                 a2c_video_frame    fr = a2c_video_frame::type_id::create($sformatf("frame%0d", f));
                 int unsigned       n;
-                int unsigned       beat = 0;
                 // The last frame stays plain: a handshaked stream with no EOF
                 // ends a cut frame only at the next SOF.
                 if (random_corners) begin
                     if (f >= 1 && f + 1 < frames) c = corner_knobs(pool[$urandom_range(pool.size() - 1, 0)]);
                     if (c.cut_after_line >= 0) begin
                         c.cut_after_line = random_cut(cut_odd);
+                        c.cut_eof        = cut_eof;
                         cut_odd          = !cut_odd;
                     end
                 end else if (f == corner_frame) begin
@@ -496,13 +547,28 @@ package a2c_video_pkg;
                     if (int'(y) == c.long_line) len += c.long_extra_beats * pixels_per_beat;
                     l.gap = (y == 0) ? fr.v_blank : $urandom_range(h_blank_max, h_blank_min);
                     for (int unsigned x = 0; x < len; x++) l.px.push_back(pixel(f, y, x));
-                    if (!clocked && (f != 0 || y != 0) && l.gap == 0 && beat_gap_max == 0) fr.zero_gap_beats.push_back(beat);
-                    beat += (len + pixels_per_beat - 1) / pixels_per_beat;
                     fr.lines.push_back(l);
                 end
                 after_b2b     = c.back_to_back;
                 prev_lv_after = fr.lv_after;
                 plan.push_back(fr);
+            end
+            mark_zero_gaps(plan);
+        endfunction
+
+        // Sets each frame's zero_gap_beats from its lines, replacing what it
+        // held: on a handshaked stream with no beat gaps, each line's first
+        // beat with no gap, except the run's first beat.
+        function void mark_zero_gaps(a2c_video_frame plan[$]);
+            foreach (plan[f]) begin
+                int unsigned beat = 0;
+                plan[f].zero_gap_beats.delete();
+                foreach (plan[f].lines[y]) begin
+                    if (!clocked && (f != 0 || y != 0) && plan[f].lines[y].gap == 0 && beat_gap_max == 0) begin
+                        plan[f].zero_gap_beats.push_back(beat);
+                    end
+                    beat += (plan[f].lines[y].px.size() + pixels_per_beat - 1) / pixels_per_beat;
+                end
             end
         endfunction
     endclass : a2c_video_cfg
@@ -679,8 +745,7 @@ package a2c_video_pkg;
         endfunction
     endclass : a2c_video_clocked_adapter
 
-    // Sends the frames of plan, or of a plan it makes from cfg, through
-    // adapter, and writes each frame to plan_ap before the frame's first
+    // Sends the frames of plan through adapter, and writes each frame to plan_ap before the frame's first
     // item. On a clocked stream every blank clock is an item; on a
     // handshaked one the blanking is each item's gap, which idle_sent sums.
     class a2c_video_seq #(type ITEM = uvm_sequence_item) extends uvm_sequence #(ITEM);
@@ -700,12 +765,11 @@ package a2c_video_pkg;
 
         virtual task body();
             int unsigned prev_lv_after = 0;
-            if (cfg == null || adapter == null) begin
-                `uvm_fatal("A2C_CFG", "a2c_video_seq needs cfg and adapter set before it starts")
+            if (cfg == null || adapter == null || plan.size() == 0) begin
+                `uvm_fatal("A2C_CFG", "a2c_video_seq needs cfg, adapter and plan set before it starts")
             end
             cfg.from_adapter(adapter);
             if (!cfg.validate()) return;
-            if (plan.size() == 0) cfg.make_plan(plan);
             foreach (plan[f]) begin
                 if (plan_ap != null) plan_ap.write(plan[f]);
                 if (adapter.clocked) send_clocked(plan[f], prev_lv_after);
@@ -1569,6 +1633,7 @@ package a2c_video_pkg;
         pure virtual function void video_ports();
         pure virtual function void video_connect();
         pure virtual function void configure_video(a2c_video_cfg cfg);
+        pure virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
     endclass
 
     // The video side of a video test, a child of the test named video. Its
@@ -1667,9 +1732,11 @@ package a2c_video_pkg;
             end
         endfunction
 
-        // Sends the frames of c on the input after planning them, declaring
-        // each counted output's beats, giving the unit rules their frames
-        // and, on the first run, logging the contract each output checks.
+        // Sends the frames of c on the input after planning them and letting
+        // the test edit the plan, declaring each counted output's beats,
+        // giving the unit rules their frames and, on the first run, logging
+        // the contract each output checks. A frame the test added with no
+        // cfg gets c.
         // The test's cfg was validated at end of elaboration; another gets
         // the plusargs and is validated here.
         task send_frames(a2c_video_cfg c);
@@ -1680,6 +1747,13 @@ package a2c_video_pkg;
                 return;
             end
             c.make_plan(p);
+            hooks.edit_plan(c, p);
+            if (p.size() == 0) begin
+                `uvm_fatal("A2C_CFG", "edit_plan() left the run with no frame; a test that sends no frame does not call send_video()")
+                return;
+            end
+            foreach (p[f]) if (p[f].cfg == null) p[f].cfg = c;
+            c.mark_zero_gaps(p);
             `uvm_info("A2C_VIDEO", $sformatf("corner %s; %s", (c.corner == "") ? "none" : c.corner, c.describe()), UVM_LOW)
             foreach (outs[i]) begin
                 if (!contract_logged) begin
@@ -1735,8 +1809,9 @@ package a2c_video_pkg;
     // video stimulus as run_body(), and adds the handshaked blanking to
     // stimulus_sent(), so the derived run timeout follows the blanking. The
     // bench extends it once, as <block>_video_test, with video_ports(),
-    // video_connect() and configure_dut(), and
-    // `a2c_video_corner_tests(<block>_video_test) adds a test per corner.
+    // video_connect(), configure_dut() and, where it needs one,
+    // edit_plan(), and `a2c_video_corner_tests(<block>_video_test) adds a
+    // test per corner.
     virtual class a2c_video_test #(type BASE = uvm_test) extends BASE implements a2c_video_hooks;
         // Set by a corner test's constructor.
         string        corner = "";
@@ -1762,6 +1837,16 @@ package a2c_video_pkg;
         // Programs the DUT for cfg before the first frame.
         virtual task configure_dut(a2c_video_cfg cfg);
         endtask
+
+        // Edits the plan of each run send_video() sends, for stimulus the
+        // cfg cannot describe, such as pixel values the test computes. It
+        // may change, drop or add frames, and runs before the contract sees
+        // them and before any beat is declared or sent, so both follow the
+        // edits. A frame added with no cfg gets the run's; a plan left empty
+        // is an A2C_CFG fatal. cfg is the run's, which tells a test's runs
+        // apart.
+        virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
+        endfunction
 
         function void add_video_input(a2c_video_input_base p);
             video.add_input(p);
