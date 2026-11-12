@@ -27,6 +27,8 @@ package uvmVideo_uvm_pkg;
         vin_agent_t vin_agent;
         vout_agent_t vout_agent;
         a2c_uvm_pkg::a2c_txn_counter #(vout_item_t) vout_counter;
+        a2c_uvm_pkg::a2c_txn_digest #(vin_item_t) vin_digest;
+        a2c_uvm_pkg::a2c_txn_digest #(vout_item_t) vout_digest;
         virtual a2c_clk_if clk_vif;
         // Mode B, set from a2c_dual_dut: each agent also drives and monitors
         // the model DUT's <port>_model pins, and comparators lists the agents'
@@ -65,6 +67,9 @@ package uvmVideo_uvm_pkg;
             vin_cfg.port_name = "vin";
             uvm_config_db#(vin_config_t)::set(this, "vin_agent", "cfg", vin_cfg);
             vin_agent = vin_agent_t::type_id::create("vin_agent", this);
+            vin_digest = a2c_uvm_pkg::a2c_txn_digest#(vin_item_t)::type_id::create("vin_digest", this);
+            vin_digest.port_name = "vin";
+            vin_digest.dual = dual_dut;
 
             vout_cfg = vout_config_t::type_id::create("vout_cfg");
             if (!uvm_config_db#(vout_vif_t)::get(this, "", "vout", vout_cfg.vif)) begin
@@ -84,17 +89,26 @@ package uvmVideo_uvm_pkg;
             vout_counter = a2c_uvm_pkg::a2c_txn_counter#(vout_item_t)::type_id::create("vout_counter", this);
             vout_counter.port_name = "vout";
             vout_counter.dual = dual_dut;
+            vout_digest = a2c_uvm_pkg::a2c_txn_digest#(vout_item_t)::type_id::create("vout_digest", this);
+            vout_digest.port_name = "vout";
+            vout_digest.dual = dual_dut;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
             vout_agent.mon.ap.connect(vout_counter.analysis_export);
+            vin_digest.watch(vin_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            vout_digest.watch(vout_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
             if (dual_dut) begin
                 vout_agent.model_mon.ap.connect(vout_counter.model_export);
+                vin_digest.watch(vin_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
+                vout_digest.watch(vout_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
                 if (vin_agent.model_cmp != null) begin
                     comparators.push_back(vin_agent.model_cmp);
+                    vin_digest.cmp = vin_agent.model_cmp;
                 end
                 if (vout_agent.model_cmp != null) begin
                     comparators.push_back(vout_agent.model_cmp);
+                    vout_digest.cmp = vout_agent.model_cmp;
                 end
                 vout_agent.model_cmp.counted = 1;
             end

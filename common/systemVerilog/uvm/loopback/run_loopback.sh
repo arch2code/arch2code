@@ -6,7 +6,8 @@
 # test and every test reaches the UVM report summary with no UVM_ERROR or
 # UVM_FATAL and logs LB_PASS. A line "// LB_TESTS <test>..." in a test file
 # adds tests that a macro defines, and a line
-# "// LB_PLUSARGS <test> <plusarg>..." gives a test its plusargs.
+# "// LB_PLUSARGS <test> <plusarg>..." gives a test its plusargs. Then
+# seedRepro.py runs each check below, and each must end with its verdict.
 #
 #   run_loopback.sh xcelium|vcs [seed [<layer.f>...]]
 #
@@ -88,12 +89,16 @@ case $SIM in
             -top a2c_uvm_loopback_tb -l build.log > /dev/null
         BUILD=$?
         run() { xrun -64bit -R +UVM_TESTNAME=$1 -svseed $SEED "${@:2}" -l $1.log > /dev/null; }
+        SEED_ARG=-svseed
+        seed_cmd() { echo "xrun -64bit -R +UVM_TESTNAME=$1 -svseed $2 ${*:3}"; }
         ;;
     vcs)
         vcs -full64 -sverilog -ntb_opts uvm-1.2 -timescale=1ns/1ps +incdir+${INCDIRS// / +incdir+} $SRCS \
             -top a2c_uvm_loopback_tb -o simv -l build.log > /dev/null
         BUILD=$?
         run() { ./simv +UVM_TESTNAME=$1 +ntb_random_seed=$SEED "${@:2}" -l $1.log > /dev/null; }
+        SEED_ARG=+ntb_random_seed
+        seed_cmd() { echo "./simv +UVM_TESTNAME=$1 +ntb_random_seed=$2 ${*:3}"; }
         ;;
     *)
         usage
@@ -115,4 +120,41 @@ for t in $TESTS; do
         FAILED=1
     fi
 done
+
+# check <name> <verdict> <test> [seedRepro.py option...] [-- plusarg...]: runs
+# the test twice under seedRepro.py at SEED. The check passes when the
+# runner's last line starts with A2C_SEED_REPRO <verdict>; a check that must
+# fail names its reason, so a failure for another reason fails the check.
+REPRO=$(cd "$HERE" && pwd -P)/../../../../seedRepro.py
+check() {
+    local name=$1 verdict=$2 test=$3 opts=() plusargs=()
+    shift 3
+    while [ $# -gt 0 ] && [ "$1" != -- ]; do opts+=("$1"); shift; done
+    [ $# -gt 0 ] && shift
+    plusargs=("$@")
+    "$REPRO" --seed-arg=$SEED_ARG "${opts[@]}" -- $(seed_cmd $test $SEED "${plusargs[@]}") > $name.log 2>&1
+    if tail -1 $name.log | grep -q "^A2C_SEED_REPRO $verdict"; then
+        echo "PASS: $name ($(tail -1 $name.log | sed 's/^A2C_SEED_REPRO //'))"
+    else
+        echo "FAIL: $name, see $OUT/$name.log"
+        FAILED=1
+    fi
+}
+OTHER_SEED=$((SEED + 1))
+check seed_repro_same "PASS: the digests match" txn_digest_rv_test -- +lb_digest_vary=data
+check seed_repro_differ_data "PASS: the digests differ" txn_digest_rv_test --differ $OTHER_SEED -- +lb_digest_vary=data
+check seed_repro_differ_timing "PASS: the digests differ" txn_digest_rv_test --differ $OTHER_SEED -- +lb_digest_vary=timing
+check seed_repro_differ_none "FAIL: seed $OTHER_SEED gave the same digests" txn_digest_rv_test --differ $OTHER_SEED -- +lb_digest_vary=none
+check seed_repro_unstable "FAIL: the same seed gave different digests" txn_digest_rv_test -- +lb_digest_vary=run
+check seed_repro_lane_count "FAIL: run 1: port c DUT lane saw 50 items, model lane 51" txn_digest_rv_test -- +lb_digest_vary=lane
+# d's comparator compares only some items, so its lanes may count apart.
+check seed_repro_status_lanes "PASS: the digests match" txn_digest_rv_test -- +lb_digest_vary=status
+# A cut leaves the DUT lane of d with 5 items more than its model lane.
+check seed_repro_cut_lanes "PASS: the digests match" txn_digest_cut_test
+# Only the rdata levels on the monitor's rdata_ap change with the seed.
+check seed_repro_differ_ext_rdata "PASS: the digests differ" txn_digest_er_test --differ $OTHER_SEED
+# Only the AXI read data changes with the seed.
+check seed_repro_differ_axi_data "PASS: the digests differ" txn_digest_axi_test --differ $OTHER_SEED
+# rdy_vld_random_test has no digest.
+check seed_repro_no_digest "FAIL: run 1 printed no A2C_DIGEST line" rdy_vld_random_test
 exit $FAILED

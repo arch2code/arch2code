@@ -27,7 +27,8 @@ firmware header. Everything else is worked out here from the YAML.
 The env must create one agent per port with its config, one transaction
 counter for the DUT stream output and none for the input or either APB port,
 and an explicit predictor on the register bus agent's monitor with
-auto-predict off. Its register model starts at its reset values. Every
+auto-predict off. Every port's monitor also feeds a transaction digest of
+its own. Its register model starts at its reset values. Every
 agent's config carries the role opposite its port's direction, so the agent
 on mst, where the DUT is the master, is A2C_DST and the register bus agent
 A2C_SRC, and the env sets no agent passive. The AXI port rdM binds no id_t,
@@ -36,8 +37,11 @@ it.
 
 In Mode B, which the env reads from the testbench's a2c_dual_dut, the env
 also fetches every port's <port>_model interface into its config's model_vif,
-gives each counter the model monitor's stream, lists every agent's model_cmp
-that is set, marks the counted ports' comparators as counted, and creates the
+gives each counter and each digest the model monitor's stream, lists every
+agent's model_cmp
+that is set and gives it to the port's digest, which asks it at the end
+whether it paired every item, marks the counted ports' comparators as
+counted, and creates the
 midstream guard over the counters and comparators. The guard hears every
 write on the DUT lane's register bus through a2c_reg_write_subscriber, which
 resolves it against the register map. The guard gets the map, and the bus
@@ -179,6 +183,8 @@ def expected_regmodel(variant, offsets):
     return lines
 
 
+PORTS = ('in', 'out', 'rdM', 'rdS', 'mst', 'ubRegs')
+
 ENV_LINES = [
     'class ubDut_env extends uvm_env;',
     'in_agent_t in_agent;',
@@ -212,15 +218,21 @@ ENV_LINES = [
     'regmodel.default_map.set_sequencer(ubRegs_agent.sqr, adapter);',
     'regmodel.default_map.set_auto_predict(0);',
     'ubRegs_agent.mon.ap.connect(predictor.bus_in);',
-]
+] + [line for port in PORTS for line in (
+    f'a2c_uvm_pkg::a2c_txn_digest #({port}_item_t) {port}_digest;',
+    f'{port}_digest = a2c_uvm_pkg::a2c_txn_digest#({port}_item_t)::type_id::create("{port}_digest", this);',
+    f'{port}_digest.port_name = "{port}";',
+    f'{port}_digest.watch({port}_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);')]
 
 
 # connect_phase's Mode B branch, whole and in order.
 MODE_B_CONNECT = [
     'out_agent.model_mon.ap.connect(out_counter.model_export);',
     'rdM_agent.model_mon.ap.connect(rdM_counter.model_export);',
-] + [line for agent in ('in', 'out', 'rdM', 'rdS', 'mst', 'ubRegs')
-     for line in (f'if ({agent}_agent.model_cmp != null) begin', f'comparators.push_back({agent}_agent.model_cmp);', 'end')] + [
+] + [f'{port}_digest.watch({port}_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);' for port in PORTS] + [
+    line for agent in PORTS
+    for line in (f'if ({agent}_agent.model_cmp != null) begin', f'comparators.push_back({agent}_agent.model_cmp);',
+                 f'{agent}_digest.cmp = {agent}_agent.model_cmp;', 'end')] + [
     'out_agent.model_cmp.counted = 1;',
     'rdM_agent.model_cmp.counted = 1;',
     'reg_writes.map     = regmodel.default_map;',
@@ -242,7 +254,7 @@ MODE_B_MEMBERS = [
     'if (!uvm_config_db#(bit)::get(this, "", "a2c_dual_dut", dual_dut)) begin',
     'out_counter.dual = dual_dut;',
     'rdM_counter.dual = dual_dut;',
-]
+] + [f'{port}_digest.dual = dual_dut;' for port in PORTS]
 
 STABLE_POINT = [
     'function void model_stable_point();',
@@ -390,8 +402,8 @@ def run_all_tests():
     print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
     print("  PASS: NO_MEM_TESTS on the write-only memory, NO_MEM_WALK_TEST on the padded one")
     print("  PASS: agent typedefs with and without bound parameters")
-    print("  PASS: env agents with their roles, the output transaction counter and the register predictor")
-    print("  PASS: env Mode B wiring under dual_dut: model vifs, counter model streams, comparators, guard")
+    print("  PASS: env agents with their roles, the output transaction counter, a digest per port and the register predictor")
+    print("  PASS: env Mode B wiring under dual_dut: model vifs, counter and digest model streams, comparators, digest pairing, guard")
     print("\nPASS: the variant packages hold the register model and the env")
     return 0
 

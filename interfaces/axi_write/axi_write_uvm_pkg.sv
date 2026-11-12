@@ -71,7 +71,8 @@ package axi_write_uvm_pkg;
 
     class axi_write_item #(type addr_t = logic [31:0], type data_t = logic [31:0], type strb_t = logic [3:0],
                            type awuser_t = logic, type wuser_t = logic, type buser_t = logic,
-                           type id_t = logic [3:0]) extends uvm_sequence_item;
+                           type id_t = logic [3:0]) extends uvm_sequence_item
+        implements a2c_digest_fields;
         localparam int unsigned ADDR_W     = $bits(addr_t);
         localparam int unsigned STRB_W     = $bits(strb_t);
         localparam int unsigned DATA_BYTES = ($bits(data_t) + 7) / 8;
@@ -192,6 +193,13 @@ package axi_write_uvm_pkg;
         function string beat2string(int unsigned n);
             return $sformatf("id=%0h beat %0d of %0d wdata=%p wstrb=%0h wuser=%0h", id, n, int'(len) + 1, data[n],
                              strb[n], wuser[n]);
+        endfunction
+
+        // convert2string() gives the beat count only, so the A2C_TXN line stays
+        // one line; a digest needs every beat.
+        virtual function void digest_parts(ref string parts[$]);
+            parts.push_back(convert2string());
+            foreach (data[i]) parts.push_back(beat2string(i));
         endfunction
     endclass : axi_write_item
 

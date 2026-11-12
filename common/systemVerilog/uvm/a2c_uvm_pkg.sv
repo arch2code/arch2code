@@ -144,6 +144,8 @@ package a2c_uvm_pkg;
 
     `uvm_analysis_imp_decl(_a2c_dut)
     `uvm_analysis_imp_decl(_a2c_model)
+    `uvm_analysis_imp_decl(_a2c_side)
+    `uvm_analysis_imp_decl(_a2c_model_side)
 
     // One wait_for_count() counting toward its deadline, for the run
     // timeout: the process that counts, its clock and the clocks left.
@@ -421,6 +423,139 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_txn_counter
 
+    // An item whose convert2string() leaves out part of its payload, such as
+    // the beats of an AXI burst, implements this so a2c_txn_digest hashes the
+    // whole transaction while the A2C_TXN line stays as it is. digest_parts()
+    // appends the item's fields in pieces, so the digest hashes each piece as
+    // it comes and a long burst costs time in proportion to its length.
+    interface class a2c_digest_fields;
+        pure virtual function void digest_parts(ref string parts[$]);
+    endclass : a2c_digest_fields
+
+    // A 64-bit FNV-1a hash of the items a port's monitors report, over each
+    // item's fields, from digest_parts() where the item implements
+    // a2c_digest_fields and convert2string() otherwise, and the time it was
+    // sampled, in arrival order. report_phase() prints one line per lane, the
+    // model lane only with dual set:
+    //   A2C_DIGEST <port> <DUT|model> paired=<0|1> items=<n> digest=<16 hex digits>
+    // items counts what the monitor's ap reports, the stream the Mode B
+    // comparator, cmp, sees. paired is cmp's pairs_every_item() at
+    // report_phase, 1 when cmp paired every item of one lane with one of the
+    // other, so the two lanes must count the same, and 0 with no cmp.
+    // Two runs of a test with one seed on one simulator must print the same
+    // lines, which seedRepro.py checks. Stimulus that moves in time with the
+    // same content changes the digest.
+    typedef class a2c_comparator_base;
+
+    class a2c_txn_digest #(type T = uvm_sequence_item) extends uvm_component;
+        typedef uvm_port_base #(uvm_tlm_if_base #(T, T)) port_t;
+
+        string port_name = "";
+        bit    dual = 0;
+        a2c_comparator_base cmp;
+        // The DUT lane.
+        uvm_analysis_imp #(T, a2c_txn_digest#(T))                analysis_export;
+        uvm_analysis_imp_a2c_model #(T, a2c_txn_digest#(T))      model_export;
+        // A monitor's other analysis ports, hashed but not counted.
+        uvm_analysis_imp_a2c_side #(T, a2c_txn_digest#(T))       side_export;
+        uvm_analysis_imp_a2c_model_side #(T, a2c_txn_digest#(T)) model_side_export;
+
+        // Indexed by a2c_lane_e.
+        protected bit [63:0]   hash[2];
+        protected int unsigned items[2];
+
+        `uvm_component_param_utils(a2c_txn_digest#(T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            analysis_export = new("analysis_export", this);
+            model_export    = new("model_export", this);
+            side_export       = new("side_export", this);
+            model_side_export = new("model_side_export", this);
+            foreach (hash[lane]) hash[lane] = 64'hcbf29ce484222325;
+        endfunction
+
+        // Connects mon's ap to the lane's counted export and every other
+        // analysis port of mon that carries T to its side export, so a
+        // monitor that reports a second stream, such as external_reg's rdata
+        // levels on rdata_ap, is hashed whole.
+        function void watch(uvm_component mon, a2c_lane_e lane);
+            uvm_component                kids[$];
+            uvm_port_component #(port_t) pc;
+            port_t                       p;
+            bit                          found_ap = 0;
+            mon.get_children(kids);
+            foreach (kids[i]) begin
+                if (!$cast(pc, kids[i])) continue;
+                p = pc.get_port();
+                if (!p.is_port()) continue;
+                if (p.get_name() == "ap") begin
+                    found_ap = 1;
+                    if (lane == A2C_DUT_LANE) p.connect(analysis_export);
+                    else p.connect(model_export);
+                end else if (lane == A2C_DUT_LANE) p.connect(side_export);
+                else p.connect(model_side_export);
+            end
+            if (!found_ap) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: %s has no analysis port ap of the digest's item type",
+                                                get_full_name(), mon.get_full_name()))
+            end
+        endfunction
+
+        virtual function void write(T t);
+            add(A2C_DUT_LANE, t);
+        endfunction
+
+        virtual function void write_a2c_model(T t);
+            add(A2C_MODEL_LANE, t);
+        endfunction
+
+        virtual function void write_a2c_side(T t);
+            hash_item(A2C_DUT_LANE, t, "side ");
+        endfunction
+
+        virtual function void write_a2c_model_side(T t);
+            hash_item(A2C_MODEL_LANE, t, "side ");
+        endfunction
+
+        protected function void hash_string(a2c_lane_e lane, string s);
+            foreach (s[i]) hash[lane] = (hash[lane] ^ s[i]) * 64'h00000100000001b3;
+        endfunction
+
+        // The ';' after each item keeps two items from hashing as one whose
+        // fields run together; the tag keeps a side item from hashing as the
+        // same item on ap.
+        protected function void hash_item(a2c_lane_e lane, T t, string tag);
+            a2c_digest_fields f;
+            string            parts[$];
+            if ($cast(f, t)) f.digest_parts(parts);
+            else parts.push_back(t.convert2string());
+            hash_string(lane, $sformatf("%s%0.3f", tag, $realtime));
+            foreach (parts[i]) hash_string(lane, {" ", parts[i]});
+            hash_string(lane, ";");
+        endfunction
+
+        protected function void add(a2c_lane_e lane, T t);
+            hash_item(lane, t, "");
+            items[lane]++;
+        endfunction
+
+        function bit [63:0] digest(a2c_lane_e lane);
+            return hash[lane];
+        endfunction
+
+        // Asked at the end, since an end-of-test cut can leave cmp holding
+        // items it never pairs.
+        virtual function void report_phase(uvm_phase phase);
+            bit paired = (cmp != null) && cmp.pairs_every_item();
+            for (int lane = 0; lane < (dual ? 2 : 1); lane++) begin
+                `uvm_info("A2C_DIGEST", $sformatf("A2C_DIGEST %s %s paired=%0d items=%0d digest=%016h", port_name,
+                                                  a2c_lane_name(a2c_lane_e'(lane)), paired, items[lane], hash[lane]),
+                          UVM_LOW)
+            end
+        endfunction
+    endclass : a2c_txn_digest
+
     // What every Mode B comparator shares, so the env and a2c_midstream_guard
     // can hold comparators of any item type in one list.
     //
@@ -490,6 +625,14 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function void stable_point();
+        endfunction
+
+        // Whether every item of one lane paired with one of the other, so the
+        // two lanes report the same number. A comparator that compares only
+        // some items, such as the latest status value at each stable point,
+        // leaves it 0.
+        virtual function bit pairs_every_item();
+            return 0;
         endfunction
 
         virtual function void lane_dead(a2c_lane_e lane);
@@ -650,6 +793,11 @@ package a2c_uvm_pkg;
         // so without a key the model side keeps its first limit at once.
         protected int unsigned model_kept[string];
         protected int unsigned quota[string];
+
+        // A cut holds the items after it, on either lane, unpaired.
+        virtual function bit pairs_every_item();
+            return limit == 0;
+        endfunction
 
         `uvm_component_param_utils(a2c_in_order_comparator#(T))
 

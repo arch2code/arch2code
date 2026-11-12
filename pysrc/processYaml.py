@@ -1845,6 +1845,8 @@ class projectOpen:
                     # number of transactions, so the env counts them.
                     'counter': f"{portData['name']}_counter"
                                if isOutput and elastic and not intfDef['addressBus'] else None,
+                    # Every port's monitors feed a transaction digest.
+                    'digest': f"{portData['name']}_digest",
                     'maxTransferBytes': maxTransferBytes,
                     # A DUT src port of a type with no handshake, on a block
                     # with a model: its responder's model lane waits on the

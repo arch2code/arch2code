@@ -735,3 +735,71 @@
             end
         endtask
     endclass : drain_same_step_death_test
+
+    // An in-order comparator that a cut leaves holding items, and the dual
+    // digest it gives paired. Log a on clk, with a quiet window of 30 clocks
+    // and a deadline of 50, makes a transaction at every clock after the
+    // drop until the drain cuts it, each one item on both lanes of cmp and
+    // d. When the drain ends the DUT lane delivers 5 more items, as a DUT
+    // still flowing at the end of the test does, which cmp holds. The
+    // lanes of d then count apart in a passing run, so d must print
+    // paired=0; run_loopback.sh runs this test under seedRepro.py, which
+    // must pass it.
+    class txn_digest_cut_test extends lb_drain_base;
+        a2c_in_order_comparator #(rv_item_t) cmp;
+        a2c_txn_digest #(rv_item_t)          d;
+        int unsigned                         sent;
+
+        `uvm_component_utils(txn_digest_cut_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            add_log("a", clk_vif, 30, 50);
+            cmp = a2c_in_order_comparator#(rv_item_t)::type_id::create("cmp", this);
+            logs[0].cmp = cmp;
+            d = a2c_txn_digest#(rv_item_t)::type_id::create("d", this);
+            d.port_name = "d";
+            d.dual      = 1;
+            d.cmp       = cmp;
+        endfunction
+
+        protected function void deliver(a2c_lane_e lane, int unsigned v);
+            rv_item_t it = lb_rv_item(lb_data_t'(v));
+            if (lane == A2C_DUT_LANE) begin
+                cmp.write_a2c_dut(it);
+                d.analysis_export.write(it);
+            end else begin
+                cmp.write_a2c_model(it);
+                d.model_export.write(it);
+            end
+        endfunction
+
+        virtual function void on_ready(uvm_phase phase, int unsigned call);
+            if (call == 2) begin
+                for (int unsigned i = 1; i <= 5; i++) deliver(A2C_DUT_LANE, sent + i);
+            end
+            if (call != 1) return;
+            fork
+                forever begin
+                    clk_vif.sample_edge();
+                    if (logs[0].get_cut() != 0) break;
+                    blip(0);
+                    sent++;
+                    deliver(A2C_DUT_LANE, sent);
+                    deliver(A2C_MODEL_LANE, sent);
+                end
+            join_none
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            int unsigned cut = logs[0].get_cut();
+            super.check_phase(phase);
+            `uvm_info("LB_STATS", $sformatf("%0d transactions, a cut after %0d, %0d pairs", sent, cut, cmp.get_pairs()), UVM_NONE)
+            if (cut == 0) `uvm_error("LB_DRAIN", "the drain did not cut a")
+            if (cmp.get_pairs() != cut) `uvm_error("LB_DRAIN", $sformatf("cmp paired %0d items, expected the %0d the cut keeps", cmp.get_pairs(), cut))
+        endfunction
+    endclass : txn_digest_cut_test

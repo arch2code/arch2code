@@ -135,25 +135,26 @@ UB_D = {'v0': 16, 'v1': 32}
 # interface names the constant UB_MTS, and its connection, which reaches uDut
 # at v0 only, overrides it with 32; v1 has no connection, so it takes 64. rdS's
 # interface names the block parameter UB_W, so each variant takes its binding.
+# Every port has a digest, <port>_digest.
 # idUnbound is True on an AXI port whose interface binds no id_t: rdM's leaves
 # it unbound, rdS's binds it.
 PORTS = [
     {'name': 'in', 'agent': 'in_agent', 'interfaceType': 'rdy_vld', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': None, 'maxTransferBytes': None, 'idUnbound': False},
+     'backpressureOverridable': True, 'counter': None, 'digest': 'in_digest', 'maxTransferBytes': None, 'idUnbound': False},
     {'name': 'out', 'agent': 'out_agent', 'interfaceType': 'rdy_vld', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': True, 'counter': 'out_counter', 'maxTransferBytes': None, 'idUnbound': False},
+     'backpressureOverridable': True, 'counter': 'out_counter', 'digest': 'out_digest', 'maxTransferBytes': None, 'idUnbound': False},
     {'name': 'rdM', 'agent': 'rdM_agent', 'interfaceType': 'axi_read', 'role': 'src', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': 'rdM_counter', 'maxTransferBytes': {'v0': 32, 'v1': 64},
+     'backpressureOverridable': False, 'counter': 'rdM_counter', 'digest': 'rdM_digest', 'maxTransferBytes': {'v0': 32, 'v1': 64},
      'idUnbound': True},
     {'name': 'rdS', 'agent': 'rdS_agent', 'interfaceType': 'axi_read', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': UB_W, 'idUnbound': False},
+     'backpressureOverridable': False, 'counter': None, 'digest': 'rdS_digest', 'maxTransferBytes': UB_W, 'idUnbound': False},
     {'name': 'ubRegs', 'agent': 'ubRegs_agent', 'interfaceType': 'apb', 'role': 'dst', 'clock': 'clk',
      'clockVif': 'clk_vif', 'reset': 'rst_n', 'backpressure': True,
-     'backpressureOverridable': False, 'counter': None, 'maxTransferBytes': None, 'idUnbound': False},
+     'backpressureOverridable': False, 'counter': None, 'digest': 'ubRegs_digest', 'maxTransferBytes': None, 'idUnbound': False},
 ]
 REGISTER_BUS = {'port': 'ubRegs', 'agent': 'ubRegs_agent', 'adapterClass': 'apb_reg_adapter'}
 CLASSES = {'envClass': 'ubDut_env', 'regBlockClass': 'ubDut_reg_block'}

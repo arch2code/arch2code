@@ -37,6 +37,10 @@ package uvmMem_uvm_pkg;
         wr_agent_t wr_agent;
         rd_agent_t rd_agent;
         a2c_uvm_pkg::a2c_txn_counter #(out_item_t) out_counter;
+        a2c_uvm_pkg::a2c_txn_digest #(cmd_item_t) cmd_digest;
+        a2c_uvm_pkg::a2c_txn_digest #(out_item_t) out_digest;
+        a2c_uvm_pkg::a2c_txn_digest #(wr_item_t) wr_digest;
+        a2c_uvm_pkg::a2c_txn_digest #(rd_item_t) rd_digest;
         virtual a2c_clk_if clk_vif;
         // Mode B, set from a2c_dual_dut: each agent also drives and monitors
         // the model DUT's <port>_model pins, and comparators lists the agents'
@@ -78,6 +82,9 @@ package uvmMem_uvm_pkg;
             cmd_cfg.no_backpressure = 0;
             uvm_config_db#(cmd_config_t)::set(this, "cmd_agent", "cfg", cmd_cfg);
             cmd_agent = cmd_agent_t::type_id::create("cmd_agent", this);
+            cmd_digest = a2c_uvm_pkg::a2c_txn_digest#(cmd_item_t)::type_id::create("cmd_digest", this);
+            cmd_digest.port_name = "cmd";
+            cmd_digest.dual = dual_dut;
 
             out_cfg = out_config_t::type_id::create("out_cfg");
             if (!uvm_config_db#(out_vif_t)::get(this, "", "out", out_cfg.vif)) begin
@@ -97,6 +104,9 @@ package uvmMem_uvm_pkg;
             out_counter = a2c_uvm_pkg::a2c_txn_counter#(out_item_t)::type_id::create("out_counter", this);
             out_counter.port_name = "out";
             out_counter.dual = dual_dut;
+            out_digest = a2c_uvm_pkg::a2c_txn_digest#(out_item_t)::type_id::create("out_digest", this);
+            out_digest.port_name = "out";
+            out_digest.dual = dual_dut;
 
             wr_cfg = wr_config_t::type_id::create("wr_cfg");
             if (!uvm_config_db#(wr_vif_t)::get(this, "", "wr", wr_cfg.vif)) begin
@@ -115,6 +125,9 @@ package uvmMem_uvm_pkg;
             wr_cfg.port_name = "wr";
             uvm_config_db#(wr_config_t)::set(this, "wr_agent", "cfg", wr_cfg);
             wr_agent = wr_agent_t::type_id::create("wr_agent", this);
+            wr_digest = a2c_uvm_pkg::a2c_txn_digest#(wr_item_t)::type_id::create("wr_digest", this);
+            wr_digest.port_name = "wr";
+            wr_digest.dual = dual_dut;
 
             rd_cfg = rd_config_t::type_id::create("rd_cfg");
             if (!uvm_config_db#(rd_vif_t)::get(this, "", "rd", rd_cfg.vif)) begin
@@ -133,23 +146,38 @@ package uvmMem_uvm_pkg;
             rd_cfg.port_name = "rd";
             uvm_config_db#(rd_config_t)::set(this, "rd_agent", "cfg", rd_cfg);
             rd_agent = rd_agent_t::type_id::create("rd_agent", this);
+            rd_digest = a2c_uvm_pkg::a2c_txn_digest#(rd_item_t)::type_id::create("rd_digest", this);
+            rd_digest.port_name = "rd";
+            rd_digest.dual = dual_dut;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
             out_agent.mon.ap.connect(out_counter.analysis_export);
+            cmd_digest.watch(cmd_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            out_digest.watch(out_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            wr_digest.watch(wr_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            rd_digest.watch(rd_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
             if (dual_dut) begin
                 out_agent.model_mon.ap.connect(out_counter.model_export);
+                cmd_digest.watch(cmd_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
+                out_digest.watch(out_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
+                wr_digest.watch(wr_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
+                rd_digest.watch(rd_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);
                 if (cmd_agent.model_cmp != null) begin
                     comparators.push_back(cmd_agent.model_cmp);
+                    cmd_digest.cmp = cmd_agent.model_cmp;
                 end
                 if (out_agent.model_cmp != null) begin
                     comparators.push_back(out_agent.model_cmp);
+                    out_digest.cmp = out_agent.model_cmp;
                 end
                 if (wr_agent.model_cmp != null) begin
                     comparators.push_back(wr_agent.model_cmp);
+                    wr_digest.cmp = wr_agent.model_cmp;
                 end
                 if (rd_agent.model_cmp != null) begin
                     comparators.push_back(rd_agent.model_cmp);
+                    rd_digest.cmp = rd_agent.model_cmp;
                 end
                 out_agent.model_cmp.counted = 1;
             end

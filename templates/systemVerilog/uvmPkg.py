@@ -139,6 +139,7 @@ def env_class(uvm, hasRegModel, variant):
     lines = [f"class {cls} extends uvm_env;"]
     lines += [f"    {port['name']}_agent_t {port['agent']};" for port in ports]
     lines += [f"    a2c_uvm_pkg::a2c_txn_counter #({port['name']}_item_t) {port['counter']};" for port in counters]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_digest #({port['name']}_item_t) {port['digest']};" for port in ports]
     lines += [f"    virtual a2c_clk_if {clock['vif']};" for clock in uvm['clocks']]
     bus = uvm['registerBus']
     if hasRegModel:
@@ -192,6 +193,7 @@ def env_class(uvm, hasRegModel, variant):
                   "    // comparator asks it about each read."]
     lines.append('    virtual function void connect_phase(uvm_phase phase);')
     lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
+    lines += [f"        {port['digest']}.watch({port['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for port in ports]
     if hasRegModel:
         agent = bus['agent']
         lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
@@ -201,10 +203,12 @@ def env_class(uvm, hasRegModel, variant):
                   f"        {agent}.mon.ap.connect(predictor.bus_in);"]
     lines.append('        if (dual_dut) begin')
     lines += [f"            {port['agent']}.model_mon.ap.connect({port['counter']}.model_export);" for port in counters]
+    lines += [f"            {port['digest']}.watch({port['agent']}.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);" for port in ports]
     for port in ports:
         agent = port['agent']
         lines += [f"            if ({agent}.model_cmp != null) begin",
                   f"                comparators.push_back({agent}.model_cmp);",
+                  f"                {port['digest']}.cmp = {agent}.model_cmp;",
                   '            end']
     # The counter reports a counted port's missing or extra items.
     lines += [f"            {port['agent']}.model_cmp.counted = 1;" for port in counters]
@@ -269,4 +273,8 @@ def agent_build(port, variant):
         lines += [f'        {counter} = a2c_uvm_pkg::a2c_txn_counter#({name}_item_t)::type_id::create("{counter}", this);',
                   f'        {counter}.port_name = "{name}";',
                   f'        {counter}.dual = dual_dut;']
+    digest = port['digest']
+    lines += [f'        {digest} = a2c_uvm_pkg::a2c_txn_digest#({name}_item_t)::type_id::create("{digest}", this);',
+              f'        {digest}.port_name = "{name}";',
+              f'        {digest}.dual = dual_dut;']
     return lines

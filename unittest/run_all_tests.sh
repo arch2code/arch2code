@@ -1196,6 +1196,12 @@ python3 test_dut_run.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: seedRepro.py passes and fails on the digests of its two runs"
+echo "------------------------------------------------------------------------"
+python3 test_seed_repro.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
 echo "------------------------------------------------------------------------"
 python3 test_vl_timing.py || FAILED=1
