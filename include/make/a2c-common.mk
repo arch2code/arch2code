@@ -160,7 +160,20 @@ SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 # project's.
 A2C_HDL_ARGS = $(addprefix -F ,$(A2C_LAYER_HDL_F_FILES)) $(EXTRA_HDL_FILES) $(addprefix -F ,$(EXTRA_HDL_F_FILES)) \
 	$(addprefix +incdir+,$(EXTRA_HDL_INCDIRS)) $(addprefix +define+,$(EXTRA_HDL_DEFINES))
-A2C_HDL_DEPS = $(A2C_LAYER_HDL_F_FILES) $(EXTRA_HDL_FILES) $(EXTRA_HDL_F_FILES)
+# vlogan and xrun record neither the files a .f list names nor the files they
+# `include`, so the lists' files are prerequisites, and so is every .sv and .svh
+# in an include directory, read or not. The lists are a2c.f, the HDL lists and
+# the project's rtl.f; the directories are their +incdir+ entries and
+# EXTRA_HDL_INCDIRS. A relative entry is relative to its list, as -F reads it.
+hdl_f_path = $(if $(filter /%,$(2)),$(2),$(abspath $(dir $(1))$(2)))
+hdl_f_incdirs = $(foreach d,$(subst +, ,$(patsubst +incdir+%,%,$(filter +incdir+%,$(file < $(1))))),$(call hdl_f_path,$(1),$(d)))
+hdl_f_files = $(foreach p,$(filter %.sv %.svh %.v %.vh,$(file < $(1))),$(call hdl_f_path,$(1),$(p)))
+A2C_HDL_F_LISTS = $(A2C_ROOT)/common/systemVerilog/a2c.f $(A2C_LAYER_HDL_F_FILES) $(EXTRA_HDL_F_FILES) $(A2C_RTL_DOT_F)
+A2C_HDL_INCDIRS = $(foreach f,$(A2C_HDL_F_LISTS),$(call hdl_f_incdirs,$(f))) $(EXTRA_HDL_INCDIRS)
+# Wildcard-filtered, so a commented-out entry is not a missing prerequisite.
+A2C_HDL_DEPS = $(A2C_LAYER_HDL_F_FILES) $(EXTRA_HDL_FILES) $(EXTRA_HDL_F_FILES) \
+	$(wildcard $(foreach f,$(A2C_HDL_F_LISTS),$(call hdl_f_files,$(f)))) \
+	$(foreach d,$(A2C_HDL_INCDIRS),$(wildcard $(d)/*.sv $(d)/*.svh))
 
 # VL_TIMING=1 verilates and lints with --timing, so RTL delays and event
 # controls run.
@@ -305,6 +318,8 @@ clean::
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
 	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
 	rm -rf $(XRUN_RUNDIR)/xcelium*.d $(XRUN_RUNDIR)/xrun*.log $(XRUN_RUNDIR)/xrun*.history
+	@# UVM transaction recording: tr_db.log is the UVM text database, waves.shm Xcelium's.
+	rm -rf $(VCS_RUNDIR)/tr_db.log $(XRUN_RUNDIR)/waves.shm $(XRUN_RUNDIR)/tr_db.log
 
 
 help::

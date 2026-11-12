@@ -36,6 +36,11 @@ appends one distinct value to every tool hook. Checks:
   HDL files and lists as prerequisites of the verilate, the vlogan analysis and
   the xrun snapshot, and the layer's VCS library files, which xrun reaches
   through the layer's -y directories, as prerequisites of the xrun snapshot;
+- as prerequisites of the same three steps, the .svh files in an
+  EXTRA_HDL_INCDIRS directory, in the +incdir+ directory of the layer's list
+  and of an EXTRA_HDL_F_FILES list, each relative to its list, and in a2c.f's
+  and the project rtl.f's; and a file an EXTRA_HDL_F_FILES list names outside
+  its include directories, with a commented-out entry ignored;
 - make help-hooks prints every value and lists every EXTRA_* variable the
   builder makefiles read.
 
@@ -62,7 +67,6 @@ HOOK_VALUES = {
     'EXTRA_VL_OPTS': '-DHOOK_VL',
     'EXTRA_VL_CFLAGS': '-DHOOK_CFLAG',
     'EXTRA_VL_LIB_OBJS': '$(A2C_VL_BUILD_DIR)/obj_dir/hook/hook.o',
-    'EXTRA_HDL_INCDIRS': '/hook/inc',
     'EXTRA_HDL_DEFINES': 'HOOK_DEF',
     'EXTRA_VLOGAN_OPTS': '-DHOOK_VLOGAN',
     'EXTRA_VCS_OPTS': '-DHOOK_VCS',
@@ -90,6 +94,11 @@ LAYER_HOOK_FILES = {
     'A2C_LAYER_HDL_F_FILES': 'layer.f',
     'A2C_LAYER_VCS_LIB_SV_FILES': 'layerLib.sv',
 }
+# An include directory and the include file in it, created in the copy under
+# hookSrc/: one on EXTRA_HDL_INCDIRS, then one named by each list's +incdir+.
+INCDIR_FILES = {'EXTRA_HDL_INCDIRS': ('inc', 'hook.svh'),
+                'EXTRA_HDL_F_FILES': ('vipInc', 'vip.svh'),
+                'A2C_LAYER_HDL_F_FILES': ('layerInc', 'layer.svh')}
 # Placeholder tool settings: a dry run needs the variables, not the tools.
 VCS_ARGS = ['USE_VCS=1', 'VCS_HOME=/hook/vcs']
 XRUN_ARGS = ['USE_XCELIUM=1', 'XCELIUM_TOOLS=/hook/xcelium', 'XRUN_GCC_VERS=hook']
@@ -255,10 +264,29 @@ def main():
                      for name, leaf in {**HOOK_FILES, **LAYER_HOOK_FILES}.items()}
         for path in hookFiles.values():
             open(path, 'w').close()
+        incDirs = {name: os.path.join(work, 'hookSrc', d) for name, (d, _) in INCDIR_FILES.items()}
+        incFiles = [os.path.join(incDirs[name], leaf) for name, (_, leaf) in INCDIR_FILES.items()]
+        for path in incFiles:
+            os.makedirs(os.path.dirname(path))
+            open(path, 'w').close()
+        for name in ('EXTRA_HDL_F_FILES', 'A2C_LAYER_HDL_F_FILES'):
+            with open(hookFiles[name], 'w') as f:
+                f.write(f'+incdir+{INCDIR_FILES[name][0]}\n')
+        # A file the list names in a directory no list includes, and a
+        # commented-out entry for a file that does not exist.
+        directSv = os.path.join(work, 'hookSrc', 'vipDirect', 'direct.sv')
+        os.makedirs(os.path.dirname(directSv))
+        open(directSv, 'w').close()
+        with open(hookFiles['EXTRA_HDL_F_FILES'], 'a') as f:
+            f.write('vipDirect/direct.sv\n// vipDirect/gone.sv\n')
+        rtlSvh = os.path.join(work, 'rtl', 'hook_rtl.svh')
+        open(rtlSvh, 'w').close()
+        incDir = incDirs['EXTRA_HDL_INCDIRS']
         shared = os.path.join(work, 'include', 'make', 'shared.mk')
         with open(shared, 'a') as f:
             f.write(''.join(f'{name} += {value}\n' for name, value in HOOK_VALUES.items()))
             f.write(''.join(f'{name} += {path}\n' for name, path in hookFiles.items()))
+            f.write(f'EXTRA_HDL_INCDIRS += {incDir}\n')
             f.write(f'EXTRA_CPP_SRC += {hookSrc}\nEXTRA_CPP_INCLUDES += {CPP_INCLUDE}\n'
                     f'EXTRA_LD_FLAGS += {LD_FLAG}\nEXTRA_CXX_FLAGS += {CXX_HOOK}\n')
             f.write(''.join(f'{name} += {value}\n' for name, value in LAYER_VALUES.items()))
@@ -295,7 +323,9 @@ def main():
         rtlF = os.path.join(work, 'rtl', 'rtl.f')
         layerF, vipSv, vipF = (hookFiles[n] for n in
                                ('A2C_LAYER_HDL_F_FILES', 'EXTRA_HDL_FILES', 'EXTRA_HDL_F_FILES'))
-        hdl = [layerF, vipSv, vipF, '+incdir+/hook/inc', '+define+HOOK_DEF']
+        hdl = [layerF, vipSv, vipF, f'+incdir+{incDir}', '+define+HOOK_DEF']
+        # a2c.f's own include directory holds the wrappers' hdlBoundary.svh.
+        included = [*incFiles, os.path.join(os.path.dirname(a2cF), 'hdlBoundary.svh'), rtlSvh, directSv]
         lists = [layerF, vipF]
         # The HDL hooks sit between the builder's a2c.f and the project's rtl.f.
         hdlOrder = [a2cF, *hdl, rtlF]
@@ -367,7 +397,7 @@ def main():
                 continue
             top = os.path.basename(mdir)
             failures += checkPrereqs('verilate', database, f'{mdir}/V{top}__ALL.a',
-                                     [layerF, vipSv, vipF, vlStamp])
+                                     [layerF, vipSv, vipF, *included, vlStamp])
 
         layerLib, lib = hookFiles['A2C_LAYER_VCS_LIB_SV_FILES'], hookFiles['EXTRA_VCS_LIB_SV_FILES']
         vcs = dryRun(rundir, 'all', *VCS_ARGS)
@@ -395,7 +425,8 @@ def main():
                                ['-DHOOK_VCS', LAYER_LD_FLAG, LD_FLAG])
         rtlStamp = os.path.join(vcsStampDir, 'rtl.vlogan')
         vcsDatabase = run(['make', '-C', rundir, '-pq', *VCS_ARGS, rtlStamp]).stdout
-        failures += checkPrereqs('vlogan', vcsDatabase, rtlStamp, [layerF, vipSv, vipF, layerLib, lib])
+        failures += checkPrereqs('vlogan', vcsDatabase, rtlStamp,
+                                 [layerF, vipSv, vipF, *included, layerLib, lib])
 
         xcelium = dryRun(rundir, 'all', *XRUN_ARGS)
         snapshots = [t for t in segments(xcelium, 'xrun') if '-makelib' in t]
@@ -418,10 +449,11 @@ def main():
         failures += checkStamp('xrun -R', os.path.join(xrunStampDir, 'r_opts'), ['+hook_r'])
         snapshot = os.path.join(xrunStampDir, 'snapshot')
         xrunDatabase = run(['make', '-C', rundir, '-pq', *XRUN_ARGS, snapshot]).stdout
-        failures += checkPrereqs('xrun', xrunDatabase, snapshot, [layerF, vipSv, vipF, layerLib])
+        failures += checkPrereqs('xrun', xrunDatabase, snapshot, [layerF, vipSv, vipF, *included, layerLib])
 
         hooks = run(['make', '-C', rundir, '--no-print-directory', 'help-hooks']).stdout
-        shownValues = {**HOOK_VALUES, **{name: hookFiles[name] for name in HOOK_FILES}}
+        shownValues = {**HOOK_VALUES, **{name: hookFiles[name] for name in HOOK_FILES},
+                       'EXTRA_HDL_INCDIRS': incDir}
         for name, value in shownValues.items():
             shown = hookObj if name == 'EXTRA_VL_LIB_OBJS' else value
             lines = [line for line in hooks.splitlines() if line.startswith(f'{name} ')]

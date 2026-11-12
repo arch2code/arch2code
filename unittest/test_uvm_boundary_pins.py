@@ -718,7 +718,8 @@ def check_both_dut(work):
 def check_layer_uvm_lists(work):
     """Two layer lists on A2C_LAYER_UVM_F_FILES, at the top dutV: their place
     in the vlogan RTL analysis and the xrun DUT library, and their place, with
-    the package each names, among the prerequisites of each step's stamp."""
+    the package each names, among the prerequisites of each step's stamp. The
+    base UVM library's include file is a prerequisite too."""
     problems = []
     layerLists = []
     layerPkgs = []
@@ -732,6 +733,7 @@ def check_layer_uvm_lists(work):
         layerLists.append(listPath)
         layerPkgs.append(pkgPath)
     a2cUvmF = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'a2c_uvm.f')
+    videoMacros = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'a2c_video_macros.svh')
     uvmDir = os.path.join(work, 'top', 'uvm')
     generated = [os.path.join(uvmDir, name) for name in
                  ('dutV_uvm_pkg.sv', 'dutV_uvm_test_pkg.sv', 'dutV_uvm_tb.sv')]
@@ -781,7 +783,7 @@ def check_layer_uvm_lists(work):
         if len(rules) != 1:
             problems.append(f"{flow}: expected one rule for {stamp[0]}, found {len(rules)}")
             continue
-        problems += [f"{flow}: {stamp[0]} does not depend on {path}" for path in (*layerLists, *layerPkgs)
+        problems += [f"{flow}: {stamp[0]} does not depend on {path}" for path in (*layerLists, *layerPkgs, videoMacros)
                      if path not in rules[0].split()]
     return problems
 

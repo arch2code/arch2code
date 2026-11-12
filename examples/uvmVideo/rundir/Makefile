@@ -30,4 +30,4 @@ regr_uvm_vcs:
 	$(A2C_ROOT)/regrLauncher.py --build regr_uvmVideo_uvm_vcs.json $(REGR_USER_OPTS)
 
 clean::
-	$(RM) -rf *.lib++ ucli.key waves.shm tr_db.log
+	$(RM) -rf *.lib++ ucli.key

@@ -47,7 +47,8 @@ DUT_ELAB_ARGS := $(A2C_UVM_TESTBENCH_$(UVM_TB_TOP)) --uvmDut $(UVM_DUT) --uvmTop
 # they compile after the project packages they import. A layer list holds
 # file paths only, each relative to the list's own directory.
 A2C_UVM_F := $(A2C_ROOT)/common/systemVerilog/uvm/a2c_uvm.f
-A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)
+A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROOT)/common/systemVerilog/uvm/*.svh \
+	$(A2C_ROOT)/interfaces/*/*_uvm_pkg.sv)
 A2C_LAYER_UVM_SV := $(foreach f,$(A2C_LAYER_UVM_F_FILES),$(addprefix $(dir $(f)),$(file < $(f))))
 A2C_UVM_SV_FILES := $(A2C_UVM_PKG_SV_$(UVM_TB_TOP)) $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)) $(A2C_UVM_TB_SV_$(UVM_TB_TOP))
 A2C_UVM_HDL_DEFINES := A2C_UVM_PKG=$(A2C_UVM_PKG_$(UVM_TB_TOP)) $(if $(filter rtl,$(UVM_DUT)),A2C_UVM_RTL_DUT) \
