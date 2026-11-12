@@ -1,0 +1,87 @@
+# uvmVideo turns a raw video input, framed by fv and lv levels, into an AMD
+# UG934 AXI4-Stream output: tuser marks a frame's first beat and tlast a
+# line's last. A pixel is a clock with fv and lv high; the DUT holds each
+# beat one clock to see whether lv falls after it. vout has no
+# backpressure, as a raw source cannot wait.
+
+constants:
+    UVM_VIDEO_PIXELS: { value: 2, desc: "Pixels per beat" }
+    UVM_VIDEO_WIDTH: { value: 16, desc: "Pixels per line uSrc sends in the SystemC testbench" }
+    UVM_VIDEO_HEIGHT: { value: 4, desc: "Lines per frame uSrc sends in the SystemC testbench" }
+    UVM_VIDEO_FRAMES: { value: 3, desc: "Frames uSrc sends in the SystemC testbench" }
+
+types:
+    uvmVideoPixelT: { width: 8, desc: "One pixel" }
+    uvmVideoBitT: { width: 1, desc: "A level or marker" }
+
+structures:
+    uvmVideoRawSt:
+        fv: { varType: uvmVideoBitT, desc: "Frame valid" }
+        lv: { varType: uvmVideoBitT, desc: "Line valid" }
+        pixels: { varType: uvmVideoPixelT, arraySize: UVM_VIDEO_PIXELS }
+    uvmVideoBeatSt:
+        pixels: { varType: uvmVideoPixelT, arraySize: UVM_VIDEO_PIXELS }
+    uvmVideoIdSt:
+        id: { varType: uvmVideoBitT }
+    uvmVideoUserSt:
+        sof: { varType: uvmVideoBitT, desc: "Start of frame" }
+
+interfaces:
+    uvmVideoRawIf:
+        interfaceType: raw
+        desc: "Raw video, one beat per clock"
+        structures:
+            - { structure: uvmVideoRawSt, structureType: data_t }
+    uvmVideoAxisIf:
+        interfaceType: axi4_stream
+        backpressure: false
+        desc: "UG934 video"
+        structures:
+            - { structure: uvmVideoBeatSt, structureType: tdata_t }
+            - { structure: uvmVideoIdSt, structureType: tid_t }
+            - { structure: uvmVideoIdSt, structureType: tdest_t }
+            - { structure: uvmVideoUserSt, structureType: tuser_t }
+
+blocks:
+    uvmVideo_tb:
+        desc: "Testbench container for uvmVideo (root container)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    uvmVideo:
+        desc: "DUT: raw fv/lv video in, UG934 AXI4-Stream out"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: true
+        hasUvm: true
+        ports:
+            vin:  { interface: uvmVideoRawIf, direction: dst }
+            vout: { interface: uvmVideoAxisIf, direction: src }
+    uvmVideoSrc:
+        desc: "Sends UVM_VIDEO_FRAMES frames of UVM_VIDEO_HEIGHT lines of UVM_VIDEO_WIDTH pixels, with blanking"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            out: { interface: uvmVideoRawIf, direction: src }
+    uvmVideoSink:
+        desc: "Checks the frames, lines and pixels uSrc sent"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: uvmVideoAxisIf, direction: dst }
+
+instances:
+    uvmVideo_tb: { container: uvmVideo_tb, instanceType: uvmVideo_tb,  instGroup: top }
+    u_uvmVideo:  { container: uvmVideo_tb, instanceType: uvmVideo,     instGroup: top }
+    uSrc:        { container: uvmVideo_tb, instanceType: uvmVideoSrc,  instGroup: top }
+    uSink:       { container: uvmVideo_tb, instanceType: uvmVideoSink, instGroup: top }
+
+connections:
+    - { interface: uvmVideoRawIf,  src: uSrc,       srcport: out,  dst: u_uvmVideo, dstport: vin }
+    - { interface: uvmVideoAxisIf, src: u_uvmVideo, srcport: vout, dst: uSink,      dstport: in }

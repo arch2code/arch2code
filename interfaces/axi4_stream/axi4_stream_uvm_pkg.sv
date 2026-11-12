@@ -26,6 +26,7 @@ package axi4_stream_uvm_pkg;
     import uvm_pkg::*;
     `include "uvm_macros.svh"
     import a2c_uvm_pkg::*;
+    import a2c_video_pkg::*;
 
     class axi4_stream_item #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
                              type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_sequence_item;
@@ -384,6 +385,72 @@ package axi4_stream_uvm_pkg;
             end
         endfunction
     endclass : axi4_stream_agent
+
+    // The a2c_video_pkg adapter for AMD UG934 video: tuser[0] marks SOF,
+    // tlast marks EOL, and pixel p is tdata[p * pixel_bits +: pixel_bits].
+    // UG934 has no EOF. make() takes the pixel width and fits as many pixels
+    // as tdata holds.
+    class axi4_stream_video_adapter #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
+                                      type tdest_t = logic [7:0], type tuser_t = logic)
+        extends a2c_video_handshake_adapter #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t));
+        typedef axi4_stream_item #(tdata_t, tid_t, tdest_t, tuser_t)         item_t;
+        typedef axi4_stream_video_adapter #(tdata_t, tid_t, tdest_t, tuser_t) this_t;
+
+        `uvm_object_param_utils(axi4_stream_video_adapter#(tdata_t, tid_t, tdest_t, tuser_t))
+
+        function new(string name = "axi4_stream_video_adapter");
+            super.new(name);
+            has_eof         = 0;
+            pixel_bits      = 8;
+            pixels_per_beat = $bits(tdata_t) / 8;
+        endfunction
+
+        static function this_t make(int unsigned pixel_bits = 8, string name = "axi4_stream_video_adapter");
+            this_t a = new(name);
+            a.pixel_bits      = pixel_bits;
+            a.pixels_per_beat = $bits(tdata_t) / pixel_bits;
+            return a;
+        endfunction
+
+        virtual function void clear(item_t it);
+            it.tdata = '0;
+            it.tid   = '0;
+            it.tdest = '0;
+            it.tuser = '0;
+        endfunction
+
+        virtual function void set_frame(item_t it, bit fv, bit sof, bit eof);
+            it.tuser = tuser_t'(sof);
+        endfunction
+
+        virtual function void set_line(item_t it, bit lv, bit eol);
+            it.tlast = eol;
+        endfunction
+
+        virtual function void set_pixel(item_t it, int unsigned p, uvm_bitstream_t v);
+            uvm_bitstream_t d = it.tdata;
+            d &= ~(mask('1) << (p * pixel_bits));
+            d |= mask(v) << (p * pixel_bits);
+            it.tdata = tdata_t'(d);
+        endfunction
+
+        virtual function void get_frame(item_t it, output bit fv, output bit sof, output bit eof);
+            uvm_bitstream_t u = it.tuser;
+            fv  = 1;
+            sof = u[0];
+            eof = 0;
+        endfunction
+
+        virtual function void get_line(item_t it, output bit lv, output bit eol);
+            lv  = 1;
+            eol = it.tlast;
+        endfunction
+
+        virtual function uvm_bitstream_t get_pixel(item_t it, int unsigned p);
+            uvm_bitstream_t d = it.tdata;
+            return mask(d >> (p * pixel_bits));
+        endfunction
+    endclass : axi4_stream_video_adapter
 
     // An a2c_rt_checker unit rule that ends a unit on tlast. In AMD UG934
     // video tlast marks the end of a line, so a frame is ends_per_unit

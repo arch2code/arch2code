@@ -1,0 +1,23 @@
+# uvmVideo: a UVM testbench whose DUT turns a raw fv/lv video input into a
+# UG934 AXI4-Stream output. Its video tests come from a2c_video_pkg
+# (SIMULATOR_INTEGRATION.md section 9.6).
+
+yamlFormat: 2
+projectName: uvmVideo
+
+projectFiles:
+    - ../../yaml/uvmVideo.yaml
+
+topInstance: uvmVideo_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"

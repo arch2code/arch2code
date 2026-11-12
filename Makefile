@@ -32,6 +32,7 @@ XIF_DIR = examples/xif
 TWO_CLK_DIR = examples/twoClk
 CLK_GEN_DIR = examples/clkGen
 UVM_MEM_DIR = examples/uvmMem
+UVM_VIDEO_DIR = examples/uvmVideo
 
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
@@ -174,6 +175,15 @@ uvm-mem:
 	$(RUN_LIMIT) make -C $(UVM_MEM_DIR)/rundir -j run
 	$(RUN_LIMIT) make -C $(UVM_MEM_DIR)/rundir -j run-vl
 	make -C $(UVM_MEM_DIR)/rtl lint
+
+.PHONY : uvm-video
+# The SystemC and Verilator runs of the UVM video framing bench; its UVM runs
+# need a four-state simulator (specs/SIMULATOR_INTEGRATION.md section 9.9).
+uvm-video:
+	make -C $(UVM_VIDEO_DIR) gen
+	$(RUN_LIMIT) make -C $(UVM_VIDEO_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(UVM_VIDEO_DIR)/rundir -j run-vl
+	make -C $(UVM_VIDEO_DIR)/rtl lint
 
 # Nested register-bus router inheriting its container's parameter; firmware
 # round-trips a parameter-sized leaf register through both routers, model and
@@ -653,6 +663,7 @@ newmodule-all:
 	make -C $(SIMPLE_IP_DIR) -j newmodule && make -C $(SIMPLE_IP_DIR) -j gen
 	make -C $(SIMPLE_IP_DIR)/ip -j newmodule && make -C $(SIMPLE_IP_DIR)/ip -j gen
 	make -C $(UVM_MEM_DIR) -j newmodule && make -C $(UVM_MEM_DIR) -j gen
+	make -C $(UVM_VIDEO_DIR) -j newmodule && make -C $(UVM_VIDEO_DIR) -j gen
 
 .PHONY : unittest
 unittest:
@@ -668,7 +679,7 @@ PIPELINE_JOBS ?= 8
 # then leave the simulation running.
 PIPELINE_RUN_TIMEOUT ?=
 RUN_LIMIT = $(if $(PIPELINE_RUN_TIMEOUT),timeout -k 30s $(PIPELINE_RUN_TIMEOUT))
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen uvm-mem
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen uvm-mem uvm-video
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

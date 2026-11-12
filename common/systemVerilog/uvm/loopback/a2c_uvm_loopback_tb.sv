@@ -23,6 +23,7 @@ package a2c_uvm_loopback_pkg;
     import external_reg_uvm_pkg::*;
     import axi_read_uvm_pkg::*;
     import axi_write_uvm_pkg::*;
+    import a2c_video_pkg::*;
 
     typedef struct packed {
         logic [3:0]  tag;
@@ -867,6 +868,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_rt_checker_lb_tests.svh"
     `include "a2c_joint_stall_lb_tests.svh"
     `include "a2c_reg_read_lb_tests.svh"
+    `include "a2c_video_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 
@@ -992,6 +994,305 @@ endmodule : lb_rt_pipe
         out.tvalid = inst``_out_vld; \
         {out.tdata, out.tstrb, out.tkeep, out.tlast, out.tid, out.tdest, out.tuser} = inst``_out_data; \
         @(inst``_out_vld or inst``_out_data); \
+    end
+
+// A stand-in video DUT for the a2c_video_pkg tests, configured by
+// lb_vid_pipe_cfg[ID]. It decodes its input into beats with SOF, EOL and
+// EOF, holding the newest beat until the next input decides its markers,
+// and offers each beat latency clocks after it was decided. CLOCKED takes
+// fv and lv levels, one item per clock; otherwise in_vld and in_rdy
+// handshake beats that carry the markers. A correct pipe (no defect knob)
+// keeps every line as sent, cuts lines to width_beats under crop_width, and
+// marks EOF on a frame's last beat when OUT_EOF, at fv falling or at the
+// next SOF if the input gave none. Output vld never depends on rdy.
+module lb_video_pipe
+    import a2c_uvm_loopback_pkg::*;
+#(int ID = 0, bit CLOCKED = 0, bit OUT_EOF = 0) (
+    input  bit           clk,
+    input  bit           rst_n,
+    input  logic         in_vld,
+    output logic         in_rdy,
+    input  logic         in_fv,
+    input  logic         in_lv,
+    input  lb_vid_beat_t in_beat,
+    output logic         out_vld,
+    input  logic         out_rdy,
+    output lb_vid_beat_t out_beat
+);
+
+    lb_vid_beat_t    q[$];
+    longint unsigned q_at[$];
+    longint unsigned cnt;
+    longint unsigned beats_in;
+    longint unsigned last_end;
+    lb_vid_beat_t    held;
+    bit              have_held;
+    bit              frame_open;
+    bit              first;
+    bit              b2b;
+    bit              prev_fv;
+    bit              prev_pix;
+    bit              cropped;
+    int unsigned     fv_low;
+    int unsigned     line_beats;
+    int unsigned     drop_left;
+    int unsigned     frames_in;
+    int unsigned     lines_in;
+
+    initial begin
+        in_rdy   = 1'b0;
+        out_vld  = 1'b0;
+        out_beat = '0;
+    end
+
+    function automatic void push(lb_vid_beat_t b);
+        q.push_back(b);
+        q_at.push_back(cnt);
+    endfunction
+
+    function automatic void flush();
+        if (have_held) push(held);
+        have_held = 0;
+    endfunction
+
+    // Counts the beat into its line, applies the crop, and returns 0 for a
+    // beat the crop drops. ends is the input's end of line, where a
+    // handshaked input has one.
+    function automatic bit crop(inout lb_vid_beat_t b, input lb_vid_pipe_cfg_t c, input bit ends);
+        if (cropped) begin
+            if (ends) begin
+                cropped    = 0;
+                line_beats = 0;
+            end
+            return 0;
+        end
+        line_beats++;
+        if (c.flip_beat != 0 && beats_in == c.flip_beat) b.px[0] ^= 8'h01;
+        beats_in++;
+        if (c.crop_width && line_beats == c.width_beats + c.crop_long && !ends) begin
+            b.eol   = 1;
+            cropped = 1;
+        end
+        if (ends) line_beats = 0;
+        return 1;
+    endfunction
+
+    // Counts a handshaked input beat into its frame and line, both from 1,
+    // and returns 1 when the drop knobs take it.
+    function automatic bit drop(input lb_vid_pipe_cfg_t c);
+        int unsigned line_n;
+        if (c.drop_lone_beats && in_beat.sof && in_beat.eol && in_beat.eof) return 1;
+        if (in_beat.sof) frames_in++;
+        line_n = lines_in + 1;
+        if (in_beat.eol) lines_in++;
+        return (c.drop_frame_n != 0 && frames_in == c.drop_frame_n) || (c.drop_line_n != 0 && line_n == c.drop_line_n);
+    endfunction
+
+    always @(posedge clk) begin
+        lb_vid_pipe_cfg_t c;
+        lb_vid_beat_t     b;
+        bit               pix;
+        c = lb_vid_pipe_cfg[ID];
+        if (rst_n) begin
+            if (CLOCKED) begin
+                pix = (in_fv && in_lv) || (c.lv_vblank_pixels && in_lv && !in_fv);
+                if (prev_pix && !pix && have_held && !cropped) begin
+                    held.eol = !(c.no_eol_short && line_beats < c.width_beats);
+                end
+                if (prev_pix && !pix) begin
+                    cropped    = 0;
+                    line_beats = 0;
+                end
+                if (prev_fv && !in_fv) begin
+                    if (have_held && OUT_EOF && !c.no_eof_cut) held.eof = 1;
+                    flush();
+                    frame_open = 0;
+                    fv_low     = 0;
+                end
+                if (!in_fv) fv_low++;
+                if (in_fv && !prev_fv) begin
+                    frame_open = 1;
+                    first      = 1;
+                    b2b        = fv_low == 1;
+                end
+                if (pix && !prev_pix) drop_left = (in_fv && !prev_fv) ? c.drop_fv_rise_beats : 0;
+                if (pix) begin
+                    if (drop_left != 0) begin
+                        drop_left--;
+                    end else begin
+                        b     = '{sof: first && in_fv, eol: 0, eof: 0, px: in_beat.px};
+                        if (b.sof && b2b && c.merge_b2b) b.sof = 0;
+                        if (in_fv) first = 0;
+                        if (crop(b, c, 0)) begin
+                            flush();
+                            held      = b;
+                            have_held = 1;
+                        end
+                    end
+                end
+                prev_fv  = in_fv;
+                prev_pix = pix;
+            end else if (in_vld === 1'b1 && in_rdy === 1'b1 && drop(c)) begin
+                // A dropped beat leaves no trace.
+            end else if (in_vld === 1'b1 && in_rdy === 1'b1) begin
+                b = in_beat;
+                if (!OUT_EOF || (c.drop_eof_n != 0 && frames_in == c.drop_eof_n)) b.eof = 0;
+                if (b.sof) begin
+                    if (frame_open && have_held && OUT_EOF && !c.no_eof_cut && !c.pass_markers) held.eof = 1;
+                    flush();
+                    frame_open = 1;
+                    if (cnt == last_end + 1 && c.merge_b2b) b.sof = 0;
+                end
+                if (in_beat.eol) last_end = cnt;
+                if (in_beat.eol && !cropped && c.no_eol_short && line_beats + 1 < c.width_beats) b.eol = 0;
+                if (crop(b, c, in_beat.eol)) begin
+                    if (OUT_EOF) begin
+                        flush();
+                        held      = b;
+                        have_held = !b.eof;
+                        if (b.eof) push(b);
+                    end else begin
+                        push(b);
+                    end
+                end
+                if (b.eof) frame_open = 0;
+            end
+            cnt++;
+            if (out_vld === 1'b1 && out_rdy === 1'b1) begin
+                void'(q.pop_front());
+                void'(q_at.pop_front());
+            end
+            if (!(out_vld === 1'b1 && out_rdy !== 1'b1)) begin
+                out_vld <= (q.size() != 0) ? cnt > q_at[0] + c.latency : 1'b0;
+                if (q.size() != 0) out_beat <= q[0];
+            end
+            in_rdy <= CLOCKED || !(c.refuse_every != 0 && cnt % c.refuse_every == 0) && !(c.accept_every != 0 && cnt % c.accept_every != 0);
+        end
+    end
+endmodule : lb_video_pipe
+
+// Packs pairs of one-pixel beats, the pixel in px[0], into two-pixel beats,
+// SOF from the first and EOL and EOF from the second; a line of odd length
+// ends with a beat whose px[1] is 0. Output vld never depends on rdy.
+module lb_video_pack
+    import a2c_uvm_loopback_pkg::*;
+(
+    input  bit           clk,
+    input  bit           rst_n,
+    input  logic         in_vld,
+    output logic         in_rdy,
+    input  lb_vid_beat_t in_beat,
+    output logic         out_vld,
+    input  logic         out_rdy,
+    output lb_vid_beat_t out_beat
+);
+
+    lb_vid_beat_t q[$];
+    lb_vid_beat_t acc;
+    bit           have;
+
+    initial begin
+        in_rdy   = 1'b0;
+        out_vld  = 1'b0;
+        out_beat = '0;
+    end
+
+    always @(posedge clk) begin
+        if (rst_n) begin
+            if (in_vld === 1'b1 && in_rdy === 1'b1) begin
+                if (!have) begin
+                    acc       = '{sof: in_beat.sof, eol: in_beat.eol, eof: in_beat.eof, px: '{8'h00, in_beat.px[0]}};
+                    have      = !in_beat.eol;
+                    if (in_beat.eol) q.push_back(acc);
+                end else begin
+                    acc.px[1] = in_beat.px[0];
+                    acc.eol   = in_beat.eol;
+                    acc.eof   = in_beat.eof;
+                    have      = 0;
+                    q.push_back(acc);
+                end
+            end
+            if (out_vld === 1'b1 && out_rdy === 1'b1) void'(q.pop_front());
+            if (!(out_vld === 1'b1 && out_rdy !== 1'b1)) begin
+                out_vld <= q.size() != 0;
+                if (q.size() != 0) out_beat <= q[0];
+            end
+            in_rdy <= 1'b1;
+        end
+    end
+endmodule : lb_video_pack
+
+// Joins a video input pin set to an output pin set through an lb_video_pipe,
+// as LB_RT_RV_PIPE does: the pipe's outputs reach the interfaces through
+// processes, because the agents' classes write the other variables.
+`define LB_VID_PIPE_OUT_AXIS(inst, out) \
+    initial forever begin \
+        out.tvalid = inst``_out_vld; \
+        out.tdata  = inst``_out_beat.px; \
+        out.tuser  = inst``_out_beat.sof; \
+        out.tlast  = inst``_out_beat.eol; \
+        out.tstrb  = '1; \
+        out.tkeep  = '1; \
+        out.tid    = '0; \
+        out.tdest  = '0; \
+        @(inst``_out_vld or inst``_out_beat); \
+    end
+
+`define LB_VID_RAW_AXIS_PIPE(inst, id, in, out) \
+    logic         inst``_in_rdy; \
+    logic         inst``_out_vld; \
+    lb_vid_beat_t inst``_out_beat; \
+    lb_video_pipe #(.ID(id), .CLOCKED(1), .OUT_EOF(0)) inst (.clk(clk), .rst_n(rst_n), \
+        .in_vld(1'b1), .in_rdy(inst``_in_rdy), .in_fv(in.data.fv), .in_lv(in.data.lv), \
+        .in_beat('{sof: 1'b0, eol: 1'b0, eof: 1'b0, px: in.data.px}), \
+        .out_vld(inst``_out_vld), .out_rdy(out.tready), .out_beat(inst``_out_beat)); \
+    `LB_VID_PIPE_OUT_AXIS(inst, out)
+
+`define LB_VID_AXIS_AXIS_PIPE(inst, id, in, out) \
+    logic         inst``_in_rdy; \
+    logic         inst``_out_vld; \
+    lb_vid_beat_t inst``_out_beat; \
+    lb_video_pipe #(.ID(id), .CLOCKED(0), .OUT_EOF(0)) inst (.clk(clk), .rst_n(rst_n), \
+        .in_vld(in.tvalid), .in_rdy(inst``_in_rdy), .in_fv(1'b0), .in_lv(1'b0), \
+        .in_beat('{sof: in.tuser, eol: in.tlast, eof: 1'b0, px: in.tdata}), \
+        .out_vld(inst``_out_vld), .out_rdy(out.tready), .out_beat(inst``_out_beat)); \
+    initial forever begin \
+        in.tready = inst``_in_rdy; \
+        @(inst``_in_rdy); \
+    end \
+    `LB_VID_PIPE_OUT_AXIS(inst, out)
+
+`define LB_VID_PACK_PIPE(inst, in, out) \
+    logic         inst``_in_rdy; \
+    logic         inst``_out_vld; \
+    lb_vid_beat_t inst``_out_beat; \
+    lb_video_pack inst (.clk(clk), .rst_n(rst_n), .in_vld(in.vld), .in_rdy(inst``_in_rdy), .in_beat(in.data), \
+        .out_vld(inst``_out_vld), .out_rdy(out.rdy), .out_beat(inst``_out_beat)); \
+    initial forever begin \
+        in.rdy = inst``_in_rdy; \
+        @(inst``_in_rdy); \
+    end \
+    initial forever begin \
+        out.vld  = inst``_out_vld; \
+        out.data = inst``_out_beat; \
+        @(inst``_out_vld or inst``_out_beat); \
+    end
+
+`define LB_VID_RV_RV_PIPE(inst, id, in, out) \
+    logic         inst``_in_rdy; \
+    logic         inst``_out_vld; \
+    lb_vid_beat_t inst``_out_beat; \
+    lb_video_pipe #(.ID(id), .CLOCKED(0), .OUT_EOF(1)) inst (.clk(clk), .rst_n(rst_n), \
+        .in_vld(in.vld), .in_rdy(inst``_in_rdy), .in_fv(1'b0), .in_lv(1'b0), .in_beat(in.data), \
+        .out_vld(inst``_out_vld), .out_rdy(out.rdy), .out_beat(inst``_out_beat)); \
+    initial forever begin \
+        in.rdy = inst``_in_rdy; \
+        @(inst``_in_rdy); \
+    end \
+    initial forever begin \
+        out.vld  = inst``_out_vld; \
+        out.data = inst``_out_beat; \
+        @(inst``_out_vld or inst``_out_beat); \
     end
 
 module a2c_uvm_loopback_tb;
@@ -1135,6 +1436,32 @@ module a2c_uvm_loopback_tb;
     `LB_RT_AXIS_PIPE(u_rt_axis, LB_RT_AXIS, axis_in, axis_out)
     `LB_RT_AXIS_PIPE(u_rt_axis_model, LB_RT_AXIS_MODEL, axis_in_model, axis_out_model)
 
+    // The a2c_video_pkg tests' pin sets, each pair joined by an
+    // lb_video_pipe: vid_raw to vid_axis_a_out, vid_axis_b_in to
+    // vid_axis_b_out and vid_rv_in to vid_rv_out, with model twins; and
+    // vid_pk_in to vid_pk_out through lb_video_pack.
+    raw_if #(.data_t(lb_vid_raw_t)) vid_raw();
+    raw_if #(.data_t(lb_vid_raw_t)) vid_raw_model();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_a_out();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_a_out_model();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_b_in();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_b_in_model();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_b_out();
+    axi4_stream_if #(.tdata_t(lb_vid_tdata_t), .tid_t(logic), .tdest_t(logic), .tuser_t(logic)) vid_axis_b_out_model();
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_rv_in();
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_rv_in_model();
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_rv_out();
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_rv_out_model();
+    `LB_VID_RAW_AXIS_PIPE(u_vid_a, LB_VID_A, vid_raw, vid_axis_a_out)
+    `LB_VID_RAW_AXIS_PIPE(u_vid_a_model, LB_VID_A_MODEL, vid_raw_model, vid_axis_a_out_model)
+    `LB_VID_AXIS_AXIS_PIPE(u_vid_b, LB_VID_B, vid_axis_b_in, vid_axis_b_out)
+    `LB_VID_AXIS_AXIS_PIPE(u_vid_b_model, LB_VID_B_MODEL, vid_axis_b_in_model, vid_axis_b_out_model)
+    `LB_VID_RV_RV_PIPE(u_vid_c, LB_VID_C, vid_rv_in, vid_rv_out)
+    `LB_VID_RV_RV_PIPE(u_vid_c_model, LB_VID_C_MODEL, vid_rv_in_model, vid_rv_out_model)
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_pk_in();
+    rdy_vld_if #(.data_t(lb_vid_beat_t)) vid_pk_out();
+    `LB_VID_PACK_PIPE(u_vid_pk, vid_pk_in, vid_pk_out)
+
     initial begin
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk", clk_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk2", clk2_if);
@@ -1186,6 +1513,20 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_out", axis_out);
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_in_model", axis_in_model);
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis_out_model", axis_out_model);
+        uvm_config_db#(lb_vid_raw_vif_t)::set(null, "uvm_test_top", "vid_raw", vid_raw);
+        uvm_config_db#(lb_vid_raw_vif_t)::set(null, "uvm_test_top", "vid_raw_model", vid_raw_model);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_a_out", vid_axis_a_out);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_a_out_model", vid_axis_a_out_model);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_b_in", vid_axis_b_in);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_b_in_model", vid_axis_b_in_model);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_b_out", vid_axis_b_out);
+        uvm_config_db#(lb_vid_axis_vif_t)::set(null, "uvm_test_top", "vid_axis_b_out_model", vid_axis_b_out_model);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_rv_in", vid_rv_in);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_rv_in_model", vid_rv_in_model);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_rv_out", vid_rv_out);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_rv_out_model", vid_rv_out_model);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_pk_in", vid_pk_in);
+        uvm_config_db#(lb_vid_rv_vif_t)::set(null, "uvm_test_top", "vid_pk_out", vid_pk_out);
         run_test();
     end
 

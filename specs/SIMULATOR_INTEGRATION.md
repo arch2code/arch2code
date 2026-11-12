@@ -505,7 +505,7 @@ make -j8 USE_VCS=1 VL_DUT= all
 
 A block with `hasUvm: true` gets a generated SystemVerilog UVM testbench that drives its SystemC model, its RTL, or both at once, under Xcelium or VCS. With both, Mode B, the RTL is the DUT under test and the model runs beside it as its reference (section 9.12). SystemC stays on top, and `sc_main` and `main.cpp` run as they do for every testbench. SystemC instantiates the UVM testbench module the way it instantiates an HDL wrapper top, through the `vlogan -sc_model` shell under VCS and an `xmsc_foreign_module` shell under Xcelium.
 
-Base generates the testbench module, the variant package with its register model and `uvm_env`, the SystemC side, and a test package with a base test, a fail test and, for Mode B, a model mismatch test. `make USE_UVM=1` builds and runs it (section 9.7). The project writes its scoreboards, sequences and tests in the user spans of the test package (section 9.6). isp_debayer and isp_gain are the worked examples.
+Base generates the testbench module, the variant package with its register model and `uvm_env`, the SystemC side, and a test package with a base test, a fail test and, for Mode B, a model mismatch test. `make USE_UVM=1` builds and runs it (section 9.7). The project writes its scoreboards, sequences and tests in the user spans of the test package (section 9.6). Base's `examples/uvmMem`, with rdy_vld and memory ports, and `examples/uvmVideo`, with a raw video input and an axi4_stream video output, are the worked examples.
 
 ### 9.1 Opting a block in
 
@@ -626,7 +626,7 @@ The register model is generated from the block's address rows, so it cannot disa
 - one `uvm_mem` per `memories:` row with `regAccess`, and one `RW` memory per `regType: memory` register. A `wo` memory is `RW` with `WO` map rights and gets `NO_MEM_TESTS`, because UVM reports WO rights as RW in a one-map model. A memory row is padded so that UVM's stride of `ceil(n_bits / 32)` bus words equals the decoder's row stride, and a padded memory gets `NO_MEM_WALK_TEST`. The padding rule holds for UVM 1.2 only: IEEE 1800.2 steps a memory by `ceil(n_bits / 8)` bytes;
 - `<block>_reg_block`, with `default_map` at base 0, a 4-byte bus and little-endian order, each register and memory at its row's offset. Widths, depths and padding are resolved per variant at `make db`. A register wider than the bus becomes consecutive 4-byte accesses.
 
-Only text unit tests cover the memory, ext and multi-word paths. The registers of isp_gain and isp_debayer each fit one 32-bit word.
+Only text unit tests cover the memory, ext and multi-word paths. Neither base UVM example has registers.
 
 ### 9.6 The test package
 
@@ -709,38 +709,47 @@ The count runs until the run phase ends, so it also bounds a component that keep
 
 A test sets them in its constructor, and the plusargs override them. Each left at -1 sets nothing. Otherwise `build_phase` sets it on the `run_timeout` child as `a2c_run_timeout_cycles`, `a2c_run_timeout_floor_cycles` or `a2c_run_timeout_factor`, which `run_timeout` reads in its `build_phase` with the same accepted types as the drain knobs. A design that takes many clocks per item, such as one whose items are whole frames or long bursts, sets `run_timeout_factor` once in the constructor of its base-test subclass, and every test inherits it.
 
-The defaults come from measurement. A run takes about `a + b * W` clocks. `a` is fixed overhead, chiefly the output quiet window, `quiet_cycles`, 1000 clocks by default, which every `wait_for_outputs()` waits out once. `b` is the clocks per unit of work. Every UVM test of isp_gain and isp_debayer, in the `model_dut`, `rtl_dut` and `both_dut` groups of their Xcelium and VCS regressions, and every base and Pro loopback test that runs to its end, gave its run length and its W:
+The defaults come from measurement. A run takes about `a + b * W` clocks. `a` is fixed overhead, chiefly the output quiet window, `quiet_cycles`, 1000 clocks by default, which every `wait_for_outputs()` waits out once. `b` is the clocks per unit of work. Every test of the Xcelium regressions of base's two UVM examples, uvmMem and uvmVideo, in the `model_dut`, `rtl_dut` and `both_dut` groups, gave its run length and its W:
 
 | Measured | Clocks | W | `b`, with `a` of 1050 |
 | :--- | ---: | ---: | ---: |
-| longest test: `isp_debayer_fail_test`, ended by the 200000-clock output deadline | 200138 | 259 | not work |
-| `isp_gain_fail_test`, ended the same way | 200017 | 33 | not work |
-| longest test that passes: `isp_debayer_random_test`, `rtl_dut` on VCS | 19211 | 10902 | 1.7 |
-| `isp_debayer_random_*` | 8583 to 19211 | 2630 to 10902 | 1.7 to 2.9 |
-| `isp_gain_random_test`, several quiet windows | 8006 to 10727 | 646 to 2908 | 3.3 to 10.8 |
-| `isp_debayer_flat_test`, 13 quiet windows | 14525 | 1544 | 8.7 |
-| `isp_gain_color_test`, 5 quiet windows | 5301 | 288 | 14.8 |
-| small tests: smoke, reg, mismatch, and the loopback tests | up to 10555 | up to 800 | up to 71, inside the floor |
+| longest test: `uvmMem_fail_test`, `both_dut`, ended by the 200000-clock output deadline | 201156 | 65 | not work |
+| `uvmVideo_fail_test`, ended the same way | 200839 | 1609 | not work |
+| longest test that passes: `uvmMem_random_test`, `both_dut` | 3283 | 512 | 4.4 |
+| `uvmMem_random_test` | 1975 to 3283 | 512 | 1.8 to 4.4 |
+| `uvmVideo_video_test_random` | 2612 to 3170 | 3069 to 4157 | 0.5 |
+| the other uvmVideo tests: smoke, model mismatch and the corners | 1703 to 1911 | 1344 to 1680 | 0.5 |
+| `uvmMem_smoke_test` and `uvmMem_model_mismatch_test` | 1113 to 2160 | 64 | 1.0 to 17.3, inside the floor |
 
-A test that waits out several quiet windows has a larger `a`, and the table counts the extra windows as work, so its `b` is high. With them taken out, `isp_gain_color_test` comes to about 1.0 clock per unit of work and `isp_gain_unity_test` to 1.5.
+uvmVideo's input is a clocked stream, so every clock it sends is an item and W grows with the blanking: `b` is 0.5 in every test. A test that waits out more than one quiet window has a larger `a`, and the table counts the extra windows as work, so its `b` is high. A Mode B run adds the drain's quiet window, so `uvmMem_smoke_test` comes to 1.0 clock per unit of work on the model and to 17.3 in Mode B.
 
-- The floor, 2500000, covers `a`. It is 12.5 times the longest test, and it exceeds the default bounds of the progress rules together, 1200000 clocks, 200000 each for the output deadline, drain deadline, drain catch-up, lane skew, lone lane and joint stall, so they report first. The deferral keeps that true for a test that raises a bound.
-- The factor, 20, covers `b`. It is above every slope in the table, 14.8 at the steepest with the extra quiet windows counted as work, and more than ten times the slope of the long streaming tests, 1.7 to 2.9. The measurement cannot pin it down further: for any factor up to about 230, the W term of even the largest measured test stays below the floor.
-- Every measured test runs within a tenth of its derived budget. The tightest are the two fail tests, at 1/12.5.
-- A hang in a small test reports after 2500000 clocks, about 100 s of CPU at isp_debayer's bench speed of about 25000 clocks per CPU second. A hang in the largest test, W 10902, reports after 2718040 clocks, about 110 s.
+The defaults were first set from two larger streaming blocks, whose steepest slope was 14.8, in a test that waited out five quiet windows, and whose longest passing test took 19211 clocks for a W of 10902.
 
-A test whose transactions are pixels gets 20 clocks per pixel from the factor. That is more than a frame needs, so a hang in a long frame test reports late: two 1920x1080 frames at one pixel per clock declare a W of about 8.3 million, a budget of about 168 million clocks, nearly two hours of CPU. Such a test computes its budget from the frame and fixes it. The budget counts clocks of the block's first clock, so a frame timed on another clock, such as a pixel clock, is converted into clocks of the first one. The frame time in clocks is `(H_active + H_blank) * (V_active + V_blank) / pixels_per_clock`, and the budget is `margin * (configuration + N_frames * frame_time + latency + quiet window)`. For two 1920x1080 frames with 280 clocks of horizontal and 45 lines of vertical blanking at one pixel per clock, a frame takes 2200 * 1125 = 2475000 clocks. With 20 register writes of about 10 clocks each, a two-line latency of 4400 clocks and the output quiet window, `quiet_cycles`, of 1000, the sum is 4955600 clocks, and a margin of 2 makes the budget 9911200:
+- The floor, 2500000, covers `a`. It is about 12.4 times the longest test, and it exceeds the default bounds of the progress rules together, 1200000 clocks, 200000 each for the output deadline, drain deadline, drain catch-up, lane skew, lone lane and joint stall, so they report first. The deferral keeps that true for a test that raises a bound.
+- The factor, 20, covers `b`. It is above every slope measured, 17.3 at the steepest with a Mode B drain counted as work, and four or more times the slope of the random tests, 0.5 to 4.4. The measurement cannot pin it down further: for any factor up to about 600, the W term of even the largest measured test, W 4157, stays below the floor.
+- Every measured test runs within a tenth of its derived budget. The tightest is `uvmMem_fail_test`, at about 1/12.4.
+- A hang in a small test reports after 2500000 clocks. uvmVideo's fail test, which waits out the output deadline with the design idle, runs about 250000 clocks per CPU second on Xcelium, so such a hang costs about 10 s of CPU, and more on a bench whose design keeps busy. A hang in the largest measured test reports after 2583140 clocks.
+
+A test whose transactions are pixels gets 20 clocks per pixel from the factor. That is more than a frame needs, so a hang in a long frame test reports late: two 1920x1080 frames at one pixel per clock declare a W of about 8.3 million, a budget of about 168 million clocks. A hang costs the budget divided by the bench's clocks per CPU second: about 11 minutes at uvmVideo's 250000, and longer on a bench whose design keeps busy. Such a test computes its budget from the frame and fixes it. The budget counts clocks of the block's first clock, so a frame timed on another clock, such as a pixel clock, is converted into clocks of the first one. The frame time in clocks is `(H_active + H_blank) * (V_active + V_blank) / pixels_per_clock`, and the budget is `margin * (configuration + N_frames * frame_time + latency + quiet window)`. For two 1920x1080 frames with 280 clocks of horizontal and 45 lines of vertical blanking at one pixel per clock, a frame takes 2200 * 1125 = 2475000 clocks. With 20 register writes of about 10 clocks each, a two-line latency of 4400 clocks and the output quiet window, `quiet_cycles`, of 1000, the sum is 4955600 clocks, and a margin of 2 makes the budget 9911200:
 
 ```systemverilog
 virtual task run_body();
     int unsigned frame = (1920 + 280) * (1080 + 45) / 1;
+    a2c_video_cfg c = new_video_cfg();
+    c.width       = 1920;
+    c.height      = 1080;
+    c.frames      = 2;
+    c.h_blank_min = 280;
+    c.h_blank_max = 280;
+    c.v_blank_min = 45 * (1920 + 280);
+    c.v_blank_max = 45 * (1920 + 280);
     run_timeout.fix(2 * (20 * 10 + 2 * frame + 2 * 2200 + quiet_cycles));
-    configure();
-    repeat (2) send_frame();
+    configure_dut(c);
+    send_video(c);
 endtask
 ```
 
-The test calls `fix()` before it sends, so the budget covers the configuration too.
+The test calls `fix()` before it configures and sends, so the budget covers the configuration too.
 
 The bound is in clocks rather than simulated time because the clock period differs per project and is not known at `build_phase`. A clock that stops stops the count, so if the first clock stops, only `+UVM_TIMEOUT` ends the run.
 
@@ -806,6 +815,97 @@ A random test can turn on the gap rule alone as a stall detector.
 
 Not yet built: a generated gap-only checker per output that needs no wiring, unit markers declared in YAML, and a request-to-response latency bound for pop_ack, req_ack, AXI, memory and Pro's `lmmi`.
 
+#### Video framing tests
+
+A block with a video stream port gets framing tests and an output check that does not read the model. Both come from `common/systemVerilog/uvm/a2c_video_pkg.sv`, which `a2c_uvm.f` compiles after `a2c_uvm_pkg.sv`. The bench writes one class and one macro line, and nothing in YAML or the generator changes. The package holds:
+
+| Class | Role |
+| :--- | :--- |
+| `a2c_video_cfg` | the run: `width`, `height`, `frames`, the blanking ranges `h_blank_min`/`_max` and `v_blank_min`/`_max`, `lead_clocks`, `trail_clocks`, `v_front` and `v_back` (clocked), `beat_gap_max` (handshaked), `pixel_mode` (ramp, random or `pixel_value`), and the corner knobs, which apply to frame `corner_frame` only |
+| `a2c_video_adapter #(ITEM)` | maps frame, line and pixel onto the port's item. Extend `a2c_video_handshake_adapter` for a stream with SOF and EOL markers, setting `has_eof` when it carries EOF, or `a2c_video_clocked_adapter` for fv and lv levels. Set `pixels_per_beat` and `pixel_bits`, and write `clear()`, the three setters and the three getters. `axi4_stream_video_adapter` in `axi4_stream_uvm_pkg` is the adapter for any `axi4_stream` port: SOF on `tuser[0]`, EOL on `tlast` |
+| `a2c_video_seq #(ITEM)` | sends the planned frames through the adapter |
+| `a2c_video_contract` | the frames a correct DUT makes of each frame sent, with their SOF, EOL and EOF. The default is the same frame out, markers re-derived, pixels unchecked. `crop_width` cuts long lines to `width`, `pixel_check = A2C_VIDEO_PIX_EXACT` compares pixels, `markers` selects where the markers come from, and a bench overrides `expected_frame()` or `expected_frames()` for anything else. A contract whose `preserves_frames()` returns 0 turns off the real-time checkers on its output |
+| `a2c_video_checker #(ITEM)` | one per output lane; rebuilds the frames through the adapter's getters and compares each with the contract's frames |
+| `a2c_video_unit_rule #(ITEM)` | the frame as an `a2c_rt_checker` unit: fv falling, EOF, or the EOL that completes the lines of the planned frame due |
+| `a2c_video_flow_counts #(ITEM)` | the flow counts of a clocked stream, whose monitor counts nothing, for `connect_in()` |
+| `a2c_video_test #(BASE)` | the base piece: extends `BASE`, the generated `<block>_base_test` |
+
+The bench extends `a2c_video_test` once, with the generated base test as `BASE`, and the macro adds one test per corner:
+
+```systemverilog
+import a2c_video_pkg::*;
+`include "uvm/a2c_video_macros.svh"
+
+class blk_video_test extends a2c_video_test #(blk_base_test);
+    `uvm_component_utils(blk_video_test)
+
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+    endfunction
+
+    virtual function void video_ports();
+        vin_adapter_t  ia = vin_adapter_t::type_id::create("vin_adapter");
+        vout_adapter_t oa = vout_adapter_t::type_id::create("vout_adapter");
+        add_video_input(a2c_video_input#(vin_item_t)::make("vin", ia));
+        add_video_output(a2c_video_output#(vout_item_t)::make("vout", oa));
+    endfunction
+
+    virtual function void video_connect();
+        connect_video_input(env.vin_agent);
+        connect_video_output("vout", env.vout_agent, env.vout_counter);
+    endfunction
+
+    virtual function void configure_video(a2c_video_cfg cfg);
+        cfg.width  = 128;
+        cfg.height = 16;
+    endfunction
+
+    virtual task configure_dut(a2c_video_cfg cfg);
+        uvm_status_e status;
+        env.regmodel.width.write(status, cfg.width);
+        if (status != UVM_IS_OK) `uvm_error("BLK", $sformatf("width write: %s", status.name()))
+    endtask
+endclass
+
+`a2c_video_corner_tests(blk_video_test)
+```
+
+`a2c_video_test` is a parameterized class that extends its parameter rather than a component the bench adds, because the generated base test owns the run phase, the output wait and the run timeout's work count, and a video test has to change both `run_body()` and `stimulus_sent()`. It builds a child `video`, an `a2c_video_env`, and the bench fills it through two hooks, one per phase, so nothing depends on the order in which the test's children build. `video_ports()` runs in `video`'s `build_phase`: it creates each port's adapter, and a contract where the default does not fit, and adds one input and the checked outputs with `make()`. It reads nothing of the test's env. `video_connect()` runs in `video`'s `connect_phase`: it gives the input its agent with `connect_video_input()`, whose `sqr` takes the frames, and each output its agent and, optionally, its `a2c_txn_counter` with `connect_video_output()`. The checkers read the agent's `mon`, and in Mode B its `model_mon` too. After `video_ports()` the env applies, in order, the input adapter's stream kind and pixel shape, `configure_video()`, the corner and the `+a2c_video_<knob>=<n>` plusargs, and validates at `end_of_elaboration_phase`. The knobs a corner derives from the geometry, `cut_frame`'s and `cut_lv_high`'s cut, `short_line`'s beats and the line `short_line` and `long_line` change, are derived again from the geometry the plusargs leave, so `+a2c_video_height=12` on `cut_frame` keeps 6 lines. A plusarg that sets such a knob, such as `+a2c_video_cut_after_line`, still overrides the corner, and so does a value the test set after the corner. `run_body()` calls `configure_dut()` and `send_video()`, which declares each counted output's beats from the contract and sends. A test that overrides `run_body()` sends several runs, with register writes between them, by passing `send_video()` a cfg from `new_video_cfg()`. The plusargs apply to such a cfg too, when it is sent, with its corner's knobs derived again from the geometry they leave, and it is validated then. A cfg that is never sent is never validated, so a broken rule in it fails nothing at elaboration. `stimulus_sent()` adds the handshaked input's blanking clocks, so a derived run timeout grows with the blanking. Base never reads or writes a register: `configure_dut()` is the bench's.
+
+`` `a2c_video_corner_tests(T) `` defines `T_<corner>` for each corner below; each sets `corner` in its constructor. `a2c_video_corner_test(T, C)` defines one. `a2c_video_cfg::corner_names()` returns the same list.
+
+| Corner | Frame `corner_frame`, or the run |
+| :--- | :--- |
+| `blanking` | random blanking over the run: 1 to 6 clocks per line, 2 to 24 per frame, random lead and trail |
+| `no_blank` | no blanking; handshaked only |
+| `back_to_back` | the next frame's first beat on the clock after this one's last |
+| `short_line` | line 1 at half its beats |
+| `long_line` | line 1 two beats longer |
+| `cut_frame` | the frame ends after line `height/2 - 1`, so it keeps `height/2` lines, with no EOF unless `cut_eof` |
+| `cut_lv_high` | as `cut_frame`, with fv falling while lv is high; clocked only |
+| `fv_rise_line` | the first line starts on the clock fv rises; clocked only |
+| `lv_vblank` | lv high with fv low on the 2 clocks before fv rises and the 2 after it falls; clocked only |
+| `random` | at least 8 frames, one corner the stream allows drawn for each frame but the first and the last |
+
+`cut_frame` and `cut_lv_high` always cut after line `height/2 - 1` of the final height, so a test of either is repeatable and its cut frame keeps `height/2` lines. `+a2c_video_cut_after_line=<n>` keeps `n + 1` lines instead. A design whose state alternates by line and does not restart at SOF, such as a colour-filter phase, goes wrong only after a cut frame that keeps an odd number of lines. Make sure one `cut_frame` entry of its regression keeps an odd number of lines: where `height/2` is even, add an entry with `+a2c_video_cut_after_line=<n>`, `n` being the lines kept minus 1. At a height of 8 the corner keeps 4 lines, and `n` = 2 keeps 3. The `random` corner draws its cut line per frame and alternates the parity of the lines kept, odd then even or even then odd, where the height allows both.
+
+`validate()` raises one `A2C_CFG` `UVM_FATAL` that names the corner and every broken rule: `geometry`, `blank_range`, `clocked_blank`, `level_corner`, `short_line`, `long_line`, `cut_line`, `line_range`, `corner_clash`, `corner_frame`, `back_to_back` (the last frame has no frame to follow it), `cut_last` (a cut last frame with no EOF on a stream that carries EOF, which nothing would end), `random_frames` (`random_corners` with fewer than 3 frames, so no frame between the plain first and last) and `pixel_value` (`A2C_PIX_CONST` with `pixel_value` unknown in the pixel's bits). So a corner the stream cannot carry fails at elaboration in one line, and a regression lists only the corners that apply.
+
+**The contract.** `a2c_video_test` calls the contract's `expected_frames()` once per planned frame and output. For an output with an `a2c_txn_counter` on a handshaked stream, or with a real-time checker's unit rule, it calls it when `send_video()` plans the run; for any other output, when the output's first checker takes the frame's plan, just before the frame's first beat. Both calls fall inside `send_video()`, so the hook may read the frame, the cfg and whatever the test set before the run, such as the register mirror after `configure_dut()`. It must not read anything that changes while the run is sent: a register written during the run, the DUT's outputs, or the time. Then both call points give the same frames. It may return no frame, for a design that drops one, or several, for one that splits it; the checker then names them `frame <n> part <k>`. Its default returns the one frame `expected_frame()` makes. A frame the contract returns carries its markers: `sof`, `eof` and each line's `eol`, which the checker compares with the beats. `set_markers()` sets them as `markers` selects:
+
+| `markers` | The expected frame's SOF, EOL and EOF | For |
+| :--- | :--- | :--- |
+| `A2C_VIDEO_MARKERS_DERIVED`, the default | SOF on the first beat, EOL on each line's last, EOF on the frame's last, whatever the input carried | a design that makes its own framing |
+| `A2C_VIDEO_MARKERS_AS_RECEIVED` | each as the input frame carried it, so a cut frame sent with no EOF is expected with none | a streaming design that passes framing through |
+
+A frame with no EOF closes on the EOL that completes its expected lines, or at the next SOF. When a line's width is not a multiple of the pixels per beat, the DUT may pad its last beat, as UG934 allows; the checker trims the padding before it compares. The output's checkers share the frames the contract returns, so the contract must not change them afterwards.
+
+Each test logs the corner, the geometry and, once, the contract each output checks, as `A2C_VIDEO` `UVM_INFO` at `UVM_LOW`. A failure is an `A2C_VIDEO` `UVM_ERROR` per broken line or frame, such as `vout: frame 1 line 0: 60 pixels, expected 64` or `vout: frame 1: no EOF on its last beat; the next frame's SOF came first`. A marker the expected frame lacks is reported too, as in `vout: frame 1: EOF on its last beat, where the expected frame has none`. Under `A2C_VIDEO_PIX_EXACT` a line that holds the head of the next one is reported as `frame 1 line 0: no EOL on its last beat, so line 1 ran on into it with 4 of its 64 pixels`, and the lines after it are paired again. Beats outside any frame are reported once per run of them. `check_phase` closes a frame still open and compares it, ending each message with `the run ended before the frame did` and what ended the run, then reports the expected frames that never came out. It summarises each lane: `vout: 3 of 3 expected frames came out, from 3 planned, 24 lines, 384 beats; 0 frames failed, 0 failures`.
+
+**Real-time checks on a video port.** At `start_of_simulation_phase` the env finds each `a2c_rt_checker` whose input or output is connected to a video port's `mon` and gives its `a2c_video_unit_rule` the frames the run plans: the planned frames for an input rule, the contract's frames for an output rule. On a stream with no EOF, or for a frame expected with none, the rule ends a unit on the EOL that completes the frame's lines, so a cut or a short frame stays one unit. A rule on a stream with no EOF that ends a line while no frame is due raises one `A2C_CFG` error, since it is not on a video port the test plans. When an output's contract returns 0 from `preserves_frames()`, the env turns off only the checkers on that output's monitor, with an `A2C_VIDEO` info naming each; the others keep their bounds.
+
+In Mode B, when the testbench sets `a2c_dual_dut`, each output gets a checker on each lane, named `<port>_checker` and `<port>_model_checker`, whose messages say `DUT lane` or `model lane`. The model lane's checker reads the agent's `model_mon`; an agent with none is an `A2C_CFG` error, since the model lane would go unchecked. The `no_blank` and `back_to_back` corners plan beats on consecutive clocks. On a handshaked input the env's `a2c_video_lane_watch` counts, per lane, the planned beats whose valid was high on every clock since the lane's previous transfer, read from the monitor's flow counts. So a sink that refuses a beat does not count against the stimulus, and in Mode A the count equals the plan unless the test itself holds the input's sequencer. The env finds a planned beat by the monitor's own beat count when the sequencer grants it, so items another sequence sends on the same agent, before, between or during the runs, do not move it. This needs the input's driver to ask for the next item only after every live lane transferred the previous one, so the beat the sequencer grants is the next one each lane's monitor reports. Base's handshaked drivers do. Its pipelined drivers, `memory`, `axi_read` and `axi_write`, return a response after `item_done()`, but carry no video input, so the requirement does not reach them. A run's first beat is never planned, since the plan does not time it against what came before. In Mode B the driver holds each beat until both lanes took the one before, so a trailing lane gives the other idle clocks the plan never asked for. `report_phase` logs the counts, and in Mode B a corner test of either corner warns when the DUT lane got fewer than planned.
+
 #### The Mode B end-of-test drain
 
 In Mode B every `A2C_DST` agent that answers the DUT (push_ack, notify_ack, req_ack, pop_ack, memory, external_reg, the apb slave, the AXI slaves and Pro's `lmmi`) serves both lanes from one model. The DUT lane applies each transaction and records its response in the driver's `a2c_replay_log`; the model lane replays the responses in order. An AXI slave that reorders records which burst the DUT lane answered, and the model lane answers the same burst, matched by ID and its arrival index within the ID, so both lanes complete bursts in one order (section 9.10). The model lane often trails the DUT lane, so when the run phase's last objection drops, `a2c_replay_drain` holds the run phase until the model lanes catch up. It watches each log on the log's own clock:
@@ -863,13 +963,14 @@ A test sets its own values in its constructor and the plusargs override them. Th
 | `A2C_RT_REFUSAL` | `UVM_ERROR` | the DUT refused `rt_refusal_cycles` clocks of offered input within one input unit, not counting the clocks on which the sink stalled its output. Raised once per input unit | find why the DUT back-pressures its source |
 | `A2C_RT_UNIT` | `UVM_ERROR` | an output unit ended before its anchor input unit had ended | the unit rules or the pairing (`in_units_per_out`, `out_units_per_in`, `anchor()`) do not match the design |
 | `A2C_RT` | `UVM_INFO` at `UVM_LOW`; `UVM_ERROR` when failures went unprinted | the checker's summary at `check_phase`; the measure-only note on the model DUT; the count of failures beyond `max_reported` | read the summary's worst values to size the bounds |
-| `A2C_CFG` | `UVM_ERROR`; `UVM_WARNING` for a knob set as an unread type | a log with `drain_deadline_cycles` below `drain_quiet_cycles`, or with no `clk_vif`; an input agent that `a2c_items_sent` cannot count; a drain knob, `a2c_lane_skew_cycles`, `a2c_lone_lane_cycles` or `a2c_joint_stall_cycles` whose winning `uvm_config_db` entry is not `int unsigned`, `int`, `uvm_config_int` or, for `a2c_drain_cut_expected`, `bit`; an `a2c_rt_checker` with no output, with a rule whose input or unit rule is missing, or with a monitor that has no flow counts | raise the deadline or lower the window; give the driver's log its clock; set the knob as `int unsigned`, or the flag as `bit`, which the warning names; wire the checker as the error says |
+| `A2C_VIDEO` | `UVM_ERROR`; `UVM_INFO` at `UVM_LOW` for the corner, the contract and the summaries; `UVM_WARNING` for a zero-gap corner that did not reach the DUT lane as planned in Mode B | a video output frame that breaks its contract, an expected frame that never came out, or beats outside any frame | the DUT, or the contract when the specification says otherwise |
+| `A2C_CFG` | `UVM_ERROR`; `UVM_WARNING` for a knob set as an unread type | a log with `drain_deadline_cycles` below `drain_quiet_cycles`, or with no `clk_vif`; an input agent that `a2c_items_sent` cannot count; a drain knob, `a2c_lane_skew_cycles`, `a2c_lone_lane_cycles` or `a2c_joint_stall_cycles` whose winning `uvm_config_db` entry is not `int unsigned`, `int`, `uvm_config_int` or, for `a2c_drain_cut_expected`, `bit`; an `a2c_rt_checker` with no output, with a rule whose input or unit rule is missing, or with a monitor that has no flow counts; a video port with no agent, or whose agent has no `mon`, or no `sqr` on the input, or no `model_mon` in Mode B; an `a2c_video_unit_rule` on a stream with no EOF that ends a line while no planned frame is due | raise the deadline or lower the window; give the driver's log its clock; set the knob as `int unsigned`, or the flag as `bit`, which the warning names; wire the checker or the video port as the error says |
 
 `<block>_fail_test extends <block>_smoke_test` is a self-checking negative test of the counters. After `super.run_body()` it calls `expect_count(missing_count)` on the first output counter, so that output owes more transactions than the DUT sends. `missing_count` defaults to 1 and `+a2c_fail_missing_count=<n>` sets it. An `a2c_error_demoter` turns each `A2C_TXN_COUNT` `UVM_ERROR` into `UVM_INFO` and counts it. In `report_phase` the test raises `A2C_FAIL_TEST` as a `UVM_ERROR` unless exactly one was demoted, the counter's lane ends exactly `missing_count` short, and no other `UVM_ERROR` or `UVM_FATAL` was raised. In Mode B the counter holds both lanes to the count, so the test expects one demoted `A2C_TXN_COUNT` per lane and each lane `missing_count` short. It sets `a2c_rt_off` on `env*`, which wins over the `rt_*` knobs, their plusargs and `set_limits()`, so a missing transaction never also fails a real-time rule. A block with no counted output gets no fail test.
 
 `<block>_model_mismatch_test extends <block>_smoke_test` is the self-checking negative test of the Mode B compare. It calls `inject_mismatch(mismatch_at)` on the `model_cmp` of the first counted output's agent, so that pair reports a mismatch whatever its items hold. `mismatch_at` defaults to 1 and `+a2c_model_mismatch_at=<n>` sets it. An `a2c_error_demoter` demotes only the `A2C_MODEL_CMP` error whose text carries `(injected mismatch)`, so a real mismatch stays an error. In `report_phase` the test raises `A2C_MISMATCH_TEST` as a `UVM_ERROR` unless exactly one injected report was demoted, the comparator compared at least `mismatch_at` pairs, and nothing else raised a `UVM_ERROR` or `UVM_FATAL`. Outside Mode B it stops in `connect_phase` with an `A2C_CFG` `UVM_FATAL`. Only a block with a model and a counted output gets it.
 
-The test package reaches the build through the manifest, as `A2C_UVM_TEST_SV_<top>`. A project that needs more SV files adds them by its own means. isp_gain (`uvm/isp_gain_uvm_test_pkg.sv`) holds a scoreboard that computes each output from the register model's mirror, a frame sequence, and smoke, register, unity-gain, per-colour, random and fail tests.
+The test package reaches the build through the manifest, as `A2C_UVM_TEST_SV_<top>`. A project that needs more SV files adds them by its own means. `examples/uvmVideo` (`uvm/uvmVideo_uvm_test_pkg.sv`, section 9.9) is the reference for a video test package: its adapters, the two hooks, an exact-pixel contract and the corner tests.
 
 ### 9.7 Building and running
 
@@ -905,14 +1006,14 @@ The run scripts take the test's arguments unchanged, apart from the seed:
 
 Xcelium's `-svseed` reads the same three forms as `std::stoul` with base 0, so the Xcelium script passes the value through. A malformed or over-32-bit `-svseed` value only warns there (`SVSEEDW`, seed 1). A probe on Xcelium 26.03 showed `010` giving seed 8, `0x1f` and `0X1F` giving 31, and `08`, `1f` and 4294967296 warning. `sc_main` still parses `--seed` itself, and stops with exit status 2 on a value with no leading digits. `--seed random` draws separately on the two sides under Xcelium and once under VCS. A seed never gives the same stimulus on both vendors.
 
-A run names its testbench, DUT and top the way it does at elaboration. `dutRun.py` maps a test with `--uvmDut <dut> --uvmTop <top>` to `<base>_uvm_<top>_<dut>` and stops with an error when only one of the two is given. The config rejects a `--uvmDut` its block does not have and a `--uvmTop` that is not one of its block's stems, and the wrapper fails a run whose `--uvmDut` does not match the snapshot (section 9.8).
+A run names its testbench, DUT and top the way it does at elaboration. `dutRun.py` maps a test with `--uvmDut <dut> --uvmTop <top>` to `<base>_uvm_<top>_<dut>` and stops with an error when only one of the two is given. The config rejects a `--uvmDut` its block does not have and a `--uvmTop` that is not one of its block's stems, and the wrapper fails a run whose `--uvmDut` does not match the snapshot (section 9.8). From `examples/uvmVideo/rundir`:
 
 ```
-../builder/dutRun.py build_xrun/run isp_gain_uvm --seed 7 --verbosity=low \
-    --uvmTop isp_gain_default --uvmDut rtl +UVM_TESTNAME=isp_gain_smoke_test
+../../../dutRun.py build_xrun/run uvmVideo_uvm --seed 7 --verbosity=low \
+    --uvmTop uvmVideo --uvmDut rtl +UVM_TESTNAME=uvmVideo_smoke_test
 ```
 
-A regression file builds with `make -j8 USE_UVM=1 USE_<VENDOR>=1 uvm_snapshots` and runs `../builder/dutRun.py build_xrun/run <block>_uvm` or `build/run <block>_uvm`, with `--uvmTop` in the shared arguments, `--uvmDut` per group and `+UVM_TESTNAME` per test entry. isp_gain's `rundir/regr_gain_uvm_xcelium.json` and `regr_gain_uvm_vcs.json` are the reference. Each has three groups, `model_dut`, `rtl_dut` and `both_dut`, with `--uvmDut model`, `rtl` or `both` and the labels `mdl`, `hdl` and `both`; the `both_dut` group runs the Mode B snapshot and adds `<block>_model_mismatch_test`. isp_debayer's `rundir/regr_debayer_uvm_*.json` follow the same layout, and pin each bayer pattern in its own `both_dut` entry. List the rule files in this order: `config/regrRules/uvm.json` by its relative path from the rundir, then any project rule file, then `default.json` and the vendor file. The JUnit report of `regrLauncher.py` keeps only the first failure, so the order decides which failure it shows. `uvm.json` ships in base, and projects reference it in place. It fails a run on a `UVM_ERROR` or `UVM_FATAL` report, a non-zero summary count, or a log with no UVM report summary.
+A regression file builds with `make -j8 USE_UVM=1 USE_<VENDOR>=1 uvm_snapshots` and runs `../builder/dutRun.py build_xrun/run <block>_uvm` or `build/run <block>_uvm`, with `--uvmTop` in the shared arguments, `--uvmDut` per group and `+UVM_TESTNAME` per test entry. In a base example the runner is `../../../dutRun.py`. `examples/uvmVideo/rundir/regr_uvmVideo_uvm_xcelium.json` and `regr_uvmVideo_uvm_vcs.json` are the reference. Each has three groups, `model_dut`, `rtl_dut` and `both_dut`, with `--uvmDut model`, `rtl` or `both` and the labels `mdl`, `hdl` and `both`; the `both_dut` group runs the Mode B snapshot and adds `<block>_model_mismatch_test`. Each group runs the smoke test, a test per corner the input carries and the fail test, and the `blanking` and `random` corners three times with seed `random`. `examples/uvmMem/rundir/regr_uvmMem_uvm_*.json` follow the same layout with a smoke, a random and a fail test, the random test three times per group with seed `random`. List the rule files in this order: `config/regrRules/uvm.json` by its relative path from the rundir, then any project rule file, then `default.json` and the vendor file. The JUnit report of `regrLauncher.py` keeps only the first failure, so the order decides which failure it shows. `uvm.json` ships in base, and projects reference it in place. It fails a run on a `UVM_ERROR` or `UVM_FATAL` report, a non-zero summary count, or a log with no UVM report summary.
 
 ### 9.8 Completion and the verdict
 
@@ -980,6 +1081,9 @@ The loopback testbench includes one `<type>_lb_tests.svh` per agent type, plus `
 | `a2c_lane_watchdog_rules_test`, `joint_stall_*` (`a2c_lane_watchdog_lb_tests.svh`) | the lane skew, lone lane and joint stall rules, and which transfers count as progress |
 | `js_rv_*`, `js_axi_*` (`a2c_joint_stall_lb_tests.svh`) | the joint stall rule in Mode A on a configurable pipeline: a DUT that stops taking input, one that is slow but keeps moving, a wait beside a moving port, an idle test, the bound at 0, two waiting ports, the run timeout's deferral to the rule and its leaving out a rule whose clock has stopped, and the run's end at the stall; and AXI read and write masters whose slave never returns R or B, held by the outstanding burst alone |
 | `gen_base_*` (`a2c_gen_base_test_lb_tests.svh`) | the generated base test's knobs: the drain and lane rule settings, `A2C_NO_STIMULUS`, the run timeout's budget, deferral and phase handling, and a Mode A joint stall ending the run (`gen_base_joint_end_*`) |
+| `lb_vid_*_test_<corner>`, `vid_*` (`a2c_video_lb_tests.svh`) | the video library against `lb_video_pipe`, a configurable pipeline: every corner that applies, on three families, `raw` into `axi4_stream`, `axi4_stream` into `axi4_stream`, and `rdy_vld` into `rdy_vld` with a struct payload that carries EOF, each with fixed and random blanking, and a fourth, `lb_video_pack`, that packs one pixel per beat into two with a padded last beat; one rejection per `validate()` rule, through the macro, and for a Mode B output agent with no `model_mon`; one defect per pipe knob (a lost first beat, a missing EOL, also under an exact pixel check, a missing EOF, merged frames, lv in the blanking, a cropped line, a flipped pixel, a dropped frame, last line or EOF) with the exact `A2C_VIDEO` reports; markers passed through as received, and an EOF added or lost against them; a contract that drops a frame; Mode B on both lanes, a model-lane defect, a model lane that trails on a zero-gap corner, and a DUT lane that trails, so a model-lane frame ends before the sequence has sent all of it; Mode A exactness of the zero-gap corners under DUT backpressure, and Mode B exactness with another sequence's items on the input before, between and during the runs; a corner's knobs derived from the geometry plusargs, on the test's cfg and on a cfg the test sends, and a plusarg or test value that overrides one; the run timeout following the blanking; a test env that builds after `video`; the random corner's cut parity; `a2c_video_unit_rule` fed from the plan, on cut and random frames, and `a2c_video_flow_counts` under `a2c_rt_checker`, and the rt checkers turned off only on an output whose contract drops frames |
+
+A test file adds tests that a macro defines with a line `// LB_TESTS <test>...`, because `run_loopback.sh` finds the others by their `` `uvm_component_utils `` lines.
 
 The loopback does not run on Verilator, because 5.052 and master stop with an internal error on `typedef <agent>::item_t`.
 
@@ -1008,6 +1112,8 @@ make regr_uvm_xcelium        # or regr_uvm_vcs
 ```
 
 Each runs the smoke, random and fail tests on the model, the RTL and both, and `model_mismatch` on both. The example sets `A2C_ROOT` to the base checkout. In a builder checkout whose layer sets the toolchain, pass `A2C_ROOT=<builder root> REPO_ROOT=<example>` to `make` so the layer's settings apply.
+
+`examples/uvmVideo` is the end-to-end bench for the video library. Its DUT takes a `raw` video stream, fv, lv and two pixels per clock, and sends an `axi4_stream` with SOF on `tuser[0]` and EOL on `tlast`, through a registered stage. `uvmVideo_video_test` uses `axi4_stream_video_adapter` on the output and checks pixels exactly, and `` `a2c_video_corner_tests `` adds a test for each corner a clocked input allows. Its SystemC and Verilator runs and RTL lint are the `uvm-video` pipeline target, which `make push-test` runs. From its `rundir`, `make regr_uvm_xcelium` or `make regr_uvm_vcs` runs smoke, the nine corners, with `blanking` and `random` at three random seeds, and fail on the model, the RTL and both, and `model_mismatch` on both.
 
 ### 9.10 Agents
 
@@ -1207,6 +1313,10 @@ So the run ends when one lane goes on and the other stops, and when the whole en
 
 The bound must exceed the worst skew a correct model and DUT reach. Each lane has its own slave latency and ready pattern, so a lane may trail by about `max_outstanding` times the longest burst in beats divided by the ready rate, plus any difference between the model's and the DUT's response latency. A smaller bound declares a slow but correct lane dead and ends the comparison there. `lone_lane_cycles` is a separate bound, since a skew bound limits the difference between the lanes and says nothing about how long one lane may stall. It must exceed the longest stall of one lane on its own: the slave's longest response latency, or the longest the DUT holds `arready`, `awready` or `wready` low. A smaller one declares the healthy lane dead after the first death, and every later burst returns with no beats. The master reads `a2c_lane_skew_cycles`, `a2c_lone_lane_cycles` and `a2c_joint_stall_cycles` from the `uvm_config_db` at the start of its run phase, and 0 turns any rule off. The generated base test sets them from `lane_skew_cycles`, `lone_lane_cycles` and `joint_stall_cycles` when those are 0 or more. Otherwise the master keeps its own defaults of 200000, as it does under a hand-written env that sets nothing.
 
+#### Checking outputs without the model
+
+Mode B compares the RTL with the model, so it catches a disagreement and misses an error both make. A bench therefore checks each output stream against the specification too, from the stimulus and never from the model: a scoreboard that computes the expected value, a contract of `a2c_video_pkg` for a video stream (section 9.6), or a check of its own. The check runs in every mode, and in Mode B on both lanes, so a model error shows as an independent failure on the model lane and not only as a mismatch. Base does not warn about an output with no such check: whether a check is complete is the bench's call.
+
 #### Names that depart from common UVM practice
 
 The agents use IEEE 1800.2 class roles and names: item, config, driver, monitor with `ap`, sequencer `sqr`, agent, `default_sequence`, `put_response()` with `set_id_info()`. The names below depart from common practice, each with its reason:
@@ -1221,6 +1331,12 @@ The agents use IEEE 1800.2 class roles and names: item, config, driver, monitor 
 | item fields `gap` and `delay` | stimulus timing, left out of `do_compare` |
 | `a2c_clk_if` edge tasks, not clocking blocks: drive at the rising edge plus 100 ps, sample at the falling edge | a clocking block in a shared clock interface cannot drive the signals of other interface instances, and a `#1` output skew is a whole period of a 1 ns clock |
 | `status_driver` extends `uvm_component`, not `uvm_driver` | it holds a level from its config and takes no items |
+| `a2c_video_test #(BASE)` extends its parameter | the generated base test owns the run phase and the run timeout's work count, which a video test changes; a component the bench adds could not change them |
+| corner tests defined by `` `a2c_video_corner_tests ``, not a sequence library | each corner is a test name a regression lists, as `+UVM_TESTNAME` selects it |
+| knobs on `a2c_video_cfg`, not on the sequence, and passed to the env directly, not through `uvm_config_db` | the sequence, the contract and the checkers read one geometry, and `configure_video()`, the corner and the plusargs apply to it in one order |
+| blanking as idle items on `raw`, as `gap` on handshaked items | a raw driver sends an item every clock and has no idle state, and handshaked items already carry `gap` |
+| `a2c_video_checker`, not a scoreboard | it checks framing against the specification and holds no reference model |
+| `a2c_video_adapter` setters and getters, not `uvm_reg_adapter`-style `bus2reg`/`reg2bus` | a beat carries both a level or a marker and up to `pixels_per_beat` pixels, set one field at a time |
 
 ### 9.11 The SystemC side under UVM
 
@@ -1271,7 +1387,7 @@ Mode B passes no transaction through DPI. Both DUTs see the same values on the s
 
 - **Write order across ports, Mode A.** A model's write is posted, so its later access through another memory port can reach the pins on the write's edge or before it, and a memory that serves both at one edge reads first. When the run holds the model alone, the UVM SystemC wrapper gives the `memory_dst_bfm`s of the DUT's memory ports, two or more of a type with `bfmWriteOrder: true`, one `memory_write_order`. Each memory channel stamps an access in the model's program order as `request()` starts, in the caller's thread. A producer-shape `memory_port_thunker` passes the stamp up through `observeRelayed()` as the child's `request()` starts, so a thunked port is stamped in the child's thread, not the thunker's, and the relay is not stamped again; the consumer shapes relay toward a completer and pass nothing, and Pro's `memory_port_tee` sits only in the generated `<block>Tandem` wrappers, which a UVM SystemC wrapper never holds, and merges two requesters that have no single program order. The BFM holds an access until the earlier accesses on the other ports allow it: a read is sampled after every earlier write, and a write is sampled after every earlier write and no earlier than every earlier read. On one clock the write may go once the read is on the pins, so it lands on the read's edge or later; on another clock it waits until the read has been sampled. A read whose BFM has not yet driven it, as while its port is in reset, holds the write either way. An access released by the edge of another clock waits for its own clock's next rising edge before it drives the pins, so they change only between its own rising edge and the next falling edge, where the agent samples. Reads never hold reads. An access waits only for accesses issued before it, but the wait is not limited to one clock: an access issued behind a stream of posted writes on another port waits for each of them to be sampled, so every such access costs at least one clock, and a write behind a read on a slower clock waits for that clock's edge. Two model threads that issue accesses in one evaluation phase race: the stamps follow the order the kernel runs them, so the outcome can differ between the Accellera kernel in the model's SystemC testbench and the Xcelium or VCS kernel in a UVM run. An access still waiting at the end of the simulation is logged with the earlier access it waits for. In Mode B the model lane takes the RTL's words from the replay log, so the wrapper leaves the order off, and a BFM given both a credit and an order asserts at the end of elaboration.
 - **Coverage boundary.** The model lane reads the RTL's words, so Mode B does not check that the model's own order of accesses across ports would read the same words from a memory of its own. Tandem has the same boundary. A Mode A run on the model DUT with a scoreboard covers it.
-- **Input coupling.** A held access blocks the model thread that makes it. When that thread also takes input on a port, and the RTL makes the access only after taking more input than the model lane has taken, the model lane stops taking input. Its master then reports `A2C_SKEW`, or the env `A2C_JOINT_STALL`, and both name the memory port as a responder whose model lane waits. The stop comes from the master's lockstep, which gives the model lane one item of slack on its port, not from a functional difference: a model that buffers less input than the RTL ahead of an access can be correct and still stop here. Until masters give the model lane more slack (section 10), the model must take no more input before an access than the RTL does, for example by taking input in a thread of its own or through a FIFO as deep as the RTL's. A memory access inside a register callback couples the register bus the same way; the generated register handler runs in its own thread.
+- **Input coupling.** A held access blocks the model thread that makes it. When that thread also takes input on a port, and the RTL makes the access only after taking more input than the model lane has taken, the model lane stops taking input. Its master then reports `A2C_SKEW`, or the env `A2C_JOINT_STALL`, and both name the memory port as a responder whose model lane waits. The stop comes from the master's lockstep, which gives the model lane one item of slack on its port, not from a functional difference: a model that buffers less input than the RTL ahead of an access can be correct and still stop here. Until masters give the model lane more slack (section 10; such a change must revisit `a2c_video_lane_watch`, which relies on the driver taking the next item only after both lanes transferred the last, section 9.6), the model must take no more input before an access than the RTL does, for example by taking input in a thread of its own or through a FIFO as deep as the RTL's. A memory access inside a register callback couples the register bus the same way; the generated register handler runs in its own thread.
 
 #### What each type compares
 
@@ -1390,16 +1506,16 @@ The Mode B names follow the agent conventions of section 9.10. These depart from
 - Tandem: Pro's 1-in-2-out external_reg tee (`builder/pro/common/systemc/external_reg_port_tee.h`, `port_tee`) forwards a CPU write with `write()`, not `reg_write_cmd()`. A tandem dst model that waits in `read()` for CPU writes never sees one.
 - UVM: a second `make USE_UVM=1 USE_VCS=1 uvm_snapshots` is not a no-op. The model, rtl and both snapshots share one `AN.DB` and one analysis-options stamp, and the rtl build adds `+define+A2C_UVM_RTL_DUT` and the both build `+define+A2C_UVM_BOTH_DUT`, so each build re-analyses after the one before. A no-op needs a per-DUT analysis library or a DUT selection without a define. Xcelium is not affected.
 - UVM Mode B: a block whose outputs depend on when its inputs arrive, not only on their order, cannot be compared, because the transport that would replay the RTL's input timing to the model is not built (section 9.12).
-- UVM Mode B: a master gives the model lane one item of slack on its port, so a model that takes less input than the RTL before a memory access the BFM holds for credit stops both lanes, although the model may be correct (section 9.12, input coupling). More slack per master, bounded by the lane skew rule, would remove it.
-- UVM Mode B: the status policies run only in the loopback. Neither block on UVM has a status output or an external_reg port.
-- UVM: the VCS steps for a second `hasUvm` block are checked by unit tests only. The two IPs on UVM have one top each.
+- UVM Mode B: a master gives the model lane one item of slack on its port, so a model that takes less input than the RTL before a memory access the BFM holds for credit stops both lanes, although the model may be correct (section 9.12, input coupling). More slack per master, bounded by the lane skew rule, would remove it. `a2c_video_lane_watch` relies on a driver that takes the next item only after every live lane transferred the last, so that change must revisit it (section 9.6, video framing tests).
+- UVM Mode B: the status policies run only in the loopback. No base UVM example has a status output or an external_reg port.
+- UVM: the VCS steps for a second `hasUvm` block are checked by unit tests only. Each base UVM example has one `hasUvm` block with one top.
 - UVM: a clock that slows by more than `clock_stop_cycles` periods in one step reads as stopped once, to a waiting counter and to the Mode B drain. Nothing tells a stop from a large step in frequency until the next edge. A counter reports its shortfall then. In the drain, a log idle at that point settles and is watched again from the next edge, but a log that is not idle, or is cut, is given up and never watched again. The run can then end with an `A2C_DRAIN` warning and an `A2C_REPLAY` error for what the model lane still owes, even if it would have caught up on the slower clock.
-- UVM: the random-ready form of back-pressure is untested in a block bench. Both blocks on UVM have `backpressure: false` streams, so their sinks hold ready high.
+- UVM: the random-ready form of back-pressure is untested in a block bench. uvmVideo's output is `backpressure: false`, and uvmMem's output agent keeps the default `ready_pct` of 100, so both hold ready high.
 - UVM: no simulation has exercised the register model's memory, ext or multi-word paths, or a non-default variant. Unit tests generate them.
 - UVM: an rtl-only (`hasMdl: false`) `hasVl` block's `<block>_hdl_sc_wrapper.h` imports `<ctx>_<block>.base`, which such a block never gets, so its C++ fails to compile in a `VL_DUT`, VCS or Xcelium build. The unit tests generate the files but never compile them.
 - UVM: the flow compiles UVM 1.2 on both vendors. The IEEE 1800.2 libraries both installs ship have never been compiled against. A move needs `set_finish_on_completion()` in the testbench module and a different memory stride rule (section 9.5).
 - UVM: the JUnit report of `regrLauncher.py` records only the first failure (`regrLauncher/report.py`), so the order of the rule files decides which failure it shows.
-- UVM: no base example or ISP block has real RTL behind a `req_ack` or `pop_ack` port, or behind an AXI port. mixed declares req_ack ports only, pySocket's `dut.sv` drives nothing, and axiDemo's producer and consumer RTL are stubs. Only the loopback and scratch model-DUT benches have exercised these agents.
+- UVM: no base example has real RTL behind a `req_ack` or `pop_ack` port, or behind an AXI port. mixed declares req_ack ports only, pySocket's `dut.sv` drives nothing, and axiDemo's producer and consumer RTL are stubs. Only the loopback and scratch model-DUT benches have exercised these agents.
 - UVM: the `notify_ack` `A2C_DST` driver has not run against RTL. The mixed example, whose blockA has a notify_ack `src` port, does not build on Xcelium (`URRNG` in blockB's `memory_dp.sv`), and its blockA RTL fails VCS elaboration (`ICPD`).
 - UVM: an `axi4_stream` src agent can send a packet longer than the buffer of a multi-cycle model channel. Its items carry no `maxTransferSize` limit.
 - UVM: the memory next-access rule passes an X `read_data` word whose next access writes the same address, even when the design used the X word.

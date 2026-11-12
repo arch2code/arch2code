@@ -4,8 +4,9 @@
 # `uvm_component_utils line naming a class whose name ends in _test, file by
 # file in name order. Exits 0 only when every file registers at least one
 # test and every test reaches the UVM report summary with no UVM_ERROR or
-# UVM_FATAL and logs LB_PASS. A line "// LB_PLUSARGS <test> <plusarg>..." in
-# a test file gives that test its plusargs.
+# UVM_FATAL and logs LB_PASS. A line "// LB_TESTS <test>..." in a test file
+# adds tests that a macro defines, and a line
+# "// LB_PLUSARGS <test> <plusarg>..." gives a test its plusargs.
 #
 #   run_loopback.sh xcelium|vcs [seed [<layer.f>...]]
 #
@@ -43,8 +44,10 @@ declare -A PLUSARGS
 for d in $LB_DIRS; do
     for f in "$d"/*_lb_tests.svh; do
         FILE_TESTS=$(sed -n 's/^[[:space:]]*`uvm_component_utils(\([A-Za-z0-9_]*_test\)).*/\1/p' "$f")
-        if [ -z "$FILE_TESTS" ]; then
-            echo "FAIL: no \`uvm_component_utils(*_test) line in $f"
+        # A test a macro defines has no `uvm_component_utils line of its own.
+        FILE_TESTS="$FILE_TESTS $(sed -n 's#^[[:space:]]*// LB_TESTS \(.*\)#\1#p' "$f")"
+        if [ -z "${FILE_TESTS// /}" ]; then
+            echo "FAIL: no \`uvm_component_utils(*_test) line and no // LB_TESTS line in $f"
             exit 1
         fi
         TESTS="$TESTS $FILE_TESTS"

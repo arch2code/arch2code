@@ -908,6 +908,12 @@ python3 test_uvm_agent_companions.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: video corner lists agree across the package, macro, spec and loopback"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_video_corners.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: interface types flagged uvmMaxTransferBytes or uvmIdParam carry the config member"
 echo "------------------------------------------------------------------------"
 python3 test_uvm_max_transfer_bytes_flag.py || FAILED=1

@@ -1,6 +1,7 @@
 a2c_clk_if.sv
 a2c_credit_if.sv
 a2c_uvm_pkg.sv
+a2c_video_pkg.sv
 ../../../interfaces/rdy_vld/rdy_vld_uvm_pkg.sv
 ../../../interfaces/apb/apb_uvm_pkg.sv
 ../../../interfaces/axi4_stream/axi4_stream_uvm_pkg.sv

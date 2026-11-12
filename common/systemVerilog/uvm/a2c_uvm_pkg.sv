@@ -2554,6 +2554,9 @@ package a2c_uvm_pkg;
 
         protected a2c_flow_counts in_fc;
         protected a2c_flow_counts out_fc;
+        // The components given to connect_in() and connect_out().
+        protected uvm_component   in_comp;
+        protected uvm_component   out_comp;
         protected a2c_clk_vif_t   clk_vif;
         protected bit             model_dut;
         protected bit             dual;
@@ -2664,6 +2667,28 @@ package a2c_uvm_pkg;
 
         pure virtual protected function bit has_in_rule();
         pure virtual protected function bit has_out_rule();
+
+        // The rules and the components connect_in() and connect_out() were
+        // given, so that a2c_video_test can find the checkers on its ports.
+        pure virtual function uvm_object in_unit_rule();
+        pure virtual function uvm_object out_unit_rule();
+
+        function uvm_component in_component();
+            return in_comp;
+        endfunction
+
+        function uvm_component out_component();
+            return out_comp;
+        endfunction
+
+        // As a2c_rt_off, for a checker another component turns off once
+        // elaboration is done.
+        function void turn_off();
+            off            = 1;
+            gap_cycles     = 0;
+            lag_cycles     = 0;
+            refusal_cycles = 0;
+        endfunction
 
         // The input unit whose end anchors output unit j: the last of its
         // group of in_units_per_out, or the one that out_units_per_in output
@@ -3200,11 +3225,20 @@ package a2c_uvm_pkg;
             return out_rule != null;
         endfunction
 
+        virtual function uvm_object in_unit_rule();
+            return in_rule;
+        endfunction
+
+        virtual function uvm_object out_unit_rule();
+            return out_rule;
+        endfunction
+
         // Connects the monitor's analysis port ap, found as its child
         // component, and keeps its flow counts.
         function void connect_in(uvm_component mon);
             in_port_t pc;
-            in_fc = flow_of(mon, "connect_in()");
+            in_comp = mon;
+            in_fc   = flow_of(mon, "connect_in()");
             if (in_fc == null) return;
             if (!$cast(pc, mon.get_child("ap"))) begin
                 `uvm_error("A2C_CFG", $sformatf("%s: %s has no analysis port ap of the checker's input item type", get_full_name(), mon.get_full_name()))
@@ -3215,7 +3249,8 @@ package a2c_uvm_pkg;
 
         function void connect_out(uvm_component mon, a2c_txn_counter_base counter = null, a2c_comparator_base cmp = null);
             out_port_t pc;
-            out_fc = flow_of(mon, "connect_out()");
+            out_comp = mon;
+            out_fc   = flow_of(mon, "connect_out()");
             this.counter = counter;
             this.cmp     = cmp;
             if (out_fc == null) return;
