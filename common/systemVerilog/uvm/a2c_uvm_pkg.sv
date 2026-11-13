@@ -1217,6 +1217,76 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_reg_map
 
+    // UVM 1.2's uvm_reg_block::configure() puts the block in the resource
+    // database under its full name, and the '.' in a child block's full name
+    // makes the resource's constructor raise a UVM/RSRC/NOREGEX warning. A
+    // root block calls install(this) before it builds its children and
+    // remove(this) after. In between, its catcher demotes that warning to
+    // UVM_INFO at UVM_HIGH only when it names a block below the root, so a
+    // resource of any other name still warns. install() puts the catcher
+    // ahead of any other, which then sees the info. A second install() for
+    // one root, or a remove() with none, is an A2C_CFG fatal.
+    class a2c_child_block_catcher extends uvm_report_catcher;
+        localparam string PREFIX = "a resource with meta characters in the field name has been created \"";
+
+        protected static a2c_child_block_catcher catchers[uvm_reg_block];
+        protected uvm_reg_block                   root;
+
+        `uvm_object_utils(a2c_child_block_catcher)
+
+        function new(string name = "a2c_child_block_catcher");
+            super.new(name);
+        endfunction
+
+        static function void install(uvm_reg_block root);
+            a2c_child_block_catcher c;
+            if (catchers.exists(root)) begin
+                `uvm_fatal_context("A2C_CFG", $sformatf("a2c_child_block_catcher::install(): %s already has a catcher installed; call remove() first",
+                                                        root.get_full_name()), uvm_root::get())
+                return;
+            end
+            c = a2c_child_block_catcher::type_id::create({root.get_name(), "_child_blocks"});
+            c.root = root;
+            catchers[root] = c;
+            uvm_report_cb::add(null, c, UVM_PREPEND);
+        endfunction
+
+        static function void remove(uvm_reg_block root);
+            if (!catchers.exists(root)) begin
+                `uvm_fatal_context("A2C_CFG", $sformatf("a2c_child_block_catcher::remove(): %s has no catcher installed",
+                                                        root.get_full_name()), uvm_root::get())
+                return;
+            end
+            uvm_report_cb::delete(null, catchers[root]);
+            catchers.delete(root);
+        endfunction
+
+        virtual function action_e catch();
+            string        msg = get_message();
+            string        name;
+            uvm_reg_block blks[$];
+            if (get_severity() != UVM_WARNING || get_id() != "UVM/RSRC/NOREGEX") return THROW;
+            // msg is UVM's text for a name exactly when it is PREFIX, the name
+            // and a closing quote.
+            name = msg.substr(PREFIX.len(), msg.len() - 2);
+            if (msg != {PREFIX, name, "\""}) return THROW;
+            root.get_blocks(blks, UVM_HIER);
+            foreach (blks[i]) begin
+                if (blks[i].get_full_name() == name) begin
+                    set_severity(UVM_INFO);
+                    set_verbosity(UVM_HIGH);
+                    // UVM filtered by verbosity before the catchers ran, so
+                    // the catcher checks UVM_HIGH itself.
+                    if (get_client().uvm_report_enabled(UVM_HIGH, UVM_INFO, get_id())) set_action(get_client().get_report_action(UVM_INFO, get_id()));
+                    else set_action(UVM_NO_ACTION);
+                    set_message({"configure() registers each child block under its full name, demoted to info: ", msg});
+                    break;
+                end
+            end
+            return THROW;
+        endfunction
+    endclass : a2c_child_block_catcher
+
     // UVM fills the offset tables that get_reg_by_offset() and
     // get_mem_by_offset() read only on a root map, so a lookup through any
     // other map returns null for every address.

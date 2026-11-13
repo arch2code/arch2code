@@ -1,0 +1,14 @@
+{
+  "name": "regmodel",
+  "description": "uvmRegs sets no resource with meta characters in its name, so a UVM/RSRC/NOREGEX warning comes from a child block of the generated register model that a2c_child_block_catcher missed",
+  "filters": {
+    "uvm_noregex_warning": {
+      "description": "UVM/RSRC/NOREGEX warning",
+      "re": "^UVM_WARNING (?:(?P<file>\\S+) )?@ (?P<time>[^:]+): (?P<path>\\S+) \\[UVM/RSRC/NOREGEX\\] (?P<msg>.*)",
+      "msg": "[UVM/RSRC/NOREGEX] \\g<msg>",
+      "file": "\\g<file>",
+      "sev": "error"
+    }
+  },
+  "modifiers": {}
+}

@@ -112,6 +112,7 @@ def reg_block_class(block, variant):
               '    virtual function void build();']
     if block['a2cMap']:
         lines.append('        a2c_uvm_pkg::a2c_reg_map a2c_map;')
+    catchChildren = block['isRoot'] and block['children']
     for reg in block['registers']:
         name = reg['name']
         lines += [f'        {name} = {reg["className"]}::type_id::create("{name}");',
@@ -124,11 +125,17 @@ def reg_block_class(block, variant):
                   f"        {name}.configure(this);"]
         lines += [f'        uvm_resource_db#(bit)::set({{"REG::", {name}.get_full_name()}}, "{resource}", 1, this);'
                   for resource in mem['excludeTests']]
+    if catchChildren:
+        lines += ["        // In UVM 1.2, each child block's configure() raises a UVM/RSRC/NOREGEX",
+                  "        // warning that names it; the catcher demotes those warnings to info.",
+                  "        a2c_uvm_pkg::a2c_child_block_catcher::install(this);"]
     for child in block['children']:
         name = child['name']
         lines += [f'        {name} = {child["className"]}::type_id::create("{name}", , get_full_name());',
                   f"        {name}.configure(this);",
                   f"        {name}.build();"]
+    if catchChildren:
+        lines.append("        a2c_uvm_pkg::a2c_child_block_catcher::remove(this);")
     if block['a2cMap']:
         if block['memories']:
             lines += ["        // UVM would step each memory by its n_bits rounded up to bus words;",

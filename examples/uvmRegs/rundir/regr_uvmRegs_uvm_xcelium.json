@@ -15,7 +15,8 @@
         "rules": [
             "../../../config/regrRules/uvm.json",
             "default.json",
-            "xcelium.json"
+            "xcelium.json",
+            "regmodel.json"
         ],
         "count": 1,
         "seed": 1,

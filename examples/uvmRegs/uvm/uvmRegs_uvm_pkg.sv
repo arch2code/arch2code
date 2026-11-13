@@ -318,6 +318,9 @@ package uvmRegs_uvm_pkg;
 
         virtual function void build();
             a2c_uvm_pkg::a2c_reg_map a2c_map;
+            // In UVM 1.2, each child block's configure() raises a UVM/RSRC/NOREGEX
+            // warning that names it; the catcher demotes those warnings to info.
+            a2c_uvm_pkg::a2c_child_block_catcher::install(this);
             uScale0 = uvmRegs_uScale0_reg_block::type_id::create("uScale0", , get_full_name());
             uScale0.configure(this);
             uScale0.build();
@@ -333,6 +336,7 @@ package uvmRegs_uvm_pkg;
             uWrap = uvmRegs_uWrap_reg_block::type_id::create("uWrap", , get_full_name());
             uWrap.configure(this);
             uWrap.build();
+            a2c_uvm_pkg::a2c_child_block_catcher::remove(this);
             // A child block's a2c_reg_map may only be a submap of an a2c_reg_map.
             a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());
             a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);

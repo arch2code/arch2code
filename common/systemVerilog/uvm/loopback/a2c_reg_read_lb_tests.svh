@@ -6,7 +6,9 @@
 // Mode A, and reg_read_pins_stride_test moves a2c_reg_map memory rows over
 // them; reg_read_stride_cfg_test checks a2c_reg_map's fatals and submap
 // rules, and reg_read_pins_stride_hier_test runs a2c_reg_map submaps three
-// blocks deep. Included in a2c_uvm_loopback_pkg after
+// blocks deep. reg_read_child_block_catcher_test checks which
+// UVM/RSRC/NOREGEX warnings a2c_child_block_catcher demotes. Included in
+// a2c_uvm_loopback_pkg after
 // a2c_joint_stall_lb_tests.svh, and uses the rdy_vld, apb and Mode B
 // classes of the files before it.
 
@@ -1503,6 +1505,108 @@
             super.report_phase(phase);
         endfunction
     endclass : reg_read_stride_cfg_test
+
+    // An lb_hier that installs a2c_child_block_catcher while it builds its
+    // children, as a generated routed root block does, and sets the user
+    // resource <root>.knob before it removes the catcher.
+    class lb_hier_caught extends lb_hier;
+        `uvm_object_utils(lb_hier_caught)
+
+        function new(string name = "lb_hier_caught");
+            super.new(name);
+        endfunction
+
+        virtual function void build();
+            a2c_child_block_catcher::install(this);
+            super.build();
+            uvm_resource_db#(int)::set("*", {get_full_name(), ".knob"}, 1);
+            a2c_child_block_catcher::remove(this);
+        endfunction
+    endclass : lb_hier_caught
+
+    // Keeps each UVM/RSRC/NOREGEX message that arrives as a UVM_WARNING,
+    // and each that arrives as a UVM_INFO at UVM_HIGH.
+    class lb_noregex_recorder extends uvm_report_catcher;
+        string warnings[$];
+        string infos[$];
+
+        `uvm_object_utils(lb_noregex_recorder)
+
+        function new(string name = "lb_noregex_recorder");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_id() == "UVM/RSRC/NOREGEX") begin
+                if (get_severity() == UVM_WARNING) warnings.push_back(get_message());
+                else if (get_severity() == UVM_INFO && get_verbosity() == UVM_HIGH) infos.push_back(get_message());
+            end
+            return THROW;
+        endfunction
+    endclass : lb_noregex_recorder
+
+    // The five blocks below lb_caught's root each raise UVM/RSRC/NOREGEX in
+    // configure(), and its catcher demotes those five and nothing else. The
+    // recorder goes in first, so it sees them after the catcher has. Three
+    // user resources still warn: lb_caught.knob, set while the catcher is
+    // installed, and lb.user.knob and lb_caught.ip, the second named like a
+    // child block, set after it is removed. A second install() for lb_twice
+    // and a remove() for lb_never, which has no catcher, are each one
+    // A2C_CFG fatal.
+    class reg_read_child_block_catcher_test extends lb_base_test;
+        lb_noregex_recorder  recorder;
+        lb_cfg_fatal_catcher fatals;
+        lb_hier_caught       hier;
+
+        `uvm_component_utils(reg_read_child_block_catcher_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            lb_hier_plain twice;
+            super.build_phase(phase);
+            recorder = lb_noregex_recorder::type_id::create("recorder");
+            uvm_report_cb::add(null, recorder);
+            hier = lb_hier_caught::type_id::create("lb_caught");
+            hier.build();
+            uvm_resource_db#(int)::set("*", "lb.user.knob", 2);
+            uvm_resource_db#(int)::set("*", "lb_caught.ip", 3);
+            fatals = lb_cfg_fatal_catcher::type_id::create("fatals");
+            uvm_report_cb::add(null, fatals);
+            twice = lb_hier_plain::type_id::create("lb_twice");
+            a2c_child_block_catcher::install(twice);
+            a2c_child_block_catcher::install(twice);
+            a2c_child_block_catcher::remove(twice);
+            a2c_child_block_catcher::remove(lb_hier_plain::type_id::create("lb_never"));
+        endfunction
+
+        function void expect_set(string kind, string want[$], string got[$]);
+            bit same = got.size() == want.size();
+            want.sort();
+            got.sort();
+            foreach (want[i]) same &= i < got.size() && got[i] == want[i];
+            if (!same) `uvm_error("LB_REG_CATCH", $sformatf("expected the %s %p, got %p", kind, want, got))
+        endfunction
+
+        virtual function void report_phase(uvm_phase phase);
+            string blocks[$] = '{"lb_caught.ip", "lb_caught.ip.sub", "lb_caught.ip2", "lb_caught.ip2.sub", "lb_caught.plain"};
+            string users[$]  = '{"lb_caught.knob", "lb.user.knob", "lb_caught.ip"};
+            string warnings[$];
+            string infos[$];
+            foreach (users[i]) warnings.push_back($sformatf("a resource with meta characters in the field name has been created \"%s\"", users[i]));
+            foreach (blocks[i]) begin
+                infos.push_back($sformatf("configure() registers each child block under its full name, demoted to info: a resource with meta characters in the field name has been created \"%s\"",
+                                          blocks[i]));
+            end
+            expect_set("NOREGEX warnings", warnings, recorder.warnings);
+            expect_set("NOREGEX UVM_HIGH infos", infos, recorder.infos);
+            expect_set("A2C_CFG fatals", '{"a2c_child_block_catcher::install(): lb_twice already has a catcher installed; call remove() first",
+                                           "a2c_child_block_catcher::remove(): lb_never has no catcher installed"}, fatals.messages);
+            super.report_phase(phase);
+        endfunction
+    endclass : reg_read_child_block_catcher_test
 
     // Mode B over lb_hier, wired as a generated env wires a register model,
     // with every lookup through the root map. Writes, reads and lookups in

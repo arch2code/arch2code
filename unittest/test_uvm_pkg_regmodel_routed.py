@@ -7,7 +7,9 @@ Each child block builds its own registers and memories at its own offsets and
 creates its own default_map. Its parent adds that map with add_submap() at
 the instance's slot offset, so UVM gives every register its absolute address.
 Only the root calls lock_model(): a child that locked would freeze the model
-before its parent added its map. A root map that is an a2c_reg_map then
+before its parent added its map. Only the root installs the catcher of the
+UVM/RSRC/NOREGEX warning each child block's configure() raises, around
+building every block below it. A root map that is an a2c_reg_map then
 checks its strided rows for overlaps, since a test may never look anything up
 through it. A memory row narrower than the decoder's stride needs
 set_mem_stride() on the map of the memory's own block, which must be an
@@ -69,13 +71,20 @@ def block_class(cls, regs, mems, children, a2c, root):
               'super.new(name, UVM_NO_COVERAGE);', 'endfunction', '', 'virtual function void build();']
     if a2c:
         lines.append('a2c_uvm_pkg::a2c_reg_map a2c_map;')
+    catcher = root and children
     for r in regs:
         lines += [f'{r[0]} = {r[1]}::type_id::create("{r[0]}");', f'{r[0]}.configure(this);', f'{r[0]}.build();']
     for m in mems:
         lines += [f'{m[0]} = new("{m[0]}", {m[1]}, {m[2]}, "{m[3]}", UVM_NO_COVERAGE);', f'{m[0]}.configure(this);']
+    if catcher:
+        lines += ["// In UVM 1.2, each child block's configure() raises a UVM/RSRC/NOREGEX",
+                  "// warning that names it; the catcher demotes those warnings to info.",
+                  'a2c_uvm_pkg::a2c_child_block_catcher::install(this);']
     for c in children:
         lines += [f'{c[0]} = {c[1]}::type_id::create("{c[0]}", , get_full_name());', f'{c[0]}.configure(this);',
                   f'{c[0]}.build();']
+    if catcher:
+        lines.append('a2c_uvm_pkg::a2c_child_block_catcher::remove(this);')
     if a2c:
         if mems:
             lines += ["// UVM would step each memory by its n_bits rounded up to bus words;",
@@ -159,6 +168,8 @@ def check(routed, leaf):
         problems.append(f"the register model has {len(got)} lines, expected {len(want) - 1}; first differences {diff}")
     if sum(line == 'lock_model();' for line in lines) != 1:
         problems.append("lock_model() is called other than once, by the root block")
+    if sum(line == 'a2c_uvm_pkg::a2c_child_block_catcher::install(this);' for line in lines) != 1:
+        problems.append("the child block catcher is installed other than once, by the root block")
     env = ('class ubDut_env extends uvm_env;', 'endclass : ubDut_env')
     leafEnv = section(read_lines(leaf), *env)
     if section(lines, *env) != leafEnv:
@@ -189,6 +200,7 @@ def run_all_tests():
         return 1
     print("  PASS: one class per instance and register, named by the instance path, at each instance's variant")
     print("  PASS: child maps added at their slot offsets, the root alone locking the model and checking overlaps")
+    print("  PASS: the root alone catching its child blocks' resource warnings, around building them")
     print("  PASS: a2c_reg_maps on the blocks with a memory and on every map above them, plain maps elsewhere")
     print("  PASS: set_mem_stride() on each memory's own map, at the worst-case stride")
     print("  PASS: the env is the leaf top's env, line for line")
