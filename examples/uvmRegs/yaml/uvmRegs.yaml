@@ -1,0 +1,225 @@
+# uvmRegs passes 16-bit words from in to out through three leaves, and holds
+# its registers in five blocks behind a router: uScale0 and uScale1 add their
+# offset register to each word, uStat flips bits through its tab table and
+# counts and captures the words, and uDeep, behind a nested router in
+# uBridge, and uInner, inside the passthrough container uWrap, hold registers
+# off the datapath. uvmRegs owns no registers, so its register model is a
+# tree of blocks named by instance, as regmodel.uBridge.uDeep.cfg.
+
+ipParameters:
+    constants:
+        UVM_REGS_SCALE_W: { value: 4, maxValue: 8, desc: "Width of a scale leaf's offset register" }
+        UVM_REGS_TAB_W: { value: 12, maxValue: 40, desc: "Width of a tab row; the decoder's row stride holds the widest" }
+
+constants:
+    UVM_REGS_WORDS: { value: 64, desc: "Words uDrv streams in the SystemC testbench" }
+    UVM_REGS_TAB_ROWS: { value: 8, desc: "Rows of uStat's tab and hist tables" }
+    UVM_REGS_IDENT: { value: 0xa5c3, desc: "Value of uDeep's ident register" }
+    UVM_REGS_TB_OFFSET0: { value: 3, desc: "uScale0 offset uDrv programs" }
+    UVM_REGS_TB_OFFSET1: { value: 0x21, desc: "uScale1 offset uDrv programs" }
+    UVM_REGS_TB_TAB_STEP: { value: 0x111, desc: "uDrv programs tab row i with i times this" }
+
+types:
+    uvmRegsWordT: { width: 16, desc: "Datapath word" }
+    uvmRegsBusT: { width: 32, desc: "Register bus address and data" }
+    uvmRegsScaleT: { width: UVM_REGS_SCALE_W, desc: "Scale offset" }
+    uvmRegsTabT: { width: UVM_REGS_TAB_W, desc: "Tab row" }
+    uvmRegsIdxT: { width: 3, desc: "Row of tab or hist" }
+    uvmRegsBitT: { width: 1, desc: "One-bit flag" }
+    uvmRegsByteT: { width: 8, desc: "Byte register" }
+
+structures:
+    uvmRegsWordSt:
+        word: { varType: uvmRegsWordT, desc: "Datapath word" }
+    uvmRegsAddrSt:
+        address: { varType: uvmRegsBusT, generator: address }
+    uvmRegsDataSt:
+        data: { varType: uvmRegsBusT, generator: data }
+    uvmRegsScaleSt:
+        offset: { varType: uvmRegsScaleT, desc: "Added to each word" }
+    uvmRegsModeSt:
+        invert: { varType: uvmRegsBitT, desc: "Invert each word after the tab" }
+    uvmRegsCountSt:
+        count: { varType: uvmRegsWordT, desc: "Words passed, wrapping" }
+    uvmRegsScratchSt:
+        value: { varType: uvmRegsWordT, desc: "Scratch value" }
+    uvmRegsTabSt:
+        entry: { varType: uvmRegsTabT, desc: "XORed into each word whose low bits select the row" }
+    uvmRegsIdxSt:
+        idx: { varType: uvmRegsIdxT, desc: "Row" }
+    uvmRegsIdentSt:
+        ident: { varType: uvmRegsWordT, desc: "Fixed identifier" }
+    uvmRegsByteSt:
+        value: { varType: uvmRegsByteT, desc: "Byte" }
+
+interfaces:
+    uvmRegsDataIf:
+        interfaceType: rdy_vld
+        desc: "Datapath words"
+        structures:
+            - { structure: uvmRegsWordSt, structureType: data_t }
+    apbReg:
+        interfaceType: apb
+        desc: "Register bus"
+        structures:
+            - { structure: uvmRegsAddrSt, structureType: addr_t }
+            - { structure: uvmRegsDataSt, structureType: data_t }
+
+blocks:
+    uvmRegs_tb:
+        desc: "Testbench container for uvmRegs (root container)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    uvmRegs:
+        desc: "DUT: in through uScale0, uScale1 and uStat to out, registers behind uRouter"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: true
+        hasUvm: true
+        ports:
+            in:  { interface: uvmRegsDataIf, direction: dst }
+            out: { interface: uvmRegsDataIf, direction: src }
+        registerPorts:
+            apbReg: { interface: apbReg }
+    uvmRegsRouter:
+        desc: "Register decoder of uvmRegs"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: regs
+            addressIncrement: 0x1000
+            maxAddressSpaces: 8
+            varType: addr_id_uvm_regs
+            enumPrefix: ADDR_ID_UVM_REGS_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    uvmRegsScale:
+        desc: "Adds its offset register to each word"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        params: [UVM_REGS_SCALE_W]
+        ports:
+            in:  { interface: uvmRegsDataIf, direction: dst }
+            out: { interface: uvmRegsDataIf, direction: src }
+        registerPorts:
+            apbReg: { interface: apbReg }
+    uvmRegsStat:
+        desc: "XORs each word with its tab row, inverts it under mode, counts it and captures it in hist"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        params: [UVM_REGS_TAB_W]
+        ports:
+            in:  { interface: uvmRegsDataIf, direction: dst }
+            out: { interface: uvmRegsDataIf, direction: src }
+        registerPorts:
+            apbReg: { interface: apbReg }
+    uvmRegsBridge:
+        desc: "Hosts a nested register decoder"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+    uvmRegsBridgeRouter:
+        desc: "Register decoder of uvmRegsBridge"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: bridge
+            addressIncrement: 0x100
+            maxAddressSpaces: 4
+            varType: addr_id_uvm_regs_bridge
+            enumPrefix: ADDR_ID_UVM_REGS_BRIDGE_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    uvmRegsDeep:
+        desc: "Registers behind the nested decoder"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+    uvmRegsWrap:
+        desc: "Passes the register bus through to uInner"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+    uvmRegsInner:
+        desc: "Registers inside the passthrough container"
+        hasVl: false
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+    uvmRegsDrv:
+        desc: "Programs the registers, streams UVM_REGS_WORDS words and reads the status back"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            apbReg: { interface: apbReg, direction: src }
+            out: { interface: uvmRegsDataIf, direction: src }
+    uvmRegsSink:
+        desc: "Checks each word against the value the programmed registers give"
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: uvmRegsDataIf, direction: dst }
+
+instances:
+    uvmRegs_tb: { container: uvmRegs_tb, instanceType: uvmRegs_tb, instGroup: top }
+    u_uvmRegs: { container: uvmRegs_tb, instanceType: uvmRegs, instGroup: top }
+    uDrv: { container: uvmRegs_tb, instanceType: uvmRegsDrv, instGroup: top }
+    uSink: { container: uvmRegs_tb, instanceType: uvmRegsSink, instGroup: top }
+    uRouter: { container: uvmRegs, instanceType: uvmRegsRouter }
+    uScale0: { container: uvmRegs, instanceType: uvmRegsScale, addressGroup: regs, variant: v0 }
+    uScale1: { container: uvmRegs, instanceType: uvmRegsScale, addressGroup: regs, variant: v1, addressMultiples: 2 }
+    uStat: { container: uvmRegs, instanceType: uvmRegsStat, addressGroup: regs, variant: v0 }
+    uBridge: { container: uvmRegs, instanceType: uvmRegsBridge, addressGroup: regs }
+    uWrap: { container: uvmRegs, instanceType: uvmRegsWrap, addressGroup: regs }
+    uBridgeRouter: { container: uvmRegsBridge, instanceType: uvmRegsBridgeRouter }
+    uDeep: { container: uvmRegsBridge, instanceType: uvmRegsDeep, addressGroup: bridge }
+    uInner: { container: uvmRegsWrap, instanceType: uvmRegsInner }
+
+parameters:
+    uvmRegsScale:
+        v0: { UVM_REGS_SCALE_W: 4 }
+        v1: { UVM_REGS_SCALE_W: 8 }
+    uvmRegsStat:
+        v0: { UVM_REGS_TAB_W: 12 }
+
+connections:
+    - { interface: uvmRegsDataIf, src: uDrv, srcport: out, dst: u_uvmRegs, dstport: in }
+    - { interface: uvmRegsDataIf, src: u_uvmRegs, srcport: out, dst: uSink, dstport: in }
+    - { interface: apbReg, src: uDrv, srcport: apbReg, dst: u_uvmRegs, dstport: apbReg }
+    - { interface: uvmRegsDataIf, src: uScale0, srcport: out, dst: uScale1, dstport: in, interfaceName: scaled0 }
+    - { interface: uvmRegsDataIf, src: uScale1, srcport: out, dst: uStat, dstport: in, interfaceName: scaled1 }
+
+connectionMaps:
+    - { interface: uvmRegsDataIf, block: uvmRegs, direction: dst, instance: uScale0, instancePort: in, name: in }
+    - { interface: uvmRegsDataIf, block: uvmRegs, direction: src, instance: uStat, instancePort: out, name: out }
+
+registers:
+    - { register: offset, regType: rw, block: uvmRegsScale, structure: uvmRegsScaleSt, defaultValue: 1, desc: "Added to each word" }
+    - { register: mode, regType: rw, block: uvmRegsStat, structure: uvmRegsModeSt, desc: "Datapath mode" }
+    - { register: count, regType: ro, block: uvmRegsStat, structure: uvmRegsCountSt, desc: "Words passed" }
+    - { register: scratch, regType: ext, block: uvmRegsStat, structure: uvmRegsScratchSt, desc: "Scratch value the block stores" }
+    - { register: tab, regType: memory, block: uvmRegsStat, structure: uvmRegsTabSt, addressStruct: uvmRegsIdxSt, wordLines: UVM_REGS_TAB_ROWS, desc: "XOR table the block serves" }
+    - { register: ident, regType: ro, block: uvmRegsDeep, structure: uvmRegsIdentSt, desc: "Fixed identifier" }
+    - { register: cfg, regType: rw, block: uvmRegsDeep, structure: uvmRegsByteSt, defaultValue: 0x5a, desc: "Byte off the datapath" }
+    - { register: tag, regType: rw, block: uvmRegsInner, structure: uvmRegsByteSt, defaultValue: 0x11, desc: "Byte off the datapath" }
+
+memories:
+    - { memory: hist, block: uvmRegsStat, structure: uvmRegsWordSt, addressStruct: uvmRegsIdxSt, wordLines: UVM_REGS_TAB_ROWS, memoryType: portRportW, regAccess: ro, desc: "Last word of each low-bits value" }

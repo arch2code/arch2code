@@ -1184,6 +1184,18 @@ python3 test_uvm_pkg_regmodel.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: UVM register tree of a top that reaches its registers through routers"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_register_tree.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: UVM register model of a routed top, one block per instance"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_pkg_regmodel_routed.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: UVM test package scaffold has its layout and working defaults"
 echo "------------------------------------------------------------------------"
 python3 test_uvm_test_pkg.py || FAILED=1

@@ -325,6 +325,40 @@ def check_mode_b(pkg, lines):
     return problems
 
 
+def class_build(lines, opener):
+    """The body of build() in the class that opens with opener."""
+    start = lines.index('virtual function void build();', lines.index(opener)) + 1
+    return lines[start:lines.index('endfunction', start)]
+
+
+# The register block's whole build(): a leaf's model holds no submap and
+# leaves its overlap check to the first lookup.
+def expected_root_build(variant, offsets):
+    w = UB_W[variant]
+    lines = ['a2c_uvm_pkg::a2c_reg_map a2c_map;']
+    for name in ('ctrl', 'cfg', 'wide', 'aligned', 'ext'):
+        lines += [f'{name} = ubDut_reg_{name}::type_id::create("{name}");', f'{name}.configure(this);',
+                  f'{name}.build();']
+    lines += ['lut = new("lut", 8, 8, "RW", UVM_NO_COVERAGE);', 'lut.configure(this);',
+              f'wtbl = new("wtbl", 4, {8 + 2 * w}, "RW", UVM_NO_COVERAGE);', 'wtbl.configure(this);',
+              'uvm_resource_db#(bit)::set({"REG::", wtbl.get_full_name()}, "NO_MEM_TESTS", 1, this);',
+              f'ptbl = new("ptbl", 4, {8 + 2 * w}, "RW", UVM_NO_COVERAGE);', 'ptbl.configure(this);',
+              f'qtbl = new("qtbl", 4, {40 + 2 * w}, "RW", UVM_NO_COVERAGE);', 'qtbl.configure(this);',
+              f'tbl = new("tbl", {UB_D[variant]}, {8 + w}, "RO", UVM_NO_COVERAGE);', 'tbl.configure(this);',
+              '// UVM would step each memory by its n_bits rounded up to bus words;',
+              "// a2c_reg_map steps it by the decoder's row stride.",
+              'a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
+              "a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
+              'add_map(a2c_map);']
+    for name, rights in (('ctrl', 'RW'), ('cfg', 'RW'), ('wide', 'RO'), ('aligned', 'RW'), ('ext', 'RW')):
+        lines.append(f"default_map.add_reg({name}, 'h{offsets[name]:x}, \"{rights}\");")
+    for name, rights, rowBytes in (('lut', 'RW', 4), ('wtbl', 'WO', 8), ('ptbl', 'RW', 8), ('qtbl', 'RW', 16),
+                                   ('tbl', 'RO', 4)):
+        lines += [f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");",
+                  f"a2c_map.set_mem_stride({name}, {rowBytes});"]
+    return lines + ['lock_model();']
+
+
 def in_order(lines, expected):
     position = 0
     for line in expected:
@@ -338,8 +372,9 @@ def check(project):
     prj = projectOpen(os.path.join(project, regView.DB))
     (qualBlock,) = [key for key, row in prj.data['blocks'].items() if row['block'] == 'ubDut']
     uvm = prj.getBlockData(qualBlock)['uvm']
-    offsets = {row['name']: row['offset'] for row in uvm['registers'] + uvm['memories']}
-    rowBytes = {row['name']: row['rowBytes'] for row in uvm['memories']}
+    (root,) = uvm['registerBlocks']
+    offsets = {row['name']: row['offset'] for row in root['registers'] + root['memories']}
+    rowBytes = {row['name']: row['rowBytes'] for row in root['memories']}
     problems = []
     for name, want in (('wtbl', 8), ('ptbl', 8), ('qtbl', 16)):
         if rowBytes[name] != want:
@@ -355,6 +390,10 @@ def check(project):
                                   r'|.*_cfg\.is_active\b|(in|out|rdS|ubRegs|mst)_cfg\.id_unbound\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
         problems += check_mode_b(pkg, lines)
+        rootBuild = class_build(lines, 'class ubDut_reg_block extends uvm_reg_block;')
+        if rootBuild != expected_root_build(variant, offsets):
+            problems.append(f"{pkg}.sv's register block build() is\n    " + "\n    ".join(rootBuild)
+                            + "\n  expected\n    " + "\n    ".join(expected_root_build(variant, offsets)))
         # The resources come after their memory's configure() call, which
         # gives the memory the full name they are keyed by.
         configured = lines.index('wtbl.configure(this);')
@@ -424,6 +463,7 @@ def run_all_tests():
     print("  PASS: register classes, fields, memories and map offsets at v0 and v1")
     print("  PASS: memories at their row width, each with the decoder's row stride, 8 and 16 bytes included")
     print("  PASS: NO_MEM_TESTS on the write-only memory and no resource on any other")
+    print("  PASS: the leaf register block's whole build(), with no submap and no overlap check")
     print("  PASS: agent typedefs with and without bound parameters")
     print("  PASS: env agents with their roles, the output transaction counter, a digest per port and the register predictor")
     print("  PASS: env Mode B wiring under dual_dut: model vifs, counter and digest model streams, comparators, digest pairing, guard")

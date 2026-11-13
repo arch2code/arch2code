@@ -1337,6 +1337,46 @@
         endfunction
     endclass : lb_overlap
 
+    // lb_overlap checked as a generated root block checks itself, with no
+    // lookup through its map.
+    class lb_overlap_checked extends lb_overlap;
+        `uvm_object_utils(lb_overlap_checked)
+
+        function new(string name = "lb_overlap_checked");
+            super.new(name);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map;
+            super.build();
+            void'($cast(map, default_map));
+            map.check_overlaps_once();
+        endfunction
+    endclass : lb_overlap_checked
+
+    // lb_overlap's layout, checked before lock_model().
+    class lb_overlap_early extends uvm_reg_block;
+        lb_overlap_leaf leaf;
+
+        `uvm_object_utils(lb_overlap_early)
+
+        function new(string name = "lb_overlap_early");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            leaf = lb_overlap_leaf::type_id::create("leaf");
+            leaf.configure(this);
+            leaf.build();
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_submap(leaf.default_map, 'h1000);
+            map.check_overlaps_once();
+            lock_model();
+        endfunction
+    endclass : lb_overlap_early
+
     // Each of these is one A2C_CFG fatal:
     // - a stride that is not whole bus words, and one shorter than a row's
     //   words, each leaving the memory's stride as it was;
@@ -1347,7 +1387,9 @@
     // - a guard and an a2c_reg_write_subscriber given a child map;
     // - in lb_overlap, two overlapping strided memories, and a register in
     //   a memory's unused row words, found once by the root map's first
-    //   get_mem_by_offset().
+    //   get_mem_by_offset(), and the same in lb_overlap_checked by
+    //   check_overlaps_once() at build;
+    // - check_overlaps_once() in lb_overlap_early before lock_model().
     // An a2c_reg_map added as a submap of a matching a2c_reg_map raises
     // nothing and has it as its parent.
     class reg_read_stride_cfg_test extends lb_reg_read_base;
@@ -1398,6 +1440,8 @@
             a2c_reg_map    map;
             uvm_reg_addr_t addrs[];
             lb_overlap     overlap;
+            lb_overlap     checked;
+            lb_overlap_early early;
             super.connect_phase(phase);
             catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
             uvm_report_cb::add(null, catcher);
@@ -1429,6 +1473,10 @@
             overlap.build();
             void'(overlap.default_map.get_mem_by_offset('h1000));
             void'(overlap.default_map.get_mem_by_offset('h1020));
+            checked = lb_overlap_checked::type_id::create("lb_overlap_checked");
+            checked.build();
+            early = lb_overlap_early::type_id::create("lb_overlap_early");
+            early.build();
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
@@ -1440,7 +1488,10 @@
                                "uvm_test_top.child_guard: map lb_hier.ip.default_map is not a root map; give it the root map lb_hier.default_map, the only map whose offset tables UVM fills",
                                "uvm_test_top.child_writes: map lb_hier.ip.default_map is not a root map; give it the root map lb_hier.default_map, the only map whose offset tables UVM fills",
                                "in lb_overlap.default_map, memory lb_overlap.leaf.rows at 0x1000..0x103c overlaps memory lb_overlap.leaf.other at 0x1020..0x1024",
-                               "in lb_overlap.default_map, register lb_overlap.leaf.ctrl at 0x1014 lies in the rows of memory lb_overlap.leaf.rows at 0x1000..0x103c"};
+                               "in lb_overlap.default_map, register lb_overlap.leaf.ctrl at 0x1014 lies in the rows of memory lb_overlap.leaf.rows at 0x1000..0x103c",
+                               "in lb_overlap_checked.default_map, memory lb_overlap_checked.leaf.rows at 0x1000..0x103c overlaps memory lb_overlap_checked.leaf.other at 0x1020..0x1024",
+                               "in lb_overlap_checked.default_map, register lb_overlap_checked.leaf.ctrl at 0x1014 lies in the rows of memory lb_overlap_checked.leaf.rows at 0x1000..0x103c",
+                               "lb_overlap_early.default_map: check_overlaps_once() runs before lock_model(); lock the register model first"};
             string got[$] = catcher.messages;
             bit    same = got.size() == want.size();
             // The components' end_of_elaboration_phase order is the

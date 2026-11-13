@@ -1082,9 +1082,10 @@ package a2c_uvm_pkg;
     // a2c_reg_map would find the memory only within UVM's stride, so an
     // a2c_reg_map under one is fatal, as is a child whose bus width or
     // addressing differs from its parent's. UVM's overlap warnings also see
-    // only its own stride, so the root map's first get_mem_by_offset()
-    // checks the strided rows against each other and against every register
-    // below it.
+    // only its own stride, so check_overlaps_once() checks the strided rows
+    // against each other and against every register below the root. A
+    // generated root block calls it after lock_model(), and the root map's
+    // first get_mem_by_offset() calls it too.
     class a2c_reg_map extends uvm_reg_map;
         typedef struct {
             uvm_reg_addr_t lo;
@@ -1186,14 +1187,26 @@ package a2c_uvm_pkg;
             end
         endfunction
 
+        // On the root map of a locked model; any other map has no root-map
+        // addresses to check. Before lock_model() the addresses are not yet
+        // final, so a check then would pass a model it should fail.
+        function void check_overlaps_once();
+            a2c_reg_map maps[$];
+            if (!get_parent().is_locked()) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s: check_overlaps_once() runs before lock_model(); lock the register model first", get_full_name()))
+                return;
+            end
+            if (overlaps_checked || get_parent_map() != null) return;
+            overlaps_checked = 1;
+            a2c_maps(maps);
+            check_overlaps(maps);
+        endfunction
+
         virtual function uvm_mem get_mem_by_offset(uvm_reg_addr_t offset);
             if (get_parent().is_locked()) begin
                 a2c_reg_map maps[$];
                 a2c_maps(maps);
-                if (!overlaps_checked && get_parent_map() == null) begin
-                    overlaps_checked = 1;
-                    check_overlaps(maps);
-                end
+                check_overlaps_once();
                 foreach (maps[i]) begin
                     strided_range_t ranges[$];
                     maps[i].strided_ranges(ranges);

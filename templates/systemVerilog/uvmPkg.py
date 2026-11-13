@@ -64,9 +64,10 @@ def render_items(prj, data, variant):
     uvm = data['uvm']
     hasRegModel = uvm['registerBus'] is not None
     if hasRegModel:
-        for reg in uvm['registers']:
-            lines += [''] + reg_class(reg, variant)
-        lines += [''] + reg_block_class(uvm, variant)
+        for block in uvm['registerBlocks']:
+            for reg in block['registers']:
+                lines += [''] + reg_class(reg, variant)
+            lines += [''] + reg_block_class(block, variant)
     lines += [''] + env_class(uvm, hasRegModel, variant)
     return '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
 
@@ -95,11 +96,12 @@ def reg_class(reg, variant):
     return lines
 
 
-def reg_block_class(uvm, variant):
-    cls = uvm['regBlockClass']
+def reg_block_class(block, variant):
+    cls = block['className']
     lines = [f"class {cls} extends uvm_reg_block;"]
-    lines += [f"    rand {reg['className']} {reg['name']};" for reg in uvm['registers']]
-    lines += [f"    uvm_mem {mem['name']};" for mem in uvm['memories']]
+    lines += [f"    rand {reg['className']} {reg['name']};" for reg in block['registers']]
+    lines += [f"    uvm_mem {mem['name']};" for mem in block['memories']]
+    lines += [f"    rand {child['className']} {child['name']};" for child in block['children']]
     lines += ['',
               f"    `uvm_object_utils({cls})",
               '',
@@ -108,34 +110,51 @@ def reg_block_class(uvm, variant):
               '    endfunction',
               '',
               '    virtual function void build();']
-    if uvm['memories']:
+    if block['a2cMap']:
         lines.append('        a2c_uvm_pkg::a2c_reg_map a2c_map;')
-    for reg in uvm['registers']:
+    for reg in block['registers']:
         name = reg['name']
         lines += [f'        {name} = {reg["className"]}::type_id::create("{name}");',
                   f"        {name}.configure(this);",
                   f"        {name}.build();"]
-    for mem in uvm['memories']:
+    for mem in block['memories']:
         name = mem['name']
         lines += [f'        {name} = new("{name}", {mem["count"][variant]}, {mem["width"][variant]}, '
                   f'"{mem["uvmAccess"]}", UVM_NO_COVERAGE);',
                   f"        {name}.configure(this);"]
         lines += [f'        uvm_resource_db#(bit)::set({{"REG::", {name}.get_full_name()}}, "{resource}", 1, this);'
                   for resource in mem['excludeTests']]
-    if uvm['memories']:
-        lines += ["        // UVM would step each memory by its n_bits rounded up to bus words;",
-                  "        // a2c_reg_map steps it by the decoder's row stride.",
-                  '        a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
+    for child in block['children']:
+        name = child['name']
+        lines += [f'        {name} = {child["className"]}::type_id::create("{name}", , get_full_name());',
+                  f"        {name}.configure(this);",
+                  f"        {name}.build();"]
+    if block['a2cMap']:
+        if block['memories']:
+            lines += ["        // UVM would step each memory by its n_bits rounded up to bus words;",
+                      "        // a2c_reg_map steps it by the decoder's row stride."]
+        else:
+            lines.append("        // A child block's a2c_reg_map may only be a submap of an a2c_reg_map.")
+        lines += ['        a2c_map = a2c_uvm_pkg::a2c_reg_map::type_id::create("default_map", , get_full_name());',
                   "        a2c_map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);",
                   "        add_map(a2c_map);"]
     else:
         lines.append("        default_map = create_map(\"default_map\", 'h0, 4, UVM_LITTLE_ENDIAN, 1);")
-    for reg in uvm['registers']:
+    for reg in block['registers']:
         lines.append(f'        default_map.add_reg({reg["name"]}, \'h{reg["offset"]:x}, "{reg["uvmAccess"]}");')
-    for mem in uvm['memories']:
+    for mem in block['memories']:
         lines += [f'        default_map.add_mem({mem["name"]}, \'h{mem["offset"]:x}, "{mem["mapRights"]}");',
                   f'        a2c_map.set_mem_stride({mem["name"]}, {mem["rowBytes"]});']
-    lines += ['        lock_model();', '    endfunction', f"endclass : {cls}"]
+    lines += [f"        default_map.add_submap({child['name']}.default_map, 'h{child['offset']:x});"
+              for child in block['children']]
+    # The root locks the whole model once every child map is in place.
+    if block['isRoot']:
+        lines.append('        lock_model();')
+        # A test need not look anything up through the root map, which is
+        # when it would check itself, so a routed model checks at build.
+        if block['a2cMap'] and block['children']:
+            lines.append('        a2c_map.check_overlaps_once();')
+    lines += ['    endfunction', f"endclass : {cls}"]
     return lines
 
 

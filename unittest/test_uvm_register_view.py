@@ -124,7 +124,6 @@ EDITS = [
 ]
 
 PKG = {'v0': 'ubDut_v0_uvm_pkg', 'v1': 'ubDut_v1_uvm_pkg'}
-FILE_PKG = 'uvmBlocks_package'
 UB_W = {'v0': 4, 'v1': 12}
 UB_D = {'v0': 16, 'v1': 32}
 
@@ -170,22 +169,18 @@ def field(name, width, lsb, reset=0):
 
 def expected_registers():
     return [
-        {'name': 'ctrl', 'className': 'ubDut_reg_ctrl', 'offset': 0x120, 'bytes': 1, 'regType': 'rw',
+        {'name': 'ctrl', 'className': 'ubDut_reg_ctrl', 'offset': 0x120,
          'uvmAccess': 'RW', 'volatile': False,
-         'defaultValue': 0, 'type': each(lambda v: {'name': 'ubSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 8), 'fields': each(lambda v: [field('data', 8, 0)])},
-        {'name': 'cfg', 'className': 'ubDut_reg_cfg', 'offset': 0x128, 'bytes': 2, 'regType': 'rw',
+        {'name': 'cfg', 'className': 'ubDut_reg_cfg', 'offset': 0x128,
          'uvmAccess': 'RW', 'volatile': False,
-         'defaultValue': 5, 'type': each(lambda v: {'name': 'ubPSt', 'pkg': PKG[v]}),
          'width': each(lambda v: 8 + UB_W[v]),
          'fields': each(lambda v: [field('hi', 8, UB_W[v]), field('lo', UB_W[v], 0, reset=5)])},
-        {'name': 'wide', 'className': 'ubDut_reg_wide', 'offset': 0x130, 'bytes': 5, 'regType': 'ro',
+        {'name': 'wide', 'className': 'ubDut_reg_wide', 'offset': 0x130,
          'uvmAccess': 'RO', 'volatile': True,
-         'defaultValue': 0, 'type': each(lambda v: {'name': 'ubWideSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 40), 'fields': each(lambda v: [field('word', 32, 8), field('tag', 8, 0)])},
-        {'name': 'aligned', 'className': 'ubDut_reg_aligned', 'offset': 0x138, 'bytes': 3, 'regType': 'rw',
+        {'name': 'aligned', 'className': 'ubDut_reg_aligned', 'offset': 0x138,
          'uvmAccess': 'RW', 'volatile': False,
-         'defaultValue': 0, 'type': each(lambda v: {'name': 'ubAlignSt', 'pkg': FILE_PKG}),
          'width': each(lambda v: 24),
          'fields': each(lambda v: [field('a', 8, 16), field('reserved0', 8, 8), field('b', 8, 0)])},
     ]
@@ -195,12 +190,10 @@ def expected_memories():
     # tbl's worst-case row is 8 + 16 bits, so 4 bytes, and its 64 worst-case
     # rows fill 0x0-0xff; lut follows at 0x100 with 8 rows of 4 bytes.
     return [
-        {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'access': 'rw', 'uvmAccess': 'RW', 'mapRights': 'RW',
-         'count': each(lambda v: 8), 'width': each(lambda v: 8), 'excludeTests': [],
-         'type': each(lambda v: {'name': 'ubSt', 'pkg': FILE_PKG})},
-        {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'access': 'ro', 'uvmAccess': 'RO', 'mapRights': 'RO',
-         'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]), 'excludeTests': [],
-         'type': each(lambda v: {'name': 'ubPSt', 'pkg': PKG[v]})},
+        {'name': 'lut', 'offset': 0x100, 'rowBytes': 4, 'uvmAccess': 'RW', 'mapRights': 'RW',
+         'count': each(lambda v: 8), 'width': each(lambda v: 8), 'excludeTests': []},
+        {'name': 'tbl', 'offset': 0x0, 'rowBytes': 4, 'uvmAccess': 'RO', 'mapRights': 'RO',
+         'count': each(lambda v: UB_D[v]), 'width': each(lambda v: 8 + UB_W[v]), 'excludeTests': []},
     ]
 
 
@@ -249,14 +242,16 @@ def check(project):
     problems += compare('registerBus', uvm['registerBus'], REGISTER_BUS)
     problems += compare('class names', {key: uvm[key] for key in CLASSES}, CLASSES)
 
+    # A leaf top's model is its root register block alone.
+    (root,) = uvm['registerBlocks']
     offsets = reg_addresses(prj)
-    for row in uvm['registers'] + uvm['memories']:
+    for row in root['registers'] + root['memories']:
         if row['offset'] != offsets.get(row['name'].lower()):
             problems.append(f"{row['name']} is at offset {row['offset']:#x}, the firmware header "
                             f"says {offsets.get(row['name'].lower())}")
-    problems += compare('registers', uvm['registers'], expected_registers())
-    problems += compare('memories', uvm['memories'], expected_memories())
-    if 'hidden' in offsets or any(mem['name'] == 'hidden' for mem in uvm['memories']):
+    problems += compare('registers', root['registers'], expected_registers())
+    problems += compare('memories', root['memories'], expected_memories())
+    if 'hidden' in offsets or any(mem['name'] == 'hidden' for mem in root['memories']):
         problems.append("the memory without regAccess reached the firmware header or the view")
     return problems
 

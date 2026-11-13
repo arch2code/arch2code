@@ -36,6 +36,15 @@ would take the register block's class name and is rejected. A memory's
 structure members become no fields, so their names are not checked, and a name
 is checked only against its own class.
 
+A top that owns no registers and reaches them through a router or a
+passthrough container gets one register block per instance on the way, so the
+same rules apply to every row it reaches, each at its instance's variant, and
+the message names the instance path, its block and its variant. An instance
+is a member of its container's register block, so an instance named like a
+uvm_reg_block member is rejected. Classes join the instance path with '_', so
+two paths that join to one class name are rejected, a register named `block`
+included. The routed copy is test_uvm_register_tree.py's.
+
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus, and declares ub_no_agent, an interface type of
 its own with no agent, for the agent check. Each negative arm edits one rule's violation
@@ -51,6 +60,7 @@ import tempfile
 
 from _addrctl_helpers import base_dir, test_dir
 from _tmp_helpers import remove_tree
+from test_uvm_register_tree import CONNECTION_MAP_EDITS, EDITS as ROUTED
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'uvm-blocks')
@@ -62,6 +72,71 @@ CHILD_ROOT_PROJECT = os.path.join('prj', 'yaml', 'uvmBlocksChildProject.yaml')
 
 WHERE = "Block 'ubDut' (file ../../yaml/uvmBlocks.yaml) declares hasUvm: true"
 CHILD_WHERE = "Block 'ubChildDut' (file ../../child/yaml/ubChild.yaml) declares hasUvm: true"
+
+# ubChildDut takes UB_W only from the root project's variant v0, and hosts a
+# router serving uLeaf, which inherits ubChildDut's UB_W.
+ROUTED_CHILD_EDITS = [
+    (CHILD_ARCH,
+     [('types:\n',
+       'ipParameters:\n'
+       '    constants:\n'
+       '        UB_W: { value: 8, maxValue: 16, desc: "Width knob" }\n\n'
+       'types:\n'
+       '    ubChildPT: { width: UB_W, desc: "Parameter-width field" }\n'
+       '    ubChildWordT: { width: 32, desc: "APB address and data word" }\n'),
+      ('\nstructures:\n',
+       '\nstructures:\n'
+       '    ubChildPSt:\n'
+       '        data: { varType: ubChildPT, desc: "Parameter-width field" }\n'
+       '    ubChildAddrSt:\n'
+       '        address: { varType: ubChildWordT, generator: address }\n'
+       '    ubChildWordSt:\n'
+       '        data: { varType: ubChildWordT, generator: data }\n'),
+      ('\ninterfaces:\n',
+       '\ninterfaces:\n'
+       '    ubChildRegs:\n'
+       '        desc: "Register bus"\n'
+       '        interfaceType: apb\n'
+       '        structures:\n'
+       '            - { structure: ubChildAddrSt, structureType: addr_t }\n'
+       '            - { structure: ubChildWordSt, structureType: data_t }\n'),
+      ('        hasUvm: true\n', '        hasUvm: true\n        params: [UB_W]\n'),
+      ('            out: { interface: ubChildStream, direction: src }\n',
+       '            out: { interface: ubChildStream, direction: src }\n'
+       '        registerPorts:\n'
+       '            ubChildRegs: { interface: ubChildRegs }\n'
+       '    ubChildRouter:\n'
+       '        desc: "Register decoder"\n'
+       '        hasMdl: true\n'
+       '        hasTb: false\n'
+       '        hasRtl: true\n'
+       '        hasVl: false\n'
+       '        addressBlock:\n'
+       '            addressGroup: cdut\n'
+       '            addressIncrement: 0x1000\n'
+       '            maxAddressSpaces: 4\n'
+       '            varType: addr_id_ub_cdut\n'
+       '            enumPrefix: ADDR_ID_UB_CDUT_\n'
+       '            upstreamPort: ubChildRegs\n'
+       '            registerDecoderPort: ubChildRegs\n'
+       '    ubChildLeaf:\n'
+       '        desc: "Leaf inheriting its container\'s width"\n'
+       '        hasMdl: true\n'
+       '        hasTb: false\n'
+       '        hasRtl: true\n'
+       '        hasVl: false\n'
+       '        params: [UB_W]\n\n'
+       'instances:\n'
+       '    uChildRouter: { container: ubChildDut, instanceType: ubChildRouter }\n'
+       '    uLeaf: { container: ubChildDut, instanceType: ubChildLeaf, addressGroup: cdut, '
+       'inheritContainerParam: true }\n\n'
+       'registers:\n'
+       '    - { register: cfg, regType: rw, block: ubChildLeaf, structure: ubChildPSt, desc: "Config" }\n')]),
+    (CHILD_ROOT_ARCH,
+     [('instanceType: ubChildDut,  instGroup: top }',
+       'instanceType: ubChildDut,  instGroup: top, variant: v0 }'),
+      ('connections:\n',
+       'parameters:\n    ubChildDut:\n        v0: { UB_W: 8 }\n\nconnections:\n')])]
 
 # (name, project file, [(yaml file, edits)], required substrings)
 REJECTED = [
@@ -264,6 +339,45 @@ REJECTED = [
     ('a field named like a uvm_object method', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        print: {')])],
      [WHERE, "its register 'ctrl' field 'print' has the name of a member of uvm_reg"]),
+    ('a routed register wider than 64 bits at its instance variant', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('maxValue: 40', 'maxValue: 64'),
+                       ('v1: { UB_W: 12, UB_D: 32 }', 'v1: { UB_W: 60, UB_D: 32 }')])],
+     [WHERE, "register 'cfg' of instance 'uB' (block 'ubLeaf', variant 'v1'), which its register model "
+             "reaches, is 68 bits wide.", "UVM_REG_DATA_WIDTH"]),
+    ('a routed instance named like a uvm_reg_block member', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('    uWrap: { container: ubDut', '    default_map: { container: ubDut')])],
+     [WHERE, "its register model holds instance 'default_map' (block 'ubWrap'), whose name is a member "
+             "of uvm_reg_block", "Rename the instance, or clear hasUvm."]),
+    ('a nested routed instance named like the generated build()', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('    uDeep1: { container: ubBridge', '    build: { container: ubBridge')])],
+     [WHERE, "its register model holds instance 'uBridge.build' (block 'ubDeep'), whose name is a member "
+             "of uvm_reg_block"]),
+    ('a routed register whose class is its block\'s register block class', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('{ register: stat,', '{ register: block,')])],
+     [WHERE, "would give the register block class of instance 'uBridge.uDeep0' (block 'ubDeep') and the "
+             "class of register 'block' of instance 'uBridge.uDeep0' (block 'ubDeep') the same class name "
+             "'ubDut_uBridge_uDeep0_reg_block'"]),
+    ('a routed field named like a uvm_reg member', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('    ubSt:\n        data: {', '    ubSt:\n        predict: {')])],
+     [WHERE, "register 'stat' of instance 'uBridge.uDeep0' (block 'ubDeep') has a field 'predict' with "
+             "the name of a member of uvm_reg"]),
+    ('a routed memory named like a uvm_reg_block member', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('{ memory: tbl,', '{ memory: get_registers,')])],
+     [WHERE, "memory 'get_registers' of instance 'uA' (block 'ubLeaf', variant 'v0') has the name of a "
+             "member of uvm_reg_block"]),
+    ('two instance paths that join to one class name', ROOT_PROJECT,
+     [(ARCH, ROUTED + [('    uBridgeRouter: {',
+                        '    uWrap_uInner: { container: ubDut, instanceType: ubDeep, addressGroup: dut }\n'
+                        '    uBridgeRouter: {')])],
+     [WHERE, "would give the register block class of instance 'uWrap.uInner' (block 'ubInner') and the "
+             "register block class of instance 'uWrap_uInner' (block 'ubDeep') the same class name "
+             "'ubDut_uWrap_uInner_reg_block'"]),
+    ('a routed top with no registerPorts: and no port mapped onto its router', ROOT_PROJECT,
+     [(ARCH, ROUTED + CONNECTION_MAP_EDITS[:-1] + [('    - { interface: ubRegs, src: uCpu, dst: uRouter }\n', '')])],
+     [WHERE, "its register model reaches registers through router instance 'uDutRouter', but 'ubDut' "
+             "declares no registerPorts: and maps no port onto that router in connectionMaps:, so the model "
+             "has no single bus to drive.", "Declare the bus under registerPorts:, or map exactly one boundary "
+             "port onto router instance 'uDutRouter'."]),
     ('only variants another project declares', CHILD_ROOT_PROJECT,
      [(CHILD_ARCH,
        [('types:\n',
@@ -279,6 +393,8 @@ REJECTED = [
          'parameters:\n    ubChildDut:\n        v0: { UB_W: 8 }\n\nconnections:\n')])],
      [CHILD_WHERE, "has no standalone variant, so it would get no UVM testbench top",
       "Declare a variant of 'ubChildDut' under parameters: in its own project"]),
+    ('a routed top with only variants another project declares', CHILD_ROOT_PROJECT, ROUTED_CHILD_EDITS,
+     [CHILD_WHERE, "has no standalone variant, so it would get no UVM testbench top"]),
 ]
 
 # (name, project file, [(yaml file, edits)])
@@ -296,6 +412,8 @@ ACCEPTED = [
               ('src: uDut, srcport: out,', 'src: uDut, srcport: pix_model,')])]),
     ('a field named like a uvm_reg_block-only member', ROOT_PROJECT,
      [(ARCH, [('    ubSt:\n        data: {', '    ubSt:\n        get_registers: {')])]),
+    ('a routed top with a hosted router, a nested router and a passthrough', ROOT_PROJECT,
+     [(ARCH, ROUTED)]),
     ('a register named like a uvm_reg-only member', ROOT_PROJECT,
      [(ARCH, [('{ register: ctrl,', '{ register: get_offset,')])]),
     ('a memory structure member named like a uvm_reg member', ROOT_PROJECT,

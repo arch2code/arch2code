@@ -1,0 +1,92 @@
+{
+    "session": {
+        "name": "regr_uvmRegs_uvm_vcs",
+        "jobs": 3,
+        "lrp": 0
+    },
+    "build": {
+        "command": "make -j8 USE_UVM=1 USE_VCS=1 uvm_snapshots",
+        "timeout": 1800
+    },
+    "run": {
+        "command": "/usr/bin/time -f CPU_TIME_USER=%U ../../../dutRun.py build/run uvmRegs_uvm",
+        "args": "--seed ${RL_SEED} --verbosity=low --uvmTop uvmRegs",
+        "timeout": 900,
+        "rules": [
+            "../../../config/regrRules/uvm.json",
+            "default.json",
+            "vcs.json"
+        ],
+        "count": 1,
+        "seed": 1,
+        "labels": [
+            "uvm"
+        ],
+        "model_dut": {
+            "args+": "--uvmDut model",
+            "labels+": [
+                "mdl"
+            ],
+            "test_group": {
+                "uvmRegs_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_smoke_test"
+                },
+                "uvmRegs_reg_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_reg_test"
+                },
+                "uvmRegs_mem_walk_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_mem_walk_test"
+                },
+                "uvmRegs_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_fail_test"
+                }
+            }
+        },
+        "rtl_dut": {
+            "args+": "--uvmDut rtl",
+            "labels+": [
+                "hdl"
+            ],
+            "test_group": {
+                "uvmRegs_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_smoke_test"
+                },
+                "uvmRegs_reg_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_reg_test"
+                },
+                "uvmRegs_mem_walk_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_mem_walk_test"
+                },
+                "uvmRegs_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_fail_test"
+                }
+            }
+        },
+        "both_dut": {
+            "args+": "--uvmDut both",
+            "labels+": [
+                "both"
+            ],
+            "test_group": {
+                "uvmRegs_smoke_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_smoke_test"
+                },
+                "uvmRegs_reg_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_reg_test"
+                },
+                "uvmRegs_mem_walk_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_mem_walk_test"
+                },
+                "uvmRegs_fail_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_fail_test"
+                },
+                "uvmRegs_model_mismatch_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_model_mismatch_test"
+                },
+                "uvmRegs_midstream_test": {
+                    "args+": "+UVM_TESTNAME=uvmRegs_midstream_test"
+                }
+            }
+        }
+    }
+}
