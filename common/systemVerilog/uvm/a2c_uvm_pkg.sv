@@ -1227,8 +1227,6 @@ package a2c_uvm_pkg;
     // ahead of any other, which then sees the info. A second install() for
     // one root, or a remove() with none, is an A2C_CFG fatal.
     class a2c_child_block_catcher extends uvm_report_catcher;
-        localparam string PREFIX = "a resource with meta characters in the field name has been created \"";
-
         protected static a2c_child_block_catcher catchers[uvm_reg_block];
         protected uvm_reg_block                   root;
 
@@ -1262,14 +1260,15 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function action_e catch();
+            string        prefix = "a resource with meta characters in the field name has been created \"";
             string        msg = get_message();
             string        name;
             uvm_reg_block blks[$];
             if (get_severity() != UVM_WARNING || get_id() != "UVM/RSRC/NOREGEX") return THROW;
-            // msg is UVM's text for a name exactly when it is PREFIX, the name
+            // msg is UVM's text for a name exactly when it is prefix, the name
             // and a closing quote.
-            name = msg.substr(PREFIX.len(), msg.len() - 2);
-            if (msg != {PREFIX, name, "\""}) return THROW;
+            name = msg.substr(prefix.len(), msg.len() - 2);
+            if (msg != {prefix, name, "\""}) return THROW;
             root.get_blocks(blks, UVM_HIER);
             foreach (blks[i]) begin
                 if (blks[i].get_full_name() == name) begin
