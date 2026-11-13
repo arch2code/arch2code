@@ -29,6 +29,13 @@
       "msg": "no UVM report summary in the log",
       "file": null,
       "sev": "error"
+    },
+    "seed_repro_fail": {
+      "description": "seedRepro.py's verdict on a seed_repro entry that failed. Last in this file, so another uvm.json match in either run is named first; ahead of default.json and the vendor file, whose reason the run's log then holds",
+      "re": "^A2C_SEED_REPRO FAIL: (?P<msg>.*)",
+      "msg": "seedRepro.py: \\g<msg>",
+      "file": null,
+      "sev": "error"
     }
   },
   "modifiers": {}

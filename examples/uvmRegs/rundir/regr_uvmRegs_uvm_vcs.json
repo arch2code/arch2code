@@ -14,9 +14,9 @@
         "timeout": 900,
         "rules": [
             "../../../config/regrRules/uvm.json",
+            "regmodel.json",
             "default.json",
-            "vcs.json",
-            "regmodel.json"
+            "vcs.json"
         ],
         "count": 1,
         "seed": 1,

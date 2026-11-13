@@ -1,7 +1,7 @@
 // a2c_txn_digest loopback tests, included in a2c_uvm_loopback_pkg after the
 // rdy_vld, external_reg and axi_read tests, whose item types and vifs they
-// use. run_loopback.sh also runs txn_digest_rv_test, txn_digest_er_test,
-// txn_digest_axi_test and txn_digest_cut_test, in
+// use. run_loopback.sh also runs txn_digest_rv_test, txn_digest_er_test and
+// txn_digest_axi_test from this file, and txn_digest_cut_test from
 // a2c_replay_drain_lb_tests.svh, under seedRepro.py.
 
     typedef a2c_txn_digest #(rv_item_t) rv_digest_t;

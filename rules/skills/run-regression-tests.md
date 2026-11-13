@@ -109,7 +109,7 @@ The Verilator flow runs every test on one binary. VCS and Xcelium fix the System
 
 ## Seeds, counts and filters
 *   `seed` is a number, a list, or `"random"`, which gives each run a random 32-bit seed.
-*   For each run the launcher replaces `${RL_SEED}` in `run.command` and `run.args` with that run's seed. The started process does not get `RL_SEED` in its environment. `build/run` reads the seed only from its `--seed` option, so `run.args` must pass it: `"args": "--seed ${RL_SEED}"`. The shipped example regression files do not, so their runs ignore `seed` and use the simulator's default.
+*   For each run the launcher replaces `${RL_SEED}` in `run.command` and `run.args` with that run's seed. The started process does not get `RL_SEED` in its environment. `build/run` reads the seed only from its `--seed` option, so `run.args` must pass it: `"args": "--seed ${RL_SEED}"`. The UVM example regression files do. The others do not, so their runs ignore `seed` and use the simulator's default.
 *   With a seed list, `count` caps the runs, so the default count of 1 runs only the first seed. `--count 0` runs every seed in the list. With a single seed, `--count 0` queues nothing and the launcher exits 1.
 *   `--count N` overrides the top-level `run.count`. A group or test that sets its own `count` keeps it.
 *   `--labels a,b` keeps tests that carry both `a` and `b`. `--labels a,~unstable` keeps tests labelled `a` and drops those labelled `unstable`. `examples/apbDecode` has no `unstable` label, so this one only illustrates the syntax. The launcher drops a label that no test carries and prints a warning, so a misspelt label filters nothing.
@@ -127,6 +127,8 @@ Rules files parse each run's log. `examples/apbDecode/rundir/default.json` is a 
 *   `modifiers` rewrite failure messages so repeated failures group together.
 *   `"rules": []` is accepted. The run's result then comes from its exit status alone.
 *   A relative `rules` entry resolves against the directory of the regression file, not the directory the launcher runs from. The same holds for files given with `--attr run.rules=<file>` or `--attr run.rules+=<file>`.
+*   The launcher merges the rules files by their `name` field and the filters by their filter name. A file or filter whose name repeats an earlier one replaces that entry but keeps its position, so give a project rules file and its filters names of their own.
+*   The JUnit report keeps one failure per run: the first `error` or `fatal` filter that matched, in rules-file order, then in filter order within the file. A run that failed on its exit status or timeout with no such match gets the entry `Test execution error`, whose text carries the exit status or the timeout. The launcher writes nothing about a timeout into the run's log, which shows what the run printed before it.
 
 After a run, inspect:
 
@@ -141,6 +143,16 @@ With `lrp` set to 1 or above, some of those logs are deleted or gzipped; see `se
 `<date-time>` is `%Y-%d-%m-%H%M%S`, year then day then month, so session directories do not sort by date. Find the latest session by modification time, for example `ls -td regr/*/ | head -1`.
 
 A test that fails in elaboration, in under a second, with `Error: (E549) uncaught exception: Resource temporarily unavailable` hit a host process or thread limit while many runs started at once. It is not a design failure. Report it and rerun the failed tests.
+
+## UVM regressions
+`specs/SIMULATOR_INTEGRATION.md` section 9.7 has the group layout, the `seed_repro` group and its verdicts. `examples/uvmVideo/rundir/regr_uvmVideo_uvm_xcelium.json` is a working file.
+
+*   List the rules files as `config/regrRules/uvm.json`, any project rules file, `default.json`, then the vendor file.
+*   `uvm.json` ships in base. It fails a run on a `UVM_ERROR` or `UVM_FATAL` report, a non-zero count of either in the report summary, or a log with no report summary. A missing summary means UVM never reached its report phase.
+*   A project rules file adds failures that `uvm.json` does not catch. `examples/uvmRegs/rundir/regmodel.json` fails a run on any `UVM/RSRC/NOREGEX` warning, which there means the register model's report catcher missed a child block.
+*   A `seed_repro` group runs each entry twice under `seedRepro.py`. Select it alone with the group path `/seed_repro`, for example `../builder/regrLauncher.py <regression>.json /seed_repro`.
+*   `uvm.json`'s last filter, `seed_repro_fail`, puts the runner's `A2C_SEED_REPRO FAIL:` reason in the JUnit report. In a `seed_repro` entry it outranks every filter of `default.json` and the vendor file, so a run that died on a `Q_ASSERT`, a SystemC exception or a simulator error shows as the verdict's reason, and the run's log holds the specific one.
+*   When digests differ, the lines that differ name the ports and lanes whose transactions changed, not when. To find when, compare those ports' `A2C_TXN` lines in the two runs, which the monitors log at `UVM_MEDIUM`.
 
 ## Constraints
 *   Never hand-edit generated regions to make a regression pass. Fix the YAML, model, RTL, templates or testbench, then regenerate and rebuild.

@@ -4,9 +4,11 @@
 A UVM testbench reports a failure as a UVM_ERROR or UVM_FATAL line, which may
 or may not carry a file location, and counts each severity in the report
 summary at the end of the run. The summary also prints zero counts, and a run
-that dies before the report phase prints no summary at all. Each case runs the
-regrLauncher log analyzer, with uvm.json loaded, over a synthetic log and
-checks which filters fire.
+that dies before the report phase prints no summary at all. A seed_repro
+entry's log holds two runs and ends with seedRepro.py's verdict. A FAIL
+verdict fails the entry even when neither run reported a UVM failure, as when
+the digests differ. Each case runs the regrLauncher log analyzer, with
+uvm.json loaded, over a synthetic log and checks which filters fire.
 """
 
 import os
@@ -56,6 +58,9 @@ FATAL_AT_FILE = ("UVM_FATAL /work/tb/tb_pkg.sv(90) @ 5000: uvm_test_top.env.drv 
                  "no virtual interface for port in")
 FATAL_NO_FILE = "UVM_FATAL @ 0: reporter [INVTST] Requested test from command line +UVM_TESTNAME=x not found."
 
+SEED_REPRO_RUNS = ''.join(f"A2C_SEED_REPRO run {n}: ../builder/dutRun.py build_xrun/run blk_uvm --seed 7\n"
+                          + RUN + summary() for n in (1, 2))
+
 # (label, log, [(filter, msg, file)] the analyzer must report, in filter order)
 CASES = [
     ('a clean run, whose summary prints UVM_ERROR :    0', RUN + summary(), []),
@@ -75,6 +80,17 @@ CASES = [
      [('uvm_summary_count', 'UVM report summary: 12 UVM_ERROR', None)]),
     ('a log with no UVM report summary', RUN,
      [('uvm_summary_missing', 'no UVM report summary in the log', None)]),
+    ('a seed_repro entry whose two clean runs gave the same digests',
+     SEED_REPRO_RUNS + 'A2C_SEED_REPRO PASS: the digests match\n', []),
+    ('a seed_repro entry whose two clean runs gave different digests',
+     SEED_REPRO_RUNS + 'A2C_SEED_REPRO FAIL: the same seed gave different digests\n',
+     [('seed_repro_fail', 'seedRepro.py: the same seed gave different digests', None)]),
+    ('a seed_repro entry whose first run reported a UVM_ERROR, named before the verdict',
+     SEED_REPRO_RUNS.replace(summary(), ERROR_AT_FILE + '\n' + summary(errors=1), 1)
+     + 'A2C_SEED_REPRO FAIL: run 1 reported UVM_ERROR\n',
+     [('uvm_error', '[A2C_SB] expected 129 output beats, received 128', '/work/tb/tb_pkg.sv(186)'),
+      ('uvm_summary_count', 'UVM report summary: 1 UVM_ERROR', None),
+      ('seed_repro_fail', 'seedRepro.py: run 1 reported UVM_ERROR', None)]),
 ]
 
 FAILURES = []
