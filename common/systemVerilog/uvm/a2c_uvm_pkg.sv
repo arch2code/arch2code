@@ -1072,10 +1072,28 @@ package a2c_uvm_pkg;
     // access moves only the row's own words. The stride holds for bus
     // accesses, get_address(), get_addresses() and get_mem_by_offset(), which
     // counts a row's unused words as the memory's, as the decoder does.
-    // get_size() and a parent map's own lookup still use UVM's stride, so an
-    // a2c_reg_map must be a root map, and add_submap() of one is fatal.
+    // get_size() still uses UVM's stride.
+    //
+    // In a hierarchical model each child block's map is added to its parent
+    // block's map with add_submap(). The stride goes on the map of the
+    // memory's own block. get_mem_by_offset() takes a root-map address and
+    // searches this map and every a2c_reg_map below it, so the root map
+    // resolves a strided memory in any block. A parent that is not an
+    // a2c_reg_map would find the memory only within UVM's stride, so an
+    // a2c_reg_map under one is fatal, as is a child whose bus width or
+    // addressing differs from its parent's. UVM's overlap warnings also see
+    // only its own stride, so the root map's first get_mem_by_offset()
+    // checks the strided rows against each other and against every register
+    // below it.
     class a2c_reg_map extends uvm_reg_map;
+        typedef struct {
+            uvm_reg_addr_t lo;
+            uvm_reg_addr_t hi;
+            uvm_mem        mem;
+        } strided_range_t;
+
         protected int unsigned strides[uvm_mem];
+        protected bit          overlaps_checked;
 
         `uvm_object_utils(a2c_reg_map)
 
@@ -1094,9 +1112,23 @@ package a2c_uvm_pkg;
             strides[mem] = stride_bytes;
         endfunction
 
+        protected function string addressing(uvm_reg_map map);
+            return $sformatf("%0d-byte bus words, %s-addressed", map.get_n_bytes(UVM_NO_HIER), map.get_addr_unit_bytes() == 1 ? "byte" : "word");
+        endfunction
+
         virtual function void add_parent_map(uvm_reg_map parent_map, uvm_reg_addr_t offset);
-            `uvm_fatal("A2C_CFG", $sformatf("%s is an a2c_reg_map, which must be a root map, so it cannot be a submap of %s",
-                                            get_full_name(), parent_map == null ? "null" : parent_map.get_full_name()))
+            a2c_reg_map a2c_parent;
+            if (parent_map != null && !$cast(a2c_parent, parent_map)) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s is an a2c_reg_map and its parent map %s is not an a2c_reg_map, so the parent's get_mem_by_offset() would miss the rows past UVM's own stride; give the parent block an a2c_reg_map",
+                                                get_full_name(), parent_map.get_full_name()))
+                return;
+            end
+            if (parent_map != null && addressing(parent_map) != addressing(this)) begin
+                `uvm_fatal("A2C_CFG", $sformatf("%s uses %s, and its parent map %s uses %s; the strided rows are counted in the parent's address units, so the two must match",
+                                                get_full_name(), addressing(this), parent_map.get_full_name(), addressing(parent_map)))
+                return;
+            end
+            super.add_parent_map(parent_map, offset);
         endfunction
 
         // UVM recomputes the info whenever the address map is rebuilt, so the
@@ -1111,16 +1143,75 @@ package a2c_uvm_pkg;
             return info;
         endfunction
 
+        // This map's strided memories, at their root-map addresses.
+        protected function void strided_ranges(ref strided_range_t ranges[$]);
+            foreach (strides[mem]) begin
+                uvm_reg_map_info info = get_mem_map_info(mem);
+                if (info != null && !info.unmapped) ranges.push_back('{lo: info.mem_range.min, hi: info.mem_range.max, mem: mem});
+            end
+        endfunction
+
+        // This map and every a2c_reg_map below it.
+        protected function void a2c_maps(ref a2c_reg_map maps[$]);
+            uvm_reg_map all[$] = '{this};
+            get_submaps(all, UVM_HIER);
+            foreach (all[i]) begin
+                a2c_reg_map m;
+                if ($cast(m, all[i])) maps.push_back(m);
+            end
+        endfunction
+
+        protected function void check_overlaps(a2c_reg_map maps[$]);
+            strided_range_t ranges[$];
+            uvm_reg         regs[$];
+            foreach (maps[i]) maps[i].strided_ranges(ranges);
+            ranges.sort(r) with (r.lo);
+            foreach (ranges[i]) begin
+                for (int j = i + 1; j < ranges.size() && ranges[j].lo <= ranges[i].hi; j++) begin
+                    `uvm_fatal("A2C_CFG", $sformatf("in %s, memory %s at 0x%0h..0x%0h overlaps memory %s at 0x%0h..0x%0h", get_full_name(),
+                                                    ranges[i].mem.get_full_name(), ranges[i].lo, ranges[i].hi,
+                                                    ranges[j].mem.get_full_name(), ranges[j].lo, ranges[j].hi))
+                end
+            end
+            get_registers(regs, UVM_HIER);
+            foreach (regs[r]) begin
+                uvm_reg_addr_t addrs[];
+                int            hit = -1;
+                void'(regs[r].get_addresses(this, addrs));
+                foreach (addrs[a]) foreach (ranges[i]) if (hit < 0 && addrs[a] >= ranges[i].lo && addrs[a] <= ranges[i].hi) hit = i;
+                if (hit >= 0) begin
+                    `uvm_fatal("A2C_CFG", $sformatf("in %s, register %s at 0x%0h lies in the rows of memory %s at 0x%0h..0x%0h", get_full_name(),
+                                                    regs[r].get_full_name(), addrs[0], ranges[hit].mem.get_full_name(), ranges[hit].lo, ranges[hit].hi))
+                end
+            end
+        endfunction
+
         virtual function uvm_mem get_mem_by_offset(uvm_reg_addr_t offset);
             if (get_parent().is_locked()) begin
-                foreach (strides[mem]) begin
-                    uvm_reg_map_info info = get_mem_map_info(mem);
-                    if (info != null && !info.unmapped && info.mem_range.min <= offset && offset <= info.mem_range.max) return mem;
+                a2c_reg_map maps[$];
+                a2c_maps(maps);
+                if (!overlaps_checked && get_parent_map() == null) begin
+                    overlaps_checked = 1;
+                    check_overlaps(maps);
+                end
+                foreach (maps[i]) begin
+                    strided_range_t ranges[$];
+                    maps[i].strided_ranges(ranges);
+                    foreach (ranges[j]) if (ranges[j].lo <= offset && offset <= ranges[j].hi) return ranges[j].mem;
                 end
             end
             return super.get_mem_by_offset(offset);
         endfunction
     endclass : a2c_reg_map
+
+    // UVM fills the offset tables that get_reg_by_offset() and
+    // get_mem_by_offset() read only on a root map, so a lookup through any
+    // other map returns null for every address.
+    function automatic void a2c_require_root_map(uvm_component c, uvm_reg_map map);
+        if (map == null || map.get_root_map() == map) return;
+        `uvm_fatal_context("A2C_CFG", $sformatf("%s: map %s is not a root map; give it the root map %s, the only map whose offset tables UVM fills",
+                                                c.get_full_name(), map.get_full_name(), map.get_root_map().get_full_name()), c)
+    endfunction
 
     // Holds Mode B to configuration changes while the datapath is quiescent.
     // It takes the writes a2c_reg_write_subscriber converts. A write while any
@@ -1157,6 +1248,11 @@ package a2c_uvm_pkg;
             int unsigned v;
             super.build_phase(phase);
             if ($value$plusargs("a2c_predict_midstream=%d", v)) predict_midstream = (v != 0);
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            a2c_require_root_map(this, map);
         endfunction
 
         // The counters with pending transactions and their counts, or "".
@@ -1378,6 +1474,11 @@ package a2c_uvm_pkg;
         function new(string name, uvm_component parent);
             super.new(name, parent);
             ap = new("ap", this);
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            a2c_require_root_map(this, map);
         endfunction
 
         virtual function void write(BUS_T t);

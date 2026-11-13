@@ -4,7 +4,9 @@
 // into a comparator by hand; the reg_read_pins_* tests read through a
 // register model and the apb agent on the apb pin sets, in Mode B and in
 // Mode A, and reg_read_pins_stride_test moves a2c_reg_map memory rows over
-// them; reg_read_stride_cfg_test checks a2c_reg_map's fatals. Included in a2c_uvm_loopback_pkg after
+// them; reg_read_stride_cfg_test checks a2c_reg_map's fatals and submap
+// rules, and reg_read_pins_stride_hier_test runs a2c_reg_map submaps three
+// blocks deep. Included in a2c_uvm_loopback_pkg after
 // a2c_joint_stall_lb_tests.svh, and uses the rdy_vld, apb and Mode B
 // classes of the files before it.
 
@@ -1025,30 +1027,13 @@
         endfunction
     endclass : lb_stride_block
 
-    // Mode A: full-width rows written through narrow by one burst and through
-    // wide row by row land on the slave at the row stride, in the row's own
-    // words only, and read back whole. Each map finds a memory at every word
-    // of its rows, unused words of the last row included, and none past it.
-    class reg_read_pins_stride_test extends lb_reg_read_pins_base;
-        lb_stride_block strides;
-
-        `uvm_component_utils(reg_read_pins_stride_test)
+    // Checks for the reg_read_pins_stride* tests, against the DUT lane's
+    // slave and a register model on the agent's sequencer.
+    class lb_reg_stride_base extends lb_reg_read_pins_base;
+        `uvm_component_utils(lb_reg_stride_base)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 0;
-        endfunction
-
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            strides = lb_stride_block::type_id::create("lb_strides");
-            strides.build();
-        endfunction
-
-        virtual function void connect_phase(uvm_phase phase);
-            super.connect_phase(phase);
-            strides.default_map.set_sequencer(agent.sqr, adapter);
-            strides.default_map.set_auto_predict(1);
         endfunction
 
         // The slave's word at addr, or 'x when it holds none of its bytes.
@@ -1079,6 +1064,52 @@
             same = got.size() == want.size();
             foreach (got[i]) same &= i < want.size() && got[i] == want[i];
             if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("%s row %0d is at %p, expected %p", mem.get_full_name(), row, got, want))
+        endfunction
+
+        function void expect_reg_addresses(uvm_reg rg, uvm_reg_map map, uvm_reg_addr_t want[]);
+            uvm_reg_addr_t got[];
+            bit            same;
+            void'(rg.get_addresses(map, got));
+            same = got.size() == want.size();
+            foreach (got[i]) same &= i < want.size() && got[i] == want[i];
+            if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("%s is at %p, expected %p", rg.get_full_name(), got, want))
+        endfunction
+
+        function void expect_value(string what, uvm_status_e status, uvm_reg_data_t got, uvm_reg_data_t want);
+            if (status != UVM_IS_OK || got != want) `uvm_error("LB_REG_STRIDE", $sformatf("%s read 'h%0h (%s), expected 'h%0h", what, got, status.name(), want))
+        endfunction
+
+        function void expect_mirror(uvm_reg rg, uvm_reg_data_t want);
+            if (rg.get_mirrored_value() != want) begin
+                `uvm_error("LB_REG_STRIDE", $sformatf("the predictor left %s's mirror at 'h%0h, expected 'h%0h", rg.get_full_name(), rg.get_mirrored_value(), want))
+            end
+        endfunction
+    endclass : lb_reg_stride_base
+
+    // Mode A: full-width rows written through narrow by one burst and through
+    // wide row by row land on the slave at the row stride, in the row's own
+    // words only, and read back whole. Each map finds a memory at every word
+    // of its rows, unused words of the last row included, and none past it.
+    class reg_read_pins_stride_test extends lb_reg_stride_base;
+        lb_stride_block strides;
+
+        `uvm_component_utils(reg_read_pins_stride_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b = 0;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            strides = lb_stride_block::type_id::create("lb_strides");
+            strides.build();
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            strides.default_map.set_sequencer(agent.sqr, adapter);
+            strides.default_map.set_auto_predict(1);
         endfunction
 
         virtual task run_phase(uvm_phase phase);
@@ -1126,12 +1157,205 @@
         endtask
     endclass : reg_read_pins_stride_test
 
-    // A stride that is not whole bus words, one shorter than a row's words,
-    // and an a2c_reg_map added as a submap are each one A2C_CFG fatal, and a
-    // rejected stride leaves the memory's stride as it was.
+    // The bottom block of lb_hier: deep, two 8-bit rows on a 16-byte stride
+    // at 0x40.
+    class lb_hier_leaf extends uvm_reg_block;
+        uvm_mem deep;
+
+        `uvm_object_utils(lb_hier_leaf)
+
+        function new(string name = "lb_hier_leaf");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            deep = new("deep", 2, 8, "RW", UVM_NO_COVERAGE);
+            deep.configure(this);
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_mem(deep, 'h40, "RW");
+            map.set_mem_stride(deep, 16);
+        endfunction
+    endclass : lb_hier_leaf
+
+    // The middle block of lb_hier: stat, volatile, at 0x0; level, volatile
+    // and two bus words wide, at 0x8; wide, read-write and two bus words
+    // wide, at 0x10; narrow, four 20-bit rows on an 8-byte stride at 0x400;
+    // rom, a read-only memory of four 12-bit rows on an 8-byte stride at
+    // 0x500; sub, an lb_hier_leaf, at 0x1000.
+    class lb_hier_ip extends uvm_reg_block;
+        lb_vreg      stat;
+        lb_vreg      level;
+        lb_reg64     wide;
+        uvm_mem      narrow;
+        uvm_mem      rom;
+        lb_hier_leaf sub;
+
+        `uvm_object_utils(lb_hier_ip)
+
+        function new(string name = "lb_hier_ip");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            stat = new("stat");
+            stat.configure(this);
+            stat.build();
+            level = new("level", 64);
+            level.configure(this);
+            level.build();
+            wide = lb_reg64::type_id::create("wide");
+            wide.configure(this);
+            wide.build();
+            narrow = new("narrow", 4, 20, "RW", UVM_NO_COVERAGE);
+            narrow.configure(this);
+            rom = new("rom", 4, 12, "RO", UVM_NO_COVERAGE);
+            rom.configure(this);
+            sub = lb_hier_leaf::type_id::create("sub");
+            sub.configure(this);
+            sub.build();
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_reg(stat, 'h0, "RO");
+            map.add_reg(level, 'h8, "RO");
+            map.add_reg(wide, 'h10, "RW");
+            map.add_mem(narrow, 'h400, "RW");
+            map.set_mem_stride(narrow, 8);
+            map.add_mem(rom, 'h500, "RO");
+            map.set_mem_stride(rom, 8);
+            map.add_submap(sub.default_map, 'h1000);
+        endfunction
+    endclass : lb_hier_ip
+
+    // A block with no memory and a plain uvm_reg_map: ctrl, read-write, at
+    // 0x0.
+    class lb_hier_plain extends uvm_reg_block;
+        lb_rw_reg ctrl;
+
+        `uvm_object_utils(lb_hier_plain)
+
+        function new(string name = "lb_hier_plain");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            ctrl = lb_rw_reg::type_id::create("ctrl");
+            ctrl.configure(this);
+            ctrl.build();
+            default_map = create_map("default_map", 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            default_map.add_reg(ctrl, 'h0, "RW");
+        endfunction
+    endclass : lb_hier_plain
+
+    // A three-level model: the lb_hier_ip siblings ip at 0x100000 and ip2 at
+    // 0x200000, and plain, an lb_hier_plain, at 0x300000.
+    class lb_hier extends uvm_reg_block;
+        lb_hier_ip    ip;
+        lb_hier_ip    ip2;
+        lb_hier_plain plain;
+
+        `uvm_object_utils(lb_hier)
+
+        function new(string name = "lb_hier");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            ip = lb_hier_ip::type_id::create("ip");
+            ip.configure(this);
+            ip.build();
+            ip2 = lb_hier_ip::type_id::create("ip2");
+            ip2.configure(this);
+            ip2.build();
+            plain = lb_hier_plain::type_id::create("plain");
+            plain.configure(this);
+            plain.build();
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_submap(ip.default_map, 'h100000);
+            map.add_submap(ip2.default_map, 'h200000);
+            map.add_submap(plain.default_map, 'h300000);
+            lock_model();
+        endfunction
+    endclass : lb_hier
+
+    // UVM steps rows by 4 bytes, so it sees no overlap in this block. At
+    // their strides, rows (four 8-bit rows on 16 bytes at 0x0) run to 0x3c
+    // and hold other (two rows on 4 bytes at 0x20) and ctrl (at 0x14).
+    class lb_overlap_leaf extends uvm_reg_block;
+        uvm_mem   rows;
+        uvm_mem   other;
+        lb_rw_reg ctrl;
+
+        `uvm_object_utils(lb_overlap_leaf)
+
+        function new(string name = "lb_overlap_leaf");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            rows = new("rows", 4, 8, "RW", UVM_NO_COVERAGE);
+            rows.configure(this);
+            other = new("other", 2, 8, "RW", UVM_NO_COVERAGE);
+            other.configure(this);
+            ctrl = lb_rw_reg::type_id::create("ctrl");
+            ctrl.configure(this);
+            ctrl.build();
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_mem(rows, 'h0, "RW");
+            map.set_mem_stride(rows, 16);
+            map.add_mem(other, 'h20, "RW");
+            map.set_mem_stride(other, 4);
+            map.add_reg(ctrl, 'h14, "RW");
+        endfunction
+    endclass : lb_overlap_leaf
+
+    // leaf, an lb_overlap_leaf, at 0x1000 of an a2c_reg_map root.
+    class lb_overlap extends uvm_reg_block;
+        lb_overlap_leaf leaf;
+
+        `uvm_object_utils(lb_overlap)
+
+        function new(string name = "lb_overlap");
+            super.new(name, UVM_NO_COVERAGE);
+        endfunction
+
+        virtual function void build();
+            a2c_reg_map map = a2c_reg_map::type_id::create("default_map", , get_full_name());
+            leaf = lb_overlap_leaf::type_id::create("leaf");
+            leaf.configure(this);
+            leaf.build();
+            map.configure(this, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            add_map(map);
+            map.add_submap(leaf.default_map, 'h1000);
+            lock_model();
+        endfunction
+    endclass : lb_overlap
+
+    // Each of these is one A2C_CFG fatal:
+    // - a stride that is not whole bus words, and one shorter than a row's
+    //   words, each leaving the memory's stride as it was;
+    // - an a2c_reg_map added as a submap of a map that is not one, or of an
+    //   a2c_reg_map with another bus width or addressing. The rejected
+    //   child's parent stays unset, but the demoted fatal lets UVM's
+    //   add_submap() go on, so the parent's submap list still holds it;
+    // - a guard and an a2c_reg_write_subscriber given a child map;
+    // - in lb_overlap, two overlapping strided memories, and a register in
+    //   a memory's unused row words, found once by the root map's first
+    //   get_mem_by_offset().
+    // An a2c_reg_map added as a submap of a matching a2c_reg_map raises
+    // nothing and has it as its parent.
     class reg_read_stride_cfg_test extends lb_reg_read_base;
-        lb_cfg_fatal_catcher catcher;
-        lb_stride_block      strides;
+        lb_cfg_fatal_catcher                 catcher;
+        lb_stride_block                      strides;
+        lb_hier                              hier;
+        a2c_midstream_guard                  child_guard;
+        a2c_reg_write_subscriber #(apb_item) child_writes;
 
         `uvm_component_utils(reg_read_stride_cfg_test)
 
@@ -1139,13 +1363,41 @@
             super.new(name, parent);
         endfunction
 
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            hier = lb_hier::type_id::create("lb_hier");
+            hier.build();
+            child_guard  = a2c_midstream_guard::type_id::create("child_guard", this);
+            child_writes = a2c_reg_write_subscriber#(apb_item)::type_id::create("child_writes", this);
+        endfunction
+
+        // A child map of an unbuilt lb_stride_block named sub_name under one
+        // named top_name, added to top_map. uvm_reg_block is virtual; these
+        // blocks are never built, so they hold no map of their own.
+        function a2c_reg_map add_child(uvm_reg_map top_map, uvm_reg_block top, string sub_name, int unsigned n_bytes, bit byte_addressing);
+            uvm_reg_block sub = lb_stride_block::type_id::create(sub_name);
+            a2c_reg_map   map = a2c_reg_map::type_id::create("sub_map", , {top.get_full_name(), ".", sub_name});
+            sub.configure(top);
+            map.configure(sub, 'h0, n_bytes, UVM_LITTLE_ENDIAN, byte_addressing);
+            sub.add_map(map);
+            top_map.add_submap(map, 'h100);
+            return map;
+        endfunction
+
+        function a2c_reg_map a2c_top(string name);
+            uvm_reg_block top = lb_stride_block::type_id::create(name);
+            a2c_reg_map   map = a2c_reg_map::type_id::create("top_map", , name);
+            map.configure(top, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
+            top.add_map(map);
+            return map;
+        endfunction
+
         virtual function void connect_phase(uvm_phase phase);
-            uvm_reg_block top;
-            uvm_reg_block sub;
-            uvm_reg_map   top_map;
-            a2c_reg_map   sub_map;
+            uvm_reg_block  top;
+            uvm_reg_map    top_map;
+            a2c_reg_map    map;
             uvm_reg_addr_t addrs[];
-            a2c_reg_map   map;
+            lb_overlap     overlap;
             super.connect_phase(phase);
             catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
             uvm_report_cb::add(null, catcher);
@@ -1158,24 +1410,252 @@
             if (addrs.size() != 1 || addrs[0] != 'h208) `uvm_error("LB_REG_STRIDE", $sformatf("narrow row 1 is at %p after the rejected stride, expected '{'h208}", addrs))
             void'(strides.wide.get_addresses(1, null, addrs));
             if (addrs.size() != 2 || addrs[0] != 'h310) `uvm_error("LB_REG_STRIDE", $sformatf("wide row 1 is at %p after the rejected stride, expected '{'h310, 'h314}", addrs))
-            // uvm_reg_block is virtual; these two are never built, so they hold no map of their own.
             top = lb_stride_block::type_id::create("lb_top");
-            sub = lb_stride_block::type_id::create("lb_sub");
-            sub.configure(top);
             top_map = top.create_map("top_map", 'h0, 4, UVM_LITTLE_ENDIAN, 1);
-            sub_map = a2c_reg_map::type_id::create("sub_map", , sub.get_full_name());
-            sub_map.configure(sub, 'h0, 4, UVM_LITTLE_ENDIAN, 1);
-            sub.add_map(sub_map);
-            top_map.add_submap(sub_map, 'h100);
+            map = add_child(top_map, top, "lb_sub", 4, 1);
+            if (map.get_parent_map() != null) `uvm_error("LB_REG_STRIDE", "lb_top.lb_sub.sub_map has a parent map after its rejection")
+            map = a2c_top("lb_w_top");
+            map = add_child(map, map.get_parent(), "lb_w_sub", 8, 1);
+            if (map.get_parent_map() != null) `uvm_error("LB_REG_STRIDE", "lb_w_top.lb_w_sub.sub_map has a parent map after its rejection")
+            map = a2c_top("lb_u_top");
+            map = add_child(map, map.get_parent(), "lb_u_sub", 4, 0);
+            if (map.get_parent_map() != null) `uvm_error("LB_REG_STRIDE", "lb_u_top.lb_u_sub.sub_map has a parent map after its rejection")
+            top_map = a2c_top("lb_a2c_top");
+            map = add_child(top_map, top_map.get_parent(), "lb_a2c_sub", 4, 1);
+            if (map.get_parent_map() != top_map) `uvm_error("LB_REG_STRIDE", "lb_a2c_top.lb_a2c_sub.sub_map is not a submap of lb_a2c_top.top_map")
+            child_guard.map  = hier.ip.default_map;
+            child_writes.map = hier.ip.default_map;
+            overlap = lb_overlap::type_id::create("lb_overlap");
+            overlap.build();
+            void'(overlap.default_map.get_mem_by_offset('h1000));
+            void'(overlap.default_map.get_mem_by_offset('h1020));
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
             string want[$] = '{"set_mem_stride(): lb_strides.narrow needs a stride of whole 4-byte bus words and at least 4 bytes, not 6",
                                "set_mem_stride(): lb_strides.wide needs a stride of whole 4-byte bus words and at least 8 bytes, not 4",
-                               "lb_top.lb_sub.sub_map is an a2c_reg_map, which must be a root map, so it cannot be a submap of lb_top.top_map"};
-            bit same = catcher.messages.size() == want.size();
-            foreach (want[i]) same &= i < catcher.messages.size() && catcher.messages[i] == want[i];
-            if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("expected the A2C_CFG fatals %p, got %p", want, catcher.messages))
+                               "lb_top.lb_sub.sub_map is an a2c_reg_map and its parent map lb_top.top_map is not an a2c_reg_map, so the parent's get_mem_by_offset() would miss the rows past UVM's own stride; give the parent block an a2c_reg_map",
+                               "lb_w_top.lb_w_sub.sub_map uses 8-byte bus words, byte-addressed, and its parent map lb_w_top.top_map uses 4-byte bus words, byte-addressed; the strided rows are counted in the parent's address units, so the two must match",
+                               "lb_u_top.lb_u_sub.sub_map uses 4-byte bus words, word-addressed, and its parent map lb_u_top.top_map uses 4-byte bus words, byte-addressed; the strided rows are counted in the parent's address units, so the two must match",
+                               "uvm_test_top.child_guard: map lb_hier.ip.default_map is not a root map; give it the root map lb_hier.default_map, the only map whose offset tables UVM fills",
+                               "uvm_test_top.child_writes: map lb_hier.ip.default_map is not a root map; give it the root map lb_hier.default_map, the only map whose offset tables UVM fills",
+                               "in lb_overlap.default_map, memory lb_overlap.leaf.rows at 0x1000..0x103c overlaps memory lb_overlap.leaf.other at 0x1020..0x1024",
+                               "in lb_overlap.default_map, register lb_overlap.leaf.ctrl at 0x1014 lies in the rows of memory lb_overlap.leaf.rows at 0x1000..0x103c"};
+            string got[$] = catcher.messages;
+            bit    same = got.size() == want.size();
+            // The components' end_of_elaboration_phase order is the
+            // simulator's, so the messages are compared as sets.
+            want.sort();
+            got.sort();
+            foreach (want[i]) same &= i < got.size() && got[i] == want[i];
+            if (!same) `uvm_error("LB_REG_STRIDE", $sformatf("expected the A2C_CFG fatals %p, got %p", want, got))
             super.report_phase(phase);
         endfunction
     endclass : reg_read_stride_cfg_test
+
+    // Mode B over lb_hier, wired as a generated env wires a register model,
+    // with every lookup through the root map. Writes, reads and lookups in
+    // both lb_hier_ip siblings and the plain child while quiescent, then
+    // reads and writes of ip while the rv output is pending, against the
+    // guard and model_cmp's skip list.
+    class reg_read_pins_stride_hier_test extends lb_reg_stride_base;
+        lb_hier                              hier;
+        uvm_reg_predictor #(apb_item)        predictor;
+        a2c_reg_write_subscriber #(apb_item) writes;
+        lb_id_recorder                       skip_infos;
+
+        `uvm_component_utils(reg_read_pins_stride_hier_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            demote_id   = "A2C_MIDSTREAM";
+            want_errors = 6;
+            want_text.push_back("read of volatile register lb_hier.ip.level at 0x100008 while");
+            want_text.push_back("read of volatile register lb_hier.ip.level at 0x10000c while");
+            want_text.push_back("read of read-only memory lb_hier.ip.rom at 0x100518 while");
+            want_text.push_back("write to lb_hier.ip.wide while");
+            want_text.push_back("write to lb_hier.ip.narrow while");
+            unwant_text.push_back("address 0x");
+            unwant_text.push_back("lb_hier.ip.stat");
+            unwant_text.push_back("lb_hier.ip.sub.deep");
+        endfunction
+
+        // Both slaves hold dut at addr, but the model lane's holds model.
+        function void preload(bit [31:0] addr, bit [31:0] dut, bit [31:0] model);
+            for (int unsigned b = 0; b < 4; b++) begin
+                peer_cfg.mem.write(addr + b, dut[8 * b +: 8]);
+                if (mode_b) model_peer_cfg.mem.write(addr + b, model[8 * b +: 8]);
+            end
+        endfunction
+
+        // The values each lb_hier_ip sibling holds differ by its slot.
+        function uvm_reg_data_t level_value(uvm_reg_addr_t base);
+            return 64'h3333_4444_1111_2222 ^ base;
+        endfunction
+
+        function uvm_reg_data_t rom_row(uvm_reg_addr_t base, int unsigned r);
+            return 'ha00 + 16 * base[23:20] + r;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            hier = lb_hier::type_id::create("lb_hier");
+            hier.build();
+            predictor = uvm_reg_predictor#(apb_item)::type_id::create("predictor", this);
+            if (mode_b) writes = a2c_reg_write_subscriber#(apb_item)::type_id::create("writes", this);
+            skip_infos = lb_id_recorder::type_id::create("skip_infos");
+            skip_infos.id = "A2C_REG_SKIP";
+            uvm_report_cb::add(null, skip_infos);
+            preload('h100000, 'h5, 'h50a);
+            for (int i = 1; i <= 2; i++) begin
+                uvm_reg_addr_t base = i << 20;
+                uvm_reg_data_t level = level_value(base);
+                preload(base + 'h8, level[31:0], level[31:0]);
+                preload(base + 'hc, level[63:32], level[63:32]);
+                for (int unsigned r = 0; r < 4; r++) preload(base + 'h500 + 8 * r, rom_row(base, r), rom_row(base, r));
+            end
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            hier.default_map.set_sequencer(agent.sqr, adapter);
+            hier.default_map.set_auto_predict(0);
+            predictor.map     = hier.default_map;
+            predictor.adapter = adapter;
+            agent.mon.ap.connect(predictor.bus_in);
+            if (!mode_b) return;
+            writes.map     = hier.default_map;
+            writes.adapter = adapter;
+            agent.mon.ap.connect(writes.analysis_export);
+            writes.ap.connect(guard.analysis_export);
+            guard.map = hier.default_map;
+            agent.model_cmp.skip_reg(hier.ip.stat);
+            agent.model_cmp.skip_mem(hier.ip.sub.deep, hier.default_map);
+        endfunction
+
+        // Writes, reads back and looks up every memory and the two-word
+        // registers of the lb_hier_ip at base.
+        task exercise(lb_hier_ip ip, uvm_reg_addr_t base);
+            uvm_status_e   status;
+            uvm_reg_data_t value;
+            uvm_reg_data_t tag = base[23:20];
+            uvm_reg_data_t narrow_rows[] = new[4];
+            uvm_reg_data_t deep_rows[2];
+            uvm_reg_data_t wide_value = 64'h0123_4567_89ab_cdef ^ base;
+            uvm_reg_map    maps[$];
+            foreach (narrow_rows[r]) narrow_rows[r] = (tag << 16) | ('ha5a0 + r);
+            foreach (deep_rows[r]) deep_rows[r] = (tag << 4) | (r + 'hc);
+            ip.narrow.burst_write(status, 0, narrow_rows);
+            if (status != UVM_IS_OK) `uvm_error("LB_REG_STRIDE", $sformatf("%s burst write status %s", ip.narrow.get_full_name(), status.name()))
+            narrow_rows[1] = (tag << 16) | 'h0b0b1;
+            narrow_rows[3] = (tag << 16) | 'h0b0b3;
+            ip.narrow.write(status, 1, narrow_rows[1]);
+            ip.narrow.write(status, 3, narrow_rows[3]);
+            foreach (deep_rows[r]) ip.sub.deep.write(status, r, deep_rows[r]);
+            ip.wide.write(status, wide_value);
+            if (status != UVM_IS_OK) `uvm_error("LB_REG_STRIDE", $sformatf("%s write status %s", ip.wide.get_full_name(), status.name()))
+            for (int unsigned r = 0; r < 4; r++) begin
+                expect_word(base + 'h400 + 8 * r, narrow_rows[r]);
+                expect_word(base + 'h404 + 8 * r, 'x);
+            end
+            for (int unsigned r = 0; r < 2; r++) begin
+                expect_word(base + 'h1040 + 16 * r, deep_rows[r]);
+                for (int unsigned w = 1; w < 4; w++) expect_word(base + 'h1040 + 16 * r + 4 * w, 'x);
+            end
+            expect_word(base + 'h10, wide_value[31:0]);
+            expect_word(base + 'h14, wide_value[63:32]);
+            for (int unsigned r = 0; r < 4; r++) begin
+                ip.narrow.read(status, r, value);
+                expect_value($sformatf("%s[%0d]", ip.narrow.get_full_name(), r), status, value, narrow_rows[r]);
+                ip.rom.read(status, r, value);
+                expect_value($sformatf("%s[%0d]", ip.rom.get_full_name(), r), status, value, rom_row(base, r));
+            end
+            foreach (deep_rows[r]) begin
+                ip.sub.deep.read(status, r, value);
+                expect_value($sformatf("%s[%0d]", ip.sub.deep.get_full_name(), r), status, value, deep_rows[r]);
+            end
+            ip.wide.read(status, value);
+            expect_value(ip.wide.get_full_name(), status, value, wide_value);
+            expect_mirror(ip.wide, wide_value);
+            ip.level.read(status, value);
+            expect_value(ip.level.get_full_name(), status, value, level_value(base));
+            expect_mirror(ip.level, level_value(base));
+            for (uvm_reg_addr_t a = base + 'h400; a < base + 'h420; a += 4) expect_mem(hier.default_map, a, ip.narrow);
+            expect_mem(hier.default_map, base + 'h420, null);
+            for (uvm_reg_addr_t a = base + 'h500; a < base + 'h520; a += 4) expect_mem(hier.default_map, a, ip.rom);
+            expect_mem(hier.default_map, base + 'h520, null);
+            for (uvm_reg_addr_t a = base + 'h1040; a < base + 'h1060; a += 4) expect_mem(hier.default_map, a, ip.sub.deep);
+            expect_mem(hier.default_map, base + 'h1060, null);
+            expect_mem(ip.default_map, base + 'h105c, ip.sub.deep);
+            maps = '{null, ip.default_map, hier.default_map};
+            foreach (maps[i]) begin
+                expect_addresses(ip.narrow, 3, maps[i], {base + 'h418});
+                expect_reg_addresses(ip.level, maps[i], {base + 'h8, base + 'hc});
+            end
+            maps.push_back(ip.sub.default_map);
+            foreach (maps[i]) expect_addresses(ip.sub.deep, 1, maps[i], {base + 'h1050});
+        endtask
+
+        virtual task run_phase(uvm_phase phase);
+            uvm_status_e   status;
+            uvm_reg_data_t value;
+            uvm_reg_map    maps[$];
+            lb_hier_ip     ip = hier.ip;
+            phase.raise_objection(this);
+            clk_vif.wait_reset_release();
+            exercise(hier.ip, 'h100000);
+            exercise(hier.ip2, 'h200000);
+            // Each sibling's own map holds only its own memories.
+            expect_mem(hier.ip.default_map, 'h200400, null);
+            expect_mem(hier.ip2.default_map, 'h100400, null);
+            hier.plain.ctrl.write(status, 'hc0ffee);
+            expect_word('h300000, 'hc0ffee);
+            hier.plain.ctrl.read(status, value);
+            expect_value(hier.plain.ctrl.get_full_name(), status, value, 'hc0ffee);
+            expect_mirror(hier.plain.ctrl, 'hc0ffee);
+            expect_mem(hier.default_map, 'h300000, null);
+            maps = '{null, hier.plain.default_map, hier.default_map};
+            foreach (maps[i]) expect_reg_addresses(hier.plain.ctrl, maps[i], {'h300000});
+            if (mode_b) begin
+                // The lanes then disagree on deep, which only the skip list keeps quiet.
+                preload('h101040, 'h1c, 'h99);
+                preload('h101050, 'h1d, 'h66);
+                repeat (2) clk_vif.sample_edge();
+                counter.expect_count(1);
+                ip.level.read(status, value);
+                ip.rom.read(status, 3, value);
+                ip.narrow.read(status, 3, value);
+                ip.stat.read(status, value);
+                ip.sub.deep.read(status, 0, value);
+                ip.sub.deep.read(status, 1, value);
+                ip.wide.write(status, 64'h5555_aaaa_5555_aaaa);
+                ip.narrow.write(status, 3, 20'h0c0c3);
+                rv_dut_ap.write(lb_rv_item(lb_data_t'(0)));
+                rv_model_ap.write(lb_rv_item(lb_data_t'(0)));
+            end
+            repeat (2) clk_vif.sample_edge();
+            phase.drop_objection(this);
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            if (mode_b) begin
+                string want[$] = '{"\n  lb_hier.ip.stat 0x100000: 1", "\n  lb_hier.ip.sub.deep 0x101040..0x101050: 4"};
+                foreach (want[i]) if (skip_infos.count(want[i]) != 1) `uvm_error("LB_REG_STRIDE", $sformatf("expected one A2C_REG_SKIP line '%s': %p", want[i], skip_infos.messages))
+            end
+            if (uvm_report_server::get_server().get_id_count("A2C_MODEL_CMP") != 0) `uvm_error("LB_REG_STRIDE", "an A2C_MODEL_CMP report")
+            super.report_phase(phase);
+        endfunction
+    endclass : reg_read_pins_stride_hier_test
+
+    // reg_read_pins_stride_hier_test in Mode A: no model_cmp, guard or skip
+    // list, so only the quiescent writes, reads, mirrors and lookups.
+    class reg_read_pins_stride_hier_mode_a_test extends reg_read_pins_stride_hier_test;
+        `uvm_component_utils(reg_read_pins_stride_hier_mode_a_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b      = 0;
+            want_errors = 0;
+            want_text.delete();
+        endfunction
+    endclass : reg_read_pins_stride_hier_mode_a_test
