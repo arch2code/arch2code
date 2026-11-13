@@ -43,7 +43,7 @@ public:
     // No firmware worker threads: the UVM register model programs the block.
     bool createTestBench(void) override
     {
-        bfmContractCheck::failOnBreak = true;
+        bfmContractCheck::toUvm = true;
         watchDog::stallCheckDisabledByUvm = true;
         uvmRegs_uvm_run::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";
         uvmRegs_uvm_run::modelDut = m_uvmDut == "model" || m_uvmDut == "both";
@@ -59,6 +59,7 @@ public:
         if (!uvmRegs_uvm_run::completed) {
             errorCode::fail(uvmRegs_uvm_run::notFinished);
         } else {
+            bfmContractCheck::failUntaken();
             errorCode::pass();
         }
     }

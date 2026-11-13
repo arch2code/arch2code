@@ -169,6 +169,21 @@ module uvmMem_uvm_tb
     assign model_dut = 1'b1;
 `endif
 
+    // Each SystemC BFM contract break, such as a model that stalls a
+    // backpressure: false producer, becomes an A2C_BFM_CONTRACT UVM_ERROR,
+    // which a test can expect with a report catcher (a2c_expected_error).
+    // SystemC fails the run on any break still queued when run_test() returns.
+    import "DPI-C" function string a2c_bfm_contract_break();
+    bit bfm_breaks_open = 1'b1;
+    always @(negedge clk) begin
+        string bfm_break;
+        if (bfm_breaks_open) begin
+            for (bfm_break = a2c_bfm_contract_break(); bfm_break != ""; bfm_break = a2c_bfm_contract_break()) begin
+                uvm_report_error("A2C_BFM_CONTRACT", bfm_break, UVM_NONE);
+            end
+        end
+    end
+
     // run_test() returns after the report phase because finish_on_completion
     // is off, and SystemC ends the simulation through its end-of-test vote.
     // A UVM_FATAL calls $finish inside run_test(), so uvm_done stays low and
@@ -202,6 +217,7 @@ module uvmMem_uvm_tb
 `endif
         uvm_root::get().finish_on_completion = 0;
         run_test();
+        bfm_breaks_open = 1'b0;
         srv = uvm_report_server::get_server();
         uvm_errors = srv.get_severity_count(UVM_ERROR) + srv.get_severity_count(UVM_FATAL);
         @(posedge clk);

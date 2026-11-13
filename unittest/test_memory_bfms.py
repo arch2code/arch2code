@@ -22,8 +22,10 @@ runs the edge monitor, a method, before the BFM thread, so the monitor counts
 the edge and the thread's same-delta branch finds it counted. The probe does
 not force the other order, in which only that branch would count the edge. The
 BFM must count exactly the presented accesses the model never saw, log the
-first with its time and the total at the end, and
-set the exit code only under bfmContractCheck::failOnBreak.
+first with its time and the total at the end, and leave the exit code unset.
+Under bfmContractCheck::toUvm, as in a UVM run, it also queues the first break
+once for the testbench, which a2c_bfm_contract_break() hands out and then
+returns "" for; failUntaken() sets the exit code only while one is untaken.
 
 In UVM Mode B, memory_dst_bfm takes a credit pin and drives a held pin
 (setModelCredit). The probe's creditor raises the credit by one, 100 ps after
@@ -449,6 +451,8 @@ SC_MODULE( srcProbe )
     }
 };
 
+extern "C" const char *a2c_bfm_contract_break( void );
+
 int sc_main( int argc, char *argv[] )
 {
     logging::GetInstance().setDefaultVerbosity( VERBOSITY_MEDIUM );
@@ -503,7 +507,7 @@ int sc_main( int argc, char *argv[] )
         std::printf( "accesses=%s\\nreads=%s\\n", p.accesses.c_str(), p.reads.c_str() );
         sc_stop();
     } else {
-        bfmContractCheck::failOnBreak = scenario == "src_fail";
+        bfmContractCheck::toUvm = scenario == "src_uvm" || scenario == "src_untaken";
         int delayNs = scenario == "src_fast" ? 0 : scenario == "src_edge" ? 10 : 15;
         srcProbe p( "p", delayNs );
         p.clk( clk ); p.rst_n( rst_n );
@@ -516,6 +520,13 @@ int sc_main( int argc, char *argv[] )
             }
         }
         std::printf( "presented=%zu\\nskipped=%zu\\nfirst=%s\\n", p.presented.size(), skipped, first.c_str() );
+        std::printf( "queued=%zu\\n", bfmContractCheck::uvmBreaks.size() );
+        if (scenario == "src_uvm") {
+            std::string first_break = a2c_bfm_contract_break();
+            std::string second_break = a2c_bfm_contract_break();
+            std::printf( "uvm_break=%s\\nuvm_next=%s\\n", first_break.c_str(), second_break.c_str() );
+        }
+        bfmContractCheck::failUntaken();
         sc_stop();
     }
     std::printf( "exit=%d\\n", errorCode::getExitCode() );
@@ -635,7 +646,7 @@ def test_memory_bfms():
               f"skipped={field(output, 'skipped')})")
         check(bfmLines(output) == [], f"src_fast logs nothing (got {bfmLines(output)})")
 
-        for scenario in ('src_slow', 'src_edge', 'src_fail'):
+        for scenario in ('src_slow', 'src_edge', 'src_uvm', 'src_untaken'):
             outputs[scenario] = output = runScenario(binPath, scenario)
             skipped = field(output, 'skipped')
             check(skipped not in (None, '0'), f"{scenario}: the model's delay skips accesses (skipped={skipped})")
@@ -643,7 +654,15 @@ def test_memory_bfms():
                                        f"p.bfm:{SKIPPED}, {skipped} accesses in total"],
                   f"{scenario}: the BFM logs the first skipped access at {field(output, 'first')} and "
                   f"{skipped} in total (got {bfmLines(output)})")
-            fails = scenario == 'src_fail'
+            toUvm = scenario in ('src_uvm', 'src_untaken')
+            check(field(output, 'queued') == ('1' if toUvm else '0'),
+                  f"{scenario}: {'one break is' if toUvm else 'no break is'} queued for UVM (queued={field(output, 'queued')})")
+            if scenario == 'src_uvm':
+                check(field(output, 'uvm_break') == f"p.bfm:{SKIPPED} at {field(output, 'first')}"
+                      and field(output, 'uvm_next') == '',
+                      f"src_uvm: UVM takes the first break with its BFM and time, then nothing "
+                      f"(uvm_break={field(output, 'uvm_break')}, uvm_next={field(output, 'uvm_next')})")
+            fails = scenario == 'src_untaken'
             check((field(output, 'exit') != '-1') == fails,
                   f"{scenario}: the exit code is {'set' if fails else 'unset'} (exit={field(output, 'exit')})")
 

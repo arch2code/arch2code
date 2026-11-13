@@ -8,12 +8,13 @@
 // their pins cannot sit in a clocking block here; the two tasks below give the
 // agents the timing a clocking block would.
 //
-// Every boundary pin changes within DRIVE_SKEW after a rising edge: the SystemC
-// BFMs and the RTL in delta cycles at the edge, the UVM drivers at DRIVE_SKEW.
-// So the pins hold still from DRIVE_SKEW to the next rising edge, and a value
-// read at the falling edge is the value that next rising edge samples (the
-// #1step value of a clocking block input). DRIVE_SKEW must stay below half the
-// clock period.
+// The RTL changes a boundary pin in delta cycles at a rising edge and a UVM
+// driver at DRIVE_SKEW after it, so a value read at the falling edge is the
+// value the next rising edge samples (the #1step value of a clocking block
+// input). The SystemC BFMs drive at the edge or, for a ready, one
+// time-resolution step after it, except under --delay: a delayed model write
+// can return, or a model can offer a value, between edges, and the BFM's pins
+// change then. DRIVE_SKEW must stay below half the clock period.
 interface a2c_clk_if (input logic clk, input logic rst_n);
 
     localparam realtime DRIVE_SKEW = 100ps;

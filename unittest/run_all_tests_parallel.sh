@@ -151,10 +151,15 @@ for s in "${RUN_ALONE[@]}"; do run_one "$s" "$LOGDIR"; done
 ELAPSED=$((SECONDS - START))
 
 # ---- retry-once for a failed suite (known spurious Verilator flake) ----
+# The retry overwrites the suite's log and LOGDIR goes on exit, so the first
+# failure's log is copied to a directory that outlives the run.
+KEEPDIR=""
 for s in "${ALL[@]}"; do
     rc="$(cat "$LOGDIR/$s.rc" 2>/dev/null || echo 127)"
     if [[ "$rc" != "0" ]]; then
-        echo "Suite ${s} failed (rc=${rc}); retrying once from clean..."
+        [[ -n "$KEEPDIR" ]] || KEEPDIR="$(mktemp -d "${TMPDIR:-/tmp}/a2c_partests_fail1.XXXXXX")"
+        cp "$LOGDIR/$s.log" "$KEEPDIR/$s.fail1.log"
+        echo "Suite ${s} failed (rc=${rc}); first log kept as $KEEPDIR/$s.fail1.log; retrying once from clean..."
         python3 "$s" > "$LOGDIR/$s.log" 2>&1
         echo "$?" > "$LOGDIR/$s.rc.retry"
     fi

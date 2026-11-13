@@ -4200,6 +4200,77 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_error_demoter
 
+    typedef class a2c_expected_error;
+
+    class a2c_expected_error_catcher extends uvm_report_catcher;
+        a2c_expected_error owner;
+
+        `uvm_object_utils(a2c_expected_error_catcher)
+
+        function new(string name = "a2c_expected_error_catcher");
+            super.new(name);
+        endfunction
+
+        virtual function action_e catch();
+            if (get_severity() == UVM_ERROR && get_id() == owner.id
+                    && (owner.text == "" || a2c_contains(get_message(), owner.text))) begin
+                owner.seen++;
+                if (owner.seen <= owner.count) begin
+                    set_severity(UVM_INFO);
+                    // The action was chosen for UVM_ERROR and still holds
+                    // UVM_COUNT; without this the quit count would still rise.
+                    // A report that went to the log file still does.
+                    set_action(UVM_DISPLAY | (get_action() & UVM_LOG));
+                    set_message({"expected, demoted to info: ", get_message()});
+                end
+            end
+            return THROW;
+        endfunction
+    endclass : a2c_expected_error_catcher
+
+    // Expects exactly count UVM_ERRORs with ID id whose message contains text,
+    // or any message when text is empty, and demotes the first count of them
+    // to UVM_INFO. A later one stays a UVM_ERROR, and at check_phase any
+    // number other than count is an A2C_EXPECTED_ERROR UVM_ERROR, so a missing
+    // error fails the test as an extra one does. Set the fields before the run
+    // phase.
+    //
+    // The catcher counts only reports still at UVM_ERROR when it sees them,
+    // so with two a2c_expected_errors whose matches overlap, the one whose
+    // catcher runs first takes the shared reports and the other never counts
+    // them. Catchers run in the order build_phase registers them, which for
+    // siblings is the order of their names. Register the narrower one first.
+    class a2c_expected_error extends uvm_component;
+        string       id;
+        string       text;
+        int unsigned count = 1;
+        int unsigned seen;
+        a2c_expected_error_catcher catcher;
+
+        `uvm_component_utils(a2c_expected_error)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            catcher = a2c_expected_error_catcher::type_id::create({get_name(), "_catcher"});
+            catcher.owner = this;
+            uvm_report_cb::add(null, catcher);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            string what = text == "" ? "" : {" containing \"", text, "\""};
+            super.check_phase(phase);
+            if (seen != count) begin
+                `uvm_error("A2C_EXPECTED_ERROR", $sformatf("expected %0d %s UVM_ERROR(s)%s, saw %0d", count, id, what, seen))
+            end else begin
+                `uvm_info("A2C_EXPECTED_ERROR", $sformatf("saw the %0d expected %s UVM_ERROR(s)%s", count, id, what), UVM_LOW)
+            end
+        endfunction
+    endclass : a2c_expected_error
+
     // The AXI burst and response encodings and the helpers below, shared by
     // the axi_read and axi_write agents.
     typedef enum bit [1:0] {AXI_FIXED = 2'b00, AXI_INCR = 2'b01, AXI_WRAP = 2'b10} axi_burst_e;

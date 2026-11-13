@@ -377,7 +377,7 @@ def check_testbenches(work, design):
                       for *_, payload in UVM_PORTS[block]}
         portPins = port_pins(design, block, values)
 
-        problems += match(f'{tb}.sv', 'imports', [line for line in lines if line.startswith('import ')],
+        problems += match(f'{tb}.sv', 'imports', [line for line in lines if line.startswith('import ') and 'DPI-C' not in line],
                           ['import uvm_pkg::*;', f'import {block}_uvm_test_pkg::*;'])
 
         decls = []
@@ -479,6 +479,15 @@ def check_testbenches(work, design):
         expected = [f'module {tb}', f'endmodule : {tb}', f'{hdl} dut (', 'run_test();',
                     'uvm_root::get().finish_on_completion = 0;']
         problems += [f"{tb}.sv lacks the line {line!r}" for line in expected if line not in lines]
+        # Only a block with a model has SystemC BFMs whose breaks reach UVM.
+        breaks = ['import "DPI-C" function string a2c_bfm_contract_break();',
+                  'uvm_report_error("A2C_BFM_CONTRACT", bfm_break, UVM_NONE);',
+                  "bfm_breaks_open = 1'b0;"]
+        problems += [f"{tb}.sv has the line {line!r}: {line in lines}, but the block has a model: {HAS_MDL[block]}"
+                     for line in breaks if (line in lines) != HAS_MDL[block]]
+        if HAS_MDL[block] and all(line in lines for line in breaks[1:]) \
+                and not lines.index('run_test();') < lines.index(breaks[2]) < lines.index('srv = uvm_report_server::get_server();'):
+            problems.append(f"{tb}.sv does not stop taking BFM breaks between run_test() and the error count")
     return problems
 
 
@@ -559,6 +568,7 @@ def check_sc_files(work, design):
             lines = [line.strip() for line in f]
         expected = ['#if defined(XCELIUM) || defined(VCS)', f'#include "{block}_uvm_sc_wrapper.h"',
                     '#include "watchDog.h"', 'watchDog::stallCheckDisabledByUvm = true;',
+                    'bfmContractCheck::toUvm = true;', 'bfmContractCheck::failUntaken();',
                     f'{block}_uvm_run::rtlDut = m_uvmDut == "rtl" || m_uvmDut == "both";',
                     f'{block}_uvm_run::modelDut = m_uvmDut == "model" || m_uvmDut == "both";',
                     'if (m_uvmDut != "model" && m_uvmDut != "rtl" && m_uvmDut != "both") {' if HAS_MDL[block]

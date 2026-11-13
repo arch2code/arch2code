@@ -164,7 +164,16 @@ public:
     }
     virtual void enable_user_ready_control(void) override
     {
+        Q_ASSERT(!m_hdl_writer, USER_READY_UNDER_BFM);
         m_user_ready_control = true;
+    }
+    // A src BFM drives rdy from whether the reader waits in read(). A reader
+    // that controls rdy itself could leave it high while away, so the BFM
+    // would take a beat the reader has no room for.
+    void setHdlWriter(void)
+    {
+        Q_ASSERT(!m_user_ready_control, USER_READY_UNDER_BFM);
+        m_hdl_writer = true;
     }
     virtual uint32_t get_context(void) override
     {
@@ -199,6 +208,26 @@ public:
 
     virtual bool isActive() override { return(m_valid); }
     virtual bool isNotActive() override { return(!m_valid); }
+    // The value a writer offers and no reader has taken yet. Its write still
+    // blocks, so a BFM can show the value on the HDL pins and take it with
+    // read() on the edge the HDL transfers it. A multicycle channel carries
+    // bursts, not single values, so it has none to offer.
+    bool offered( T& val_ ) const
+    {
+        Q_ASSERT(m_multicycle == nullptr, "offered() is for single-value channels, not bursts");
+        if (m_valid) {
+            val_ = m_value;
+        }
+        return m_valid;
+    }
+    bool isMultiCycle() const { return m_multicycle != nullptr; }
+    // When the reader last called read() and the writer last called write(),
+    // as time and kernel delta count, so a BFM can tell how a model came back
+    // to its port. A write is stamped before its timed delay.
+    const sc_time &readEnteredTime() const { return m_read_entered_time; }
+    sc_dt::uint64 readEnteredDelta() const { return m_read_entered_delta; }
+    const sc_time &writeEnteredTime() const { return m_write_entered_time; }
+    sc_dt::uint64 writeEnteredDelta() const { return m_write_entered_delta; }
     virtual void setExternalEvent( sc_event *event ) override
     {
         m_external_event_ptr = event;
@@ -269,6 +298,13 @@ protected:
     sc_event* m_external_event_ptr = nullptr;
     int64_t m_write_context = -1;
     int64_t m_read_context = -1;
+    sc_time m_read_entered_time;
+    sc_dt::uint64 m_read_entered_delta = 0;
+    sc_time m_write_entered_time;
+    sc_dt::uint64 m_write_entered_delta = 0;
+    bool m_hdl_writer = false;
+    static constexpr const char *USER_READY_UNDER_BFM =
+        "user ready control on a channel a src BFM writes: the BFM drives rdy from read() and would hold a beat";
     const int m_burst_size;
     const int m_pingpong_size;
     int cycleTransactionCount = 0;
@@ -323,6 +359,8 @@ inline void rdy_vld_channel<T>::register_port( sc_port_base& port_,
 template <class T>
 inline void rdy_vld_channel<T>::read( T& val_ )
 {
+    m_read_entered_time = sc_time_stamp();
+    m_read_entered_delta = sc_delta_count();
     bool logging = false;
     // if the user is not controlling the ready
     if (!m_user_ready_control) {
@@ -385,6 +423,8 @@ template <class T>
 inline void rdy_vld_channel<T>::writeCore( const T& val_ )
 {
      // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
+    m_write_entered_time = sc_time_stamp();
+    m_write_entered_delta = sc_delta_count();
     m_multi_writer = true;
     interfaceBase::delay(m_value_written == true);
     m_value_written = true;
