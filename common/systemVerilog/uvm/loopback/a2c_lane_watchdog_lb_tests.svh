@@ -319,8 +319,8 @@
                     `uvm_error("LB_MODE_B", $sformatf("the %s lane made %0d transfers, expected %0d", lane(l), served[l], want_served(e)))
                 end
                 if (wd.dead[l] != want_dead(e)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lane is %s, expected it %s", lane(l), wd.dead[l] ? "dead" : "live",
-                                                      want_dead(e) ? "dead" : "live"))
+                    `uvm_error("LB_MODE_B", $sformatf("the %s lane is %s, expected it %s", lane(l), a2c_select_str(wd.dead[l], "dead", "live"),
+                                                      a2c_select_str(want_dead(e), "dead", "live")))
                 end
                 if (wd.dead[l] && want_dead(e) && wd.died_at[l] != want_died(e)) begin
                     `uvm_error("LB_MODE_B", $sformatf("the %s lane died at %0t, expected %0t", lane(l), wd.died_at[l], want_died(e)))
@@ -1647,7 +1647,7 @@
                     string by = want_died_by(wd[p].port_name, e);
                     if (wd[p].dead[l] != (by != "") || wd[p].died_by[l] != by) begin
                         `uvm_error("LB_MODE_B", $sformatf("the %s lane of %s is %s by '%s', expected %s by '%s'", a2c_lane_name(e), wd[p].port_name,
-                                                          wd[p].dead[l] ? "dead" : "live", wd[p].died_by[l], (by != "") ? "dead" : "live", by))
+                                                          a2c_select_str(wd[p].dead[l], "dead", "live"), wd[p].died_by[l], a2c_select_str(by != "", "dead", "live"), by))
                     end
                     if (by == "A2C_JOINT_STALL" && wd[p].died_at[l] != stall_at) begin
                         `uvm_error("LB_MODE_B", $sformatf("the %s lane of %s died at %0t, expected %0d clocks after the last handshake at %0t",

@@ -1424,7 +1424,7 @@
                 if (cmps[i].is_dead(A2C_DUT_LANE) || cmps[i].died_at(A2C_DUT_LANE) != 0 || cmps[i].is_dead(A2C_MODEL_LANE) != after
                         || cmps[i].died_at(A2C_MODEL_LANE) != (after ? died : 0)) begin
                     `uvm_error("LB_MODE_B", $sformatf("%s %s the death: is_dead %0d and %0d, died_at %0t and %0t, the death at %0t",
-                                                      cmps[i].get_full_name(), after ? "after" : "before", cmps[i].is_dead(A2C_DUT_LANE),
+                                                      cmps[i].get_full_name(), a2c_select_str(after, "after", "before"), cmps[i].is_dead(A2C_DUT_LANE),
                                                       cmps[i].is_dead(A2C_MODEL_LANE), cmps[i].died_at(A2C_DUT_LANE),
                                                       cmps[i].died_at(A2C_MODEL_LANE), died))
                 end

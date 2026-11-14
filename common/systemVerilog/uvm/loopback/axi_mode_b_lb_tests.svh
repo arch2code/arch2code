@@ -146,7 +146,7 @@
             if (pins !== payload) begin
                 fail("its payload changed");
             end else if (!held || gone) begin
-                if (valid !== 1'b0) fail(gone ? "its valid rose again after its transfer" : "its valid rose");
+                if (valid !== 1'b0) fail(a2c_select_str(gone, "its valid rose again after its transfer", "its valid rose"));
             end else if (valid !== 1'b1) begin
                 fail("its valid dropped before its transfer");
             end else if (ready === 1'b1) begin
@@ -582,7 +582,7 @@
             bit          busy = variant inside {AXB_BUSY, AXB_SKIP_CUT};
             int unsigned tail = busy ? 10 * n_items : 0;
             if (variant inside {AXB_DUT_EXTRA, AXB_MODEL_EXTRA, AXB_SERIAL, AXB_DUT_MID, AXB_SKIP_CUT, AXB_DEAD_DRAIN}) demote_id = "A2C_REPLAY";
-            if (skews()) demote_id = (variant == AXB_JOINT) ? "A2C_JOINT_STALL" : "A2C_SKEW";
+            if (skews()) demote_id = a2c_select_str(variant == AXB_JOINT, "A2C_JOINT_STALL", "A2C_SKEW");
             mismatch_at = $urandom_range(n_items - 1, 0);
             super.build_phase(phase);
             if (clk_name != "clk" && !uvm_config_db#(virtual a2c_clk_if)::get(this, "", clk_name, clk_vif)) begin
@@ -765,7 +765,7 @@
                     a2c_lane_e first = dut_first ? A2C_DUT_LANE : A2C_MODEL_LANE;
                     both_at     = n_items / 2;
                     want_errors = 2;
-                    want_text.push_back({"the ", a2c_lane_name(first), " lane has not ", dut_first ? "returned " : "taken the A"});
+                    want_text.push_back({"the ", a2c_lane_name(first), " lane has not ", a2c_select_str(dut_first, "returned ", "taken the A")});
                     want_text.push_back({"the ", a2c_lane_name(a2c_lane_e'(1 - first)), " lane, alone since the ", a2c_lane_name(first),
                                          " lane died, has taken no A"});
                     want_text.push_back("clocks, waiting for ");
@@ -791,7 +791,7 @@
                 AXB_ORDER_A, AXB_ORDER_W: begin
                     order_items();
                     want_errors = 1;
-                    want_text.push_back((variant == AXB_ORDER_A) ? "the model lane has not taken the A" : "the model lane has not taken W beat 0 of ");
+                    want_text.push_back(a2c_select_str(variant == AXB_ORDER_A, "the model lane has not taken the A", "the model lane has not taken W beat 0 of "));
                     want_text.push_back({"of ", item_text(items[3])});
                     want_text.push_back("declares the model lane dead. The DUT lane serves every burst from now on.");
                 end
@@ -1069,7 +1069,7 @@
                 a2c_lane_e lane = a2c_lane_e'(l);
                 bit        want = both_die() || lane != live;
                 if (is_dead(lane) != want) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the master %s the %s lane dead", want ? "did not declare" : "declared", a2c_lane_name(lane)))
+                    `uvm_error("LB_MODE_B", $sformatf("the master %s the %s lane dead", a2c_select_str(want, "did not declare", "declared"), a2c_lane_name(lane)))
                 end
                 if (!is_dead(lane)) continue;
                 late = 0;
@@ -1291,7 +1291,7 @@
                     // The cut came before a death in the catch-up, so its
                     // report names only an earlier one.
                     if (dead_early ? cuts.count(death_text()) != 1 : cuts.count(related_text()) != 0) begin
-                        `uvm_error("LB_MODE_B", $sformatf("expected an A2C_CUT report %s the death: %p", dead_early ? "naming" : "not naming",
+                        `uvm_error("LB_MODE_B", $sformatf("expected an A2C_CUT report %s the death: %p", a2c_select_str(dead_early, "naming", "not naming"),
                                                           cuts.messages))
                     end
                     // After the cut each lane completes the bursts the DUT

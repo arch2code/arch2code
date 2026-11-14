@@ -444,9 +444,9 @@ package a2c_video_pkg;
                                            pixel_bits));
             end
             if (broken.size() == 0) return 1;
-            foreach (broken[i]) text = {text, (i == 0) ? string'("") : "; ", broken[i]};
+            foreach (broken[i]) text = {text, a2c_select_str(i == 0, "", "; "), broken[i]};
             `uvm_fatal("A2C_CFG", $sformatf("a2c_video_cfg%s: %0d broken rule%s: %s", (corner == "") ? "" : {" for corner ", corner},
-                                            broken.size(), (broken.size() == 1) ? string'("") : "s", text))
+                                            broken.size(), a2c_select_str(broken.size() == 1, "", "s"), text))
             return 0;
         endfunction
 
@@ -659,9 +659,9 @@ package a2c_video_pkg;
 
         virtual function string describe();
             return $sformatf("%s: each frame's lines as sent%s, SOF, EOL and EOF %s, pixel values %s", get_type_name(),
-                             crop_width ? string'(", cut to the configured width") : "",
-                             (markers == A2C_VIDEO_MARKERS_AS_RECEIVED) ? string'("as received") : "re-derived",
-                             (pixel_check == A2C_VIDEO_PIX_EXACT) ? string'("checked") : "not checked");
+                             a2c_select_str(crop_width, ", cut to the configured width", ""),
+                             a2c_select_str(markers == A2C_VIDEO_MARKERS_AS_RECEIVED, "as received", "re-derived"),
+                             a2c_select_str(pixel_check == A2C_VIDEO_PIX_EXACT, "checked", "not checked"));
         endfunction
     endclass : a2c_video_contract
 
@@ -1707,7 +1707,7 @@ package a2c_video_pkg;
         endfunction
 
         virtual function void build(a2c_video_env env);
-            checkers.push_back(new_checker(env, "_checker", env.dual ? " DUT lane" : ""));
+            checkers.push_back(new_checker(env, "_checker", a2c_select_str(env.dual, " DUT lane", "")));
             if (env.dual) checkers.push_back(new_checker(env, "_model_checker", " model lane"));
         endfunction
 
@@ -1887,9 +1887,9 @@ package a2c_video_pkg;
                         || outs[i].contract.pixel_check != A2C_VIDEO_PIX_EXACT)) begin
                     `uvm_fatal("A2C_CFG", $sformatf("output %s: %s leaves a frame of this run unspecified, which the checker skips only on a handshaked output with A2C_VIDEO_PIX_EXACT and one DUT lane; this output is %s, its pixel check %s, and %s",
                                                     outs[i].port_name, outs[i].contract.get_type_name(),
-                                                    outs[i].adapter_base.clocked ? string'("clocked") : string'("handshaked"),
+                                                    a2c_select_str(outs[i].adapter_base.clocked, "clocked", "handshaked"),
                                                     outs[i].contract.pixel_check.name(),
-                                                    dual ? string'("both lanes run (Mode B)") : string'("one DUT lane runs")))
+                                                    a2c_select_str(dual, "both lanes run (Mode B)", "one DUT lane runs")))
                     return;
                 end
                 begin

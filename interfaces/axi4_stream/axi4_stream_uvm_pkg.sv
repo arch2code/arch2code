@@ -295,7 +295,7 @@ package axi4_stream_uvm_pkg;
                 end
                 // A stalled source must hold tvalid and the payload until the beat transfers.
                 if (held != null && (item == null || !item.compare(held))) begin
-                    string what = (item == null) ? "tvalid dropped" : "payload changed";
+                    string what = a2c_select_str(item == null, "tvalid dropped", "payload changed");
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before the stalled beat %s transferred", cfg.port_name,
                                                      what, held.convert2string()))
                 end

@@ -335,7 +335,7 @@ package push_ack_uvm_pkg;
                 n_transfers += (push === 1'b1 && ack === 1'b1);
                 // A source waiting for ack must hold push and data until the transfer.
                 if (waiting && (push !== 1'b1 || data !== held)) begin
-                    string what = (push !== 1'b1) ? "push dropped" : "data changed";
+                    string what = a2c_select_str(push !== 1'b1, "push dropped", "data changed");
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before ack of %h", cfg.port_name, what, held))
                 end
                 if (ack === 1'b1 && push !== 1'b1) begin

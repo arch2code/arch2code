@@ -46,7 +46,7 @@
             phase.raise_objection(this);
             for (int i = 0; i < n_kept + n_other; i++) begin
                 clk_vif.sample_edge();
-                `uvm_error("LB_EXPECT", $sformatf("%s error %0d", i < n_kept ? "kept" : "other", i))
+                `uvm_error("LB_EXPECT", $sformatf("%s error %0d", a2c_select_str(i < n_kept, "kept", "other"), i))
             end
             clk_vif.sample_edge();
             phase.drop_objection(this);

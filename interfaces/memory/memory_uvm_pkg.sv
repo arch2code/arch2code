@@ -83,7 +83,7 @@ package memory_uvm_pkg;
         endfunction
 
         virtual function string convert2string();
-            return $sformatf("%s addr=%p data=%p", write ? "write" : "read", addr, data);
+            return $sformatf("%s addr=%p data=%p", a2c_select_str(write, "write", "read"), addr, data);
         endfunction
     endclass : memory_item
 

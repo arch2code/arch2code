@@ -84,7 +84,7 @@
             if ((d.digest(A2C_DUT_LANE) == ref_d.digest(A2C_DUT_LANE)) != equal) begin
                 `uvm_error("LB_DIGEST", $sformatf("%s: digest %016h, reference %016h, expected them %s", what,
                                                   d.digest(A2C_DUT_LANE), ref_d.digest(A2C_DUT_LANE),
-                                                  equal ? "equal" : "different"))
+                                                  a2c_select_str(equal, "equal", "different")))
             end
         endfunction
 

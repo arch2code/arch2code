@@ -1138,7 +1138,7 @@ package axi_write_uvm_pkg;
             end
             if (b_queue[A2C_MODEL_LANE].size() > 3) listed = ", the first 3";
             for (int i = 0; i < b_queue[A2C_MODEL_LANE].size() && i < 3; i++) begin
-                behind = {behind, (i == 0) ? "" : "; ", $sformatf("%s, AW %0d of ID %0h", b_queue[A2C_MODEL_LANE][i].aw.convert2string(),
+                behind = {behind, a2c_select_str(i == 0, "", "; "), $sformatf("%s, AW %0d of ID %0h", b_queue[A2C_MODEL_LANE][i].aw.convert2string(),
                                                                   b_queue[A2C_MODEL_LANE][i].idx + 1, b_queue[A2C_MODEL_LANE][i].aw.id)};
             end
             return $sformatf("%s: the model lane holds the DUT lane's pick %s, AW %0d of ID %0h, whose burst it has not ended, with %0d ended bursts of its own behind it%s: %s. The model lane answers the DUT lane's picks in the DUT lane's order. Either the model never ends that burst, or it issues it only after a B that the pick holds back. In the second case the model keeps fewer bursts outstanding than the RTL, so its queuing does not match the RTL's. Fix the model: issue each burst's AW and W beats ahead of its B, from a thread other than the one that takes the Bs, with a synchLock where those threads contend. Setting reorder to 0 on this port is only a stopgap, which hides the defect and ends the port's reorder coverage",
@@ -1266,15 +1266,15 @@ package axi_write_uvm_pkg;
                 cfg.clk_vif.sample_edge();
                 if (b_stalled && b_pins() !== held_b) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before bready took the stalled response", cfg.port_name,
-                                                     vif.bvalid !== 1'b1 ? "bvalid dropped" : "the B payload changed"))
+                                                     a2c_select_str(vif.bvalid !== 1'b1, "bvalid dropped", "the B payload changed")))
                 end
                 if (w_stalled && w_pins() !== held_w) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before wready took the stalled beat", cfg.port_name,
-                                                     vif.wvalid !== 1'b1 ? "wvalid dropped" : "the W payload changed"))
+                                                     a2c_select_str(vif.wvalid !== 1'b1, "wvalid dropped", "the W payload changed")))
                 end
                 if (aw_stalled && aw_pins() !== held_aw) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before awready took the stalled AW", cfg.port_name,
-                                                     vif.awvalid !== 1'b1 ? "awvalid dropped" : "the AW payload changed"))
+                                                     a2c_select_str(vif.awvalid !== 1'b1, "awvalid dropped", "the AW payload changed")))
                 end
                 b_stalled  = vif.bvalid === 1'b1 && vif.bready !== 1'b1;
                 w_stalled  = vif.wvalid === 1'b1 && vif.wready !== 1'b1;

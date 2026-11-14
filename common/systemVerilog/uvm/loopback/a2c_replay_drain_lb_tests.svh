@@ -595,7 +595,7 @@
                     end
                     if (a2c_contains(cuts.messages[i], "; the model lane of uvm_test_top was declared dead at ") != related[k]
                         || a2c_contains(cuts.messages[i], " (A2C_SKEW), which may be related") != related[k]) begin
-                        `uvm_error("LB_DRAIN", $sformatf("the A2C_CUT %s the death: %s", related[k] ? "does not name" : "names", cuts.messages[i]))
+                        `uvm_error("LB_DRAIN", $sformatf("the A2C_CUT %s the death: %s", a2c_select_str(related[k], "does not name", "names"), cuts.messages[i]))
                     end
                 end
                 if (n != 1) `uvm_error("LB_DRAIN", $sformatf("%0d A2C_CUT reports begin '%s', expected one: %p", n, want[k], cuts.messages))

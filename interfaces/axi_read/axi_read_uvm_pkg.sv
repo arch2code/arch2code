@@ -960,7 +960,7 @@ package axi_read_uvm_pkg;
             end
             if (queue[A2C_MODEL_LANE].size() > 3) listed = ", the first 3";
             for (int i = 0; i < queue[A2C_MODEL_LANE].size() && i < 3; i++) begin
-                behind = {behind, (i == 0) ? "" : "; ", $sformatf("%s, AR %0d of ID %0h", queue[A2C_MODEL_LANE][i].ar.convert2string(),
+                behind = {behind, a2c_select_str(i == 0, "", "; "), $sformatf("%s, AR %0d of ID %0h", queue[A2C_MODEL_LANE][i].ar.convert2string(),
                                                                   queue[A2C_MODEL_LANE][i].idx + 1, queue[A2C_MODEL_LANE][i].ar.id)};
             end
             return $sformatf("%s: the model lane holds the DUT lane's pick %s, AR %0d of ID %0h, whose AR it has not issued, with %0d ARs of its own behind it%s: %s. The model lane serves the DUT lane's picks in the DUT lane's order. Either the model never issues that AR, or it issues it only after a response that the pick holds back. In the second case the model keeps fewer ARs outstanding than the RTL, so its queuing does not match the RTL's. Fix the model: issue each AR ahead of its response, from a thread other than the one that takes the responses, with a synchLock where those threads contend. Setting reorder to 0 on this port is only a stopgap, which hides the defect and ends the port's reorder coverage",
@@ -1063,11 +1063,11 @@ package axi_read_uvm_pkg;
                 cfg.clk_vif.sample_edge();
                 if (r_stalled && r_pins() !== held_r) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before rready took the stalled beat", cfg.port_name,
-                                                     vif.rvalid !== 1'b1 ? "rvalid dropped" : "the R payload changed"))
+                                                     a2c_select_str(vif.rvalid !== 1'b1, "rvalid dropped", "the R payload changed")))
                 end
                 if (ar_stalled && ar_pins() !== held_ar) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before arready took the stalled AR", cfg.port_name,
-                                                     vif.arvalid !== 1'b1 ? "arvalid dropped" : "the AR payload changed"))
+                                                     a2c_select_str(vif.arvalid !== 1'b1, "arvalid dropped", "the AR payload changed")))
                 end
                 r_stalled  = vif.rvalid === 1'b1 && vif.rready !== 1'b1;
                 ar_stalled = vif.arvalid === 1'b1 && vif.arready !== 1'b1;

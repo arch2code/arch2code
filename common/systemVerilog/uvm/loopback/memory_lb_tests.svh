@@ -1850,7 +1850,7 @@
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             `uvm_info("LB_STATS", $sformatf("the DUT lane took %0d items and the model lane %0d; the DUT lane's read %0s",
-                                            taken[A2C_DUT_LANE], taken[A2C_MODEL_LANE], seq.checked ? "returned" : "never went out"),
+                                            taken[A2C_DUT_LANE], taken[A2C_MODEL_LANE], a2c_select_str(seq.checked != 0, "returned", "never went out")),
                       UVM_NONE)
         endfunction
     endclass : memory_mode_b_d1_stall_test

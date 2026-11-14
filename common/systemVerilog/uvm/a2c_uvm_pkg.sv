@@ -13,12 +13,20 @@ package a2c_uvm_pkg;
     // port's modport: a DUT dst input gets an A2C_SRC agent.
     typedef enum {A2C_SRC, A2C_DST} a2c_role_e;
 
+    // cond ? when_true : when_false, typed string. VCS types a ?: of string
+    // literals as a packed vector, which %s prints right-justified with
+    // leading spaces.
+    function automatic string a2c_select_str(bit cond, string when_true, string when_false);
+        if (cond) return when_true;
+        return when_false;
+    endfunction
+
     // The A2C_TXN line every monitor logs per transaction: the time in ns,
     // the port, the role, the item's fields, and the packed value in hex so a
     // SystemC test can rebuild the payload with sc_unpack().
     function automatic string a2c_txn(string path, a2c_role_e role, string fields, string hex);
         return $sformatf("A2C_TXN %0.3f %s %s %s hex=%s", $realtime, path,
-                         (role == A2C_SRC) ? "src" : "dst", fields, hex);
+                         a2c_select_str(role == A2C_SRC, "src", "dst"), fields, hex);
     endfunction
 
     // The two pin sets of a Mode B port: the DUT under test, which is the
@@ -76,8 +84,8 @@ package a2c_uvm_pkg;
         uvm_resource_types::rsrc_q_t q;
         uvm_resource_types::rsrc_q_t accepted;
         uvm_resource_base            r;
-        string                       types = as_flag ? "bit, int unsigned, int or uvm_config_int" : "int unsigned, int or uvm_config_int";
-        string                       fix = as_flag ? "Set it as bit" : "Set it as int unsigned";
+        string                       types = a2c_select_str(as_flag, "bit, int unsigned, int or uvm_config_int", "int unsigned, int or uvm_config_int");
+        string                       fix = a2c_select_str(as_flag, "Set it as bit", "Set it as int unsigned");
         int unsigned                 unused;
         process                      p = process::self();
         string                       state;
@@ -739,7 +747,7 @@ package a2c_uvm_pkg;
             what = "";
             foreach (dead[lane]) begin
                 if (!dead[lane]) continue;
-                what = {what, (what == "") ? "" : " and ", $sformatf("the %s lane dead at %0t", a2c_lane_name(a2c_lane_e'(lane)), dead_at[lane])};
+                what = {what, a2c_select_str(what == "", "", " and "), $sformatf("the %s lane dead at %0t", a2c_lane_name(a2c_lane_e'(lane)), dead_at[lane])};
             end
             `uvm_info("A2C_MODEL_CMP", $sformatf("%s: the comparison stopped after %0d pairs: the master declared %s. %0d DUT and %0d model items were not compared",
                                              get_full_name(), pairs, what, uncompared(A2C_DUT_LANE), uncompared(A2C_MODEL_LANE)), UVM_MEDIUM)
@@ -1114,7 +1122,7 @@ package a2c_uvm_pkg;
         endfunction
 
         protected function string addressing(uvm_reg_map map);
-            return $sformatf("%0d-byte bus words, %s-addressed", map.get_n_bytes(UVM_NO_HIER), map.get_addr_unit_bytes() == 1 ? "byte" : "word");
+            return $sformatf("%0d-byte bus words, %s-addressed", map.get_n_bytes(UVM_NO_HIER), a2c_select_str(map.get_addr_unit_bytes() == 1, "byte", "word"));
         endfunction
 
         virtual function void add_parent_map(uvm_reg_map parent_map, uvm_reg_addr_t offset);
@@ -1846,7 +1854,7 @@ package a2c_uvm_pkg;
                 busy = {busy, counts};
                 n_busy++;
             end
-            if (busy != "") busy = {busy, (n_busy == 2) ? " are" : " is", " inside a transaction"};
+            if (busy != "") busy = {busy, a2c_select_str(n_busy == 2, " are", " is"), " inside a transaction"};
             if (busy != "" && holding != "") busy = {busy, ", and "};
             busy = {busy, holding};
             if (busy != "") begin
@@ -2112,7 +2120,7 @@ package a2c_uvm_pkg;
             string s = "";
             foreach (dead_time[i]) begin
                 if (dead_since[i] >= at || dead_time[i] == $realtime || dead_who[i] == except) continue;
-                s = {s, (s == "") ? "; " : " and ",
+                s = {s, a2c_select_str(s == "", "; ", " and "),
                      $sformatf("the %s lane of %s %swas declared dead at %0t (%s)", a2c_lane_name(dead_lane[i]), dead_who[i],
                                (dead_since[i] < dead_time[i]) ? $sformatf("began to trail at %0t and ", dead_since[i]) : "", dead_time[i],
                                dead_id[i])};
@@ -2132,7 +2140,7 @@ package a2c_uvm_pkg;
             bit    credit = 0;
             foreach (logs[i]) begin
                 if (!logs[i].model_waiting()) continue;
-                s = {s, (s == "") ? "" : "; ", logs[i].waiting_text()};
+                s = {s, a2c_select_str(s == "", "", "; "), logs[i].waiting_text()};
                 if (!logs[i].credit_held) continue;
                 s = {s, ", a memory access held for its credit"};
                 credit = 1;
@@ -2777,8 +2785,8 @@ package a2c_uvm_pkg;
 
         static function void stall(a2c_lane_watchdog by);
             string ports = "";
-            string after = (timeout != null) ? "With one DUT no lane dies, and the run ends here."
-                                             : "With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.";
+            string after = a2c_select_str(timeout != null, "With one DUT no lane dies, and the run ends here.",
+                                          "With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.");
             bit    mode_b;
             raised = 1;
             foreach (dogs[i]) begin
@@ -2790,7 +2798,7 @@ package a2c_uvm_pkg;
             end
             foreach (dogs[i]) begin
                 if (!dogs[i].joint_waiting()) continue;
-                ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
+                ports = {ports, a2c_select_str(ports == "", "", "; "), dogs[i].wait_text()};
             end
             `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s%s",
                                                             by.port_name, by.joint_stall_cycles, ports,
@@ -2808,7 +2816,7 @@ package a2c_uvm_pkg;
             string ports = "";
             foreach (dogs[i]) begin
                 if (!dogs[i].waiting_now()) continue;
-                ports = {ports, (ports == "") ? "" : "; ", dogs[i].wait_text()};
+                ports = {ports, a2c_select_str(ports == "", "", "; "), dogs[i].wait_text()};
             end
             return (ports == "") ? "none" : ports;
         endfunction
@@ -3157,12 +3165,12 @@ package a2c_uvm_pkg;
             end
             if (lag_cycles != 0 && (in_fc == null || !has_in_rule() || !has_out_rule())) begin
                 `uvm_error("A2C_CFG", $sformatf("%s: rt_lag_cycles %0d needs an input from connect_in() and both in_rule and out_rule; missing: %s%s%s",
-                                                get_full_name(), lag_cycles, (in_fc == null) ? "the input " : "",
-                                                has_in_rule() ? "" : "in_rule ", has_out_rule() ? "" : "out_rule"))
+                                                get_full_name(), lag_cycles, a2c_select_str(in_fc == null, "the input ", ""),
+                                                a2c_select_str(has_in_rule(), "", "in_rule "), a2c_select_str(has_out_rule(), "", "out_rule")))
             end
             if (refusal_cycles != 0 && (in_fc == null || !has_in_rule())) begin
                 `uvm_error("A2C_CFG", $sformatf("%s: rt_refusal_cycles %0d needs an input from connect_in() and an in_rule; missing: %s%s",
-                                                get_full_name(), refusal_cycles, (in_fc == null) ? "the input " : "", has_in_rule() ? "" : "in_rule"))
+                                                get_full_name(), refusal_cycles, a2c_select_str(in_fc == null, "the input ", ""), a2c_select_str(has_in_rule(), "", "in_rule")))
             end
             if (gap_cycles != 0 && !has_out_rule() && counter == null) begin
                 `uvm_error("A2C_CFG", $sformatf("%s: rt_gap_cycles %0d needs an out_rule, or the output's a2c_txn_counter passed to connect_out()",
@@ -3899,7 +3907,7 @@ package a2c_uvm_pkg;
                 rule = dogs[i].counting(left);
                 if (rule == "") continue;
                 if (dogs[i].clock_stopped()) begin
-                    left_out = {left_out, (left_out == "") ? "" : "; ", "the ", rule, " of ", dogs[i].who()};
+                    left_out = {left_out, a2c_select_str(left_out == "", "", "; "), "the ", rule, " of ", dogs[i].who()};
                     continue;
                 end
                 note(names, most, {"the ", rule, " of ", dogs[i].who()},
@@ -3914,7 +3922,7 @@ package a2c_uvm_pkg;
                 rts[i].counting(rules, lefts);
                 foreach (rules[k]) begin
                     if (rts[i].clock_stopped()) begin
-                        left_out = {left_out, (left_out == "") ? "" : "; ", "the ", rules[k], " of ", rts[i].who()};
+                        left_out = {left_out, a2c_select_str(left_out == "", "", "; "), "the ", rules[k], " of ", rts[i].who()};
                         continue;
                     end
                     note(names, most, {"the ", rules[k], " of ", rts[i].who()},
@@ -3931,7 +3939,7 @@ package a2c_uvm_pkg;
         endfunction
 
         protected function void note(ref string names, ref longint unsigned most, input string rule, input longint unsigned left);
-            names = {names, (names == "") ? "" : "; ", $sformatf("%s, %0d clocks left", rule, left)};
+            names = {names, a2c_select_str(names == "", "", "; "), $sformatf("%s, %0d clocks left", rule, left)};
             if (left > most) most = left;
         endfunction
 
@@ -3993,7 +4001,7 @@ package a2c_uvm_pkg;
             objection.get_objectors(objs);
             foreach (objs[i]) if (objection.get_objection_count(objs[i]) != 0) names.push_back(objs[i].get_full_name());
             names.sort();
-            foreach (names[i]) s = {s, (i == 0) ? "" : ", ", names[i]};
+            foreach (names[i]) s = {s, a2c_select_str(i == 0, "", ", "), names[i]};
             return s;
         endfunction
 
@@ -4057,7 +4065,7 @@ package a2c_uvm_pkg;
             foreach (held[i]) begin
                 string by = objectors(held[i]);
                 if (by == "") continue;
-                raised = {raised, (raised == "") ? "" : "; ", label(held[i]), ": ", by};
+                raised = {raised, a2c_select_str(raised == "", "", "; "), label(held[i]), ": ", by};
             end
             `uvm_error_context("A2C_RUN_TIMEOUT", $sformatf("%s: the run phase has not ended after %0d clocks of %s, its run timeout: %s. %s%s. Ports waiting now: %s. Objections still raised by: %s. %s",
                                                             test.get_type_name(), elapsed, clock, rate, how(), stopped_rules(), a2c_joint_watch::waiting_now(),

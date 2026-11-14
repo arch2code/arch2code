@@ -969,7 +969,7 @@
             void'(demote("A2C_JOINT_STALL", joints));
             cmps     = demote("A2C_MODEL_CMP");
             infos    = lb_info_recorder::type_id::create("infos");
-            infos.id = joint_end ? "A2C_JOINT_STALL" : "A2C_RUN_TIMEOUT";
+            infos.id = a2c_select_str(joint_end, "A2C_JOINT_STALL", "A2C_RUN_TIMEOUT");
             uvm_report_cb::add(null, infos);
             uvm_config_db#(bit)::set(this, "env", "lb_mode_b", mode_b);
             super.build_phase(phase);
@@ -1040,9 +1040,9 @@
 
         virtual function void report_phase(uvm_phase phase);
             uvm_report_server srv = uvm_report_server::get_server();
-            string            end_by = joint_end ? "the joint stall rule" : "the run timeout";
-            string            end_id = joint_end ? "A2C_JOINT_STALL" : "A2C_RUN_TIMEOUT";
-            string            end_how = joint_end ? "fired" : "expired";
+            string            end_by = a2c_select_str(joint_end, "the joint stall rule", "the run timeout");
+            string            end_id = a2c_select_str(joint_end, "A2C_JOINT_STALL", "A2C_RUN_TIMEOUT");
+            string            end_how = a2c_select_str(joint_end, "fired", "expired");
             realtime          want_at = !joint_end ? released_at + want_cycles * 10ns : (joints.at.size() != 0) ? joints.at[0] : -1;
             int unsigned      w = stimulus_sent() + outputs_declared();
             string            rate = (w == 0) ? "no work declared" : $sformatf("%0.1f clocks per unit of the work declared, W %0d", real'(want_cycles) / w, w);
@@ -1923,7 +1923,7 @@
 
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
-            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", (stop_gap > 0) ? "clk9" : "clk3", clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3' or 'clk9'")
+            if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", a2c_select_str(stop_gap > 0, "clk9", "clk3"), clk3_vif)) `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk3' or 'clk9'")
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);

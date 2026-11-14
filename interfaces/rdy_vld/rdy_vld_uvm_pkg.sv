@@ -258,7 +258,7 @@ package rdy_vld_uvm_pkg;
                 n_transfers += (vld === 1'b1 && rdy === 1'b1);
                 // A stalled source must hold vld and data until the beat transfers.
                 if (stalled && (vld !== 1'b1 || data !== held)) begin
-                    string what = (vld !== 1'b1) ? "vld dropped" : "data changed";
+                    string what = a2c_select_str(vld !== 1'b1, "vld dropped", "data changed");
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before the stalled beat %h transferred", cfg.port_name,
                                                      what, held))
                 end
