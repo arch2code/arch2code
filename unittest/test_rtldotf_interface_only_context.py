@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""rtl.f names no include directory for a context that only defines interfaces.
+"""rtl.f names an include directory only for a context with RTL output.
 
-rtl.f gives each compile context a `+incdir+` for the directory its generated
-RTL lands in. A context whose only content is `interface_defs:` generates no
-RTL: no block, no package. Its derived directory is never created, so rtl.f
-named a directory that does not exist. A project's own interface reaches the
-HDL flows through the project's `EXTRA_HDL_FILES`, as the base interfaces do
-through `a2c.f`, not through rtl.f.
+A context's RTL directory holds its package and its blocks' RTL. A compile
+context with neither gets no `+incdir+` in rtl.f, because that directory is
+never created. A project's own interface reaches the HDL flows through the
+project's `EXTRA_HDL_FILES`, as the base interfaces do through `a2c.f`.
 
-The fixture adds a context holding one interface definition to a design whose
-types context emits a package. After `db`, `newmodule` and generating rtl.f,
-every `+incdir+` in rtl.f must name an existing directory, the package's
-directory must still be named, and the interface context must contribute no
-entry.
+The fixture's design context emits a package and owns the blocks. It includes
+a context holding one interface definition and an aggregator context holding
+only an `include:` line. After `db`, `newmodule` and generating rtl.f, the
+only `+incdir+` is the design's directory and the package is still listed.
 """
 
 import os
@@ -44,9 +41,14 @@ INTF = """interface_defs:
     multiDst : True
 """
 
+AGG = """include:
+    - ../intf/tstlvl_if.yaml
+"""
+
 DESIGN = """include:
     - shared.yaml
     - intf/tstlvl_if.yaml
+    - agg/agg.yaml
 
 blocks:
 {blocks}
@@ -80,12 +82,15 @@ def test_rtldotf_skips_interface_only_context():
     try:
         os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
         os.makedirs(os.path.join(fixture, 'yaml', 'intf'))
+        os.makedirs(os.path.join(fixture, 'yaml', 'agg'))
         with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
             f.write(PROJECT.replace('fwAccess', 'intfOnly'))
         with open(os.path.join(fixture, 'yaml', 'shared.yaml'), 'w') as f:
             f.write(APB_PREAMBLE)
         with open(os.path.join(fixture, 'yaml', 'intf', 'tstlvl_if.yaml'), 'w') as f:
             f.write(INTF)
+        with open(os.path.join(fixture, 'yaml', 'agg', 'agg.yaml'), 'w') as f:
+            f.write(AGG)
         with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
             f.write(DESIGN.format(blocks=BLOCKS))
 
@@ -107,13 +112,9 @@ def test_rtldotf_skips_interface_only_context():
         check(run.returncode == 0, f"rtl.f generates:\n{run.stdout}\n{run.stderr}")
         text = open(rtlf).read()
         incdirs = [line.split('+incdir+', 1)[1].strip() for line in text.splitlines() if line.startswith('+incdir+')]
-        missing = [d for d in incdirs if not os.path.isdir(os.path.normpath(os.path.join(os.path.dirname(rtlf), d)))]
-        check(incdirs != [], f"rtl.f names include directories ({incdirs})")
-        check(missing == [], f"every +incdir+ in rtl.f exists (missing: {missing})")
+        check(incdirs == ['.'], f"rtl.f names only the design's include directory ({incdirs})")
         check(any(line.endswith('_package.sv') for line in text.splitlines()),
-              "rtl.f still lists the types context's package")
-        check(not any('intf' in d for d in incdirs),
-              f"the interface-only context contributes no +incdir+ ({incdirs})")
+              "rtl.f still lists the design's package")
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
 

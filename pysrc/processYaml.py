@@ -593,6 +593,7 @@ class projectOpen:
         self.contextRtlDir = self._contextRtlDirs(self.compileContexts)
         printIfDebug("Data Loaded")
         self.loadData()
+        self.rtlOutputContexts = self._rtlOutputContexts()
         self.generateHierarchy()
         # Memoization for the per-block config bundle. Read repeatedly per
         # parent block during view assembly; identical for the lifetime of
@@ -1269,7 +1270,6 @@ class projectOpen:
         ret['compileContexts'] = self.compileContexts
         includes = self.config.getConfig('INCLUDEFILES')
         ret['includeFiles'] = includes
-        ret['interfaceOnlyContexts'] = self._interfaceOnlyContexts(includes)
         # Canonicalize each context name (as it may appear on a
         # GENERATED_CODE_PARAM line) to its yamlContext key before use.
         for i, context in enumerate(contexts):
@@ -1372,6 +1372,7 @@ class projectOpen:
         # context another project owns resolves under that project's rtl
         # segment.
         ret['contextRtlDir'] = self.contextRtlDir
+        ret['rtlOutputContexts'] = self.rtlOutputContexts
         # True when a type reachable from this context derives its width from a
         # log2, which makes the generated width expressions call clog2(). The
         # SystemC emitters use it to decide whether the artifact needs
@@ -1404,19 +1405,11 @@ class projectOpen:
         constants = self.data['constants']
         return [constants[key] for key in deps]
 
-    def _interfaceOnlyContexts(self, includes):
-        # Compile contexts whose only content is interface_defs: no block and
-        # no package. Nothing is generated into their RTL directory, so rtl.f
-        # gives them no +incdir+; the interface's own SystemVerilog reaches the
-        # HDL flows through the project's EXTRA_HDL_FILES, as a2c's base
-        # interfaces do through a2c.f.
-        packages = includes.get('package_sv', dict())
-        definers = {v['_context'] for v in self.data.get('interface_defs', dict()).values()
-                    if isinstance(v, dict) and '_context' in v}
-        owners = {v['_context'] for v in self.data.get('blocks', dict()).values()
-                  if isinstance(v, dict) and '_context' in v}
-        return {c for c in self.compileContexts
-                if c in definers and c not in owners and c not in packages}
+    def _rtlOutputContexts(self):
+        # Only a package or a block's RTL lands in a context's RTL directory.
+        packages = self.config.getConfig('INCLUDEFILES').get('package_sv', dict())
+        owners = {v['_context'] for v in self.data['blocks'].values()}
+        return {c for c in self.compileContexts if c in packages or c in owners}
 
     def _contextRtlDirs(self, contexts):
         # Directory of each context's generated RTL, relative to the root
