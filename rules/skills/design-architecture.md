@@ -144,6 +144,7 @@ A connection joins two sibling instances, both with the same `container`. To lin
 | `srcport`, `dstport` | Port name at each end. |
 | `interfaceName` | Channel name in the container. |
 | `clock` | A container clock that sets the domain of both ends. See [Clocks and resets](#7-clocks-and-resets). |
+| `tandem` | How a Tandem run compares the `src` end's status output. See [Tandem status compare](#tandem-status-compare). |
 
 ```yaml
 connections:
@@ -164,6 +165,7 @@ A connection map joins a port of `block` to a port of one of its child instances
 | `port` | The parent's port name. |
 | `instancePort` | The child instance's port name. |
 | `name` | Used for whichever of `port` and `instancePort` is not given. |
+| `tandem` | With `direction: src`, how a Tandem run compares the child's status output. See [Tandem status compare](#tandem-status-compare). |
 
 To reach a child port named `in_data` while keeping the parent's port named after the interface, set `instancePort: in_data`. `port: in_data` would rename the parent's port instead.
 
@@ -195,6 +197,7 @@ connectionMaps:
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. |
 | `offset` | Manual offset. Default `0`, auto-assigned. |
+| `tandem` | On an `ro` register, the default for every `registerConnections` row of it. See [Tandem status compare](#tandem-status-compare). |
 
 ### Memories (`memories:`)
 
@@ -237,6 +240,38 @@ A register connection wires a register the container owns to one of its child in
 ```yaml
 registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
+```
+
+A row of an `ro` register takes `tandem:` for the status output it gives the child. See [Tandem status compare](#tandem-status-compare).
+
+### Tandem status compare
+
+A Tandem run (see `run-tandem.md`) compares each status output of the leaf block it runs. By default `--tandemStatusFatal` decides whether a mismatch fails the run, and `--tandemLevelWindow` sets how long the two sides may differ. The `tandem:` key on the row that defines one status output sets its own policy:
+
+| Value | Compare |
+| :--- | :--- |
+| `fatal` | A mismatch always fails the run. Run window. |
+| `warn` | A mismatch is counted and logged, and never fails the run. Run window. |
+| `final` | Only the values left at the end of the run are compared. A mismatch fails the run under `--tandemStatusFatal`. |
+| `off` | Not compared. The tee still forwards the primary's value. |
+| a positive number | A level window in ns for this port, in place of the run window. A mismatch always fails the run. |
+
+Rows that define a leaf's status output:
+
+*   A `connections:` row with a `status` interface. The key applies to its `src` end.
+*   A `connectionMaps:` row with a `status` interface and `direction: src`. The key applies to the child's port.
+*   A `registerConnections:` row of an `ro` register. A `registers:` row of an `ro` register sets the default for all of its rows. If both set it, the values must match.
+
+`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, an `rw`, `ext` or `memory` register, and an `ro` register no `registerConnections` row connects. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
+
+Do not carry a free-running signal on a `status` interface. That means a counter, a timer, or anything else that never settles to a value both sides reach, because the two sides never agree on it. If one must be a status output, mark its port `tandem: off`.
+
+One Tandem wrapper serves every instance of a block. So every row that defines a given port of a block must give the same value, or all of them must leave it unset. `make db` lists the rows when they disagree.
+
+```yaml
+connections:
+  - {interface: irq_if, src: u_ctl, dst: u_cpu, tandem: final}   # RTL settles a cycle late, then agrees
+  - {interface: dbg_if, src: u_ctl, dst: u_mon, tandem: off}     # free-running debug counter
 ```
 
 ## 7. Clocks and resets

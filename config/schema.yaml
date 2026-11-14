@@ -603,6 +603,10 @@ connections: # custom handler
     # name both endpoints must share; validated against the container's nets
     # in projectCreate (clockTree.build()), not by a schema foreign key.
     clock: optional()
+    # Tandem status-compare policy for the leaf status output this row defines:
+    # fatal, warn, final, off or a level window in ns. Validated in projectCreate
+    # (calcTandemStatusPolicy), since it mixes words and numbers.
+    tandem: optional()
     connection:  # at the end to ensure calculated fieldfs populated
       _key:
         interface: required
@@ -643,6 +647,7 @@ connections: # custom handler
   maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
   tracker: optional
   clock: optional()       # storage side of the _dataSchema field above
+  tandem: optional()      # storage side of the _dataSchema field above
   isParameterizable: auto(interfaceRefIsParameterizable)
   ends:
     _attribs: multiple
@@ -690,6 +695,8 @@ connectionMaps:
     _type: optional
   instancePortName: auto(instancePortName)
   isParameterizable: auto(interfaceRefIsParameterizable)
+  # Tandem status-compare policy of the child's port; see connections.
+  tandem: optional()
   # A connectionMaps row's boundary port
   # takes the inner port's derived domain; it carries no clock: of its own.
   portId : # at end for ordering
@@ -794,6 +801,9 @@ registers:
   defaultValue: optional(0)
   isParameterizable: auto(regIsParameterizable)
   maxBytes: auto(regMaxBytes)
+  # Tandem status-compare policy of each leaf port its registerConnections
+  # rows define; see connections.
+  tandem: optional()
   registerBlock:
     _key:
       register: required
@@ -870,6 +880,8 @@ registerConnections:
       section: instances
       field: instance
   isParameterizable: auto(registerConnectionIsParameterizable)
+  # Tandem status-compare policy of the instance's port; see connections.
+  tandem: optional()
   # A registerConnections row carries no clock: of its own; the register's
   # domain is that of the bus reaching its owning block's register port, and
   # the accessing side derives its own.

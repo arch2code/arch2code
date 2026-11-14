@@ -194,6 +194,7 @@ modports:
 - **Default**: Empty string "" (unless `optionalDefault` specified in schema)
 - **Source**: From YAML item data or default value
 - **Unstated versus false**: `optional()` with no default keeps "" for an unstated field and skips its validator, so a bool field can tell "not set" from an authored `false`. `interfaces.backpressure` and `blocks.ports.backpressure` use this with `_validate: values: [true, false]`. An unset interfaces entry falls back to its interface type's `backpressure.default`, and an unset port falls back to its interfaces entry.
+- **Words or numbers**: `_validate: values:` only matches listed values, so a field that takes either a word or a number has no validator in the schema. The `tandem` field of `connections`, `connectionMaps`, `registers` and `registerConnections` is `optional()`, and `projectCreate.calcTandemStatusPolicy` checks it. That check needs every row of the port, across instances, so it runs as a project-wide pass.
 
 #### `const`
 - **Purpose**: Numeric constant or reference to named constant/enum

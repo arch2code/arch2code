@@ -571,6 +571,7 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.tandemStatusPolicy = self.config.getConfig('TANDEMSTATUSPOLICY')
         self.vlTops = self.config.getConfig('VLTOPS')
         self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
@@ -1465,6 +1466,8 @@ class projectOpen:
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
         ret['qualBlock'] = qualBlock
         ret['blockInfo'] = self.data['blocks'][qualBlock]
+        # Tandem status-compare policy by port name, for the ports that set one
+        ret['tandemStatusPolicy'] = self.tandemStatusPolicy.get(qualBlock, dict())
         ret['temp'] = dict()
         ret['temp']['structs'] = dict()
         ret['temp']['typeContexts'] = dict()
@@ -4688,6 +4691,7 @@ class projectCreate:
         self.runCreateArtifacts()
         # save the schema as well to the config
         self.validatePorts()
+        self.calcTandemStatusPolicy()
         self.schema.save()
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
@@ -10631,6 +10635,155 @@ class projectCreate:
                 f"its child instances; name an instance declared with container: "
                 f"{connMap['block']}, or join sibling instances with a connections: "
                 f"entry instead.")
+
+    TANDEM_STATUS_POLICIES = ('fatal', 'warn', 'final', 'off')
+
+    def _tandemPolicy(self, value, label):
+        # A policy word, a level window in ns as a float, or None when unset.
+        if value == '':
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if value > 0 and math.isfinite(value):
+                return float(value)
+            self.logError(f"{label} sets tandem: {value}. A level window must be a positive number of ns.")
+        if isinstance(value, str) and value in self.TANDEM_STATUS_POLICIES:
+            return str(value)
+        self.logError(f"{label} sets tandem: {value}, which is not a tandem status-compare policy. "
+                      f"Use one of {', '.join(self.TANDEM_STATUS_POLICIES)}, or a positive level window in ns.")
+
+    def calcTandemStatusPolicy(self):
+        """A Tandem run compares each status output of a leaf block by the
+        policy the tandem: key of the row defining that port names. The
+        Tandem wrapper is generated once per block, so every row that defines
+        one port of a block, across instances and fan-out, must agree, set or
+        unset. Persists {blockKey: {portName: policy}} for the ports that set
+        one.
+        """
+        flat = self.flatData
+        blocks = flat['blocks']
+        children = dict()
+        for row in flat['instances'].values():
+            if row['container'] == '_topInstance' or self.isComposedChildRootRow(row):
+                continue
+            if not blocks[row['instanceTypeKey']]['isRegHandler']:
+                children.setdefault(row['containerKey'], []).append(row['instance'])
+
+        def notTandem(blockKey):
+            # Why the block never runs in Tandem, or None when it can.
+            row = blocks[blockKey]
+            if not (row['hasMdl'] and row['hasRtl']):
+                return "it does not have both hasMdl and hasRtl"
+            if blockKey in children:
+                return f"it contains instances ({', '.join(children[blockKey])}), and Tandem runs leaf blocks only"
+            return None
+
+        def isStatus(interfaceKey):
+            return flat['interfaces'][interfaceKey]['interfaceType'] == 'status'
+
+        def where(row):
+            return self.diagnosticLocation(row['_context'], row.get('lc'))
+
+        # (blockKey, portName) -> [(policy, row label)] for every row that
+        # defines a status output of a block that can run in Tandem
+        ports = dict()
+
+        for conn in flat['connections'].values():
+            label = (f"In {where(conn)}, connection {conn['interface']} from '{conn['src']}' to '{conn['dst']}'"
+                     + (f" named '{conn['name']}'" if conn['name'] else ""))
+            policy = self._tandemPolicy(conn['tandem'], label)
+            src = next(end for end in conn['ends'].values() if end['direction'] == 'src')
+            why = notTandem(src['instanceTypeKey'])
+            if policy is not None:
+                if not isStatus(conn['interfaceKey']):
+                    self.logError(f"{label} sets tandem:, but interface {conn['interface']} is of type "
+                                  f"{flat['interfaces'][conn['interfaceKey']]['interfaceType']}. tandem: sets "
+                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but its src '{conn['src']}' is an instance of block "
+                                  f"'{src['instanceType']}', and {why}. tandem: sets how a Tandem run compares "
+                                  f"a leaf block's status output, and the dst end is a status input, which is not "
+                                  f"compared. For an output a container forwards from a child, set it on the "
+                                  f"connectionMaps row that names the child.")
+            if isStatus(conn['interfaceKey']) and not why:
+                ports.setdefault((src['instanceTypeKey'], src['portName']), []).append((policy, label))
+
+        for connMap in flat['connectionMaps'].values():
+            label = (f"In {where(connMap)}, connectionMaps entry for port '{connMap['portName']}' of block "
+                     f"'{connMap['block']}' to instance '{connMap['instance']}'")
+            policy = self._tandemPolicy(connMap['tandem'], label)
+            child = flat['instances'][connMap['instanceKey']]
+            why = notTandem(child['instanceTypeKey'])
+            if policy is not None:
+                if not isStatus(connMap['interfaceKey']):
+                    self.logError(f"{label} sets tandem:, but interface {connMap['interface']} is of type "
+                                  f"{flat['interfaces'][connMap['interfaceKey']]['interfaceType']}. tandem: sets "
+                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                if connMap['direction'] != 'src':
+                    self.logError(f"{label} sets tandem:, but the entry has direction: dst, so the port of "
+                                  f"'{connMap['instance']}' is a status input, which a Tandem run does not compare.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but '{connMap['instance']}' is an instance of block "
+                                  f"'{child['instanceType']}', and {why}.")
+            if isStatus(connMap['interfaceKey']) and connMap['direction'] == 'src' and not why:
+                ports.setdefault((child['instanceTypeKey'], connMap['instancePortName']), []).append((policy, label))
+
+        registerLabels = dict()
+        registerPolicies = dict()
+        for regKey, reg in flat['registers'].items():
+            label = f"In {where(reg)}, register '{reg['register']}' of block '{reg['block']}'"
+            registerLabels[regKey] = label
+            registerPolicies[regKey] = self._tandemPolicy(reg['tandem'], label)
+            if registerPolicies[regKey] is not None and reg['regType'] != 'ro':
+                self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro register "
+                              f"reaches a leaf as a status output; an rw register reaches it as a status input, "
+                              f"and ext and memory registers are not status ports.")
+        connectedRegisters = {rc['registerBlockKey'] for rc in flat['registerConnections'].values()}
+        for regKey, policy in registerPolicies.items():
+            if policy is not None and regKey not in connectedRegisters:
+                self.logError(f"{registerLabels[regKey]} sets tandem:, but no registerConnections row connects "
+                              f"it, so it stays inside its block and no Tandem run compares it. Remove the key, "
+                              f"or connect the register to the leaf that drives it.")
+
+        for rc in flat['registerConnections'].values():
+            label = (f"In {where(rc)}, registerConnections entry for register '{rc['register']}' of block "
+                     f"'{rc['block']}' to instance '{rc['instance']}'")
+            policy = self._tandemPolicy(rc['tandem'], label)
+            reg = flat['registers'][rc['registerBlockKey']]
+            regPolicy = registerPolicies[rc['registerBlockKey']]
+            if policy is not None and regPolicy is not None and policy != regPolicy:
+                self.logError(f"{label} sets tandem: {rc['tandem']}, but {registerLabels[rc['registerBlockKey']]} "
+                              f"sets tandem: {reg['tandem']}. Set it in one place, or give both the same value.")
+            if policy is None:
+                policy, label = regPolicy, (label if regPolicy is None else
+                                            f"{label} (tandem: from register '{reg['register']}')")
+            instance = flat['instances'][rc['instanceKey']]
+            why = notTandem(instance['instanceTypeKey'])
+            if policy is not None:
+                if reg['regType'] != 'ro':
+                    self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: "
+                                  f"{reg['regType']}. Only an ro register reaches a leaf as a status output; an rw "
+                                  f"register reaches it as a status input, and ext and memory registers are not "
+                                  f"status ports.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but '{rc['instance']}' is an instance of block "
+                                  f"'{instance['instanceType']}', and {why}.")
+            if reg['regType'] == 'ro' and not why:
+                ports.setdefault((instance['instanceTypeKey'], reg['register']), []).append((policy, label))
+
+        policies = dict()
+        for (blockKey, portName), rows in ports.items():
+            values = {policy for policy, _ in rows}
+            if values == {None}:
+                continue
+            if len(values) > 1:
+                listing = '\n'.join(f"  {label}: tandem: {'unset' if policy is None else f'{policy:g}' if isinstance(policy, float) else policy}"
+                                    for policy, label in rows)
+                self.logError(f"Port '{portName}' of block '{blocks[blockKey]['block']}' is defined by rows that "
+                              f"disagree on tandem:. A block's Tandem wrapper is shared by all its instances, so "
+                              f"every row defining the port must give it the same value, or all leave it unset:\n"
+                              f"{listing}")
+            policies.setdefault(blockKey, dict())[portName] = values.pop()
+        self.config.setConfig('TANDEMSTATUSPOLICY', policies, bin=True)
 
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be
