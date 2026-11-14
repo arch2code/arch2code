@@ -572,6 +572,7 @@ class projectOpen:
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
         self.tandemStatusPolicy = self.config.getConfig('TANDEMSTATUSPOLICY')
+        self.tandemRegisterReads = self.config.getConfig('TANDEMREGISTERREADS')
         self.vlTops = self.config.getConfig('VLTOPS')
         self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
@@ -1490,6 +1491,7 @@ class projectOpen:
         self.getBDAddressDecode(ret)
         # address bus info
         self.getBDAddressBus(ret)
+        self.getBDTandemRegisterReads(ret)
         # memory connections
         self.getBDMemoryConnections(ret)
         # register connections
@@ -2471,6 +2473,21 @@ class projectOpen:
         if ret['addressDecode']['hasDecoder']:
             ret['addressDecode']['addressBits'] = (self.data['blocks'][decodeBlock]['maxAddress']).bit_length()
             ret['addressDecode']['addressGroup'] = addressGroup
+
+    def getBDTandemRegisterReads(self, ret):
+        # The registers whose firmware reads a Tandem run compares by their
+        # tandem: policy, at the offsets and address mask the block's register
+        # handler decodes (blockRegs.py), or None when the block has none.
+        policies = self.tandemRegisterReads.get(ret['qualBlock'])
+        if policies is None:
+            ret['tandemRegisterReads'] = None
+            return
+        ret['tandemRegisterReads'] = {
+            'port': ret['addressDecode']['registerBusPort'],
+            'addressMask': (1 << ret['addressDecode']['addressBits']) - 1,
+            'registers': [{'register': reg['register'], 'offset': reg['offset'], 'size': reg['maxBytes'],
+                           'policy': policies[reg['register']]}
+                          for reg in ret['registers'].values() if reg['register'] in policies]}
 
     def getBDAddressDecode(self, ret):
         # Is this block an apbDecode router that performs APB bus routing?
@@ -10737,12 +10754,24 @@ class projectCreate:
                 self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro register "
                               f"reaches a leaf as a status output; an rw register reaches it as a status input, "
                               f"and ext and memory registers are not status ports.")
+        # An ro register no registerConnections row connects is driven by its own
+        # block, so its value reaches a Tandem run only through firmware reads on
+        # the block's register bus. The key sets how the register-bus tee
+        # compares those reads.
         connectedRegisters = {rc['registerBlockKey'] for rc in flat['registerConnections'].values()}
+        registerReads = dict()
         for regKey, policy in registerPolicies.items():
-            if policy is not None and regKey not in connectedRegisters:
-                self.logError(f"{registerLabels[regKey]} sets tandem:, but no registerConnections row connects "
-                              f"it, so it stays inside its block and no Tandem run compares it. Remove the key, "
-                              f"or connect the register to the leaf that drives it.")
+            if policy is None or regKey in connectedRegisters:
+                continue
+            reg = flat['registers'][regKey]
+            why = notTandem(reg['blockKey'])
+            if why:
+                self.logError(f"{registerLabels[regKey]} sets tandem:, but block '{reg['block']}' owns it, and "
+                              f"{why}. On a register no registerConnections row connects, tandem: sets how a "
+                              f"Tandem run of the owning block compares firmware reads of it.")
+            elif reg['regType'] == 'ro':
+                registerReads.setdefault(reg['blockKey'], dict())[reg['register']] = policy
+        self.config.setConfig('TANDEMREGISTERREADS', registerReads, bin=True)
 
         for rc in flat['registerConnections'].values():
             label = (f"In {where(rc)}, registerConnections entry for register '{rc['register']}' of block "

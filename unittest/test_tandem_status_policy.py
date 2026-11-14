@@ -6,11 +6,16 @@ row that defines such a port sets how: fatal, warn, final, off, or a level windo
 in ns. The rows that can define a leaf's status output are a status connection
 (its src end), a connectionMaps entry with direction src, and a registerConnections
 entry of an ro register, whose registers row may give the value for all of them.
+An ro register no registerConnections row connects is driven by its own leaf, and
+the key on its registers row sets how the leaf's register-bus tee compares
+firmware reads of it.
 
 projectCreate persists the resolved policy per (block, port), and getBlockData
-returns the block's map as tandemStatusPolicy. make db rejects an unknown value, a
-non-positive number, the key on a port that is not a leaf's status output, and a
-port whose defining rows disagree, across instances or fan-out.
+returns the block's map as tandemStatusPolicy, and the read table as
+tandemRegisterReads. make db rejects an unknown value, a non-positive number, the
+key on a port that is not a leaf's status output or on a register no Tandem run
+reads, and a port or register whose defining rows disagree, across instances or
+fan-out.
 """
 
 import sys
@@ -28,7 +33,7 @@ from pysrc.processYaml import projectOpen
 
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
-          wrap_out_extra=''):
+          wrap_out_extra='', leaf_ro_extra=''):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
     duplicate port, so only a case make db rejects uses it."""
@@ -49,7 +54,8 @@ def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra
 blocks:
 """ + render_plain_block('top', '        hasRtl: false\n') + render_router('apbDecode', 'top')
             + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('wrap')
-            + render_plain_block('regOwner') + render_plain_block('tbSrc', '        hasRtl: false\n') + """
+            + render_plain_block('regOwner') + render_plain_block('tbSrc', '        hasRtl: false\n')
+            + render_plain_block('regLeaf') + """
 instances:
     uTop:       { container: top, instanceType: top }
     uAPBDecode: { container: top, instanceType: apbDecode }
@@ -62,6 +68,7 @@ instances:
     uInner:     { container: wrap, instanceType: srcLeaf }
     uRegOwner:  { container: top, instanceType: regOwner, addressGroup: top }
     uRegLeaf:   { container: regOwner, instanceType: sinkLeaf }
+    uOwnLeaf:   { container: top, instanceType: regLeaf, addressGroup: top }
 
 connections:
     - { interface: statIf, src: uSrcA, dst: uSinkA""" + conn_extra + """ }
@@ -77,6 +84,8 @@ registers:
     - { register: roReg,  regType: ro, block: regOwner, structure: cfgRegSt, desc: "ro" """ + ro_reg_extra + """ }
     - { register: rwReg,  regType: rw, block: regOwner, structure: cfgRegSt, desc: "rw" """ + rw_reg_extra + """ }
     - { register: ownReg, regType: ro, block: regOwner, structure: cfgRegSt, desc: "internal" """ + own_reg_extra + """ }
+    - { register: leafRo, regType: ro, block: regLeaf, structure: cfgRegSt, desc: "leaf ro" """ + leaf_ro_extra + """ }
+    - { register: leafRw, regType: rw, block: regLeaf, structure: cfgRegSt, desc: "leaf rw" }
 
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
@@ -101,6 +110,25 @@ def accept(label, expected, **rows):
                for block in ('srcLeaf', 'sinkLeaf', 'wrap', 'regOwner')}
         ok = got == expected
         print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {got}"))
+        RESULTS.append(ok)
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+
+
+def accept_reads(label, expected, **rows):
+    """make db succeeds and regLeaf's read table holds the expected {register: policy}, or is None."""
+    try:
+        db_path, project_path, arch_paths = build_database(_arch(**rows))
+    except RuntimeError as exc:
+        print(f"FAIL: {label}: {exc}")
+        RESULTS.append(False)
+        return
+    try:
+        prj = projectOpen(db_path)
+        reads = prj.getBlockData(find_block(prj, 'regLeaf')[0])['tandemRegisterReads']
+        got = None if reads is None else {reg['register']: reg['policy'] for reg in reads['registers']}
+        ok = got == expected and (reads is None or reads['port'] == 'apbReg')
+        print(f"{'PASS' if ok else 'FAIL'}: {label}" + ('' if ok else f": expected {expected}, got {reads}"))
         RESULTS.append(ok)
     finally:
         cleanup([project_path, db_path] + arch_paths)
@@ -150,6 +178,11 @@ def run_all_tests():
            policy(sinkLeaf={'roReg': 'off'}), ro_reg_extra=', tandem: off')
     accept("the same tandem: on the registers row and its registerConnections row",
            policy(sinkLeaf={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
+    accept_reads("a leaf with no tagged register has no read table", None)
+    for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
+                            ('250', 250.0)):
+        accept_reads(f"tandem: {value} on an ro registers row no registerConnections row connects",
+                     {'leafRo': resolved}, leaf_ro_extra=f', tandem: {value}')
 
     all_src = {k: v.format(v='fatal') for k, v in both.items()}
     reject("an unknown word", ["tandem: loud", "not a tandem status-compare policy"],
@@ -172,9 +205,11 @@ def run_all_tests():
                                              "status input"], rw_rc_extra=', tandem: fatal')
     reject("an rw registers row", ["register 'rwReg' of block 'regOwner'", "regType: rw"],
            rw_reg_extra=', tandem: fatal')
-    reject("an ro register that no registerConnections row connects",
-           ["register 'ownReg' of block 'regOwner'", "no registerConnections row connects"],
+    reject("an ro register no registerConnections row connects, owned by a container",
+           ["register 'ownReg' of block 'regOwner'", "contains instances (uRegLeaf)", "firmware reads"],
            own_reg_extra=', tandem: fatal')
+    reject("an ro register no registerConnections row connects, with a bad value",
+           ["register 'leafRo' of block 'regLeaf'", "tandem: loud"], leaf_ro_extra=', tandem: loud')
     reject("a registers row and its registerConnections row that differ",
            ["register 'roReg'", "tandem: final", "tandem: warn", "Set it in one place"],
            ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: final')
