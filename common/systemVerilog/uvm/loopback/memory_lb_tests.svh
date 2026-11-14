@@ -1698,17 +1698,17 @@
         endfunction
     endclass : memory_mode_b_dst_rewrite_between_test
 
-    // An input coupling deadlock (SIMULATOR_INTEGRATION.md section 9.12): a
-    // model thread that holds its input while its memory read waits for
-    // credit, beside an RTL that reads only after more input. A Mode B
+    // A model that reads memory earlier in its input than the RTL
+    // (SIMULATOR_INTEGRATION.md section 9.12, input coupling). A Mode B
     // A2C_SRC master on rv sends items to both lanes, and the test plays
     // both lanes' receivers. The DUT lane takes every item and reads word 5
     // through mem after its third. The model lane reads word 5 after its
     // first item and takes no further item until the read returns. The
-    // master can take the DUT lane only one item ahead, so the DUT lane
+    // master keeps the lanes within one item of each other, so the DUT lane
     // never makes its read and the model lane's read never gets its credit.
     // The master declares the model lane dead in one A2C_SKEW, which must
-    // name the memory responder whose model lane waits.
+    // name the memory responder whose model lane waits and tell the user to
+    // fix the model.
     class memory_mode_b_d1_stall_test extends lb_mode_b_base;
         rv_agent_t      rv_agent;
         mem_agent_t     agent;
@@ -1733,6 +1733,8 @@
             want_text.push_back("rv: ");
             want_text.push_back("so the master declares the model lane dead");
             want_text.push_back("Responders whose model lane waits for a transaction the DUT lane has not made: uvm_test_top.agent.drv.replay, for transaction 1 since ");
+            want_text.push_back(", a memory access held for its credit. The model makes each memory access held for its credit at an earlier point in its input than the RTL makes it");
+            want_text.push_back("Fix the model to make the access at the RTL's point in its input");
         endfunction
 
         protected function mem_seq read5(string name, lb_word_mem_t m);
@@ -1870,6 +1872,8 @@
             want_text.delete();
             want_text.push_back("while lanes waited on these ports: rv");
             want_text.push_back("Responders whose model lane waits for a transaction the DUT lane has not made: uvm_test_top.agent.drv.replay, for transaction 1 since ");
+            want_text.push_back(", a memory access held for its credit. The model makes each memory access held for its credit at an earlier point in its input than the RTL makes it");
+            want_text.push_back("Fix the model to make the access at the RTL's point in its input");
         endfunction
 
         virtual function void build_phase(uvm_phase phase);

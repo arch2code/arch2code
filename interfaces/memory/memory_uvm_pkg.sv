@@ -207,8 +207,9 @@ package memory_uvm_pkg;
                                                 cfg.port_name))
             end
             replay = replay_t::type_id::create("replay", this);
-            replay.driver  = this;
-            replay.clk_vif = cfg.clk_vif;
+            replay.driver      = this;
+            replay.clk_vif     = cfg.clk_vif;
+            replay.credit_held = 1;
         endfunction
 
         virtual task run_phase(uvm_phase phase);

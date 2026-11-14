@@ -1695,6 +1695,10 @@ package a2c_uvm_pkg;
         // The passive agents on the DUT lane's pin set, whose model_cmps a
         // cut also cuts, or null.
         a2c_pin_watchers    watchers;
+        // Set by a memory responder, whose model lane waits on its BFM's
+        // credit, so the stall reports name a wait here as a model access
+        // made earlier in its input than the RTL makes it.
+        bit                 credit_held;
         // While the drain watches the log, the clocks of clk_vif left before
         // its deadline and catch-up both run out, for the run timeout; 0
         // once the log is settled or given up.
@@ -2119,15 +2123,24 @@ package a2c_uvm_pkg;
 
         // A sentence naming each responder whose model lane waits for a
         // transaction the DUT lane has not made, or "". A model lane held
-        // there, such as a memory port's held for credit, can be what keeps
-        // a master's model lane from taking its next item.
+        // there can be what keeps a master's model lane from taking its next
+        // item. The RTL never waits on the model, so a memory access held
+        // for credit in a stall is a model defect, and the second sentence
+        // says how to fix the model.
         static function string waiting_responders();
             string s = "";
+            bit    credit = 0;
             foreach (logs[i]) begin
                 if (!logs[i].model_waiting()) continue;
                 s = {s, (s == "") ? "" : "; ", logs[i].waiting_text()};
+                if (!logs[i].credit_held) continue;
+                s = {s, ", a memory access held for its credit"};
+                credit = 1;
             end
-            return (s == "") ? "" : {"Responders whose model lane waits for a transaction the DUT lane has not made: ", s, ". "};
+            if (s == "") return "";
+            s = {"Responders whose model lane waits for a transaction the DUT lane has not made: ", s, ". "};
+            if (credit) s = {s, "The model makes each memory access held for its credit at an earlier point in its input than the RTL makes it, so a write to that memory between the two points reaches one design and not the other. Fix the model to make the access at the RTL's point in its input, buffering and queuing input as the RTL does, with a synchLock where threads share the memory. "};
+            return s;
         endfunction
 
         static function void request(uvm_phase phase, a2c_replay_log_base log);
