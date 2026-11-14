@@ -1029,6 +1029,295 @@
         endtask
     endclass : vid_mode_b_model_defect_test
 
+    // Leaves the frames which lists unspecified and checks the pixels of the
+    // others exactly.
+    class lb_vid_unspecified_contract extends a2c_video_contract;
+        int unsigned which[$] = '{1};
+
+        `uvm_object_utils(lb_vid_unspecified_contract)
+
+        function new(string name = "lb_vid_unspecified_contract");
+            super.new(name);
+            pixel_check = A2C_VIDEO_PIX_EXACT;
+        endfunction
+
+        virtual function a2c_video_frame expected_frame(a2c_video_frame in, a2c_video_cfg cfg);
+            a2c_video_frame out = super.expected_frame(in, cfg);
+            out.unspecified = in.index inside {which};
+            return out;
+        endfunction
+    endclass : lb_vid_unspecified_contract
+
+    // Three 64 x 8 frames on rdy_vld, 256 beats each, frame 1 unspecified
+    // and passed through whole by a correct pipe. Its beats are dropped and
+    // declared to the counter as they come, and frame 2 is found by its
+    // first beat, so nothing fails, and the counter ends with all 768 beats
+    // declared.
+    class vid_unspecified_test extends lb_vid_c_test;
+        int unsigned want_declared = 768;
+
+        `uvm_component_utils(vid_unspecified_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            contract = lb_vid_unspecified_contract::type_id::create("contract");
+            super.build_phase(phase);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (env.out_counter.declared() != want_declared) begin
+                `uvm_error("LB_VID", $sformatf("the counter was declared %0d beats, expected %0d", env.out_counter.declared(),
+                                               want_declared))
+            end
+        endfunction
+    endclass : vid_unspecified_test
+
+    // The pipe drops the unspecified frame whole, which is no failure either.
+    class vid_unspecified_none_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_none_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_declared = 512;
+        endfunction
+
+        virtual task configure_dut(a2c_video_cfg cfg);
+            super.configure_dut(cfg);
+            lb_vid_pipe_cfg[LB_VID_C].drop_frame_n = 2;
+        endtask
+    endclass : vid_unspecified_none_test
+
+    // The pipe flips a pixel of frame 2's first beat, so no beat opens frame
+    // 2 and the checker drops the rest of the run, declaring each dropped
+    // beat. Frame 2's own 256 beats stay expected, so the run fails twice:
+    // one A2C_VIDEO for the frame that never came out and one A2C_TXN_COUNT
+    // for its 256 beats.
+    class vid_unspecified_next_wrong_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_next_wrong_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_declared = 1024;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            catcher.demote = 1;
+            want("A2C_VIDEO", UVM_ERROR, "vid_rv_out: 1 expected frames never came out, from frame 2, 512 beats dropped waiting for its SOF", 1);
+            want("A2C_TXN_COUNT", UVM_ERROR, "expected 1024 transactions, received 768 (256 missing)", 1);
+        endfunction
+
+        virtual task configure_dut(a2c_video_cfg cfg);
+            super.configure_dut(cfg);
+            lb_vid_pipe_cfg[LB_VID_C].flip_beat = 512;
+        endtask
+    endclass : vid_unspecified_next_wrong_test
+
+    // The pipe flips a pixel of frame 2's second beat: frame 2 opens on its
+    // first beat and fails its pixel check as any frame would.
+    class vid_unspecified_next_pixel_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_next_pixel_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            catcher.demote = 1;
+            want("A2C_VIDEO", UVM_ERROR, "frame 2 line 0: pixel x=2", 1);
+        endfunction
+
+        virtual task configure_dut(a2c_video_cfg cfg);
+            super.configure_dut(cfg);
+            lb_vid_pipe_cfg[LB_VID_C].flip_beat = 513;
+        endtask
+    endclass : vid_unspecified_next_pixel_test
+
+    // A run the checker cannot skip an unspecified frame in stops with one
+    // A2C_CFG fatal, naming why, before any frame is sent.
+    virtual class vid_unspecified_reject_base extends vid_unspecified_test;
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_declared = 0;
+        endfunction
+
+        pure virtual function string reason();
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            catcher.demote = 1;
+            want("A2C_CFG", UVM_FATAL, reason(), 1);
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (stimulus_sent() != 0) `uvm_error("LB_VID", $sformatf("a rejected run sent %0d items", stimulus_sent()))
+        endfunction
+    endclass : vid_unspecified_reject_base
+
+    class vid_unspecified_mode_b_test extends vid_unspecified_reject_base;
+        `uvm_component_utils(vid_unspecified_mode_b_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            mode_b = 1;
+        endfunction
+
+        virtual function string reason();
+            return "both lanes run (Mode B)";
+        endfunction
+    endclass : vid_unspecified_mode_b_test
+
+    class vid_unspecified_unchecked_test extends vid_unspecified_reject_base;
+        `uvm_component_utils(vid_unspecified_unchecked_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function string reason();
+            return "its pixel check A2C_VIDEO_PIX_UNCHECKED";
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            contract.pixel_check = A2C_VIDEO_PIX_UNCHECKED;
+        endfunction
+    endclass : vid_unspecified_unchecked_test
+
+    // The last frame is unspecified: its beats are dropped and declared as
+    // they come, and the run passes with no frame after it to find.
+    class vid_unspecified_last_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_last_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            lb_vid_unspecified_contract u;
+            super.build_phase(phase);
+            void'($cast(u, contract));
+            u.which = '{2};
+        endfunction
+    endclass : vid_unspecified_last_test
+
+    // The first frame is unspecified: its beats are dropped and declared as
+    // they come, and frame 1 is found by its first beat.
+    class vid_unspecified_first_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_first_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            lb_vid_unspecified_contract u;
+            super.build_phase(phase);
+            void'($cast(u, contract));
+            u.which = '{0};
+        endfunction
+    endclass : vid_unspecified_first_test
+
+    // Four frames, 1 and 2 unspecified: the checker drops both, declaring
+    // their 512 beats as they come, and finds frame 3 by its first beat, so
+    // all 1024 beats end up declared.
+    class vid_unspecified_two_test extends vid_unspecified_test;
+        `uvm_component_utils(vid_unspecified_two_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            want_declared = 1024;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            lb_vid_unspecified_contract u;
+            super.build_phase(phase);
+            void'($cast(u, contract));
+            u.which = '{1, 2};
+        endfunction
+
+        virtual function void configure_video(a2c_video_cfg cfg);
+            super.configure_video(cfg);
+            cfg.frames = 4;
+        endfunction
+    endclass : vid_unspecified_two_test
+
+    // Every frame starts with the same beat under A2C_PIX_CONST, so the
+    // checker could take the unspecified frame's output for the next frame.
+    class vid_unspecified_const_test extends vid_unspecified_reject_base;
+        `uvm_component_utils(vid_unspecified_const_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function string reason();
+            return "its pixel mode is A2C_PIX_CONST";
+        endfunction
+
+        virtual function void configure_video(a2c_video_cfg cfg);
+            super.configure_video(cfg);
+            cfg.pixel_mode  = A2C_PIX_CONST;
+            cfg.pixel_value = 'h5a;
+        endfunction
+    endclass : vid_unspecified_const_test
+
+    // The frame after the unspecified one carries no SOF, so the checker has
+    // nothing to find it by.
+    class vid_unspecified_nosof_test extends vid_unspecified_reject_base;
+        `uvm_component_utils(vid_unspecified_nosof_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function string reason();
+            return "frame 2, the first specified frame after an unspecified one, has no SOF";
+        endfunction
+
+        virtual function void edit_plan(a2c_video_cfg cfg, ref a2c_video_frame plan[$]);
+            super.edit_plan(cfg, plan);
+            plan[2].sof = 0;
+        endfunction
+    endclass : vid_unspecified_nosof_test
+
+    // An unspecified frame on a clocked output stops the run with A2C_CFG.
+    // The raw family checks its clocked input as an output, here under a
+    // contract that leaves frame 1 unspecified.
+    class vid_unspecified_clocked_test extends lb_vid_a_test;
+        lb_vid_unspecified_contract raw_contract;
+
+        `uvm_component_utils(vid_unspecified_clocked_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            raw_contract = lb_vid_unspecified_contract::type_id::create("raw_contract");
+            super.build_phase(phase);
+            catcher.demote = 1;
+            want("A2C_CFG", UVM_FATAL, "this output is clocked", 1);
+        endfunction
+
+        virtual function void video_ports();
+            add_video_input(a2c_video_input#(lb_vid_raw_item_t)::make("vid_raw", raw_ad));
+            add_video_output(a2c_video_output#(lb_vid_axis_item_t)::make("vid_axis_a_out", axis_ad, contract));
+            add_video_output(a2c_video_output#(lb_vid_raw_item_t)::make("vid_raw", raw_ad, raw_contract));
+        endfunction
+
+        virtual function void check_phase(uvm_phase phase);
+            super.check_phase(phase);
+            if (stimulus_sent() != 0) `uvm_error("LB_VID", $sformatf("a rejected run sent %0d items", stimulus_sent()))
+        endfunction
+    endclass : vid_unspecified_clocked_test
+
     // Mode B on raw: every corner a clocked input allows, at random, and the
     // two lanes' input words identical clock for clock.
     class vid_mode_b_raw_test extends lb_vid_a_rb_test_random;

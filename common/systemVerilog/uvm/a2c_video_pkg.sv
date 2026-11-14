@@ -68,6 +68,10 @@ package a2c_video_pkg;
         bit            cut;
         bit            cut_lv_high;
         bit            back_to_back;
+        // Set by a contract on an expected frame whose output the design
+        // leaves unspecified, such as one made of a malformed input frame.
+        // The checker checks none of its beats; see a2c_video_checker.
+        bit            unspecified;
         // Clocked: fv-low clocks before the frame, and fv-high lv-low clocks
         // before its first line and after its last. lv is high on the first
         // lv_after clocks of the next frame's blank and the last lv_before of
@@ -591,7 +595,16 @@ package a2c_video_pkg;
     // overrides expected_frames(), which may return none or several, and
     // preserves_frames(). One whose output values are a function of its
     // input sets pixel_check to A2C_VIDEO_PIX_EXACT and computes them in
-    // expected_frame(). a2c_video_test calls expected_frames() once per
+    // expected_frame().
+    //
+    // One whose output for some input frames is not specified, a malformed
+    // frame for example, sets unspecified on the frame it expects of each.
+    // The design must still output the next specified frame as specified,
+    // and the checker finds that frame by its first beat, which must carry
+    // SOF and pixels the unspecified frame's output cannot carry. That needs
+    // A2C_VIDEO_PIX_EXACT, a handshaked output and one DUT lane, and rules
+    // out A2C_PIX_CONST and a run that repeats one image.
+    // a2c_video_test calls expected_frames() once per
     // planned frame and output: when it plans the run, for an output with a
     // counter on a handshaked stream or with a real-time checker's unit rule;
     // otherwise when the output's first checker takes the frame's plan, just
@@ -872,6 +885,14 @@ package a2c_video_pkg;
     // opens a frame, fv falling closes it, lv falling ends a line, lv high
     // with fv low is ignored, and the markers are not compared.
     //
+    // While the expected frame due is unspecified, the checker drops every
+    // beat until one carries SOF and the pixels of the first beat of the
+    // next expected frame that is not unspecified; that frame then opens as
+    // usual. A dropped beat is declared to the output's counter as it comes,
+    // since the contract cannot say how many there will be. A DUT that never
+    // outputs that frame correctly has all its later output dropped, which
+    // check_phase reports as expected frames that never came out.
+    //
     // Every failure is an A2C_VIDEO UVM_ERROR naming the port and, in Mode
     // B, the lane; the first max_reported print and check_phase counts the
     // rest in one more. check_phase closes a frame still open and compares
@@ -909,6 +930,11 @@ package a2c_video_pkg;
         protected int unsigned    frames_bad;
         protected int unsigned    failures;
         protected int unsigned    unprinted;
+        protected int unsigned    unspecified_n;
+        // Beats dropped since an unspecified frame last became due or a
+        // specified frame last opened after one.
+        protected int unsigned    dropped_waiting;
+        protected int unsigned    dropped;
 
         `uvm_component_param_utils(a2c_video_checker#(ITEM))
 
@@ -981,8 +1007,10 @@ package a2c_video_pkg;
             if (sof) begin
                 flush_strays();
                 if (cur != null) close(0, "the next frame's SOF came first");
+                if (drops(t, sof)) return;
                 open(1);
             end else if (cur == null) begin
+                if (drops(t, sof)) return;
                 if (strays == 0 && expected.size() != 0 && !expected[0].sof) begin
                     open(0);
                 end else begin
@@ -995,6 +1023,43 @@ package a2c_video_pkg;
             if (eol) end_line(1);
             if (adapter.has_eof && eof) close(1, "");
             else if (eol && closes_by_count() && cur.lines.size() == lines_due()) close(0, "");
+        endfunction
+
+        // Whether beat t, which comes while no frame is open, is dropped as
+        // output of the unspecified frames due. It is unless it carries SOF
+        // and opens the next expected frame that is specified, which then
+        // becomes due.
+        protected function bit drops(ITEM t, bit sof);
+            int next = -1;
+            if (expected.size() == 0 || !expected[0].unspecified) return 0;
+            foreach (expected[k]) begin
+                if (expected[k].unspecified) continue;
+                next = k;
+                break;
+            end
+            if (sof && next >= 0 && opens(t, expected[next])) begin
+                repeat (next) begin
+                    last_label = expected[0].label();
+                    void'(expected.pop_front());
+                    unspecified_n++;
+                end
+                dropped_waiting = 0;
+                return 0;
+            end
+            dropped++;
+            dropped_waiting++;
+            if (owner.counter != null) owner.counter.expect_count(1);
+            return 1;
+        endfunction
+
+        // Whether beat t holds the pixels of e's first beat, which carries
+        // SOF.
+        protected function bit opens(ITEM t, a2c_video_frame e);
+            if (!e.sof || e.lines.size() == 0) return 0;
+            for (int unsigned p = 0; p < adapter.pixels_per_beat && p < e.lines[0].px.size(); p++) begin
+                if (adapter.mask(adapter.get_pixel(t, p)) != adapter.mask(e.lines[0].px[p])) return 0;
+            end
+            return 1;
         endfunction
 
         protected function void clocked_item(ITEM t);
@@ -1140,15 +1205,21 @@ package a2c_video_pkg;
             if (!enabled) return;
             flush_strays();
             if (cur != null) close(0, {"the run ended before the frame did", a2c_run_ended_clause()});
-            if (expected.size() != 0) begin
-                fail($sformatf("%0d expected frames never came out, from %s%s", expected.size(), expected[0].label(),
-                               a2c_run_ended_clause()));
+            begin
+                a2c_video_frame due[$] = expected.find(f) with (!f.unspecified);
+                unspecified_n += expected.size() - due.size();
+                if (due.size() != 0) begin
+                    fail($sformatf("%0d expected frames never came out, from %s%s%s", due.size(), due[0].label(),
+                                   (dropped_waiting != 0) ? $sformatf(", %0d beats dropped waiting for its SOF", dropped_waiting) : "",
+                                   a2c_run_ended_clause()));
+                end
             end
             if (unprinted != 0) begin
                 `uvm_error("A2C_VIDEO", $sformatf("%s: %0d failures in all, %0d not printed", port_name, failures, unprinted))
             end
-            `uvm_info("A2C_VIDEO", $sformatf("%s: %0d of %0d expected frames came out, from %0d planned, %0d lines, %0d beats; %0d frames failed, %0d failures",
-                                             port_name, frames_out, expected_n, planned, lines_out, beats_out, frames_bad, failures), UVM_LOW)
+            `uvm_info("A2C_VIDEO", $sformatf("%s: %0d of %0d expected frames came out, from %0d planned, %0d lines, %0d beats; %0d frames failed, %0d failures; %0d unspecified frames, %0d beats dropped",
+                                             port_name, frames_out, expected_n - unspecified_n, planned, lines_out, beats_out, frames_bad,
+                                             failures, unspecified_n, dropped), UVM_LOW)
         endfunction
 
         function int unsigned failures_seen();
@@ -1460,14 +1531,48 @@ package a2c_video_pkg;
             out = cache[in].frames;
         endfunction
 
+        // The beats of the frames the contract specifies; the checker declares
+        // the others' as they come.
         function int unsigned expected_beats(a2c_video_frame plan[$]);
             int unsigned n = 0;
             foreach (plan[f]) begin
                 a2c_video_frame e[$];
                 expected_for(plan[f], e);
-                foreach (e[k]) n += e[k].beats(adapter_base.pixels_per_beat);
+                foreach (e[k]) if (!e[k].unspecified) n += e[k].beats(adapter_base.pixels_per_beat);
             end
             return n;
+        endfunction
+
+        function bit leaves_unspecified(a2c_video_frame plan[$]);
+            foreach (plan[f]) begin
+                a2c_video_frame e[$];
+                expected_for(plan[f], e);
+                foreach (e[k]) if (e[k].unspecified) return 1;
+            end
+            return 0;
+        endfunction
+
+        // Why the checker could not find the specified frame after an
+        // unspecified one of plan, sent under c, by its first beat; "" when
+        // it can.
+        function string resync_problem(a2c_video_frame plan[$], a2c_video_cfg c);
+            bit after_unspecified;
+            foreach (plan[f]) begin
+                a2c_video_frame e[$];
+                expected_for(plan[f], e);
+                foreach (e[k]) begin
+                    if (e[k].unspecified) begin
+                        if (c.pixel_mode == A2C_PIX_CONST) return "its pixel mode is A2C_PIX_CONST, so every frame starts with the same first beat";
+                        after_unspecified = 1;
+                    end else if (after_unspecified) begin
+                        // The output's SOF comes from the input frame's, whatever the markers expect
+                        if (!plan[f].sof || !e[k].sof)
+                            return $sformatf("%s, the first specified frame after an unspecified one, has no SOF", e[k].label());
+                        after_unspecified = 0;
+                    end
+                end
+            end
+            return "";
         endfunction
 
         function void feed(a2c_video_frame f);
@@ -1732,6 +1837,22 @@ package a2c_video_pkg;
             end
         endfunction
 
+        // The real-time rules pair input and output units one for one, which
+        // an unspecified frame's output breaks, so a checker with rules on an
+        // output that leaves a frame unspecified is turned off, as one on an
+        // output whose contract drops or inserts frames is.
+        protected function void turn_off_rt_rules(a2c_video_output_base o);
+            a2c_rt_checker_base rts[$];
+            a2c_rt_checker_base::get_checkers(rts);
+            foreach (rts[k]) begin
+                if (rts[k].off || rts[k].out_component() != a2c_video_child(o.agent, "mon")) continue;
+                if (rts[k].gap_cycles == 0 && rts[k].lag_cycles == 0 && rts[k].refusal_cycles == 0) continue;
+                rts[k].turn_off();
+                `uvm_info("A2C_VIDEO", $sformatf("%s on %s leaves a frame unspecified, so %s is off", o.contract.get_type_name(),
+                                                 o.port_name, rts[k].get_full_name()), UVM_LOW)
+            end
+        endfunction
+
         // Sends the frames of c on the input after planning them and letting
         // the test edit the plan, declaring each counted output's beats,
         // giving the unit rules their frames and, on the first run, logging
@@ -1760,6 +1881,29 @@ package a2c_video_pkg;
                     `uvm_info("A2C_VIDEO", $sformatf("output %s checks the contract %s", outs[i].port_name, outs[i].contract.describe()),
                               UVM_LOW)
                 end
+                // In Mode B a dropped beat would be declared to both lanes, once
+                // by each lane's checker.
+                if (outs[i].leaves_unspecified(p) && (dual || outs[i].adapter_base.clocked
+                        || outs[i].contract.pixel_check != A2C_VIDEO_PIX_EXACT)) begin
+                    `uvm_fatal("A2C_CFG", $sformatf("output %s: %s leaves a frame of this run unspecified, which the checker skips only on a handshaked output with A2C_VIDEO_PIX_EXACT and one DUT lane; this output is %s, its pixel check %s, and %s",
+                                                    outs[i].port_name, outs[i].contract.get_type_name(),
+                                                    outs[i].adapter_base.clocked ? string'("clocked") : string'("handshaked"),
+                                                    outs[i].contract.pixel_check.name(),
+                                                    dual ? string'("both lanes run (Mode B)") : string'("one DUT lane runs")))
+                    return;
+                end
+                begin
+                    string why = outs[i].resync_problem(p, c);
+                    if (why != "") begin
+                        `uvm_fatal("A2C_CFG", $sformatf("output %s: %s leaves a frame of this run unspecified, and the checker finds the next specified frame by its first beat, which it cannot here: %s",
+                                                        outs[i].port_name, outs[i].contract.get_type_name(), why))
+                        return;
+                    end
+                end
+            end
+            // A rejected run declares nothing to any output's counter
+            foreach (outs[i]) begin
+                if (outs[i].leaves_unspecified(p)) turn_off_rt_rules(outs[i]);
                 if (outs[i].counter != null && !outs[i].adapter_base.clocked) outs[i].counter.expect_count(outs[i].expected_beats(p));
             end
             contract_logged = 1;
