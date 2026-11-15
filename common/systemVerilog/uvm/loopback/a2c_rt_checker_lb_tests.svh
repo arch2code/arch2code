@@ -1325,6 +1325,71 @@
         endfunction
     endclass : rt_rv_after_input_stall_test
 
+    // A 9-clock pipe on units of two one-beat lines, the input back to back
+    // but for a 6-clock H blank in each unit. Each unit's blank starts one
+    // clock after the last beat of the unit before, while the output still
+    // drains that unit, and moves 9 clocks later to the output unit it
+    // feeds. The credit follows it there, so a gap bound of 4 holds.
+    class rt_rv_next_unit_idle_test extends lb_rt_rv_base;
+        `uvm_component_utils(rt_rv_next_unit_idle_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void configure();
+            lb_rt_pipe_cfg[LB_RT_RV].latency = 8;
+            seq.units   = 4;
+            seq.beats   = 2;
+            seq.line    = 1;
+            seq.h_blank = 6;
+            rt.in_rule        = lb_rv_eof_rule::type_id::create("in_rule");
+            rt.out_rule       = lb_rv_eof_rule::type_id::create("out_rule");
+            rt.latency_cycles = 10;
+            rt.gap_cycles     = 4;
+        endfunction
+
+        virtual function void check();
+            if (rt.units_checked() != 4) `uvm_error("LB_RT", $sformatf("%0d units checked, expected 4", rt.units_checked()))
+            if (rt.worst_gap() != 0) `uvm_error("LB_RT", $sformatf("worst gap %0d, expected 0", rt.worst_gap()))
+            for (int unsigned u = 1; u < seq.units; u++) begin
+                if (out_seen.at[2 * u - 1] <= in_seen.at[2 * u + 1]) `uvm_error("LB_RT", $sformatf("output unit %0d ended before the blank of input unit %0d did", u - 1, u))
+            end
+        endfunction
+    endclass : rt_rv_next_unit_idle_test
+
+    // The pipe of rt_rv_next_unit_idle_test stalls 6 clocks after the first
+    // beat of output unit 1, the input back to back across the boundary
+    // of units 0 and 1. The input then idles 12 clocks before unit 2, while
+    // output unit 1 is open and through its stall, but that idle can only
+    // starve output unit 2, so unit 1 gets no credit and fails the gap
+    // bound of 4.
+    class rt_rv_next_unit_stall_test extends rt_rv_next_unit_idle_test;
+        `uvm_component_utils(rt_rv_next_unit_stall_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void configure();
+            super.configure();
+            lb_rt_pipe_cfg[LB_RT_RV].stall_after = 3;
+            lb_rt_pipe_cfg[LB_RT_RV].stall_len   = 6;
+            seq.h_blank = 0;
+            seq.gap_at  = 4;
+            seq.gap_len = 12;
+            want["A2C_RT_GAP"] = 1;
+        endfunction
+
+        virtual function void check();
+            expect_at("A2C_RT_GAP", edge_of(out_seen.at[2]) + 4 * 10ns);
+            if (rt.worst_gap() != 6) `uvm_error("LB_RT", $sformatf("worst gap %0d, expected the stall's 6", rt.worst_gap()))
+            if (in_seen.at[3] >= out_seen.at[2] || in_seen.at[4] <= demoter.first_at("A2C_RT_GAP")) begin
+                `uvm_error("LB_RT", "the input did not idle from before output unit 1 opened until after its gap was reported")
+            end
+        endfunction
+    endclass : rt_rv_next_unit_stall_test
+
     // Mode B. The model pipe takes 20 clocks and refuses every second
     // clock, so the source, which starts a beat only once both lanes took
     // the last, withholds the DUT lane's input often. The DUT lane is

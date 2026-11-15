@@ -2917,12 +2917,16 @@ package a2c_uvm_pkg;
     // Starvation credit: the gap is the clocks since the last output transfer
     // on which the unit was open, the sink ready and no beat offered, less
     // the clocks in (last transfer - latency_cycles, now] on which the
-    // testbench offered no input beat while the open output unit's anchor
-    // input unit had not ended. Pipeline latency moves the output's idle
-    // later than the input's, so a mask on the same clock would false-fail;
-    // the window credits the input idle that caused it, and a real stall is
-    // reported at most one window of testbench idle late. latency_cycles 0
-    // takes lag_cycles. With no input connected there is no credit.
+    // testbench withheld input from the open output unit's anchor input
+    // unit or an earlier one. A withheld clock belongs to the input unit it
+    // delayed, the open one or between units the next, so idle the next
+    // input unit gets while this output unit still drains is credited to
+    // the output unit it feeds, not to this one. Pipeline latency moves the
+    // output's idle later than the input's, so a mask on the same clock
+    // would false-fail; the window credits the input idle that caused it,
+    // and a real stall is reported at most one window of testbench idle
+    // late. latency_cycles 0 takes lag_cycles. With no input connected
+    // there is no credit.
     //
     // Counting is on the output port's clock: the checker counts its rising
     // edges from the reset release and reads both monitors' counts on each.
@@ -3023,9 +3027,14 @@ package a2c_uvm_pkg;
         protected realtime         restart_time;
         protected longint unsigned restart_stall;
         protected longint unsigned restart_refused;
-        // The stamps of the clocks the testbench withheld input that the
-        // gap's credit window may still reach.
-        protected longint unsigned withheld_at[$];
+        // The clocks the testbench withheld input that the gap's credit
+        // window may still reach, each with the input unit it delayed: the
+        // open one, or between units the next.
+        typedef struct {
+            longint unsigned at;
+            int unsigned     unit;
+        } withheld_t;
+        protected withheld_t       withheld[$];
         // The output units whose anchor input unit has ended and which have
         // not ended, in unit order; the next output unit to be due.
         typedef struct {
@@ -3265,11 +3274,13 @@ package a2c_uvm_pkg;
             return (latency_cycles != 0) ? latency_cycles : lag_cycles;
         endfunction
 
-        // Whether the anchor of the open output unit, or of the next one,
-        // has yet to end, so the testbench can still starve it.
-        protected function bit anchor_open();
+        // Whether input withheld from input unit u can starve the open
+        // output unit, or the next one: u is its anchor or an earlier unit.
+        // A later input unit feeds only later output units, so its idle,
+        // even while this unit still drains, earns this unit no credit.
+        protected function bit starves(int unsigned u);
             if (!has_in_rule()) return 1;
-            return in_ended <= anchor(out_ended);
+            return u <= anchor(out_ended);
         endfunction
 
         // One output clock.
@@ -3282,6 +3293,8 @@ package a2c_uvm_pkg;
             bit              o_xfer;
             bit              stall;
             longint unsigned floor;
+            longint unsigned reach;
+            int unsigned     credit = 0;
             longint unsigned refused = 0;
             out_fc.flow_counts(o[0], o[1], o[2], o[3]);
             o_valid = o[1] != out_prev[1];
@@ -3326,7 +3339,7 @@ package a2c_uvm_pkg;
                     in_end_events--;
                     input_unit_ended();
                 end
-                if (in_withheld && anchor_open()) withheld_at.push_back(clocks);
+                if (in_withheld) withheld.push_back('{at: clocks, unit: in_ended});
             end
             if (o_xfer) begin
                 last_xfer    = clocks;
@@ -3359,13 +3372,20 @@ package a2c_uvm_pkg;
             if (out_open && !o_xfer && o_ready) idle++;
             // The credit window: clocks after last_xfer - window() while a
             // unit is open, else clocks a transfer from now could still
-            // reach. Pruning while no unit is open keeps withheld_at to one
-            // window across a long blank.
+            // reach. A later unit's window starts after its first transfer,
+            // so an entry past the second floor that the open unit cannot
+            // use is dropped too. Either keeps withheld to one window across
+            // a long blank.
             floor = out_open ? last_xfer : clocks;
             floor = (floor > window()) ? floor - window() : 0;
-            while (withheld_at.size() != 0 && withheld_at[0] <= floor) void'(withheld_at.pop_front());
+            reach = (clocks > window()) ? clocks - window() : 0;
+            while (withheld.size() != 0 && (withheld[0].at <= floor || (withheld[0].at <= reach && !starves(withheld[0].unit))))
+                void'(withheld.pop_front());
             if (out_open) begin
-                gap_now = (idle > withheld_at.size()) ? idle - withheld_at.size() : 0;
+                // Input units only grow along the queue, so the entries the
+                // open unit can use lead it.
+                while (credit < withheld.size() && starves(withheld[credit].unit)) credit++;
+                gap_now = (idle > credit) ? idle - credit : 0;
                 if (gap_now > gap_worst) begin
                     gap_worst      = gap_now;
                     gap_worst_unit = out_ended;
@@ -3374,7 +3394,7 @@ package a2c_uvm_pkg;
                     gap_reported = 1;
                     fail("A2C_RT_GAP", $sformatf("%s: output unit %0d has gone %0d clocks with no beat while its sink was ready (rt_gap_cycles %0d, +a2c_rt_gap_cycles): %0d beats of the unit so far, the last at %0t; %0d idle clocks less a starvation credit of %0d input clocks the testbench withheld in the %0d-clock window (rt_latency_cycles)",
                                                  port(), out_ended, gap_now, gap_cycles, out_beats, last_xfer_at, idle,
-                                                 withheld_at.size(), window()));
+                                                 credit, window()));
                 end
             end
             check_deadlines();
