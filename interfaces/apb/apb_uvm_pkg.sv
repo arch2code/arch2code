@@ -155,7 +155,7 @@ package apb_uvm_pkg;
                 end
                 wd.step(ended, pending);
                 cfg.clk_vif.drive_edge();
-                for (int l = 0; l < lanes; l++) if (ended[l]) drive_request(l, 1'b0);
+                for (int l = 0; l < lanes; l++) if (ended[l]) drop_request(l);
             end
             if (finished[A2C_DUT_LANE] || !finished[A2C_MODEL_LANE]) return;
             if (!req.write) req.data = prdata[A2C_MODEL_LANE];
@@ -168,8 +168,7 @@ package apb_uvm_pkg;
 
         // A dead lane stays in its access phase, with its address, direction
         // and write data, until pready ends it (release_dead()).
-        protected virtual function void drive_request(int l, bit on);
-            if (on) return;
+        protected virtual function void drop_request(int l);
             lane[l].psel    <= 1'b0;
             lane[l].penable <= 1'b0;
             lane[l].pwrite  <= 1'b0;
@@ -355,13 +354,10 @@ package apb_uvm_pkg;
         endfunction
     endclass : apb_comparator
 
-    class apb_agent #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_agent;
+    class apb_agent #(type addr_t = logic [31:0], type data_t = logic [31:0])
+        extends a2c_lane_agent #(virtual apb_if #(.addr_t(addr_t), .data_t(data_t)));
         typedef apb_item                    item_t;
         typedef apb_config#(addr_t, data_t) config_t;
-        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
-        // the active agent's replay log also cuts, and tells a passive agent
-        // whether an active one has claimed the pin set.
-        typedef a2c_pin_registry #(virtual apb_if #(.addr_t(addr_t), .data_t(data_t))) registry_t;
 
         apb_config#(addr_t, data_t)  cfg;
         // apb_master_driver for A2C_SRC, apb_slave_driver for A2C_DST.
@@ -414,8 +410,7 @@ package apb_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
-            apb_slave_driver#(addr_t, data_t)  slave;
-            apb_master_driver#(addr_t, data_t) master;
+            super.connect_phase(phase);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
@@ -423,17 +418,25 @@ package apb_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
-            if (drv == null) registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
-            else if ($cast(slave, drv)) slave.join_lanes(this, model_cmp, mon, model_mon);
-            else if ($cast(master, drv)) master.join_lanes(this, model_cmp, mon, model_mon);
         endfunction
 
-        // A passive Mode B agent says so when no active agent has claimed its
-        // pin set, since its model_cmp then misses the drain's cuts or the
-        // master's lane deaths.
-        virtual function void end_of_elaboration_phase(uvm_phase phase);
-            super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        // The master and the slave are both lane drivers; drv holds either.
+        virtual function a2c_lane_joiner lane_joiner();
+            a2c_lane_joiner j;
+            void'($cast(j, drv));
+            return j;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
         endfunction
     endclass : apb_agent
 

@@ -133,9 +133,8 @@ package axi4_stream_uvm_pkg;
             lane[l].tkeep  <= '0;
         endfunction
 
-        protected virtual function void drive_request(int l, bit on);
-            lane[l].tvalid <= on;
-            if (!on) return;
+        protected virtual function void raise_request(int l);
+            lane[l].tvalid <= 1'b1;
             lane[l].tdata <= req.tdata;
             lane[l].tlast <= req.tlast;
             lane[l].tid   <= req.tid;
@@ -143,6 +142,10 @@ package axi4_stream_uvm_pkg;
             lane[l].tuser <= req.tuser;
             lane[l].tstrb <= req.tstrb;
             lane[l].tkeep <= req.tkeep;
+        endfunction
+
+        protected virtual function void drop_request(int l);
+            lane[l].tvalid <= 1'b0;
         endfunction
 
         protected virtual function bit request_held(int l);
@@ -256,11 +259,10 @@ package axi4_stream_uvm_pkg;
     endclass : axi4_stream_monitor
 
     class axi4_stream_agent #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
-                              type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_agent;
+                              type tdest_t = logic [7:0], type tuser_t = logic)
+        extends a2c_lane_agent #(virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)));
         typedef axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)   item_t;
         typedef axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t) config_t;
-        typedef a2c_pin_registry #(virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t),
-                                                            .tuser_t(tuser_t))) registry_t;
 
         config_t                                               cfg;
         axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t)  drv;
@@ -300,6 +302,7 @@ package axi4_stream_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
@@ -307,16 +310,22 @@ package axi4_stream_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
-            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
-            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
         endfunction
 
-        // A passive A2C_DST Mode B agent says so when no active agent has
-        // claimed its pin set, since its model_cmp then misses the master's
-        // lane deaths.
-        virtual function void end_of_elaboration_phase(uvm_phase phase);
-            super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        virtual function a2c_lane_joiner lane_joiner();
+            return drv;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
         endfunction
     endclass : axi4_stream_agent
 

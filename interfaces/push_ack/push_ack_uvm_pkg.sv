@@ -92,9 +92,13 @@ package push_ack_uvm_pkg;
             lane[l].data <= '0;
         endfunction
 
-        protected virtual function void drive_request(int l, bit on);
-            lane[l].push <= on;
-            if (on) lane[l].data <= req.data;
+        protected virtual function void raise_request(int l);
+            lane[l].push <= 1'b1;
+            lane[l].data <= req.data;
+        endfunction
+
+        protected virtual function void drop_request(int l);
+            lane[l].push <= 1'b0;
         endfunction
 
         protected virtual function bit request_held(int l);
@@ -222,13 +226,9 @@ package push_ack_uvm_pkg;
         endfunction
     endclass : push_ack_monitor
 
-    class push_ack_agent #(type data_t = logic) extends uvm_agent;
+    class push_ack_agent #(type data_t = logic) extends a2c_lane_agent #(virtual push_ack_if #(.data_t(data_t)));
         typedef push_ack_item#(data_t)   item_t;
         typedef push_ack_config#(data_t) config_t;
-        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
-        // the active agent's replay log also cuts, and tells a passive agent
-        // whether an active one has claimed the pin set.
-        typedef a2c_pin_registry #(virtual push_ack_if #(.data_t(data_t))) registry_t;
 
         push_ack_config#(data_t)                cfg;
         push_ack_driver#(data_t)                drv;
@@ -273,6 +273,7 @@ package push_ack_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
@@ -280,18 +281,22 @@ package push_ack_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
-            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
-            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
         endfunction
 
-        // A passive A2C_DST Mode B agent says so when no active agent has
-        // claimed its pin set, since its model_cmp then misses the drain's
-        // cuts or the master's lane deaths. An A2C_SRC agent has no
-        // model_cmp, as only the DUT's ack timing differs between the lanes
-        // there.
-        virtual function void end_of_elaboration_phase(uvm_phase phase);
-            super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        virtual function a2c_lane_joiner lane_joiner();
+            return drv;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
         endfunction
     endclass : push_ack_agent
 

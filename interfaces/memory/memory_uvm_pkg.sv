@@ -492,13 +492,10 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_comparator
 
-    class memory_agent #(type addr_t = logic, type data_t = logic) extends uvm_agent;
+    class memory_agent #(type addr_t = logic, type data_t = logic)
+        extends a2c_lane_agent #(virtual memory_if #(.addr_t(addr_t), .data_t(data_t)));
         typedef memory_item#(addr_t, data_t)   item_t;
         typedef memory_config#(addr_t, data_t) config_t;
-        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
-        // the active agent's replay log also cuts, and tells a passive agent
-        // whether an active one has claimed the pin set.
-        typedef a2c_pin_registry #(virtual memory_if #(.addr_t(addr_t), .data_t(data_t))) registry_t;
 
         config_t                                     cfg;
         memory_driver#(addr_t, data_t)               drv;
@@ -542,22 +539,34 @@ package memory_uvm_pkg;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
             if (sqr != null) drv.seq_item_port.connect(sqr.seq_item_export);
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
-            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
-            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
         endfunction
 
-        // A passive A2C_DST Mode B agent says so when no active responder has
-        // claimed its pin set, since its model_cmp then misses the drain's
-        // cuts. An active A2C_SRC agent keeps no replay log and claims no pin
-        // set, so a passive one has nothing to report.
-        virtual function void end_of_elaboration_phase(uvm_phase phase);
-            super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        virtual function a2c_lane_joiner lane_joiner();
+            return drv;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
+        endfunction
+
+        // An active A2C_SRC agent keeps no replay log and claims no pin set,
+        // so only a passive A2C_DST agent has an owner to miss.
+        protected virtual function bit needs_owner();
+            return model_cmp != null && cfg.role == A2C_DST;
         endfunction
     endclass : memory_agent
 

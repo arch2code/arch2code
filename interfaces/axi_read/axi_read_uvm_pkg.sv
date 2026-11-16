@@ -1195,13 +1195,12 @@ package axi_read_uvm_pkg;
     endclass : axi_read_comparator
 
     class axi_read_agent #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
-                           type ruser_t = logic, type id_t = logic [3:0]) extends uvm_agent;
+                           type ruser_t = logic, type id_t = logic [3:0])
+        extends a2c_lane_agent #(virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
+                                                       .id_t(id_t)));
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t)       item_t;
         typedef axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t)     config_t;
         typedef axi_read_slave_driver#(addr_t, data_t, aruser_t, ruser_t, id_t) slave_t;
-        typedef virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
-                                      .id_t(id_t))                              vif_t;
-        typedef a2c_pin_registry #(vif_t)                                       registry_t;
 
         config_t                                                    cfg;
         // axi_read_master_driver for A2C_SRC, axi_read_slave_driver for A2C_DST.
@@ -1263,14 +1262,11 @@ package axi_read_uvm_pkg;
             end
         endfunction
 
-        // A passive agent has no driver, and a $cast from null succeeds, so
-        // the driver block needs its own guard. A passive agent joins the
-        // watchers of its pin sets. An active Mode B agent marks its DUT
-        // lane's pin set as its own and hands the watchers to its master or
-        // its slave's replay log.
+        // An active Mode B slave's monitors read the cut from its own replay
+        // log.
         virtual function void connect_phase(uvm_phase phase);
-            slave_t slave;
-            axi_read_master_driver#(addr_t, data_t, aruser_t, ruser_t, id_t) master;
+            a2c_lane_joiner lanes = lane_joiner();
+            super.connect_phase(phase);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
@@ -1278,16 +1274,9 @@ package axi_read_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
-            if (drv == null) begin
-                registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
-                return;
-            end
-            if ($cast(master, drv)) master.join_lanes(this, model_cmp, mon, model_mon);
-            if ($cast(slave, drv) && slave.replay != null) begin
-                slave.join_lanes(this, model_cmp, mon, model_mon);
-                mon.replay       = slave.replay;
-                model_mon.replay = slave.replay;
-            end
+            if (lanes == null || lanes.lane_replay() == null) return;
+            mon.replay       = lanes.lane_replay();
+            model_mon.replay = lanes.lane_replay();
         endfunction
 
         // A passive agent's monitors read the cut from the replay log of the
@@ -1299,7 +1288,25 @@ package axi_read_uvm_pkg;
             if (registry_t::of(cfg.vif).log != null) mon.replay = registry_t::of(cfg.vif).log;
             if (model_mon == null) return;
             if (registry_t::of(cfg.model_vif).log != null) model_mon.replay = registry_t::of(cfg.model_vif).log;
-            registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        endfunction
+
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        // The master and the slave are both lane drivers; drv holds either.
+        virtual function a2c_lane_joiner lane_joiner();
+            a2c_lane_joiner j;
+            void'($cast(j, drv));
+            return j;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        virtual function a2c_comparator_base lane_cmp();
+            return model_cmp;
         endfunction
     endclass : axi_read_agent
 

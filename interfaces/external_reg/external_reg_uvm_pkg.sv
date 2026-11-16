@@ -279,13 +279,9 @@ package external_reg_uvm_pkg;
         endfunction
     endclass : external_reg_comparator
 
-    class external_reg_agent #(type data_t = logic [31:0]) extends uvm_agent;
+    class external_reg_agent #(type data_t = logic [31:0]) extends a2c_lane_agent #(virtual external_reg_if #(.data_t(data_t)));
         typedef external_reg_item#(data_t)   item_t;
         typedef external_reg_config#(data_t) config_t;
-        // Finds the passive agents on the DUT pin set, whose model_cmps a cut of
-        // the active agent's replay log also cuts, and tells a passive agent
-        // whether an active one has claimed the pin set.
-        typedef a2c_pin_registry #(virtual external_reg_if #(.data_t(data_t))) registry_t;
 
         config_t                                  cfg;
         external_reg_driver#(data_t)              drv;
@@ -330,6 +326,7 @@ package external_reg_uvm_pkg;
         virtual function void connect_phase(uvm_phase phase);
             external_reg_comparator#(data_t)   rdata_cmp;
             a2c_in_order_comparator #(item_t) write_cmp;
+            super.connect_phase(phase);
             if (sqr != null) drv.seq_item_port.connect(sqr.seq_item_export);
             if (model_cmp == null) return;
             if (cfg.role == A2C_SRC) begin
@@ -341,17 +338,23 @@ package external_reg_uvm_pkg;
                 mon.ap.connect(write_cmp.dut_export);
                 model_mon.ap.connect(write_cmp.model_export);
             end
-            // On the A2C_SRC role write_cmp stays null, as the rdata
-            // comparator takes no cut.
-            if (drv != null) drv.join_lanes(this, write_cmp, mon, model_mon);
-            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, write_cmp);
         endfunction
 
-        // A passive Mode B agent says so when no active responder has claimed
-        // its pin set, since its model_cmp then misses the drain's cuts.
-        virtual function void end_of_elaboration_phase(uvm_phase phase);
-            super.end_of_elaboration_phase(phase);
-            if (drv == null && model_cmp != null && cfg.role == A2C_DST) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
+        virtual function lane_cfg_t lane_cfg();
+            return cfg;
+        endfunction
+
+        virtual function a2c_lane_joiner lane_joiner();
+            return drv;
+        endfunction
+
+        virtual function uvm_monitor lane_monitor(a2c_lane_e l);
+            return (l == A2C_DUT_LANE) ? mon : model_mon;
+        endfunction
+
+        // The A2C_SRC role's rdata comparator takes no cut.
+        virtual function a2c_comparator_base lane_cmp();
+            return (cfg.role == A2C_DST) ? model_cmp : null;
         endfunction
     endclass : external_reg_agent
 
