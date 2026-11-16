@@ -56,16 +56,7 @@ package raw_uvm_pkg;
         endfunction
     endclass : raw_item
 
-    class raw_config #(type data_t = logic) extends uvm_object;
-        virtual raw_if #(.data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual raw_if #(.data_t(data_t)) model_vif;
-        virtual a2c_clk_if                clk_vif;
-        uvm_active_passive_enum           is_active = UVM_ACTIVE;
-        a2c_role_e                        role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                            port_name = "";
-
+    class raw_config #(type data_t = logic) extends a2c_agent_config #(virtual raw_if #(.data_t(data_t)));
         `uvm_object_param_utils(raw_config#(data_t))
 
         function new(string name = "raw_config");

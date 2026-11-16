@@ -92,20 +92,13 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_item
 
-    class memory_config #(type addr_t = logic, type data_t = logic) extends uvm_object;
-        virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) model_vif;
+    class memory_config #(type addr_t = logic, type data_t = logic)
+        extends a2c_agent_config #(virtual memory_if #(.addr_t(addr_t), .data_t(data_t)));
         // dst role in Mode B: the model lane's credit and held pins.
-        virtual a2c_credit_if                                 credit_vif;
-        virtual a2c_clk_if                                    clk_vif;
-        uvm_active_passive_enum                               is_active = UVM_ACTIVE;
-        a2c_role_e                                            role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                                                port_name = "";
+        virtual a2c_credit_if   credit_vif;
         // dst role: the storage the driver serves. The agent creates one when
         // the test leaves it null.
-        a2c_mem_model #(data_t)                               mem;
+        a2c_mem_model #(data_t) mem;
 
         `uvm_object_param_utils(memory_config#(addr_t, data_t))
 
@@ -155,36 +148,21 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_base_seq
 
+    // In Mode B the dst role records, for the model lane's access of the
+    // same index, the word the DUT lane's read returned, or 0 for a write.
+    // Each lane's done counts an access by the sample point at which its
+    // monitor reports it: a write at the sample edge before its clock, a
+    // read at the drive point after, where read_data goes out for the next
+    // sample edge.
     class memory_driver #(type addr_t = logic, type data_t = logic)
-        extends uvm_driver #(memory_item#(addr_t, data_t)) implements a2c_replay_lanes;
-        typedef virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) vif_t;
-        // What the DUT lane's access gives the model lane's access of the
-        // same index: the word a read returned.
-        typedef struct {
-            bit    write;
-            data_t word;
-        } rsp_t;
-        typedef a2c_replay_log #(rsp_t) replay_t;
-
-        memory_config#(addr_t, data_t) cfg;
-        // dst role in Mode B only.
-        replay_t                       replay;
-
+        extends a2c_lane_driver #(memory_item#(addr_t, data_t), virtual memory_if #(.addr_t(addr_t), .data_t(data_t)),
+                                  memory_config#(addr_t, data_t), data_t);
         // src role: responses to the reads taken on the last rising edge,
         // waiting for read_data. Each is built when its read is accepted,
         // because a sequence may reuse the request object for its next item.
         protected memory_item#(addr_t, data_t) reads[$];
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
         // dst role: an access sampled and not yet served at the drive point.
         protected bit          in_access[2];
-        protected int unsigned starts[2];
-        // The accesses each lane has completed, each counted by the sample
-        // point at which its monitor reports it: a write at the sample edge
-        // before its clock, a read at the drive point after, where
-        // read_data goes out for the next sample edge.
-        protected int unsigned done[2];
         // The model lane's accesses made without credit, each answered from
         // cfg.mem and dropped from the replay log when the DUT lane records
         // it; the first, and when it came, for check_phase().
@@ -204,29 +182,21 @@ package memory_uvm_pkg;
             super.new(name, parent);
         endfunction
 
+        // The src role drives both lanes in lockstep, as an access cannot
+        // stall, so it declares no lane dead.
+        protected virtual function bit lane_master();
+            return 0;
+        endfunction
+
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
-            if (cfg.model_vif == null || cfg.role != A2C_DST) return;
+            if (replay == null) return;
             if (cfg.credit_vif == null) begin
                 `uvm_fatal("A2C_CFG", $sformatf("%s: a Mode B memory responder needs cfg.credit_vif, the model lane's credit and held pins",
                                                 cfg.port_name))
             end
-            replay = replay_t::type_id::create("replay", this);
-            replay.driver      = this;
-            replay.clk_vif     = cfg.clk_vif;
             replay.credit_held = 1;
         endfunction
-
-        virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            if (cfg.role == A2C_SRC) begin
-                run_src();
-            end else begin
-                run_dst();
-            end
-        endtask
 
         protected function void drive_enable(bit enable);
             for (int l = 0; l < lanes; l++) lane[l].enable <= enable;
@@ -321,7 +291,7 @@ package memory_uvm_pkg;
             bit [63:0]   index[2];
             data_t       wdata[2];
             data_t       rdata[2];
-            rsp_t        rsp;
+            data_t       word;
             int unsigned delay;
             for (int l = 0; l < lanes; l++) lane[l].read_data <= '0;
             if (replay != null) begin
@@ -348,9 +318,9 @@ package memory_uvm_pkg;
                     if (l == A2C_DUT_LANE) begin
                         if (!is_write[l]) rdata[l] = cfg.mem.read(index[l]);
                         if (replay != null) begin
-                            replay.record('{write: is_write[l], word: is_write[l] ? data_t'('0) : rdata[l]}, 0);
+                            replay.record(is_write[l] ? data_t'('0) : rdata[l], 0);
                             while (owed > 0 && replay.can_replay()) begin
-                                replay.replay(rsp, delay);
+                                replay.replay(word, delay);
                                 owed--;
                             end
                             // can_replay() returned 0 for a model lane still
@@ -358,8 +328,8 @@ package memory_uvm_pkg;
                             if (owed > 0) replay.cancel_wait();
                         end
                     end else if (replay.can_replay()) begin
-                        replay.replay(rsp, delay);
-                        rdata[l] = rsp.word;
+                        replay.replay(word, delay);
+                        rdata[l] = word;
                     end else begin
                         // Answered from cfg.mem, so the lane waits for no
                         // record, which can_replay() just marked it as doing.
@@ -397,14 +367,6 @@ package memory_uvm_pkg;
 
         virtual function bit lane_busy(a2c_lane_e l);
             return in_access[l];
-        endfunction
-
-        virtual function int unsigned lane_done(a2c_lane_e l);
-            return done[l];
-        endfunction
-
-        virtual function int unsigned lane_starts(a2c_lane_e l);
-            return starts[l];
         endfunction
 
         function int unsigned held_clock_count();
@@ -584,13 +546,9 @@ package memory_uvm_pkg;
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
-                if (drv != null && drv.replay != null) begin
-                    drv.replay.cmp      = model_cmp;
-                    drv.replay.watchers = registry_t::of(cfg.vif);
-                    registry_t::of(cfg.vif).owner = get_full_name();
-                end
-                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
+            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
+            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
         endfunction
 
         // A passive A2C_DST Mode B agent says so when no active responder has

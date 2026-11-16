@@ -90,21 +90,14 @@ package axi4_stream_uvm_pkg;
     endclass : axi4_stream_item
 
     class axi4_stream_config #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
-                               type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_object;
-        virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) model_vif;
-        virtual a2c_clk_if      clk_vif;
-        uvm_active_passive_enum is_active = UVM_ACTIVE;
-        a2c_role_e              role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                  port_name = "";
+                               type tdest_t = logic [7:0], type tuser_t = logic)
+        extends a2c_agent_config #(virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)));
         // The interface declares backpressure: false, so the consumer must
         // never hold tready low while tvalid is high; the monitor reports it
         // if it does.
-        bit                     no_backpressure = 0;
+        bit          no_backpressure = 0;
         // dst role: percentage of clocks with tready high.
-        int unsigned            ready_pct = 100;
+        int unsigned ready_pct = 100;
 
         `uvm_object_param_utils(axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -115,134 +108,54 @@ package axi4_stream_uvm_pkg;
 
     class axi4_stream_driver #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
                                type tdest_t = logic [7:0], type tuser_t = logic)
-            extends uvm_driver #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)) implements a2c_lane_waits;
-        typedef virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) vif_t;
-
-        axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t) cfg;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
-        // src role: bounds how long one lane may trail the other and how
-        // long the lanes may stall in Mode B, and keeps which lanes are
-        // dead.
-        a2c_lane_watchdog      wd;
-
+            extends a2c_lane_driver #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t),
+                                      virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)),
+                                      axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t));
         `uvm_component_param_utils(axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t))
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            if (cfg.role == A2C_SRC) begin
-                run_src();
-            end else begin
-                run_dst();
-            end
-        endtask
-
-        protected function void drive_tvalid(bit tvalid);
-            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].tvalid <= tvalid;
+        // Both lanes take the same tready, so the model lane needs no record.
+        protected virtual function bit has_replay();
+            return 0;
         endfunction
 
-        // Each loop iteration starts at a drive point. try_next_item lets
-        // back-to-back items go out on consecutive clocks, and tvalid drops on
-        // the first drive point with no item.
-        protected virtual task run_src();
-            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
-            wd.configure(cfg.clk_vif);
-            for (int l = 0; l < lanes; l++) begin
-                lane[l].tvalid <= 1'b0;
-                lane[l].tdata  <= '0;
-                lane[l].tlast  <= 1'b0;
-                lane[l].tid    <= '0;
-                lane[l].tdest  <= '0;
-                lane[l].tuser  <= '0;
-                lane[l].tstrb  <= '0;
-                lane[l].tkeep  <= '0;
-            end
-            cfg.clk_vif.wait_reset_release();
-            cfg.clk_vif.drive_edge();
-            if (lanes == 2) begin
-                fork
-                    release_dead();
-                join_none
-            end
-            forever begin
-                seq_item_port.try_next_item(req);
-                if (req == null) begin
-                    drive_tvalid(1'b0);
-                    cfg.clk_vif.drive_edge();
-                    continue;
-                end
-                repeat (req.gap) begin
-                    drive_tvalid(1'b0);
-                    cfg.clk_vif.drive_edge();
-                end
-                for (int l = 0; l < lanes; l++) begin
-                    if (wd.dead[l]) continue;
-                    lane[l].tvalid <= 1'b1;
-                    lane[l].tdata  <= req.tdata;
-                    lane[l].tlast  <= req.tlast;
-                    lane[l].tid    <= req.tid;
-                    lane[l].tdest  <= req.tdest;
-                    lane[l].tuser  <= req.tuser;
-                    lane[l].tstrb  <= req.tstrb;
-                    lane[l].tkeep  <= req.tkeep;
-                end
-                wait_transfer();
-                seq_item_port.item_done();
-            end
-        endtask
-
-        // Returns at the drive point after the last live lane's beat
-        // transferred, which is the rising edge before it. A lane whose beat
-        // has transferred holds tvalid low from the next drive point on. In
-        // Mode B wd bounds how long one lane may trail the other and how long
-        // the lanes may stall (a2c_lane_watchdog), and a lane it declares dead
-        // drops out of the wait.
-        protected task wait_transfer();
-            bit    pending[2];
-            bit    took[2];
-            bit    finished[2];
-            wd.begin_item();
-            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < lanes; l++) begin
-                    took[l]     = pending[l] && lane[l].tready === 1'b1;
-                    pending[l] &= !took[l];
-                    finished[l] |= took[l];
-                end
-                wd.step(took, pending);
-                cfg.clk_vif.drive_edge();
-                if (!pending[A2C_DUT_LANE] && !pending[A2C_MODEL_LANE]) return;
-                for (int l = 0; l < lanes; l++) begin
-                    if (finished[l]) lane[l].tvalid <= 1'b0;
-                end
-            end
-        endtask
-
-        virtual function string waiting_for(a2c_lane_e l);
-            return {"the transfer of ", req.convert2string()};
+        protected virtual function void reset_lane(int l);
+            lane[l].tvalid <= 1'b0;
+            lane[l].tdata  <= '0;
+            lane[l].tlast  <= 1'b0;
+            lane[l].tid    <= '0;
+            lane[l].tdest  <= '0;
+            lane[l].tuser  <= '0;
+            lane[l].tstrb  <= '0;
+            lane[l].tkeep  <= '0;
         endfunction
 
-        // Mode B: a dead lane keeps an asserted tvalid and its payload until
-        // that transfer happens, as the protocol requires, and drops tvalid at
-        // the drive point after it. No later item drives the lane.
-        protected task release_dead();
-            bit took[2];
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < 2; l++) took[l] = wd.dead[l] && lane[l].tvalid === 1'b1 && lane[l].tready === 1'b1;
-                cfg.clk_vif.drive_edge();
-                for (int l = 0; l < 2; l++) if (took[l]) lane[l].tvalid <= 1'b0;
-            end
-        endtask
+        protected virtual function void drive_request(int l, bit on);
+            lane[l].tvalid <= on;
+            if (!on) return;
+            lane[l].tdata <= req.tdata;
+            lane[l].tlast <= req.tlast;
+            lane[l].tid   <= req.tid;
+            lane[l].tdest <= req.tdest;
+            lane[l].tuser <= req.tuser;
+            lane[l].tstrb <= req.tstrb;
+            lane[l].tkeep <= req.tkeep;
+        endfunction
+
+        protected virtual function bit request_held(int l);
+            return lane[l].tvalid === 1'b1;
+        endfunction
+
+        protected virtual function bit request_taken(int l);
+            return lane[l].tready === 1'b1;
+        endfunction
+
+        protected virtual function int unsigned item_gap();
+            return req.gap;
+        endfunction
 
         // tready is driven from time 0, so a backpressure: false sink is
         // ready on the first clock out of reset. Such a sink never stalls, so
@@ -346,6 +259,8 @@ package axi4_stream_uvm_pkg;
                               type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_agent;
         typedef axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)   item_t;
         typedef axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t) config_t;
+        typedef a2c_pin_registry #(virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t),
+                                                            .tuser_t(tuser_t))) registry_t;
 
         config_t                                               cfg;
         axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t)  drv;
@@ -392,6 +307,16 @@ package axi4_stream_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
+            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
+            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
+        endfunction
+
+        // A passive A2C_DST Mode B agent says so when no active agent has
+        // claimed its pin set, since its model_cmp then misses the master's
+        // lane deaths.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : axi4_stream_agent
 

@@ -53,17 +53,9 @@ package status_uvm_pkg;
         endfunction
     endclass : status_item
 
-    class status_config #(type data_t = logic) extends uvm_object;
-        virtual status_if #(.data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual status_if #(.data_t(data_t)) model_vif;
-        virtual a2c_clk_if                   clk_vif;
-        uvm_active_passive_enum              is_active = UVM_ACTIVE;
-        a2c_role_e                           role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                               port_name = "";
+    class status_config #(type data_t = logic) extends a2c_agent_config #(virtual status_if #(.data_t(data_t)));
         // src role: the value the driver holds on data.
-        data_t                               value = '0;
+        data_t value = '0;
 
         `uvm_object_param_utils(status_config#(data_t))
 

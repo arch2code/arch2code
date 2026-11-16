@@ -1740,6 +1740,19 @@ package a2c_uvm_pkg;
             return w;
         endfunction
 
+        // For a passive agent in connect_phase: its monitors that are
+        // a2c_lane_watch join the watchers of their pin sets, and cmp, its
+        // model_cmp or null, those of its DUT lane's pin set, so that the
+        // active agent of the port tells them of a death or a cut.
+        static function void join_passive(VIF_T vif, VIF_T model_vif, uvm_monitor mon, uvm_monitor model_mon,
+                                          a2c_comparator_base cmp);
+            a2c_lane_watch w;
+            if (mon != null && $cast(w, mon)) of(vif).mons.push_back(w);
+            if (model_mon == null) return;
+            if ($cast(w, model_mon)) of(model_vif).mons.push_back(w);
+            if (cmp != null) of(vif).cmps.push_back(cmp);
+        endfunction
+
         // For a passive Mode B agent at end_of_elaboration_phase. A port the
         // env leaves to other drivers, such as an internal port of a top
         // design, has no owner and needs none, so this is an info. It names
@@ -2988,6 +3001,468 @@ package a2c_uvm_pkg;
         pure virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
         pure virtual function string starvation_port();
     endclass : a2c_starvation_source
+
+    // The fields every a2c agent config has, whatever its protocol. VIF_T
+    // is the protocol's virtual interface type.
+    virtual class a2c_agent_config #(type VIF_T = virtual a2c_clk_if) extends uvm_object;
+        VIF_T                   vif;
+        // The model DUT's pin set in Mode B; null otherwise.
+        VIF_T                   model_vif;
+        virtual a2c_clk_if      clk_vif;
+        uvm_active_passive_enum is_active = UVM_ACTIVE;
+        a2c_role_e              role = A2C_SRC;
+        // Port name used in the A2C_TXN log line.
+        string                  port_name = "";
+
+        function new(string name = "a2c_agent_config");
+            super.new(name);
+        endfunction
+    endclass : a2c_agent_config
+
+    // A responder lane's place in a2c_lane_driver::run_responder().
+    // A2C_RSP_REQUESTED: a lane that has seen a request and has no
+    // response yet, a DUT lane whose responder has not answered or a model
+    // lane waiting for the DUT lane.
+    typedef enum {A2C_RSP_IDLE, A2C_RSP_REQUESTED, A2C_RSP_WAIT, A2C_RSP_RESPOND} a2c_rsp_state_e;
+
+    // What the driver of every a2c agent shares about its lanes: cfg.vif is
+    // the DUT lane, cfg.model_vif the model lane in Mode B, and lanes is 2
+    // in Mode B and 1 otherwise. A master (lane_master()) owns wd, created
+    // at the start of the run phase, which bounds the lanes against each
+    // other and keeps which are dead. A Mode B responder (has_replay())
+    // owns replay, created in build_phase, and its DUT lane records each
+    // response there for the model lane. join_lanes() hands both the
+    // agent's model_cmp, monitors and the pin sets' passive agents.
+    //
+    // The run phase calls run_src() on the A2C_SRC role and run_dst() on
+    // the A2C_DST role. run_src() by default is the loop of a master that
+    // puts each item on every live lane at one drive point, which a
+    // protocol fills in with drive_request(), request_held() and
+    // request_taken(). run_dst() by default is run_responder(), which a
+    // protocol fills in with request_seen(), respond(), drive_response()
+    // and end_response(). A protocol whose transfers do not fit either
+    // overrides the task, and keeps lane_starts(), lane_done() and
+    // lane_busy() true to it for the drain (a2c_replay_lanes).
+    virtual class a2c_lane_driver #(type REQ = uvm_sequence_item, type VIF_T = virtual a2c_clk_if,
+                                    type CFG_T = a2c_agent_config #(VIF_T), type REC_T = bit)
+        extends uvm_driver #(REQ) implements a2c_lane_waits, a2c_replay_lanes, a2c_replay_holder;
+        typedef a2c_replay_log #(REC_T)   replay_t;
+        typedef a2c_pin_registry #(VIF_T) registry_t;
+
+        CFG_T               cfg;
+        // A responder in Mode B only.
+        replay_t            replay;
+        // A master only.
+        a2c_lane_watchdog   wd;
+        // A master in Mode B: the agent's model_cmp and monitors, and the
+        // passive agents on each lane's pin set, indexed by a2c_lane_e,
+        // which wd tells of a dead lane.
+        a2c_comparator_base cmp;
+        a2c_lane_watch      mons[2];
+        a2c_pin_watchers    watchers[2];
+
+        // Indexed by a2c_lane_e.
+        protected VIF_T           lane[2];
+        protected int unsigned    lanes;
+        protected int unsigned    starts[2];
+        // The transactions each lane has completed, each counted at the
+        // drive point of its last clock, from which it cannot be withdrawn.
+        protected int unsigned    done[2];
+        // wd's words for what the master serves and what becomes of it
+        // once both lanes are dead.
+        protected string          unit = "item";
+        protected string          none_left = "every open and later item completes at once";
+        // run_responder(): each lane's state, response and clocks left
+        // before it.
+        protected a2c_rsp_state_e rsp_state[2];
+        protected REC_T           response[2];
+        protected int unsigned    response_delay[2];
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        // Whether the driver owns wd.
+        protected virtual function bit lane_master();
+            return cfg.role == A2C_SRC;
+        endfunction
+
+        // Whether the driver, given a model lane, owns replay.
+        protected virtual function bit has_replay();
+            return cfg.role == A2C_DST;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            if (cfg.model_vif == null || !has_replay()) return;
+            replay = replay_t::type_id::create("replay", this);
+            replay.driver  = this;
+            replay.clk_vif = cfg.clk_vif;
+        endfunction
+
+        // For the active agent in connect_phase, in Mode B: a master tells
+        // model_cmp, the monitors that are a2c_lane_watch and the passive
+        // agents on both pin sets of a lane it declares dead, and the
+        // replay log cuts model_cmp and the passive agents' model_cmps on
+        // the DUT lane's pin set. Either way the agent claims that pin set.
+        function void join_lanes(uvm_component agent, a2c_comparator_base model_cmp, uvm_monitor mon, uvm_monitor model_mon);
+            if (cfg.model_vif == null) return;
+            if (lane_master()) begin
+                cmp = model_cmp;
+                void'($cast(mons[A2C_DUT_LANE], mon));
+                void'($cast(mons[A2C_MODEL_LANE], model_mon));
+                watchers[A2C_DUT_LANE]   = registry_t::of(cfg.vif);
+                watchers[A2C_MODEL_LANE] = registry_t::of(cfg.model_vif);
+                registry_t::of(cfg.vif).owner = agent.get_full_name();
+            end
+            if (replay == null) return;
+            replay.cmp      = model_cmp;
+            replay.watchers = registry_t::of(cfg.vif);
+            registry_t::of(cfg.vif).owner     = agent.get_full_name();
+            registry_t::of(cfg.vif).log       = replay;
+            registry_t::of(cfg.model_vif).log = replay;
+        endfunction
+
+        protected function void setup_lanes();
+            lane[A2C_DUT_LANE]   = cfg.vif;
+            lane[A2C_MODEL_LANE] = cfg.model_vif;
+            lanes = (cfg.model_vif != null) ? 2 : 1;
+            if (!lane_master()) return;
+            wd = new(this, cfg.port_name, lanes, unit, none_left);
+            wd.cmp      = cmp;
+            wd.mons     = mons;
+            wd.watchers = watchers;
+            wd.configure(cfg.clk_vif);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            setup_lanes();
+            if (cfg.role == A2C_SRC) run_src();
+            else run_dst();
+        endtask
+
+        protected virtual task run_src();
+            for (int l = 0; l < lanes; l++) reset_lane(l);
+            cfg.clk_vif.wait_reset_release();
+            cfg.clk_vif.drive_edge();
+            if (lanes == 2) begin
+                fork
+                    release_dead();
+                join_none
+            end
+            // Each iteration starts at a drive point. try_next_item lets
+            // back-to-back items go out on consecutive clocks, and the
+            // request drops on the first drive point with no item.
+            forever begin
+                seq_item_port.try_next_item(req);
+                if (req == null) begin
+                    drop_requests();
+                    cfg.clk_vif.drive_edge();
+                    continue;
+                end
+                repeat (item_gap()) begin
+                    drop_requests();
+                    cfg.clk_vif.drive_edge();
+                end
+                for (int l = 0; l < lanes; l++) if (!wd.dead[l]) drive_request(l, 1'b1);
+                wait_transfer();
+                seq_item_port.item_done();
+            end
+        endtask
+
+        protected virtual task run_dst();
+            run_responder();
+        endtask
+
+        // run_src(): the lane's pins before reset release.
+        protected virtual function void reset_lane(int l);
+            drive_request(l, 1'b0);
+        endfunction
+
+        // run_src(): with on set, raises the lane's request with req's
+        // payload; otherwise drops the request.
+        protected virtual function void drive_request(int l, bit on);
+        endfunction
+
+        // run_src(): whether the lane's request is up at the sample point.
+        protected virtual function bit request_held(int l);
+            return 0;
+        endfunction
+
+        // run_src(): whether the lane's raised request transfers at the
+        // sample point.
+        protected virtual function bit request_taken(int l);
+            return 0;
+        endfunction
+
+        // run_src(): the idle clocks before req.
+        protected virtual function int unsigned item_gap();
+            return 0;
+        endfunction
+
+        // run_src(): called at the sample point at which lane l's transfer
+        // of req happens, to keep what the lane returned.
+        protected virtual function void take_response(a2c_lane_e l);
+        endfunction
+
+        // run_src(): called once the item completes, with the DUT lane, or
+        // the model lane once the DUT lane is dead, to put what that lane
+        // returned in req.
+        protected virtual function void return_response(a2c_lane_e l);
+        endfunction
+
+        protected function void drop_requests();
+            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) drive_request(l, 1'b0);
+        endfunction
+
+        // Returns at the drive point after the last live lane's transfer,
+        // which is the rising edge before it. A lane whose transfer has
+        // happened drops its request from the next drive point on. In Mode B
+        // wd bounds how long one lane may trail the other and how long the
+        // lanes may stall (a2c_lane_watchdog), and a lane it declares dead
+        // drops out of the wait.
+        protected virtual task wait_transfer();
+            bit pending[2];
+            bit took[2];
+            bit finished[2];
+            wd.begin_item();
+            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    took[l]      = pending[l] && request_taken(l);
+                    pending[l]  &= !took[l];
+                    finished[l] |= took[l];
+                    if (took[l]) take_response(a2c_lane_e'(l));
+                end
+                wd.step(took, pending);
+                cfg.clk_vif.drive_edge();
+                if (!pending[A2C_DUT_LANE] && !pending[A2C_MODEL_LANE]) break;
+                for (int l = 0; l < lanes; l++) if (finished[l]) drive_request(l, 1'b0);
+            end
+            if (finished[A2C_DUT_LANE]) return_response(A2C_DUT_LANE);
+            else if (finished[A2C_MODEL_LANE]) return_response(A2C_MODEL_LANE);
+        endtask
+
+        // Mode B: a dead lane keeps its raised request and payload until
+        // that transfer happens, as the protocols require, and drops the
+        // request at the drive point after it. No later item drives the
+        // lane.
+        protected virtual task release_dead();
+            bit took[2];
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < 2; l++) took[l] = wd.dead[l] && request_held(l) && request_taken(l);
+                cfg.clk_vif.drive_edge();
+                for (int l = 0; l < 2; l++) if (took[l]) drive_request(l, 1'b0);
+            end
+        endtask
+
+        virtual function string waiting_for(a2c_lane_e l);
+            return {"the transfer of ", req.convert2string()};
+        endfunction
+
+        // run_responder(): whether the lane shows a request at the sample
+        // point.
+        protected virtual function bit request_seen(int l);
+            return 0;
+        endfunction
+
+        // run_responder(): whether a model lane that waits for the DUT
+        // lane's record has seen its master withdraw the request, which its
+        // monitor reports as A2C_HOLD.
+        protected virtual function bit request_withdrawn(int l);
+            return !request_seen(l);
+        endfunction
+
+        // run_responder(): the DUT lane's response to its request and the
+        // clocks before it. A responder that waits for its sequence returns
+        // at_edge set if the rising edge came first, and is called again on
+        // the next clock.
+        protected virtual task respond(output REC_T r, output int unsigned delay, output bit at_edge);
+            delay   = 0;
+            at_edge = 0;
+        endtask
+
+        // run_responder(): the lane's response pins before reset release.
+        protected virtual function void idle_response(int l);
+        endfunction
+
+        // run_responder(): raises the lane's response.
+        protected virtual function void drive_response(int l, REC_T r);
+        endfunction
+
+        // run_responder(): drops the lane's response one clock after
+        // drive_response().
+        protected virtual function void end_response(int l);
+        endfunction
+
+        // A response goes out for one clock per request, and rises only
+        // after the request has been sampled. One process serves every lane,
+        // taking the DUT lane first, so a model lane waiting on request n
+        // replays it on the clock the DUT lane takes its response.
+        protected task run_responder();
+            bit at_edge;
+            for (int l = 0; l < lanes; l++) begin
+                rsp_state[l] = A2C_RSP_IDLE;
+                idle_response(l);
+            end
+            cfg.clk_vif.wait_reset_release();
+            forever begin
+                cfg.clk_vif.sample_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    if (rsp_state[l] == A2C_RSP_IDLE && request_seen(l)) begin
+                        rsp_state[l] = A2C_RSP_REQUESTED;
+                        starts[l]++;
+                    end
+                end
+                at_edge = 0;
+                if (rsp_state[A2C_DUT_LANE] == A2C_RSP_REQUESTED) begin
+                    respond(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE], at_edge);
+                    if (!at_edge) begin
+                        if (replay != null) replay.record(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE]);
+                        rsp_state[A2C_DUT_LANE] = A2C_RSP_WAIT;
+                    end
+                end
+                // Nothing was taken for a withdrawn request, so the lane
+                // goes back to idle and waits for no record.
+                if (lanes == 2 && rsp_state[A2C_MODEL_LANE] == A2C_RSP_REQUESTED && request_withdrawn(A2C_MODEL_LANE)) begin
+                    starts[A2C_MODEL_LANE]--;
+                    replay.cancel_wait();
+                    rsp_state[A2C_MODEL_LANE] = A2C_RSP_IDLE;
+                end
+                if (lanes == 2 && rsp_state[A2C_MODEL_LANE] == A2C_RSP_REQUESTED && replay.can_replay()) begin
+                    replay.replay(response[A2C_MODEL_LANE], response_delay[A2C_MODEL_LANE]);
+                    rsp_state[A2C_MODEL_LANE] = A2C_RSP_WAIT;
+                end
+                if (at_edge) cfg.clk_vif.skew_after_edge();
+                else cfg.clk_vif.drive_edge();
+                for (int l = 0; l < lanes; l++) begin
+                    case (rsp_state[l])
+                        A2C_RSP_WAIT: begin
+                            if (response_delay[l] > 0) begin
+                                response_delay[l]--;
+                            end else begin
+                                drive_response(l, response[l]);
+                                rsp_state[l] = A2C_RSP_RESPOND;
+                                done[l]++;
+                            end
+                        end
+                        A2C_RSP_RESPOND: begin
+                            end_response(l);
+                            rsp_state[l] = A2C_RSP_IDLE;
+                        end
+                        default: ;
+                    endcase
+                end
+            end
+        endtask
+
+        virtual function bit lane_busy(a2c_lane_e l);
+            return rsp_state[l] != A2C_RSP_IDLE;
+        endfunction
+
+        virtual function int unsigned lane_starts(a2c_lane_e l);
+            return starts[l];
+        endfunction
+
+        virtual function int unsigned lane_done(a2c_lane_e l);
+            return done[l];
+        endfunction
+
+        virtual function bit lane_holding(a2c_lane_e l);
+            return 0;
+        endfunction
+    endclass : a2c_lane_driver
+
+    // What an agent that a2c does not provide implements to take part in
+    // Mode B, where one stimulus drives the DUT's pin set and the model
+    // DUT's, and a2c compares what the two lanes report. a2c_mode_b_port
+    // reads it.
+    interface class a2c_mode_b_agent #(type T = uvm_sequence_item);
+        // The analysis port of the monitor on lane l's pin set, which writes
+        // one item per transfer, in transfer order. The monitor also calls
+        // a2c_joint_watch::handshake() once per transfer.
+        pure virtual function uvm_analysis_port #(T) lane_ap(a2c_lane_e l);
+        // An active master's a2c_lane_watchdog, built with lanes 2 by the
+        // end of connect_phase, which the master steps as it waits on each
+        // lane; null otherwise.
+        pure virtual function a2c_lane_watchdog lane_watchdog();
+        // An active responder's replay log, built by the end of
+        // connect_phase with its driver and clk_vif set, from which the model
+        // lane takes each response the DUT lane recorded; null for a
+        // responder that drives both lanes alike, and otherwise.
+        pure virtual function a2c_replay_log_base lane_replay();
+    endclass : a2c_mode_b_agent
+
+    // Compares the two lanes of an agent that implements a2c_mode_b_agent:
+    // model_cmp pairs lane_ap(A2C_DUT_LANE) with lane_ap(A2C_MODEL_LANE) in
+    // order, and the agent's watchdog tells model_cmp of a lane's death and
+    // its replay log cuts model_cmp. An env sets agent and role before
+    // connect_phase. An agent that breaks the contract gets an
+    // A2C_MODE_B_CONTRACT error at end_of_elaboration_phase.
+    class a2c_mode_b_port #(type T = uvm_sequence_item) extends uvm_component;
+        uvm_agent                    agent;
+        // The side of the port the agent plays.
+        a2c_role_e                   role = A2C_SRC;
+        a2c_in_order_comparator #(T) model_cmp;
+        protected a2c_mode_b_agent #(T) lanes;
+
+        `uvm_component_param_utils(a2c_mode_b_port#(T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            model_cmp = a2c_in_order_comparator#(T)::type_id::create("model_cmp", this);
+        endfunction
+
+        protected function void broken(string why);
+            `uvm_error("A2C_MODE_B_CONTRACT", $sformatf("%s: %s", (agent == null) ? get_full_name() : agent.get_full_name(), why))
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            if (agent == null || !$cast(lanes, agent)) begin
+                broken("the agent does not implement a2c_mode_b_agent, so its lanes cannot be compared");
+                lanes = null;
+                return;
+            end
+            for (int l = 0; l < 2; l++) begin
+                a2c_lane_e lane = a2c_lane_e'(l);
+                if (lanes.lane_ap(lane) != null) continue;
+                broken($sformatf("lane_ap(%s) is null, so the %s lane's transfers cannot be compared", lane.name(), a2c_lane_name(lane)));
+                lanes = null;
+                return;
+            end
+            lanes.lane_ap(A2C_DUT_LANE).connect(model_cmp.dut_export);
+            lanes.lane_ap(A2C_MODEL_LANE).connect(model_cmp.model_export);
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            a2c_lane_watchdog   wd;
+            a2c_replay_log_base log;
+            super.end_of_elaboration_phase(phase);
+            if (lanes == null || agent.get_is_active() != UVM_ACTIVE) return;
+            wd  = lanes.lane_watchdog();
+            log = lanes.lane_replay();
+            if (role == A2C_SRC && wd == null) begin
+                broken("an active master gives no lane watchdog, so a lane that trails the other or stalls is never declared dead, and model_cmp is never told of a death");
+            end else if (wd != null && wd.lanes != 2) begin
+                broken($sformatf("the lane watchdog counts %0d lanes, not the 2 of Mode B", wd.lanes));
+            end else if (wd != null) begin
+                wd.cmp = model_cmp;
+            end
+            if (log == null) return;
+            if (log.driver == null || log.clk_vif == null) begin
+                broken("the replay log has no driver or no clk_vif, so the end-of-test drain cannot wait for the model lane");
+                return;
+            end
+            log.cmp = model_cmp;
+        endfunction
+    endclass : a2c_mode_b_port
 
     // Marks the end of a unit of a stream, such as a frame or a line. A unit
     // opens at the first beat after the previous unit closed and closes at

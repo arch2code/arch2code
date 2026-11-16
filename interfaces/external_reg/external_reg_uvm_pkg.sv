@@ -86,20 +86,12 @@ package external_reg_uvm_pkg;
         endfunction
     endclass : external_reg_item
 
-    class external_reg_config #(type data_t = logic [31:0]) extends uvm_object;
-        virtual external_reg_if #(.data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual external_reg_if #(.data_t(data_t)) model_vif;
-        virtual a2c_clk_if                         clk_vif;
-        uvm_active_passive_enum                    is_active = UVM_ACTIVE;
-        a2c_role_e                                 role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                                     port_name = "";
+    class external_reg_config #(type data_t = logic [31:0]) extends a2c_agent_config #(virtual external_reg_if #(.data_t(data_t)));
         // dst role: the value the driver holds on rdata. A test may change it
         // at any time.
-        data_t                                     value = '0;
+        data_t value = '0;
         // dst role: each write loads its wdata into value.
-        bit                                        update_on_write = 1'b1;
+        bit    update_on_write = 1'b1;
 
         `uvm_object_param_utils(external_reg_config#(data_t))
 
@@ -108,26 +100,15 @@ package external_reg_uvm_pkg;
         endfunction
     endclass : external_reg_config
 
-    class external_reg_driver #(type data_t = logic [31:0]) extends uvm_driver #(external_reg_item#(data_t))
-        implements a2c_replay_lanes;
-        typedef virtual external_reg_if #(.data_t(data_t)) vif_t;
-        typedef a2c_replay_log #(bit) replay_t;
-
-        external_reg_config#(data_t) cfg;
-        // dst role in Mode B only.
-        replay_t                     replay;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
+    class external_reg_driver #(type data_t = logic [31:0])
+        extends a2c_lane_driver #(external_reg_item#(data_t), virtual external_reg_if #(.data_t(data_t)), external_reg_config#(data_t));
         // dst role in Mode B: the model lane's level, and the last value of
         // cfg.value the driver set or saw, so a test's change is told apart
         // from the DUT lane's writes.
         protected data_t       model_value;
         protected data_t       seen_value;
-        // dst role in Mode B: each lane's writes, and the model lane's
-        // writes the DUT lane has yet to make.
-        protected int unsigned writes[2];
+        // dst role in Mode B: the model lane's writes the DUT lane has yet
+        // to make.
         protected int unsigned ahead;
 
         `uvm_component_param_utils(external_reg_driver#(data_t))
@@ -136,24 +117,11 @@ package external_reg_uvm_pkg;
             super.new(name, parent);
         endfunction
 
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            if (cfg.model_vif == null || cfg.role != A2C_DST) return;
-            replay = replay_t::type_id::create("replay", this);
-            replay.driver  = this;
-            replay.clk_vif = cfg.clk_vif;
+        // The src role drives both lanes in lockstep, as a write cannot
+        // stall, so it declares no lane dead.
+        protected virtual function bit lane_master();
+            return 0;
         endfunction
-
-        virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            if (cfg.role == A2C_SRC) begin
-                run_src();
-            end else begin
-                run_dst();
-            end
-        endtask
 
         protected function void drive_write(bit [1:0] write);
             for (int l = 0; l < lanes; l++) lane[l].write <= write;
@@ -225,32 +193,21 @@ package external_reg_uvm_pkg;
             join
         endtask
 
-        // A model lane write the DUT lane has yet to make waits, as the
-        // model lane of a handshake port would, until the DUT lane's write
-        // of the same index lets it replay.
+        // A write starts and completes on the clock that takes it. A model
+        // lane write the DUT lane has yet to make waits, as the model lane
+        // of a handshake port would, until the DUT lane's write of the same
+        // index lets it replay.
         protected function void count_write(a2c_lane_e l);
             bit          unused;
             int unsigned delay;
-            writes[l]++;
+            starts[l]++;
+            done[l]++;
             if (l == A2C_DUT_LANE) replay.record(1'b0, 0);
             else ahead++;
             while (ahead > 0 && replay.can_replay()) begin
                 replay.replay(unused, delay);
                 ahead--;
             end
-        endfunction
-
-        // A write starts and completes on the clock that takes it.
-        virtual function bit lane_busy(a2c_lane_e l);
-            return 0;
-        endfunction
-
-        virtual function int unsigned lane_starts(a2c_lane_e l);
-            return writes[l];
-        endfunction
-
-        virtual function int unsigned lane_done(a2c_lane_e l);
-            return writes[l];
         endfunction
     endclass : external_reg_driver
 
@@ -383,13 +340,11 @@ package external_reg_uvm_pkg;
                 void'($cast(write_cmp, model_cmp));
                 mon.ap.connect(write_cmp.dut_export);
                 model_mon.ap.connect(write_cmp.model_export);
-                if (drv != null && drv.replay != null) begin
-                    drv.replay.cmp      = write_cmp;
-                    drv.replay.watchers = registry_t::of(cfg.vif);
-                    registry_t::of(cfg.vif).owner = get_full_name();
-                end
-                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(write_cmp);
             end
+            // On the A2C_SRC role write_cmp stays null, as the rdata
+            // comparator takes no cut.
+            if (drv != null) drv.join_lanes(this, write_cmp, mon, model_mon);
+            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, write_cmp);
         endfunction
 
         // A passive Mode B agent says so when no active responder has claimed

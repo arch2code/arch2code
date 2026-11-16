@@ -868,6 +868,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_txn_digest_lb_tests.svh"
     `include "axi_mode_b_lb_tests.svh"
     `include "a2c_lane_watchdog_lb_tests.svh"
+    `include "a2c_mode_b_contract_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_expected_error_lb_tests.svh"

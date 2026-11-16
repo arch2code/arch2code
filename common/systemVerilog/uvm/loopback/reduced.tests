@@ -37,6 +37,9 @@ joint_stall_lone_lane_test
 # a2c_mem_model_lb_tests.svh
 a2c_mem_model_test
 
+# a2c_mode_b_contract_lb_tests.svh
+mode_b_foreign_agent_no_watchdog_test
+
 # a2c_model_cmp_lb_tests.svh
 model_cmp_dut_leftover_test
 status_cmp_stable_test

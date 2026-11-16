@@ -64,22 +64,16 @@ package apb_uvm_pkg;
         bit [31:0] hi;
     } apb_addr_range_t;
 
-    class apb_config #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_object;
-        virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) model_vif;
-        virtual a2c_clk_if                                 clk_vif;
-        uvm_active_passive_enum                            is_active = UVM_ACTIVE;
-        a2c_role_e                                         role = A2C_SRC;
-        string                                             port_name = "";
+    class apb_config #(type addr_t = logic [31:0], type data_t = logic [31:0])
+        extends a2c_agent_config #(virtual apb_if #(.addr_t(addr_t), .data_t(data_t)));
         // A2C_DST role. Byte k of the bus is the byte at paddr + k in mem,
         // which the agent creates when the test leaves it null. pready rises
         // after 0 to max_wait wait clocks of the access phase, drawn per
         // transfer. An access whose paddr falls in an error range gets
         // pslverr and leaves mem untouched.
-        apb_mem_t                                          mem;
-        int unsigned                                       max_wait = 0;
-        apb_addr_range_t                                   error_ranges[$];
+        apb_mem_t        mem;
+        int unsigned     max_wait = 0;
+        apb_addr_range_t error_ranges[$];
 
         `uvm_object_param_utils(apb_config#(addr_t, data_t))
 
@@ -88,40 +82,18 @@ package apb_uvm_pkg;
         endfunction
     endclass : apb_config
 
-    class apb_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_driver #(apb_item)
-        implements a2c_lane_waits;
-        typedef virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif_t;
-
-        apb_config#(addr_t, data_t) cfg;
-        // Mode B: the agent's model_cmp, and the passive agents on each
-        // lane's pin set, indexed by a2c_lane_e, which the master tells of a
-        // dead lane.
-        a2c_comparator_base         cmp;
-        a2c_pin_watchers            watchers[2];
-        // Bounds how long one lane may trail the other and how long the
-        // lanes may stall in Mode B, and keeps which lanes are dead.
-        a2c_lane_watchdog           wd;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
-
+    class apb_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0])
+        extends a2c_lane_driver #(apb_item, virtual apb_if #(.addr_t(addr_t), .data_t(data_t)), apb_config#(addr_t, data_t));
         `uvm_component_param_utils(apb_master_driver#(addr_t, data_t))
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+            none_left = "every open and later item completes at once, a read with the data it was sent with";
         endfunction
 
         // One transfer per item: setup phase, access phase held until PREADY,
         // then the bus returns to idle. Read data and PSLVERR go back in req.
-        virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once, a read with the data it was sent with");
-            wd.cmp      = cmp;
-            wd.watchers = watchers;
-            wd.configure(cfg.clk_vif);
+        protected virtual task run_src();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].psel    <= 1'b0;
                 lane[l].penable <= 1'b0;
@@ -171,7 +143,7 @@ package apb_uvm_pkg;
             while (pending[A2C_DUT_LANE] || pending[A2C_MODEL_LANE]) begin
                 cfg.clk_vif.sample_edge();
                 for (int l = 0; l < lanes; l++) begin
-                    ended[l]     = pending[l] && lane[l].pready === 1'b1;
+                    ended[l]     = pending[l] && request_taken(l);
                     pending[l]  &= !ended[l];
                     finished[l] |= ended[l];
                     if (!ended[l]) continue;
@@ -183,12 +155,7 @@ package apb_uvm_pkg;
                 end
                 wd.step(ended, pending);
                 cfg.clk_vif.drive_edge();
-                for (int l = 0; l < lanes; l++) begin
-                    if (!ended[l]) continue;
-                    lane[l].psel    <= 1'b0;
-                    lane[l].penable <= 1'b0;
-                    lane[l].pwrite  <= 1'b0;
-                end
+                for (int l = 0; l < lanes; l++) if (ended[l]) drive_request(l, 1'b0);
             end
             if (finished[A2C_DUT_LANE] || !finished[A2C_MODEL_LANE]) return;
             if (!req.write) req.data = prdata[A2C_MODEL_LANE];
@@ -199,58 +166,43 @@ package apb_uvm_pkg;
             return $sformatf("the %s of address 0x%08h", a2c_access_name(req.write), req.addr);
         endfunction
 
-        // Mode B: a dead lane stays in its access phase, with its address,
-        // direction and write data, until pready ends it, as the protocol
-        // requires, and returns to idle at the drive point after it. No
-        // later item drives the lane.
-        protected task release_dead();
-            bit ended[2];
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < 2; l++) ended[l] = wd.dead[l] && lane[l].psel === 1'b1 && lane[l].penable === 1'b1 && lane[l].pready === 1'b1;
-                cfg.clk_vif.drive_edge();
-                for (int l = 0; l < 2; l++) begin
-                    if (!ended[l]) continue;
-                    lane[l].psel    <= 1'b0;
-                    lane[l].penable <= 1'b0;
-                    lane[l].pwrite  <= 1'b0;
-                end
-            end
-        endtask
+        // A dead lane stays in its access phase, with its address, direction
+        // and write data, until pready ends it (release_dead()).
+        protected virtual function void drive_request(int l, bit on);
+            if (on) return;
+            lane[l].psel    <= 1'b0;
+            lane[l].penable <= 1'b0;
+            lane[l].pwrite  <= 1'b0;
+        endfunction
+
+        protected virtual function bit request_held(int l);
+            return lane[l].psel === 1'b1 && lane[l].penable === 1'b1;
+        endfunction
+
+        protected virtual function bit request_taken(int l);
+            return lane[l].pready === 1'b1;
+        endfunction
     endclass : apb_master_driver
 
     // Serves each transfer from cfg.mem. The address, direction and write
     // data are taken in the setup phase; the monitor reports a master that
     // changes them later. The slave applies the transfer to cfg.mem at that
     // setup sample, so a change to cfg.mem during the wait states is not seen.
-    // In Mode B the DUT lane always applies and the model lane follows.
-    class apb_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_driver #(apb_item)
-        implements a2c_replay_lanes;
+    // In Mode B the DUT lane always applies and the model lane follows: a
+    // model lane waiting on transfer n replays it on the clock the DUT lane
+    // applies it. pready is high for the one clock that ends the transfer,
+    // and the sample point after it can see the next setup phase, so
+    // back-to-back transfers are served.
+    class apb_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0])
+        extends a2c_lane_driver #(apb_item, virtual apb_if #(.addr_t(addr_t), .data_t(data_t)), apb_config#(addr_t, data_t),
+                                  logic [$bits(data_t):0]);
         localparam int unsigned BYTES = $bits(data_t) / 8;
 
-        typedef virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif_t;
         // A transfer's response, which the replay log hands the model lane.
         typedef struct packed {
             logic [$bits(data_t)-1:0] rdata;
             bit                       slverr;
         } rsp_t;
-        typedef a2c_replay_log #(rsp_t) replay_t;
-        // LANE_SETUP: a model lane that has seen its setup phase and waits
-        // for the DUT lane to apply the transfer.
-        typedef enum {LANE_IDLE, LANE_SETUP, LANE_WAIT, LANE_READY} lane_state_e;
-
-        apb_config#(addr_t, data_t) cfg;
-        // Mode B only.
-        replay_t                    replay;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
-        protected lane_state_e state[2];
-        protected int unsigned starts[2];
-        // The transactions each lane has completed, each counted at the
-        // drive point of its last clock, from which it cannot be withdrawn.
-        protected int unsigned done[2];
 
         `uvm_component_param_utils(apb_slave_driver#(addr_t, data_t))
 
@@ -265,98 +217,51 @@ package apb_uvm_pkg;
             return 0;
         endfunction
 
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            if (cfg.model_vif == null) return;
-            replay = replay_t::type_id::create("replay", this);
-            replay.driver  = this;
-            replay.clk_vif = cfg.clk_vif;
+        protected virtual function bit request_seen(int l);
+            return lane[l].psel === 1'b1 && lane[l].penable !== 1'b1;
+        endfunction
+
+        // An APB master cannot withdraw a transfer.
+        protected virtual function bit request_withdrawn(int l);
+            return 0;
         endfunction
 
         // In Mode B this is the only place the model lane's response and
-        // wait clocks are recorded.
-        protected function void apply(output rsp_t rsp, output int unsigned wait_clocks);
+        // wait clocks are drawn.
+        protected virtual task respond(output logic [$bits(data_t):0] r, output int unsigned delay, output bit at_edge);
             bit [31:0]                addr  = 32'(lane[A2C_DUT_LANE].paddr);
             bit                       write = lane[A2C_DUT_LANE].pwrite;
             logic [$bits(data_t)-1:0] wdata = lane[A2C_DUT_LANE].pwdata;
-            rsp.slverr  = in_error_range(addr);
-            wait_clocks = $urandom_range(cfg.max_wait, 0);
-            rsp.rdata   = '0;
+            rsp_t                     rsp;
+            rsp.slverr = in_error_range(addr);
+            delay      = $urandom_range(cfg.max_wait, 0);
+            rsp.rdata  = '0;
             if (!rsp.slverr) begin
                 for (int unsigned b = 0; b < BYTES; b++) begin
                     if (write) cfg.mem.write(addr + b, wdata[8 * b +: 8]);
                     else rsp.rdata[8 * b +: 8] = cfg.mem.read(addr + b);
                 end
             end
-            if (replay != null) replay.record(rsp, wait_clocks);
-        endfunction
-
-        // One process serves every lane, sampling the DUT lane first, so a
-        // model lane waiting on transfer n replays it on the clock the DUT
-        // lane applies it. pready is high for the one clock that ends the
-        // transfer, and the sample point after it can see the next setup
-        // phase, so back-to-back transfers are served.
-        virtual task run_phase(uvm_phase phase);
-            int unsigned wait_clocks[2];
-            rsp_t        rsp[2];
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            for (int l = 0; l < lanes; l++) begin
-                state[l] = LANE_IDLE;
-                lane[l].pready  <= 1'b0;
-                lane[l].prdata  <= '0;
-                lane[l].pslverr <= 1'b0;
-            end
-            cfg.clk_vif.wait_reset_release();
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < lanes; l++) begin
-                    if (state[l] == LANE_IDLE && lane[l].psel === 1'b1 && lane[l].penable !== 1'b1) begin
-                        state[l] = LANE_SETUP;
-                        starts[l]++;
-                    end
-                    if (state[l] != LANE_SETUP) continue;
-                    if (l == A2C_DUT_LANE) apply(rsp[l], wait_clocks[l]);
-                    else if (replay.can_replay()) replay.replay(rsp[l], wait_clocks[l]);
-                    else continue;
-                    state[l] = LANE_WAIT;
-                end
-                cfg.clk_vif.drive_edge();
-                for (int l = 0; l < lanes; l++) begin
-                    case (state[l])
-                        LANE_WAIT: begin
-                            if (wait_clocks[l] > 0) begin
-                                wait_clocks[l]--;
-                            end else begin
-                                lane[l].pready  <= 1'b1;
-                                lane[l].prdata  <= data_t'(rsp[l].rdata);
-                                lane[l].pslverr <= rsp[l].slverr;
-                                state[l] = LANE_READY;
-                                done[l]++;
-                            end
-                        end
-                        LANE_READY: begin
-                            lane[l].pready  <= 1'b0;
-                            lane[l].pslverr <= 1'b0;
-                            state[l] = LANE_IDLE;
-                        end
-                        default: ;
-                    endcase
-                end
-            end
+            r       = rsp;
+            at_edge = 0;
         endtask
 
-        virtual function bit lane_busy(a2c_lane_e l);
-            return state[l] != LANE_IDLE;
+        protected virtual function void idle_response(int l);
+            lane[l].pready  <= 1'b0;
+            lane[l].prdata  <= '0;
+            lane[l].pslverr <= 1'b0;
         endfunction
 
-        virtual function int unsigned lane_done(a2c_lane_e l);
-            return done[l];
+        protected virtual function void drive_response(int l, logic [$bits(data_t):0] r);
+            rsp_t rsp = r;
+            lane[l].pready  <= 1'b1;
+            lane[l].prdata  <= data_t'(rsp.rdata);
+            lane[l].pslverr <= rsp.slverr;
         endfunction
 
-        virtual function int unsigned lane_starts(a2c_lane_e l);
-            return starts[l];
+        protected virtual function void end_response(int l);
+            lane[l].pready  <= 1'b0;
+            lane[l].pslverr <= 1'b0;
         endfunction
     endclass : apb_slave_driver
 
@@ -517,19 +422,10 @@ package apb_uvm_pkg;
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
-                if (drv != null && $cast(slave, drv) && slave.replay != null) begin
-                    slave.replay.cmp      = model_cmp;
-                    slave.replay.watchers = registry_t::of(cfg.vif);
-                    registry_t::of(cfg.vif).owner = get_full_name();
-                end
-                if (drv != null && $cast(master, drv)) begin
-                    master.cmp                      = model_cmp;
-                    master.watchers[A2C_DUT_LANE]   = registry_t::of(cfg.vif);
-                    master.watchers[A2C_MODEL_LANE] = registry_t::of(cfg.model_vif);
-                    registry_t::of(cfg.vif).owner   = get_full_name();
-                end
-                if (drv == null) registry_t::of(cfg.vif).cmps.push_back(model_cmp);
             end
+            if (drv == null) registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
+            else if ($cast(slave, drv)) slave.join_lanes(this, model_cmp, mon, model_mon);
+            else if ($cast(master, drv)) master.join_lanes(this, model_cmp, mon, model_mon);
         endfunction
 
         // A passive Mode B agent says so when no active agent has claimed its

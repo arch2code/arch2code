@@ -3753,7 +3753,7 @@
     // keep the replay log the test gives them in connect_phase, as a
     // hand-written env may.
     class mode_b_unowned_passive_test extends lb_mode_b_base;
-        string                ports[11] = '{"pa", "na", "ra", "po", "mem", "er", "apb", "axr", "axw", "ra_src", "po_src"};
+        string                ports[13] = '{"pa", "na", "ra", "po", "mem", "er", "apb", "axr", "axw", "rv", "axis", "ra_src", "po_src"};
         axr_agent_t           axr;
         axw_agent_t           axw;
         a2c_replay_log #(bit) kept;
@@ -3763,7 +3763,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            want_unowned = 11;
+            want_unowned = 13;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);
@@ -3774,6 +3774,8 @@
             mem_agent_t mem;
             er_agent_t  er;
             apb_agent_t apb;
+            rv_agent_t   rv;
+            axis_agent_t axis;
             ra_agent_t  ra_src;
             po_agent_t  po_src;
             mem_agent_t mem_src;
@@ -3791,6 +3793,8 @@
             apb  = lb_passive#(apb_agent_t, apb_config_t, apb_vif_t)::make(this, "apb", A2C_DST, clk_vif);
             axr  = lb_passive#(axr_agent_t, axr_config_t, axr_vif_t)::make(this, "axr", A2C_DST, clk_vif);
             axw  = lb_passive#(axw_agent_t, axw_config_t, axw_vif_t)::make(this, "axw", A2C_SRC, clk_vif);
+            rv   = lb_passive#(rv_agent_t, rv_config_t, rv_vif_t)::make(this, "rv", A2C_DST, clk_vif);
+            axis = lb_passive#(axis_agent_t, axis_config_t, axis_vif_t)::make(this, "axis", A2C_DST, clk_vif);
             ra_src  = lb_passive#(ra_agent_t, ra_config_t, ra_vif_t)::make(this, "ra_src", A2C_SRC, clk_vif, "ra");
             po_src  = lb_passive#(po_agent_t, po_config_t, po_vif_t)::make(this, "po_src", A2C_SRC, clk_vif, "po");
             mem_src = lb_passive#(mem_agent_t, mem_config_t, mem_vif_t)::make(this, "mem_src", A2C_SRC, clk_vif, "mem");

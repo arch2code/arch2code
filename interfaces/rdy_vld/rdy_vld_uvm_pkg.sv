@@ -58,24 +58,16 @@ package rdy_vld_uvm_pkg;
         endfunction
     endclass : rdy_vld_item
 
-    class rdy_vld_config #(type data_t = logic) extends uvm_object;
-        virtual rdy_vld_if #(.data_t(data_t)) vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual rdy_vld_if #(.data_t(data_t)) model_vif;
-        virtual a2c_clk_if                    clk_vif;
-        uvm_active_passive_enum               is_active = UVM_ACTIVE;
-        a2c_role_e                            role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                                port_name = "";
+    class rdy_vld_config #(type data_t = logic) extends a2c_agent_config #(virtual rdy_vld_if #(.data_t(data_t)));
         // The interface declares backpressure: false, so the consumer must
         // never hold rdy low while vld is high; the monitor reports it if it does.
-        bit                                   no_backpressure = 0;
+        bit          no_backpressure = 0;
         // dst role: percentage of clocks with rdy high. With burst set, rdy
         // holds each level for a run of 1 to burst_max clocks, and this is the
         // percentage of runs that are high.
-        int unsigned                          ready_pct = 100;
-        bit                                   burst = 0;
-        int unsigned                          burst_max = 8;
+        int unsigned ready_pct = 100;
+        bit          burst = 0;
+        int unsigned burst_max = 8;
 
         `uvm_object_param_utils(rdy_vld_config#(data_t))
 
@@ -84,123 +76,44 @@ package rdy_vld_uvm_pkg;
         endfunction
     endclass : rdy_vld_config
 
-    class rdy_vld_driver #(type data_t = logic) extends uvm_driver #(rdy_vld_item#(data_t))
-        implements a2c_lane_waits;
-        typedef virtual rdy_vld_if #(.data_t(data_t)) vif_t;
-
-        rdy_vld_config#(data_t) cfg;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
-        // src role: bounds how long one lane may trail the other and how
-        // long the lanes may stall in Mode B, and keeps which lanes are
-        // dead.
-        a2c_lane_watchdog      wd;
-
+    class rdy_vld_driver #(type data_t = logic)
+        extends a2c_lane_driver #(rdy_vld_item#(data_t), virtual rdy_vld_if #(.data_t(data_t)), rdy_vld_config#(data_t));
         `uvm_component_param_utils(rdy_vld_driver#(data_t))
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE] = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            if (cfg.role == A2C_SRC) begin
-                run_src();
-            end else begin
-                run_dst();
-            end
-        endtask
-
-        protected function void drive_vld(bit vld);
-            for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].vld <= vld;
+        // Both lanes take the same rdy, so the model lane needs no record.
+        protected virtual function bit has_replay();
+            return 0;
         endfunction
 
-        // Each loop iteration starts at a drive point. try_next_item lets
-        // back-to-back items go out on consecutive clocks, and vld drops on the
-        // first drive point with no item.
-        protected virtual task run_src();
-            wd = new(this, cfg.port_name, lanes, "item", "every open and later item completes at once");
-            wd.configure(cfg.clk_vif);
-            for (int l = 0; l < lanes; l++) begin
-                lane[l].vld  <= 1'b0;
-                lane[l].data <= '0;
-            end
-            cfg.clk_vif.wait_reset_release();
-            cfg.clk_vif.drive_edge();
-            if (lanes == 2) begin
-                fork
-                    release_dead();
-                join_none
-            end
-            forever begin
-                seq_item_port.try_next_item(req);
-                if (req == null) begin
-                    drive_vld(1'b0);
-                    cfg.clk_vif.drive_edge();
-                    continue;
-                end
-                repeat (req.gap) begin
-                    drive_vld(1'b0);
-                    cfg.clk_vif.drive_edge();
-                end
-                for (int l = 0; l < lanes; l++) begin
-                    if (wd.dead[l]) continue;
-                    lane[l].vld  <= 1'b1;
-                    lane[l].data <= req.data;
-                end
-                wait_transfer();
-                seq_item_port.item_done();
-            end
-        endtask
+        protected virtual function void reset_lane(int l);
+            lane[l].vld  <= 1'b0;
+            lane[l].data <= '0;
+        endfunction
 
-        // Returns at the drive point after the last live lane's beat
-        // transferred, which is the rising edge before it. A lane whose beat
-        // has transferred holds vld low from the next drive point on. In Mode
-        // B wd bounds how long one lane may trail the other and how long the
-        // lanes may stall (a2c_lane_watchdog), and a lane it declares dead
-        // drops out of the wait.
-        protected task wait_transfer();
-            bit    pending[2];
-            bit    took[2];
-            bit    finished[2];
-            wd.begin_item();
-            for (int l = 0; l < lanes; l++) pending[l] = !wd.dead[l];
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < lanes; l++) begin
-                    took[l]     = pending[l] && lane[l].rdy === 1'b1;
-                    pending[l] &= !took[l];
-                    finished[l] |= took[l];
-                end
-                wd.step(took, pending);
-                cfg.clk_vif.drive_edge();
-                if (!pending[A2C_DUT_LANE] && !pending[A2C_MODEL_LANE]) return;
-                for (int l = 0; l < lanes; l++) begin
-                    if (finished[l]) lane[l].vld <= 1'b0;
-                end
-            end
-        endtask
+        protected virtual function void drive_request(int l, bit on);
+            lane[l].vld <= on;
+            if (on) lane[l].data <= req.data;
+        endfunction
+
+        protected virtual function bit request_held(int l);
+            return lane[l].vld === 1'b1;
+        endfunction
+
+        protected virtual function bit request_taken(int l);
+            return lane[l].rdy === 1'b1;
+        endfunction
+
+        protected virtual function int unsigned item_gap();
+            return req.gap;
+        endfunction
 
         virtual function string waiting_for(a2c_lane_e l);
             return $sformatf("the transfer of %p", req.data);
         endfunction
-
-        // Mode B: a dead lane keeps an asserted vld and its payload until
-        // that transfer happens, as the protocol requires, and drops vld at
-        // the drive point after it. No later item drives the lane.
-        protected task release_dead();
-            bit took[2];
-            forever begin
-                cfg.clk_vif.sample_edge();
-                for (int l = 0; l < 2; l++) took[l] = wd.dead[l] && lane[l].vld === 1'b1 && lane[l].rdy === 1'b1;
-                cfg.clk_vif.drive_edge();
-                for (int l = 0; l < 2; l++) if (took[l]) lane[l].vld <= 1'b0;
-            end
-        endtask
 
         // rdy is driven from time 0, so a backpressure: false sink is ready
         // on the first clock out of reset. Such a sink never stalls, so
@@ -313,6 +226,7 @@ package rdy_vld_uvm_pkg;
     class rdy_vld_agent #(type data_t = logic) extends uvm_agent;
         typedef rdy_vld_item#(data_t)   item_t;
         typedef rdy_vld_config#(data_t) config_t;
+        typedef a2c_pin_registry #(virtual rdy_vld_if #(.data_t(data_t))) registry_t;
 
         rdy_vld_config#(data_t)                cfg;
         rdy_vld_driver#(data_t)                drv;
@@ -362,6 +276,16 @@ package rdy_vld_uvm_pkg;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end
+            if (drv != null) drv.join_lanes(this, model_cmp, mon, model_mon);
+            else registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
+        endfunction
+
+        // A passive A2C_DST Mode B agent says so when no active agent has
+        // claimed its pin set, since its model_cmp then misses the master's
+        // lane deaths.
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (drv == null && model_cmp != null) registry_t::note_unowned(cfg.vif, this, cfg.port_name);
         endfunction
     endclass : rdy_vld_agent
 

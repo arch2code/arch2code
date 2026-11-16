@@ -177,17 +177,9 @@ package axi_read_uvm_pkg;
     typedef a2c_mem_model #(bit [7:0]) axi_read_mem_t;
 
     class axi_read_config #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
-                            type ruser_t = logic, type id_t = logic [3:0]) extends uvm_object;
-        virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
-                              .id_t(id_t))  vif;
-        // The model DUT's pin set in Mode B; null otherwise.
-        virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
-                              .id_t(id_t))  model_vif;
-        virtual a2c_clk_if                  clk_vif;
-        uvm_active_passive_enum             is_active = UVM_ACTIVE;
-        a2c_role_e                          role = A2C_SRC;
-        // Port name used in the A2C_TXN log line.
-        string                              port_name = "";
+                            type ruser_t = logic, type id_t = logic [3:0])
+        extends a2c_agent_config #(virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t),
+                                                         .ruser_t(ruser_t), .id_t(id_t)));
         // Bytes one burst may move, 0 for no limit. The env sets it to the
         // port's maxTransferSize, a connection's override where one reaches
         // the port. The SystemC channel counts that value in beats, so
@@ -300,30 +292,17 @@ package axi_read_uvm_pkg;
 
     class axi_read_master_driver #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                                    type ruser_t = logic, type id_t = logic [3:0])
-        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t)) implements a2c_lane_waits;
+        extends a2c_lane_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t),
+                                  virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t),
+                                                        .ruser_t(ruser_t), .id_t(id_t)),
+                                  axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t));
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
-        typedef virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
-                                      .id_t(id_t))                      vif_t;
         typedef axi_read_open #(item_t)                                 open_t;
 
-        axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t) cfg;
-        // Mode B: the agent's model_cmp and its two monitors, indexed by
-        // a2c_lane_e, which the master tells of a dead lane.
-        a2c_comparator_base                                       cmp;
-        axi_read_monitor#(addr_t, data_t, aruser_t, ruser_t, id_t) mons[2];
-        // The passive agents on each lane's pin set, indexed by a2c_lane_e.
-        a2c_pin_watchers                                          watchers[2];
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
-        // Mode B: bounds how long a lane may trail the other on a burst's AR
-        // or its last beat, how long the lane left after a death may go
-        // without an AR or a beat while it has one to take, and how long
-        // both may, and keeps which lanes are dead.
-        a2c_lane_watchdog      wd;
-
+        // wd bounds how long a lane may trail the other on a burst's AR or
+        // its last beat, how long the lane left after a death may go without
+        // an AR or a beat while it has one to take, and how long both may.
         // Bursts waiting for their beats on each live lane, oldest first per
         // ID; every burst not yet returned, in AR order; the bursts one lane
         // has completed and the other has not, in the order the first lane
@@ -344,18 +323,20 @@ package axi_read_uvm_pkg;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+            unit      = "burst";
+            none_left = "every open and later burst returns to the sequence with no beats";
+        endfunction
+
+        protected virtual function bit lane_master();
+            return 1;
+        endfunction
+
+        protected virtual function bit has_replay();
+            return 0;
         endfunction
 
         virtual task run_phase(uvm_phase phase);
-            lane[A2C_DUT_LANE]   = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
-            wd = new(this, cfg.port_name, lanes, "burst", "every open and later burst returns to the sequence with no beats");
-            wd.cmp      = cmp;
-            wd.mons[A2C_DUT_LANE]   = mons[A2C_DUT_LANE];
-            wd.mons[A2C_MODEL_LANE] = mons[A2C_MODEL_LANE];
-            wd.watchers = watchers;
-            wd.configure(cfg.clk_vif);
+            setup_lanes();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].arvalid <= 1'b0;
                 lane[l].arid    <= '0;
@@ -700,14 +681,14 @@ package axi_read_uvm_pkg;
     // lane follows.
     class axi_read_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                                   type ruser_t = logic, type id_t = logic [3:0])
-        extends uvm_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t))
-        implements a2c_replay_lanes, a2c_replay_holder;
+        extends a2c_lane_driver #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t),
+                                  virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t),
+                                                        .ruser_t(ruser_t), .id_t(id_t)),
+                                  axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t),
+                                  axi_read_pick #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t), data_t));
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
-        typedef virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
-                                      .id_t(id_t))                      vif_t;
         typedef axi_read_pick #(item_t, data_t)                         pick_t;
-        typedef a2c_replay_log #(pick_t)                                replay_t;
         localparam int unsigned DATA_BYTES = item_t::DATA_BYTES;
         localparam int unsigned FULL_SIZE  = item_t::FULL_SIZE;
         localparam bit          BYTE_LANES = item_t::BYTE_LANES;
@@ -724,13 +705,6 @@ package axi_read_uvm_pkg;
             int unsigned delay;
         } entry_t;
 
-        axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t) cfg;
-        // Mode B only.
-        replay_t                                                  replay;
-
-        // Indexed by a2c_lane_e; lanes is 2 in Mode B and 1 otherwise.
-        protected vif_t        lane[2];
-        protected int unsigned lanes;
         // Bursts whose AR has transferred and that no lane serves yet.
         protected entry_t      queue[2][$];
         // ARs taken per ID.
@@ -748,8 +722,6 @@ package axi_read_uvm_pkg;
         protected int unsigned held_delay;
         protected realtime     held_at;
         protected longint      clocks;
-        protected int unsigned starts[2];
-        protected int unsigned done[2];
 
         `uvm_component_param_utils(axi_read_slave_driver#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -757,12 +729,12 @@ package axi_read_uvm_pkg;
             super.new(name, parent);
         endfunction
 
-        virtual function void build_phase(uvm_phase phase);
-            super.build_phase(phase);
-            if (cfg.model_vif == null) return;
-            replay = replay_t::type_id::create("replay", this);
-            replay.driver  = this;
-            replay.clk_vif = cfg.clk_vif;
+        protected virtual function bit lane_master();
+            return 0;
+        endfunction
+
+        protected virtual function bit has_replay();
+            return 1;
         endfunction
 
         // The index in the DUT lane's queue of the burst that goes out next,
@@ -913,9 +885,7 @@ package axi_read_uvm_pkg;
         // point the DUT lane makes it.
         virtual task run_phase(uvm_phase phase);
             bit ready;
-            lane[A2C_DUT_LANE]   = cfg.vif;
-            lane[A2C_MODEL_LANE] = cfg.model_vif;
-            lanes = (cfg.model_vif != null) ? 2 : 1;
+            setup_lanes();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].arready <= 1'b0;
                 lane[l].rvalid  <= 1'b0;
@@ -958,14 +928,6 @@ package axi_read_uvm_pkg;
 
         virtual function bit lane_holding(a2c_lane_e l);
             return l == A2C_MODEL_LANE && held != null && queue[l].size() == 0 && cur[l] == null;
-        endfunction
-
-        virtual function int unsigned lane_done(a2c_lane_e l);
-            return done[l];
-        endfunction
-
-        virtual function int unsigned lane_starts(a2c_lane_e l);
-            return starts[l];
         endfunction
 
         // The pick the model lane holds at the end of the run without its
@@ -1317,28 +1279,14 @@ package axi_read_uvm_pkg;
                 model_mon.ap.connect(model_cmp.model_export);
             end
             if (drv == null) begin
-                registry_t::of(cfg.vif).mons.push_back(mon);
-                if (model_cmp == null) return;
-                registry_t::of(cfg.model_vif).mons.push_back(model_mon);
-                registry_t::of(cfg.vif).cmps.push_back(model_cmp);
+                registry_t::join_passive(cfg.vif, cfg.model_vif, mon, model_mon, model_cmp);
                 return;
             end
-            if (model_cmp == null) return;
-            registry_t::of(cfg.vif).owner = get_full_name();
-            if ($cast(master, drv)) begin
-                master.cmp                      = model_cmp;
-                master.mons[A2C_DUT_LANE]       = mon;
-                master.mons[A2C_MODEL_LANE]     = model_mon;
-                master.watchers[A2C_DUT_LANE]   = registry_t::of(cfg.vif);
-                master.watchers[A2C_MODEL_LANE] = registry_t::of(cfg.model_vif);
-            end
+            if ($cast(master, drv)) master.join_lanes(this, model_cmp, mon, model_mon);
             if ($cast(slave, drv) && slave.replay != null) begin
-                slave.replay.cmp                  = model_cmp;
-                slave.replay.watchers             = registry_t::of(cfg.vif);
-                registry_t::of(cfg.vif).log       = slave.replay;
-                registry_t::of(cfg.model_vif).log = slave.replay;
-                mon.replay                        = slave.replay;
-                model_mon.replay                  = slave.replay;
+                slave.join_lanes(this, model_cmp, mon, model_mon);
+                mon.replay       = slave.replay;
+                model_mon.replay = slave.replay;
             end
         endfunction
 

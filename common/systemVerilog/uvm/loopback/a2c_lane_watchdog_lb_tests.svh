@@ -52,7 +52,9 @@
     //     once the DUT lane is dead, or the one it was sent with once both
     //     are;
     //   - the agent's and the watcher's model_cmp report nothing, since the
-    //     master tells them of each death;
+    //     master tells them of each death. With watcher_role A2C_DST the
+    //     watcher builds a model_cmp on every family, and the master must
+    //     tell it of the death and claim the pin set (no A2C_PASSIVE);
     //   - with throttle set, the master's model throttle bound: the clocks
     //     it held the next item for the model lane alone, exactly, and one
     //     A2C_MODEL_THROTTLE if they exceed the bound, none otherwise.
@@ -64,6 +66,7 @@
         lb_skew_variant_e variant = LB_SK_MODEL_LATE;
         AGENT_T           agent;
         AGENT_T           watcher;
+        a2c_role_e        watcher_role = A2C_SRC;
         // Indexed by a2c_lane_e.
         VIF_T             vif[2];
         int unsigned      n_sent = 20;
@@ -118,12 +121,12 @@
             return "";
         endfunction
 
-        protected function CFG_T lane_cfg(string name, uvm_active_passive_enum active);
+        protected function CFG_T lane_cfg(string name, uvm_active_passive_enum active, a2c_role_e role);
             CFG_T cfg = CFG_T::type_id::create(name);
             cfg.vif       = vif[A2C_DUT_LANE];
             cfg.model_vif = vif[A2C_MODEL_LANE];
             cfg.clk_vif   = clk_vif;
-            cfg.role      = A2C_SRC;
+            cfg.role      = role;
             cfg.port_name = port;
             cfg.is_active = active;
             return cfg;
@@ -157,8 +160,8 @@
             super.build_phase(phase);
             if (!uvm_config_db#(VIF_T)::get(this, "", port, vif[A2C_DUT_LANE])) `uvm_fatal("LB_CFG", {"no interface ", port})
             if (!uvm_config_db#(VIF_T)::get(this, "", {port, "_model"}, vif[A2C_MODEL_LANE])) `uvm_fatal("LB_CFG", {"no interface ", port, "_model"})
-            agent_cfg   = lane_cfg("agent_cfg", UVM_ACTIVE);
-            watcher_cfg = lane_cfg("watcher_cfg", UVM_PASSIVE);
+            agent_cfg   = lane_cfg("agent_cfg", UVM_ACTIVE, A2C_SRC);
+            watcher_cfg = lane_cfg("watcher_cfg", UVM_PASSIVE, watcher_role);
             uvm_config_db#(CFG_T)::set(this, "agent", "cfg", agent_cfg);
             uvm_config_db#(CFG_T)::set(this, "watcher", "cfg", watcher_cfg);
             agent   = AGENT_T::type_id::create("agent", this);
@@ -385,6 +388,9 @@
                     `uvm_error("LB_MODE_B", $sformatf("item %0d holds %s", i, items[i].convert2string()))
                 end
             end
+            if (watcher_role == A2C_DST && want_dead(A2C_MODEL_LANE) && !watcher.model_cmp.is_dead(A2C_MODEL_LANE)) begin
+                `uvm_error("LB_MODE_B", "the passive A2C_DST watcher's model_cmp was not told of the model lane's death")
+            end
             if (throttle >= 0 && (wd.throttled != want_throttled() || wd.throttled_max != want_held())) begin
                 `uvm_error("LB_MODE_B", $sformatf("the master held the next item for the model lane on %0d clocks, at most %0d in a row, expected %0d and %0d",
                                                   wd.throttled, wd.throttled_max, want_throttled(), want_held()))
@@ -435,6 +441,18 @@
             variant = LB_SK_MODEL_LATE;
         endfunction
     endclass : push_ack_mode_b_model_late_test
+
+    // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
+    // which the master must tell of the model lane's death.
+    class push_ack_mode_b_dst_watcher_test extends pa_skew;
+        `uvm_component_utils(push_ack_mode_b_dst_watcher_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant      = LB_SK_MODEL_LATE;
+            watcher_role = A2C_DST;
+        endfunction
+    endclass : push_ack_mode_b_dst_watcher_test
 
     class push_ack_mode_b_dut_late_test extends pa_skew;
         `uvm_component_utils(push_ack_mode_b_dut_late_test)
@@ -561,6 +579,18 @@
             variant = LB_SK_MODEL_LATE;
         endfunction
     endclass : notify_ack_mode_b_model_late_test
+
+    // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
+    // which the master must tell of the model lane's death.
+    class notify_ack_mode_b_dst_watcher_test extends na_skew;
+        `uvm_component_utils(notify_ack_mode_b_dst_watcher_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant      = LB_SK_MODEL_LATE;
+            watcher_role = A2C_DST;
+        endfunction
+    endclass : notify_ack_mode_b_dst_watcher_test
 
     class notify_ack_mode_b_dut_late_test extends na_skew;
         `uvm_component_utils(notify_ack_mode_b_dut_late_test)
@@ -743,6 +773,18 @@
         endfunction
     endclass : rdy_vld_mode_b_model_late_test
 
+    // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
+    // which the master must tell of the model lane's death.
+    class rdy_vld_mode_b_dst_watcher_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_mode_b_dst_watcher_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant      = LB_SK_MODEL_LATE;
+            watcher_role = A2C_DST;
+        endfunction
+    endclass : rdy_vld_mode_b_dst_watcher_test
+
     class rdy_vld_mode_b_dut_late_test extends rv_skew;
         `uvm_component_utils(rdy_vld_mode_b_dut_late_test)
 
@@ -798,6 +840,18 @@
             variant = LB_SK_MODEL_LATE;
         endfunction
     endclass : axi4_stream_mode_b_model_late_test
+
+    // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
+    // which the master must tell of the model lane's death.
+    class axi4_stream_mode_b_dst_watcher_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_mode_b_dst_watcher_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant      = LB_SK_MODEL_LATE;
+            watcher_role = A2C_DST;
+        endfunction
+    endclass : axi4_stream_mode_b_dst_watcher_test
 
     class axi4_stream_mode_b_dut_late_test extends axis_skew;
         `uvm_component_utils(axi4_stream_mode_b_dut_late_test)
