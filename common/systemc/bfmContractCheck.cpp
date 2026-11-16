@@ -6,8 +6,8 @@
 // copies it before SystemC can queue another.
 extern "C" const char *a2c_bfm_contract_break(void)
 {
-    if (bfmContractCheck::uvmTaken == bfmContractCheck::uvmBreaks.size()) {
+    if (bfmContractCheck::uvmTaken == bfmContractCheck::uvmBreaks().size()) {
         return "";
     }
-    return bfmContractCheck::uvmBreaks[bfmContractCheck::uvmTaken++].c_str();
+    return bfmContractCheck::uvmBreaks()[bfmContractCheck::uvmTaken++].c_str();
 }

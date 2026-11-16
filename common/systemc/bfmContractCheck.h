@@ -21,7 +21,11 @@
 // run at the end (failUntaken()).
 struct bfmContractCheck {
     static inline bool toUvm = false;
-    static inline std::vector<std::string> uvmBreaks;
+    // A function-local static for the same clang 18.1.8 crash as hdlWokeMap().
+    static std::vector<std::string> &uvmBreaks() {
+        static std::vector<std::string> breaks;
+        return breaks;
+    }
     static inline std::size_t uvmTaken = 0;
     logBlock log_;
     const std::string what_;
@@ -35,7 +39,7 @@ struct bfmContractCheck {
             const std::string msg = std::format("{} at {}", what_, edge.to_string());
             log_.logPrint(msg, LOG_IMPORTANT);
             if (toUvm && !warnOnly_) {
-                uvmBreaks.push_back(log_.getLogPrefix() + msg);
+                uvmBreaks().push_back(log_.getLogPrefix() + msg);
             }
         }
     }
@@ -45,9 +49,9 @@ struct bfmContractCheck {
         }
     }
     static void failUntaken(void) {
-        if (uvmTaken < uvmBreaks.size()) {
+        if (uvmTaken < uvmBreaks().size()) {
             errorCode::fail(std::format("{} BFM contract break(s) never reached UVM, the first: {}",
-                                        uvmBreaks.size() - uvmTaken, uvmBreaks[uvmTaken]));
+                                        uvmBreaks().size() - uvmTaken, uvmBreaks()[uvmTaken]));
         }
     }
 };
@@ -69,7 +73,12 @@ struct bfmClockPaced {
         sc_time time;
         sc_dt::uint64 delta;
     };
-    static inline std::unordered_map<const sc_object *, wake> hdlWoke_;
+    // A function-local static: an inline data member with a dynamic initializer in this header
+    // crashes clang 18.1.8 when it compiles a generated Base module's PCM to an object.
+    static std::unordered_map<const sc_object *, wake> &hdlWokeMap() {
+        static std::unordered_map<const sc_object *, wake> woke;
+        return woke;
+    }
     logBlock log_;
     std::string port_;
     sc_time transfer_;
@@ -84,7 +93,7 @@ struct bfmClockPaced {
     // Called in a model thread that a channel call from a BFM has just woken
     // with an immediate notification.
     static void hdlWokeModel(void) {
-        hdlWoke_[sc_get_current_process_handle().get_process_object()] = {sc_time_stamp(), sc_delta_count()};
+        hdlWokeMap()[sc_get_current_process_handle().get_process_object()] = {sc_time_stamp(), sc_delta_count()};
     }
     // The method and the driver wake on the same edge in either order. The
     // driver records a transfer at its own edge, so the method's previous edge
@@ -101,8 +110,8 @@ struct bfmClockPaced {
         if (told_) {
             return;
         }
-        const auto woke = hdlWoke_.find(caller);
-        const bool hdlWoke = woke != hdlWoke_.end() && woke->second.time == callTime && callDelta >= woke->second.delta;
+        const auto woke = hdlWokeMap().find(caller);
+        const bool hdlWoke = woke != hdlWokeMap().end() && woke->second.time == callTime && callDelta >= woke->second.delta;
         const bool paced = edgeAfterKnown_ && callTime == edgeAfter_ && callDelta <= edgeAfterDelta_ && !hdlWoke;
         run_ = paced ? run_ + 1 : 0;
         if (run_ == threshold) {

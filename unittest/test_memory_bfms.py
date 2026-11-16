@@ -520,7 +520,7 @@ int sc_main( int argc, char *argv[] )
             }
         }
         std::printf( "presented=%zu\\nskipped=%zu\\nfirst=%s\\n", p.presented.size(), skipped, first.c_str() );
-        std::printf( "queued=%zu\\n", bfmContractCheck::uvmBreaks.size() );
+        std::printf( "queued=%zu\\n", bfmContractCheck::uvmBreaks().size() );
         if (scenario == "src_uvm") {
             std::string first_break = a2c_bfm_contract_break();
             std::string second_break = a2c_bfm_contract_break();
