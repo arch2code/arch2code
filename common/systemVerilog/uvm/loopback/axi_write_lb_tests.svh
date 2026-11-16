@@ -197,6 +197,8 @@
         // AWs transferred, and W bursts whose first beat has been on the bus.
         int unsigned                        aw_done;
         int unsigned                        w_started;
+        // The clocks the slave refused an offered AW or W.
+        longint unsigned                    waited;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -238,6 +240,7 @@
             bit w_open = 0;
             forever begin
                 clk_vif.sample_edge();
+                waited += (vif.awvalid === 1'b1 && vif.awready !== 1'b1) || (vif.wvalid === 1'b1 && vif.wready !== 1'b1);
                 if (vif.wvalid === 1'b1 && !w_open) begin
                     w_open = 1;
                     w_started++;
@@ -256,6 +259,17 @@
             end
         endtask
 
+        // The slave monitor's starvation counts against the clocks the
+        // master waited.
+        protected function void check_starvation();
+            longint unsigned samples;
+            longint unsigned withheld;
+            slave.mon.starvation_counts(samples, withheld);
+            if (withheld != waited || samples == 0) begin
+                `uvm_error("LB_STARVE", $sformatf("the monitor counts %0d clocks withheld in %0d samples; the master waited %0d", withheld, samples, waited))
+            end
+        endfunction
+
         // Runs seq on the master, then checks that the slave's monitor
         // reported every burst the master returned, beat for beat, in order,
         // that W never led its AW, and that the slave's memory matches the
@@ -272,6 +286,7 @@
             seq.start(master.sqr);
             repeat (2) clk_vif.sample_edge();
             disable fork;
+            check_starvation();
             if (seq.responses.size() != seq.n) begin
                 `uvm_error("LB_AXW", $sformatf("%0d bursts sent, %0d returned", seq.n, seq.responses.size()))
             end

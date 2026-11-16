@@ -1029,7 +1029,7 @@ package axi_read_uvm_pkg;
     endclass : axi_read_slave_driver
 
     class axi_read_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
-                             type ruser_t = logic, type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch;
+                             type ruser_t = logic, type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch, a2c_starvation_source;
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
         localparam int unsigned FULL_SIZE = item_t::FULL_SIZE;
@@ -1052,6 +1052,12 @@ package axi_read_uvm_pkg;
         // Bursts whose AR has transferred and whose last beat has not, oldest
         // first per ID.
         protected item_t open[id_key_t][$];
+        protected int unsigned n_open;
+        // The counts a2c_rt_checker reads (a2c_starvation_source), from the
+        // reset release: the master waits on clocks the slave refuses an
+        // offered AR, or offers no R beat while a burst is open.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_withheld;
 
         `uvm_component_param_utils(axi_read_monitor#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -1095,6 +1101,8 @@ package axi_read_uvm_pkg;
                 end
                 r_stalled  = vif.rvalid === 1'b1 && vif.rready !== 1'b1;
                 ar_stalled = vif.arvalid === 1'b1 && vif.arready !== 1'b1;
+                n_samples++;
+                n_withheld += ar_stalled || (n_open != 0 && vif.rvalid !== 1'b1);
                 held_r     = r_pins();
                 held_ar    = ar_pins();
                 // Each AR and R beat counts for the joint stall rule (a2c_joint_watch).
@@ -1141,6 +1149,7 @@ package axi_read_uvm_pkg;
                 `uvm_error("A2C_PROTO", $sformatf("%s: %s crosses a 4 KB boundary", cfg.port_name, it.convert2string()))
             end
             open[id_key_t'(it.id)].push_back(it);
+            n_open++;
         endfunction
 
         // A beat belongs to the oldest open burst of its rid. The burst ends
@@ -1170,6 +1179,7 @@ package axi_read_uvm_pkg;
             end
             if (vif.rlast !== 1'b1 && !last) return;
             void'(open[id].pop_front());
+            n_open--;
             `uvm_info("A2C_TXN", a2c_txn(path(), cfg.role, it.convert2string(), $sformatf("%0h", it.addr)), UVM_MEDIUM)
             ap.write(it);
         endfunction
@@ -1192,6 +1202,15 @@ package axi_read_uvm_pkg;
             if (died_at != 0) `uvm_info("A2C_PROTO", $sformatf("%s, on a lane the master declared dead at %0t (%s)", what, died_at, died_by), UVM_LOW)
             else if (replay != null && replay.get_cut() != 0) `uvm_info("A2C_PROTO", {what, ", after the drain cut it"}, UVM_LOW)
             else `uvm_error("A2C_PROTO", what)
+        endfunction
+
+        virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
+            samples  = n_samples;
+            withheld = n_withheld;
+        endfunction
+
+        virtual function string starvation_port();
+            return cfg.port_name;
         endfunction
     endclass : axi_read_monitor
 

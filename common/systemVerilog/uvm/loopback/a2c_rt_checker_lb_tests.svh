@@ -783,7 +783,9 @@
     // reasons, through the stall too. Those refusals are subtracted from
     // the stall's credit though the stall did not cause them, so the lag
     // reads at most the smaller of the hold and the refusals above the
-    // pipe's 5, and never below it.
+    // pipe's 5. The refusals inside the 5-clock pipe when the stall began,
+    // at most two, let the output catch up after it but are not counted,
+    // so the lag reads at least 3.
     class rt_rv_stall_own_refusal_test extends rt_rv_stall_buffer_test;
         `uvm_component_utils(rt_rv_stall_own_refusal_test)
 
@@ -802,8 +804,8 @@
         virtual function void check();
             int unsigned most = 5 + ((hold < refused) ? hold : refused);
             if (rt.units_checked() != 1) `uvm_error("LB_RT", $sformatf("%0d units checked, expected 1", rt.units_checked()))
-            if (rt.worst_lag() < 5 || rt.worst_lag() > most) begin
-                `uvm_error("LB_RT", $sformatf("worst lag %0d, expected 5 to %0d (%0d refused)", rt.worst_lag(), most, refused))
+            if (rt.worst_lag() < 3 || rt.worst_lag() > most) begin
+                `uvm_error("LB_RT", $sformatf("worst lag %0d, expected 3 to %0d (%0d refused)", rt.worst_lag(), most, refused))
             end
             check_refused();
         endfunction
@@ -880,7 +882,7 @@
 
         virtual function void check();
             if (rt.worst_lag() < 15) `uvm_error("LB_RT", $sformatf("worst lag %0d, below the true 15", rt.worst_lag()))
-            if (demoter.count("A2C_RT_DEADLINE", UVM_ERROR, "less a stall credit of 0 clocks") != 1
+            if (demoter.count("A2C_RT_DEADLINE", UVM_ERROR, "less a hold credit of 0 clocks") != 1
                 || demoter.count("A2C_RT_DEADLINE", UVM_ERROR, "with its sink ready at never") != 0) begin
                 `uvm_error("LB_RT", $sformatf("no deadline naming the restart: %p", demoter.msgs))
             end
@@ -891,9 +893,10 @@
     // Two units through a buffer of 8 beats; the sink holds ready low over
     // the last beats of output unit 0 while the input is already in unit 1,
     // so the full pipe refuses unit 1's input before output unit 1 offers
-    // its first beat. Those refusals outnumber unit 1's stalls, which are
-    // none, so its credit stays at 0 and its lag reads its span from input
-    // end to output end; the backlog never lets the output idle, so nothing
+    // its first beat. The refusals moved unit 1's input end by all but one
+    // clock of the hold, so unit 1 spans the pipe's 5 and that one clock,
+    // and its credit is that clock and no more: the lag reads the pipe's 5,
+    // never less. The backlog never lets the output idle, so nothing
     // restarts the counts.
     class rt_rv_refused_next_unit_test extends rt_rv_stall_buffer_test;
         `uvm_component_utils(rt_rv_refused_next_unit_test)
@@ -916,7 +919,7 @@
             int unsigned span = (out_seen.at[last] - in_seen.at[last]) / 10ns;
             if (rt.units_checked() != 2) `uvm_error("LB_RT", $sformatf("%0d units checked, expected 2", rt.units_checked()))
             if (span <= 5) `uvm_error("LB_RT", $sformatf("unit 1 spans %0d clocks, so its lag cannot tell a credit from none", span))
-            if (rt.worst_lag() != span) `uvm_error("LB_RT", $sformatf("worst lag %0d, expected unit 1's span of %0d with no credit", rt.worst_lag(), span))
+            if (rt.worst_lag() != 5) `uvm_error("LB_RT", $sformatf("worst lag %0d, expected the pipe's 5: unit 1's span of %0d less the hold its refusals did not move", rt.worst_lag(), span))
             if (refused < 30 - 8) `uvm_error("LB_RT", $sformatf("only %0d clocks refused", refused))
         endfunction
     endclass : rt_rv_refused_next_unit_test

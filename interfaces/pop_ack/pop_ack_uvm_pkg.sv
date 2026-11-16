@@ -386,12 +386,17 @@ package pop_ack_uvm_pkg;
         endfunction
     endclass : pop_ack_driver
 
-    class pop_ack_monitor #(type rdata_t = logic) extends uvm_monitor;
+    class pop_ack_monitor #(type rdata_t = logic) extends uvm_monitor implements a2c_starvation_source;
         pop_ack_config#(rdata_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual pop_ack_if #(.rdata_t(rdata_t))     vif;
         // One item per completed transfer, with rdata.
         uvm_analysis_port #(pop_ack_item#(rdata_t)) ap;
+
+        // The counts a2c_rt_checker reads (a2c_starvation_source), from the
+        // reset release: the popper waits on clocks with pop high and ack low.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_withheld;
 
         `uvm_component_param_utils(pop_ack_monitor#(rdata_t))
 
@@ -412,6 +417,8 @@ package pop_ack_uvm_pkg;
                 pop   = vif.pop;
                 ack   = vif.ack;
                 rdata = vif.rdata;
+                n_samples++;
+                n_withheld += (pop === 1'b1 && ack !== 1'b1);
                 // A source waiting for ack must hold pop until the transfer.
                 if (waiting && pop !== 1'b1) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: pop dropped before ack", cfg.port_name))
@@ -439,6 +446,15 @@ package pop_ack_uvm_pkg;
                 ap.write(item);
             end
         endtask
+
+        virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
+            samples  = n_samples;
+            withheld = n_withheld;
+        endfunction
+
+        virtual function string starvation_port();
+            return cfg.port_name;
+        endfunction
     endclass : pop_ack_monitor
 
     class pop_ack_agent #(type rdata_t = logic) extends uvm_agent;

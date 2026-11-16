@@ -144,6 +144,9 @@
     class req_ack_random_test extends ra_pair_test;
         int unsigned min_wait = '1;
         int unsigned max_wait;
+        // The clocks req waited for ack, which the monitor's starvation
+        // counts must match.
+        longint unsigned waited;
 
         `uvm_component_utils(req_ack_random_test)
 
@@ -180,13 +183,20 @@
                 end else begin
                     if (run < min_wait) min_wait = run;
                     if (run > max_wait) max_wait = run;
+                    waited += run;
                     run = 0;
                 end
             end
         endtask
 
         virtual function void check_phase(uvm_phase phase);
+            longint unsigned samples;
+            longint unsigned withheld;
             super.check_phase(phase);
+            dst.mon.starvation_counts(samples, withheld);
+            if (withheld != waited || samples == 0) begin
+                `uvm_error("LB_STARVE", $sformatf("the monitor counts %0d clocks withheld in %0d samples; req waited %0d", withheld, samples, waited))
+            end
             `uvm_info("LB_STATS", $sformatf("%0d transfers, req waited %0d to %0d clocks", sb.matched, min_wait, max_wait),
                       UVM_NONE)
             if (min_wait != 1 || max_wait != 4) begin

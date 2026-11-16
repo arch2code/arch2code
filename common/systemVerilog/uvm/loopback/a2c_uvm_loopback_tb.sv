@@ -67,6 +67,9 @@ package a2c_uvm_loopback_pkg;
     // gated clock of twice clk's period.
     bit lb_rt_rv_in_clk3;
     bit lb_rt_rv_out_clk3;
+    // Clearing it holds clk_rt's domain in reset, for the tests of a reset
+    // during a run.
+    bit lb_rt_rst_n = 1'b1;
 
     virtual class lb_scoreboard_base extends uvm_component;
         int unsigned matched;
@@ -873,6 +876,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_replay_drain_lb_tests.svh"
     `include "a2c_gen_base_test_lb_tests.svh"
     `include "a2c_rt_checker_lb_tests.svh"
+    `include "a2c_rt_ref_lb_tests.svh"
     `include "a2c_joint_stall_lb_tests.svh"
     `include "a2c_reg_read_lb_tests.svh"
     `include "a2c_video_lb_tests.svh"
@@ -1383,6 +1387,8 @@ module a2c_uvm_loopback_tb;
     a2c_clk_if clk7_if(.clk(clk7), .rst_n(rst_n));
     a2c_clk_if clk8_if(.clk(clk8), .rst_n(rst_n));
     a2c_clk_if clk9_if(.clk(clk9), .rst_n(rst_n));
+    // clk with a reset a test can assert during the run.
+    a2c_clk_if clk_rt_if(.clk(clk), .rst_n(rst_n && lb_rt_rst_n));
     rdy_vld_if #(.data_t(lb_data_t)) rv();
     axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis();
     raw_if #(.data_t(lb_data_t)) raw();
@@ -1480,6 +1486,7 @@ module a2c_uvm_loopback_tb;
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk7", clk7_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk8", clk8_if);
         uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk9", clk9_if);
+        uvm_config_db#(virtual a2c_clk_if)::set(null, "uvm_test_top", "clk_rt", clk_rt_if);
         uvm_config_db#(rv_vif_t)::set(null, "uvm_test_top", "rv", rv);
         uvm_config_db#(axis_vif_t)::set(null, "uvm_test_top", "axis", axis);
         uvm_config_db#(raw_vif_t)::set(null, "uvm_test_top", "raw", raw);

@@ -428,7 +428,7 @@ package req_ack_uvm_pkg;
         endfunction
     endclass : req_ack_driver
 
-    class req_ack_monitor #(type data_t = logic, type rdata_t = logic) extends uvm_monitor;
+    class req_ack_monitor #(type data_t = logic, type rdata_t = logic) extends uvm_monitor implements a2c_starvation_source;
         req_ack_config#(data_t, rdata_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)) vif;
@@ -437,6 +437,12 @@ package req_ack_uvm_pkg;
         // One item per request, data only, on the clock the request is first
         // seen.
         uvm_analysis_port #(req_ack_item#(data_t, rdata_t)) req_ap;
+
+        // The counts a2c_rt_checker reads (a2c_starvation_source), from the
+        // reset release: the requester waits on clocks with req high and ack
+        // low.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_withheld;
 
         `uvm_component_param_utils(req_ack_monitor#(data_t, rdata_t))
 
@@ -461,6 +467,8 @@ package req_ack_uvm_pkg;
                 ack   = vif.ack;
                 data  = vif.data;
                 rdata = vif.rdata;
+                n_samples++;
+                n_withheld += (req === 1'b1 && ack !== 1'b1);
                 // A source waiting for ack must hold req and data until the transfer.
                 if (waiting && (req !== 1'b1 || data !== held)) begin
                     string what = a2c_select_str(req !== 1'b1, "req dropped", "data changed");
@@ -500,6 +508,15 @@ package req_ack_uvm_pkg;
                 ap.write(item);
             end
         endtask
+
+        virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
+            samples  = n_samples;
+            withheld = n_withheld;
+        endfunction
+
+        virtual function string starvation_port();
+            return cfg.port_name;
+        endfunction
     endclass : req_ack_monitor
 
     class req_ack_agent #(type data_t = logic, type rdata_t = logic) extends uvm_agent;

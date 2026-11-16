@@ -2976,6 +2976,19 @@ package a2c_uvm_pkg;
         pure virtual function string flow_port();
     endclass : a2c_flow_counts
 
+    // A port on which the DUT waits on the testbench other than for stream
+    // input, such as a responder, for a2c_rt_checker_base::connect_source().
+    // A monitor counts at each sample point from its reset release, in the
+    // same step as the item it reports on that clock, as for
+    // a2c_flow_counts.
+    interface class a2c_starvation_source;
+        // Cumulative counts: clocks sampled, and clocks on which the DUT
+        // waited on the testbench at this port, such as pop high with ack
+        // low.
+        pure virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
+        pure virtual function string starvation_port();
+    endclass : a2c_starvation_source
+
     // Marks the end of a unit of a stream, such as a frame or a line. A unit
     // opens at the first beat after the previous unit closed and closes at
     // the ends_per_unit-th beat for which is_unit_end() returns 1. A user
@@ -3022,53 +3035,64 @@ package a2c_uvm_pkg;
     `uvm_analysis_imp_decl(_a2c_rt_out)
 
     // The real-time rules on one output port of the DUT, against one input
-    // port; a2c_rt_checker adds the item types. Monitors measure and the
-    // checker judges. Each rule is off at 0, and each bound is the first
-    // value that fails, as for lane_skew_cycles:
-    //   - gap_cycles: an open output unit, from its first transfer to its
-    //     end, goes this many clocks without a beat while its sink is ready,
-    //     less the starvation credit below;
-    //   - lag_cycles: output unit k ends this many clocks after its anchor
-    //     input unit ended, less a credit for the clocks its sink refused an
-    //     offered beat: all of those after the input end, and those before
-    //     it, from unit k's first offered beat, less the clocks the DUT
-    //     refused offered input from the earlier of that beat and the input
-    //     unit's start, never below 0. A stall
-    //     the DUT turned into refusals has already moved the input end later,
-    //     so crediting it too would hide that much real lag. Every count
-    //     restarts when the output sits idle with its sink ready: the DUT had
-    //     caught up, so no earlier stall can have moved the end. A DUT that
-    //     also refuses for its own reasons, or idles while holding a
-    //     backlog, reads high, never low.
-    //     Once the input unit has entered the DUT the testbench cannot starve
-    //     it, so its pacing, blanking and Mode B throttling cannot cause a
-    //     failure, and a pipeline's fill is counted once, in the bound;
-    //   - refusal_cycles: within one input unit the DUT refuses this many
-    //     clocks of input the testbench offered, leaving out the clocks on
-    //     which the sink stalled the output, when the DUT may refuse.
+    // port and any further ports the DUT waits on (connect_source());
+    // a2c_rt_checker adds the item types. Monitors measure and the checker
+    // judges. Each rule is off at 0, and each bound is the first value that
+    // fails, as for lane_skew_cycles. specs/SIMULATOR_INTEGRATION.md states
+    // the class of DUT the rules suit and the detection bounds.
+    //
+    // W, the window, is latency_cycles, or lag_cycles when that is 0: the
+    // most clocks the DUT takes from a cause to its effect, a beat accepted
+    // to the beat offered, an input withheld to the output idling, the sink
+    // refusing to the input refused. W counts only free clocks, those on
+    // which the testbench held nothing up, so a hold never ages a credit.
+    //
+    // The testbench withholds on a clock when the input offers no beat, or
+    // a further source makes the DUT wait; each such clock and source is
+    // one starvation credit, an input credit tagged with the input unit it
+    // delays (the open one, or between units the next). It holds the DUT up
+    // on a clock when the sink refuses an offered beat, or a further source
+    // withholds; each is one hold credit. A credit pairs with at most one
+    // clock, the earliest credit first, within W of it. Earliest first
+    // pairs as many clocks as any pairing can, so a rule never charges a
+    // clock that some pairing explains.
+    //   - gap_cycles: an idle clock of an open output unit, its sink ready
+    //     and no beat offered, is charged to the DUT when the DUT had work it
+    //     could have delivered and somewhere to deliver it: it has held an
+    //     input beat of a unit the output unit needs, accepted since the last
+    //     output beat, for W idle clocks with no further source withholding;
+    //     or no starvation credit pairs with the clock, of an input unit the
+    //     output unit needs or of a further source. The rule fails when the
+    //     charged clocks since the unit's last beat reach the bound;
+    //   - lag_cycles: output unit k fails when it has not ended this many
+    //     clocks after its anchor input unit ended, less its hold credit:
+    //     the hold clocks after the input end and the hold debt at it. The
+    //     debt is how far holds have put the output behind: it grows by each
+    //     hold clock and falls by each input clock with no transfer, on which
+    //     either the output caught up one clock or the hold moved the input
+    //     end instead. It clears when the output idles with its sink ready
+    //     and no further source has withheld within W: the DUT had caught
+    //     up. Such an idle after the input end restarts the unit's credit
+    //     from then. A DUT that idles with a backlog, as a pipeline bubble
+    //     does, loses the credit, so the lag reads high. Input gaps already
+    //     inside the DUT when a hold begins are not counted against it, so
+    //     the lag can read low by at most those. Once the input unit has
+    //     entered the DUT the testbench cannot starve it, so input pacing
+    //     never causes a failure;
+    //   - refusal_cycles: within one input unit, the clocks the DUT refused
+    //     an offered beat that no hold credit pairs with.
     // Together the lag and refusal rules check throughput: a DUT that takes
     // all its input but falls behind lags more each unit, and one that keeps
     // up only by back-pressuring its source refuses.
     //
-    // Starvation credit: the gap is the clocks since the last output transfer
-    // on which the unit was open, the sink ready and no beat offered, less
-    // the clocks in (last transfer - latency_cycles, now] on which the
-    // testbench withheld input from the open output unit's anchor input
-    // unit or an earlier one. A withheld clock belongs to the input unit it
-    // delayed, the open one or between units the next, so idle the next
-    // input unit gets while this output unit still drains is credited to
-    // the output unit it feeds, not to this one. Pipeline latency moves the
-    // output's idle later than the input's, so a mask on the same clock
-    // would false-fail; the window credits the input idle that caused it,
-    // and a real stall is reported at most one window of testbench idle
-    // late. latency_cycles 0 takes lag_cycles. With no input connected
-    // there is no credit.
-    //
     // Counting is on the output port's clock: the checker counts its rising
-    // edges from the reset release and reads both monitors' counts on each.
+    // edges from the reset release and reads every monitor's counts on each.
     // A stopped clock holds every count still. An input on another clock is
-    // stamped with the output clock's count when its events arrive, which is
-    // exact to one clock.
+    // read on the output clock's edges, which is exact to one clock; an
+    // output clock on which an input took no sample keeps its last state.
+    // A reset of the output clock's domain abandons every open unit and
+    // pending deadline, and the counts and unit pairing start again at the
+    // release.
     //
     // It judges only the DUT lane, agent.mon, and never compares the timing
     // of the two lanes, which the model does not keep. Once a Mode B master
@@ -3111,9 +3135,24 @@ package a2c_uvm_pkg;
         protected bit             model_dut;
         protected bit             dual;
         protected bit             judging = 1;
-        // Rising edges of the output clock since its reset release; every
-        // stamp below is one of these.
+        // The further sources from connect_source(): a stream the testbench
+        // drives, withholding on clocks it offers no beat, or a port that
+        // counts its own withheld clocks. Each keeps its counts at the last
+        // edge and whether it withheld on its last sample.
+        typedef struct {
+            a2c_flow_counts       fc;
+            a2c_starvation_source ss;
+            string                name;
+            longint unsigned      samples;
+            longint unsigned      count;
+            bit                   withheld;
+        } source_t;
+        protected source_t        sources[$];
+        // Rising edges of the output clock since the first reset release;
+        // every stamp below is one of these. free is the free clocks among
+        // them, the scale W is counted on.
         protected longint unsigned clocks;
+        protected longint unsigned free;
         // The monitors' counts at the last edge.
         protected longint unsigned out_prev[4];
         protected longint unsigned in_prev[4];
@@ -3124,8 +3163,9 @@ package a2c_uvm_pkg;
         protected int unsigned     in_marks;
         protected int unsigned     out_marks;
         // Input side: units ended, the stamp of the last end, whether a unit
-        // is open, its refused and excluded clocks, and whether its refusal
-        // was reported.
+        // is open, whether the input withheld on its last sample, the open
+        // unit's charged and paired refusals, and whether its refusal was
+        // reported.
         protected int unsigned     in_ended;
         protected longint unsigned last_in_end;
         protected bit              in_open;
@@ -3134,43 +3174,52 @@ package a2c_uvm_pkg;
         protected longint unsigned in_excluded;
         protected bit              refusal_reported;
         // Output side: units ended, whether a unit is open (from its first
-        // transfer) and started (from its first offered beat), the stall
-        // and input refusal counts when it started, its beats, its last
-        // transfer,
-        // the idle clocks since then, and whether its gap was reported.
+        // transfer), its beats, its last transfer, the idle clocks since
+        // then, how many were paired and charged, and whether its gap was
+        // reported.
         protected int unsigned     out_ended;
         protected bit              out_open;
-        protected bit              out_started;
-        protected longint unsigned out_start_cum;
-        protected longint unsigned out_start_refused;
         protected longint unsigned out_beats;
-        protected longint unsigned last_xfer;
         protected realtime         last_xfer_at;
         protected longint unsigned idle;
+        protected longint unsigned paired;
+        protected longint unsigned gap_now;
         protected bit              gap_reported;
+        // The work rule: an input beat the open output unit needs was
+        // accepted since its last transfer, at work_at or after the last
+        // further source withheld, and work_idle idle clocks have passed
+        // since then.
+        protected bit              work_held;
+        protected longint unsigned work_at;
+        protected longint unsigned work_idle;
         // Counter-based activity, with no output unit rule.
         protected bit              counter_active;
-        // The deadline credit's counts, cumulative: the clocks the sink
-        // refused an offered output beat, and the clocks the DUT refused
-        // offered input. The restart is the last clock the output sat idle
-        // with its sink ready, with both counts then: the DUT had caught up,
-        // so no stall before it can have moved a unit's end.
-        protected longint unsigned stall_cum;
-        protected longint unsigned refused_cum;
-        protected longint unsigned in_refused_start;
-        protected bit              restarted;
-        protected longint unsigned restart_at;
-        protected realtime         restart_time;
-        protected longint unsigned restart_stall;
-        protected longint unsigned restart_refused;
-        // The clocks the testbench withheld input that the gap's credit
-        // window may still reach, each with the input unit it delayed: the
-        // open one, or between units the next.
+        // The credits not yet paired, oldest first. A starvation credit holds
+        // the free clock it was earned on, its count on that clock, and for
+        // the input its unit, which never falls along the queue.
         typedef struct {
             longint unsigned at;
             int unsigned     unit;
-        } withheld_t;
-        protected withheld_t       withheld[$];
+            int unsigned     n;
+        } credit_t;
+        protected credit_t         in_credits[$];
+        protected credit_t         source_credits[$];
+        // Hold credits for refused input, on the clock scale: the sink
+        // stalls and the further sources' withheld clocks.
+        protected credit_t         hold_credits[$];
+        // The free clock of the last further source withholding, valid once
+        // one has.
+        protected bit              source_withheld_ever;
+        protected longint unsigned source_withheld_at;
+        // The deadline's hold credit: hold clocks counted cumulatively, the
+        // debt, and the last idle that cleared the debt with the hold count
+        // then.
+        protected longint unsigned hold_cum;
+        protected longint unsigned debt;
+        protected bit              restarted;
+        protected longint unsigned restart_at;
+        protected realtime         restart_time;
+        protected longint unsigned restart_hold;
         // The output units whose anchor input unit has ended and which have
         // not ended, in unit order; the next output unit to be due.
         typedef struct {
@@ -3178,10 +3227,8 @@ package a2c_uvm_pkg;
             int unsigned     anchor;
             longint unsigned in_end;
             realtime         in_end_at;
-            longint unsigned cum_start;
-            longint unsigned cum_in_end;
-            longint unsigned refused_start;
-            longint unsigned refused_end;
+            longint unsigned debt;
+            longint unsigned hold_at_end;
             int unsigned     limit;
             bit              reported;
         } deadline_t;
@@ -3193,7 +3240,6 @@ package a2c_uvm_pkg;
         protected longint unsigned lag_worst;
         protected int unsigned     lag_worst_unit;
         protected int unsigned     lags;
-        protected longint unsigned gap_now;
         protected longint unsigned gap_worst;
         protected int unsigned     gap_worst_unit;
         protected longint unsigned refusal_worst;
@@ -3206,6 +3252,8 @@ package a2c_uvm_pkg;
         protected int unsigned     failures;
         protected int unsigned     unprinted;
         protected int unsigned     unjudged;
+        protected int unsigned     resets;
+        protected int unsigned     abandoned;
         protected bit              stopped;
         protected realtime         stopped_at;
         protected a2c_lane_watchdog dogs[$];
@@ -3255,6 +3303,24 @@ package a2c_uvm_pkg;
         virtual function int unsigned anchor(int unsigned j);
             if (in_units_per_out > 1) return j * in_units_per_out + in_units_per_out - 1;
             return j / out_units_per_in;
+        endfunction
+
+        // A further port the DUT waits on, whose withheld clocks are
+        // starvation credits of every output unit and hold credits: a
+        // monitor of a stream the testbench drives (a2c_flow_counts), which
+        // withholds on clocks it offers no beat, or a responder's monitor
+        // (a2c_starvation_source), such as pop_ack, req_ack, axi_read or
+        // axi_write. Call it in connect_phase, once per port.
+        function void connect_source(uvm_component mon);
+            source_t s;
+            if (mon != null && $cast(s.fc, mon)) s.name = s.fc.flow_port();
+            else if (mon != null && $cast(s.ss, mon)) s.name = s.ss.starvation_port();
+            else begin
+                `uvm_error("A2C_CFG", $sformatf("%s: connect_source() was given %s, which implements neither a2c_flow_counts nor a2c_starvation_source",
+                                                get_full_name(), (mon == null) ? "null" : mon.get_full_name()))
+                return;
+            end
+            sources.push_back(s);
         endfunction
 
         // Changes the bounds during a run; a negative value leaves one alone,
@@ -3386,19 +3452,61 @@ package a2c_uvm_pkg;
             // Every Mode B master's watchdog exists once the run phase has
             // passed its first clock.
             a2c_joint_watch::get_dogs(dogs);
-            out_fc.flow_counts(out_prev[0], out_prev[1], out_prev[2], out_prev[3]);
-            if (in_fc != null) in_fc.flow_counts(in_prev[0], in_prev[1], in_prev[2], in_prev[3]);
             forever begin
-                @(clk_vif.cb);
-                clocks++;
-                if (dual && dut_dead()) begin
-                    stopped    = 1;
-                    stopped_at = $realtime;
-                    return;
+                take_counts();
+                forever begin
+                    @(clk_vif.cb);
+                    if (clk_vif.cb.rst_n !== 1'b1) break;
+                    clocks++;
+                    if (dual && dut_dead()) begin
+                        stopped    = 1;
+                        stopped_at = $realtime;
+                        return;
+                    end
+                    step();
                 end
-                step();
+                rearm();
+                clk_vif.wait_reset_release();
             end
         endtask
+
+        // The counts every later edge is read against, at a reset release.
+        // Unit ends the monitors reported before it belong to no unit.
+        protected function void take_counts();
+            out_fc.flow_counts(out_prev[0], out_prev[1], out_prev[2], out_prev[3]);
+            if (in_fc != null) in_fc.flow_counts(in_prev[0], in_prev[1], in_prev[2], in_prev[3]);
+            foreach (sources[s]) source_counts(s, sources[s].samples, sources[s].count);
+            in_end_events  = 0;
+            out_end_events = 0;
+            in_marks       = 0;
+            out_marks      = 0;
+        endfunction
+
+        // A reset abandons every open unit and pending deadline; unit k is
+        // the first unit of each side again from the release.
+        protected function void rearm();
+            resets++;
+            abandoned += due.size() + ((out_open && (due.size() == 0 || due[0].unit != out_ended)) ? 1 : 0);
+            due.delete();
+            in_credits.delete();
+            source_credits.delete();
+            hold_credits.delete();
+            foreach (sources[s]) sources[s].withheld = 0;
+            next_due             = 0;
+            in_ended             = 0;
+            out_ended            = 0;
+            in_open              = 0;
+            in_withheld          = 0;
+            in_refused           = 0;
+            in_excluded          = 0;
+            refusal_reported     = 0;
+            counter_active       = 0;
+            debt                 = 0;
+            restarted            = 0;
+            source_withheld_ever = 0;
+            close_out_unit();
+            out_ended            = 0;
+        endfunction
 
         protected function bit dut_dead();
             if (cmp != null && cmp.is_dead(A2C_DUT_LANE)) return 1;
@@ -3413,10 +3521,61 @@ package a2c_uvm_pkg;
         // Whether input withheld from input unit u can starve the open
         // output unit, or the next one: u is its anchor or an earlier unit.
         // A later input unit feeds only later output units, so its idle,
-        // even while this unit still drains, earns this unit no credit.
+        // even while this unit still drains, never explains this unit's.
         protected function bit starves(int unsigned u);
             if (!has_in_rule()) return 1;
             return u <= anchor(out_ended);
+        endfunction
+
+        protected function void source_counts(int s, output longint unsigned samples, output longint unsigned count);
+            longint unsigned v;
+            longint unsigned r;
+            longint unsigned t;
+            if (sources[s].fc != null) begin
+                sources[s].fc.flow_counts(samples, v, r, t);
+                count = samples - v;
+            end else begin
+                sources[s].ss.starvation_counts(samples, count);
+            end
+        endfunction
+
+        // Adds n credits earned at at to q, merged with its last entry when
+        // that has the same clock and unit.
+        protected function void add_credit(ref credit_t q[$], input longint unsigned at, int unsigned unit, int unsigned n);
+            if (n == 0) return;
+            if (q.size() != 0 && q[$].at == at && q[$].unit == unit) q[$].n += n;
+            else q.push_back('{at: at, unit: unit, n: n});
+        endfunction
+
+        // Drops the credits earned before floor.
+        protected function void expire(ref credit_t q[$], input longint unsigned floor);
+            while (q.size() != 0 && q[0].at < floor) void'(q.pop_front());
+        endfunction
+
+        protected function void take_credit(ref credit_t q[$]);
+            if (--q[0].n == 0) void'(q.pop_front());
+        endfunction
+
+        // Moves the debt by one clock's holds and input clocks with no
+        // transfer, withheld or refused. Such a clock lets an output behind
+        // by the debt catch up one clock, or is a hold moving the input end
+        // instead of the output's. A gap already inside the DUT when a hold
+        // begins meets the hold too, but is not counted, so the lag can read
+        // low by the input clocks with no transfer within the DUT's latency
+        // before a hold.
+        protected function void settle_debt(longint unsigned holds, longint unsigned gaps);
+            debt += holds;
+            debt  = (debt > gaps) ? debt - gaps : 0;
+        endfunction
+
+        // Pairs an idle clock with the earliest starvation credit it may
+        // use, and returns whether one paired.
+        protected function bit pair_idle();
+            bit in_ok  = in_credits.size() != 0 && starves(in_credits[0].unit);
+            bit src_ok = source_credits.size() != 0;
+            if (in_ok && (!src_ok || in_credits[0].at <= source_credits[0].at)) take_credit(in_credits);
+            else if (src_ok) take_credit(source_credits);
+            return in_ok || src_ok;
         endfunction
 
         // One output clock.
@@ -3428,32 +3587,53 @@ package a2c_uvm_pkg;
             bit              o_ready;
             bit              o_xfer;
             bit              stall;
+            int unsigned     withholding = 0;
+            int unsigned     in_tag;
             longint unsigned floor;
-            longint unsigned reach;
-            int unsigned     credit = 0;
             longint unsigned refused = 0;
             out_fc.flow_counts(o[0], o[1], o[2], o[3]);
             o_valid = o[1] != out_prev[1];
             o_ready = o[2] != out_prev[2];
             o_xfer  = o[3] != out_prev[3];
             stall   = o_valid && !o_ready;
-            if (stall) stall_cum++;
-            if (o_ready && !o_valid) begin
-                restarted       = 1;
-                restart_at      = clocks;
-                restart_time    = $realtime;
-                restart_stall   = stall_cum;
-                restart_refused = refused_cum;
-            end
             out_prev = o;
+            foreach (sources[s]) begin
+                longint unsigned samples;
+                longint unsigned count;
+                source_counts(s, samples, count);
+                if (samples != sources[s].samples) sources[s].withheld = count != sources[s].count;
+                sources[s].samples = samples;
+                sources[s].count   = count;
+                withholding += sources[s].withheld;
+            end
+            if (!stall && withholding == 0) free++;
+            hold_cum += stall + withholding;
+            add_credit(hold_credits, clocks, 0, stall + withholding);
+            add_credit(source_credits, free, 0, withholding);
+            if (withholding != 0) begin
+                source_withheld_ever = 1;
+                source_withheld_at   = free;
+                work_at   = clocks;
+                work_idle = 0;
+            end
+            floor = (free > window()) ? free - window() : 0;
+            expire(in_credits, floor);
+            expire(source_credits, floor);
+            expire(hold_credits, (clocks > window()) ? clocks - window() : 0);
+            if (o_xfer) begin
+                last_xfer_at = $realtime;
+                idle         = 0;
+                paired       = 0;
+                gap_now      = 0;
+                work_held    = 0;
+            end
             // The input side first, so an input unit that ends on the clock
             // its output unit ends is its anchor in time.
+            in_tag = in_ended;
             if (in_fc != null) begin
                 in_fc.flow_counts(i[0], i[1], i[2], i[3]);
                 foreach (di[k]) di[k] = i[k] - in_prev[k];
                 in_prev = i;
-                // An input clock slower than the output's samples on some
-                // output clocks only, which keep its last state.
                 if (di[0] != 0) in_withheld = (di[1] == 0);
                 if (di[1] != 0) in_open = 1;
                 if (in_open) begin
@@ -3461,32 +3641,34 @@ package a2c_uvm_pkg;
                     in_withheld_samples += di[0] - di[1];
                 end
                 refused = di[1] - di[3];
-                refused_cum += refused;
-                if (refused != 0) begin
-                    if (stall) in_excluded += refused;
-                    else in_refused += refused;
+                settle_debt(stall + withholding, di[0] - di[3]);
+                repeat (refused) begin
+                    if (hold_credits.size() != 0) begin
+                        take_credit(hold_credits);
+                        in_excluded++;
+                    end else begin
+                        in_refused++;
+                    end
                 end
                 if (refusal_cycles != 0 && has_in_rule() && !refusal_reported && in_refused >= refusal_cycles) begin
                     refusal_reported = 1;
-                    fail("A2C_RT_REFUSAL", $sformatf("%s: the DUT refused %0d clocks of input unit %0d that the testbench offered on %s (rt_refusal_cycles %0d, +a2c_rt_refusal_cycles), not counting %0d refused clocks on which the sink stalled the output",
-                                                     port(), in_refused, in_ended, in_port(), refusal_cycles, in_excluded));
+                    fail("A2C_RT_REFUSAL", $sformatf("%s: the DUT refused %0d clocks of input unit %0d that the testbench offered on %s (rt_refusal_cycles %0d, +a2c_rt_refusal_cycles), not counting %0d refused clocks paired with a clock on which the testbench held the DUT up within %0d clocks (rt_latency_cycles)",
+                                                     port(), in_refused, in_ended, in_port(), refusal_cycles, in_excluded, window()));
+                end
+                // A beat accepted on this clock may be its unit's last, so it
+                // is tagged before the unit's end retires.
+                if (di[3] != 0 && starves(in_tag) && !work_held) begin
+                    work_held = 1;
+                    work_at   = clocks;
+                    work_idle = 0;
                 end
                 while (in_end_events != 0) begin
                     in_end_events--;
                     input_unit_ended();
                 end
-                if (in_withheld) withheld.push_back('{at: clocks, unit: in_ended});
-            end
-            if (o_xfer) begin
-                last_xfer    = clocks;
-                last_xfer_at = $realtime;
-                idle         = 0;
-                gap_now      = 0;
-            end
-            if (o_valid && !out_started) begin
-                out_started   = 1;
-                out_start_cum = stall_cum - stall;
-                out_start_refused = refused_cum - refused;
+                if (in_withheld) add_credit(in_credits, free, in_ended, 1);
+            end else begin
+                settle_debt(stall + withholding, 0);
             end
             if (has_out_rule()) begin
                 if (o_xfer) out_open = 1;
@@ -3504,41 +3686,54 @@ package a2c_uvm_pkg;
                 if (counter_active && !active) close_out_unit();
                 counter_active = active;
             end
-            // A ready clock with no transfer had no beat offered.
-            if (out_open && !o_xfer && o_ready) idle++;
-            // The credit window: clocks after last_xfer - window() while a
-            // unit is open, else clocks a transfer from now could still
-            // reach. A later unit's window starts after its first transfer,
-            // so an entry past the second floor that the open unit cannot
-            // use is dropped too. Either keeps withheld to one window across
-            // a long blank.
-            floor = out_open ? last_xfer : clocks;
-            floor = (floor > window()) ? floor - window() : 0;
-            reach = (clocks > window()) ? clocks - window() : 0;
-            while (withheld.size() != 0 && (withheld[0].at <= floor || (withheld[0].at <= reach && !starves(withheld[0].unit))))
-                void'(withheld.pop_front());
-            if (out_open) begin
-                // Input units only grow along the queue, so the entries the
-                // open unit can use lead it.
-                while (credit < withheld.size() && starves(withheld[credit].unit)) credit++;
-                gap_now = (idle > credit) ? idle - credit : 0;
-                if (gap_now > gap_worst) begin
-                    gap_worst      = gap_now;
-                    gap_worst_unit = out_ended;
-                end
-                if (gap_cycles != 0 && !gap_reported && gap_now >= gap_cycles) begin
-                    gap_reported = 1;
-                    fail("A2C_RT_GAP", $sformatf("%s: output unit %0d has gone %0d clocks with no beat while its sink was ready (rt_gap_cycles %0d, +a2c_rt_gap_cycles): %0d beats of the unit so far, the last at %0t; %0d idle clocks less a starvation credit of %0d input clocks the testbench withheld in the %0d-clock window (rt_latency_cycles)",
-                                                 port(), out_ended, gap_now, gap_cycles, out_beats, last_xfer_at, idle,
-                                                 credit, window()));
-                end
-            end
+            if (o_ready && !o_valid) idle_clock();
             check_deadlines();
         endfunction
 
+        // A clock on which the sink was ready and no beat was offered. Only
+        // an open unit's idle clocks use credits: one between units, such
+        // as a pipeline filling, is never charged, and the credit it would
+        // take may explain a later idle of the open unit.
+        protected function void idle_clock();
+            bit had_work = 0;
+            restart();
+            if (!out_open) return;
+            if (work_held && clocks > work_at) begin
+                work_idle++;
+                had_work = work_idle >= window();
+            end
+            idle++;
+            if (!had_work && pair_idle()) begin
+                paired++;
+                return;
+            end
+            gap_now++;
+            if (gap_now > gap_worst) begin
+                gap_worst      = gap_now;
+                gap_worst_unit = out_ended;
+            end
+            if (gap_cycles != 0 && !gap_reported && gap_now >= gap_cycles) begin
+                gap_reported = 1;
+                fail("A2C_RT_GAP", $sformatf("%s: output unit %0d has been charged %0d clocks with no beat while its sink was ready (rt_gap_cycles %0d, +a2c_rt_gap_cycles): %0d beats of the unit so far, the last at %0t; of %0d idle clocks since, %0d paired with input the testbench withheld within %0d clocks (rt_latency_cycles)%s",
+                                             port(), out_ended, gap_now, gap_cycles, out_beats, last_xfer_at, idle, paired, window(),
+                                             had_work ? $sformatf(", and the DUT has held input of the unit for %0d idle clocks", work_idle) : ""));
+            end
+        endfunction
+
+        // The output idled with its sink ready, so the DUT had caught up and
+        // no earlier hold can still delay a unit's end, unless a further
+        // source withheld within W and held work back inside the DUT.
+        protected function void restart();
+            if (source_withheld_ever && free - source_withheld_at <= window()) return;
+            debt         = 0;
+            restarted    = 1;
+            restart_at   = clocks;
+            restart_time = $realtime;
+            restart_hold = hold_cum;
+        endfunction
+
         protected function void input_unit_ended();
-            int unsigned     a = in_ended;
-            longint unsigned refused_start = in_refused_start;
+            int unsigned a = in_ended;
             if (in_ended != 0) begin
                 longint unsigned p = clocks - last_in_end;
                 if (in_ended == 1 || p < period_min) period_min = p;
@@ -3548,7 +3743,6 @@ package a2c_uvm_pkg;
                 refusal_worst      = in_refused;
                 refusal_worst_unit = in_ended;
             end
-            in_refused_start = refused_cum;
             in_ended++;
             last_in_end      = clocks;
             in_open          = 0;
@@ -3557,50 +3751,22 @@ package a2c_uvm_pkg;
             refusal_reported = 0;
             if (!has_out_rule()) return;
             while (anchor(next_due) <= a) begin
-                deadline_t d;
                 // An output unit that ended before this input unit was
                 // reported as A2C_RT_UNIT, and gets no deadline.
                 if (next_due >= out_ended) begin
-                    d.unit      = next_due;
-                    d.anchor    = a;
-                    d.in_end    = clocks;
-                    d.in_end_at = $realtime;
-                    d.cum_start     = (next_due == out_ended && out_started) ? out_start_cum : stall_cum;
-                    d.cum_in_end    = stall_cum;
-                    // Refusals net the stalls over the same window, so they
-                    // count from the output's first offered beat when that
-                    // came before the anchor input unit started.
-                    d.refused_start = (next_due == out_ended && out_started && out_start_refused < refused_start) ? out_start_refused : refused_start;
-                    d.refused_end   = refused_cum;
-                    d.limit     = lag_cycles;
-                    due.push_back(d);
+                    due.push_back('{unit: next_due, anchor: a, in_end: clocks, in_end_at: $realtime, debt: debt,
+                                    hold_at_end: hold_cum, limit: lag_cycles, reported: 0});
                 end
                 next_due++;
             end
         endfunction
 
-        // The input clocks the DUT refused up to d's input end, from the
-        // earlier of the anchor input unit's start and the output unit's
-        // first offered beat, and not before the restart; raw, because the
-        // clocks the refusal rule leaves out moved the input end too.
-        protected function longint unsigned refused_of(deadline_t d);
-            if (restarted && restart_at >= d.in_end) return 0;
-            return d.refused_end - ((restarted && restart_refused > d.refused_start) ? restart_refused : d.refused_start);
-        endfunction
-
-        // The stalls since the restart: after the input end, and before it
-        // from the output unit's first offered beat less the refusals,
-        // never below 0. A stall the DUT turned into refusals has already
-        // moved the input end.
+        // The hold clocks that delayed d's unit: those since its input end,
+        // and the debt at the input end, unless the output has idled with
+        // its sink ready since, when only those since then count.
         protected function longint unsigned credit_of(deadline_t d);
-            longint unsigned from  = (restarted && restart_stall > d.cum_start) ? restart_stall : d.cum_start;
-            longint unsigned early = 0;
-            longint unsigned late  = d.cum_in_end;
-            longint unsigned refused = refused_of(d);
-            if (restarted && restart_at >= d.in_end) late = restart_stall;
-            else early = d.cum_in_end - from;
-            early = (early > refused) ? early - refused : 0;
-            return stall_cum - late + early;
+            if (restarted && restart_at >= d.in_end) return hold_cum - restart_hold;
+            return d.debt + hold_cum - d.hold_at_end;
         endfunction
 
         protected function string restart_text();
@@ -3627,7 +3793,7 @@ package a2c_uvm_pkg;
                 if (due[0].reported) begin
                     late_done++;
                     if (judging) begin
-                        `uvm_info("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d, reported late, ended %0d clocks after its deadline, with a lag of %0d against rt_lag_cycles %0d, less a stall credit of %0d clocks counted since the output last sat idle with its sink ready at %s",
+                        `uvm_info("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d, reported late, ended %0d clocks after its deadline, with a lag of %0d against rt_lag_cycles %0d, less a hold credit of %0d clocks; the output last idled with its sink ready at %s",
                                                                port(), k, lag - due[0].limit, lag, due[0].limit, credit_of(due[0]), restart_text()), UVM_LOW)
                     end
                 end
@@ -3642,11 +3808,12 @@ package a2c_uvm_pkg;
         protected function void close_out_unit();
             out_ended++;
             out_open     = 0;
-            out_started  = 0;
             out_beats    = 0;
             idle         = 0;
+            paired       = 0;
             gap_now      = 0;
             gap_reported = 0;
+            work_held    = 0;
         endfunction
 
         // Each unreported deadline reached raises A2C_RT_DEADLINE now. Every
@@ -3659,9 +3826,9 @@ package a2c_uvm_pkg;
                 lag = lag_of(due[n]);
                 if (lag < due[n].limit) continue;
                 due[n].reported = 1;
-                fail("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d has not ended %0d clocks after input unit %0d of %s ended at %0t (rt_lag_cycles %0d, +a2c_rt_lag_cycles), less a stall credit of %0d clocks the sink refused an offered beat, net of %0d input clocks refused before the input end, counted since the output last sat idle with its sink ready at %s; %0s. Lag of unit 0: %s, worst completed so far: %s",
+                fail("A2C_RT_DEADLINE", $sformatf("%s: output unit %0d has not ended %0d clocks after input unit %0d of %s ended at %0t (rt_lag_cycles %0d, +a2c_rt_lag_cycles), less a hold credit of %0d clocks on which the sink refused an offered beat or a further source withheld, net of the refused input clocks they paired with; the output last idled with its sink ready at %s; %0s. Lag of unit 0: %s, worst completed so far: %s",
                                                   port(), due[n].unit, lag, due[n].anchor, in_port(), due[n].in_end_at, due[n].limit,
-                                                  credit_of(due[n]), refused_of(due[n]), restart_text(),
+                                                  credit_of(due[n]), restart_text(),
                                                   (due[n].unit == out_ended && out_beats != 0) ? $sformatf("%0d beats of the unit so far, the last at %0t", out_beats, last_xfer_at)
                                                                                                  : "no beat of the unit yet",
                                                   (lags == 0) ? "none yet" : $sformatf("%0d", lag_first),
@@ -3731,6 +3898,10 @@ package a2c_uvm_pkg;
             return failures + unjudged;
         endfunction
 
+        function int unsigned resets_seen();
+            return resets;
+        endfunction
+
         virtual function void check_phase(uvm_phase phase);
             int unsigned never = 0;
             int unsigned pending = 0;
@@ -3749,6 +3920,7 @@ package a2c_uvm_pkg;
                              period_min, period_max,
                              (in_open_samples == 0) ? 0.0 : 100.0 * in_withheld_samples / in_open_samples,
                              late_done, never, pending);
+            if (resets != 0) what = {what, $sformatf("; %0d resets abandoned %0d units", resets, abandoned)};
             if (!judging) what = {what, $sformatf("; measured only, on the model DUT: %0d failures not raised", unjudged)};
             if (stopped) what = {what, $sformatf("; stopped judging at %0t, when a Mode B master declared the DUT lane dead", stopped_at)};
             if (pending != 0) what = {what, a2c_run_ended_clause()};

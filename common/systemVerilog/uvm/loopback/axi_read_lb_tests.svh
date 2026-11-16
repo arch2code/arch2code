@@ -145,6 +145,7 @@
         // the most there were at once.
         int unsigned                        in_flight;
         int unsigned                        peak;
+        longint unsigned                    waited;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -183,11 +184,23 @@
         protected task watch_in_flight();
             forever begin
                 clk_vif.sample_edge();
+                waited += (vif.arvalid === 1'b1 && vif.arready !== 1'b1) || (in_flight != 0 && vif.rvalid !== 1'b1);
                 if (vif.rvalid === 1'b1 && vif.rready === 1'b1 && vif.rlast === 1'b1) in_flight--;
                 if (vif.arvalid === 1'b1 && vif.arready === 1'b1) in_flight++;
                 if (in_flight > peak) peak = in_flight;
             end
         endtask
+
+        // The slave monitor's starvation counts against the clocks the
+        // master waited: an AR refused, or a burst open with no R beat.
+        protected function void check_starvation();
+            longint unsigned samples;
+            longint unsigned withheld;
+            slave.mon.starvation_counts(samples, withheld);
+            if (withheld != waited || samples == 0) begin
+                `uvm_error("LB_STARVE", $sformatf("the monitor counts %0d clocks withheld in %0d samples; the master waited %0d", withheld, samples, waited))
+            end
+        endfunction
 
         // Runs seq on the master, then checks that the slave's monitor
         // reported every burst the master returned, beat for beat, in order.
@@ -202,6 +215,7 @@
             seq.start(master.sqr);
             repeat (2) clk_vif.sample_edge();
             disable fork;
+            check_starvation();
             if (seq.responses.size() != seq.n) begin
                 `uvm_error("LB_AXR", $sformatf("%0d bursts sent, %0d returned", seq.n, seq.responses.size()))
             end

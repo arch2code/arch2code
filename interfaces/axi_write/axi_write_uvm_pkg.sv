@@ -1215,7 +1215,7 @@ package axi_write_uvm_pkg;
 
     class axi_write_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0], type strb_t = logic [3:0],
                               type awuser_t = logic, type wuser_t = logic, type buser_t = logic,
-                              type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch;
+                              type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch, a2c_starvation_source;
         typedef axi_write_item#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t) item_t;
         typedef item_t::strb_bits_t                                                        strb_bits_t;
         typedef bit [$bits(id_t)-1:0]                                                      id_key_t;
@@ -1253,6 +1253,12 @@ package axi_write_uvm_pkg;
         protected item_t   aw_open[$];
         protected w_beat_t w_early[$];
         protected item_t   b_open[id_key_t][$];
+        // The counts a2c_rt_checker reads (a2c_starvation_source), from the
+        // reset release: the master waits on clocks the slave refuses an
+        // offered AW or W. A B the master awaits is not counted, since a
+        // master that posts its writes does not wait on it.
+        protected longint unsigned n_samples;
+        protected longint unsigned n_withheld;
 
         `uvm_component_param_utils(axi_write_monitor#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t))
 
@@ -1308,6 +1314,8 @@ package axi_write_uvm_pkg;
                 b_stalled  = vif.bvalid === 1'b1 && vif.bready !== 1'b1;
                 w_stalled  = vif.wvalid === 1'b1 && vif.wready !== 1'b1;
                 aw_stalled = vif.awvalid === 1'b1 && vif.awready !== 1'b1;
+                n_samples++;
+                n_withheld += aw_stalled || w_stalled;
                 held_b     = b_pins();
                 held_w     = w_pins();
                 held_aw    = aw_pins();
@@ -1440,6 +1448,15 @@ package axi_write_uvm_pkg;
             if (died_at != 0) `uvm_info("A2C_PROTO", $sformatf("%s, on a lane the master declared dead at %0t (%s)", what, died_at, died_by), UVM_LOW)
             else if (replay != null && replay.get_cut() != 0) `uvm_info("A2C_PROTO", {what, ", after the drain cut it"}, UVM_LOW)
             else `uvm_error("A2C_PROTO", what)
+        endfunction
+
+        virtual function void starvation_counts(output longint unsigned samples, output longint unsigned withheld);
+            samples  = n_samples;
+            withheld = n_withheld;
+        endfunction
+
+        virtual function string starvation_port();
+            return cfg.port_name;
         endfunction
     endclass : axi_write_monitor
 
