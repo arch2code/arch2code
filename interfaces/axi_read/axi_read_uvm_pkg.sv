@@ -380,6 +380,13 @@ package axi_read_uvm_pkg;
             for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].arvalid <= v;
         endfunction
 
+        // Whether the next AR waits only for a slot on the model lane: the
+        // DUT lane has a free one and the model lane has not.
+        protected function bit model_slots_full();
+            return lanes == 2 && outstanding[A2C_DUT_LANE] < cfg.max_outstanding
+                && outstanding[A2C_MODEL_LANE] >= cfg.max_outstanding;
+        endfunction
+
         protected function bit slot_free();
             for (int l = 0; l < lanes; l++) begin
                 if (!wd.dead[l] && outstanding[l] >= cfg.max_outstanding) return 0;
@@ -398,12 +405,17 @@ package axi_read_uvm_pkg;
         protected virtual task run_ar();
             item_t rsp;
             open_t b;
+            // The clocks the model lane's full slots alone have held the
+            // next AR back.
+            int unsigned slot_held;
             forever begin
                 if (!slot_free()) begin
+                    wd.throttle(model_slots_full() && seq_item_port.has_do_available(), slot_held);
                     drive_arvalid(1'b0);
                     cfg.clk_vif.drive_edge();
                     continue;
                 end
+                slot_held = 0;
                 seq_item_port.try_next_item(req);
                 if (req == null) begin
                     drive_arvalid(1'b0);
@@ -454,6 +466,8 @@ package axi_read_uvm_pkg;
         // the other did is declared dead.
         protected task wait_ar(open_t b);
             int unsigned lag = 0;
+            // The clocks the model lane alone has held the next AR back.
+            int unsigned held = 0;
             bit          all;
             bit          led;
             realtime     led_at;
@@ -467,6 +481,7 @@ package axi_read_uvm_pkg;
                     all &= b.ar_taken[l] || wd.dead[l];
                     led |= b.ar_taken[l] && wd.counts(l);
                 end
+                wd.throttle(lanes == 2 && b.ar_taken[A2C_DUT_LANE] && !b.ar_taken[A2C_MODEL_LANE], held);
                 if (!all && led) begin
                     if (lag == 0) led_at = $realtime;
                     if (lag == wd.lane_skew_cycles && wd.lane_skew_cycles != 0) begin

@@ -222,7 +222,11 @@ package uvmRegs_uvm_test_pkg;
     // timeout. Left at -1 each keeps the master's own
     // 200000, +a2c_lane_skew_cycles, +a2c_lone_lane_cycles and
     // +a2c_joint_stall_cycles override them, and 0 turns a rule off. A
-    // run that sends nothing on an input and expects no output
+    // Mode B master that holds its next item back for the model lane,
+    // with the DUT lane ready for it, on more than model_throttle_cycles
+    // clocks raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's
+    // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
+    // rule off. A run that sends nothing on an input and expects no output
     // transaction warns at check_phase, unless no_stimulus_expected
     // (+a2c_no_stimulus_expected=1) is set. A run phase still running at
     // its run timeout, counted in clocks of clk, ends with one
@@ -252,6 +256,7 @@ package uvmRegs_uvm_test_pkg;
         int          lane_skew_cycles = -1;
         int          lone_lane_cycles = -1;
         int          joint_stall_cycles = -1;
+        int          model_throttle_cycles = -1;
         bit          no_stimulus_expected;
         int          run_timeout_cycles = -1;
         int          run_timeout_floor_cycles = -1;
@@ -283,6 +288,7 @@ package uvmRegs_uvm_test_pkg;
             void'($value$plusargs("a2c_lane_skew_cycles=%d", lane_skew_cycles));
             void'($value$plusargs("a2c_lone_lane_cycles=%d", lone_lane_cycles));
             void'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));
+            void'($value$plusargs("a2c_model_throttle_cycles=%d", model_throttle_cycles));
             void'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));
             void'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));
             void'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));
@@ -307,6 +313,9 @@ package uvmRegs_uvm_test_pkg;
             end
             if (joint_stall_cycles >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_joint_stall_cycles", joint_stall_cycles);
+            end
+            if (model_throttle_cycles >= 0) begin
+                uvm_config_db#(int unsigned)::set(this, "env*", "a2c_model_throttle_cycles", model_throttle_cycles);
             end
             if (run_timeout_cycles >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "run_timeout", "a2c_run_timeout_cycles", run_timeout_cycles);

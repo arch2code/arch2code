@@ -131,6 +131,11 @@ package a2c_uvm_loopback_pkg;
             if (!uvm_config_db#(virtual a2c_clk_if)::get(this, "", "clk", clk_vif)) begin
                 `uvm_fatal("LB_CFG", "no virtual a2c_clk_if 'clk'")
             end
+            // The two lanes of a loopback port answer on their own scripts
+            // or random ready, not as an RTL and its untimed model, so the
+            // model throttle rule is off but in the tests of it, which set
+            // it again on their master after this.
+            uvm_config_db#(int unsigned)::set(this, "*", "a2c_model_throttle_cycles", 0);
         endfunction
 
         // Waits until the scoreboard has matched target items, or fails after

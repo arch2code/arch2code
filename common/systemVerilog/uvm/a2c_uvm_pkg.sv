@@ -2357,6 +2357,22 @@ package a2c_uvm_pkg;
 
     // The joint stall rule's default bound.
     localparam int unsigned A2C_JOINT_STALL_CYCLES = 200000;
+    // The model throttle rule's default bound: the clocks a model lane
+    // trails an RTL with no wait states on an APB access, because its BFM
+    // raises pready one clock after it sees the access phase. On the other
+    // protocols the model lane answers on the DUT lane's clock.
+    localparam int unsigned A2C_MODEL_THROTTLE_CYCLES = 2;
+
+    // The sentence that ends a report of one lane trailing the other in
+    // Mode B. The model is untimed, so the RTL never waits on it: a model
+    // lane that trails is a model defect, and a DUT lane that trails a model
+    // lane that has finished is held by the RTL.
+    function automatic string a2c_trailing_clause(a2c_lane_e trailing);
+        if (trailing == A2C_MODEL_LANE) begin
+            return "The model is untimed and the RTL never waits on it, so a model lane that trails the DUT lane is a model defect. Fix the model to queue, buffer and arbitrate input as the RTL does, so that it completes each transfer no later than the RTL.";
+        end
+        return "The model lane has finished, so the RTL holds the DUT lane: look for the cause in the RTL, or in the input the RTL waits for.";
+    endfunction
 
     // The lane rules every master shares, so that the masters of all
     // protocols bound a lane the same way and report it in the same words.
@@ -2376,7 +2392,14 @@ package a2c_uvm_pkg;
     //     stalls, however long it waits. Without the rule a Mode B run that
     //     stops waits for UVM's global timeout. The bound decides only
     //     whether this port can raise the stall: once any port raises it,
-    //     every Mode B port's live lanes die, and those that wait are named.
+    //     every Mode B port's live lanes die, and those that wait are named;
+    //   - model_throttle_cycles: both lanes live, and the master holds its
+    //     next item, or for a burst master its next address, W beat or
+    //     outstanding slot, because the DUT lane is ready for it and the
+    //     model lane is not. A hold that lasts more than this many clocks in
+    //     a row raises one A2C_MODEL_THROTTLE for the port. The model is
+    //     untimed, so a conforming model lane holds the RTL's input back
+    //     only for the clocks its BFM takes to answer a handshake.
     // 0 turns a rule off. A lane that has nothing to wait for counts as
     // making progress, so an idle port never stalls. A master declares a
     // lane dead only in Mode B. With one lane, in Mode A, only the joint
@@ -2394,6 +2417,16 @@ package a2c_uvm_pkg;
         int unsigned        lane_skew_cycles = 200000;
         int unsigned        lone_lane_cycles = 200000;
         int unsigned        joint_stall_cycles = A2C_JOINT_STALL_CYCLES;
+        int unsigned        model_throttle_cycles = A2C_MODEL_THROTTLE_CYCLES;
+        // The clocks of the run on which the model lane alone held something
+        // back, the longest it held one, and whether A2C_MODEL_THROTTLE is
+        // out. throttled_at counts a clock that holds on two channels once.
+        int unsigned        throttled;
+        int unsigned        throttled_max;
+        protected realtime  throttled_at = -1;
+        protected bit       throttle_reported;
+        // step(): the clocks the model lane has held the next item back.
+        protected int unsigned held;
         // The component that reports, the port's name in its messages, and
         // its lane count, 2 in Mode B.
         uvm_component       master;
@@ -2456,14 +2489,16 @@ package a2c_uvm_pkg;
         endfunction
 
         // Reads a2c_lane_skew_cycles, a2c_lone_lane_cycles,
-        // a2c_joint_stall_cycles and a2c_clock_stop_cycles on the master's
-        // path, as a generated base test sets them from the plusargs of the
-        // same names, and keeps the port's clock.
+        // a2c_joint_stall_cycles, a2c_model_throttle_cycles and
+        // a2c_clock_stop_cycles on the master's path, as a generated base
+        // test sets them from the plusargs of the same names, and keeps the
+        // port's clock.
         function void configure(virtual a2c_clk_if clk_vif);
             this.clk_vif = clk_vif;
             void'(a2c_get_config_int(master, "a2c_lane_skew_cycles", lane_skew_cycles));
             void'(a2c_get_config_int(master, "a2c_lone_lane_cycles", lone_lane_cycles));
             void'(a2c_get_config_int(master, "a2c_joint_stall_cycles", joint_stall_cycles));
+            void'(a2c_get_config_int(master, "a2c_model_throttle_cycles", model_throttle_cycles));
             void'(a2c_get_config_int(master, "a2c_clock_stop_cycles", clock_stop_cycles));
         endfunction
 
@@ -2499,14 +2534,17 @@ package a2c_uvm_pkg;
         function bit declare_dead(a2c_lane_e l, string why, realtime since, string knob = "lane_skew_cycles, +a2c_lane_skew_cycles",
                                   string cause = "");
             string fate;
+            // A lane that dies while the other lives trails it; a lone
+            // lane's death is named after the first instead.
+            string trail = dead[1 - l] ? "" : {" ", a2c_trailing_clause(l)};
             if (dead[l]) return 0;
             mark(l, "A2C_SKEW");
             fate = dead[1 - l] ? {"No lane is left, so ", none_left, "."}
                                : {"The ", a2c_lane_name(a2c_lane_e'(1 - l)), " lane serves every ", unit, " from now on."};
-            `uvm_error_context("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s%s",
+            `uvm_error_context("A2C_SKEW", $sformatf("%s: %s (%s), so the master declares the %s lane dead%s. %s%s%s%s",
                                                      port_name, why, knob, a2c_lane_name(l),
                                                      a2c_replay_drain::death_context($realtime, who()), cause,
-                                                     a2c_replay_drain::waiting_responders(), fate), master)
+                                                     a2c_replay_drain::waiting_responders(), fate, trail), master)
             tell(l, since);
             return 1;
         endfunction
@@ -2654,11 +2692,43 @@ package a2c_uvm_pkg;
             for (int l = 0; l < 2; l++) if (fell[l]) tell(a2c_lane_e'(l), moved_at[l]);
         endfunction
 
+        // Which lanes waited on the port's last clock, one bit per
+        // a2c_lane_e. A lane left alone trails nothing, so a port with a
+        // dead lane counts as both.
+        function bit [1:0] lanes_waited();
+            if (lanes == 2 && (dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE])) return 2'b11;
+            for (int l = 0; l < lanes; l++) lanes_waited[l] = waited[l];
+        endfunction
+
+        // Called by a master once per clock for each thing it can hold back
+        // for the model lane: the next item, or a burst master's next
+        // address, W beat or outstanding slot. hold says that on this clock
+        // it waits only because the DUT lane is ready for it and the model
+        // lane is not, and run, which the master keeps per thing, counts the
+        // clocks in a row it has. A run one longer than
+        // model_throttle_cycles raises A2C_MODEL_THROTTLE, once per port.
+        function void throttle(bit hold, ref int unsigned run);
+            if (!hold || lanes != 2 || dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE]) begin
+                run = 0;
+                return;
+            end
+            run++;
+            if (run > throttled_max) throttled_max = run;
+            if (throttled_at != $realtime) throttled++;
+            throttled_at = $realtime;
+            if (model_throttle_cycles == 0 || run != model_throttle_cycles + 1 || throttle_reported) return;
+            throttle_reported = 1;
+            `uvm_error_context("A2C_MODEL_THROTTLE", $sformatf("%s: the master has held its next %s back for the model lane for %0d clocks, above model_throttle_cycles %0d (+a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for %s. Mode B slows the RTL's input to the model lane's pace, so input the RTL would take back to back goes untested. %s Raising model_throttle_cycles hides the defect.",
+                                                               port_name, unit, run, model_throttle_cycles,
+                                                               waits.waiting_for(A2C_MODEL_LANE), a2c_trailing_clause(A2C_MODEL_LANE)), master)
+        endfunction
+
         // For a master that puts one item on both lanes and waits for each
         // live lane to complete it before the next, from the drive point
         // that raises the item's request.
         function void begin_item();
-            lag = 0;
+            lag  = 0;
+            held = 0;
             for (int l = 0; l < 2; l++) if (!dead[l]) moved_at[l] = $realtime;
         endfunction
 
@@ -2678,6 +2748,7 @@ package a2c_uvm_pkg;
                 return;
             end
             for (int l = 0; l < 2; l++) if (dead[l]) pending[l] = 0;
+            throttle(!pending[A2C_DUT_LANE] && pending[A2C_MODEL_LANE], held);
             for (int l = 0; l < 2; l++) led |= !pending[l] && !dead[l];
             lags = led && (pending[A2C_DUT_LANE] || pending[A2C_MODEL_LANE]);
             if (lags) begin
@@ -2787,7 +2858,10 @@ package a2c_uvm_pkg;
             string ports = "";
             string after = a2c_select_str(timeout != null, "With one DUT no lane dies, and the run ends here.",
                                           "With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.");
+            string trail = "";
             bit    mode_b;
+            // The lanes that waited, over every port, one bit per a2c_lane_e.
+            bit [1:0] waited = '0;
             raised = 1;
             foreach (dogs[i]) begin
                 if (dogs[i].lanes != 2) continue;
@@ -2799,9 +2873,12 @@ package a2c_uvm_pkg;
             foreach (dogs[i]) begin
                 if (!dogs[i].joint_waiting()) continue;
                 ports = {ports, a2c_select_str(ports == "", "", "; "), dogs[i].wait_text()};
+                waited |= dogs[i].lanes_waited();
             end
-            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s%s",
-                                                            by.port_name, by.joint_stall_cycles, ports,
+            if (mode_b && waited == 2'b10) trail = {"Only model lanes wait. ", a2c_trailing_clause(A2C_MODEL_LANE), " "};
+            if (mode_b && waited == 2'b01) trail = {"Only DUT lanes wait. ", a2c_trailing_clause(A2C_DUT_LANE), " "};
+            `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s%s%s",
+                                                            by.port_name, by.joint_stall_cycles, ports, trail,
                                                             a2c_replay_drain::waiting_responders(), after), by.master)
             foreach (dogs[i]) dogs[i].die_jointly();
             // Mode B lanes die and the test reaches its own end; a Mode A

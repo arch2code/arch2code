@@ -212,3 +212,13 @@ status_mode_b_test
 status_mode_b_dst_test
 status_mode_b_mismatch_test
 status_mode_b_bounds_xz_test
+# The model throttle rule: one A2C_MODEL_THROTTLE per lock-step master family and both AXI masters.
+apb_mode_b_throttle_test
+axi4_stream_mode_b_throttle_test
+notify_ack_mode_b_throttle_test
+pop_ack_mode_b_throttle_test
+push_ack_mode_b_throttle_test
+rdy_vld_mode_b_throttle_test
+req_ack_mode_b_throttle_test
+axi_read_mode_b_master_throttle_test
+axi_write_mode_b_master_throttle_test
