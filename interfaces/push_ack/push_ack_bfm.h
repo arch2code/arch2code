@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "push_ack_channel.h"
+#include "bfmContractCheck.h"
 
 template<typename VL_DATA_T>
 struct push_ack_hdl_if: public sc_interface {
@@ -26,8 +27,15 @@ public:
 
     SC_HAS_PROCESS (push_ack_src_bfm);
 
-    push_ack_src_bfm(sc_module_name modulename) {
+    push_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(request_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+    }
+
+    virtual void end_of_simulation() {
+        m_held.check_.report();
     }
 
     void bfm_driver_thread() {
@@ -41,11 +49,27 @@ public:
                 wait(clk.posedge_event());
             } while (!hdl_if_p->push);
             data.sc_unpack(hdl_if_p->data);
+            m_held.take(hdl_if_p->data.read());
+            m_held.inCall_ = true;
             if_p->push(data);
+            m_held.inCall_ = false;
             hdl_if_p->ack = true;
             wait(clk.posedge_event());
+            if (rst_n) {
+                m_held.check(hdl_if_p->push, hdl_if_p->data.read());
+            }
         }
     }
+
+    void request_monitor() {
+        if (rst_n) {
+            m_held.monitor(hdl_if_p->push, hdl_if_p->data.read());
+        }
+    }
+
+private:
+
+    bfmHeldRequest<VL_DATA_T> m_held;
 
 };
 
@@ -66,6 +90,9 @@ public:
         SC_THREAD(bfm_driver_thread);
     }
 
+    // pushReceive() copies the value, but the model's push() blocks until
+    // ack(), which the BFM calls on the edge the HDL acks, so the push stays
+    // the model's outstanding write and the BFM holds no value of its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         DATA_T data;

@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "pop_ack_channel.h"
+#include "bfmContractCheck.h"
 
 template<typename VL_RDATA_T>
 struct pop_ack_hdl_if: public sc_interface {
@@ -26,8 +27,15 @@ public:
 
     SC_HAS_PROCESS (pop_ack_src_bfm);
 
-    pop_ack_src_bfm(sc_module_name modulename) {
+    pop_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(request_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+    }
+
+    virtual void end_of_simulation() {
+        m_held.check_.report();
     }
 
     void bfm_driver_thread() {
@@ -39,12 +47,28 @@ public:
             do {
                 wait(clk.posedge_event());
             } while (!hdl_if_p->pop);
+            m_held.take(true);
+            m_held.inCall_ = true;
             if_p->pop(rdata);
+            m_held.inCall_ = false;
             hdl_if_p->ack = true;
             hdl_if_p->rdata = rdata.sc_pack();
             wait(clk.posedge_event());
+            if (rst_n) {
+                m_held.check(hdl_if_p->pop, true);
+            }
         }
     }
+
+    void request_monitor() {
+        if (rst_n) {
+            m_held.monitor(hdl_if_p->pop, true);
+        }
+    }
+
+private:
+
+    bfmHeldRequest<bool> m_held;
 
 };
 
@@ -65,6 +89,8 @@ public:
         SC_CTHREAD(bfm_driver_thread, clk.pos());
     }
 
+    // The model's pop() blocks until ack(), which the BFM calls on the edge
+    // the HDL acks, so the BFM holds no request of its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {

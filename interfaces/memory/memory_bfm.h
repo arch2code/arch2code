@@ -43,6 +43,10 @@ public:
         dont_initialize();
     }
 
+    void end_of_elaboration() override {
+        if_p->setHdlPeer();
+    }
+
     virtual void end_of_simulation() {
         m_skipped.report();
     }
@@ -206,6 +210,7 @@ public:
     void end_of_elaboration() override {
         // The credit replays the RTL's words, which the order would only delay.
         Q_ASSERT(m_order == nullptr || m_credit == nullptr, "a memory_dst_bfm has both a write order and a model credit");
+        if_p->setHdlPeer();
         if (m_order != nullptr) {
             const sc_interface *clock = clk.get_interface();
             if_p->setRequestObserver([this, clock](bool isWrite) { m_order->issue(this, clock, isWrite); });

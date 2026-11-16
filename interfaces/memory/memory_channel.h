@@ -14,6 +14,7 @@
 #include "interfaceBase.h"
 #include "trackerBase.h"
 #include "portBase.h"
+#include "bfmContractCheck.h"
 
 
 // ----------------------------------------------------------------------------
@@ -38,6 +39,8 @@ public:
     // an adapter, it runs in the original caller's thread instead, through
     // memory_out_if::observeRelayed().
     virtual void setRequestObserver( std::function<void(bool isWrite)> observer ) = 0;
+    // Called by a memory BFM bound to this side, see memory_channel.
+    virtual void setHdlPeer(void) {}
 
 protected:
     // constructor
@@ -66,6 +69,8 @@ public:
     // observer in the caller's thread for the request the adapter relays
     // next, which the relay's own request() then does not observe again.
     virtual void observeRelayed(bool isWrite) = 0;
+    // Called by a memory BFM bound to this side, see memory_channel.
+    virtual void setHdlPeer(void) {}
 
 protected:
     // constructor
@@ -186,6 +191,12 @@ public:
     // Both bases ignore setTimed, so telling one logs the drop once per channel.
     virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); }
     virtual sc_prim_channel* getChannel(void) override { return this; }
+    // The channel wakes a waiting model with immediate notifications. With a
+    // BFM on the other side, that wake comes from a process at a clock edge,
+    // so the model's next port call runs in the edge's own delta, paced by
+    // the HDL rather than by a wait on the clock. The model thread records
+    // such a wake for the clock-paced check.
+    virtual void setHdlPeer(void) override { m_hdl_peer = true; }
 
 protected:
     A   m_addr; // typically this is the address field plus any user defined fields
@@ -213,6 +224,7 @@ protected:
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
     bool m_multi_writer = false;  //detect multiple writers
     bool m_external_arb = false;
+    bool m_hdl_peer = false;
     sc_event* m_external_event_ptr = nullptr;
     std::function<void(bool isWrite)> m_request_observer;
     uint32_t m_prestamped = 0; // relayed requests already observed
@@ -257,9 +269,14 @@ inline void memory_channel<A, D>::register_port( sc_port_base& port_,
 template <class A, class D>
 inline void memory_channel<A, D>::reqReceive(bool &isWrite, A &addr, D &data)
 {
+    bool waited = false;
     while (!m_req_pending)
     {
         sc_core::wait(m_channel_req_event);
+        waited = true;
+    }
+    if (waited && m_hdl_peer) {
+        bfmClockPaced::hdlWokeModel();
     }
 
     isWrite = m_req_is_write;
@@ -331,10 +348,12 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
     }
 
     // Single outstanding transaction per channel.
+    bool waited = false;
     if (m_req_pending) {
         Q_ASSERT(m_req_is_write==true, "read in progress!");
         while (m_req_pending) {
             sc_core::wait(m_channel_comp_event);
+            waited = true;
         }
     }
 
@@ -351,6 +370,9 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
             m_external_event_ptr->notify(SC_ZERO_TIME);
         }
         m_multi_writer = false;
+        if (waited && m_hdl_peer) {
+            bfmClockPaced::hdlWokeModel();
+        }
         return;
     }
 
@@ -371,6 +393,9 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
     data = m_data;
     m_resp_pending = false;
     m_multi_writer = false;
+    if (m_hdl_peer) {
+        bfmClockPaced::hdlWokeModel();
+    }
 }
 
 

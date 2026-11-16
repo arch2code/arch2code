@@ -6,9 +6,11 @@
 #include "systemc.h"
 #include "apb_channel.h"
 #include "socketObserve.h"
+#include "bfmContractCheck.h"
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 
 template<typename VL_ADDR_T, typename VL_DATA_T>
 struct apb_hdl_if: public sc_interface {
@@ -35,17 +37,31 @@ public:
 
     SC_HAS_PROCESS (apb_src_bfm);
 
-    apb_src_bfm(sc_module_name modulename) {
+    apb_src_bfm(sc_module_name modulename) : m_held(name()) {
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(request_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
     }
 
+    virtual void end_of_elaboration() {
+        m_chnl = dynamic_cast<apb_channel<ADDR_T, DATA_T> *>(if_p.get_interface());
+        Q_ASSERT_CTX(m_chnl != nullptr, name(), "BFM is bound to an interface that is not an apb_channel");
+    }
+
+    virtual void end_of_simulation() {
+        m_held.check_.report();
+    }
+
+    // A write is posted: request() returns before the model's reqReceive()
+    // takes it. PREADY waits until the model has, so the BFM holds no write
+    // of its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             ADDR_T addr;
             DATA_T data;
             bool is_write;
-            bool slverr;
             hdl_if_p->pslverr = false;
             hdl_if_p->pready = false;
             hdl_if_p->prdata = VL_DATA_T(0);
@@ -57,13 +73,18 @@ public:
             if( is_write ) {
                 data.sc_unpack(hdl_if_p->pwdata);
             }
+            m_held.take(pins());
+            m_held.inCall_ = true;
             if_p->request(is_write, addr, data);
-            wait(clk.posedge_event());
+            m_held.inCall_ = false;
+            do {
+                waitEdge();
+            } while (is_write && m_chnl->isActive());
             hdl_if_p->pready = true;
             if( !is_write ) {
                 hdl_if_p->prdata = VL_DATA_T(data.sc_pack());
             }
-            wait(clk.posedge_event());
+            waitEdge();
             hdl_if_p->pslverr = false;
             hdl_if_p->pready = false;
             hdl_if_p->prdata = VL_DATA_T(0);
@@ -72,6 +93,31 @@ public:
             };
         }
     }
+
+    void request_monitor() {
+        if (rst_n) {
+            m_held.monitor(selected(), pins());
+        }
+    }
+
+private:
+
+    // PWDATA carries nothing on a read, so a read compares it as zero.
+    using pinsT = std::tuple<VL_ADDR_T, bool, VL_DATA_T>;
+    pinsT pins() const {
+        const bool is_write = hdl_if_p->pwrite;
+        return {hdl_if_p->paddr.read(), is_write, is_write ? hdl_if_p->pwdata.read() : VL_DATA_T(0)};
+    }
+    bool selected() const { return hdl_if_p->psel && hdl_if_p->penable; }
+    void waitEdge() {
+        wait(clk.posedge_event());
+        if (rst_n) {
+            m_held.check(selected(), pins());
+        }
+    }
+
+    apb_channel<ADDR_T, DATA_T> *m_chnl = nullptr;
+    bfmHeldRequest<pinsT> m_held;
 
 };
 
@@ -95,6 +141,17 @@ public:
         SC_THREAD(bfm_driver_thread);
     }
 
+    virtual void end_of_elaboration() {
+        m_chnl = dynamic_cast<apb_channel<ADDR_T, DATA_T> *>(if_p.get_interface());
+        Q_ASSERT_CTX(m_chnl != nullptr, name(), "BFM is bound to an interface that is not an apb_channel");
+        if_p->setExternalEvent(&m_offer);
+    }
+
+    // A request stays the model's until the HDL completes it. The BFM shows
+    // the offered request on the pins and takes it with reqReceive() on the
+    // edge PREADY completes it, so a posted write holds the model's next
+    // request() as the RTL's single APB transfer would, and the BFM holds no
+    // write of its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
@@ -102,7 +159,9 @@ public:
             DATA_T data;
             bool is_write;
             bool slverr;
-            if_p->reqReceive(is_write, addr, data);
+            while (!m_chnl->offered(is_write, addr, data)) {
+                wait(m_offer);
+            }
             hdl_if_p->psel = true;
             hdl_if_p->paddr = addr.sc_pack();
             if ( is_write ) {
@@ -125,8 +184,21 @@ public:
             if ( !is_write ) {
                 data.sc_unpack(hdl_if_p->prdata);
             }
-            hdl_if_p->penable = false;
             slverr = hdl_if_p->pslverr;
+            // The channel's timed delay runs in reqReceive() and complete(),
+            // after the pins are released, so the slave never sees a select
+            // without an access.
+            hdl_if_p->penable = false;
+            hdl_if_p->psel = false;
+            hdl_if_p->paddr = VL_ADDR_T(0);
+            hdl_if_p->pwrite = false;
+            hdl_if_p->pwdata = VL_DATA_T(0);
+            {
+                ADDR_T takenAddr;
+                DATA_T takenData;
+                bool takenWrite;
+                if_p->reqReceive(takenWrite, takenAddr, takenData);
+            }
             if( !is_write ) if_p->complete(data);
 
             if (!observe_ifc.empty()) {
@@ -136,14 +208,15 @@ public:
                                         static_cast<uint8_t>(wait_cycles), true);
             }
 
-            hdl_if_p->psel = false;
-            hdl_if_p->paddr = VL_ADDR_T(0);
-            hdl_if_p->pwrite = false;
-            hdl_if_p->pwdata = VL_DATA_T(0);
             // PSLVERR is legal for unmapped APB (rev3 §11.5); do not fatal.
             (void)slverr;
         }
     }
+
+private:
+
+    apb_channel<ADDR_T, DATA_T> *m_chnl = nullptr;
+    sc_event m_offer;
 
 };
 

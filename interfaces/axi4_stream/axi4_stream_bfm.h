@@ -92,7 +92,8 @@ public:
                 continue;
             }
             sample = true;
-            m_paced.transfer(sc_time_stamp(), m_tx->readEnteredTime(), m_tx->readEnteredDelta());
+            m_paced.transfer(sc_time_stamp(), m_tx->readEnteredTime(), m_tx->readEnteredDelta(),
+                             m_tx->readEnteredProcess());
             // A beat sampled in reset is still delivered, but the monitor
             // counts only transfers out of reset.
             if (rst_n) {
@@ -222,7 +223,8 @@ public:
                     m_stalls.fail(sc_time_stamp());
                 }
             } while (!hdl_if_p->tready);
-            m_paced.transfer(sc_time_stamp(), m_tx->writeEnteredTime(), m_tx->writeEnteredDelta());
+            m_paced.transfer(sc_time_stamp(), m_tx->writeEnteredTime(), m_tx->writeEnteredDelta(),
+                             m_tx->writeEnteredProcess());
             if_p->receiveInfo(tinfo);
         }
     }

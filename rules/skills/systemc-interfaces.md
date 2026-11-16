@@ -63,13 +63,13 @@ At each rising edge the BFM drives the pins from what the model is doing:
 *   `vld` (`tvalid`) is high while the model has a `write()` outstanding. The `write()` returns on the edge the HDL takes the beat.
 *   The BFM holds no beat of its own, so the model's own queuing is all the buffering the port has.
 
-The blocking call already spends the transfer edge. A model that returns from `read()` or `write()`, waits for the next edge and then calls again has missed that edge, so the port moves one beat per two clocks. The model still runs, at half rate. After 32 such beats in a row the BFM logs one notice for the port, which never fails the run:
+The blocking call already spends the transfer edge. A model that returns from `read()` or `write()`, waits for the next edge and then calls again has missed that edge, so the port moves one beat per two clocks. A transactional model must not wait on clock edges. The model still runs, at half rate. After 32 such beats in a row the BFM logs one notice for the port, which never fails the run, UVM included:
 
 ```text
-tb.dut.din_bfm_inst:port tb.din: the port moves one beat per two clocks, because the model came back exactly one clock after each of 32 transfers in a row. If the model waits on the clock between port calls, removing that wait restores one beat per clock. A model woken by another port that the HDL paces, such as a memory port, can show the same pattern and needs no change
+tb.dut.din_bfm_inst:port tb.din: the model came back exactly one clock after each of 32 transfers in a row, so it waits on the clock between port calls and the port moves one beat per two clocks. A transactional model must not wait on clock edges: remove the wait from the model
 ```
 
-The BFM counts a return only when the model called the port in the clock edge's own delta cycle or earlier, which is when a model that waits on the clock runs. A model that another channel wakes with a delta notification runs a delta later and gets no notice. A model woken by a memory port's request on the edge runs in the edge's own delta, so it can get the notice and needs no change.
+The BFM counts a return only when the model called the port in the clock edge's own delta cycle or earlier, which is when a model that waits on the clock runs. A model that another channel wakes with a delta notification runs a delta later and is not counted. Nor is a model that a memory BFM wakes at the edge: the HDL paces it, not a wait of its own.
 
 A model that reads one port and writes another in the same thread also moves one beat per two clocks. It comes back to its input only when its output write returns, on the edge the HDL takes the beat, too late to take an input beat on that edge. For one beat per clock, give the model a second thread with a channel between the two, the queuing an RTL output register gives.
 

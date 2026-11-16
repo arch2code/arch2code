@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <format>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Counts violations of the interface contract between a BFM and its HDL. The
@@ -51,17 +52,24 @@ struct bfmContractCheck {
     }
 };
 
-// Logs one notice per port when the model behind a BFM comes back to the port
-// on the first edge after each transfer, too late to transfer on it, so the
-// port moves one beat per two clocks. A return counts only if the model called
-// the port in that edge's own delta or earlier, which is what a model waiting
-// on the clock does. A model woken by another channel's delta notification
-// runs later and is not counted. One woken by an immediate notification from a
-// process at the edge, such as a memory BFM's request(), is counted, so the
-// notice reports the pacing and does not claim a wait. It never fails the run
-// and never reaches UVM.
+// Reports a port whose model waits on the clock between port calls, which a
+// transactional model must not do. Such a model comes back to the port on the
+// first edge after each transfer, too late to transfer on it, so the port
+// moves one beat per two clocks. A return counts only if the model called the
+// port in that edge's own delta or earlier, which is what a model waiting on
+// the clock does. A model woken by another channel's delta notification runs
+// later and is not counted. Nor is a call from a model thread that a memory
+// BFM woke in that delta, whose channel notifies immediately: the HDL paces
+// that model, not a wait of its own. The report is logged once per port and
+// never fails a run, UVM included: the model still runs, at the rate its own
+// waits allow.
 struct bfmClockPaced {
     static constexpr int threshold = 32;
+    struct wake {
+        sc_time time;
+        sc_dt::uint64 delta;
+    };
+    static inline std::unordered_map<const sc_object *, wake> hdlWoke_;
     logBlock log_;
     std::string port_;
     sc_time transfer_;
@@ -73,6 +81,11 @@ struct bfmClockPaced {
     int run_ = 0;
     bool told_ = false;
     bfmClockPaced(std::string name) : log_(name) {}
+    // Called in a model thread that a channel call from a BFM has just woken
+    // with an immediate notification.
+    static void hdlWokeModel(void) {
+        hdlWoke_[sc_get_current_process_handle().get_process_object()] = {sc_time_stamp(), sc_delta_count()};
+    }
     // The method and the driver wake on the same edge in either order. The
     // driver records a transfer at its own edge, so the method's previous edge
     // equals it only on the first edge after the transfer.
@@ -84,23 +97,56 @@ struct bfmClockPaced {
         }
         prevEdge_ = now;
     }
-    void transfer(const sc_time &now, const sc_time &callTime, sc_dt::uint64 callDelta) {
+    void transfer(const sc_time &now, const sc_time &callTime, sc_dt::uint64 callDelta, const sc_object *caller) {
         if (told_) {
             return;
         }
-        const bool paced = edgeAfterKnown_ && callTime == edgeAfter_ && callDelta <= edgeAfterDelta_;
+        const auto woke = hdlWoke_.find(caller);
+        const bool hdlWoke = woke != hdlWoke_.end() && woke->second.time == callTime && callDelta >= woke->second.delta;
+        const bool paced = edgeAfterKnown_ && callTime == edgeAfter_ && callDelta <= edgeAfterDelta_ && !hdlWoke;
         run_ = paced ? run_ + 1 : 0;
         if (run_ == threshold) {
             told_ = true;
-            log_.logPrint(std::format("port {}: the port moves one beat per two clocks, because the model came "
-                                      "back exactly one clock after each of {} transfers in a row. If the model "
-                                      "waits on the clock between port calls, removing that wait restores one "
-                                      "beat per clock. A model woken by another port that the HDL paces, such as "
-                                      "a memory port, can show the same pattern and needs no change", port_, threshold), LOG_IMPORTANT);
+            const std::string msg = std::format("port {}: the model came back exactly one clock after each of {} "
+                                                "transfers in a row, so it waits on the clock between port calls and "
+                                                "the port moves one beat per two clocks. A transactional model must "
+                                                "not wait on clock edges: remove the wait from the model", port_, threshold);
+            log_.logPrint(msg, LOG_IMPORTANT);
         }
         transfer_ = now;
         started_ = true;
         edgeAfterKnown_ = false;
+    }
+};
+
+// An HDL requester on a handshake where the BFM answers holds its request and
+// its data from the edge the BFM takes them to the edge the BFM completes the
+// transfer. The model has the transfer from the take on, so a request the HDL
+// drops or changes in between is one the model took and the HDL did not
+// complete. The driver checks each edge it waits on itself; the monitor checks
+// the edges that pass while the driver is blocked in the model's call.
+template <typename PINS_T>
+struct bfmHeldRequest {
+    bfmContractCheck check_;
+    PINS_T taken_{};
+    sc_time takeTime_;
+    bool inCall_ = false;
+    bfmHeldRequest(std::string name)
+        : check_(name, "HDL dropped or changed a request between the edge the BFM took it and the edge it completed",
+                 "clock edges") {}
+    void take(const PINS_T &pins) {
+        taken_ = pins;
+        takeTime_ = sc_time_stamp();
+    }
+    void check(bool held, const PINS_T &pins) {
+        if (!held || !(pins == taken_)) {
+            check_.fail(sc_time_stamp());
+        }
+    }
+    void monitor(bool held, const PINS_T &pins) {
+        if (inCall_ && sc_time_stamp() > takeTime_) {
+            check(held, pins);
+        }
     }
 };
 

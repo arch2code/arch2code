@@ -869,7 +869,8 @@ def test_bfm_model_rates():
     - a transactional model reader or writer moves a beat on every edge, and
       no notice is logged;
     - a model that waits on the clock between port calls moves one beat per
-      two clocks, and the BFM logs one notice that names the port;
+      two clocks, and the BFM logs one notice that names the port and tells
+      the user to remove the wait from the model;
     - a transactional writer whose channel has a fixed one-clock delay logs
       no notice;
     - a transactional model between a src BFM and a dst BFM, with a sink that
@@ -919,8 +920,7 @@ def test_bfm_model_rates():
                         check(len(lines) == 1 and lines[0].startswith(f'p.{scenario}.bfm:port p.{scenario}.ch')
                               and f'{PACED} {THRESHOLD} transfers in a row' in lines[0]
                               and 'one beat per two clocks' in lines[0]
-                              and 'removing that wait restores one beat per clock' in lines[0]
-                              and 'needs no change' in lines[0],
+                              and 'remove the wait from the model' in lines[0],
                               f"{scenario} logs one notice naming its port (got {lines})")
 
             # The write is stamped before its delay, so the writer is seen
