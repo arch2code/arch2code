@@ -1000,7 +1000,7 @@ The test package reaches the build through the manifest, as `A2C_UVM_TEST_SV_<to
 | `UVM_TEST` | empty | the `+UVM_TESTNAME` the run script adds when a run names none |
 | `UVM_TOPOLOGIES` | `<UVM_TOP>:<each DUT of its block>` | what `uvm_snapshots` builds: space-separated `<top>:<dut>[,<dut>]` entries |
 
-`make gen` checks `UVM_TOP` and `UVM_DUT` against the manifest and names the valid values. Under `USE_UVM` the flow sets `VL_INST` empty, `DUT_TOPOLOGY` to `uvm_<UVM_TOP>_<UVM_DUT>` and `DUT_ELAB_ARGS` to `<block>_uvm --uvmDut <dut> --uvmTop <top>`. It adds `common/systemVerilog/uvm/a2c_uvm.f`, then `-F` of each builder layer list in `A2C_LAYER_UVM_F_FILES`, and the defines `A2C_UVM_PKG=<variant package>` and, for `rtl`, `A2C_UVM_RTL_DUT` or, for `both`, `A2C_UVM_BOTH_DUT` to the HDL arguments. It appends the variant package, the test package and the testbench module to `A2C_SV_FILES`, after `rtl.f`, and makes them, the `.sv` and `.svh` files of the UVM library, the agent packages, each layer list and each file a layer list names prerequisites of the snapshot. A layer list holds file paths only, relative to its own directory. The RTL side's files, those that `a2c.f`, the HDL hooks and `rtl.f` name and every `.sv` and `.svh` in their include directories, are prerequisites too, with the gaps section 10 lists. It adds `$(A2C_UVM_SRC_DIRS)` to the C++ sources, and on VCS `common/systemc/uvm/uvmVcsElabStub.cpp` too.
+`make gen` checks `UVM_TOP` and `UVM_DUT` against the manifest and names the valid values. Under `USE_UVM` the flow sets `VL_INST` empty, `DUT_TOPOLOGY` to `uvm_<UVM_TOP>_<UVM_DUT>` and `DUT_ELAB_ARGS` to `<block>_uvm --uvmDut <dut> --uvmTop <top>`. It adds `common/systemVerilog/uvm/a2c_uvm.f`, then `-F` of each builder layer list in `A2C_LAYER_UVM_F_FILES`, and the defines `A2C_UVM_PKG=<variant package>` and, for `rtl`, `A2C_UVM_RTL_DUT` or, for `both`, `A2C_UVM_BOTH_DUT` to the HDL arguments. It appends the variant package, the test package and the testbench module to `A2C_SV_FILES`, after `rtl.f`, and makes them, the `.sv` and `.svh` files of the UVM library, the agent packages, each layer list and each file a layer list names prerequisites of the snapshot. A layer list holds file paths only, relative to its own directory. The RTL side's files, those that `a2c.f`, the HDL hooks and `rtl.f` name and every `.sv` and `.svh` in their include directories, are prerequisites too, with the gaps section 10.2 lists. It adds `$(A2C_UVM_SRC_DIRS)` to the C++ sources, and on VCS `common/systemc/uvm/uvmVcsElabStub.cpp` too.
 
 | Command | Builds |
 | :--- | :--- |
@@ -1384,26 +1384,9 @@ The bound must exceed the worst skew a correct model and DUT reach. Each lane ha
 
 Mode B compares the RTL with the model, so it catches a disagreement and misses an error both make. A bench therefore checks each output stream against the specification too, from the stimulus and never from the model: a scoreboard that computes the expected value, a contract of `a2c_video_pkg` for a video stream (section 9.6), or a check of its own. The check runs in every mode, and in Mode B on both lanes, so a model error shows as an independent failure on the model lane and not only as a mismatch. Base does not warn about an output with no such check: whether a check is complete is the bench's call.
 
-#### Names that depart from common UVM practice
+#### Names and conventions
 
-The agents use IEEE 1800.2 class roles and names: item, config, driver, monitor with `ap`, sequencer `sqr`, agent, `default_sequence`, `put_response()` with `set_id_info()`. The names below depart from common practice, each with its reason:
-
-| Name | Reason |
-| :--- | :--- |
-| roles `A2C_SRC` and `A2C_DST` | they match the interface modports and the SystemC BFM names |
-| one role-switched `<type>_driver` for handshake and memory types | each role's code is short, as in `rdy_vld` |
-| master and slave for the AMBA driver classes | they match `apb_master_driver` and UVM 1.2-era VIPs; each package header gives the AMBA 5 terms |
-| ack-only, memory-backed and level `A2C_DST` drivers with no sequencer | nothing is chosen per transaction |
-| `a2c_mem_model`, not `uvm_mem` | `uvm_mem` needs a register model and a map |
-| item fields `gap` and `delay` | stimulus timing, left out of `do_compare` |
-| `a2c_clk_if` edge tasks, not clocking blocks: drive at the rising edge plus 100 ps, sample at the falling edge | a clocking block in a shared clock interface cannot drive the signals of other interface instances, and a `#1` output skew is a whole period of a 1 ns clock |
-| `status_driver` extends `uvm_component`, not `uvm_driver` | it holds a level from its config and takes no items |
-| `a2c_video_test #(BASE)` extends its parameter | the generated base test owns the run phase and the run timeout's work count, which a video test changes; a component the bench adds could not change them |
-| corner tests defined by `` `a2c_video_corner_tests ``, not a sequence library | each corner is a test name a regression lists, as `+UVM_TESTNAME` selects it |
-| knobs on `a2c_video_cfg`, not on the sequence, and passed to the env directly, not through `uvm_config_db` | the sequence, the contract and the checkers read one geometry, and `configure_video()`, the corner and the plusargs apply to it in one order |
-| blanking as idle items on `raw`, as `gap` on handshaked items | a raw driver sends an item every clock and has no idle state, and handshaked items already carry `gap` |
-| `a2c_video_checker`, not a scoreboard | it checks framing against the specification and holds no reference model |
-| `a2c_video_adapter` setters and getters, not `uvm_reg_adapter`-style `bus2reg`/`reg2bus` | a beat carries both a level or a marker and up to `pixels_per_beat` pixels, set one field at a time |
+The agents use IEEE 1800.2 class roles and names: item, config, driver, monitor with `ap`, sequencer `sqr`, agent, `default_sequence`, `put_response()` with `set_id_info()`. Where they depart from that convention, section 9.13 lists the departure and its reason.
 
 ### 9.11 The SystemC side under UVM
 
@@ -1557,18 +1540,103 @@ end
 
 #### Names
 
-The Mode B names follow the agent conventions of section 9.10. These depart from common UVM practice:
+The Mode B names follow the agent conventions of section 9.10. Section 9.13 lists those that depart from common UVM practice, with the reasons.
 
-| Name | Reason |
-| :--- | :--- |
-| lanes, the DUT lane and the model lane | one agent drives two pin sets of one port; "lane" names a pin set without implying a second agent |
-| the `model_` prefix: `model_vif`, `model_mon`, `model_cmp`, `<port>_model` | it names what the lane holds and matches `UVM_DUT=model`; `ref_` would hide which DUT it is |
-| the comparator inside the agent, not a scoreboard in the env | each type knows what it can compare; a generated per-port scoreboard would need a new interface definition key |
-| `a2c_in_order_comparator`, not `uvm_in_order_class_comparator` | it reports a mismatch as an error, reports leftovers, and has the cut, death, midstream and injection hooks |
-| `a2c_replay_log`, record and replay | the responder's DUT lane records and its model lane replays, as `synchLock` tandem does |
-| the skip list, an address list on `a2c_reg_comparator`, with `same_but_data()` comparing what a skipped read still checks | a DV engineer would first reach for the register model's field compare control, volatility or `set_compare(UVM_NO_CHECK)`. Only an address list covers an unmapped address and lmmi, which has no register model |
+### 9.13 Departures from UVM convention
 
-## 10. Open items
+This is the one list of the places where the flow departs from IEEE 1800.2 or from common UVM practice. Other sections refer to it and do not repeat it. Each row gives the convention, what the flow does instead and why. Where the reason is that the conventional form is not built yet, the row says so, and section 10.1 states what that leaves unverified.
+
+#### Testbench structure and the end of the test
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| A SystemVerilog top module owns the clocks and resets, calls `run_test()`, and the simulation ends at `$finish` | `sc_main` is the top. SystemC instantiates the testbench module as an HDL top, generates every clock and drives every reset. The module clears `finish_on_completion`, and reports completion and the error count to SystemC through the pins `uvm_done` and `uvm_errors`, which decide the run's exit status (section 9.8) | every arch2code testbench runs from `sc_main`, which holds the model, its BFMs and the exit code. One kernel runs the model and the RTL with no transaction transport through DPI |
+| The test or the agents can assert reset at any time, and the components return to their reset state | SystemC releases each reset once, a fixed number of its clock's cycles after time 0, and never asserts it again. Drivers, monitors, real-time checkers and the base test wait for the release once | SystemC owns the resets. A reset during the test needs reset handling in the BFMs, the channels and the models, which is not built (section 10.1) |
+| A test overrides `run_phase` or the runtime phases, such as `reset_phase`, `configure_phase` and `main_phase`, and raises its own objections | the generated base test uses `run_phase` only and raises its one objection. A test puts its stimulus in `run_body()` (section 9.6). A hand-written test may still object in a runtime phase; the drain and the run timeout handle it | the base test owns the objection, the reset wait, the end-of-test wait and the work count the run timeout derives its budget from |
+| The test ends when its sequences complete and the objections drop, often with a drain time or a scoreboard's empty check | the test declares each output's transaction count with `expect_count()`, and `wait_for_outputs()` waits for every count and then a quiet window (section 9.6) | the run must end when the DUT has delivered what the stimulus implies, and only the test knows how much that is. A completion mode that takes the count from the model lane is not built, so an output whose count depends on the data needs the test to compute it (section 10.1) |
+| `+UVM_TIMEOUT` or `uvm_top.set_timeout()` bounds the run in simulated time, and ends it with a `PH_TIMEOUT` `UVM_FATAL` | `a2c_run_timeout` counts clocks of the block's first clock against a budget derived from the declared work, raises one `A2C_RUN_TIMEOUT` `UVM_ERROR` and ends the task phases prematurely. UVM's timeout stays as a second limit (section 9.6) | a fatal skips `check_phase`, which reports what is missing. A budget in clocks does not depend on each project's clock period |
+| No virtual sequencer is required, but multi-agent stimulus usually runs as a virtual sequence | no virtual sequencer or virtual sequence is generated. A test starts sequences on each agent's `sqr` from `run_body()` | not built. A project adds a virtual sequence where ports need coordinating |
+| The UVM library is an IEEE 1800.2 implementation | the flow compiles Accellera UVM 1.2 on both vendors, `CDNS-1.2` and `uvm-1.2` (section 9.7). The library relies on UVM 1.2 behaviour of `uvm_phase::end_prematurely()`, `uvm_resource_pool::lookup_regex()`, the `uvm_port_component` that UVM creates as each port's child, the register map internals `a2c_reg_map` reads, `uvm_root`'s `finish_on_completion` field and the `UVM/RSRC/NOREGEX` warning | the vendor-bundled UVM 1.2 libraries were the first target. Compiling against IEEE 1800.2 is not done yet (section 10.2). The documentation uses IEEE 1800.2 terms |
+
+#### Pins and clocks
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| Interfaces carry four-state signals, and X or Z checks are SVA or monitor checks that report through UVM | the HDL wrapper's pins and the testbench module's pins are two-state `bit`. The `<type>_xcheck` modules inside the HDL wrapper check X and Z on the RTL side and fail the run through DPI and `errorCode::fail`, outside the UVM report summary (section 9.4) | the simulator shell binds the pins to two-state SystemC signals. The checkers sit on the RTL side of that boundary and run in every VCS and Xcelium run with an RTL DUT, UVM or not |
+| Drivers and monitors time their pins with a clocking block | `a2c_clk_if` edge tasks: drivers change pins at the rising edge plus 100 ps, `DRIVE_SKEW`, and monitors sample at the falling edge | a clocking block in a shared clock interface cannot drive the signals of other interface instances, and a `#1` output skew is a whole period of a 1 ns clock. The skew is fixed, so a clock period of 200 ps or less breaks the sampling, and nothing checks it (section 10.1) |
+
+#### Agents
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| Agents are master and slave, or initiator and target | roles `A2C_SRC` and `A2C_DST` | they match the interface modports and the SystemC BFM names |
+| One driver class per role | one role-switched `<type>_driver` for the handshake and memory types | each role's code is short, as in `rdy_vld` |
+| AMBA 5 terms: Requester and Completer for APB, Manager and Subordinate for AXI | master and slave for the AMBA driver classes; each package header gives the AMBA 5 terms | they match `apb_master_driver` and UVM 1.2-era VIPs |
+| Every active agent has a sequencer | ack-only, memory-backed and level `A2C_DST` drivers have no sequencer | nothing is chosen per transaction |
+| A driver extends `uvm_driver` | `status_driver` extends `uvm_component` | it holds a level from its config and takes no items |
+| An agent exports its monitor's items through an agent-level analysis port, and has a sequencer class of its own | an agent exports no `ap`; a subscriber connects to `<agent>.mon.ap`, or in Mode B to `<agent>.model_mon.ap` for the model lane. Sequencers are plain `uvm_sequencer #(<item>)`, except `req_ack_sequencer`, which holds the request FIFO its responder reads | not built |
+| Classes a test overrides through the factory have a type name | the agent classes of every type but `notify_ack`, which has no payload, and most of their items, drivers, monitors and sequences are parameterized by the port's types and registered with `uvm_component_param_utils` or `uvm_object_param_utils`, so they have no factory name. An override names the full specialization, as section 9.10 shows for the responder sequences | the payload types come from the port at each variant. The variant package gives each port's specializations a typedef, `<port>_agent_t` and `<port>_item_t` |
+| One agent per pin set; a second DUT gets its own agents, and a layer above them coordinates the two | in Mode B one agent drives and monitors both pin sets of a port, its lanes. Each driver holds the lane logic itself: one drive point for both lanes, a handshake per lane, the replay log of a responder and the lane watchdog of a master (section 9.12) | both DUTs must see the same values on the same clocks with no DPI transport, and a responder's model lane must replay the DUT lane's decisions. A shared dual-lane driver base class is not built, so every new interface type repeats the lane logic |
+| Timing choices, such as ready levels, delays and gaps, are `rand` fields or policy objects, constrained with `randomize() with {...}` | payload fields are `rand`, and the req_ack and pop_ack responder sequences call `randomize()`. Ready levels, ack and response delays and ready bursts are drawn inside the drivers with `$urandom_range()` from integer knobs such as `ready_pct` and `ack_delay_min`. The item's `gap` is not `rand`. `a2c_video_cfg`'s knobs are plain integers that the cfg draws with `$urandom_range()` | not built: there is no constrainable ready or delay policy class. Drawing in the driver gives both Mode B lanes one value per clock, which a policy class must also keep. Seeds reproduce on one simulator either way (section 9.7) |
+| Item fields all take part in `compare()` | the item fields `gap` and `delay` are left out of `do_compare` | they are stimulus timing, not payload |
+| A memory the testbench holds is a `uvm_mem` | `a2c_mem_model` for a memory the DUT reaches through a port; `uvm_mem` only for register-mapped memories | `uvm_mem` needs a register model and a map, and a memory behind a DUT port has neither |
+
+#### Checking
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| Checking lives in scoreboards in the env that extend `uvm_scoreboard`, fed by a predictor | the Mode B comparators, `model_cmp`, sit inside each agent and extend `uvm_component` through `a2c_comparator_base`. They compare the DUT lane with the model lane, so they need no predictor. `a2c_video_checker` also extends `uvm_component`. A project's own scoreboards in `<block>_tb_env` follow the convention | each type knows what it can compare in each role, and a generated per-port scoreboard would need a new interface definition key. `uvm_scoreboard` adds no behaviour to `uvm_component`. The video checker checks framing against the specification and holds no reference model |
+| `uvm_in_order_class_comparator` | `a2c_in_order_comparator` | it reports a mismatch as an error, reports items either lane left unpaired, and has the cut, death, midstream and injection hooks |
+| A second DUT is a reference model, and its components carry a `ref_` prefix | lanes, the DUT lane and the model lane; the `model_` prefix: `model_vif`, `model_mon`, `model_cmp`, `<port>_model` | one agent drives two pin sets of one port, and "lane" names a pin set without implying a second agent. `model_` names what the lane holds and matches `UVM_DUT=model`; `ref_` would hide which DUT it is |
+| A reactive responder computes each response from its own sequence | `a2c_replay_log`: the responder's DUT lane records each response and its model lane replays it | the model lane never makes a decision, as `synchLock` shares a decision in tandem with the RTL as the sender |
+| A register that cannot be compared is excluded through the register model, by volatility or `set_compare(UVM_NO_CHECK)` | the skip list, an address list on `a2c_reg_comparator`, with `same_but_data()` comparing what a skipped read still checks | only an address list covers an unmapped address and `lmmi`, which has no register model |
+| The env connects a monitor's `ap` to a subscriber's `analysis_export` in `connect_phase` | `a2c_rt_checker`'s `connect_in()` and `connect_out()` and `a2c_txn_digest::watch()` take the monitor component and find its ports among its children: `get_child("ap")` for the checker, every port component of the item type for the digest | the checker also reads the monitor's flow counts, `a2c_flow_counts`, and the digest hashes every analysis port of the monitor, so one call takes both. The lookup relies on the port component that UVM 1.2 creates as the port's child |
+| A component reads a setting with `uvm_config_db#(T)::get()` of one type | the drain, lane rule, real-time checker and run timeout knobs are read through `uvm_resource_pool`, accepting `int unsigned`, `int` and `uvm_config_int`, and `bit` for a flag, at the highest precedence (section 9.6). `+UVM_CONFIG_DB_TRACE` does not show these reads | a test, a hand-written env and `+uvm_set_config_int` set these knobs with different integer types, and a typed `get()` would silently miss every entry of another type |
+| Shared state lives in objects that the env creates and hands down through `uvm_config_db`, or in a `uvm_pool` | the output counter list, the replay drain, the joint stall record with its one run timeout, the real-time checker list, `a2c_pin_registry` and the child block catcher table are static members of classes in `a2c_uvm_pkg` | the drain, the joint stall rule and the run timeout span the whole simulation, and the pin registry links agents that share no component path, keyed by virtual interface handle, which a `uvm_pool` cannot index. An env-scoped context is not built, so two envs in one simulation share one drain, one joint stall record and one run timeout (section 10.1) |
+| Agents and register models carry coverage | no covergroups, coverpoints or cover properties, and the generated register model passes `UVM_NO_COVERAGE` | not built (section 10.1) |
+
+#### The register model
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| The register map is a `uvm_reg_map` | a block with a memory, and every map above one, is an `a2c_reg_map`, a `uvm_reg_map` subclass (section 9.5) | UVM 1.2 steps a memory by its own width in bus words, and the decoder steps it by a row stride sized for the widest variant |
+| UVM's own warnings pass unchanged | a report catcher demotes the `UVM/RSRC/NOREGEX` warning for child register blocks to a `UVM_HIGH` info (section 9.5) | UVM 1.2 registers each child block under its dotted full name and warns once per child. IEEE 1800.2 drops that registration |
+| Registers have HDL paths for backdoor access | the generated register model has front-door access only, with no HDL paths | not built. A test that needs backdoor access or a backdoor-based built-in sequence cannot run (section 10.1) |
+
+#### Video framing tests
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| A reusable test feature is a component the env or test adds | `a2c_video_test #(BASE)` extends its parameter | the generated base test owns the run phase and the run timeout's work count, which a video test changes. A component the bench adds could not change them |
+| Stimulus variants are a sequence library | corner tests defined by `` `a2c_video_corner_tests ``, one test per corner | each corner is a test name a regression lists, as `+UVM_TESTNAME` selects it |
+| Knobs sit on the sequence and reach components through `uvm_config_db` | knobs on `a2c_video_cfg`, passed to the env directly | the sequence, the contract and the checkers read one geometry, and `configure_video()`, the corner and the plusargs apply to it in one order |
+| Idle time is a sequence delay | blanking as idle items on `raw`, and as `gap` on handshaked items | a raw driver sends an item every clock and has no idle state, and handshaked items already carry `gap` |
+| An adapter converts with `uvm_reg_adapter`-style `bus2reg` and `reg2bus` | `a2c_video_adapter` setters and getters | a beat carries a level or a marker and up to `pixels_per_beat` pixels, set one field at a time |
+
+## 10. Limits and open items
+
+Section 10.1 lists what the flow does not verify, for a verification plan to cover by other means. Section 10.2 lists the build and tool items and the paths no base run has exercised yet.
+
+### 10.1 Not covered
+
+The UVM flow does not verify the following today. A plan that needs one of them covers it with a hand-written check, another flow or another tool, and does not count on this flow for it.
+
+- **Reset during a test.** The SystemC wrapper releases each reset once, a fixed number of its clock's cycles after time 0, and never asserts it again. Every driver, monitor, real-time checker and the generated base test waits for the release once, through `a2c_clk_if::wait_reset_release()`, and has no path for a reset that returns. Reset during traffic, reset length, a reset of one clock domain while the others run, and recovery after reset are not verified in any mode.
+- **Functional coverage.** No covergroup, coverpoint or `cover property` exists in `a2c_uvm_pkg`, `a2c_video_pkg`, the agent packages or the generated files. The generated register model passes `UVM_NO_COVERAGE`, and no make variable turns on the simulators' coverage collection or merges coverage databases. The flow's output cannot argue closure. A project writes its own subscribers on `<agent>.mon.ap`, adds the vendor's coverage options through `XRUN_OPTS` or the VCS options (section 3), and merges the databases itself.
+- **Register reconfiguration under traffic.** In Mode B, configuration changes only while the datapath is quiescent: `a2c_midstream_guard` fails a register write, and a read of a volatile register or a read-only memory, while any output has transactions pending (section 9.12). A video contract is computed when the frame is planned and must not read anything that changes while the run is sent (section 9.6). So a design whose registers change under traffic, such as an interrupt status that software clears, a flow-control threshold or a DMA descriptor, is checked neither against the model nor against a contract. Only a Mode A run with a project scoreboard that samples the register state itself checks it.
+- **Blocks whose outputs depend on input timing.** In Mode B both DUTs see the same values on the same clocks, but each lane completes on its own handshake, so the model does not see the RTL's exact input timing (section 9.12). A block whose outputs depend on when its inputs arrive, not only on their order, cannot be compared, because the transport that would replay the RTL's input timing to the model is not built. The model's timing is approximate, and the real-time checker only measures on the model DUT. Check such outputs against the specification on the RTL.
+- **Ordering across ports.** Each port's comparator pairs that port's items in order, per ID on AXI (section 9.12). Nothing compares the relative order of transactions on two ports, such as an interrupt against the data that caused it, or a write on one memory port against a read on another. Mode B also leaves unchecked whether the model's own order of accesses across memory ports would read the same words from a memory of its own, because the model lane reads the RTL's words (section 9.12, coverage boundary). A project scoreboard that subscribes to both ports covers the first. A Mode A run on the model DUT with a scoreboard covers the second.
+- **raw outputs in Mode B.** The raw agent builds no comparator, and a raw output has no transaction counter, because raw has no transfer boundary. In Mode B a DUT raw output is monitored on both lanes and never compared, and no message says the port went unchecked. Against the model DUT the raw BFM is best effort (section 9.1). A raw output needs a project scoreboard or a video contract on each lane.
+- **Data-dependent output counts.** The generated base test ends when every output counter holds the count the test declared with `expect_count()` (section 9.6). An output whose count depends on the data, such as a filter that drops items or a compressor, needs the test to compute the count from its stimulus. No completion mode takes the count from the model lane. A DUT output of type `memory`, `apb`, `external_reg`, `status` or `raw` has no counter at all, and a run whose outputs have no declared count waits only for the quiet window, so it can end with little compared. Nothing checks that each comparator compared at least one pair.
+- **Gate-level, SDF and power-aware simulation.** The flow compiles the RTL that `rtl.f` names under `-timescale 1ns/1ps`. Its make files have no SDF annotation, timing check, netlist or UPF and CPF options, and the pin-timing rule needs every boundary pin to settle between a rising edge and the next falling edge (section 9.10). Plan gate-level, timing and low-power simulation in another flow.
+- **Clock-domain crossing.** SystemC generates each clock at its declared period. All clocks start together at time 0, with no jitter and no phase or frequency change during the run. The pins are two-state, so no metastable or unknown value reaches the testbench, and the flow runs no structural CDC check. A multi-clock block's crossings are exercised only at the phase relationship the periods give. Use a CDC tool.
+- **Clock periods of 200 ps or less.** Drivers change pins `DRIVE_SKEW`, 100 ps, after the rising edge, which must stay below half the clock period (`a2c_clk_if.sv`). Nothing checks the declared periods against it, so a faster clock breaks the sampling without an error.
+- **Backdoor register access.** The generated register model has front-door access only and no HDL paths, so backdoor reads and writes, and the built-in sequences that need them, are not available. Only `apb` ships a `<type>_reg_adapter`, so the register bus must be `apb`, and a register or memory row wider than 64 bits stops `make db` (section 9.1).
+- **Several environments in one simulation.** The output counter list, the replay drain, the joint stall record, the run timeout, the real-time checker list and the pin registry are static members in `a2c_uvm_pkg` (section 9.13). Two envs in one simulation share one drain, one joint stall record and one run timeout, and each env's watchdogs see the other's traffic. A top env that reuses block envs is limited by this.
+- **Real-time and latency checks on request-response ports.** `a2c_rt_checker` works on `rdy_vld`, `axi4_stream` and `push_ack` ports, whose monitors count flow. `pop_ack`, `req_ack`, AXI, `memory` and Pro's `lmmi` have no real-time rule and no request-to-response latency bound (section 9.6).
+- **Several video inputs.** A video test drives one video input (`a2c_video_env` holds one `in`). A block with two video inputs needs its second input driven by the test's own sequences, outside the video library's plan and contract.
+
+### 10.2 Open items
 
 - Under Xcelium every uninstantiated HDL wrapper top is elaborated as an idle top-level. That is harmless at the tested size, but its memory cost on a large SoC is unmeasured.
 - SystemC 3.0.1 is untested in both flows (VCS `-sysc=301` with a GCC 13 build, Xcelium `-sc_301`). The default `VCS_ELAB_OPTS` selects 2.3.4.
@@ -1580,7 +1648,6 @@ The Mode B names follow the agent conventions of section 9.10. These depart from
 - The builder default `DUT_TOPOLOGIES` includes `verif:tandem`, which needs a builder layer that registers tandem blocks (section 1.3).
 - Tandem: Pro's 1-in-2-out external_reg tee (`builder/pro/common/systemc/external_reg_port_tee.h`, `port_tee`) forwards a CPU write with `write()`, not `reg_write_cmd()`. A tandem dst model that waits in `read()` for CPU writes never sees one.
 - UVM: a second `make USE_UVM=1 USE_VCS=1 uvm_snapshots` is not a no-op. The model, rtl and both snapshots share one `AN.DB` and one analysis-options stamp, and the rtl build adds `+define+A2C_UVM_RTL_DUT` and the both build `+define+A2C_UVM_BOTH_DUT`, so each build re-analyses after the one before. A no-op needs a per-DUT analysis library or a DUT selection without a define. Xcelium is not affected.
-- UVM Mode B: a block whose outputs depend on when its inputs arrive, not only on their order, cannot be compared, because the transport that would replay the RTL's input timing to the model is not built (section 9.12).
 - UVM Mode B: a model that makes a memory access at an earlier point in its input than the RTL stops both lanes with `A2C_SKEW` or `A2C_JOINT_STALL`. That is a model defect, and the master gives the model lane no extra input to hide it; the model is fixed instead (section 9.12, input coupling).
 - UVM Mode B: the status policies run only in the loopback. No base UVM example has a status output or an external_reg port.
 - UVM: the VCS steps for a second `hasUvm` block are checked by unit tests only. Each base UVM example has one `hasUvm` block with one top.
@@ -1591,7 +1658,7 @@ The Mode B names follow the agent conventions of section 9.10. These depart from
 - UVM: the random-ready form of back-pressure is untested in a block bench. uvmVideo's output is `backpressure: false`, and the output agents of uvmMem and uvmRegs keep the default `ready_pct` of 100, so all three hold ready high.
 - UVM: no base simulation has exercised the generated register model's multi-word path. Unit tests generate it.
 - UVM: an rtl-only (`hasMdl: false`) `hasVl` block's `<block>_hdl_sc_wrapper.h` imports `<ctx>_<block>.base`, which such a block never gets, so its C++ fails to compile in a `VL_DUT`, VCS or Xcelium build. The unit tests generate the files but never compile them.
-- UVM: the flow compiles UVM 1.2 on both vendors. The IEEE 1800.2 libraries both installs ship have never been compiled against. A move needs `set_finish_on_completion()` in the testbench module and a check of `a2c_reg_map`'s memory stride (section 9.5).
+- UVM: the flow compiles UVM 1.2 on both vendors. The IEEE 1800.2 libraries both installs ship have never been compiled against. A move needs `set_finish_on_completion()` in the testbench module, a check of `a2c_reg_map`'s memory stride (section 9.5), and a check of each other UVM 1.2 behaviour that section 9.13 lists for the library.
 - UVM: the JUnit report of `regrLauncher.py` records only the first failure (`regrLauncher/report.py`), so the order of the rule files decides which failure it shows.
 - UVM: no base example has real RTL behind a `req_ack` or `pop_ack` port, or behind an AXI port. mixed declares req_ack ports only, pySocket's `dut.sv` drives nothing, and axiDemo's producer and consumer RTL are stubs. Only the loopback and scratch model-DUT benches have exercised these agents.
 - UVM: the `notify_ack` `A2C_DST` driver has not run against RTL. The mixed example, whose blockA has a notify_ack `src` port, does not build on Xcelium (`URRNG` in blockB's `memory_dp.sv`), and its blockA RTL fails VCS elaboration (`ICPD`).
