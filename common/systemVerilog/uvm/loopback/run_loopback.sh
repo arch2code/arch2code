@@ -9,7 +9,12 @@
 # "// LB_PLUSARGS <test> <plusarg>..." gives a test its plusargs. Then
 # seedRepro.py runs each check below, and each must end with its verdict.
 #
-#   run_loopback.sh xcelium|vcs [seed [<layer.f>...]]
+#   run_loopback.sh [--subset <name>] xcelium|vcs [seed [<layer.f>...]]
+#
+# With --subset, only the tests listed in <name>.tests run, and every
+# loopback directory of the run must hold that file: one test per line, with
+# # starting a comment. A listed name that no test file registers fails the
+# run. The seedRepro checks run either way.
 #
 # Each <layer.f> lists a builder layer's agent packages and compiles after
 # a2c_uvm.f. The loopback/ directory beside it holds the layer's
@@ -22,10 +27,16 @@
 set -u
 
 usage() {
-    echo "usage: $0 xcelium|vcs [seed [<layer.f>...]]" >&2
+    echo "usage: $0 [--subset <name>] xcelium|vcs [seed [<layer.f>...]]" >&2
     exit 2
 }
 
+SUBSET=""
+if [ "${1:-}" = --subset ]; then
+    [ $# -ge 2 ] || usage
+    SUBSET=$2
+    shift 2
+fi
 [ $# -ge 1 ] || usage
 SIM=$1
 SEED=${2:-1}
@@ -57,6 +68,24 @@ for d in $LB_DIRS; do
         done < <(sed -n 's#^[[:space:]]*// LB_PLUSARGS \([A-Za-z0-9_]*\) \(.*\)#\1 \2#p' "$f")
     done
 done
+if [ -n "$SUBSET" ]; then
+    ALL_TESTS=" $(echo $TESTS) "
+    LISTED=""
+    for d in $LB_DIRS; do
+        list=$d/$SUBSET.tests
+        if [ ! -f "$list" ]; then
+            echo "FAIL: --subset $SUBSET needs $list"
+            exit 1
+        fi
+        for t in $(sed 's/#.*//' "$list"); do
+            case $ALL_TESTS in
+                *" $t "*) LISTED="$LISTED $t" ;;
+                *) echo "FAIL: $list names $t, which no *_lb_tests.svh registers"; exit 1 ;;
+            esac
+        done
+    done
+    TESTS=$LISTED
+fi
 # Each agent package a .f lists has its interface, <type>_if.sv, beside it.
 # The paths in a .f are relative to its own directory.
 SRCS=""

@@ -1214,6 +1214,18 @@ python3 test_seed_repro.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: No SystemVerilog ?: picks between two string literals"
+echo "------------------------------------------------------------------------"
+python3 test_sv_string_select.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: The UVM library and generated UVM packages parse under Verilator"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_sv_parse.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: VL_TIMING=1 links and runs a Verilated top with an RTL delay"
 echo "------------------------------------------------------------------------"
 python3 test_vl_timing.py || FAILED=1

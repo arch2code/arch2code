@@ -1,0 +1,214 @@
+# The reduced loopback: run_loopback.sh --subset reduced runs these tests and
+# the seedRepro checks. It is the pre-commit run on the simulator that did not
+# run the full loopback, so it is chosen to meet each vendor's handling of
+# every part of the library at least once:
+#  - every agent package in each role it has: Mode A, Mode B source or master,
+#    Mode B destination or slave, passive, monitor protocol checks and a Mode B
+#    mismatch;
+#  - at least one test of every *_lb_tests.svh file;
+#  - every report call site of the library that prints in the full loopback,
+#    and every branch of an a2c_select_str() or a2c_lane_name() call that the
+#    full loopback takes.
+# A test that is the only one to print a library message, or a new agent role,
+# belongs here. Each layer's loopback directory holds its own reduced.tests.
+
+# a2c_expected_error_lb_tests.svh
+expected_error_extra_test
+expected_error_text_test
+
+# a2c_gen_base_test_lb_tests.svh
+gen_base_drain_wrong_type_test
+a2c_items_sent_cfg_test
+gen_base_run_timeout_off_test
+gen_base_run_timeout_reset_phase_test
+gen_base_joint_end_common_phase_test
+gen_base_run_timeout_defer_lone_test
+gen_base_run_timeout_defer_dog_stopped_test
+gen_base_run_timeout_defer_dog_stop_edge_test
+gen_base_run_timeout_defer_once_test
+
+# a2c_joint_stall_lb_tests.svh
+js_rv_two_ports_test
+
+# a2c_lane_watchdog_lb_tests.svh
+req_ack_mode_b_model_late_test
+joint_stall_lone_lane_test
+
+# a2c_mem_model_lb_tests.svh
+a2c_mem_model_test
+
+# a2c_model_cmp_lb_tests.svh
+model_cmp_dut_leftover_test
+status_cmp_stable_test
+status_cmp_bounds_test
+status_cmp_off_test
+midstream_guard_predict_test
+model_cmp_cap_test
+model_cmp_base_cut_test
+
+# a2c_reg_read_lb_tests.svh
+reg_read_cut_test
+reg_read_skip_reg_unmapped_test
+reg_read_skip_mem_unmapped_test
+reg_read_stride_cfg_test
+reg_read_child_block_catcher_test
+reg_read_pins_stride_hier_test
+
+# a2c_replay_drain_lb_tests.svh
+drain_busy_wording_test
+drain_catchup_stop_death_test
+
+# a2c_rt_checker_lb_tests.svh
+rt_rv_refusal_test
+rt_rv_unit_test
+rt_rv_cfg_test
+rt_rv_max_reported_test
+rt_rv_model_dut_test
+rt_rv_defer_stopped_test
+rt_pa_gap_test
+
+# a2c_txn_counter_lb_tests.svh
+txn_count_unwaited_extra_test
+txn_count_late_test
+txn_count_dual_both_short_test
+txn_count_model_without_dual_test
+
+# a2c_txn_digest_lb_tests.svh
+txn_digest_test
+
+# a2c_video_lb_tests.svh
+vid_defect_crop_test
+vid_unspecified_const_test
+vid_unspecified_clocked_test
+vid_mode_b_trail_test
+vid_pass_markers_test
+vid_reject_cut_last_test
+vid_reject_no_model_mon_test
+vid_rt_off_scope_test
+vid_edit_plan_empty_test
+
+# apb_lb_tests.svh
+apb_random_test
+apb_monitor_checks_test
+apb_mode_b_test
+apb_mode_b_mismatch_test
+apb_mode_b_slave_test
+apb_mode_b_slave_busy_passive_test
+
+# axi4_stream_lb_tests.svh
+axi4_stream_test
+axi4_stream_mode_b_test
+axi4_stream_mode_b_dst_test
+axi4_stream_mode_b_mismatch_test
+
+# axi_mode_b_lb_tests.svh
+axi_read_mode_b_test
+axi_read_mode_b_mismatch_test
+axi_read_mode_b_model_extra_test
+axi_read_mode_b_master_test
+axi_read_mode_b_skip_cut_test
+axi_read_mode_b_master_model_late_test
+axi_read_mode_b_master_both_dead_test
+axi_read_mode_b_master_joint_test
+axi_read_mode_b_master_order_test
+axi_read_mode_b_passive_test
+axi_write_mode_b_test
+axi_write_mode_b_mismatch_test
+axi_write_mode_b_model_extra_test
+axi_write_mode_b_master_test
+axi_write_mode_b_skip_cut_test
+axi_write_mode_b_master_dut_late_test
+axi_write_mode_b_master_both_dead_test
+axi_write_mode_b_master_order_w_test
+axi_write_mode_b_passive_test
+axi_mode_b_two_port_test
+mode_b_unowned_passive_test
+
+# axi_read_lb_tests.svh
+axi_read_random_test
+axi_read_max_transfer_test
+axi_read_monitor_checks_test
+
+# axi_write_lb_tests.svh
+axi_write_random_test
+axi_write_max_transfer_test
+axi_write_monitor_checks_test
+
+# external_reg_lb_tests.svh
+external_reg_strobe_test
+external_reg_level_test
+external_reg_mode_b_test
+external_reg_mode_b_mismatch_test
+external_reg_mode_b_dst_test
+external_reg_mode_b_dst_busy_passive_test
+
+# memory_lb_tests.svh
+memory_random_test
+memory_write_read_test
+memory_mode_b_test
+memory_mode_b_mismatch_test
+memory_mode_b_xz_test
+memory_mode_b_dst_test
+memory_mode_b_dst_uncredited_test
+memory_mode_b_dst_busy_passive_test
+memory_mode_b_d1_stall_test
+memory_mode_b_d1_joint_stall_test
+
+# no_backpressure_lb_tests.svh
+no_backpressure_test
+monitor_checks_test
+
+# notify_ack_lb_tests.svh
+notify_ack_random_test
+notify_ack_monitor_checks_test
+notify_ack_mode_b_test
+notify_ack_mode_b_dst_test
+notify_ack_mode_b_dst_busy_passive_test
+
+# pop_ack_lb_tests.svh
+pop_ack_random_test
+pop_ack_config_db_responder_test
+pop_ack_monitor_checks_test
+pop_ack_mode_b_test
+pop_ack_mode_b_mismatch_test
+pop_ack_mode_b_dst_test
+pop_ack_mode_b_dst_busy_passive_test
+
+# push_ack_lb_tests.svh
+push_ack_random_test
+push_ack_monitor_checks_test
+push_ack_mode_b_test
+push_ack_mode_b_dst_test
+push_ack_mode_b_dst_busy_passive_test
+push_ack_mode_b_dst_cut_resume_test
+push_ack_mode_b_dst_mismatch_test
+push_ack_mode_b_dst_cut_expected_test
+push_ack_mode_b_dst_cfg_no_clock_test
+push_ack_mode_b_dst_cfg_types_test
+
+# raw_lb_tests.svh
+raw_test
+raw_mode_b_test
+raw_mode_b_dst_test
+
+# rdy_vld_lb_tests.svh
+rdy_vld_random_test
+rdy_vld_mode_b_test
+rdy_vld_mode_b_dst_test
+rdy_vld_mode_b_mismatch_test
+
+# req_ack_lb_tests.svh
+req_ack_random_test
+req_ack_config_db_responder_test
+req_ack_monitor_checks_test
+req_ack_mode_b_test
+req_ack_mode_b_mismatch_test
+req_ack_mode_b_dst_test
+req_ack_mode_b_dst_busy_passive_test
+
+# status_lb_tests.svh
+status_test
+status_mode_b_test
+status_mode_b_dst_test
+status_mode_b_mismatch_test
+status_mode_b_bounds_xz_test
