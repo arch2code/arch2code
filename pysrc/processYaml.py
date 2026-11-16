@@ -1910,6 +1910,7 @@ class projectOpen:
                                              for b in paramBindings if not b['isNull']]
                                    for variant, top in tops.items()},
                 })
+        internalMonitors, unmonitored = self.getUvmInternalMonitors(ret, clocks, {port['name'] for port in ports})
         names = self.uvmNames[ret['qualBlock']]
         block = ret['blockInfo']['block']
         registers, memories = self.getUvmRegisterModel(
@@ -1920,11 +1921,12 @@ class projectOpen:
         registerBlocks = [{'className': names['regBlockClass'], 'registers': registers, 'memories': memories,
                            'children': [], 'a2cMap': bool(memories), 'isRoot': True}]
         busPortName = ret['registerBusPort']
-        if any(top['registerTree'] for top in tops.values()):
+        hasTree = any(top['registerTree'] for top in tops.values())
+        if hasTree:
             registerBlocks = self.getUvmRegisterTree(tops, block, names['regBlockClass'])
             busPortName = names['registerTreeBusPort']
         registerBus = None
-        if registers or memories or len(registerBlocks) > 1:
+        if registers or memories or hasTree:
             (busPort,) = [port for port in ports if port['name'] == busPortName]
             registerBus = {'port': busPort['name'], 'agent': busPort['agent'],
                            'adapterClass': f"{busPort['interfaceType']}_reg_adapter"}
@@ -1940,10 +1942,65 @@ class projectOpen:
             if 'both' in names['duts']:
                 modelMismatchTest = {'className': names['modelMismatchTestClass'], 'agent': counted[0]['agent']}
         ret['uvm'] = {**names, 'ports': ports, 'clocks': clocks,
-                      'agentPackages': list(dict.fromkeys(f"{port['interfaceType']}_uvm_pkg" for port in ports)),
+                      'agentPackages': list(dict.fromkeys(f"{port['interfaceType']}_uvm_pkg"
+                                                          for port in ports + internalMonitors)),
                       'registerBlocks': registerBlocks,
                       'registerBus': registerBus,
+                      'internalMonitors': internalMonitors, 'unmonitored': unmonitored,
                       'failTest': failTest, 'modelMismatchTest': modelMismatchTest}
+
+    def getUvmInternalMonitors(self, ret, clocks, portNames):
+        """The connections between a block's children that its env watches
+        with a passive agent on the RTL's own interface instance, named as
+        the RTL names it. A connection is watched when its type has a UVM
+        agent and is not a register bus, which the register model covers.
+        Returns the watched ones and, with a reason, the ones it cannot
+        watch: a payload local to the block's module, which no package
+        declares, a clock that is not one of the block's clock ports, or a
+        name a boundary port already takes. A connection's clock is its
+        clock:, else its source port's clock as the source instance binds it.
+        """
+        import pysrc.intf_gen_utils as intf_gen_utils
+        monitors = list()
+        unmonitored = list()
+        clockVifs = {clock['clock']: clock['vif'] for clock in clocks}
+
+        def connectionClock(connVal):
+            # The block's clock a connection runs on: its clock:, else the
+            # source port's own clock bound through the source instance.
+            if connVal['clock']:
+                return connVal['clock']
+            childKey = self.data['instances'][connVal['srcKey']]['instanceTypeKey']
+            childClock = self.portDomainClock(childKey, connVal['srcport'])
+            binds = {bind['port']: bind['signal'] for bind in self.getBDInstanceClockResetBinds(connVal['srcKey'])}
+            return binds.get(childClock)
+
+        for connVal in ret['connectDouble']['connections'].values():
+            intfData = intf_gen_utils.get_intf_data(connVal, self)
+            intfType = intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)
+            intfDef = ret['interface_defs'][intfType]
+            if not intfDef['uvmAgent'] or intfDef['addressBus']:
+                continue
+            name = intf_gen_utils.get_channel_name(connVal)
+            paramBindings = self.getIntfParamBindings(intfDef, intfData['structures'])
+            reason = None
+            clock = connectionClock(connVal)
+            if any(self.datatypeRef(b['kind'], b['structureKey'])['isParameterizable']
+                   for b in paramBindings if not b['isNull']):
+                reason = 'its payload is local to the module'
+            elif clock not in clockVifs:
+                reason = 'its clock is not a clock port of the block'
+            elif name in portNames:
+                reason = 'a boundary port has its name'
+            if reason:
+                unmonitored.append({'name': name, 'reason': reason})
+                continue
+            monitors.append({
+                'name': name, 'agent': f"{name}_agent", 'interfaceType': intfType,
+                'clockVif': clockVifs[clock], 'digest': f"{name}_digest",
+                'paramBindings': paramBindings,
+            })
+        return monitors, unmonitored
 
     def getUvmRegisterModel(self, blockKey, widths, classPrefix):
         """A block's firmware-visible registers and memories at the
@@ -2015,29 +2072,36 @@ class projectOpen:
         before their parent so each class precedes its use, the root last.
         Each block names its child blocks with the offset of each in its own
         map. A block's map is an a2c_reg_map when a memory sits in it or below
-        it, because an a2c_reg_map may only be a submap of another one.
+        it, because an a2c_reg_map may only be a submap of another one. An
+        instance that reuses its block's UVM package is named by that
+        package's register block class, and its subtree emits no class.
         """
         trees = {variant: top['registerTree'] for variant, top in tops.items()}
         blocks = list()
 
-        def visit(nodes):
+        def visit(nodes, emit):
             node = next(iter(nodes.values()))
             prefix = f"{block}_{'_'.join(node['path'])}" if node['path'] else block
             entry = {'className': f"{prefix}_reg_block" if node['path'] else rootClass,
                      'registers': [], 'memories': [], 'children': [], 'isRoot': not node['path']}
+            if node['reuse'] is not None:
+                names = self.uvmNames[node['blockKey']]
+                entry['className'] = f"{names['tops'][node['reuse']]['pkgName']}::{names['regBlockClass']}"
+                emit = False
             if node['registerWidths']:
                 entry['registers'], entry['memories'] = self.getUvmRegisterModel(
                     node['blockKey'], {variant: n['registerWidths'] for variant, n in nodes.items()}, prefix)
             childA2c = False
             for i, child in enumerate(node['children']):
-                childEntry = visit({variant: n['children'][i] for variant, n in nodes.items()})
+                childEntry = visit({variant: n['children'][i] for variant, n in nodes.items()}, emit)
                 childA2c |= childEntry['a2cMap']
                 entry['children'].append({'name': child['instance'], 'className': childEntry['className'],
                                           'offset': child['offset']})
             entry['a2cMap'] = bool(entry['memories']) or childA2c
-            blocks.append(entry)
+            if emit:
+                blocks.append(entry)
             return entry
-        visit(trees)
+        visit(trees, True)
         return blocks
 
     def uvmTypeRef(self, kind, key, variantPkg):
@@ -3591,17 +3655,21 @@ class projectOpen:
            no connection and no declaration, or a register/memory accessor
            port.
         """
-        blockRow = self.data['blocks'][ret['qualBlock']]
-        declaredRow = clockTree.declaredPortRow(blockRow, portName)
+        return self.portDomainClock(ret['qualBlock'], portName)
+
+    def portDomainClock(self, blockKey, portName):
+        # getBDPortDomain for any block, outside its own view.
+        declaredRow = clockTree.declaredPortRow(self.data['blocks'][blockKey], portName)
         if declaredRow is not None and declaredRow['clock']:
             return declaredRow['clock']
         # clockTree.build() reports every boundary port it cannot derive, so
         # a boundary port reaching this view always has a row.
         persistedClocks = {row['portName']: row['domainClock']
-                           for row in self.data['portDomains'].get(ret['qualBlock'], [])}
+                           for row in self.data['portDomains'].get(blockKey, [])}
         if portName in persistedClocks:
             return persistedClocks[portName]
-        return ret['defaultClock']
+        return next(row['itemKey'] for row in self.data['blockClocksResets'][blockKey]
+                    if row['kind'] == 'clock' and row['isDefault'])
 
     def getBDPortDomainReset(self, ret, clockName):
         """The selected reset of a boundary port's domain clock.
@@ -4984,6 +5052,7 @@ class projectCreate:
         self.calcForeignConfigHeaders()
         self.deriveSvWrapperNames()
         self.deriveUvmNames()
+        self.deriveUvmReuse()
         self.calcRegistrarPairs()
         # reject address-enum identity collisions before the enums are emitted
         self.validateAddressGroupEnumIdentity()
@@ -6110,6 +6179,20 @@ class projectCreate:
             return False
         self.uvmRegisterTrees[blockKey] = {variant: self.deriveUvmRegisterTree(blockKey, values, ownsRows)
                                            for variant, values in topValues.items()}
+
+        # Each variant package declares the same register block classes, so an
+        # instance reuses a package only when every variant reuses the same one.
+        def agreeOnReuse(nodes):
+            if len({node['reuse'] for node in nodes}) > 1:
+                print(f"Info: the register model of {blockRow['block']} generates its own classes for "
+                      f"instance {'.'.join(nodes[0]['path'])}, because its variants reuse different packages "
+                      f"of {nodes[0]['block']} or none.")
+                for node in nodes:
+                    node['reuse'] = None
+            for children in zip(*(node['children'] for node in nodes)):
+                agreeOnReuse(children)
+        if all(self.uvmRegisterTrees[blockKey].values()):
+            agreeOnReuse(list(self.uvmRegisterTrees[blockKey].values()))
         failed = False
         if any(self.uvmRegisterTrees[blockKey].values()):
             self.uvmRegisterTreeBusPorts[blockKey] = self.uvmRegisterTreeBusPort(blockRow, where)
@@ -6158,6 +6241,9 @@ class projectCreate:
                     f"uvm_reg_block, which the instance's register block would hide in the generated "
                     f"register block of its container. Rename the instance, or clear hasUvm.")
                 failed = True
+            # A reused register block's classes are in its own package.
+            if node['reuse'] is not None:
+                return
             claim(f"{prefix}_reg_block", f"the register block class of {described}")
             for kind, name, register in uvmModelNames(self.flatData, node['blockKey']) \
                     if node['registerWidths'] else ():
@@ -6223,28 +6309,7 @@ class projectCreate:
         blocks = self.flatData['blocks']
         instances = self.flatData['instances']
         passthroughs = self.config.getConfig('REGAPB_PASSTHROUGH')
-        descriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
-        declarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
-        paramsByBlock = dict()
-        for row in self.flatData['blocksparams'].values():
-            paramsByBlock.setdefault(row['blockKey'], []).append(row)
-        childrenOf = dict()
-        for row in instances.values():
-            childrenOf.setdefault(row['containerKey'], []).append(row)
-
-        def instanceValues(inst, containerValues):
-            if inst['inheritContainerParam']:
-                return {p['param']: containerValues[p['param']]
-                        for p in paramsByBlock.get(inst['instanceTypeKey'], [])}
-            if not inst['variant']:
-                return {}
-            (descriptor,) = [d for d in descriptors[inst['instanceTypeKey']]
-                             if d['variant'] == inst['variant']
-                             and d['declaringProject'] == declarers[inst['instanceKey']]]
-            values = dict(descriptor['values'])
-            for childParam, parentParam in descriptor['containerSourced'].items():
-                values[childParam] = containerValues[parentParam]
-            return values
+        paramsByBlock, childrenOf, instanceValues = self.uvmInstanceTree()
 
         def slots(blockKey):
             routers = [inst for inst in childrenOf.get(blockKey, [])
@@ -6264,7 +6329,8 @@ class projectCreate:
         def node(blockKey, values, inst, path, offset):
             entry = {'instance': inst['instance'] if inst else None, 'path': path, 'blockKey': blockKey,
                      'block': blocks[blockKey]['block'], 'variant': inst['variant'] if inst else '',
-                     'offset': offset, 'registerWidths': None, 'children': []}
+                     'offset': offset, 'registerWidths': None, 'children': [],
+                     'reuse': self.uvmReusedVariant(blockKey, values) if inst else None}
             if blockKey in ownsRows:
                 resolver = ValueResolver(self, values={p['paramSourceKey']: values[p['param']]
                                                        for p in paramsByBlock.get(blockKey, [])},
@@ -6280,6 +6346,96 @@ class projectCreate:
 
         tree = node(topKey, topValues, None, (), 0)
         return tree if tree['children'] else None
+
+    def uvmInstanceTree(self):
+        """The instance tree a UVM testbench top walks with each instance's
+        parameter values, as calcRegistrarPairs resolves them: an instance
+        takes its variant's values, and a containerSourced parameter or an
+        inheritContainerParam instance its container's. Returns the block
+        params, the instances by container, and the value resolver.
+        """
+        descriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
+        defaults = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
+        declarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
+        paramsByBlock = dict()
+        for row in self.flatData['blocksparams'].values():
+            paramsByBlock.setdefault(row['blockKey'], []).append(row)
+        childrenOf = dict()
+        for row in self.flatData['instances'].values():
+            childrenOf.setdefault(row['containerKey'], []).append(row)
+
+        def instanceValues(inst, containerValues):
+            if inst['inheritContainerParam']:
+                return {p['param']: containerValues[p['param']]
+                        for p in paramsByBlock.get(inst['instanceTypeKey'], [])}
+            # An instance naming no variant takes its block's default Config,
+            # which a block without params does not have.
+            if not inst['variant']:
+                default = defaults.get(inst['instanceTypeKey'])
+                return dict(default['values']) if default else {}
+            (descriptor,) = [d for d in descriptors[inst['instanceTypeKey']]
+                             if d['variant'] == inst['variant']
+                             and d['declaringProject'] == declarers[inst['instanceKey']]]
+            values = dict(descriptor['values'])
+            for childParam, parentParam in descriptor['containerSourced'].items():
+                values[childParam] = containerValues[parentParam]
+            return values
+        return paramsByBlock, childrenOf, instanceValues
+
+    def uvmReusedVariant(self, blockKey, values):
+        """The standalone variant whose UVM package an instance of a hasUvm
+        block reuses, or None. Equal values give identical packages up to
+        their names, so the first equal variant serves. A block without
+        params has one variantless package, which every instance reuses.
+        """
+        if not self.flatData['blocks'][blockKey]['hasUvm']:
+            return None
+        variants = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+        if not variants:
+            return ''
+        for variant in sorted(variants):
+            if variants[variant]['values'] == values:
+                return variant
+        return None
+
+    def deriveUvmReuse(self):
+        # Per UVM testbench top, the hasUvm instances below its block whose
+        # values match a standalone variant (uvmReusedVariant), each (block,
+        # variant) once and below-first, so a package follows those its own
+        # code names. The test package is one per block, and its code may name
+        # what any of the block's tops reuses, so every top compiles the
+        # union, each top's list in variant order. Below-first holds in the
+        # union because a package's own reuse is listed before it in every
+        # top that reuses it.
+        paramsByBlock, childrenOf, instanceValues = self.uvmInstanceTree()
+        for blockKey, names in self.uvmNames.items():
+            descriptors = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            union = list()
+            unmatched = list()
+            for variant, top in sorted(names['tops'].items()):
+
+                def walk(containerKey, values, path):
+                    for inst in childrenOf.get(containerKey, []):
+                        childKey = inst['instanceTypeKey']
+                        childValues = instanceValues(inst, values)
+                        walk(childKey, childValues, path + (inst['instance'],))
+                        reused = self.uvmReusedVariant(childKey, childValues)
+                        if reused is None:
+                            if self.flatData['blocks'][childKey]['hasUvm']:
+                                unmatched.append((top['stem'], '.'.join(path + (inst['instance'],)),
+                                                  self.flatData['blocks'][childKey]['block']))
+                            continue
+                        entry = {'blockKey': childKey, 'variant': reused,
+                                 'pkgName': self.uvmNames[childKey]['tops'][reused]['pkgName']}
+                        if entry not in union:
+                            union.append(entry)
+                walk(blockKey, descriptors[variant]['values'] if variant else {}, ())
+            for top in names['tops'].values():
+                top['reuse'] = union
+            for stem, path, child in unmatched:
+                print(f"Info: UVM top {stem} reuses nothing of instance {path}: its parameter values match "
+                      f"none of {child}'s standalone variants, so its library cannot be named there.")
+        self.config.setConfig('UVMNAMES', self.uvmNames, bin=True)
 
     def deriveModuleIdentities(self):
         # Two identities per context and per block. The C++ one (module and
@@ -6376,12 +6532,15 @@ class projectCreate:
                 continue
             wrapperNames = self.svWrapperNames[row['blockKey']]
             variants = sorted(variantSelection.standaloneVariantDescriptors(self.config, row['blockKey']))
+            # rtlScope is the block's RTL module under the testbench's dut
+            # instance: a variant top wraps the wrapper body as u_wrapper.
             if variants:
-                stems = [(v, f"{row['block']}_{v}", wrapperNames['variantTops'][v]) for v in variants]
+                stems = [(v, f"{row['block']}_{v}", wrapperNames['variantTops'][v], 'dut.u_wrapper.dut')
+                         for v in variants]
             else:
-                stems = [('', row['block'], wrapperNames['bodyModule'])]
+                stems = [('', row['block'], wrapperNames['bodyModule'], 'dut.dut')]
             tops = dict()
-            for variant, stem, hdlTop in stems:
+            for variant, stem, hdlTop, rtlScope in stems:
                 tbModule = artifactPaths.fileStem(fileMap['uvmTb'], stem, layout)
                 xceliumShellHeader = tbModule + '_xcelium.h'
                 tops[variant] = {
@@ -6390,6 +6549,7 @@ class projectCreate:
                     'tbModule':     tbModule,
                     'pkgName':      artifactPaths.fileStem(fileMap['uvmPkg'], stem, layout),
                     'hdlTop':       hdlTop,
+                    'rtlScope':     rtlScope,
                     'portmap':      os.path.join(genVlDir, tbModule + '.portmap'),
                     'xceliumShell':       os.path.join(genVlDir, xceliumShellHeader),
                     'xceliumShellHeader': xceliumShellHeader,

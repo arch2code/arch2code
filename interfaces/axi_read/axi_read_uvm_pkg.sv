@@ -1069,7 +1069,7 @@ package axi_read_uvm_pkg;
                 held_ar    = ar_pins();
                 // Each AR and R beat counts for the joint stall rule (a2c_joint_watch).
                 if ((vif.rvalid === 1'b1 && vif.rready === 1'b1) || (vif.arvalid === 1'b1 && vif.arready === 1'b1))
-                    a2c_joint_watch::handshake();
+                    if (cfg.joint_watch) a2c_joint_watch::handshake();
                 if (vif.rvalid === 1'b1 && vif.rready === 1'b1) take_beat();
                 if (vif.arvalid === 1'b1 && vif.arready === 1'b1) take_ar();
             end

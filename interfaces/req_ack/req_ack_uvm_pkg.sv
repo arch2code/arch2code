@@ -329,7 +329,7 @@ package req_ack_uvm_pkg;
                     `uvm_error("A2C_XZ", $sformatf("%s: rdata has X or Z while ack is high: %h", cfg.port_name, rdata))
                 end
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = req_ack_item#(data_t, rdata_t)::type_id::create("item");
                 item.data  = data;
                 item.rdata = rdata;

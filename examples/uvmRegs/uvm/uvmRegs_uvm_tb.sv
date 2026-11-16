@@ -189,8 +189,12 @@ module uvmRegs_uvm_tb
 `endif
 `ifdef A2C_UVM_BOTH_DUT
         uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_model_dut", 1'b0);
+        uvm_config_db#(uvmRegs_uvm_pkg::scaled0_vif_t)::set(null, "uvm_test_top.*", "scaled0", dut.dut.scaled0);
+        uvm_config_db#(uvmRegs_uvm_pkg::scaled1_vif_t)::set(null, "uvm_test_top.*", "scaled1", dut.dut.scaled1);
 `elsif A2C_UVM_RTL_DUT
         uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_model_dut", 1'b0);
+        uvm_config_db#(uvmRegs_uvm_pkg::scaled0_vif_t)::set(null, "uvm_test_top.*", "scaled0", dut.dut.scaled0);
+        uvm_config_db#(uvmRegs_uvm_pkg::scaled1_vif_t)::set(null, "uvm_test_top.*", "scaled1", dut.dut.scaled1);
 `else
         uvm_config_db#(bit)::set(null, "uvm_test_top.*", "a2c_model_dut", 1'b1);
 `endif

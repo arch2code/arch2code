@@ -356,7 +356,7 @@ def expected_root_build(variant, offsets):
                                    ('tbl', 'RO', 4)):
         lines += [f"default_map.add_mem({name}, 'h{offsets[name]:x}, \"{rights}\");",
                   f"a2c_map.set_mem_stride({name}, {rowBytes});"]
-    return lines + ['lock_model();']
+    return lines + ['if (get_parent() == null) begin', 'lock_model();', 'end']
 
 
 def in_order(lines, expected):

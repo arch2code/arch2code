@@ -26,6 +26,14 @@ package uvmRegs_uvm_pkg;
     typedef apbReg_agent_t::item_t apbReg_item_t;
     typedef apbReg_agent_t::config_t apbReg_config_t;
     typedef virtual apb_if #(.addr_t(uvmRegsAddrSt), .data_t(uvmRegsDataSt)) apbReg_vif_t;
+    typedef rdy_vld_agent #(.data_t(uvmRegsWordSt)) scaled0_agent_t;
+    typedef scaled0_agent_t::item_t scaled0_item_t;
+    typedef scaled0_agent_t::config_t scaled0_config_t;
+    typedef virtual rdy_vld_if #(.data_t(uvmRegsWordSt)) scaled0_vif_t;
+    typedef rdy_vld_agent #(.data_t(uvmRegsWordSt)) scaled1_agent_t;
+    typedef scaled1_agent_t::item_t scaled1_item_t;
+    typedef scaled1_agent_t::config_t scaled1_config_t;
+    typedef virtual rdy_vld_if #(.data_t(uvmRegsWordSt)) scaled1_vif_t;
 
     class uvmRegs_uScale0_reg_offset extends uvm_reg;
         rand uvm_reg_field offset;
@@ -346,8 +354,10 @@ package uvmRegs_uvm_pkg;
             default_map.add_submap(uStat.default_map, 'h3000);
             default_map.add_submap(uBridge.default_map, 'h4000);
             default_map.add_submap(uWrap.default_map, 'h5000);
-            lock_model();
-            a2c_map.check_overlaps_once();
+            if (get_parent() == null) begin
+                lock_model();
+                a2c_map.check_overlaps_once();
+            end
         endfunction
     endclass : uvmRegs_reg_block
 
@@ -360,6 +370,13 @@ package uvmRegs_uvm_pkg;
         a2c_uvm_pkg::a2c_txn_digest #(out_item_t) out_digest;
         a2c_uvm_pkg::a2c_txn_digest #(apbReg_item_t) apbReg_digest;
         virtual a2c_clk_if clk_vif;
+        // Passive agents on the RTL's connections between the block's children,
+        // built only when the run holds the RTL.
+        scaled0_agent_t scaled0_agent;
+        scaled1_agent_t scaled1_agent;
+        a2c_uvm_pkg::a2c_txn_digest #(scaled0_item_t) scaled0_digest;
+        a2c_uvm_pkg::a2c_txn_digest #(scaled1_item_t) scaled1_digest;
+        bit model_dut;
         uvmRegs_reg_block regmodel;
         apb_reg_adapter adapter;
         uvm_reg_predictor #(apbReg_item_t) predictor;
@@ -448,6 +465,42 @@ package uvmRegs_uvm_pkg;
             apbReg_digest.port_name = "apbReg";
             apbReg_digest.dual = dual_dut;
 
+            if (!uvm_config_db#(bit)::get(this, "", "a2c_model_dut", model_dut)) begin
+                `uvm_fatal("A2C_CFG", "no a2c_model_dut setting")
+            end
+            if (!model_dut) begin
+                begin
+                    scaled0_config_t scaled0_cfg = scaled0_config_t::type_id::create("scaled0_cfg");
+                    if (!uvm_config_db#(scaled0_vif_t)::get(this, "", "scaled0", scaled0_cfg.vif)) begin
+                        `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'scaled0'")
+                    end
+                    scaled0_cfg.clk_vif = clk_vif;
+                    scaled0_cfg.role = a2c_uvm_pkg::A2C_DST;
+                    scaled0_cfg.is_active = UVM_PASSIVE;
+                    scaled0_cfg.port_name = "scaled0";
+                    scaled0_cfg.joint_watch = 0;
+                    uvm_config_db#(scaled0_config_t)::set(this, "scaled0_agent", "cfg", scaled0_cfg);
+                    scaled0_agent = scaled0_agent_t::type_id::create("scaled0_agent", this);
+                    scaled0_digest = a2c_uvm_pkg::a2c_txn_digest#(scaled0_item_t)::type_id::create("scaled0_digest", this);
+                    scaled0_digest.port_name = "scaled0";
+                end
+                begin
+                    scaled1_config_t scaled1_cfg = scaled1_config_t::type_id::create("scaled1_cfg");
+                    if (!uvm_config_db#(scaled1_vif_t)::get(this, "", "scaled1", scaled1_cfg.vif)) begin
+                        `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'scaled1'")
+                    end
+                    scaled1_cfg.clk_vif = clk_vif;
+                    scaled1_cfg.role = a2c_uvm_pkg::A2C_DST;
+                    scaled1_cfg.is_active = UVM_PASSIVE;
+                    scaled1_cfg.port_name = "scaled1";
+                    scaled1_cfg.joint_watch = 0;
+                    uvm_config_db#(scaled1_config_t)::set(this, "scaled1_agent", "cfg", scaled1_cfg);
+                    scaled1_agent = scaled1_agent_t::type_id::create("scaled1_agent", this);
+                    scaled1_digest = a2c_uvm_pkg::a2c_txn_digest#(scaled1_item_t)::type_id::create("scaled1_digest", this);
+                    scaled1_digest.port_name = "scaled1";
+                end
+            end
+
             regmodel = uvmRegs_reg_block::type_id::create("regmodel");
             regmodel.build();
             regmodel.reset();
@@ -468,6 +521,10 @@ package uvmRegs_uvm_pkg;
             in_digest.watch(in_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
             out_digest.watch(out_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
             apbReg_digest.watch(apbReg_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            if (!model_dut) begin
+                scaled0_digest.watch(scaled0_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+                scaled1_digest.watch(scaled1_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
+            end
             regmodel.default_map.set_sequencer(apbReg_agent.sqr, adapter);
             regmodel.default_map.set_auto_predict(0);
             predictor.map     = regmodel.default_map;

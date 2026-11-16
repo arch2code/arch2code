@@ -1,0 +1,47 @@
+{
+  "name": "default",
+  "description": "Ruleset for parsing log generated from sim execution",
+  "filters": {
+    "qassert_error": {
+      "description": "Capture Q_ASSERT error and message",
+      "re": "^\\[Q_ASSERT\\](\\[(?P<ctx>.*)\\])?\\s*(?P<msg>.*) \\((?P<file>.*)\\)",
+      "msg": "\\g<msg>",
+      "file": "\\g<file>",
+      "sev": "error"
+    },
+    "exit_code": {
+      "description": "Capture exit code value and message",
+      "re": "exit code : (?P<code>\\d) (?P<msg>.*)",
+      "msg": "\\g<msg>",
+      "file": null,
+      "sev": "error"
+    },
+    "sc_ex_error": {
+      "description": "Caught SystemC exception Fatal Error",
+      "re": "Caught exception Error: \\((?P<code>\\S+)\\) (?P<msg>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": null,
+      "sev": "fatal"
+    },
+    "sc_ex_error_unc": {
+      "description": "Uncaught SystemC exception Fatal Error",
+      "re": "Error: \\((?P<code>\\S+)\\) uncaught exception: (?P<msg>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": null,
+      "sev": "error"
+    },
+    "sc_assert_fatal": {
+      "description": "SystemC assertion Fatal Error",
+      "re": "Fatal: \\((?P<code>\\S+)\\) assertion failed: (?P<msg>.*)\\nIn file: (?P<file>.*)",
+      "msg": "(\\g<code>) \\g<msg>",
+      "file": "\\g<file>",
+      "sev": "fatal"
+    }
+  },
+  "modifiers": {
+    "dataMiscompare": {
+      "re": "data mis-compare (.*)",
+      "msg": "Data miscompare"
+    }
+  }
+}

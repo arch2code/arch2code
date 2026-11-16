@@ -422,7 +422,7 @@ package memory_uvm_pkg;
                 end
                 if (vif.enable !== 1'b1) continue;
                 // Each access counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = memory_item#(addr_t, data_t)::type_id::create("item");
                 item.write = (vif.wr_en === 1'b1);
                 item.addr  = vif.addr;

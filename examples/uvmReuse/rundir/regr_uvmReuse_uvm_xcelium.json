@@ -1,0 +1,191 @@
+{
+    "session": {
+        "name": "regr_uvmReuse_uvm_xcelium",
+        "jobs": 4,
+        "lrp": 0
+    },
+    "build": {
+        "command": "make -j8 USE_UVM=1 USE_XCELIUM=1 uvm_snapshots UVM_TOPOLOGIES='uvmReuseChain_v8:model,rtl,both uvmReuseChain_v4:model,rtl,both'",
+        "timeout": 2400
+    },
+    "run": {
+        "command": "/usr/bin/time -f CPU_TIME_USER=%U ../../../dutRun.py build_xrun/run uvmReuseChain_uvm",
+        "args": "--seed ${RL_SEED} --verbosity=low",
+        "timeout": 900,
+        "rules": [
+            "../../../config/regrRules/uvm.json",
+            "default.json",
+            "xcelium.json"
+        ],
+        "count": 1,
+        "seed": 1,
+        "labels": [
+            "uvm"
+        ],
+        "v8": {
+            "args+": "--uvmTop uvmReuseChain_v8",
+            "model_dut": {
+                "args+": "--uvmDut model",
+                "labels+": [
+                    "mdl"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    }
+                }
+            },
+            "rtl_dut": {
+                "args+": "--uvmDut rtl",
+                "labels+": [
+                    "hdl"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    },
+                    "uvmReuseChain_stall_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_stall_test"
+                    }
+                }
+            },
+            "both_dut": {
+                "args+": "--uvmDut both",
+                "labels+": [
+                    "both"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    },
+                    "uvmReuseChain_model_mismatch_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_model_mismatch_test"
+                    }
+                }
+            }
+        },
+        "v4": {
+            "args+": "--uvmTop uvmReuseChain_v4",
+            "model_dut": {
+                "args+": "--uvmDut model",
+                "labels+": [
+                    "mdl"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    }
+                }
+            },
+            "rtl_dut": {
+                "args+": "--uvmDut rtl",
+                "labels+": [
+                    "hdl"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    }
+                }
+            },
+            "both_dut": {
+                "args+": "--uvmDut both",
+                "labels+": [
+                    "both"
+                ],
+                "test_group": {
+                    "uvmReuseChain_smoke_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_smoke_test"
+                    },
+                    "uvmReuseChain_video_test_back_to_back": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_back_to_back"
+                    },
+                    "uvmReuseChain_video_test_short_line": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_short_line"
+                    },
+                    "uvmReuseChain_video_test_random": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_video_test_random",
+                        "count": 2,
+                        "seed": "random"
+                    },
+                    "uvmReuseChain_fail_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_fail_test"
+                    },
+                    "uvmReuseChain_model_mismatch_test": {
+                        "args+": "+UVM_TESTNAME=uvmReuseChain_model_mismatch_test"
+                    }
+                }
+            }
+        }
+    }
+}

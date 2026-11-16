@@ -155,14 +155,18 @@ def render_body(prj, data, variant, top):
         sets += [f'        {dual.format(1)}', '`else', f'        {dual.format(0)}', '`endif']
     else:
         sets.append(f'        {dual.format(0)}')
+    # The RTL's own interface instances inside the wrapper's DUT, for the
+    # env's passive agents.
+    internal = [f'        uvm_config_db#({top["pkgName"]}::{mon["name"]}_vif_t)::set(null, "uvm_test_top.*", '
+                f'"{mon["name"]}", {top["rtlScope"]}.{mon["name"]});' for mon in data['uvm']['internalMonitors']]
     if 'model' in duts:
         branches = ['A2C_UVM_BOTH_DUT'] if 'both' in duts else []
         branches.append('A2C_UVM_RTL_DUT')
         for index, define in enumerate(branches):
-            sets += [f"`{'ifdef' if index == 0 else 'elsif'} {define}", f'        {model.format(0)}']
+            sets += [f"`{'ifdef' if index == 0 else 'elsif'} {define}", f'        {model.format(0)}', *internal]
         sets += ['`else', f'        {model.format(1)}', '`endif']
     else:
-        sets.append(f'        {model.format(0)}')
+        sets += [f'        {model.format(0)}', *internal]
     # The SystemC BFMs exist only in a run that holds the model.
     breaks = 'model' in duts
     if breaks:

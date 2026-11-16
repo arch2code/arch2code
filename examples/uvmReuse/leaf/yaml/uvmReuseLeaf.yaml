@@ -1,0 +1,67 @@
+# uvmReuseLeaf adds its offset register to each pixel of a video stream and
+# passes the frame markers through. Each beat is one pixel, with sof on a
+# frame's first beat, eol on a line's last and eof on a frame's last. Its two
+# standalone variants differ in the width of offset.
+
+ipParameters:
+    constants:
+        UVM_REUSE_OFF_W: { value: 4, maxValue: 8, desc: "Width of the offset register" }
+
+types:
+    uvmReusePixelT: { width: 16, desc: "One pixel" }
+    uvmReuseBitT: { width: 1, desc: "A frame marker" }
+    uvmReuseBusT: { width: 32, desc: "Register bus address and data" }
+    uvmReuseOffT: { width: UVM_REUSE_OFF_W, desc: "Offset added to each pixel" }
+
+structures:
+    uvmReuseBeatSt:
+        pixel: { varType: uvmReusePixelT, desc: "Pixel" }
+        sof: { varType: uvmReuseBitT, desc: "First beat of a frame" }
+        eol: { varType: uvmReuseBitT, desc: "Last beat of a line" }
+        eof: { varType: uvmReuseBitT, desc: "Last beat of a frame" }
+    uvmReuseAddrSt:
+        address: { varType: uvmReuseBusT, generator: address }
+    uvmReuseDataSt:
+        data: { varType: uvmReuseBusT, generator: data }
+    uvmReuseOffSt:
+        offset: { varType: uvmReuseOffT, desc: "Added to each pixel" }
+
+interfaces:
+    uvmReuseVideoIf:
+        interfaceType: rdy_vld
+        desc: "Video, one pixel per beat"
+        structures:
+            - { structure: uvmReuseBeatSt, structureType: data_t }
+    apbReg:
+        interfaceType: apb
+        desc: "Register bus"
+        structures:
+            - { structure: uvmReuseAddrSt, structureType: addr_t }
+            - { structure: uvmReuseDataSt, structureType: data_t }
+
+blocks:
+    uvmReuseLeaf:
+        desc: "Adds offset to each pixel"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        hasUvm: true
+        params: [UVM_REUSE_OFF_W]
+        clocks:
+            clk: { default: true, period: 1, timeUnit: ns }
+        resets:
+            rst_n: { clock: clk }
+        ports:
+            in:  { interface: uvmReuseVideoIf, direction: dst }
+            out: { interface: uvmReuseVideoIf, direction: src }
+        registerPorts:
+            apbReg: { interface: apbReg }
+
+registers:
+    - { register: offset, regType: rw, block: uvmReuseLeaf, structure: uvmReuseOffSt, defaultValue: 1, desc: "Added to each pixel" }
+
+parameters:
+    uvmReuseLeaf:
+        w4: { UVM_REUSE_OFF_W: 4 }
+        w8: { UVM_REUSE_OFF_W: 8 }

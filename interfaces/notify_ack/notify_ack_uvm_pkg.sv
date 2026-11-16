@@ -164,7 +164,7 @@ package notify_ack_uvm_pkg;
                 end
                 if (notify !== 1'b1 || ack !== 1'b1) continue;
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = notify_ack_item::type_id::create("item");
                 // An event has no payload, so the hex field is always 0.
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(), "0"),

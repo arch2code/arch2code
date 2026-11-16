@@ -267,7 +267,7 @@ package pop_ack_uvm_pkg;
                     `uvm_error("A2C_XZ", $sformatf("%s: rdata has X or Z while ack is high: %h", cfg.port_name, rdata))
                 end
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = pop_ack_item#(rdata_t)::type_id::create("item");
                 item.rdata = rdata;
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),

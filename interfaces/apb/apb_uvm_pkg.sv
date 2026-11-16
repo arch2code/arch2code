@@ -324,7 +324,7 @@ package apb_uvm_pkg;
                 in_transfer = setup || (access && vif.pready !== 1'b1);
                 if (!(access && vif.pready === 1'b1)) continue;
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = apb_item::type_id::create("item");
                 item.write  = vif.pwrite;
                 item.addr   = 32'(vif.paddr);

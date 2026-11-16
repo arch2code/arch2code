@@ -1196,6 +1196,12 @@ python3 test_uvm_pkg_regmodel_routed.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: UVM reuse of child variant packages in a composed root"
+echo "------------------------------------------------------------------------"
+python3 test_uvm_reuse.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: UVM test package scaffold has its layout and working defaults"
 echo "------------------------------------------------------------------------"
 python3 test_uvm_test_pkg.py || FAILED=1

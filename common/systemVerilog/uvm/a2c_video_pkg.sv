@@ -665,6 +665,56 @@ package a2c_video_pkg;
         endfunction
     endclass : a2c_video_contract
 
+    // The contract of a chain of designs, each output feeding the next input:
+    // each stage's contract applied in order to the frames the stage before
+    // it expects, the first stage to the planned frame. A frame a stage
+    // leaves unspecified leaves every frame later stages make of it
+    // unspecified. A video output on a connection inside the chain takes the
+    // chain of the stages up to that connection, so a defect in one design
+    // fails first at that design's output.
+    class a2c_video_contract_chain extends a2c_video_contract;
+        a2c_video_contract stages[$];
+
+        `uvm_object_utils(a2c_video_contract_chain)
+
+        function new(string name = "a2c_video_contract_chain");
+            super.new(name);
+        endfunction
+
+        // Pixels are checked when every stage checks its own.
+        function void add_stage(a2c_video_contract stage);
+            stages.push_back(stage);
+            pixel_check = A2C_VIDEO_PIX_EXACT;
+            foreach (stages[i]) if (stages[i].pixel_check != A2C_VIDEO_PIX_EXACT) pixel_check = A2C_VIDEO_PIX_UNCHECKED;
+        endfunction
+
+        virtual function void expected_frames(a2c_video_frame in, a2c_video_cfg cfg, output a2c_video_frame out[$]);
+            a2c_video_frame frames[$] = '{in};
+            foreach (stages[i]) begin
+                a2c_video_frame next[$];
+                foreach (frames[f]) begin
+                    a2c_video_frame made[$];
+                    stages[i].expected_frames(frames[f], cfg, made);
+                    foreach (made[m]) made[m].unspecified |= frames[f].unspecified;
+                    next = {next, made};
+                end
+                frames = next;
+            end
+            out = frames;
+        endfunction
+
+        virtual function bit preserves_frames();
+            foreach (stages[i]) if (!stages[i].preserves_frames()) return 0;
+            return 1;
+        endfunction
+
+        virtual function string describe();
+            string text = $sformatf("%s of %0d stages", get_type_name(), stages.size());
+            foreach (stages[i]) text = {text, $sformatf("; stage %0d, %s", i, stages[i].describe())};
+            return text;
+        endfunction
+    endclass : a2c_video_contract_chain
+
     // What the sequence and the checkers need to know of a port's framing.
     virtual class a2c_video_adapter_base extends uvm_object;
         bit          clocked;
@@ -1536,6 +1586,9 @@ package a2c_video_pkg;
     virtual class a2c_video_output_base extends a2c_video_port;
         a2c_txn_counter_base counter;
         a2c_video_contract   contract;
+        // Set for an output only the DUT lane has, such as a connection
+        // inside the RTL, which in Mode B gets no model-lane checker.
+        bit                  dut_lane_only;
 
         protected a2c_video_expected cache[a2c_video_frame];
 
@@ -1731,7 +1784,7 @@ package a2c_video_pkg;
 
         virtual function void build(a2c_video_env env);
             checkers.push_back(new_checker(env, "_checker", a2c_select_str(env.dual, " DUT lane", "")));
-            if (env.dual) checkers.push_back(new_checker(env, "_model_checker", " model lane"));
+            if (env.dual && !dut_lane_only) checkers.push_back(new_checker(env, "_model_checker", " model lane"));
         endfunction
 
         virtual function void connect(a2c_video_env env);
@@ -1743,7 +1796,7 @@ package a2c_video_pkg;
                 return;
             end
             mon.connect(checkers[0].analysis_export);
-            if (!env.dual) return;
+            if (!env.dual || dut_lane_only) return;
             model_mon = a2c_video_tap#(ITEM)::find(agent, "model_mon");
             if (has_model_mon(env) && model_mon != null) model_mon.connect(checkers[1].analysis_export);
             else checkers[1].enabled = 0;

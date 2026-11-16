@@ -59,7 +59,7 @@ def render_items(prj, data, variant):
         lines += [decl['line'] for decl in parameterizedDeclLines(
             data['parameterizedDecls'], prj, data['blockInfo']['params'])]
         lines.append('')
-    for port in data['uvm']['ports']:
+    for port in data['uvm']['ports'] + data['uvm']['internalMonitors']:
         lines += agent_typedefs(port)
     uvm = data['uvm']
     hasRegModel = uvm['registerBus'] is not None
@@ -154,13 +154,16 @@ def reg_block_class(block, variant):
                   f'        a2c_map.set_mem_stride({mem["name"]}, {mem["rowBytes"]});']
     lines += [f"        default_map.add_submap({child['name']}.default_map, 'h{child['offset']:x});"
               for child in block['children']]
-    # The root locks the whole model once every child map is in place.
+    # The root locks the whole model once every child map is in place. A
+    # parent's register model can hold this block, and then locks it itself.
     if block['isRoot']:
-        lines.append('        lock_model();')
+        lines += ['        if (get_parent() == null) begin',
+                  '            lock_model();']
         # A test need not look anything up through the root map, which is
         # when it would check itself, so a routed model checks at build.
         if block['a2cMap'] and block['children']:
-            lines.append('        a2c_map.check_overlaps_once();')
+            lines.append('            a2c_map.check_overlaps_once();')
+        lines.append('        end')
     lines += ['    endfunction', f"endclass : {cls}"]
     return lines
 
@@ -174,6 +177,15 @@ def env_class(uvm, hasRegModel, variant):
     lines += [f"    a2c_uvm_pkg::a2c_txn_counter #({port['name']}_item_t) {port['counter']};" for port in counters]
     lines += [f"    a2c_uvm_pkg::a2c_txn_digest #({port['name']}_item_t) {port['digest']};" for port in ports]
     lines += [f"    virtual a2c_clk_if {clock['vif']};" for clock in uvm['clocks']]
+    monitors = uvm['internalMonitors']
+    if monitors or uvm['unmonitored']:
+        lines.append("    // Passive agents on the RTL's connections between the block's children,")
+        lines.append("    // built only when the run holds the RTL.")
+        lines += [f"    // Not watched: {item['name']}, {item['reason']}." for item in uvm['unmonitored']]
+    lines += [f"    {mon['name']}_agent_t {mon['agent']};" for mon in monitors]
+    lines += [f"    a2c_uvm_pkg::a2c_txn_digest #({mon['name']}_item_t) {mon['digest']};" for mon in monitors]
+    if monitors:
+        lines.append('    bit model_dut;')
     bus = uvm['registerBus']
     if hasRegModel:
         lines += [f"    {uvm['regBlockClass']} regmodel;",
@@ -207,6 +219,17 @@ def env_class(uvm, hasRegModel, variant):
                   '        end']
     for port in ports:
         lines += [''] + agent_build(port, variant)
+    if monitors:
+        lines += ['',
+                  '        if (!uvm_config_db#(bit)::get(this, "", "a2c_model_dut", model_dut)) begin',
+                  '            `uvm_fatal("A2C_CFG", "no a2c_model_dut setting")',
+                  '        end',
+                  '        if (!model_dut) begin']
+        for mon in monitors:
+            lines.append('            begin')
+            lines += [f'                {line}' for line in internal_monitor_build(mon)]
+            lines.append('            end')
+        lines.append('        end')
     if hasRegModel:
         lines += ['',
                   f'        regmodel = {uvm["regBlockClass"]}::type_id::create("regmodel");',
@@ -227,6 +250,10 @@ def env_class(uvm, hasRegModel, variant):
     lines.append('    virtual function void connect_phase(uvm_phase phase);')
     lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
     lines += [f"        {port['digest']}.watch({port['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for port in ports]
+    if monitors:
+        lines.append('        if (!model_dut) begin')
+        lines += [f"            {mon['digest']}.watch({mon['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for mon in monitors]
+        lines.append('        end')
     if hasRegModel:
         agent = bus['agent']
         lines += [f"        regmodel.default_map.set_sequencer({agent}.sqr, adapter);",
@@ -269,6 +296,25 @@ def env_class(uvm, hasRegModel, variant):
               '    endfunction',
               f"endclass : {cls}"]
     return lines
+
+
+def internal_monitor_build(mon):
+    name = mon['name']
+    cfg = f"{name}_cfg"
+    agent = mon['agent']
+    return [f'{name}_config_t {cfg} = {name}_config_t::type_id::create("{cfg}");',
+            f'if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
+            f'    `uvm_fatal("A2C_CFG", "no virtual {mon["interfaceType"]}_if \'{name}\'")',
+            'end',
+            f"{cfg}.clk_vif = {mon['clockVif']};",
+            f"{cfg}.role = a2c_uvm_pkg::A2C_DST;",
+            f"{cfg}.is_active = UVM_PASSIVE;",
+            f'{cfg}.port_name = "{name}";',
+            f"{cfg}.joint_watch = 0;",
+            f'uvm_config_db#({name}_config_t)::set(this, "{agent}", "cfg", {cfg});',
+            f'{agent} = {name}_agent_t::type_id::create("{agent}", this);',
+            f'{mon["digest"]} = a2c_uvm_pkg::a2c_txn_digest#({name}_item_t)::type_id::create("{mon["digest"]}", this);',
+            f'{mon["digest"]}.port_name = "{name}";']
 
 
 def agent_build(port, variant):

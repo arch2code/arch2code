@@ -248,7 +248,7 @@ package external_reg_uvm_pkg;
                 if (vif.write === '0 || $isunknown(vif.write)) continue;
                 // Each write counts for the joint stall rule (a2c_joint_watch); rdata
                 // is a level, not a handshake.
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = external_reg_item#(data_t)::type_id::create("item");
                 item.write = vif.write;
                 item.wdata = vif.wdata;

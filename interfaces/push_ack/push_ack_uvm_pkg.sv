@@ -196,7 +196,7 @@ package push_ack_uvm_pkg;
                 end
                 if (ack !== 1'b1) continue;
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = push_ack_item#(data_t)::type_id::create("item");
                 item.data = data;
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),

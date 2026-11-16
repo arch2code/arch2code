@@ -3011,6 +3011,10 @@ package a2c_uvm_pkg;
         a2c_role_e              role = A2C_SRC;
         // Port name used in the A2C_TXN log line.
         string                  port_name = "";
+        // Whether the monitor's transfers count as progress for the joint
+        // stall rule. The env clears it on its agents inside the DUT, whose
+        // traffic can go on while the boundary deadlocks.
+        bit                     joint_watch = 1;
 
         function new(string name = "a2c_agent_config");
             super.new(name);

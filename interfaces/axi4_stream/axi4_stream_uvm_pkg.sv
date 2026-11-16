@@ -231,7 +231,7 @@ package axi4_stream_uvm_pkg;
                     continue;
                 end
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),
                                              $sformatf("%0h", item.tdata)), UVM_MEDIUM)
                 ap.write(item);

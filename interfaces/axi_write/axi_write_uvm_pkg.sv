@@ -1285,7 +1285,7 @@ package axi_write_uvm_pkg;
                 held_aw    = aw_pins();
                 // Each AW, W beat and B counts for the joint stall rule (a2c_joint_watch).
                 if ((vif.awvalid === 1'b1 && vif.awready === 1'b1) || (vif.wvalid === 1'b1 && vif.wready === 1'b1)
-                    || (vif.bvalid === 1'b1 && vif.bready === 1'b1)) a2c_joint_watch::handshake();
+                    || (vif.bvalid === 1'b1 && vif.bready === 1'b1)) if (cfg.joint_watch) a2c_joint_watch::handshake();
                 if (vif.bvalid === 1'b1 && vif.bready === 1'b1) take_b();
                 if (vif.wvalid === 1'b1 && vif.wready === 1'b1) begin
                     w_early.push_back('{wid: vif.wid, data: vif.wdata, strb: strb_bits_t'(vif.wstrb),

@@ -3,7 +3,7 @@ import os
 import pysrc.arch2codeGlobals as g
 import pysrc.artifactPaths as artifactPaths
 import pysrc.migrateCommon as migrateCommon
-from pysrc.arch2codeHelper import printWarning
+from pysrc.arch2codeHelper import printWarning, printError, warningAndErrorReport
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
@@ -90,6 +90,8 @@ def _writeBuildManifestMk(rootDir, manifest):
         lines.append(f"A2C_UVM_PKG_{name} := {top['pkgName']}")
         lines.append(f"A2C_UVM_TESTBENCH_{name} := {top['testbench']}")
         lines.append(f"A2C_UVM_PKG_SV_{name} := {top['pkgSv']}")
+        # Compiled before the top's own package, in this order.
+        lines.append(f"A2C_UVM_REUSED_SV_{name} := {asList(top['reusedPkgSv'])}")
         lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
         lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
         lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
@@ -388,12 +390,38 @@ def create(prj):
     uvmNames = prj.config.getConfig('UVMNAMES')
     uvmFiles = dict()
     uvmRegistrarFiles = list()
+    # A reused child's variant package is its own project's file, which this
+    # build compiles and never regenerates.
+    uvmPkgFiles = dict()
     for row in rows:
+        if row['mode'] == 'block' and isUvmRow(row) and row['fileType'] == 'uvmPkg':
+            uvmPkgFiles[(row['blockKey'], row['variant'])] = (row['files']['sv'], row['owner'])
         if row['mode'] == 'block' and isUvmRow(row) and row['owner'] == harnessOwner:
             if row['fileType'] in ('uvmTb', 'uvmPkg', 'uvmTest'):
                 uvmFiles[(row['fileType'], row['blockKey'], row['variant'])] = row['files']['sv']
             elif row['fileType'] == 'uvmRegistrar':
                 uvmRegistrarFiles.append(row['files']['src'])
+
+    def reusedPkgSv(top):
+        # Another project's make gen writes its child's file before this
+        # make db, so a missing one means that child has not been generated.
+        # This project's own files come from its make gen, after this.
+        files = list()
+        for reused in top['reuse']:
+            child = blockByKey[reused['blockKey']]['block']
+            key = (reused['blockKey'], reused['variant'])
+            if key not in uvmPkgFiles:
+                printError(f"UVM top {top['stem']} reuses the variant package {reused['pkgName']} of {child}, "
+                           f"but the build has no uvmPkg file for it. Check the fileMap of {child}'s project.")
+                exit(warningAndErrorReport())
+            path, owner = uvmPkgFiles[key]
+            if owner != harnessOwner and not os.path.exists(path):
+                printError(f"UVM top {top['stem']} reuses {path}, the variant package of {child}, which does "
+                           f"not exist. Run make gen in project {owner}, then make db here.")
+                exit(warningAndErrorReport())
+            files.append(path)
+        return files
+
     uvmTops = list()
     # A block's default UVM top is the one at the variant of its DUT-top
     # wrapper, A2C_VL_TOP_<block>.
@@ -410,6 +438,7 @@ def create(prj):
                 'testbench':    names['testbenchName'],
                 'qualifiedTop': top['tbModule'],
                 'pkgSv':        uvmFiles[('uvmPkg', blockKey, variant)],
+                'reusedPkgSv':  reusedPkgSv(top),
                 'tbSv':         uvmFiles[('uvmTb', blockKey, variant)],
                 'testSv':       uvmFiles[('uvmTest', blockKey, '')],
                 'portmap':      top['portmap'],

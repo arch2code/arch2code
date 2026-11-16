@@ -34,6 +34,7 @@ CLK_GEN_DIR = examples/clkGen
 UVM_MEM_DIR = examples/uvmMem
 UVM_VIDEO_DIR = examples/uvmVideo
 UVM_REGS_DIR = examples/uvmRegs
+UVM_REUSE_DIR = examples/uvmReuse
 
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
@@ -195,6 +196,19 @@ uvm-regs:
 	$(RUN_LIMIT) make -C $(UVM_REGS_DIR)/rundir -j run
 	$(RUN_LIMIT) make -C $(UVM_REGS_DIR)/rundir -j run-vl
 	make -C $(UVM_REGS_DIR)/rtl lint
+
+.PHONY : uvm-reuse
+# The SystemC and Verilator runs of the UVM reuse bench, whose chain holds two
+# instances of the child project's leaf; the child generates first, since the
+# parent compiles its UVM packages. Its UVM runs need a four-state simulator
+# (specs/SIMULATOR_INTEGRATION.md section 9.9).
+uvm-reuse:
+	make -C $(UVM_REUSE_DIR)/leaf gen
+	make -C $(UVM_REUSE_DIR) gen
+	$(RUN_LIMIT) make -C $(UVM_REUSE_DIR)/rundir -j run
+	$(RUN_LIMIT) make -C $(UVM_REUSE_DIR)/rundir -j run-vl
+	make -C $(UVM_REUSE_DIR)/rtl lint
+	make -C $(UVM_REUSE_DIR)/leaf/rtl lint
 
 # Nested register-bus router inheriting its container's parameter; firmware
 # round-trips a parameter-sized leaf register through both routers, model and
@@ -676,6 +690,8 @@ newmodule-all:
 	make -C $(UVM_MEM_DIR) -j newmodule && make -C $(UVM_MEM_DIR) -j gen
 	make -C $(UVM_VIDEO_DIR) -j newmodule && make -C $(UVM_VIDEO_DIR) -j gen
 	make -C $(UVM_REGS_DIR) -j newmodule && make -C $(UVM_REGS_DIR) -j gen
+	make -C $(UVM_REUSE_DIR)/leaf -j newmodule && make -C $(UVM_REUSE_DIR)/leaf -j gen
+	make -C $(UVM_REUSE_DIR) -j newmodule && make -C $(UVM_REUSE_DIR) -j gen
 
 .PHONY : unittest
 unittest:
@@ -691,7 +707,7 @@ PIPELINE_JOBS ?= 8
 # then leave the simulation running.
 PIPELINE_RUN_TIMEOUT ?=
 RUN_LIMIT = $(if $(PIPELINE_RUN_TIMEOUT),timeout -k 30s $(PIPELINE_RUN_TIMEOUT))
-PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen uvm-mem uvm-video uvm-regs
+PIPELINE_TARGETS = diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xproj-socket xif two-clk clk-gen uvm-mem uvm-video uvm-regs uvm-reuse
 pipeline-test:
 	$(MAKE) -j$(PIPELINE_JOBS) $(PIPELINE_TARGETS)
 push-test: clean unittest pipeline-test

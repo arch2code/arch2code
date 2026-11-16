@@ -197,7 +197,7 @@ package rdy_vld_uvm_pkg;
                     continue;
                 end
                 // Each transfer counts for the joint stall rule (a2c_joint_watch).
-                a2c_joint_watch::handshake();
+                if (cfg.joint_watch) a2c_joint_watch::handshake();
                 item = rdy_vld_item#(data_t)::type_id::create("item");
                 item.data = data;
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),

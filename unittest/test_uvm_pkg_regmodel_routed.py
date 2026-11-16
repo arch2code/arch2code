@@ -6,7 +6,7 @@ offset, and an env identical to a leaf top's.
 Each child block builds its own registers and memories at its own offsets and
 creates its own default_map. Its parent adds that map with add_submap() at
 the instance's slot offset, so UVM gives every register its absolute address.
-Only the root calls lock_model(): a child that locked would freeze the model
+Only a root with no parent calls lock_model(): a child that locked would freeze the model
 before its parent added its map. Only the root installs the catcher of the
 UVM/RSRC/NOREGEX warning each child block's configure() raises, around
 building every block below it. A root map that is an a2c_reg_map then
@@ -100,9 +100,10 @@ def block_class(cls, regs, mems, children, a2c, root):
         lines += [f'default_map.add_mem({m[0]}, \'h{m[4]:x}, "{m[3]}");', f'a2c_map.set_mem_stride({m[0]}, {m[5]});']
     lines += [f"default_map.add_submap({c[0]}.default_map, 'h{c[2]:x});" for c in children]
     if root:
-        lines.append('lock_model();')
+        lines += ['if (get_parent() == null) begin', 'lock_model();']
         if a2c:
             lines.append('a2c_map.check_overlaps_once();')
+        lines.append('end')
     return lines + ['endfunction', f'endclass : {cls}', '']
 
 
