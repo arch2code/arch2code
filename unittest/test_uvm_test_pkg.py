@@ -34,7 +34,9 @@ rt_on_model the same way. The fail test
 adds the missing transactions to the first counted output after the smoke
 stimulus, turns the real-time rules off with a2c_rt_off, because
 the missing transaction never closes its unit, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
-in Mode B, with each lane's pending count equal to the missing count. A block
+in Mode B, with each lane's pending count equal to the missing count, and only
+when the smoke test sent stimulus, since a dead data path also misses the
+transactions. A block
 with a model, and so a both DUT, also gets `<block>_model_mismatch_test`,
 which injects a mismatch on that output's model comparator, stops with A2C_CFG
 outside Mode B, demotes only the A2C_MODEL_CMP that carries the injection
@@ -252,7 +254,9 @@ FAIL_TEST = [
     'for (int lane = 0; lane < want; lane++) begin',
     "int unsigned pending = env.out_counter.lane_pending(a2c_lane_e'(lane));",
     'if (pending != missing_count) begin',
-    'if (demoter.demoted != want || others != 0 || shortfall != "") begin',
+    'if (stimulus_sent() == 0) begin',
+    '`uvm_error("A2C_FAIL_TEST", "ubDut_smoke_test sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")',
+    'end else if (demoter.demoted != want || others != 0 || shortfall != "") begin',
     'endclass : ubDut_fail_test',
 ]
 

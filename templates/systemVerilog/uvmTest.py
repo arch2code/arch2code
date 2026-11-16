@@ -254,14 +254,20 @@ def render_footer(uvm):
 
 def fail_test(uvm, failTest):
     cls = failTest['className']
-    return ["// The smoke test with more transactions expected on the first output than",
+    # A block with no input port cannot send stimulus, so its fail test has
+    # nothing to require of the smoke test.
+    hasInputs = any(port['role'] == 'dst' for port in uvm['ports'])
+    lines = ["// The smoke test with more transactions expected on the first output than",
             "// the DUT delivers (+a2c_fail_missing_count, default 1). It passes only if",
             "// the counter reported exactly one A2C_TXN_COUNT, one per lane in Mode B,",
             "// each lane ends missing exactly missing_count transactions, and nothing",
             "// else raised a UVM_ERROR or UVM_FATAL, so a counter that stops reporting",
             "// or reports the wrong shortfall fails it. The missing transaction never",
-            "// closes its unit, so the real-time rules are off.",
-            f"class {cls} extends {uvm['smokeTestClass']};",
+            "// closes its unit, so the real-time rules are off."]
+    if hasInputs:
+        lines += ["// It also fails when the smoke test sent no stimulus, since the shortfall",
+                  "// alone would then pass with a dead data path."]
+    lines += [f"class {cls} extends {uvm['smokeTestClass']};",
             '    a2c_error_demoter demoter;',
             '    int unsigned missing_count = 1;',
             '',
@@ -303,15 +309,21 @@ def fail_test(uvm, failTest):
             '                shortfall = {shortfall, $sformatf("; the %s lane misses %0d, expected %0d", a2c_lane_name(a2c_lane_e\'(lane)),',
             '                                                  pending, missing_count)};',
             '            end',
-            '        end',
-            '        if (demoter.demoted != want || others != 0 || shortfall != "") begin',
-            '            `uvm_error("A2C_FAIL_TEST", $sformatf("expected exactly %s and no other error; caught %0d A2C_TXN_COUNT, %0d other UVM_ERROR/UVM_FATAL%s",',
+            '        end']
+    if hasInputs:
+        lines += ['        if (stimulus_sent() == 0) begin',
+                  f"            `uvm_error(\"A2C_FAIL_TEST\", \"{uvm['smokeTestClass']} sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()\")",
+                  '        end else if (demoter.demoted != want || others != 0 || shortfall != "") begin']
+    else:
+        lines += ['        if (demoter.demoted != want || others != 0 || shortfall != "") begin']
+    lines += ['            `uvm_error("A2C_FAIL_TEST", $sformatf("expected exactly %s and no other error; caught %0d A2C_TXN_COUNT, %0d other UVM_ERROR/UVM_FATAL%s",',
             '                                                  expected, demoter.demoted, others, shortfall))',
             '        end else begin',
             '            `uvm_info("A2C_FAIL_TEST", "the transaction counter reported the missing transactions as intended", UVM_LOW)',
             '        end',
             '    endfunction',
             f"endclass : {cls}"]
+    return lines
 
 
 def model_mismatch_test(uvm, mismatchTest):
