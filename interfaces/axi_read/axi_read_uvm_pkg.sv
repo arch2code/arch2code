@@ -136,14 +136,23 @@ package axi_read_uvm_pkg;
             axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
             if (!super.do_compare(rhs, comparer)) return 0;
-            if (addr !== rhs_.addr || id !== rhs_.id || len !== rhs_.len || size !== rhs_.size ||
-                burst !== rhs_.burst || aruser !== rhs_.aruser) return 0;
-            if (data.size() != rhs_.data.size() || resp.size() != rhs_.resp.size() ||
-                ruser.size() != rhs_.ruser.size()) return 0;
-            foreach (data[i]) if (data[i] !== rhs_.data[i]) return 0;
-            foreach (resp[i]) if (resp[i] !== rhs_.resp[i]) return 0;
-            foreach (ruser[i]) if (ruser[i] !== rhs_.ruser[i]) return 0;
-            return 1;
+            // Every field that differs is passed to comparer, whose
+            // miscompares string then names it.
+            do_compare = 1;
+            if (addr !== rhs_.addr) do_compare = a2c_field_differs(comparer, "addr", addr, rhs_.addr, $bits(addr));
+            if (id !== rhs_.id) do_compare = a2c_field_differs(comparer, "id", id, rhs_.id, $bits(id));
+            if (len !== rhs_.len) do_compare = a2c_field_differs(comparer, "len", len, rhs_.len, $bits(len));
+            if (size !== rhs_.size) do_compare = a2c_field_differs(comparer, "size", size, rhs_.size, $bits(size));
+            if (burst !== rhs_.burst) do_compare = a2c_field_differs(comparer, "burst", burst, rhs_.burst, $bits(burst));
+            if (aruser !== rhs_.aruser) do_compare = a2c_field_differs(comparer, "aruser", aruser, rhs_.aruser, $bits(aruser));
+            if (data.size() != rhs_.data.size() || resp.size() != rhs_.resp.size() || ruser.size() != rhs_.ruser.size()) begin
+                return a2c_field_differs(comparer, "beats", data.size(), rhs_.data.size(), 32);
+            end
+            foreach (data[i]) begin
+                if (data[i] !== rhs_.data[i]) do_compare = a2c_field_differs(comparer, $sformatf("data[%0d]", i), data[i], rhs_.data[i], $bits(data[i]));
+                if (resp[i] !== rhs_.resp[i]) do_compare = a2c_field_differs(comparer, $sformatf("resp[%0d]", i), resp[i], rhs_.resp[i], $bits(resp[i]));
+                if (ruser[i] !== rhs_.ruser[i]) do_compare = a2c_field_differs(comparer, $sformatf("ruser[%0d]", i), ruser[i], rhs_.ruser[i], $bits(ruser[i]));
+            end
         endfunction
 
         virtual function string convert2string();

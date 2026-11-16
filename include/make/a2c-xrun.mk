@@ -28,6 +28,12 @@ $(A2C_UVM_REGISTRAR_SRC:%.cpp=$(BUILD_DIR)/%.o): $(VL_BOUNDARY_STAMP)
 endif
 # Per-simulation options; -nolog so concurrent runs do not fight over xrun.log.
 XRUN_R_OPTS ?= -64bit -nolog
+# WAVES=1 elaborates with read access, which probes need and which slows the
+# simulation, and has the run script source a2c-waves-xrun.tcl.
+ifdef WAVES
+XRUN_OPTS += -access +r
+XRUN_R_OPTS += -input $(A2C_ROOT)/include/make/a2c-waves-xrun.tcl
+endif
 
 # Boost enters the shared-library link, so it must be a shared or PIC library
 # (BOOST_LIBS, shared with the plain/VCS flows in a2c-systemc.mk). Boost.System
@@ -76,36 +82,48 @@ $(XRUN_STAMP): $(OBJ) $(XRUN_HDL_DEPS) $(XRUN_OPTS_STAMP)
 	touch $@
 
 # The script passes + arguments to the simulator and the rest to sc_main as
-# +systemc_args+; --seed N also goes to the SV solver as -svseed N. Under
-# USE_UVM, UVM_TEST is the +UVM_TESTNAME of a run that names none. The
-# build's licence setting goes in too, so a test launched outside make finds
-# the same servers. What the script holds is recorded so a change rewrites it.
+# +systemc_args+; --seed N also goes to the SV solver as -svseed N, and a
+# seed of random is drawn once here, so both sides get one 32-bit value.
+# Under USE_UVM, UVM_TEST is the +UVM_TESTNAME of a run that names none. The
+# simulator also gets +a2c_seed and +a2c_rerun, the command that repeats the
+# run with the seed drawn, which a2c_rerun prints. A WAVES=1 run writes
+# waves.shm in the directory it starts from, A2C_WAVES_DIR. The build's
+# licence setting goes in too, so a test launched outside make finds the same
+# servers. What the script holds is recorded so a change rewrites it.
 XRUN_R_OPTS_TEXT = $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE) $(UVM_TEST)
 XRUN_R_OPTS_STAMP = $(XRUN_STAMP_DIR)/r_opts
 $(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS_TEXT)" ] || printf '%s\n' "$(XRUN_R_OPTS_TEXT)" > $(XRUN_R_OPTS_STAMP))
 
 $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 	mkdir -p $(@D)
-	printf '%s\n' '#!/bin/sh' \
+	printf '%s\n' '#!/bin/bash' \
 		$(if $(LM_LICENSE_FILE),'export LM_LICENSE_FILE="$(LM_LICENSE_FILE)"') \
-		's=; t=' \
+		'export A2C_WAVES_DIR=$$PWD' \
+		'r=$$(printf %q "$$0"); s=; t=; seed=' \
 		'for a; do' \
 		'    shift' \
-		'    if [ -n "$$s" ]; then s=; set -- "$$@" "+systemc_args+$$a" -svseed "$$a"; continue; fi' \
+		'    case "$$s:$$a" in' \
+		'        1:random|:--seed=random) a=$${a%random}$$(od -An -tu4 -N4 /dev/urandom | tr -d " ") ;;' \
+		'    esac' \
+		'    r="$$r $$(printf %q "$$a")"' \
+		'    if [ -n "$$s" ]; then s=; seed=$$a; set -- "$$@" "+systemc_args+$$a" -svseed "$$a"; continue; fi' \
 		'    case "$$a" in' \
 		'        +UVM_TESTNAME=*) t=1; set -- "$$@" "$$a" ;;' \
 		'        +*) set -- "$$@" "$$a" ;;' \
 		'        --seed) s=1; set -- "$$@" "+systemc_args+$$a" ;;' \
-		'        --seed=*) set -- "$$@" "+systemc_args+$$a" -svseed "$${a#--seed=}" ;;' \
+		'        --seed=*) seed=$${a#--seed=}; set -- "$$@" "+systemc_args+$$a" -svseed "$$seed" ;;' \
 		'        *) set -- "$$@" "+systemc_args+$$a" ;;' \
 		'    esac' \
 		'done' \
 		$(if $(and $(USE_UVM),$(UVM_TEST)),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		'[ -z "$$seed" ] || set -- "$$@" "+a2c_seed=$$seed"' \
+		'set -- "$$@" "+a2c_rerun=cd $$(printf %q "$$PWD") && $$r"' \
 		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) "$$@"' > $@
 	chmod +x $@
 
 help::
 	@echo "  XCELIUM_TOOLS / XRUN_GCC_VERS    - Xcelium install tools directory and -gcc_vers release (required with USE_XCELIUM=1)"
+	@echo "  WAVES=1                          - elaborate with -access +r; each run probes WAVES_SCOPE (default sc_main) into waves.shm"
 	@echo "  xrun_snapshots                   - build run_model and one snapshot per DUT_TOPOLOGIES entry"
 	@echo "                                     (<inst>:<cfg>[,<cfg>]... with cfg = verif|model[:tandem]; normally set from the regression file build command)"
 

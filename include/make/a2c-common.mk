@@ -318,8 +318,9 @@ clean::
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
 	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
 	rm -rf $(XRUN_RUNDIR)/xcelium*.d $(XRUN_RUNDIR)/xrun*.log $(XRUN_RUNDIR)/xrun*.history
-	@# UVM transaction recording: tr_db.log is the UVM text database, waves.shm Xcelium's.
-	rm -rf $(VCS_RUNDIR)/tr_db.log $(XRUN_RUNDIR)/waves.shm $(XRUN_RUNDIR)/tr_db.log
+	@# UVM transaction recording: tr_db.log is the UVM text database, waves.shm Xcelium's,
+	@# which a WAVES=1 Xcelium run also writes; a WAVES=1 VCS run writes waves.fsdb.
+	rm -rf $(VCS_RUNDIR)/tr_db.log $(VCS_RUNDIR)/waves.fsdb $(XRUN_RUNDIR)/waves.shm $(XRUN_RUNDIR)/tr_db.log
 
 
 help::

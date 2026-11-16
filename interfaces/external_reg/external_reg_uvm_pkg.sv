@@ -71,6 +71,11 @@ package external_reg_uvm_pkg;
         virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
             external_reg_item#(data_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (write !== rhs_.write) void'(comparer.compare_field("write", write, rhs_.write, $bits(write)));
+            if (wdata !== rhs_.wdata) void'(comparer.compare_field("wdata", wdata, rhs_.wdata, $bits(wdata)));
+            if (rdata !== rhs_.rdata) void'(comparer.compare_field("rdata", rdata, rhs_.rdata, $bits(rdata)));
             return super.do_compare(rhs, comparer) && (write === rhs_.write) && (wdata === rhs_.wdata) &&
                    (rdata === rhs_.rdata);
         endfunction

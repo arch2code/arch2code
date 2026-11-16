@@ -78,6 +78,11 @@ package memory_uvm_pkg;
         virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
             memory_item#(addr_t, data_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (write !== rhs_.write) void'(comparer.compare_field("write", write, rhs_.write, $bits(write)));
+            if (addr !== rhs_.addr) void'(comparer.compare_field("addr", addr, rhs_.addr, $bits(addr)));
+            if (data !== rhs_.data) void'(comparer.compare_field("data", data, rhs_.data, $bits(data)));
             return super.do_compare(rhs, comparer) && (write === rhs_.write) && (addr === rhs_.addr) &&
                    (data === rhs_.data);
         endfunction
@@ -479,8 +484,9 @@ package memory_uvm_pkg;
         extends a2c_in_order_comparator #(memory_item#(addr_t, data_t));
         typedef memory_item#(addr_t, data_t) item_t;
 
-        protected item_t held_dut;
-        protected item_t held_model;
+        protected item_t   held_dut;
+        protected item_t   held_model;
+        protected realtime held_at[2];
 
         `uvm_component_param_utils(memory_comparator#(addr_t, data_t))
 
@@ -498,14 +504,18 @@ package memory_uvm_pkg;
         endfunction
 
         protected virtual function void compare_pair(item_t dut, item_t model, string k);
+            realtime at[2] = pair_at;
             if (held_dut != null) begin
+                pair_at = held_at;
                 check_pair(replaced(held_dut, dut) && replaced(held_model, model), held_dut, held_model, k);
+                pair_at    = at;
                 held_dut   = null;
                 held_model = null;
             end
             if (xz_read(dut) || xz_read(model)) begin
                 held_dut   = dut;
                 held_model = model;
+                held_at    = at;
                 return;
             end
             super.compare_pair(dut, model, k);
@@ -514,9 +524,9 @@ package memory_uvm_pkg;
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (held_dut == null) return;
-            `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with a read of X or Z that no access followed, after %0d pairs: DUT %s, model %s%s",
-                                              get_full_name(), pairs, held_dut.convert2string(), held_model.convert2string(),
-                                              a2c_run_ended_clause()))
+            `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with a read of X or Z that no access followed, after %0d pairs: DUT %s sampled at %0t, model %s sampled at %0t%s",
+                                              get_full_name(), pairs, held_dut.convert2string(), held_at[A2C_DUT_LANE],
+                                              held_model.convert2string(), held_at[A2C_MODEL_LANE], a2c_run_ended_clause()))
         endfunction
     endclass : memory_comparator
 

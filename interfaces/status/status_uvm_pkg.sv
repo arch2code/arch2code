@@ -42,6 +42,9 @@ package status_uvm_pkg;
         virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
             status_item#(data_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (data !== rhs_.data) void'(comparer.compare_field("data", data, rhs_.data, $bits(data)));
             return super.do_compare(rhs, comparer) && (data === rhs_.data);
         endfunction
 

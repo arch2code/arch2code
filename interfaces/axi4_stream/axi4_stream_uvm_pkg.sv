@@ -69,6 +69,15 @@ package axi4_stream_uvm_pkg;
         virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
             axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (tdata !== rhs_.tdata) void'(comparer.compare_field("tdata", tdata, rhs_.tdata, $bits(tdata)));
+            if (tlast !== rhs_.tlast) void'(comparer.compare_field("tlast", tlast, rhs_.tlast, $bits(tlast)));
+            if (tid !== rhs_.tid) void'(comparer.compare_field("tid", tid, rhs_.tid, $bits(tid)));
+            if (tdest !== rhs_.tdest) void'(comparer.compare_field("tdest", tdest, rhs_.tdest, $bits(tdest)));
+            if (tuser !== rhs_.tuser) void'(comparer.compare_field("tuser", tuser, rhs_.tuser, $bits(tuser)));
+            if (tstrb !== rhs_.tstrb) void'(comparer.compare_field("tstrb", tstrb, rhs_.tstrb, $bits(tstrb)));
+            if (tkeep !== rhs_.tkeep) void'(comparer.compare_field("tkeep", tkeep, rhs_.tkeep, $bits(tkeep)));
             return super.do_compare(rhs, comparer) && (tdata === rhs_.tdata) && (tlast === rhs_.tlast)
                 && (tid === rhs_.tid) && (tdest === rhs_.tdest) && (tuser === rhs_.tuser)
                 && (tstrb === rhs_.tstrb) && (tkeep === rhs_.tkeep);

@@ -895,9 +895,11 @@ package a2c_video_pkg;
     //
     // Every failure is an A2C_VIDEO UVM_ERROR naming the port and, in Mode
     // B, the lane; the first max_reported print and check_phase counts the
-    // rest in one more. check_phase closes a frame still open and compares
-    // it, then reports the expected frames that never came out; both name
-    // what ended the run.
+    // rest in one more. The pixel values of a frame that differ under an
+    // exact check are one failure, which counts them and lists the first
+    // max_pixels_reported by line and x. check_phase closes a frame still
+    // open and compares it, then reports the expected frames that never came
+    // out; both name what ended the run.
     class a2c_video_checker #(type ITEM = uvm_sequence_item) extends uvm_component;
         typedef a2c_video_checker #(ITEM) this_t;
 
@@ -908,6 +910,7 @@ package a2c_video_pkg;
         a2c_video_output_base                                       owner;
         string                                                      port_name = "";
         int unsigned                                                max_reported = 10;
+        int unsigned                                                max_pixels_reported = 8;
         // Cleared for a lane that has no monitor to read, which A2C_CFG has
         // reported; the checker then reports nothing.
         bit                                                         enabled = 1;
@@ -1138,6 +1141,12 @@ package a2c_video_pkg;
             int unsigned    j = 0;
             int unsigned    run_ons = 0;
             bit             exact;
+            // The pixel values that differ in lines of the expected length.
+            int unsigned    px_compared = 0;
+            int unsigned    px_differ = 0;
+            int unsigned    px_lines = 0;
+            string          px_list = "";
+            int unsigned    px_listed = 0;
             if (expected.size() == 0) begin
                 fail($sformatf("output frame %0d of %0d lines came with no expected frame left%s", frames_out - 1, out.lines.size(), sfx));
                 frames_bad++;
@@ -1162,11 +1171,13 @@ package a2c_video_pkg;
                 a2c_video_line w = e.lines[j];
                 int            first = -1;
                 int unsigned   differ = 0;
+                int unsigned   xs[$];
                 trim(o, w.px.size());
                 for (int unsigned x = 0; x < o.px.size() && x < w.px.size(); x++) begin
                     if (o.px[x] == adapter.mask(w.px[x])) continue;
                     if (first < 0) first = x;
                     differ++;
+                    if (px_listed + xs.size() < max_pixels_reported) xs.push_back(x);
                 end
                 if (owner.contract.pixel_check == A2C_VIDEO_PIX_EXACT && differ == 0 && o.px.size() > w.px.size()
                         && out.lines.size() < e.lines.size() && j + 1 < e.lines.size() && runs_on(o, w.px.size(), e.lines[j + 1])) begin
@@ -1181,14 +1192,26 @@ package a2c_video_pkg;
                     fail($sformatf("%s line %0d: %0d pixels, expected %0d%s", name, j, o.px.size(), w.px.size(),
                                    (owner.contract.pixel_check != A2C_VIDEO_PIX_EXACT) ? string'("") :
                                    (first >= 0) ? $sformatf("; first differing pixel x=%0d", first) : "; the pixels both hold agree"));
-                end else if (exact && differ != 0) begin
-                    fail($sformatf("%s line %0d: pixel x=%0d is 'h%0h, expected 'h%0h; %0d of %0d pixels differ", name, j,
-                                   first, o.px[first], adapter.mask(w.px[first]), differ, w.px.size()));
+                end else if (exact) begin
+                    px_compared += w.px.size();
+                    if (differ != 0) begin
+                        px_differ += differ;
+                        px_lines++;
+                        foreach (xs[i]) begin
+                            px_list = {px_list, a2c_select_str(px_listed == 0, "", "; "),
+                                       $sformatf("line %0d x=%0d is 'h%0h, expected 'h%0h", j, xs[i], o.px[xs[i]], adapter.mask(w.px[xs[i]]))};
+                            px_listed++;
+                        end
+                    end
                 end
                 if (!adapter.clocked && o.eol != e.lines[j].eol) begin
                     fail(o.eol ? $sformatf("%s line %0d: EOL on its last beat, where the expected frame has none", name, j)
                                : $sformatf("%s line %0d: no EOL on its last beat%s", name, j, sfx));
                 end
+            end
+            if (px_differ != 0) begin
+                fail($sformatf("%s: %0d of %0d pixels differ, in %0d of %0d lines; %s%s", name, px_differ, px_compared, px_lines,
+                               e.lines.size(), a2c_select_str(px_listed < px_differ, $sformatf("the first %0d: ", px_listed), ""), px_list));
             end
             if (!adapter.clocked && y < out.lines.size() && !out.lines[out.lines.size() - 1].eol) begin
                 fail($sformatf("%s line %0d: no EOL on its last beat%s", name, out.lines.size() - 1, sfx));

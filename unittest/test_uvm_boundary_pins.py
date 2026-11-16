@@ -373,6 +373,13 @@ def check_testbenches(work, design):
         hdl = f'{stem}_hdl_sv_wrapper'
         with open(os.path.join(work, 'top', 'uvm', f'{tb}.sv')) as f:
             lines = [line.strip().rstrip(',') for line in f]
+        # The VCS_DEBUG waveform block is the same in every testbench module
+        # and holds no pins, so the section checks below leave it out.
+        if lines.count('`ifdef VCS_DEBUG') != 1 or not any(line.startswith('$fsdbDumpvars(') for line in lines):
+            problems.append(f"{tb}.sv lacks the one `ifdef VCS_DEBUG block that calls $fsdbDumpvars")
+        else:
+            start = lines.index('`ifdef VCS_DEBUG')
+            lines = lines[:start] + lines[lines.index('`endif', start) + 1:]
         payloadPkg = {payload: pkg if design.parameterizable(payload) else TOP_PKG
                       for *_, payload in UVM_PORTS[block]}
         portPins = port_pins(design, block, values)

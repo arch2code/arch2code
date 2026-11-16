@@ -66,6 +66,9 @@ package pop_ack_uvm_pkg;
         virtual function bit do_compare(uvm_object rhs, uvm_comparer comparer);
             pop_ack_item#(rdata_t) rhs_;
             if (!$cast(rhs_, rhs)) return 0;
+            // A field that differs is also passed to comparer, whose
+            // miscompares string then names it.
+            if (rdata !== rhs_.rdata) void'(comparer.compare_field("rdata", rdata, rhs_.rdata, $bits(rdata)));
             return super.do_compare(rhs, comparer) && (rdata === rhs_.rdata);
         endfunction
 

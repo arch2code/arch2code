@@ -28,7 +28,7 @@ Every flow compiles the same SystemC testbench and models, written as C++20 modu
 | `XCELIUM`, `NCSC`, `CADENCE`, `LNX86`, `XMSC`, `_GLIBCXX_USE_CXX11_ABI=1` | `USE_XCELIUM` | `main.cpp` rethrows `xmsc_elab_exception`, which xmelab uses to end the elaboration run of `sc_main`. The other defines are the ones xmsc passes to its own compiler |
 | `XCELIUM_DUT` | `USE_XCELIUM` and `VL_DUT` | registrars and wrappers use the generated foreign-module shell `<top>` from `<top>_xcelium.h` |
 | `VERILATOR` | `VL_DUT` with neither switch | the Verilator flow, including `--vlTrace` VCD tracing. `sc_main` passes its arguments to `Verilated::commandArgs`, so RTL plusargs read the run's command line |
-| `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1` | the HDL wrapper calls `$fsdbDumpvars` when the run passes `+fsdbTrace` |
+| `VCS_DEBUG` (SystemVerilog) | `VCS_DEBUG=1`, or `WAVES=1` under `USE_VCS` | when the run passes `+fsdbTrace`, the HDL wrapper and the UVM testbench module call `$fsdbDumpvars` on the scope `+a2c_waves_scope` names, or else on themselves |
 | `VERILATOR` (SystemVerilog) | Verilator, set by the tool | the HDL wrapper leaves out its X/Z checker instances (section 9.4) |
 | `A2C_UVM_RTL_DUT` (SystemVerilog) | `USE_UVM` with `UVM_DUT=rtl` (section 9.7) | the generated UVM testbench module holds the RTL wrapper and ties off its pins toward SystemC |
 | `A2C_UVM_BOTH_DUT` (SystemVerilog) | `USE_UVM` with `UVM_DUT=both` (section 9.7) | the generated UVM testbench module holds the RTL wrapper on the port interfaces and a second interface per port, `<port>_model`, on the pins toward the SystemC model (Mode B, section 9.12) |
@@ -202,6 +202,8 @@ The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in secti
 | `VLOGAN_OPTS` | optional | `+vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps` | `vlogan` options, both stages | |
 | `VCS_ELAB_OPTS` | optional | `-sysc=234` | `vcs` elaboration options | |
 | `VCS_DEBUG` | optional | unset | `1` adds `-kdb -debug_access` to the link and `+define+VCS_DEBUG` to `vlogan`, for FSDB dumps with `+fsdbTrace` at run time | `1` |
+| `WAVES` | optional | unset | `1` sets `VCS_DEBUG`, and the UVM run script adds `+fsdbTrace +fsdbfile+waves.fsdb`, so each run writes `waves.fsdb` in the directory it starts from. A non-UVM run passes `+fsdbTrace` itself (section 9.14) | `1` |
+| `WAVES_SCOPE` | optional, read at run time | the UVM testbench module | the instance a `WAVES=1` UVM run dumps, passed to the simv as `+a2c_waves_scope` | `sc_main.isp_gain.tb_hdl.dut` |
 | `VCS_LIB_SV_FILES` | optional | every `interfaces/*/*_if.sv`, every `interfaces/*/*_xcheck.sv` and every `common/systemVerilog/*.sv` except `flops.sv` | units `vlogan` analyses explicitly because it does not search `-y` directories | |
 | `VCS_RUNDIR` | optional | `$(PROJECT_RUNDIR)` | working directory of `vlogan` and `vcs` | |
 | `SNPSLMD_LICENSE_FILE` | tool | | Synopsys licence servers | `27000@<license-server>` |
@@ -220,6 +222,8 @@ The topology variables (`VL_INST`, `VL_TYPE`, `VL_TANDEM`, `DUT_*`) are in secti
 | `XRUN_DUT_LIB` | optional | `a2c_dut` | `-makelib` library that holds the HDL | |
 | `XRUN_RUNDIR` | optional | `$(PROJECT_RUNDIR)` | working directory of `xrun`, where the snapshots live | |
 | `LM_LICENSE_FILE` | read by the builder and the tool | none | licence servers, captured into each run script | `5280@<license-server>` |
+| `WAVES` | optional | unset | `1` elaborates with `-access +r` and has every run script source `include/make/a2c-waves-xrun.tcl`, which probes `WAVES_SCOPE` into `waves.shm` in the directory the run starts from. Read access slows the simulation | `1` |
+| `WAVES_SCOPE` | optional, read at run time | `sc_main` | the scope a `WAVES=1` run probes, with every level below it | `sc_main.isp_gain.tb_hdl.dut` |
 
 ## 4. Sample site setup scripts
 
@@ -300,7 +304,7 @@ Run every command from the project's `rundir/`.
 | `make USE_VCS=1 gen`, `make USE_XCELIUM=1 gen` | generation including `.gen/vl` boundary files |
 | `make help USE_VCS=1`, `make help USE_XCELIUM=1` | targets and flow variables. The parse checks need `VCS_HOME`, or `XCELIUM_TOOLS` and `XRUN_GCC_VERS`, and also `BOOST_INCLUDE` and `LD_BOOST` or `BOOST_LIBS`, plus `SYSTEMC_INCLUDE` and `SYSTEMC_LIBDIR` under VCS. Placeholders satisfy them |
 | `make help-hooks` | every `EXTRA_*` hook, the command it feeds, and its value |
-| `make clean` | the database, `.gen/`, `build/`, `build_xrun/`, and in the rundir `AN.DB`, `csrc`, `vc_hdrs.h`, `vcs.log`, `vlogan_*.log`, `xcelium*.d`, `xrun*.log`, `xrun*.history`, and any `waves.shm` or `tr_db.log`, whatever switch is set. Run it from the project root, which reads no toolchain variable. From `rundir/` it needs the same variables as a build |
+| `make clean` | the database, `.gen/`, `build/`, `build_xrun/`, and in the rundir `AN.DB`, `csrc`, `vc_hdrs.h`, `vcs.log`, `vlogan_*.log`, `xcelium*.d`, `xrun*.log`, `xrun*.history`, and any `waves.shm`, `waves.fsdb` or `tr_db.log`, whatever switch is set. Run it from the project root, which reads no toolchain variable. From `rundir/` it needs the same variables as a build |
 
 - `vcs_snapshots` and `xrun_snapshots` stop when `VL_DUT=` is given.
 - Objects compile once per flow. Each further VCS topology is a link, each further Xcelium topology an elaboration.
@@ -465,7 +469,7 @@ Harmless warnings: Xcelium `*W,SCK910` on `sc_start(0)`, `SPDUSD` and `LIBNOU` f
 
 - Under Xcelium, `sc_main` runs twice: once under xmelab during the snapshot build, up to the first `sc_start`, and again under xmsim for each run. Code before `sc_start` runs in both, so side effects such as file writes happen at build time too.
 - The HDL wrappers fail a run on an X or Z at a port whose interface type has a UVM agent (section 9.4). That applies to every VCS and Xcelium run with an RTL DUT, not only to UVM runs.
-- `--vlTrace` has no effect under VCS or Xcelium. Under VCS, build with `VCS_DEBUG=1` and run with `+fsdbTrace` for FSDB waveforms. This needs Verdi's FSDB support in the VCS install. The Xcelium flow has no built-in waveform switch. Elaboration access options such as `-access` go on `EXTRA_XRUN_OPTS`, and the site's probe commands on `EXTRA_XRUN_R_OPTS`, since the snapshot build simulates nothing.
+- `--vlTrace` has no effect under VCS or Xcelium. Build with `WAVES=1` for waveforms instead (section 9.14). Under VCS this needs Verdi's FSDB support in the VCS install. Other Xcelium access options go on `EXTRA_XRUN_OPTS`, and other probe commands on `EXTRA_XRUN_R_OPTS`, since the snapshot build simulates nothing.
 
 ## 8. Verification
 
@@ -917,7 +921,7 @@ endclass
 
 A frame with no EOF closes on the EOL that completes its expected lines, or at the next SOF. When a line's width is not a multiple of the pixels per beat, the DUT may pad its last beat, as UG934 allows; the checker trims the padding before it compares. The output's checkers share the frames the contract returns, so the contract must not change them afterwards.
 
-Each test logs the corner, the geometry and, once, the contract each output checks, as `A2C_VIDEO` `UVM_INFO` at `UVM_LOW`. A failure is an `A2C_VIDEO` `UVM_ERROR` per broken line or frame, such as `vout: frame 1 line 0: 60 pixels, expected 64` or `vout: frame 1: no EOF on its last beat; the next frame's SOF came first`. A marker the expected frame lacks is reported too, as in `vout: frame 1: EOF on its last beat, where the expected frame has none`. Under `A2C_VIDEO_PIX_EXACT` a line that holds the head of the next one is reported as `frame 1 line 0: no EOL on its last beat, so line 1 ran on into it with 4 of its 64 pixels`, and the lines after it are paired again. Beats outside any frame are reported once per run of them. `check_phase` closes a frame still open and compares it, ending each message with `the run ended before the frame did` and what ended the run, then reports the expected frames that never came out. It summarises each lane: `vout: 3 of 3 expected frames came out, from 3 planned, 24 lines, 384 beats; 0 frames failed, 0 failures`.
+Each test logs the corner, the geometry and, once, the contract each output checks, as `A2C_VIDEO` `UVM_INFO` at `UVM_LOW`. A failure is an `A2C_VIDEO` `UVM_ERROR` per broken line or frame, such as `vout: frame 1 line 0: 60 pixels, expected 64` or `vout: frame 1: no EOF on its last beat; the next frame's SOF came first`. Under `A2C_VIDEO_PIX_EXACT` the pixel values that differ in a frame's lines of the expected length are one failure for the frame, which counts them and lists the first `max_pixels_reported` (default 8) by line and x: `vout: frame 0: 3 of 512 pixels differ, in 2 of 8 lines; line 1 x=16 is 'h16, expected 'h17; ...`, with `the first 8: ` before the list when it is cut short. A marker the expected frame lacks is reported too, as in `vout: frame 1: EOF on its last beat, where the expected frame has none`. Under `A2C_VIDEO_PIX_EXACT` a line that holds the head of the next one is reported as `frame 1 line 0: no EOL on its last beat, so line 1 ran on into it with 4 of its 64 pixels`, and the lines after it are paired again. Beats outside any frame are reported once per run of them. `check_phase` closes a frame still open and compares it, ending each message with `the run ended before the frame did` and what ended the run, then reports the expected frames that never came out. It summarises each lane: `vout: 3 of 3 expected frames came out, from 3 planned, 24 lines, 384 beats; 0 frames failed, 0 failures`.
 
 **Real-time checks on a video port.** At `start_of_simulation_phase` the env finds each `a2c_rt_checker` whose input or output is connected to a video port's `mon` and gives its `a2c_video_unit_rule` the frames the run plans: the planned frames for an input rule, the contract's frames for an output rule. On a stream with no EOF, or for a frame expected with none, the rule ends a unit on the EOL that completes the frame's lines, so a cut or a short frame stays one unit. A rule on a stream with no EOF that ends a line while no frame is due raises one `A2C_CFG` error, since it is not on a video port the test plans. When an output's contract returns 0 from `preserves_frames()`, the env turns off only the checkers on that output's monitor, with an `A2C_VIDEO` info naming each; the others keep their bounds.
 
@@ -1022,8 +1026,10 @@ The run scripts take the test's arguments unchanged, apart from the seed:
 - Xcelium: arguments starting with `+` go to the simulator, every other argument goes to `sc_main` as `+systemc_args+<arg>`, and `--seed N` or `--seed=N` also adds `-svseed N`. This applies to every topology, so non-UVM Xcelium runs also get `-svseed`. The script exports the build's `LM_LICENSE_FILE`.
 - VCS: simv passes its whole command line to `sc_main`, so the script only converts the seed. Its `dec()` reads `0x` or `0X` as hex, a leading `0` as octal, as `sc_main`'s `std::stoul` does, and anything else as decimal. `random` draws a 32-bit value from `/dev/urandom`. The script then passes one decimal value both as `--seed` and as `+ntb_random_seed`, the only form the SV solver reads, so the `Cmd line:` line of the log records the seed. A seed that is not one of those forms, or that does not fit 32 bits, stops the run with exit status 2 before simv starts. The digit count is checked before the arithmetic, which would wrap past 64 bits.
 - Both: with `UVM_TEST` set, a run that names no `+UVM_TESTNAME` gets `+UVM_TESTNAME=$(UVM_TEST)`. The script records `UVM_TEST`, so a change rewrites it.
+- Both: a seed of `random` is drawn once, by the script, so `sc_main` and the SV solver get the same value. The script adds `+a2c_seed=<seed>` when the run gives one, and `+a2c_rerun=cd <directory> && <script> <arguments>`, the command that repeats the run with the seed drawn. The base test prints them as `A2C_RERUN` (section 9.14).
+- Both: under `WAVES=1` the run writes waves in the directory it starts from: `waves.shm` under Xcelium, `waves.fsdb` under VCS (section 9.14).
 
-Xcelium's `-svseed` reads the same three forms as `std::stoul` with base 0, so the Xcelium script passes the value through. A malformed or over-32-bit `-svseed` value only warns there (`SVSEEDW`, seed 1). A probe on Xcelium 26.03 showed `010` giving seed 8, `0x1f` and `0X1F` giving 31, and `08`, `1f` and 4294967296 warning. `sc_main` still parses `--seed` itself, and stops with exit status 2 on a value with no leading digits. `--seed random` draws separately on the two sides under Xcelium and once under VCS. A seed never gives the same stimulus on both vendors.
+Xcelium's `-svseed` reads the same three forms as `std::stoul` with base 0, so the Xcelium script passes the value through. A malformed or over-32-bit `-svseed` value only warns there (`SVSEEDW`, seed 1). A probe on Xcelium 26.03 showed `010` giving seed 8, `0x1f` and `0X1F` giving 31, and `08`, `1f` and 4294967296 warning. `sc_main` still parses `--seed` itself, and stops with exit status 2 on a value with no leading digits. A seed never gives the same stimulus on both vendors.
 
 A run names its testbench, DUT and top the way it does at elaboration. `dutRun.py` maps a test with `--uvmDut <dut> --uvmTop <top>` to `<base>_uvm_<top>_<dut>` and stops with an error when only one of the two is given. The config rejects a `--uvmDut` its block does not have and a `--uvmTop` that is not one of its block's stems, and the wrapper fails a run whose `--uvmDut` does not match the snapshot (section 9.8). From `examples/uvmVideo/rundir`:
 
@@ -1516,7 +1522,7 @@ Each agent package header lists, for each role, what the DUT produces that is no
 The comparator classes are in `common/systemVerilog/uvm/a2c_uvm_pkg.sv`:
 
 - `a2c_comparator_base` holds what every comparator shares: `midstream_beats` (64), `max_reported` (10), `auto_stable` (1), `counted` (0), `stable_point()`, `inject_mismatch()`, `get_pairs()`, `cut()`, `uncut()` and `lane_dead()`. The env's `comparators` list holds every agent's `model_cmp` as this type.
-- `a2c_in_order_comparator #(T)` pairs the DUT lane's item n with the model lane's item n, in arrival order on each lane, and compares them with `T::compare()`. A mismatch is an `A2C_MODEL_CMP` `UVM_ERROR` naming the comparator and the pair, with both items printed. After `max_reported` mismatches the rest are counted, and `check_phase` reports how many went unprinted. At `check_phase` items either lane left unpaired are `A2C_MODEL_CMP` errors, unless `counted` is set, which the env sets on a counted port because its counter already reports the shortfall or excess, or a lane is dead, because the `A2C_SKEW` or `A2C_JOINT_STALL` error that declared it dead has already failed the run and the comparison stopped at the death. A subclass that overrides `key()` pairs in order per key: the AXI comparators key by ID. `uvm_in_order_class_comparator` is not used, because it has no leftover check and none of these hooks.
+- `a2c_in_order_comparator #(T)` pairs the DUT lane's item n with the model lane's item n, in arrival order on each lane, and compares them with `T::compare()`. A mismatch is an `A2C_MODEL_CMP` `UVM_ERROR` naming the comparator and the pair, with both items printed, the time each item reached the comparator, and the fields that differ (section 9.14). After `max_reported` mismatches the rest are counted, and `check_phase` reports how many went unprinted. At `check_phase` items either lane left unpaired are `A2C_MODEL_CMP` errors, unless `counted` is set, which the env sets on a counted port because its counter already reports the shortfall or excess, or a lane is dead, because the `A2C_SKEW` or `A2C_JOINT_STALL` error that declared it dead has already failed the run and the comparison stopped at the death. A subclass that overrides `key()` pairs in order per key: the AXI comparators key by ID. `uvm_in_order_class_comparator` is not used, because it has no leftover check and none of these hooks.
 - `a2c_status_comparator #(T)` applies the status policy. `status_comparator` and `external_reg_comparator` extend it.
 - `a2c_reg_comparator #(T)` extends `a2c_in_order_comparator` for an agent that can carry register reads. It adds the skip list and asks the guard about each read. A subclass defines `is_read()`, which returns whether an item is a read and its address, and `same_but_data()`, which compares two items in everything but the read data. `apb_comparator` and Pro's `lmmi_comparator` are the `model_cmp` of their agents.
 
@@ -1567,12 +1573,13 @@ end
 
 | Id | Severity | Meaning | What to change |
 | :--- | :--- | :--- | :--- |
-| `A2C_MODEL_CMP` | `UVM_ERROR`; `UVM_INFO` at `UVM_NONE` for the line that says later mismatches are counted, and at `UVM_MEDIUM` for a comparison a lane death stopped | the model's output differs from the RTL's on a pair, a lane left items unpaired, or a status check failed | the RTL and the model disagree: find which matches the specification and fix the other. The message prints both items and the pair index |
+| `A2C_MODEL_CMP` | `UVM_ERROR`; `UVM_INFO` at `UVM_NONE` for the line that says later mismatches are counted, and at `UVM_MEDIUM` for a comparison a lane death stopped | the model's output differs from the RTL's on a pair, a lane left items unpaired, or a status check failed | the RTL and the model disagree: find which matches the specification and fix the other. The message prints the pair index, both items, when each lane's monitor sampled its item, and the fields that differ (section 9.14). An unpaired report gives the first leftover item's sample time |
 | `A2C_MODEL_CMP_MIDSTREAM` | `UVM_WARNING` | a mismatch inside a midstream window, or of a midstream read of a volatile register or read-only memory, under `+a2c_predict_midstream=1` | expected near a midstream write or read; remove the access or the plusarg to check those beats |
 | `A2C_MIDSTREAM` | `UVM_ERROR`; `UVM_INFO` under `+a2c_predict_midstream=1` | a register write, or a read of a volatile register or read-only memory, while outputs had transactions pending | move the access to after `wait_for_outputs()`, or skip the read's address on the register bus comparator |
 | `A2C_REG_SKIP` | `UVM_INFO` at `UVM_LOW` | at `check_phase`, the reads each entry of a register bus comparator's skip list matched, one line per entry | nothing |
 | `A2C_STATUS` | `UVM_INFO` at `UVM_MEDIUM` | a status value logged under the `off` policy | nothing |
 | `A2C_XZ` | `UVM_ERROR` | a status value with X or Z under the `bounds` policy | the lane named drives an unknown status |
+| `A2C_RERUN` | `UVM_INFO` at `UVM_NONE` | at `start_of_simulation_phase`, and again just before the run's first `UVM_ERROR` or `UVM_FATAL`: the seed and the command that repeats the run (section 9.14) | nothing; copy the command to reproduce the run |
 | `A2C_MISMATCH_TEST` | `UVM_ERROR`; `UVM_INFO` at `UVM_LOW` on a pass | `<block>_model_mismatch_test` did not see exactly one injected mismatch and nothing else (section 9.6) | read the other errors first; a comparator that compared fewer pairs than `mismatch_at` means the port received too little traffic |
 
 `A2C_TXN_COUNT` names its lane in Mode B. `A2C_REPLAY`, `A2C_CUT`, `A2C_DRAIN`, `A2C_SKEW`, `A2C_JOINT_STALL` and `A2C_PASSIVE` are in section 9.6.
@@ -1651,6 +1658,69 @@ This is the one list of the places where the flow departs from IEEE 1800.2 or fr
 | Knobs sit on the sequence and reach components through `uvm_config_db` | knobs on `a2c_video_cfg`, passed to the env directly | the sequence, the contract and the checkers read one geometry, and `configure_video()`, the corner and the plusargs apply to it in one order |
 | Idle time is a sequence delay | blanking as idle items on `raw`, and as `gap` on handshaked items | a raw driver sends an item every clock and has no idle state, and handshaked items already carry `gap` |
 | An adapter converts with `uvm_reg_adapter`-style `bus2reg` and `reg2bus` | `a2c_video_adapter` setters and getters | a beat carries a level or a marker and up to `pixels_per_beat` pixels, set one field at a time |
+
+### 9.14 Debugging a run
+
+A failing regression entry leaves its log at `regr/<session>/runs/<group path>/<test>/run_<n>/<test>.log` (section 5.5). Read the first `UVM_ERROR` or `UVM_FATAL`: the reports after it are often its consequences, and the end-of-test reports that follow a run timeout or a joint stall say so (section 9.6).
+
+#### Repeating the run
+
+Every UVM test prints one `A2C_RERUN` `UVM_INFO` at `UVM_NONE` at `start_of_simulation_phase`, and the same line again just before the run's first `UVM_ERROR` or `UVM_FATAL`, so it sits beside the failure in the log:
+
+```
+UVM_INFO @ 0: reporter [A2C_RERUN] seed 6603471: cd /proj/isp_gain/rundir && build_xrun/run_uvm_isp_gain_default_both isp_gain_uvm --seed 6603471 --verbosity=low --uvmTop isp_gain_default --uvmDut both +UVM_TESTNAME=isp_gain_smoke_test
+```
+
+The second print names the component that raised the error. The command is the run script and the arguments it got, with a seed of `random` replaced by the value the script drew, so pasting it into a shell repeats the run on the same snapshot. It runs the script directly, not through `dutRun.py`. Add plusargs or `WAVES_SCOPE` to it, or rebuild with `WAVES=1` first, to see more of the same run; with the same seed and snapshot the stimulus is the same. An error a test expects and demotes, through `a2c_expected_error` or `a2c_error_demoter`, prints no second line, since the base test registers the reporter after the build-time catchers. A run started without a run script, which has no `+a2c_rerun`, prints the plusargs the simulator received instead.
+
+`a2c_rerun` in `a2c_uvm_pkg` is the catcher that prints the line. A test that does not extend the generated base test calls `a2c_rerun::start()` from its own `start_of_simulation_phase`.
+
+#### Waveforms
+
+`WAVES=1` on the build makes the snapshot record waveforms in every run of it. Each vendor writes its own format:
+
+| | Xcelium | VCS |
+| :--- | :--- | :--- |
+| Build | `-access +r` at elaboration | `-kdb -debug_access` at link and `VCS_DEBUG` defined (sections 1.2 and 3.4) |
+| Run | the run script sources `include/make/a2c-waves-xrun.tcl`, which opens `waves.shm`, probes the scope with every level below it, then runs. The exit status is the simulation's | the UVM run script adds `+fsdbTrace +fsdbfile+waves.fsdb`, and the testbench module and the HDL wrapper call `$fsdbDumpvars` |
+| File | `waves.shm`, in the directory the run starts from | `waves.fsdb`, in the directory the run starts from |
+| Default scope | `sc_main`, the SystemC top, which holds the testbench module, the RTL, the SystemC model and its BFMs. SystemC ports and SV class objects are not probed, as xmsim warns | the UVM testbench module, `sc_main.<block instance>.tb_hdl`, which holds the RTL and the interfaces. SystemC objects are not dumped |
+| `WAVES_SCOPE=<scope>` | probes that scope instead, such as `sc_main.isp_gain.tb_hdl.dut` for the RTL alone | dumps that SV instance instead, through `+a2c_waves_scope` |
+| Viewer | `simvision waves.shm` | `verdi -ssf waves.fsdb` |
+
+```
+make -j8 USE_UVM=1 USE_XCELIUM=1 UVM_DUT=both WAVES=1 all
+WAVES_SCOPE=sc_main.isp_gain.tb_hdl.dut build_xrun/run_uvm_isp_gain_default_both isp_gain_uvm --seed 6603471 \
+    --uvmTop isp_gain_default --uvmDut both +UVM_TESTNAME=isp_gain_smoke_test
+```
+
+Recording slows the run and its file grows with the run's length, so build with `WAVES=1` to debug a test, not for a regression. The build records `WAVES` with its options, so switching it rebuilds the snapshot. Each run overwrites the file in its directory, so two runs from one directory at once write over each other. Under VCS a non-UVM run has no run script, so it passes `+fsdbTrace` itself and the dump lands in `novas.fsdb` unless it also gives `+fsdbfile+<name>`.
+
+#### Verbosity
+
+The two sides of a run have separate verbosity controls:
+
+- `--verbosity` sets the log level of the SystemC side: the model, its BFMs and the framework, as in every other flow. `--verbosity=low` keeps the logs short; raise it to follow the model.
+- `+UVM_VERBOSITY=<level>` sets the UVM verbosity of every component, `UVM_MEDIUM` by default. The monitors log each transaction as `A2C_TXN` at `UVM_MEDIUM`, and the `raw` words and AXI beats at `UVM_HIGH` (section 9.10), so `UVM_HIGH` shows each beat.
+- `+uvm_set_verbosity=<component path>,<id>,<level>,<phase>` raises one ID on some components and leaves the rest of the log alone, for example `+uvm_set_verbosity=uvm_test_top.env.vout*,A2C_TXN,UVM_HIGH,run`. `_ALL_` as the ID covers every ID.
+
+Both run scripts pass every argument that starts with `+` to the simulator, so plusargs go on the run script's or `dutRun.py`'s command line, or on a regression entry's `args+`. `--attr run.args+=<value>` splits its value on commas, so give a `+uvm_set_verbosity` through the regression file.
+
+#### Reading an `A2C_MODEL_CMP` mismatch
+
+A mismatch report names the comparator, the pair and, where the comparator keys its items, the key:
+
+```
+UVM_ERROR .../a2c_uvm_pkg.sv(785) @ 13000: uvm_test_top.env.raw_video_out_agent.model_cmp [A2C_MODEL_CMP] uvm_test_top.env.raw_video_out_agent.model_cmp: pair 5: DUT '{data:'{pixels:'ha090807}, frame:'{eol:'h0, sof:'h0, eof:'h0}}, model '{data:'{pixels:'ha090806}, frame:'{eol:'h0, sof:'h0, eof:'h0}}; DUT item sampled at 12500, model item at 10500; fields that differ, lhs DUT and rhs model: item.data: lhs = 'h50484038 : rhs = 'h50484030
+```
+
+- `pair <n>` counts the comparator's pairs from 1, in the order it compared them. On an in-order comparator the pair is the n-th item of each lane, or of each key.
+- `sampled at` gives `$realtime` when each item reached the comparator, which is when the lane's monitor sampled the transaction and published it. It is printed in the units of the report's `@` time, the simulator's precision, ps in a bench built with `-timescale 1ns/1ps`. The `@` time is UVM's `$time`, rounded to whole time units, so in the example the DUT item sampled at 12.5 ns is reported `@ 13000`. Each lane has its own time because the two lanes run apart. Find the DUT lane's transaction on the port's interface at that time, and the model lane's on the `<port>_model` interface. A status comparator gives the time of each lane's latest value at the stable point.
+- `fields that differ` lists each field of the item that differs as `<item name>.<field>`, with the DUT value as `lhs` and the model value as `rhs`, joined with `; `. A field with X or Z differs from one without. A struct field prints as its packed value, so `item.data` above holds the pixels and the frame markers together. The AXI items list beats as `data[<i>]`, `resp[<i>]` or `strb[<i>]` and a length difference as `beats`.
+
+An unpaired-item report gives the first leftover item with its sample time, the time to start from when a lane stopped producing.
+
+The field list comes from the item's `do_compare()`. Each base and Pro item passes every field it finds different to the comparer, with `comparer.compare_field("<field>", lhs, rhs, $bits(<field>))`, before it returns its verdict. The comparison and the verdict stay `===` on each field. A project item type that a comparator compares does the same for its fields to get a list, or uses the UVM field macros, which report fields through the comparer themselves. An item that does neither gives a report with no field list. A comparator that extends `a2c_comparator_base` and calls `check_pair()` itself gets the times by setting `pair_at[]` before the call, and the fields by comparing with `compare_items(dut, model)`.
 
 ## 10. Limits and open items
 

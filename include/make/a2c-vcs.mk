@@ -16,7 +16,12 @@ VCS_OPTS ?= +vcs+lic+wait -full64 -timescale=1ns/1ps
 VLOGAN_OPTS ?= +vcs+lic+wait -full64 -sverilog -timescale=1ns/1ps
 VCS_ELAB_OPTS ?= -sysc=234
 # Verdi/FSDB debug costs simulation time, so it is opt-in: -kdb -debug_access
-# at link, and VCS_DEBUG defined for the wrappers' $fsdbDumpvars call.
+# at link, and VCS_DEBUG defined for the $fsdbDumpvars calls of the wrappers
+# and the UVM testbench module. WAVES=1 builds the same, and the UVM run
+# script then passes +fsdbTrace.
+ifdef WAVES
+VCS_DEBUG = 1
+endif
 ifdef VCS_DEBUG
 VCS_ELAB_OPTS += -kdb -debug_access
 VLOGAN_OPTS += +define+VCS_DEBUG
@@ -152,10 +157,15 @@ $(VCS_SIMV): $(OBJ)
 # which reads only decimal. A leading 0 is octal, as sc_main's std::stoul reads
 # it. The digit count is checked before the bash arithmetic, which wraps past
 # 64 bits. A seed of random draws a 32-bit value. UVM_TEST
-# gives the +UVM_TESTNAME of a run that names none. The default test is
+# gives the +UVM_TESTNAME of a run that names none. The simv also gets
+# +a2c_seed and +a2c_rerun, the command that repeats the run with the seed
+# drawn, which a2c_rerun prints. Under WAVES the script adds +fsdbTrace and
+# names the FSDB file waves.fsdb, in the directory the run starts from, and
+# turns WAVES_SCOPE into +a2c_waves_scope. The default test and WAVES are
 # recorded so a change rewrites the script.
+VCS_RUN_SCRIPT_TEXT = $(UVM_TEST) $(WAVES)
 VCS_RUN_SCRIPT_STAMP = $(VCS_STAMP_DIR)/$(BIN).run_script
-$(shell [ -e $(VCS_RUN_SCRIPT_STAMP) ] && [ "$$(cat $(VCS_RUN_SCRIPT_STAMP))" = "$(UVM_TEST)" ] || printf '%s\n' "$(UVM_TEST)" > $(VCS_RUN_SCRIPT_STAMP))
+$(shell [ -e $(VCS_RUN_SCRIPT_STAMP) ] && [ "$$(cat $(VCS_RUN_SCRIPT_STAMP))" = "$(VCS_RUN_SCRIPT_TEXT)" ] || printf '%s\n' "$(VCS_RUN_SCRIPT_TEXT)" > $(VCS_RUN_SCRIPT_STAMP))
 $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 	printf '%s\n' '#!/bin/bash' 'set -e' \
 		'dec() {' \
@@ -170,24 +180,29 @@ $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 		'    [ $${#d} -le $$n ] && v=$$(($$b#$${d:-0})) && [ "$$v" -le 4294967295 ] || { echo "$$0: --seed $$1 does not fit in 32 bits" >&2; exit 2; }' \
 		'    echo "$$v"' \
 		'}' \
-		's=; t=' \
+		'r=$$(printf %q "$$0"); s=; t=; seed=' \
 		'for a; do' \
 		'    shift' \
-		'    if [ -n "$$s" ]; then s=; v=$$(dec "$$a"); set -- "$$@" "$$v" "+ntb_random_seed=$$v"; continue; fi' \
+		'    if [ -n "$$s" ]; then s=; v=$$(dec "$$a"); seed=$$v; r="$$r $$v"; set -- "$$@" "$$v" "+ntb_random_seed=$$v"; continue; fi' \
 		'    case "$$a" in' \
-		'        --seed) s=1; set -- "$$@" "$$a" ;;' \
-		'        --seed=*) v=$$(dec "$${a#--seed=}"); set -- "$$@" "--seed=$$v" "+ntb_random_seed=$$v" ;;' \
-		'        +UVM_TESTNAME=*) t=1; set -- "$$@" "$$a" ;;' \
-		'        *) set -- "$$@" "$$a" ;;' \
+		'        --seed) s=1; r="$$r $$a"; set -- "$$@" "$$a" ;;' \
+		'        --seed=*) v=$$(dec "$${a#--seed=}"); seed=$$v; r="$$r --seed=$$v"; set -- "$$@" "--seed=$$v" "+ntb_random_seed=$$v" ;;' \
+		'        +UVM_TESTNAME=*) t=1; r="$$r $$(printf %q "$$a")"; set -- "$$@" "$$a" ;;' \
+		'        *) r="$$r $$(printf %q "$$a")"; set -- "$$@" "$$a" ;;' \
 		'    esac' \
 		'done' \
 		$(if $(UVM_TEST),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		'[ -z "$$seed" ] || set -- "$$@" "+a2c_seed=$$seed"' \
+		'set -- "$$@" "+a2c_rerun=cd $$(printf %q "$$PWD") && $$r"' \
+		$(if $(WAVES),'set -- "$$@" +fsdbTrace +fsdbfile+waves.fsdb' \
+			'[ -z "$$WAVES_SCOPE" ] || set -- "$$@" "+a2c_waves_scope=$$WAVES_SCOPE"') \
 		'exec $(VCS_SIMV) "$$@"' > $@
 	chmod +x $@
 endif
 
 help::
 	@echo "  VCS_DEBUG=1                      - link with -kdb -debug_access and enable \$$fsdbDumpvars (+fsdbTrace)"
+	@echo "  WAVES=1                          - VCS_DEBUG, and the UVM run script dumps waves.fsdb in the run directory (WAVES_SCOPE limits it)"
 	@echo "  VL_INST / VL_TYPE / VL_TANDEM=1  - DUT topology of the VCS snapshot build/run_<inst>_<type>[_tandem];"
 	@echo "                                     repeat the same --vlInst/--vlType/--vlTandem when running it"
 

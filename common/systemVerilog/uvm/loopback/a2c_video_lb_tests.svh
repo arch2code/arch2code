@@ -997,7 +997,7 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             catcher.demote = 1;
-            want("A2C_VIDEO", UVM_ERROR, "frame 0 line 1: pixel x=16 is 'h16, expected 'h17; 1 of 64 pixels differ", 1);
+            want("A2C_VIDEO", UVM_ERROR, "frame 0: 1 of 512 pixels differ, in 1 of 8 lines; line 1 x=16 is 'h16, expected 'h17", 1);
         endfunction
         virtual task configure_dut(a2c_video_cfg cfg);
             super.configure_dut(cfg);
@@ -1129,7 +1129,7 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             catcher.demote = 1;
-            want("A2C_VIDEO", UVM_ERROR, "frame 2 line 0: pixel x=2", 1);
+            want("A2C_VIDEO", UVM_ERROR, "frame 2: 1 of 512 pixels differ, in 1 of 8 lines; line 0 x=2 is", 1);
         endfunction
 
         virtual task configure_dut(a2c_video_cfg cfg);

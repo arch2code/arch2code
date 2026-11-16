@@ -184,6 +184,18 @@ module uvmMem_uvm_tb
         end
     end
 
+`ifdef VCS_DEBUG
+    // +fsdbTrace dumps this module, the whole SV testbench, or the scope
+    // +a2c_waves_scope names. The variable is at module scope, so %m names
+    // this module and not the initial block.
+    string a2c_waves_scope;
+    initial if ($test$plusargs("fsdbTrace")) begin
+        if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+        $display("A2C_WAVES: dumping %s", a2c_waves_scope);
+        $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
+    end
+`endif
+
     // run_test() returns after the report phase because finish_on_completion
     // is off, and SystemC ends the simulation through its end-of-test vote.
     // A UVM_FATAL calls $finish inside run_test(), so uvm_done stays low and

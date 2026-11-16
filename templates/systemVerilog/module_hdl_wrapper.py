@@ -168,8 +168,11 @@ def dut_instantiation(prj, data, blk_name, blk_param):
 
     s += '''\n
 `ifdef VCS_DEBUG
+// Module scope, so %m names this module and not the initial block.
+string a2c_waves_scope;
 initial if ($test$plusargs("fsdbTrace")) begin
-    $fsdbDumpvars($sformatf("%m"), "+all");
+    if (!$value$plusargs("a2c_waves_scope=%s", a2c_waves_scope)) a2c_waves_scope = $sformatf("%m");
+    $fsdbDumpvars(0, "instance=", a2c_waves_scope, "+all");
 end
 `endif'''
     return s

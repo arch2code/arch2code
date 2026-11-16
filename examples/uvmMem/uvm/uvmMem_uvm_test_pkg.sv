@@ -335,6 +335,11 @@ package uvmMem_uvm_test_pkg;
             run_timeout.work    = this;
         endfunction
 
+        virtual function void start_of_simulation_phase(uvm_phase phase);
+            super.start_of_simulation_phase(phase);
+            a2c_rerun::start();
+        endfunction
+
         virtual task run_phase(uvm_phase phase);
             phase.raise_objection(this);
             env.clk_vif.wait_reset_release();

@@ -150,6 +150,27 @@ package a2c_uvm_pkg;
         return $sformatf("; %s ended the run phase at %0t (%s), which may account for this", a2c_run_ended_by, a2c_run_ended_at, a2c_run_ended_id);
     endfunction
 
+    // For a do_compare() that compares fields with ===: passes a field found
+    // different to comparer, whose miscompares string then names it, and
+    // returns 0.
+    function automatic bit a2c_field_differs(uvm_comparer comparer, string name, uvm_bitstream_t lhs, uvm_bitstream_t rhs,
+                                             int size);
+        void'(comparer.compare_field(name, lhs, rhs, size));
+        return 0;
+    endfunction
+
+    // A uvm_comparer miscompares string, one line per field, as one line.
+    function automatic string a2c_miscompares(string m);
+        string out = "";
+        int    from = 0;
+        for (int i = 0; i <= m.len(); i++) begin
+            if (i < m.len() && m[i] != "\n") continue;
+            if (i > from) out = {out, a2c_select_str(out == "", "", "; "), m.substr(from, i - 1)};
+            from = i + 1;
+        end
+        return out;
+    endfunction
+
     `uvm_analysis_imp_decl(_a2c_dut)
     `uvm_analysis_imp_decl(_a2c_model)
     `uvm_analysis_imp_decl(_a2c_side)
@@ -571,7 +592,13 @@ package a2c_uvm_pkg;
     // The first max_reported mismatches print both items; later ones are
     // counted, and check_phase() reports how many went unprinted as one more
     // A2C_MODEL_CMP UVM_ERROR, or as an A2C_MODEL_CMP_MIDSTREAM warning when
-    // every unprinted one fell in a midstream window.
+    // every unprinted one fell in a midstream window. A printed mismatch
+    // also gives the time each item reached the comparator, which is when
+    // its monitor sampled and published it, so the pair can be found in a
+    // waveform, and the fields that differ when the pair was compared with
+    // compare_items() and the item's do_compare() passes each differing
+    // field to the comparer. A subclass sets pair_at[] before it calls
+    // check_pair().
     //
     // a2c_midstream_guard calls open_midstream_window() on a register write
     // under +a2c_predict_midstream=1. Mismatches inside the window are
@@ -627,12 +654,29 @@ package a2c_uvm_pkg;
         // Indexed by a2c_lane_e.
         protected bit          dead[2];
         protected realtime     dead_at[2];
+        // Indexed by a2c_lane_e: when each item of the pair check_pair()
+        // judges next reached the comparator; -1 when not known.
+        protected realtime     pair_at[2] = '{-1, -1};
+        // The miscompares of the last compare_items(), until check_pair()
+        // reports them.
+        protected string       pair_fields;
+        protected uvm_comparer field_cmp;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
+            // show_max 0 prints nothing and still lists every miscompare.
+            field_cmp = new();
+            field_cmp.show_max = 0;
         endfunction
 
         virtual function void stable_point();
+        endfunction
+
+        // dut.compare(model), keeping the fields the items' do_compare()
+        // reported as different for the next check_pair().
+        protected function bit compare_items(uvm_object dut, uvm_object model);
+            compare_items = dut.compare(model, field_cmp);
+            pair_fields   = field_cmp.miscompares;
         endfunction
 
         // Whether every item of one lane paired with one of the other, so the
@@ -710,6 +754,8 @@ package a2c_uvm_pkg;
         protected function void check_pair(bit same, uvm_object dut, uvm_object model, string key = "");
             string what;
             bit    midstream;
+            string fields = pair_fields;
+            pair_fields = "";
             if (past_death()) return;
             pairs++;
             midstream = in_midstream_window();
@@ -728,8 +774,13 @@ package a2c_uvm_pkg;
             if (key != "") what = {what, " key ", key};
             if (pairs == inject_pair) what = {what, " (injected mismatch)"};
             what = {what, ": DUT ", dut.convert2string(), ", model ", model.convert2string()};
+            if (midstream) what = {what, "; ", midstream_cause()};
+            if (pair_at[A2C_DUT_LANE] >= 0 && pair_at[A2C_MODEL_LANE] >= 0) begin
+                what = {what, $sformatf("; DUT item sampled at %0t, model item at %0t", pair_at[A2C_DUT_LANE], pair_at[A2C_MODEL_LANE])};
+            end
+            if (!same && fields != "") what = {what, "; fields that differ, lhs DUT and rhs model: ", a2c_miscompares(fields)};
             if (midstream) begin
-                `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", {what, "; ", midstream_cause()})
+                `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", what)
             end else begin
                 `uvm_error("A2C_MODEL_CMP", what)
             end
@@ -771,12 +822,13 @@ package a2c_uvm_pkg;
         uvm_analysis_imp_a2c_dut #(T, a2c_in_order_comparator#(T))   dut_export;
         uvm_analysis_imp_a2c_model #(T, a2c_in_order_comparator#(T)) model_export;
 
-        // An item, its place in its side's arrival order, from 1, and its
-        // key.
+        // An item, its place in its side's arrival order, from 1, its key,
+        // and when it arrived.
         typedef struct {
             T            t;
             int unsigned n;
             string       k;
+            realtime     at;
         } entry_t;
 
         // A DUT item with a key that is not "", and its place.
@@ -822,9 +874,10 @@ package a2c_uvm_pkg;
         virtual function void write_a2c_dut(T t);
             entry_t e;
             seen[A2C_DUT_LANE]++;
-            e.t = t;
-            e.n = seen[A2C_DUT_LANE];
-            e.k = key(t);
+            e.t  = t;
+            e.n  = seen[A2C_DUT_LANE];
+            e.k  = key(t);
+            e.at = $realtime;
             if (e.k != "") dut_keyed.push_back('{k: e.k, n: e.n});
             if (limit != 0 && e.n > limit) begin
                 held[A2C_DUT_LANE].push_back(e);
@@ -848,9 +901,10 @@ package a2c_uvm_pkg;
         virtual function void write_a2c_model(T t);
             entry_t e;
             seen[A2C_MODEL_LANE]++;
-            e.t = t;
-            e.n = seen[A2C_MODEL_LANE];
-            e.k = key(t);
+            e.t  = t;
+            e.n  = seen[A2C_MODEL_LANE];
+            e.k  = key(t);
+            e.at = $realtime;
             if (limit != 0 && kept_of(e.k) >= quota_of(e.k)) begin
                 held[A2C_MODEL_LANE].push_back(e);
                 return;
@@ -878,6 +932,7 @@ package a2c_uvm_pkg;
             entry_t m;
             if (model_q.exists(e.k) && model_q[e.k].size() > 0) begin
                 m = model_q[e.k].pop_front();
+                pair_at = '{e.at, m.at};
                 compare_pair(e.t, m.t, e.k);
             end else begin
                 dut_q[e.k].push_back(e);
@@ -888,6 +943,7 @@ package a2c_uvm_pkg;
             entry_t d;
             if (dut_q.exists(e.k) && dut_q[e.k].size() > 0) begin
                 d = dut_q[e.k].pop_front();
+                pair_at = '{d.at, e.at};
                 compare_pair(d.t, e.t, e.k);
             end else begin
                 model_q[e.k].push_back(e);
@@ -942,7 +998,7 @@ package a2c_uvm_pkg;
 
         // A subclass may hold a pair and check it when a later one arrives.
         protected virtual function void compare_pair(T dut, T model, string k);
-            check_pair(dut.compare(model), dut, model, k);
+            check_pair(compare_items(dut, model), dut, model, k);
         endfunction
 
         protected function void report_unpaired(string side, entry_t q[string][$]);
@@ -951,7 +1007,7 @@ package a2c_uvm_pkg;
             string       first_key = "";
             foreach (q[k]) begin
                 if (q[k].size() > 0 && first == "") begin
-                    first     = q[k][0].t.convert2string();
+                    first     = $sformatf("%s, sampled at %0t", q[k][0].t.convert2string(), q[k][0].at);
                     first_key = k;
                 end
                 n += q[k].size();
@@ -997,8 +1053,9 @@ package a2c_uvm_pkg;
         bit [63:0]          lo = '0;
         bit [63:0]          hi = '1;
 
-        protected T   latest[2];
-        protected bit window_open;
+        protected T        latest[2];
+        protected realtime latest_at[2];
+        protected bit      window_open;
 
         `uvm_component_param_utils(a2c_status_comparator#(T))
 
@@ -1028,7 +1085,8 @@ package a2c_uvm_pkg;
 
         protected function void observe(a2c_lane_e lane, T t);
             bit [63:0] v;
-            latest[lane] = t;
+            latest[lane]    = t;
+            latest_at[lane] = $realtime;
             seen[lane]++;
             case (policy)
                 A2C_STATUS_BOUNDS: begin
@@ -1068,7 +1126,8 @@ package a2c_uvm_pkg;
                 `uvm_error("A2C_MODEL_CMP", $sformatf("%s: stable point with no value reported on %s", get_full_name(), none))
                 return;
             end
-            check_pair(latest[A2C_DUT_LANE].compare(latest[A2C_MODEL_LANE]), latest[A2C_DUT_LANE], latest[A2C_MODEL_LANE]);
+            pair_at = latest_at;
+            check_pair(compare_items(latest[A2C_DUT_LANE], latest[A2C_MODEL_LANE]), latest[A2C_DUT_LANE], latest[A2C_MODEL_LANE]);
         endfunction
     endclass : a2c_status_comparator
 
@@ -4289,6 +4348,54 @@ package a2c_uvm_pkg;
         end
         return 0;
     endfunction
+
+    // Prints one A2C_RERUN line with the seed and the command that
+    // reproduces the run: once from start(), and again before the first
+    // report that is still a UVM_ERROR or UVM_FATAL after the catchers
+    // registered before start(). The VCS and Xcelium run scripts pass both as
+    // +a2c_seed and +a2c_rerun; a run started another way prints the
+    // plusargs the simulator received instead. The generated base test calls
+    // start() at start_of_simulation_phase, after every build-time catcher,
+    // so an error a test expects and demotes prints nothing.
+    class a2c_rerun extends uvm_report_catcher;
+        local static a2c_rerun inst;
+        local bit              reported;
+
+        `uvm_object_utils(a2c_rerun)
+
+        function new(string name = "a2c_rerun");
+            super.new(name);
+        endfunction
+
+        static function void start();
+            if (inst != null) return;
+            inst = new();
+            uvm_pkg::uvm_report_info("A2C_RERUN", text(), UVM_NONE);
+            uvm_report_cb::add(null, inst);
+        endfunction
+
+        static function string text();
+            string                seed;
+            string                cmd;
+            string                args[$];
+            uvm_cmdline_processor clp;
+            if (!$value$plusargs("a2c_seed=%s", seed)) seed = "not given, each side's default";
+            if ($value$plusargs("a2c_rerun=%s", cmd)) return $sformatf("seed %s: %s", seed, cmd);
+            clp = uvm_cmdline_processor::get_inst();
+            clp.get_plusargs(args);
+            cmd = "";
+            foreach (args[i]) cmd = {cmd, a2c_select_str(i == 0, "", " "), args[i]};
+            return $sformatf("seed %s; not started by a run script, so only the plusargs are known: %s", seed, cmd);
+        endfunction
+
+        virtual function action_e catch();
+            if (!reported && get_severity() inside {UVM_ERROR, UVM_FATAL}) begin
+                reported = 1;
+                uvm_report_info("A2C_RERUN", text(), UVM_NONE, `uvm_file, `uvm_line, "", 1);
+            end
+            return THROW;
+        endfunction
+    endclass : a2c_rerun
 
     // Turns each UVM_ERROR with id demote_id into UVM_INFO and counts it, so a
     // negative test can pass when the check it provokes fires. With
