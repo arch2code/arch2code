@@ -593,6 +593,7 @@ class projectOpen:
         self.contextRtlDir = self._contextRtlDirs(self.compileContexts)
         printIfDebug("Data Loaded")
         self.loadData()
+        self.rtlOutputContexts = self._rtlOutputContexts()
         self.generateHierarchy()
         # Memoization for the per-block config bundle. Read repeatedly per
         # parent block during view assembly; identical for the lifetime of
@@ -1371,6 +1372,7 @@ class projectOpen:
         # context another project owns resolves under that project's rtl
         # segment.
         ret['contextRtlDir'] = self.contextRtlDir
+        ret['rtlOutputContexts'] = self.rtlOutputContexts
         # True when a type reachable from this context derives its width from a
         # log2, which makes the generated width expressions call clog2(). The
         # SystemC emitters use it to decide whether the artifact needs
@@ -1402,6 +1404,12 @@ class projectOpen:
         deps = self.structureParamDeps[declKey] if declKind == 'structure' else self.typeParamDeps[declKey]
         constants = self.data['constants']
         return [constants[key] for key in deps]
+
+    def _rtlOutputContexts(self):
+        # Only a package or a block's RTL lands in a context's RTL directory.
+        packages = self.config.getConfig('INCLUDEFILES').get('package_sv', dict())
+        owners = {v['_context'] for v in self.data['blocks'].values()}
+        return {c for c in self.compileContexts if c in packages or c in owners}
 
     def _contextRtlDirs(self, contexts):
         # Directory of each context's generated RTL, relative to the root
