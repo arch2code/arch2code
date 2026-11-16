@@ -15,7 +15,8 @@ endif
 
 # Verilate threads, and the --build job count when no outer jobserver exists.
 VL_JOBS ?= 4
-VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 $(VL_TIMING_OPT) --build -Wno-fatal -DVL_DUT -MMD
+# An RTL elaboration $fatal or $error stops the build; every other Verilator warning stays non-fatal.
+VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 $(VL_TIMING_OPT) --build -Wno-fatal -Werror-USERFATAL -Werror-USERERROR -DVL_DUT -MMD
 # verilated.mk names the compiler Verilator was built with, and its flags suit
 # that compiler. A Clang build swaps in the project's Clang; USE_GCC keeps
 # Verilator's own.
