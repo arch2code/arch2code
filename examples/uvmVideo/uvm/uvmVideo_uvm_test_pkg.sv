@@ -325,6 +325,8 @@ package uvmVideo_uvm_test_pkg;
     // else raised a UVM_ERROR or UVM_FATAL, so a counter that stops reporting
     // or reports the wrong shortfall fails it. The missing transaction never
     // closes its unit, so the real-time rules are off.
+    // It also fails when the smoke test sent no stimulus, since the shortfall
+    // alone would then pass with a dead data path.
     class uvmVideo_fail_test extends uvmVideo_smoke_test;
         a2c_error_demoter demoter;
         int unsigned missing_count = 1;
@@ -368,7 +370,9 @@ package uvmVideo_uvm_test_pkg;
                                                       pending, missing_count)};
                 end
             end
-            if (demoter.demoted != want || others != 0 || shortfall != "") begin
+            if (stimulus_sent() == 0) begin
+                `uvm_error("A2C_FAIL_TEST", "uvmVideo_smoke_test sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")
+            end else if (demoter.demoted != want || others != 0 || shortfall != "") begin
                 `uvm_error("A2C_FAIL_TEST", $sformatf("expected exactly %s and no other error; caught %0d A2C_TXN_COUNT, %0d other UVM_ERROR/UVM_FATAL%s",
                                                       expected, demoter.demoted, others, shortfall))
             end else begin
