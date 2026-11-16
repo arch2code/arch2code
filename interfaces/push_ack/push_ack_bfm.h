@@ -32,12 +32,18 @@ public:
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
         dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_simulation() {
         m_held.check_.report();
     }
 
+    // The BFM takes each request in its first clock on the pins, so a
+    // model that answers in zero time completes it on the next edge, as a
+    // destination whose ack follows push combinationally does.
     void bfm_driver_thread() {
         // rst_n is asserted a delta after construction, so sample it at clock
         // edges rather than at time zero.
@@ -45,14 +51,16 @@ public:
         DATA_T data;
         while (true) {
             hdl_if_p->ack = false;
-            do {
+            if (!m_clock.waitSamplePoint(clk) || !hdl_if_p->push) {
                 wait(clk.posedge_event());
-            } while (!hdl_if_p->push);
+                continue;
+            }
             data.sc_unpack(hdl_if_p->data);
             m_held.take(hdl_if_p->data.read());
             m_held.inCall_ = true;
             if_p->push(data);
             m_held.inCall_ = false;
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->ack = true;
             wait(clk.posedge_event());
             if (rst_n) {
@@ -62,13 +70,19 @@ public:
     }
 
     void request_monitor() {
+        m_clock.rose();
         if (rst_n) {
             m_held.monitor(hdl_if_p->push, hdl_if_p->data.read());
         }
     }
 
+    void clock_fall() {
+        m_clock.fell();
+    }
+
 private:
 
+    bfmSameClockAnswer m_clock;
     bfmHeldRequest<VL_DATA_T> m_held;
 
 };

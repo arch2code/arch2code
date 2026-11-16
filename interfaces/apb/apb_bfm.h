@@ -53,33 +53,35 @@ public:
         m_held.check_.report();
     }
 
-    // A write is posted: request() returns before the model's reqReceive()
-    // takes it. PREADY waits until the model has, so the BFM holds no write
+    // The BFM takes each transfer at the edge that samples its setup phase,
+    // when APB has fixed the address, direction and write data, so a model
+    // that answers in zero time completes it in the first access phase, as a
+    // slave with no wait states does. A write is posted, so PREADY waits
+    // until the model's reqReceive() has taken it and the BFM holds no write
     // of its own.
     void bfm_driver_thread() {
+        hdl_if_p->pslverr = false;
+        hdl_if_p->pready = false;
+        hdl_if_p->prdata = VL_DATA_T(0);
         do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
+            if (!hdl_if_p->psel) {
+                wait(clk.posedge_event());
+                continue;
+            }
             ADDR_T addr;
             DATA_T data;
-            bool is_write;
-            hdl_if_p->pslverr = false;
-            hdl_if_p->pready = false;
-            hdl_if_p->prdata = VL_DATA_T(0);
-            while ( !(hdl_if_p->psel && hdl_if_p->penable )) {
-                wait(clk.posedge_event());
-            }
-            is_write = hdl_if_p->pwrite;
+            const bool is_write = hdl_if_p->pwrite;
             addr.sc_unpack(hdl_if_p->paddr);
             if( is_write ) {
                 data.sc_unpack(hdl_if_p->pwdata);
             }
+            m_edge = sc_time_stamp();
             m_held.take(pins());
             m_held.inCall_ = true;
             if_p->request(is_write, addr, data);
             m_held.inCall_ = false;
-            do {
-                waitEdge();
-            } while (is_write && m_chnl->isActive());
+            waitDrivePoint(is_write);
             hdl_if_p->pready = true;
             if( !is_write ) {
                 hdl_if_p->prdata = VL_DATA_T(data.sc_pack());
@@ -88,13 +90,12 @@ public:
             hdl_if_p->pslverr = false;
             hdl_if_p->pready = false;
             hdl_if_p->prdata = VL_DATA_T(0);
-            while ( hdl_if_p->psel && hdl_if_p->penable ) {
-              wait(clk.posedge_event());
-            };
+            wait(clk.posedge_event());
         }
     }
 
     void request_monitor() {
+        m_edge = sc_time_stamp();
         if (rst_n) {
             m_held.monitor(selected(), pins());
         }
@@ -108,16 +109,41 @@ private:
         const bool is_write = hdl_if_p->pwrite;
         return {hdl_if_p->paddr.read(), is_write, is_write ? hdl_if_p->pwdata.read() : VL_DATA_T(0)};
     }
-    bool selected() const { return hdl_if_p->psel && hdl_if_p->penable; }
+    // APB holds PSEL from the setup phase to the edge that completes the
+    // transfer.
+    bool selected() const { return hdl_if_p->psel; }
     void waitEdge() {
         wait(clk.posedge_event());
+        m_edge = sc_time_stamp();
         if (rst_n) {
             m_held.check(selected(), pins());
+        }
+    }
+    // Returns at the first drive point, one time resolution step after an
+    // edge, by which the model has answered: a read's request() has
+    // returned, and the model has taken a write. A model that answers later
+    // than the drive point, between edges, is answered at the next edge's.
+    void waitDrivePoint(bool is_write) {
+        const sc_time step = sc_get_time_resolution();
+        while (true) {
+            const sc_time point = m_edge + step;
+            if (sc_time_stamp() <= point) {
+                if (sc_time_stamp() < point) {
+                    wait(point - sc_time_stamp());
+                }
+                if (!(is_write && m_chnl->isActive())) {
+                    return;
+                }
+            }
+            waitEdge();
         }
     }
 
     apb_channel<ADDR_T, DATA_T> *m_chnl = nullptr;
     bfmHeldRequest<pinsT> m_held;
+    // The last rising edge, seen by the driver or, while the driver is in
+    // the model's call, by request_monitor().
+    sc_time m_edge;
 
 };
 

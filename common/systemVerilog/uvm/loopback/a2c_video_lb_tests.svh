@@ -344,9 +344,10 @@
         endfunction
     endclass : lb_vid_base
 
-    // Keeps every A2C_VIDEO, A2C_CFG, A2C_TXN_COUNT, A2C_MODEL_CMP and
-    // A2C_RT_* report at UVM_WARNING or above, with its severity, and, with
-    // demote set, makes the errors and fatals among them infos.
+    // Keeps every A2C_VIDEO, A2C_CFG, A2C_TXN_COUNT, A2C_MODEL_CMP,
+    // A2C_MODEL_THROTTLE and A2C_RT_* report at UVM_WARNING or above, with
+    // its severity, and, with demote set, makes the errors and fatals among
+    // them infos.
     class lb_vid_catcher extends uvm_report_catcher;
         bit          demote;
         string       ids[$];
@@ -361,7 +362,7 @@
 
         virtual function action_e catch();
             string id = get_id();
-            if (!(id inside {"A2C_VIDEO", "A2C_CFG", "A2C_TXN_COUNT", "A2C_MODEL_CMP"} || (id.len() > 7 && id.substr(0, 6) == "A2C_RT_"))) return THROW;
+            if (!(id inside {"A2C_VIDEO", "A2C_CFG", "A2C_TXN_COUNT", "A2C_MODEL_CMP", "A2C_MODEL_THROTTLE"} || (id.len() > 7 && id.substr(0, 6) == "A2C_RT_"))) return THROW;
             if (get_severity() == UVM_INFO) return THROW;
             ids.push_back(id);
             msgs.push_back(get_message());
@@ -1379,8 +1380,9 @@
     endclass : vid_mode_b_dut_trail_test
 
     // Mode B on axi4_stream with no blanking, the model lane's pipe refusing
-    // every third clock: the model lane trails, so the DUT lane gets idle
-    // clocks the plan never asked for, and the corner test warns.
+    // every third clock: the model lane trails, which the master reports
+    // once as a model throttle, so the DUT lane gets idle clocks the plan
+    // never asked for, and the corner test warns.
     class vid_mode_b_trail_test extends lb_vid_b_test_no_blank;
         `uvm_component_utils(vid_mode_b_trail_test)
         function new(string name, uvm_component parent);
@@ -1390,6 +1392,8 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             want("A2C_VIDEO", UVM_WARNING, "corner no_blank: ", 1);
+            want("A2C_MODEL_THROTTLE", UVM_ERROR, "vid_axis_b_in: the master has held its next item back for the model lane for 1 clocks", 1);
+            catcher.demote = 1;
         endfunction
         virtual task configure_dut(a2c_video_cfg cfg);
             super.configure_dut(cfg);

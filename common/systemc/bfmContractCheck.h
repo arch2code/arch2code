@@ -150,6 +150,42 @@ struct bfmHeldRequest {
     }
 };
 
+// Lets an ack-style src BFM answer a request in the clock the HDL raised it,
+// as a destination whose ack follows the request combinationally does. Every
+// source changes its pins between a rising edge and the next falling edge, so
+// the BFM takes the request one time-resolution step before the falling edge.
+// A model that answers in zero time then has ack on the pins at the falling
+// edge, where a UVM monitor samples, and the next rising edge transfers it.
+// The high phase is measured at every falling edge, so the BFM follows the
+// clock it is given.
+struct bfmSameClockAnswer {
+    sc_time rise_;
+    sc_time high_;
+    void rose() { rise_ = sc_time_stamp(); }
+    void fell() { high_ = sc_time_stamp() - rise_; }
+    // Called at a rising edge. False, with the request not to be taken in
+    // this clock, until a high phase has been measured, or when the clock
+    // fell earlier than the last one did.
+    bool waitSamplePoint(const sc_in<bool> &clk) {
+        const sc_time step = sc_get_time_resolution();
+        if (high_ <= step) {
+            return false;
+        }
+        wait(high_ - step);
+        return clk.read();
+    }
+    // An answer the model gives while the clock is high goes on the pins at
+    // once, before the falling edge. A later one goes on them one step after
+    // the next rising edge, so the pins never change between a falling edge
+    // and the rising edge after it.
+    void waitDrivePoint(const sc_in<bool> &clk) {
+        if (!clk.read()) {
+            wait(clk.posedge_event());
+            wait(sc_get_time_resolution());
+        }
+    }
+};
+
 // Only a channel built with BACKPRESSURE_NONE promises that the consumer never
 // lowers rdy.
 inline bool bfmNoBackpressure(sc_interface *intf, const std::string &bfm) {

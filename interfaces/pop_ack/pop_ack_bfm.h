@@ -32,25 +32,33 @@ public:
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
         dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_simulation() {
         m_held.check_.report();
     }
 
+    // The BFM takes each request in its first clock on the pins, so a
+    // model that answers in zero time completes it on the next edge, as a
+    // destination whose ack follows pop combinationally does.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
         RDATA_T rdata;
         while (true) {
             hdl_if_p->ack = false;
             hdl_if_p->rdata = VL_RDATA_T(0);
-            do {
+            if (!m_clock.waitSamplePoint(clk) || !hdl_if_p->pop) {
                 wait(clk.posedge_event());
-            } while (!hdl_if_p->pop);
+                continue;
+            }
             m_held.take(true);
             m_held.inCall_ = true;
             if_p->pop(rdata);
             m_held.inCall_ = false;
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->ack = true;
             hdl_if_p->rdata = rdata.sc_pack();
             wait(clk.posedge_event());
@@ -61,13 +69,19 @@ public:
     }
 
     void request_monitor() {
+        m_clock.rose();
         if (rst_n) {
             m_held.monitor(hdl_if_p->pop, true);
         }
     }
 
+    void clock_fall() {
+        m_clock.fell();
+    }
+
 private:
 
+    bfmSameClockAnswer m_clock;
     bfmHeldRequest<bool> m_held;
 
 };

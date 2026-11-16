@@ -2429,11 +2429,10 @@ package a2c_uvm_pkg;
 
     // The joint stall rule's default bound.
     localparam int unsigned A2C_JOINT_STALL_CYCLES = 200000;
-    // The model throttle rule's default bound: the clocks a model lane
-    // trails an RTL with no wait states on an APB access, because its BFM
-    // raises pready one clock after it sees the access phase. On the other
-    // protocols the model lane answers on the DUT lane's clock.
-    localparam int unsigned A2C_MODEL_THROTTLE_CYCLES = 2;
+    // The model throttle rule's default bound. The SystemC BFMs complete a
+    // transfer of a model that answers in zero time on the clock an RTL with
+    // no wait states does, so any hold is a model that waits.
+    localparam int unsigned A2C_MODEL_THROTTLE_CYCLES = 1;
 
     // The sentence that ends a report of one lane trailing the other in
     // Mode B. The model is untimed, so the RTL never waits on it: a model
@@ -2468,10 +2467,9 @@ package a2c_uvm_pkg;
     //   - model_throttle_cycles: both lanes live, and the master holds its
     //     next item, or for a burst master its next address, W beat or
     //     outstanding slot, because the DUT lane is ready for it and the
-    //     model lane is not. A hold that lasts more than this many clocks in
-    //     a row raises one A2C_MODEL_THROTTLE for the port. The model is
-    //     untimed, so a conforming model lane holds the RTL's input back
-    //     only for the clocks its BFM takes to answer a handshake.
+    //     model lane is not. A hold of this many clocks in a row raises one
+    //     A2C_MODEL_THROTTLE for the port. The model is untimed, so a
+    //     conforming model lane never holds the RTL's input back.
     // 0 turns a rule off. A lane that has nothing to wait for counts as
     // making progress, so an idle port never stalls. A master declares a
     // lane dead only in Mode B. With one lane, in Mode A, only the joint
@@ -2777,8 +2775,8 @@ package a2c_uvm_pkg;
         // address, W beat or outstanding slot. hold says that on this clock
         // it waits only because the DUT lane is ready for it and the model
         // lane is not, and run, which the master keeps per thing, counts the
-        // clocks in a row it has. A run one longer than
-        // model_throttle_cycles raises A2C_MODEL_THROTTLE, once per port.
+        // clocks in a row it has. A run that reaches model_throttle_cycles
+        // raises A2C_MODEL_THROTTLE, once per port.
         function void throttle(bit hold, ref int unsigned run);
             if (!hold || lanes != 2 || dead[A2C_DUT_LANE] || dead[A2C_MODEL_LANE]) begin
                 run = 0;
@@ -2788,10 +2786,10 @@ package a2c_uvm_pkg;
             if (run > throttled_max) throttled_max = run;
             if (throttled_at != $realtime) throttled++;
             throttled_at = $realtime;
-            if (model_throttle_cycles == 0 || run != model_throttle_cycles + 1 || throttle_reported) return;
+            if (model_throttle_cycles == 0 || run != model_throttle_cycles || throttle_reported) return;
             throttle_reported = 1;
-            `uvm_error_context("A2C_MODEL_THROTTLE", $sformatf("%s: the master has held its next %s back for the model lane for %0d clocks, above model_throttle_cycles %0d (+a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for %s. Mode B slows the RTL's input to the model lane's pace, so input the RTL would take back to back goes untested. %s Raising model_throttle_cycles hides the defect.",
-                                                               port_name, unit, run, model_throttle_cycles,
+            `uvm_error_context("A2C_MODEL_THROTTLE", $sformatf("%s: the master has held its next %s back for the model lane for %0d clocks (model_throttle_cycles, +a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for %s. Mode B slows the RTL's input to the model lane's pace, so input the RTL would take back to back goes untested. %s Raising model_throttle_cycles hides the defect.",
+                                                               port_name, unit, run,
                                                                waits.waiting_for(A2C_MODEL_LANE), a2c_trailing_clause(A2C_MODEL_LANE)), master)
         endfunction
 

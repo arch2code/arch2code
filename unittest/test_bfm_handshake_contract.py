@@ -9,16 +9,24 @@ for the RTL, with bfmContractCheck::toUvm set as in a UVM run, and expects:
   holds its request until the ack logs nothing. One that drops its request,
   or changes its data, while the model is still in its call logs the break
   `HDL dropped or changed a request` and queues it for the testbench;
+- with a model that answers in zero time, each of those src BFMs acks a
+  request in its first clock, one request per clock, as a destination
+  whose ack follows the request combinationally does, with the rdata on
+  req_ack and pop_ack;
 - an apb src BFM raises PREADY on a posted write only after the model's
   reqReceive() has taken it, and logs the same break when the HDL master
-  ends an access before PREADY;
+  ends an access before PREADY. With a model that answers in zero time it
+  raises PREADY in the first access phase, as a slave with no wait states
+  does, for writes and reads back to back;
 - an apb dst BFM takes a posted write on the edge the HDL completes it, so
   the model's next request() returns on that edge and not before;
 - on every axi_read and axi_write channel, a beat the HDL sends reaches the
   model on the edge the HDL transfers it, and a model send returns on the
   edge the HDL takes the beat, whether the model or the HDL is slow;
 - a model that waits on the clock between port calls is logged once with a
-  fix-the-model message and never queued, so it does not fail a UVM run,
+  fix-the-model message and never queued, so it does not fail a UVM run.
+  Behind a rdy_vld src BFM such a reader leaves rdy low for one clock after
+  each transfer, the hold Mode B reports as A2C_MODEL_THROTTLE,
   while a model that a memory BFM wakes at each edge is paced by the HDL and
   is not reported.
 """
@@ -227,6 +235,141 @@ SC_MODULE( apbSrc )
             hdl.psel = 0; hdl.penable = 0;
             wait( clk.posedge_event() );
         }
+    }
+};
+
+// An HDL requester of an ack-style port that drives as the UVM src driver
+// does, 100 ps after the rising edge, and samples at the falling edge: four
+// requests back to back. It records, per request, the sample point of its
+// first clock and the one that saw ack. The model answers in zero time.
+template <typename SET, typename GET>
+void sameClockRequester( sc_in<bool> &clk, sc_in<bool> &rst_n, sc_signal<bool> &req, sc_signal<bool> &ack,
+                         SET setData, GET getRdata, std::vector<std::string> &firstNs, std::vector<std::string> &doneNs,
+                         std::vector<std::string> &rdata )
+{
+    const sc_time skew( 100, SC_PS );
+    do { wait( clk.posedge_event() ); } while (!rst_n);
+    for (int k = 0; k < 4; k++) {
+        wait( skew );
+        req = 1;
+        setData( k );
+        wait( clk.negedge_event() );
+        firstNs.push_back( ns() );
+        while (!ack) {
+            wait( clk.negedge_event() );
+        }
+        doneNs.push_back( ns() );
+        rdata.push_back( getRdata() );
+        wait( clk.posedge_event() );
+    }
+    wait( skew );
+    req = 0;
+}
+
+template <typename CH, typename IN, typename HDL_IF, typename BFM>
+struct sameClock : public sc_module
+{
+    sc_in<bool> clk, rst_n;
+    CH ch;
+    IN in;
+    HDL_IF hdl;
+    BFM bfm;
+    std::vector<std::string> firstNs, doneNs, rdata;
+    int k = 0;
+    SC_HAS_PROCESS( sameClock );
+    sameClock( sc_module_name n ) : sc_module( n ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        SC_THREAD( model ); SC_THREAD( hdlThread );
+    }
+    virtual void model() = 0;
+    virtual sc_signal<bool> &req() = 0;
+    virtual void setData( int ) {}
+    virtual std::string getRdata() { return "-"; }
+    void hdlThread()
+    {
+        sameClockRequester( clk, rst_n, req(), hdl.ack, [this]( int i ) { setData( i ); }, [this]() { return getRdata(); },
+                            firstNs, doneNs, rdata );
+    }
+};
+
+struct pushZero : sameClock<push_ack_channel<wordSt>, push_ack_in<wordSt>, push_ack_hdl_if<bv>, push_ack_src_bfm<wordSt, bv>>
+{
+    using sameClock::sameClock;
+    void model() override { while (true) { wordSt v; in->pushReceive( v ); in->ack(); } }
+    sc_signal<bool> &req() override { return hdl.push; }
+    void setData( int i ) override { hdl.data = bv( i ); }
+};
+
+struct reqZero : sameClock<req_ack_channel<wordSt, wordSt>, req_ack_in<wordSt, wordSt>, req_ack_hdl_if<bv, bv>,
+                           req_ack_src_bfm<wordSt, wordSt, bv, bv>>
+{
+    using sameClock::sameClock;
+    void model() override { while (true) { wordSt r; in->reqReceive( r ); r.w += 0xa0; in->ack( r ); } }
+    sc_signal<bool> &req() override { return hdl.req; }
+    void setData( int i ) override { hdl.data = bv( i ); }
+    std::string getRdata() override { return std::format( "{}", hdl.rdata.read().to_uint() ); }
+};
+
+struct popZero : sameClock<pop_ack_channel<wordSt>, pop_ack_in<wordSt>, pop_ack_hdl_if<bv>, pop_ack_src_bfm<wordSt, bv>>
+{
+    using sameClock::sameClock;
+    void model() override { while (true) { in->popReceive(); wordSt v; v.w = 0xb0 + k++; in->ack( v ); } }
+    sc_signal<bool> &req() override { return hdl.pop; }
+    std::string getRdata() override { return std::format( "{}", hdl.rdata.read().to_uint() ); }
+};
+
+struct notifyZero : sameClock<notify_ack_channel<bool>, notify_ack_in<bool>, notify_ack_hdl_if<bool>, notify_ack_src_bfm<bool>>
+{
+    using sameClock::sameClock;
+    void model() override { while (true) { in->waitNotify(); in->ack(); } }
+    sc_signal<bool> &req() override { return hdl.notify; }
+};
+
+// An HDL APB master that drives as the UVM master does, 100 ps after the
+// rising edge, and samples at the falling edge: two writes, then two reads,
+// with no idle clock between transfers. The model answers in zero time.
+SC_MODULE( apbSrcZero )
+{
+    sc_in<bool> clk, rst_n;
+    apb_channel<wordSt, wordSt> ch;
+    apb_in<wordSt, wordSt> in;
+    apb_hdl_if<bv, bv> hdl;
+    apb_src_bfm<wordSt, wordSt, bv, bv> bfm;
+    std::vector<std::string> setupNs, doneNs, rdata;
+    SC_HAS_PROCESS( apbSrcZero );
+    apbSrcZero( sc_module_name n ) : sc_module( n ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        SC_THREAD( model ); SC_THREAD( master );
+    }
+    void model()
+    {
+        while (true) {
+            bool isWrite; wordSt a, d;
+            in->reqReceive( isWrite, a, d );
+            if (!isWrite) { d.w = 0xa0 + a.w; in->complete( d ); }
+        }
+    }
+    void master()
+    {
+        const sc_time skew( 100, SC_PS );
+        do { wait( clk.posedge_event() ); } while (!rst_n);
+        for (int k = 0; k < 4; k++) {
+            wait( skew );
+            hdl.psel = 1; hdl.penable = 0; hdl.pwrite = k < 2; hdl.paddr = bv( 4 * k ); hdl.pwdata = bv( k < 2 ? k : 0 );
+            wait( clk.negedge_event() );
+            setupNs.push_back( ns() );
+            wait( clk.posedge_event() );
+            wait( skew );
+            hdl.penable = 1;
+            do { wait( clk.negedge_event() ); } while (!hdl.pready);
+            doneNs.push_back( ns() );
+            if (k >= 2) { rdata.push_back( std::format( "{}", hdl.prdata.read().to_uint() ) ); }
+            wait( clk.posedge_event() );
+        }
+        wait( skew );
+        hdl.psel = 0; hdl.penable = 0;
     }
 };
 
@@ -546,6 +689,43 @@ SC_MODULE( paced )
     }
 };
 
+// A model reader behind a rdy_vld src BFM that waits on the clock after
+// each read. The HDL writer holds vld high.
+SC_MODULE( pacedReader )
+{
+    sc_in<bool> clk, rst_n;
+    rdy_vld_channel<wordSt> ch;
+    rdy_vld_in<wordSt> in;
+    rdy_vld_hdl_if<bv> hdl;
+    rdy_vld_src_bfm<wordSt, bv> bfm;
+    std::vector<std::string> times;
+    SC_HAS_PROCESS( pacedReader );
+    pacedReader( sc_module_name n ) : sc_module( n ), ch( "ch", "tb", BACKPRESSURE_ALLOWED ), in( "in" ), bfm( "bfm" )
+    {
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        SC_THREAD( model ); SC_THREAD( hdlThread );
+    }
+    void model()
+    {
+        while (true) {
+            wordSt v;
+            in->read( v );
+            wait( clk.posedge_event() );
+        }
+    }
+    void hdlThread()
+    {
+        int sent = 0;
+        while (true) {
+            wait( clk.posedge_event() );
+            if (!rst_n) { continue; }
+            if (hdl.vld && hdl.rdy) { times.push_back( ns() ); sent++; }
+            hdl.vld = sent < 8;
+            hdl.data = bv( sent );
+        }
+    }
+};
+
 SC_MODULE( probe )
 {
     sc_clock clk;
@@ -555,31 +735,44 @@ SC_MODULE( probe )
     popSrc pop0, pop1;
     notifySrc notify0, notify1;
     apbSrc apbSrcGood, apbSrcWithdraw;
+    apbSrcZero apbSrcZeroWait;
+    pushZero pushSameClock;
+    reqZero reqSameClock;
+    popZero popSameClock;
+    notifyZero notifySameClock;
     apbDst apbDstPosted;
     rdSrc axiRdSrc;
     rdDst axiRdDst;
     wrSrc axiWrSrc;
     wrDst axiWrDst;
     paced pacedClock, pacedMem;
+    pacedReader pacedRead;
 
     SC_HAS_PROCESS( probe );
     probe( sc_module_name n ) : sc_module( n ), clk( "clk", 10, SC_NS ),
         push0( "push0", 0 ), push1( "push1", 1 ), push2( "push2", 2 ),
         req0( "req0", 0 ), req1( "req1", 1 ), req2( "req2", 2 ),
         pop0( "pop0", 0 ), pop1( "pop1", 1 ), notify0( "notify0", 0 ), notify1( "notify1", 1 ),
-        apbSrcGood( "apbSrcGood", false ), apbSrcWithdraw( "apbSrcWithdraw", true ), apbDstPosted( "apbDstPosted" ),
+        apbSrcGood( "apbSrcGood", false ), apbSrcWithdraw( "apbSrcWithdraw", true ), apbSrcZeroWait( "apbSrcZeroWait" ),
+        pushSameClock( "pushSameClock" ), reqSameClock( "reqSameClock" ), popSameClock( "popSameClock" ),
+        notifySameClock( "notifySameClock" ),
+        apbDstPosted( "apbDstPosted" ),
         axiRdSrc( "axiRdSrc" ), axiRdDst( "axiRdDst" ), axiWrSrc( "axiWrSrc" ), axiWrDst( "axiWrDst" ),
-        pacedClock( "pacedClock", false ), pacedMem( "pacedMem", true )
+        pacedClock( "pacedClock", false ), pacedMem( "pacedMem", true ), pacedRead( "pacedRead" )
     {
         push0.clk( clk ); push0.rst_n( rst_n ); push1.clk( clk ); push1.rst_n( rst_n ); push2.clk( clk ); push2.rst_n( rst_n );
         req0.clk( clk ); req0.rst_n( rst_n ); req1.clk( clk ); req1.rst_n( rst_n ); req2.clk( clk ); req2.rst_n( rst_n );
         pop0.clk( clk ); pop0.rst_n( rst_n ); pop1.clk( clk ); pop1.rst_n( rst_n );
         notify0.clk( clk ); notify0.rst_n( rst_n ); notify1.clk( clk ); notify1.rst_n( rst_n );
         apbSrcGood.clk( clk ); apbSrcGood.rst_n( rst_n ); apbSrcWithdraw.clk( clk ); apbSrcWithdraw.rst_n( rst_n );
+        apbSrcZeroWait.clk( clk ); apbSrcZeroWait.rst_n( rst_n );
+        pushSameClock.clk( clk ); pushSameClock.rst_n( rst_n ); reqSameClock.clk( clk ); reqSameClock.rst_n( rst_n );
+        popSameClock.clk( clk ); popSameClock.rst_n( rst_n ); notifySameClock.clk( clk ); notifySameClock.rst_n( rst_n );
         apbDstPosted.clk( clk ); apbDstPosted.rst_n( rst_n );
         axiRdSrc.clk( clk ); axiRdSrc.rst_n( rst_n ); axiRdDst.clk( clk ); axiRdDst.rst_n( rst_n );
         axiWrSrc.clk( clk ); axiWrSrc.rst_n( rst_n ); axiWrDst.clk( clk ); axiWrDst.rst_n( rst_n );
         pacedClock.clk( clk ); pacedClock.rst_n( rst_n ); pacedMem.clk( clk ); pacedMem.rst_n( rst_n );
+        pacedRead.clk( clk ); pacedRead.rst_n( rst_n );
         SC_THREAD( run );
     }
 
@@ -590,6 +783,14 @@ SC_MODULE( probe )
         rst_n = 1;
         wait( 2, SC_US );
         std::printf( "rec apbSrcGood take=%s done=%s\\n", join( apbSrcGood.takeNs ).c_str(), join( apbSrcGood.doneNs ).c_str() );
+        std::printf( "rec apbSrcZeroWait setup=%s done=%s rdata=%s\\n", join( apbSrcZeroWait.setupNs ).c_str(),
+                     join( apbSrcZeroWait.doneNs ).c_str(), join( apbSrcZeroWait.rdata ).c_str() );
+        std::printf( "rec pushSameClock first=%s done=%s\\n", join( pushSameClock.firstNs ).c_str(), join( pushSameClock.doneNs ).c_str() );
+        std::printf( "rec reqSameClock first=%s done=%s rdata=%s\\n", join( reqSameClock.firstNs ).c_str(), join( reqSameClock.doneNs ).c_str(),
+                     join( reqSameClock.rdata ).c_str() );
+        std::printf( "rec popSameClock first=%s done=%s rdata=%s\\n", join( popSameClock.firstNs ).c_str(), join( popSameClock.doneNs ).c_str(),
+                     join( popSameClock.rdata ).c_str() );
+        std::printf( "rec notifySameClock first=%s done=%s\\n", join( notifySameClock.firstNs ).c_str(), join( notifySameClock.doneNs ).c_str() );
         std::printf( "rec apbDstPosted returns=%s done=%s\\n", join( apbDstPosted.returnNs ).c_str(), join( apbDstPosted.doneNs ).c_str() );
         std::printf( "rec axiRdSrc arHdl=%s arModel=%s rHdl=%s rModel=%s\\n", join( axiRdSrc.arHdl ).c_str(),
                      join( axiRdSrc.arModel ).c_str(), join( axiRdSrc.rHdl ).c_str(), join( axiRdSrc.rModel ).c_str() );
@@ -603,6 +804,7 @@ SC_MODULE( probe )
                      join( axiWrDst.wModel ).c_str(), join( axiWrDst.bHdl ).c_str(), join( axiWrDst.bModel ).c_str() );
         std::printf( "rec pacedClock beats=%d times=%s\\n", pacedClock.beats, join( pacedClock.times ).c_str() );
         std::printf( "rec pacedMem beats=%d times=%s\\n", pacedMem.beats, join( pacedMem.times ).c_str() );
+        std::printf( "rec pacedRead times=%s\\n", join( pacedRead.times ).c_str() );
         for (const char *b = a2c_bfm_contract_break(); *b; b = a2c_bfm_contract_break()) {
             std::printf( "uvm break: %s\\n", b );
         }
@@ -665,7 +867,7 @@ def test_bfm_handshake_contract():
         check(run.returncode == 0 and 'probe done' in output, f"probe runs to completion (status {run.returncode})")
         rec = records(output)
 
-        for scenario in ['push0', 'req0', 'pop0', 'notify0', 'apbSrcGood']:
+        for scenario in ['push0', 'req0', 'pop0', 'notify0', 'apbSrcGood', 'apbSrcZeroWait']:
             check(logged(output, scenario, HELD) == [] and queued(output, scenario, HELD) == [],
                   f"{scenario}: an HDL requester that holds its request until the ack breaks nothing")
         for scenario, how in [('push1', 'drops'), ('push2', 'changes'), ('req1', 'drops'), ('req2', 'changes'),
@@ -679,6 +881,23 @@ def test_bfm_handshake_contract():
         take, done = [int(v) for v in r.get('take', [])], [int(v) for v in r.get('done', [])]
         check(len(take) == 2 and len(done) == 2 and all(d > t for t, d in zip(take, done)),
               f"apb src: PREADY completes each posted write only after the model took it (take={take} done={done})")
+
+        r = rec.get('apbSrcZeroWait', {})
+        setup, done = [int(v) for v in r.get('setup', [])], [int(v) for v in r.get('done', [])]
+        check(len(setup) == 4 and len(done) == 4 and all(d - s == 10 for s, d in zip(setup, done)),
+              f"apb src: a zero-time model completes each transfer in its first access phase (setup={setup} done={done})")
+        check(r.get('rdata') == ['168', '172'], f"apb src: each read returns its word with PREADY (rdata={r.get('rdata')})")
+
+        for scenario, want in [('pushSameClock', None), ('reqSameClock', ['160', '161', '162', '163']),
+                               ('popSameClock', ['176', '177', '178', '179']), ('notifySameClock', None)]:
+            r = rec.get(scenario, {})
+            first, done = [int(v) for v in r.get('first', [])], [int(v) for v in r.get('done', [])]
+            check(len(first) == 4 and first == done and all(b - a == 10 for a, b in zip(done, done[1:])),
+                  f"{scenario}: a zero-time model acks each request in its first clock, one per clock, as a "
+                  f"destination whose ack follows the request does (first={first} done={done})")
+            if want:
+                check(r.get('rdata') == want, f"{scenario}: each answer comes with its ack (rdata={r.get('rdata')})")
+            check(logged(output, scenario, HELD) == [], f"{scenario}: a request held until its ack breaks nothing")
 
         r = rec.get('apbDstPosted', {})
         returns, done = r.get('returns', []), r.get('done', [])
@@ -699,6 +918,10 @@ def test_bfm_handshake_contract():
         r = rec.get('pacedClock', {})
         check(len(logged(output, 'pacedClock', PACED)) == 1 and queued(output, 'pacedClock', PACED) == [],
               "a model that waits on the clock between writes is logged once and never queued as a contract break")
+        times = [int(v) for v in rec.get('pacedRead', {}).get('times', [])]
+        check(len(times) == 8 and sorted({b - a for a, b in zip(times, times[1:])}) == [20],
+              f"pacedRead: a reader that waits on the clock after each read leaves rdy low one clock in two "
+              f"(times={times})")
         r = rec.get('pacedMem', {})
         times = [int(v) for v in r.get('times', [])]
         check(len(times) == 40 and sorted({b - a for a, b in zip(times, times[1:])}) == [20],

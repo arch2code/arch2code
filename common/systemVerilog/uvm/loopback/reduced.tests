@@ -33,6 +33,7 @@ js_rv_two_ports_test
 # a2c_lane_watchdog_lb_tests.svh
 req_ack_mode_b_model_late_test
 joint_stall_lone_lane_test
+push_ack_mode_b_same_clock_test
 
 # a2c_mem_model_lb_tests.svh
 a2c_mem_model_test

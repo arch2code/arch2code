@@ -57,7 +57,8 @@
     //     tell it of the death and claim the pin set (no A2C_PASSIVE);
     //   - with throttle set, the master's model throttle bound: the clocks
     //     it held the next item for the model lane alone, exactly, and one
-    //     A2C_MODEL_THROTTLE if they exceed the bound, none otherwise.
+    //     A2C_MODEL_THROTTLE if they reach the bound, none otherwise.
+    //   - with same_clock set, that each lane makes one transfer per clock.
     // A family's test defines the pin accessors, new_item() and watchdog(),
     // and, with a response, item_ok().
     virtual class lb_skew_mode_b #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item, type CFG_T = uvm_object,
@@ -78,6 +79,9 @@
         int unsigned      late_one = 10;
         // The model throttle bound the master gets; -1 leaves the rule off.
         int               throttle = -1;
+        // Each lane answers a request in its first clock, as a destination
+        // whose ack follows the request combinationally does (serve_same_clock()).
+        bit               same_clock;
         a2c_expected_error throttle_err;
         int unsigned      lane_skew = 60;
         int unsigned      lone = 80;
@@ -174,9 +178,9 @@
                 uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_model_throttle_cycles", throttle);
                 throttle_err       = a2c_expected_error::type_id::create("throttle_err", this);
                 throttle_err.id    = "A2C_MODEL_THROTTLE";
-                throttle_err.count = (throttle != 0 && want_held() > throttle) ? 1 : 0;
-                throttle_err.text  = $sformatf("%s: the master has held its next item back for the model lane for %0d clocks, above model_throttle_cycles %0d (+a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for ",
-                                               port, throttle + 1, throttle);
+                throttle_err.count = (throttle != 0 && want_held() >= throttle) ? 1 : 0;
+                throttle_err.text  = $sformatf("%s: the master has held its next item back for the model lane for %0d clocks (model_throttle_cycles, +a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for ",
+                                               port, throttle);
             end
             for (int unsigned i = 0; i < n_sent; i++) items.push_back(new_item(i));
             for (int l = 0; l < 2; l++) frozen[l] = lb_frozen::of({port, " ", lane(l), " lane"});
@@ -309,6 +313,10 @@
             bit               acking;
             bit               post;
             realtime          last;
+            if (same_clock) begin
+                serve_same_clock(l);
+                return;
+            end
             drive(l, 0, 0, 0);
             clk_vif.wait_reset_release();
             forever begin
@@ -330,6 +338,45 @@
                 end
                 clk_vif.drive_edge();
                 drive(l, acking, post, post ? served[l] - 1 : served[l]);
+            end
+        endtask
+
+        // Lane l's other side when same_clock is set. The DUT lane answers
+        // just after the master's drive point, as a destination whose ack is
+        // combinational on the request. The model lane answers one step before
+        // the falling edge and drops its answer at the rising edge, as a
+        // SystemC src BFM does for a model that answers in zero time. Both
+        // answers are on the pins at the falling edge of the request's first
+        // clock.
+        protected task serve_same_clock(a2c_lane_e l);
+            realtime rise;
+            realtime high;
+            realtime last;
+            bit      acking;
+            drive(l, 0, 0, 0);
+            clk_vif.wait_reset_release();
+            rise = $realtime;
+            clk_vif.sample_edge();
+            high = $realtime - rise;
+            last = $realtime;
+            forever begin
+                @(posedge clk_vif.clk);
+                if (l == A2C_DUT_LANE) begin
+                    clk_vif.skew_after_edge();
+                    #1ps;
+                end else begin
+                    drive(l, 0, acking, acking ? served[l] - 1 : served[l]);
+                    #(high - 1ps);
+                end
+                acking = requested(l);
+                if (acking && seen_at[l].size() == served[l]) seen_at[l].push_back($realtime);
+                drive(l, acking, 0, served[l]);
+                clk_vif.sample_edge();
+                if (period == 0) period = $realtime - last;
+                if (acking) begin
+                    took_at[l].push_back($realtime);
+                    served[l]++;
+                end
             end
         endtask
 
@@ -390,6 +437,17 @@
             end
             if (watcher_role == A2C_DST && want_dead(A2C_MODEL_LANE) && !watcher.model_cmp.is_dead(A2C_MODEL_LANE)) begin
                 `uvm_error("LB_MODE_B", "the passive A2C_DST watcher's model_cmp was not told of the model lane's death")
+            end
+            if (same_clock) begin
+                for (int l = 0; l < 2; l++) begin
+                    for (int i = 1; i < took_at[l].size(); i++) begin
+                        if (took_at[l][i] - took_at[l][i - 1] != period) begin
+                            `uvm_error("LB_MODE_B", $sformatf("the %s lane made transfer %0d %0t after transfer %0d, expected one clock, %0t",
+                                                              lane(l), i, took_at[l][i] - took_at[l][i - 1], i - 1, period))
+                            break;
+                        end
+                    end
+                end
             end
             if (throttle >= 0 && (wd.throttled != want_throttled() || wd.throttled_max != want_held())) begin
                 `uvm_error("LB_MODE_B", $sformatf("the master held the next item for the model lane on %0d clocks, at most %0d in a row, expected %0d and %0d",
@@ -945,19 +1003,23 @@
     endclass : apb_mode_b_joint_test
 
     // The model throttle rule on each family's master: a model lane that
-    // answers one item 10 clocks late against a bound of 9 raises one
+    // answers one item 10 clocks late against a bound of 10 raises one
     // A2C_MODEL_THROTTLE, and a model lane that keeps pace with the DUT lane
     // raises none under the default bound. On push_ack also: 10 clocks at a
-    // bound of 10 raise none, a model lane 30 clocks late on every item
-    // against a bound of 29 raises one only, and a DUT lane late by 10
-    // counts nothing.
+    // bound of 11 raise none, a model lane 30 clocks late on every item
+    // against a bound of 30 raises one only, and a DUT lane late by 10
+    // counts nothing. On rdy_vld, a model lane one clock late on every item,
+    // as a model that waits on the clock between reads is, raises one under
+    // the default bound. On apb, lanes that both answer in the first access
+    // phase, as a slave with no wait states and a model answering through
+    // apb_src_bfm do, raise none under the default bound.
     class push_ack_mode_b_throttle_test extends pa_skew;
         `uvm_component_utils(push_ack_mode_b_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : push_ack_mode_b_throttle_test
 
@@ -977,7 +1039,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : notify_ack_mode_b_throttle_test
 
@@ -997,7 +1059,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : req_ack_mode_b_throttle_test
 
@@ -1017,7 +1079,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : pop_ack_mode_b_throttle_test
 
@@ -1037,7 +1099,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : rdy_vld_mode_b_throttle_test
 
@@ -1057,7 +1119,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : axi4_stream_mode_b_throttle_test
 
@@ -1077,7 +1139,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 9;
+            throttle = 10;
         endfunction
     endclass : apb_mode_b_throttle_test
 
@@ -1097,7 +1159,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
-            throttle = 10;
+            throttle = 11;
         endfunction
     endclass : push_ack_mode_b_throttle_at_bound_test
 
@@ -1107,7 +1169,7 @@
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_LAG;
-            throttle = 29;
+            throttle = 30;
         endfunction
     endclass : push_ack_mode_b_throttle_lag_test
 
@@ -1120,6 +1182,77 @@
             throttle = 9;
         endfunction
     endclass : push_ack_mode_b_throttle_dut_late_test
+
+    class push_ack_mode_b_same_clock_test extends pa_skew;
+        `uvm_component_utils(push_ack_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : push_ack_mode_b_same_clock_test
+
+    class notify_ack_mode_b_same_clock_test extends na_skew;
+        `uvm_component_utils(notify_ack_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : notify_ack_mode_b_same_clock_test
+
+    class req_ack_mode_b_same_clock_test extends ra_skew;
+        `uvm_component_utils(req_ack_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : req_ack_mode_b_same_clock_test
+
+    class pop_ack_mode_b_same_clock_test extends po_skew;
+        `uvm_component_utils(pop_ack_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : pop_ack_mode_b_same_clock_test
+
+    class rdy_vld_mode_b_clock_paced_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_mode_b_clock_paced_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant  = LB_SK_LAG;
+            lag      = 1;
+            throttle = A2C_MODEL_THROTTLE_CYCLES;
+        endfunction
+    endclass : rdy_vld_mode_b_clock_paced_test
+
+    class apb_mode_b_zero_wait_test extends apb_skew;
+        `uvm_component_utils(apb_mode_b_zero_wait_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant  = LB_SK_ON_TIME;
+            throttle = A2C_MODEL_THROTTLE_CYCLES;
+        endfunction
+
+        // Seeing the setup phase, the script raises pready in the first
+        // access phase.
+        virtual function bit requested(a2c_lane_e l);
+            return vif[l].psel === 1'b1;
+        endfunction
+    endclass : apb_mode_b_zero_wait_test
 
     // The master a2c_lane_watchdog_rules_test gives its watchdogs, which
     // says each lane waits for what the test puts in waits_for.

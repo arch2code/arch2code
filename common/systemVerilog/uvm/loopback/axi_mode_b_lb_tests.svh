@@ -2129,7 +2129,7 @@
 
     // As the lag test with the model throttle bound at 20 clocks: the
     // model lane's late answers fill its outstanding slots and hold the
-    // next burst back for longer than that, which raises one
+    // next burst back for that long, which raises one
     // A2C_MODEL_THROTTLE.
     class axi_read_mode_b_master_throttle_test extends axi_read_mode_b_master_lag_test;
         a2c_expected_error throttle_err;
@@ -2145,7 +2145,7 @@
             uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_model_throttle_cycles", 20);
             throttle_err      = a2c_expected_error::type_id::create("throttle_err", this);
             throttle_err.id   = "A2C_MODEL_THROTTLE";
-            throttle_err.text = "axr: the master has held its next burst back for the model lane for 21 clocks, above model_throttle_cycles 20 (+a2c_model_throttle_cycles)";
+            throttle_err.text = "axr: the master has held its next burst back for the model lane for 20 clocks (model_throttle_cycles, +a2c_model_throttle_cycles)";
         endfunction
     endclass : axi_read_mode_b_master_throttle_test
 
@@ -3218,7 +3218,7 @@
 
     // As the lag test with the model throttle bound at 20 clocks: the
     // model lane's late answers fill its outstanding slots and hold the
-    // next burst back for longer than that, which raises one
+    // next burst back for that long, which raises one
     // A2C_MODEL_THROTTLE.
     class axi_write_mode_b_master_throttle_test extends axi_write_mode_b_master_lag_test;
         a2c_expected_error throttle_err;
@@ -3234,7 +3234,7 @@
             uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_model_throttle_cycles", 20);
             throttle_err      = a2c_expected_error::type_id::create("throttle_err", this);
             throttle_err.id   = "A2C_MODEL_THROTTLE";
-            throttle_err.text = "axw: the master has held its next burst back for the model lane for 21 clocks, above model_throttle_cycles 20 (+a2c_model_throttle_cycles)";
+            throttle_err.text = "axw: the master has held its next burst back for the model lane for 20 clocks (model_throttle_cycles, +a2c_model_throttle_cycles)";
         endfunction
     endclass : axi_write_mode_b_master_throttle_test
 
