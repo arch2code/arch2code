@@ -101,7 +101,8 @@ package axi_write_uvm_pkg;
         axi_resp_e            resp;
         buser_t               buser;
         // src role: idle clocks (awvalid low) the master inserts before this AW.
-        int unsigned          gap;
+        rand int unsigned     gap;
+        constraint c_gap { soft gap == 0; }
         // Bytes the burst may move, (len + 1) << size; 0 means no limit.
         // axi_write_base_seq::new_item() sets it from the port's config.
         int unsigned          max_transfer_bytes;
@@ -234,8 +235,8 @@ package axi_write_uvm_pkg;
         bit                                 id_unbound = 0;
         // A2C_SRC role: bursts whose AW has gone out and whose B has not
         // arrived, and the percentage of clocks with bready high.
-        int unsigned                        max_outstanding = 1;
-        int unsigned                        bready_pct = 100;
+        rand int unsigned                   max_outstanding = 1;
+        rand int unsigned                   bready_pct = 100;
         // A2C_DST role. The agent creates mem when the test leaves it null.
         // awready and wready are high on awready_pct and wready_pct percent
         // of clocks. Each burst draws a delay of resp_delay_min to
@@ -245,12 +246,29 @@ package axi_write_uvm_pkg;
         // for the bursts ahead of it with its ID. A burst with a beat whose
         // address falls in an error range gets SLVERR and writes nothing.
         axi_write_mem_t                     mem;
-        int unsigned                        awready_pct = 100;
-        int unsigned                        wready_pct = 100;
-        int unsigned                        resp_delay_min = 0;
-        int unsigned                        resp_delay_max = 0;
-        bit                                 reorder = 0;
+        rand int unsigned                   awready_pct = 100;
+        rand int unsigned                   wready_pct = 100;
+        rand int unsigned                   resp_delay_min = 0;
+        rand int unsigned                   resp_delay_max = 0;
+        rand bit                            reorder = 0;
         axi_addr_range_t                    error_ranges[$];
+
+        constraint c_default {
+            soft max_outstanding == 1;
+            soft bready_pct == 100;
+            soft awready_pct == 100;
+            soft wready_pct == 100;
+            soft resp_delay_min == 0;
+            soft resp_delay_max == 0;
+            soft reorder == 0;
+        }
+        constraint c_valid {
+            max_outstanding >= 1;
+            bready_pct inside {[1:100]};
+            awready_pct inside {[1:100]};
+            wready_pct inside {[1:100]};
+            resp_delay_min <= resp_delay_max;
+        }
 
         `uvm_object_param_utils(axi_write_config#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t))
 
@@ -1064,7 +1082,7 @@ package axi_write_uvm_pkg;
                 e.at = clocks;
                 if (l == A2C_DUT_LANE) begin
                     write_burst(aw);
-                    e.delay = $urandom_range(cfg.resp_delay_max, cfg.resp_delay_min);
+                    e.delay = policy.next_delay("bvalid", cfg.resp_delay_min, cfg.resp_delay_max);
                 end
                 b_queue[l].push_back(e);
             end
@@ -1090,8 +1108,8 @@ package axi_write_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
             forever begin
-                aw_ready = ($urandom_range(99, 0) < cfg.awready_pct);
-                w_ready  = ($urandom_range(99, 0) < cfg.wready_pct);
+                aw_ready = policy.next_ready("awready", cfg.awready_pct);
+                w_ready  = policy.next_ready("wready", cfg.wready_pct);
                 for (int l = 0; l < lanes; l++) begin
                     lane[l].awready <= aw_ready;
                     lane[l].wready  <= w_ready;

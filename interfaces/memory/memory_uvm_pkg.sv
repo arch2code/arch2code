@@ -55,7 +55,8 @@ package memory_uvm_pkg;
         // The data written, or the data a read returned.
         rand data_t data;
         // src role: idle clocks (enable low) the driver inserts before this access.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
 
         `uvm_object_param_utils(memory_item#(addr_t, data_t))
 

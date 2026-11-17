@@ -43,7 +43,8 @@ package req_ack_uvm_pkg;
         rand data_t  data;
         rand rdata_t rdata;
         // src role: idle clocks (req low) the driver inserts before this request.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
         // dst role: extra clocks the driver waits after it samples the request
         // before it raises ack.
         int unsigned delay;

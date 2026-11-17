@@ -27,7 +27,8 @@ package rdy_vld_uvm_pkg;
     class rdy_vld_item #(type data_t = logic) extends uvm_sequence_item;
         rand data_t  data;
         // Idle clocks (vld low) the src driver inserts before this beat.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
 
         `uvm_object_param_utils(rdy_vld_item#(data_t))
 
@@ -65,9 +66,12 @@ package rdy_vld_uvm_pkg;
         // dst role: percentage of clocks with rdy high. With burst set, rdy
         // holds each level for a run of 1 to burst_max clocks, and this is the
         // percentage of runs that are high.
-        int unsigned ready_pct = 100;
-        bit          burst = 0;
-        int unsigned burst_max = 8;
+        rand int unsigned ready_pct = 100;
+        rand bit          burst = 0;
+        rand int unsigned burst_max = 8;
+
+        constraint c_default { soft ready_pct == 100; soft burst == 0; soft burst_max == 8; }
+        constraint c_valid { ready_pct <= 100; burst -> burst_max >= 1; }
 
         `uvm_object_param_utils(rdy_vld_config#(data_t))
 
@@ -123,19 +127,15 @@ package rdy_vld_uvm_pkg;
         // on the first clock out of reset. Such a sink never stalls, so
         // ready_pct and burst do not apply to it.
         protected virtual task run_dst();
-            bit          ready;
-            int unsigned run;
+            bit ready;
             if (cfg.no_backpressure) begin
                 for (int l = 0; l < lanes; l++) lane[l].rdy <= 1'b1;
                 return;
             end
             forever begin
-                ready = ($urandom_range(99, 0) < cfg.ready_pct);
-                run   = cfg.burst ? $urandom_range(cfg.burst_max, 1) : 1;
-                repeat (run) begin
-                    for (int l = 0; l < lanes; l++) lane[l].rdy <= ready;
-                    cfg.clk_vif.drive_edge();
-                end
+                ready = policy.next_ready("rdy", cfg.ready_pct, cfg.burst ? cfg.burst_max : 1);
+                for (int l = 0; l < lanes; l++) lane[l].rdy <= ready;
+                cfg.clk_vif.drive_edge();
             end
         endtask
     endclass : rdy_vld_driver

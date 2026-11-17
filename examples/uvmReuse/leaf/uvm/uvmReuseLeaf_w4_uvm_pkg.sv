@@ -139,6 +139,7 @@ package uvmReuseLeaf_w4_uvm_pkg;
             end
 
             in_cfg = in_config_t::type_id::create("in_cfg");
+            if (!in_cfg.randomize()) `uvm_fatal("A2C_RAND", "in_cfg: randomize() failed")
             if (!uvm_config_db#(in_vif_t)::get(this, "", "in", in_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'in'")
             end
@@ -158,6 +159,7 @@ package uvmReuseLeaf_w4_uvm_pkg;
             in_digest.dual = dual_dut;
 
             out_cfg = out_config_t::type_id::create("out_cfg");
+            if (!out_cfg.randomize()) `uvm_fatal("A2C_RAND", "out_cfg: randomize() failed")
             if (!uvm_config_db#(out_vif_t)::get(this, "", "out", out_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'out'")
             end
@@ -181,6 +183,7 @@ package uvmReuseLeaf_w4_uvm_pkg;
             out_digest.dual = dual_dut;
 
             apbReg_cfg = apbReg_config_t::type_id::create("apbReg_cfg");
+            if (!apbReg_cfg.randomize()) `uvm_fatal("A2C_RAND", "apbReg_cfg: randomize() failed")
             if (!uvm_config_db#(apbReg_vif_t)::get(this, "", "apbReg", apbReg_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual apb_if 'apbReg'")
             end

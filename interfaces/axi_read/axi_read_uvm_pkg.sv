@@ -86,7 +86,8 @@ package axi_read_uvm_pkg;
         axi_resp_e            resp[];
         ruser_t               ruser[];
         // src role: idle clocks (arvalid low) the master inserts before this AR.
-        int unsigned          gap;
+        rand int unsigned     gap;
+        constraint c_gap { soft gap == 0; }
         // Bytes the burst may move, (len + 1) << size; 0 means no limit.
         // axi_read_base_seq::new_item() sets it from the port's config.
         int unsigned          max_transfer_bytes;
@@ -191,8 +192,8 @@ package axi_read_uvm_pkg;
         bit                                 id_unbound = 0;
         // A2C_SRC role: bursts whose AR has gone out and whose last beat has
         // not arrived, and the percentage of clocks with rready high.
-        int unsigned                        max_outstanding = 1;
-        int unsigned                        rready_pct = 100;
+        rand int unsigned                   max_outstanding = 1;
+        rand int unsigned                   rready_pct = 100;
         // A2C_DST role. The agent creates mem when the test leaves it null.
         // arready is high on arready_pct percent of clocks. Each burst draws
         // a delay of resp_delay_min to resp_delay_max clocks, counted from
@@ -201,11 +202,26 @@ package axi_read_uvm_pkg;
         // bursts ahead of it with its ID. A beat whose address falls in an
         // error range gets SLVERR and reads zero.
         axi_read_mem_t                      mem;
-        int unsigned                        arready_pct = 100;
-        int unsigned                        resp_delay_min = 0;
-        int unsigned                        resp_delay_max = 0;
-        bit                                 reorder = 0;
+        rand int unsigned                   arready_pct = 100;
+        rand int unsigned                   resp_delay_min = 0;
+        rand int unsigned                   resp_delay_max = 0;
+        rand bit                            reorder = 0;
         axi_addr_range_t                    error_ranges[$];
+
+        constraint c_default {
+            soft max_outstanding == 1;
+            soft rready_pct == 100;
+            soft arready_pct == 100;
+            soft resp_delay_min == 0;
+            soft resp_delay_max == 0;
+            soft reorder == 0;
+        }
+        constraint c_valid {
+            max_outstanding >= 1;
+            rready_pct inside {[1:100]};
+            arready_pct inside {[1:100]};
+            resp_delay_min <= resp_delay_max;
+        }
 
         `uvm_object_param_utils(axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -890,7 +906,7 @@ package axi_read_uvm_pkg;
             e.idx   = arrivals[l][id]++;
             e.at    = clocks;
             e.taken = $realtime;
-            if (l == A2C_DUT_LANE) e.delay = $urandom_range(cfg.resp_delay_max, cfg.resp_delay_min);
+            if (l == A2C_DUT_LANE) e.delay = policy.next_delay("rvalid", cfg.resp_delay_min, cfg.resp_delay_max);
             queue[l].push_back(e);
             starts[l]++;
         endfunction
@@ -928,7 +944,7 @@ package axi_read_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
             forever begin
-                ready = ($urandom_range(99, 0) < cfg.arready_pct);
+                ready = policy.next_ready("arready", cfg.arready_pct);
                 for (int l = 0; l < lanes; l++) lane[l].arready <= ready;
                 dut_choose();
                 if (lanes == 2) model_follow();

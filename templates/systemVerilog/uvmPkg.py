@@ -375,6 +375,7 @@ def agent_build(port, variant):
     cfg = f"{name}_cfg"
     vif = f"virtual {port['interfaceType']}_if"
     lines = [f'        {cfg} = {name}_config_t::type_id::create("{cfg}");',
+             f'        if (!{cfg}.randomize()) `uvm_fatal("A2C_RAND", "{cfg}: randomize() failed")',
              f'        if (!uvm_config_db#({name}_vif_t)::get(this, "", "{name}", {cfg}.vif)) begin',
              f'            `uvm_fatal("A2C_CFG", "no {vif} \'{name}\'")',
              '        end',

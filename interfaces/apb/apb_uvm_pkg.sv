@@ -71,9 +71,11 @@ package apb_uvm_pkg;
         // after 0 to max_wait wait clocks of the access phase, drawn per
         // transfer. An access whose paddr falls in an error range gets
         // pslverr and leaves mem untouched.
-        apb_mem_t        mem;
-        int unsigned     max_wait = 0;
-        apb_addr_range_t error_ranges[$];
+        apb_mem_t         mem;
+        rand int unsigned max_wait = 0;
+        apb_addr_range_t  error_ranges[$];
+
+        constraint c_default { soft max_wait == 0; }
 
         `uvm_object_param_utils(apb_config#(addr_t, data_t))
 
@@ -233,7 +235,7 @@ package apb_uvm_pkg;
             logic [$bits(data_t)-1:0] wdata = lane[A2C_DUT_LANE].pwdata;
             rsp_t                     rsp;
             rsp.slverr = in_error_range(addr);
-            delay      = $urandom_range(cfg.max_wait, 0);
+            delay      = policy.next_delay("pready", 0, cfg.max_wait);
             rsp.rdata  = '0;
             if (!rsp.slverr) begin
                 for (int unsigned b = 0; b < BYTES; b++) begin

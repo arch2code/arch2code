@@ -41,7 +41,8 @@ package pop_ack_uvm_pkg;
     class pop_ack_item #(type rdata_t = logic) extends uvm_sequence_item;
         rand rdata_t rdata;
         // src role: idle clocks (pop low) the driver inserts before this pop.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
         // dst role: extra clocks the driver waits after it samples the pop
         // before it raises ack.
         int unsigned delay;

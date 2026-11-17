@@ -46,7 +46,8 @@ package external_reg_uvm_pkg;
         rand data_t wdata;
         data_t      rdata;
         // src role: idle clocks (write zero) the driver inserts before this write.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
 
         `uvm_object_param_utils(external_reg_item#(data_t))
 

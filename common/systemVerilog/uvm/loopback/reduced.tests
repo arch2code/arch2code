@@ -75,6 +75,14 @@ reg_read_stride_cfg_test
 reg_read_child_block_catcher_test
 reg_read_pins_stride_hier_test
 
+# a2c_ready_policy_lb_tests.svh
+push_ack_dst_same_clock_test
+notify_ack_dst_same_clock_test
+push_ack_mode_b_dst_same_clock_test
+rdy_vld_ready_pattern_test
+push_ack_delay_pattern_test
+a2c_rand_knobs_test
+
 # a2c_replay_drain_lb_tests.svh
 drain_busy_wording_test
 drain_catchup_stop_death_test

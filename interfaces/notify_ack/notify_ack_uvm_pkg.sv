@@ -32,7 +32,8 @@ package notify_ack_uvm_pkg;
 
     class notify_ack_item extends uvm_sequence_item;
         // Idle clocks (notify low) the src driver inserts before this event.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
 
         `uvm_object_utils(notify_ack_item)
 
@@ -62,9 +63,14 @@ package notify_ack_uvm_pkg;
 
     class notify_ack_config extends a2c_agent_config #(virtual notify_ack_if);
         // dst role: extra clocks, drawn per event, that the driver waits
-        // after it samples notify before it raises ack.
-        int unsigned ack_delay_min = 0;
-        int unsigned ack_delay_max = 0;
+        // after it samples notify before it raises ack. The policy's delay
+        // counts from the event's own clock, so the default policy draws
+        // one more than these, and a delay of 0 acks in that clock.
+        rand int unsigned ack_delay_min = 0;
+        rand int unsigned ack_delay_max = 0;
+
+        constraint c_default { soft ack_delay_min == 0; soft ack_delay_max == 0; }
+        constraint c_valid { ack_delay_min <= ack_delay_max; }
 
         `uvm_object_utils(notify_ack_config)
 
@@ -73,8 +79,9 @@ package notify_ack_uvm_pkg;
         endfunction
     endclass : notify_ack_config
 
-    // ack is high for one clock per event, and rises only after notify has
-    // been sampled, so with no delay an event takes two clocks.
+    // ack is high for one clock per event. With the default policy it
+    // rises only after notify has been sampled, so with no delay an event
+    // takes two clocks; a policy delay of 0 acks in the event's own clock.
     class notify_ack_driver extends a2c_lane_driver #(notify_ack_item, virtual notify_ack_if, notify_ack_config);
         `uvm_component_utils(notify_ack_driver)
 
@@ -112,8 +119,16 @@ package notify_ack_uvm_pkg;
 
         protected virtual task respond(output bit r, output int unsigned delay, output bit at_edge);
             r       = 1'b0;
-            delay   = $urandom_range(cfg.ack_delay_max, cfg.ack_delay_min);
+            delay   = policy.next_delay("ack", cfg.ack_delay_min + 1, cfg.ack_delay_max + 1);
             at_edge = 0;
+        endtask
+
+        protected virtual function bit answers_in_request_clock();
+            return 1;
+        endfunction
+
+        protected virtual task wait_request_change(int l);
+            @(lane[l].notify);
         endtask
 
         protected virtual function void idle_response(int l);

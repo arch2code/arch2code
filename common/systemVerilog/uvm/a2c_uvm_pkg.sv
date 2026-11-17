@@ -2258,6 +2258,14 @@ package a2c_uvm_pkg;
             return records.size() != 0;
         endfunction
 
+        // The model lane's next record, left in the log.
+        function bit peek(output T rsp, output int unsigned delay);
+            if (records.size() == 0) return 0;
+            rsp   = records[0];
+            delay = delays[0];
+            return 1;
+        endfunction
+
         // T may be a class handle or a value type; rsp is the recorded
         // handle, not a copy.
         function void replay(output T rsp, output int unsigned delay);
@@ -3342,6 +3350,112 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_agent_config
 
+    // The timing an A2C_DST driver gives its port: the level of each ready
+    // pin and the clocks before each response. Every A2C_DST driver creates
+    // one through the factory as "policy", so a test changes the timing with
+    // a type or instance override. The driver passes its config's knobs on
+    // each call, so a config randomized or changed during the run still
+    // applies; the default draws from them as the config describes. A
+    // channel is the pin the decision drives, so a driver with two ready
+    // pins keeps their runs apart. In Mode B the driver draws once and both
+    // lanes get the result.
+    class a2c_ready_policy extends uvm_object;
+        // The knobs of the current draw.
+        int unsigned      ready_pct = 100;
+        int unsigned      hold_max = 1;
+        int unsigned      delay_min;
+        int unsigned      delay_max;
+        rand bit          ready;
+        // The clocks a ready level holds.
+        rand int unsigned hold;
+        rand int unsigned delay;
+
+        // Per channel: the level next_ready() holds and the clocks it has left.
+        protected bit          level[string];
+        protected int unsigned left[string];
+
+        constraint c_ready { ready dist {1 := ready_pct, 0 := (ready_pct >= 100) ? 0 : 100 - ready_pct}; }
+        constraint c_hold  { hold inside {[1:hold_max]}; }
+        constraint c_delay { delay inside {[delay_min:delay_max]}; }
+
+        `uvm_object_utils(a2c_ready_policy)
+
+        function new(string name = "a2c_ready_policy");
+            super.new(name);
+        endfunction
+
+        protected function void draw();
+            if (!randomize()) `uvm_fatal("A2C_RAND", $sformatf("%s: randomize() failed", get_full_name()))
+        endfunction
+
+        // The channel's ready level for this clock, for a config that asks
+        // for ready on pct percent of clocks, each level held for 1 to
+        // hold_max clocks.
+        virtual function bit next_ready(string channel, int unsigned pct, int unsigned hold_max = 1);
+            if (left.exists(channel) && left[channel] > 0) begin
+                left[channel]--;
+                return level[channel];
+            end
+            ready_pct     = pct;
+            this.hold_max = hold_max;
+            draw();
+            level[channel] = ready;
+            left[channel]  = hold - 1;
+            return ready;
+        endfunction
+
+        // The clocks before the channel's next response, for a config that
+        // asks for min to max.
+        virtual function int unsigned next_delay(string channel, int unsigned min, int unsigned max);
+            delay_min = min;
+            delay_max = max;
+            draw();
+            return delay;
+        endfunction
+    endclass : a2c_ready_policy
+
+    // Ready on every clock and every response at its earliest, which for
+    // push_ack and notify_ack is the request's own clock.
+    class a2c_always_ready_policy extends a2c_ready_policy;
+        constraint c_ready { ready == 1; }
+        constraint c_delay { delay == 0; }
+
+        `uvm_object_utils(a2c_always_ready_policy)
+
+        function new(string name = "a2c_always_ready_policy");
+            super.new(name);
+        endfunction
+    endclass : a2c_always_ready_policy
+
+    // A directed stall pattern: each channel steps through ready_pattern one
+    // clock per entry, and through delay_pattern one response per entry,
+    // starting over at the end. The config's knobs do not apply.
+    class a2c_pattern_ready_policy extends a2c_ready_policy;
+        bit          ready_pattern[$] = '{1'b1};
+        int unsigned delay_pattern[$] = '{0};
+
+        protected int unsigned ready_at[string];
+        protected int unsigned delay_at[string];
+
+        `uvm_object_utils(a2c_pattern_ready_policy)
+
+        function new(string name = "a2c_pattern_ready_policy");
+            super.new(name);
+        endfunction
+
+        virtual function bit next_ready(string channel, int unsigned pct, int unsigned hold_max = 1);
+            int unsigned i = ready_at.exists(channel) ? ready_at[channel] : 0;
+            ready_at[channel] = (i + 1) % ready_pattern.size();
+            return ready_pattern[i];
+        endfunction
+
+        virtual function int unsigned next_delay(string channel, int unsigned min, int unsigned max);
+            int unsigned i = delay_at.exists(channel) ? delay_at[channel] : 0;
+            delay_at[channel] = (i + 1) % delay_pattern.size();
+            return delay_pattern[i];
+        endfunction
+    endclass : a2c_pattern_ready_policy
+
     // A responder lane's place in a2c_lane_driver::run_responder().
     // A2C_RSP_REQUESTED: a lane that has seen a request and has no
     // response yet, a DUT lane whose responder has not answered or a model
@@ -3403,13 +3517,16 @@ package a2c_uvm_pkg;
         replay_t            replay;
         // A master only.
         a2c_lane_watchdog   wd;
+        // The A2C_DST role only.
+        a2c_ready_policy    policy;
 
         // Indexed by a2c_lane_e.
         protected VIF_T           lane[2];
         protected int unsigned    lanes;
         protected int unsigned    starts[2];
-        // The transactions each lane has completed, each counted at the
-        // drive point of its last clock, from which it cannot be withdrawn.
+        // The transactions each lane has completed, each counted once it
+        // cannot be withdrawn: at the drive point of its last clock, or at the
+        // sample point of a response in the request's own clock.
         protected int unsigned    done[2];
         // wd's words for what the master serves and what becomes of it
         // once both lanes are dead.
@@ -3426,6 +3543,11 @@ package a2c_uvm_pkg;
         protected bit             fetch_wanted;
         protected bit             fetch_done;
         protected REQ             fetch_req;
+        // run_responder() with answers_in_request_clock(): whether the DUT
+        // lane holds the response drawn for its next request, and the lanes
+        // whose response follows the request pins in this clock.
+        protected bit             drawn;
+        protected bit             following[2];
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3443,6 +3565,7 @@ package a2c_uvm_pkg;
 
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
+            if (cfg.role == A2C_DST) policy = a2c_ready_policy::type_id::create("policy", this);
             if (cfg.model_vif == null || !has_replay()) return;
             replay = replay_t::type_id::create("replay", this);
             replay.driver  = this;
@@ -3737,12 +3860,29 @@ package a2c_uvm_pkg;
             must_override("end_response");
         endfunction
 
-        // A response goes out for one clock per request, and rises only
-        // after the request has been sampled. One process serves every lane,
-        // taking the DUT lane first, so a model lane waiting on request n
-        // replays it on the clock the DUT lane takes its response.
+        // run_responder(): whether the response can rise in its request's
+        // own clock, as a combinational slave's does. If so the DUT lane
+        // draws each response with respond() before its request, and the
+        // delay counts clocks from the request's clock, so 0 answers in it.
+        protected virtual function bit answers_in_request_clock();
+            return 0;
+        endfunction
+
+        // run_responder() with answers_in_request_clock(): returns when a
+        // request pin of lane l may have changed.
+        protected virtual task wait_request_change(int l);
+            must_override("wait_request_change");
+        endtask
+
+        // A response goes out for one clock per request. It rises at a drive
+        // point once the request has been sampled, or, with a delay of 0 and
+        // answers_in_request_clock(), as the request rises. One process
+        // serves every lane, taking the DUT lane first, so a model lane
+        // waiting on request n replays it on the clock the DUT lane takes its
+        // response.
         protected task run_responder();
             bit at_edge;
+            bit early = answers_in_request_clock();
             if (lanes == 2 && replay == null) begin
                 `uvm_fatal("A2C_CFG", $sformatf("%s: run_responder() serves the model lane from the replay log, and has_replay() returns 0, so there is none: a responder that drives both lanes alike overrides run_dst()",
                                                 get_full_name()))
@@ -3753,7 +3893,15 @@ package a2c_uvm_pkg;
             end
             cfg.clk_vif.wait_reset_release();
             forever begin
-                cfg.clk_vif.sample_edge();
+                if (early) begin
+                    if (!drawn && rsp_state[A2C_DUT_LANE] == A2C_RSP_IDLE) begin
+                        respond(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE], at_edge);
+                        drawn = 1;
+                    end
+                    follow_requests();
+                end else begin
+                    cfg.clk_vif.sample_edge();
+                end
                 for (int l = 0; l < lanes; l++) begin
                     if (rsp_state[l] == A2C_RSP_IDLE && request_seen(l)) begin
                         rsp_state[l] = A2C_RSP_REQUESTED;
@@ -3762,10 +3910,11 @@ package a2c_uvm_pkg;
                 end
                 at_edge = 0;
                 if (rsp_state[A2C_DUT_LANE] == A2C_RSP_REQUESTED) begin
-                    respond(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE], at_edge);
+                    if (early) drawn = 0;
+                    else respond(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE], at_edge);
                     if (!at_edge) begin
                         if (replay != null) replay.record(response[A2C_DUT_LANE], response_delay[A2C_DUT_LANE]);
-                        rsp_state[A2C_DUT_LANE] = A2C_RSP_WAIT;
+                        start_response(A2C_DUT_LANE, early);
                     end
                 end
                 // Nothing was taken for a withdrawn request, so the lane
@@ -3777,7 +3926,7 @@ package a2c_uvm_pkg;
                 end
                 if (lanes == 2 && rsp_state[A2C_MODEL_LANE] == A2C_RSP_REQUESTED && replay.can_replay()) begin
                     replay.replay(response[A2C_MODEL_LANE], response_delay[A2C_MODEL_LANE]);
-                    rsp_state[A2C_MODEL_LANE] = A2C_RSP_WAIT;
+                    start_response(A2C_MODEL_LANE, early);
                 end
                 if (at_edge) cfg.clk_vif.skew_after_edge();
                 else cfg.clk_vif.drive_edge();
@@ -3799,6 +3948,69 @@ package a2c_uvm_pkg;
                         default: ;
                     endcase
                 end
+            end
+        endtask
+
+        // run_responder(): moves lane l, whose response and delay are set,
+        // on from its request's sample point. A lane that answered in the
+        // request's clock has completed the transfer, and an early delay
+        // already counts that clock.
+        protected function void start_response(int l, bit early);
+            if (following[l]) begin
+                rsp_state[l] = A2C_RSP_RESPOND;
+                done[l]++;
+                return;
+            end
+            if (early && response_delay[l] > 0) response_delay[l]--;
+            rsp_state[l] = A2C_RSP_WAIT;
+        endfunction
+
+        // run_responder(): whether lane l answers in this clock, and with
+        // what. The DUT lane does with a drawn delay of 0. The model lane
+        // does for a record of delay 0, or, with no record left, beside the
+        // DUT lane, whose next transfer is then the model lane's too.
+        protected function bit answers_now(int l, output REC_T r);
+            int unsigned d;
+            if (!(rsp_state[l] inside {A2C_RSP_IDLE, A2C_RSP_REQUESTED}) || !request_seen(l)) return 0;
+            if (l == A2C_DUT_LANE) begin
+                r = response[l];
+                return rsp_state[l] == A2C_RSP_IDLE && drawn && response_delay[l] == 0;
+            end
+            if (replay.peek(r, d)) return d == 0;
+            return answers_now(A2C_DUT_LANE, r);
+        endfunction
+
+        // From a drive point to the sample point, each lane that answers in
+        // this clock holds its response up while its request is up, as a
+        // combinational slave does, so a request that drops, or one a master
+        // drives at this drive point, is followed.
+        protected task follow_requests();
+            bit   sampled = 0;
+            REC_T r;
+            following = '{0, 0};
+            forever begin
+                for (int l = 0; l < lanes; l++) begin
+                    bit want = answers_now(l, r);
+                    if (want == following[l]) continue;
+                    if (want) drive_response(l, r);
+                    else end_response(l);
+                    following[l] = want;
+                end
+                fork
+                    begin
+                        fork
+                            begin
+                                cfg.clk_vif.sample_edge();
+                                sampled = 1;
+                            end
+                            wait_request_change(A2C_DUT_LANE);
+                            if (lanes == 2) wait_request_change(A2C_MODEL_LANE);
+                            else wait (0);
+                        join_any
+                        disable fork;
+                    end
+                join
+                if (sampled) return;
             end
         endtask
 

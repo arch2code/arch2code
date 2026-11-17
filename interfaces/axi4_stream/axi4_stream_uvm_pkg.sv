@@ -41,7 +41,8 @@ package axi4_stream_uvm_pkg;
         tstrb_t      tstrb;
         tstrb_t      tkeep;
         // Idle clocks (tvalid low) the src driver inserts before this beat.
-        int unsigned gap;
+        rand int unsigned gap;
+        constraint c_gap { soft gap == 0; }
 
         `uvm_object_param_utils(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -97,7 +98,10 @@ package axi4_stream_uvm_pkg;
         // if it does.
         bit          no_backpressure = 0;
         // dst role: percentage of clocks with tready high.
-        int unsigned ready_pct = 100;
+        rand int unsigned ready_pct = 100;
+
+        constraint c_default { soft ready_pct == 100; }
+        constraint c_valid { ready_pct <= 100; }
 
         `uvm_object_param_utils(axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -170,7 +174,7 @@ package axi4_stream_uvm_pkg;
                 return;
             end
             forever begin
-                ready = ($urandom_range(99, 0) < cfg.ready_pct);
+                ready = policy.next_ready("tready", cfg.ready_pct);
                 for (int l = 0; l < lanes; l++) lane[l].tready <= ready;
                 cfg.clk_vif.drive_edge();
             end

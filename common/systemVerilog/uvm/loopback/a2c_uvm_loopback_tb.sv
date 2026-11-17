@@ -883,6 +883,7 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_video_lb_tests.svh"
     `include "a2c_completion_lb_tests.svh"
     `include "a2c_reset_lb_tests.svh"
+    `include "a2c_ready_policy_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 

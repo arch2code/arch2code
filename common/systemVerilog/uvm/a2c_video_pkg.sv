@@ -144,26 +144,26 @@ package a2c_video_pkg;
     // only, so the frames around it check that the DUT recovers. validate()
     // reports every broken rule in one A2C_CFG fatal.
     class a2c_video_cfg extends uvm_object;
-        int unsigned      width = 64;
-        int unsigned      height = 8;
-        int unsigned      frames = 3;
-        int unsigned      corner_frame = 1;
+        rand int unsigned      width = 64;
+        rand int unsigned      height = 8;
+        rand int unsigned      frames = 3;
+        rand int unsigned      corner_frame = 1;
         // A handshaked stream has no item to carry trail clocks, so its run
         // ends with the last beat. A clocked one always ends with fv low.
-        int unsigned      lead_clocks = 4;
-        int unsigned      trail_clocks = 4;
+        rand int unsigned      lead_clocks = 4;
+        rand int unsigned      trail_clocks = 4;
         // Drawn per gap from [min, max].
-        int unsigned      h_blank_min = 2;
-        int unsigned      h_blank_max = 2;
-        int unsigned      v_blank_min = 8;
-        int unsigned      v_blank_max = 8;
+        rand int unsigned      h_blank_min = 2;
+        rand int unsigned      h_blank_max = 2;
+        rand int unsigned      v_blank_min = 8;
+        rand int unsigned      v_blank_max = 8;
         // Clocked only.
-        int unsigned      v_front = 1;
-        int unsigned      v_back = 1;
+        rand int unsigned      v_front = 1;
+        rand int unsigned      v_back = 1;
         // Handshaked only: 0 to beat_gap_max more idle clocks before every
         // beat.
-        int unsigned      beat_gap_max = 0;
-        a2c_video_pixel_e pixel_mode = A2C_PIX_RAMP;
+        rand int unsigned      beat_gap_max = 0;
+        rand a2c_video_pixel_e pixel_mode = A2C_PIX_RAMP;
         // A2C_PIX_CONST only; X until set, which validate() rejects.
         uvm_bitstream_t   pixel_value;
         // The corners, each off by default.
@@ -199,6 +199,39 @@ package a2c_video_pkg;
         // The knobs apply_corner() derived from the geometry at the time,
         // which apply_plusargs() derives again from the final geometry.
         protected a2c_video_corner_t derived;
+
+        // The env randomizes its cfg before configure_video(), so these
+        // defaults hold unless a test or a factory override constrains a
+        // knob. A soft default gives way to a constraint that excludes it;
+        // to draw a knob over a range that holds its default, turn
+        // c_default off and constrain every knob.
+        constraint c_default {
+            soft width == 64;
+            soft height == 8;
+            soft frames == 3;
+            soft corner_frame == 1;
+            soft lead_clocks == 4;
+            soft trail_clocks == 4;
+            soft h_blank_min == 2;
+            soft h_blank_max == 2;
+            soft v_blank_min == 8;
+            soft v_blank_max == 8;
+            soft v_front == 1;
+            soft v_back == 1;
+            soft beat_gap_max == 0;
+            soft pixel_mode == A2C_PIX_RAMP;
+        }
+        // Rules of validate() that hold a drawn range together, so a test
+        // that constrains one end gets the other with it. validate() still
+        // checks every rule after the plusargs.
+        constraint c_valid {
+            width > 0;
+            height > 0;
+            frames > 0;
+            h_blank_min <= h_blank_max;
+            v_blank_min <= v_blank_max;
+            clocked -> h_blank_min >= 1 && v_blank_min >= 1;
+        }
 
         `uvm_object_utils(a2c_video_cfg)
 
@@ -269,8 +302,9 @@ package a2c_video_pkg;
                     h_blank_max  = 6;
                     v_blank_min  = 2;
                     v_blank_max  = 24;
-                    lead_clocks  = $urandom_range(12, 0);
-                    trail_clocks = $urandom_range(12, 1);
+                    if (!std::randomize(lead_clocks, trail_clocks) with {lead_clocks <= 12; trail_clocks inside {[1:12]};}) begin
+                        `uvm_fatal("A2C_RAND", "a2c_video_cfg: the blanking corner's lead and trail draw failed")
+                    end
                 end
                 "no_blank": begin
                     h_blank_min = 0;
@@ -1869,6 +1903,7 @@ package a2c_video_pkg;
             hooks.video_ports();
             if (in == null) `uvm_fatal("A2C_CFG", "video_ports() added no video input; call add_video_input() with a2c_video_input::make()")
             cfg.from_adapter(in.adapter_base);
+            if (!cfg.randomize()) `uvm_fatal("A2C_RAND", "a2c_video_env: the video cfg's randomize() failed")
             hooks.configure_video(cfg);
             if (corner != "") cfg.apply_corner(corner);
             cfg.apply_plusargs();
@@ -1991,11 +2026,13 @@ package a2c_video_pkg;
             in.send(this, c, p);
         endtask
 
-        // A configuration of the input's stream kind and pixel shape, with
-        // the class defaults, for a test that sends runs of its own.
+        // A configuration of the input's stream kind and pixel shape,
+        // randomized as the test's was, for a test that sends runs of its
+        // own.
         function a2c_video_cfg new_cfg(string name = "cfg");
             a2c_video_cfg c = a2c_video_cfg::type_id::create(name);
             c.from_adapter(in.adapter_base);
+            if (!c.randomize()) `uvm_fatal("A2C_RAND", $sformatf("a2c_video_env: randomize() of video cfg %s failed", name))
             return c;
         endfunction
 
@@ -2051,6 +2088,8 @@ package a2c_video_pkg;
         pure virtual function void video_connect();
 
         // Sets the geometry and knobs before the corner and the plusargs.
+        // cfg arrives randomized; a test may assign knobs or call
+        // cfg.randomize() with its own constraints.
         virtual function void configure_video(a2c_video_cfg cfg);
         endfunction
 

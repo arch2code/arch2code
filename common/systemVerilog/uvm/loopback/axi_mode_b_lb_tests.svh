@@ -261,8 +261,11 @@
         int unsigned         stall_at;
         int unsigned         half_at;
         int unsigned         both_at;
-        // AXB_JOINT: the master's joint stall bound.
+        // AXB_JOINT: the master's joint stall bound, and per lane the last
+        // clock the lane made a handshake on, from which the master dates
+        // the lane's death.
         int unsigned         joint_stall = 300;
+        realtime             last_hs_at[2];
         // The joint stall bound, and the skew bound above it, with
         // joint_under set. The joint stall bound is above the slaves' longest
         // response delay, so a burst in flight never stalls.
@@ -760,10 +763,13 @@
                 // and the DUT lane once its outstanding bursts, which its
                 // slave never answers, hold it still for the bound. With it
                 // the DUT lane dies on burst both_at's completion, and the
-                // model lane once the watch holds rready low.
+                // model lane once the watch holds rready low. The bursts
+                // before both_at take the skew bound of the other variants
+                // with this traffic.
                 AXB_BOTH_DEAD: begin
                     a2c_lane_e first = dut_first ? A2C_DUT_LANE : A2C_MODEL_LANE;
                     both_at     = n_items / 2;
+                    lane_skew   = 200;
                     want_errors = 2;
                     want_text.push_back({"the ", a2c_lane_name(first), " lane has not ", a2c_select_str(dut_first, "returned ", "taken the A")});
                     want_text.push_back({"the ", a2c_lane_name(a2c_lane_e'(1 - first)), " lane, alone since the ", a2c_lane_name(first),
@@ -775,10 +781,14 @@
                     want_text.push_back("No lane is left, so every open and later burst returns to the sequence with no beats.");
                     uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_lone_lane_cycles", 150);
                 end
-                // Neither lane trails, so the skew bound never fires and the
-                // joint stall bound ends the run.
+                // Neither lane trails at the stall, so the skew bound never
+                // fires and the joint stall bound ends the run. Before it the
+                // lanes complete bursts of up to 32 beats in different
+                // orders, so the skew bound is that of the other variants
+                // with this traffic.
                 AXB_JOINT: begin
                     both_at     = n_items / 2;
+                    lane_skew   = 200;
                     want_errors = 1;
                     want_text.push_back($sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s (uvm_test_top.agent.drv), ",
                                                   port, joint_stall, port));
@@ -1100,8 +1110,10 @@
                 check_since(first, lane_skew);
                 check_since(a2c_lane_e'(1 - first), 150);
             end else if (variant == AXB_JOINT) begin
-                check_since(A2C_DUT_LANE, joint_stall);
-                check_since(A2C_MODEL_LANE, joint_stall);
+                // The bound counts from the last handshake on either lane,
+                // and each lane's death is dated from its own last one.
+                realtime last = (last_hs_at[0] > last_hs_at[1]) ? last_hs_at[0] : last_hs_at[1];
+                for (int l = 0; l < 2; l++) check_since(a2c_lane_e'(l), joint_stall + int'((last - last_hs_at[l]) / period));
                 if (died(A2C_DUT_LANE) != died(A2C_MODEL_LANE)) begin
                     `uvm_error("LB_MODE_B", $sformatf("the lanes died at %0t and %0t, expected together", died(A2C_DUT_LANE), died(A2C_MODEL_LANE)))
                 end
@@ -1849,6 +1861,7 @@
                 end
                 ar_apart += (hs[0] != hs[1]);
                 for (int l = 0; l < 2; l++) begin
+                    if (role == A2C_SRC && !is_dead(a2c_lane_e'(l)) && (hs[l] || (v[l].rvalid === 1'b1 && v[l].rready === 1'b1))) last_hs_at[l] = $realtime;
                     if (v[l].rvalid === 1'b1 && v[l].rready === 1'b1 && v[l].rlast === 1'b1) begin
                         open[l]--;
                         note_done(l, int'(v[l].rid));
@@ -2896,6 +2909,7 @@
                 aw_apart += (aw_hs[0] != aw_hs[1]);
                 w_apart  += (w_hs[0] != w_hs[1]);
                 for (int l = 0; l < 2; l++) begin
+                    if (role == A2C_SRC && !is_dead(a2c_lane_e'(l)) && (aw_hs[l] || w_hs[l] || (v[l].bvalid === 1'b1 && v[l].bready === 1'b1))) last_hs_at[l] = $realtime;
                     if (w_hs[l]) begin
                         ws[l]++;
                         if (v[l].wlast === 1'b1) begin

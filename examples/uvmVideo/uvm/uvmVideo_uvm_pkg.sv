@@ -54,6 +54,7 @@ package uvmVideo_uvm_pkg;
             end
 
             vin_cfg = vin_config_t::type_id::create("vin_cfg");
+            if (!vin_cfg.randomize()) `uvm_fatal("A2C_RAND", "vin_cfg: randomize() failed")
             if (!uvm_config_db#(vin_vif_t)::get(this, "", "vin", vin_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual raw_if 'vin'")
             end
@@ -72,6 +73,7 @@ package uvmVideo_uvm_pkg;
             vin_digest.dual = dual_dut;
 
             vout_cfg = vout_config_t::type_id::create("vout_cfg");
+            if (!vout_cfg.randomize()) `uvm_fatal("A2C_RAND", "vout_cfg: randomize() failed")
             if (!uvm_config_db#(vout_vif_t)::get(this, "", "vout", vout_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual axi4_stream_if 'vout'")
             end

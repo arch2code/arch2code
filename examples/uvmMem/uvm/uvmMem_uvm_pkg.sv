@@ -68,6 +68,7 @@ package uvmMem_uvm_pkg;
             end
 
             cmd_cfg = cmd_config_t::type_id::create("cmd_cfg");
+            if (!cmd_cfg.randomize()) `uvm_fatal("A2C_RAND", "cmd_cfg: randomize() failed")
             if (!uvm_config_db#(cmd_vif_t)::get(this, "", "cmd", cmd_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'cmd'")
             end
@@ -87,6 +88,7 @@ package uvmMem_uvm_pkg;
             cmd_digest.dual = dual_dut;
 
             out_cfg = out_config_t::type_id::create("out_cfg");
+            if (!out_cfg.randomize()) `uvm_fatal("A2C_RAND", "out_cfg: randomize() failed")
             if (!uvm_config_db#(out_vif_t)::get(this, "", "out", out_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual rdy_vld_if 'out'")
             end
@@ -110,6 +112,7 @@ package uvmMem_uvm_pkg;
             out_digest.dual = dual_dut;
 
             wr_cfg = wr_config_t::type_id::create("wr_cfg");
+            if (!wr_cfg.randomize()) `uvm_fatal("A2C_RAND", "wr_cfg: randomize() failed")
             if (!uvm_config_db#(wr_vif_t)::get(this, "", "wr", wr_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual memory_if 'wr'")
             end
@@ -131,6 +134,7 @@ package uvmMem_uvm_pkg;
             wr_digest.dual = dual_dut;
 
             rd_cfg = rd_config_t::type_id::create("rd_cfg");
+            if (!rd_cfg.randomize()) `uvm_fatal("A2C_RAND", "rd_cfg: randomize() failed")
             if (!uvm_config_db#(rd_vif_t)::get(this, "", "rd", rd_cfg.vif)) begin
                 `uvm_fatal("A2C_CFG", "no virtual memory_if 'rd'")
             end
