@@ -801,27 +801,9 @@ python3 test_hw_register_ro_render.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: req_ack dst BFM drops req before a delayed ack()"
+echo "Test Suite ${idx}: req_ack and AXI BFMs drop req / hold ready low while a delayed model call blocks"
 echo "------------------------------------------------------------------------"
-python3 test_req_ack_dst_bfm_delayed_ack.py || FAILED=1
-idx=$((idx+1))
-
-echo ""
-echo "Test Suite ${idx}: axi_read src BFM holds arready low while a delayed send blocks"
-echo "------------------------------------------------------------------------"
-python3 test_axi_read_src_bfm_delayed_send.py || FAILED=1
-idx=$((idx+1))
-
-echo ""
-echo "Test Suite ${idx}: axi_read dst BFM holds rready low while a delayed send blocks"
-echo "------------------------------------------------------------------------"
-python3 test_axi_read_dst_bfm_delayed_send.py || FAILED=1
-idx=$((idx+1))
-
-echo ""
-echo "Test Suite ${idx}: axi_write dst BFM holds bready low while a delayed send blocks"
-echo "------------------------------------------------------------------------"
-python3 test_axi_write_dst_bfm_delayed_send.py || FAILED=1
+python3 test_bfm_delayed_call.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
