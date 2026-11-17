@@ -698,6 +698,12 @@ python3 test_bfm_backpressure_checks.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: registeredFifo frees a read slot on the clock after the read, as rdyVldFifo does"
+echo "------------------------------------------------------------------------"
+python3 test_registered_fifo.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: axi_write src BFM delivers W beats an HDL master sends before AW"
 echo "------------------------------------------------------------------------"
 python3 test_axi_write_src_bfm_w_first.py || FAILED=1

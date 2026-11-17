@@ -37,6 +37,7 @@ public:
     memory_src_bfm(sc_module_name modulename) :
         m_skipped(name(), "HDL made a memory access while SystemC was still serving the previous one, so the BFM did not take it",
                   "accesses") {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();
@@ -188,7 +189,14 @@ public:
     SC_HAS_PROCESS (memory_dst_bfm);
 
     memory_dst_bfm(sc_module_name modulename) : log_(name()) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(clock_rise);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     // UVM Mode B only. credit counts the accesses the DUT lane has made on
@@ -267,6 +275,7 @@ public:
                 hdl_if_p->wr_en = false;
             }
             wait(clk.posedge_event());
+            m_clock.rose();
             if (m_order != nullptr) {
                 m_order->sampled(stamp);
             }
@@ -277,16 +286,34 @@ public:
             if (!is_write) {
                 // read_data changes after the access edge: deltas later from RTL,
                 // one drive skew later from a UVM agent. It is stable by the
-                // falling edge, before the next access edge.
-                wait(clk.negedge_event());
-                data.sc_unpack(hdl_if_p->read_data);
-                // The model resumes at the next rising edge, so the pins it
-                // drives next change after a posedge, never at the falling edge
-                // where UVM monitors sample. A read takes two edges.
-                wait(clk.posedge_event());
+                // sample point before the falling edge, so the read completes
+                // there and an access the model makes next, in zero time, is
+                // on the pins before the falling edge where UVM monitors
+                // sample and is taken on the next rising edge, as RTL that
+                // drives its next access from read_data does. Until a high
+                // phase has been measured the read completes at the next
+                // rising edge, so the pins never change while the clock is low.
+                if (m_clock.waitSamplePointInClock(clk)) {
+                    data.sc_unpack(hdl_if_p->read_data);
+                } else {
+                    if (clk.read()) {
+                        wait(clk.negedge_event());
+                    }
+                    data.sc_unpack(hdl_if_p->read_data);
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                }
                 if_p->complete(data);
             }
         }
+    }
+
+    void clock_rise() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
     }
 
 private:
@@ -337,6 +364,7 @@ private:
     }
 
     logBlock log_;
+    bfmSameClockAnswer m_clock;
     sc_signal<sc_bv<32>> *m_credit = nullptr;
     sc_signal<bool> *m_held = nullptr;
     memory_write_order *m_order = nullptr;

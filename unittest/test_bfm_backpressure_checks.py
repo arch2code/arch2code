@@ -7,8 +7,9 @@ the RTL, and expects:
 
 - a dst BFM on a BACKPRESSURE_NONE channel warns once when the HDL holds rdy
   low under vld, and reports the stalled edge count at end of simulation;
-- a dst BFM reads a value from the channel only on the edge the HDL transfers
-  it, so each write returns on that edge and the BFM holds no value of its own;
+- a dst BFM reads a value from the channel only once the HDL is certain to
+  transfer it, at the sample point before that edge, so each write returns in
+  the clock the HDL takes its value and the BFM holds no value of its own;
 - the same stall on a BACKPRESSURE_ALLOWED channel logs nothing;
 - a src BFM holds rdy low while a delayed channel write blocks, so on an
   allowed channel every beat the HDL sends arrives in order and nothing warns.
@@ -655,7 +656,7 @@ SC_MODULE( rateProbe )
       : sc_module( n ), clk( "clk", 10, SC_NS ),
         rvSrcTxn( "rvSrcTxn", false ), rvSrcPaced( "rvSrcPaced", true ), axSrcTxn( "axSrcTxn", false ), axSrcPaced( "axSrcPaced", true ),
         rvDstTxn( "rvDstTxn", false ), rvDstPaced( "rvDstPaced", true ), axDstTxn( "axDstTxn", false ), axDstPaced( "axDstPaced", true ),
-        rvDstDelay( "rvDstDelay", false, 10 ), axDstDelay( "axDstDelay", false, 10 ),
+        rvDstDelay( "rvDstDelay", false, 15 ), axDstDelay( "axDstDelay", false, 15 ),
         rvRelay( "rvRelay", 7 ), axRelay( "axRelay", 7 ), rvRelayReady( "rvRelayReady", 0 ), axRelayReady( "axRelayReady", 0 ), rvRelayTwo( "rvRelayTwo" ), axRelayTwo( "axRelayTwo" ), rvSrcDepth( "rvSrcDepth" ), axSrcDepth( "axSrcDepth" ),
         rvDstDepth( "rvDstDepth", false ), rvDstMulti( "rvDstMulti", true ), axDstDepth( "axDstDepth", false )
     {
@@ -761,10 +762,11 @@ def test_bfm_backpressure_checks():
             check(bfmLines(output, scenario) == [f'p.{scenario}.bfm:{STALL} at 50 ns',
                                                   f'p.{scenario}.bfm:{STALL}, 2 clock edges in total'],
                   f"{scenario} warns once at the first stalled edge and reports two stalled edges")
-            # The HDL takes the values at 40, 70, 80 and 90 ns.
+            # The HDL takes the values at 40, 70, 80 and 90 ns, and each write
+            # returns at the sample point 5 ns before, printed in whole ns.
             writes = re.search(rf'^dst p\.{scenario} writes=([\d,]*)$', output, re.M)
-            check(writes is not None and writes.group(1) == '40,70,80,90,',
-                  f"{scenario}: each write returns on the edge the HDL transfers its value "
+            check(writes is not None and writes.group(1) == '34,64,74,84,',
+                  f"{scenario}: each write returns at the sample point before the edge the HDL transfers its value "
                   f"(got {writes.group(1) if writes else None})")
         for scenario in ['rvDstAllowed', 'axDstAllowed']:
             check(bfmLines(output, scenario) == [], f"{scenario} stalls silently, backpressure is allowed")
@@ -859,6 +861,13 @@ def gaps(times):
     return sorted({b - a for a, b in zip(times, times[1:])})
 
 
+def returnsBefore(rec):
+    # A write that returns at the sample point lands in the clock before the
+    # edge that takes its value.
+    times, returns = rec.get('times', []), rec.get('returns', [])
+    return len(times) == len(returns) and all(t - 10 < r < t for t, r in zip(times, returns))
+
+
 def pacedLines(output, scenario):
     return [line for line in output.splitlines() if line.startswith(f'p.{scenario}.') and PACED in line]
 
@@ -868,18 +877,20 @@ def test_bfm_model_rates():
 
     - a transactional model reader or writer moves a beat on every edge, and
       no notice is logged;
-    - a model that waits on the clock between port calls moves one beat per
-      two clocks, and the BFM logs one notice that names the port and tells
-      the user to remove the wait from the model;
-    - a transactional writer whose channel has a fixed one-clock delay logs
-      no notice;
+    - a model reader that waits on the clock between reads moves one beat per
+      two clocks, and the src BFM logs one notice that names the port and
+      tells the user to remove the wait from the model. A writer that waits
+      on the clock between writes still moves one beat per clock behind a dst
+      BFM, whose write() returned before the edge, and logs nothing;
+    - a transactional writer whose channel delays each write 15 ns, past the
+      next sample point, moves one beat per two clocks and logs no notice;
     - a transactional model between a src BFM and a dst BFM, with a sink that
       is ready on a random half of the edges or always ready, logs no notice
-      on either port. Into the always-ready sink it moves one beat per two
-      clocks in one thread, and one beat per clock in two threads with a
-      channel between them;
+      on either port. Into the always-ready sink it moves one beat per clock,
+      in one thread as in two threads with a channel between them;
     - a model with room for three beats behind a src BFM is handed exactly
-      three, and a dst write() returns on the edge the HDL takes its value;
+      three, and a dst write() returns at the sample point before the edge
+      the HDL takes its value;
     - a multicycle rdy_vld dst BFM takes a burst from the model when the first
       beat goes on the pins, so the model's last writeClocked() of the burst
       returns before the HDL takes any of it.
@@ -903,32 +914,31 @@ def test_bfm_model_rates():
         records = parseRateRecords(output)
         inOrder = list(range(RATE_BEATS))
         for family in ['rv', 'ax']:
-            for side in ['Src', 'Dst']:
-                for pace, gap in [('Txn', 10), ('Paced', 20)]:
-                    scenario = f'{family}{side}{pace}'
-                    rec = records.get(scenario, {})
-                    check(rec.get('recv') == inOrder, f"{scenario} moves all {RATE_BEATS} beats in order")
-                    check(gaps(rec.get('times', [])) == [gap],
-                          f"{scenario} moves one beat per {gap // 10} clock(s) (gaps {gaps(rec.get('times', []))})")
-                    if side == 'Dst':
-                        check(rec.get('returns') == rec.get('times'),
-                              f"{scenario}: each write() returns on the edge the HDL takes its value")
-                    lines = pacedLines(output, scenario)
-                    if pace == 'Txn':
-                        check(lines == [], f"{scenario} logs no clock-paced notice (got {lines})")
-                    else:
-                        check(len(lines) == 1 and lines[0].startswith(f'p.{scenario}.bfm:port p.{scenario}.ch')
-                              and f'{PACED} {THRESHOLD} transfers in a row' in lines[0]
-                              and 'one beat per two clocks' in lines[0]
-                              and 'remove the wait from the model' in lines[0],
-                              f"{scenario} logs one notice naming its port (got {lines})")
+            for side, pace, gap in [('Src', 'Txn', 10), ('Src', 'Paced', 20), ('Dst', 'Txn', 10), ('Dst', 'Paced', 10)]:
+                scenario = f'{family}{side}{pace}'
+                rec = records.get(scenario, {})
+                check(rec.get('recv') == inOrder, f"{scenario} moves all {RATE_BEATS} beats in order")
+                check(gaps(rec.get('times', [])) == [gap],
+                      f"{scenario} moves one beat per {gap // 10} clock(s) (gaps {gaps(rec.get('times', []))})")
+                if side == 'Dst':
+                    check(returnsBefore(rec),
+                          f"{scenario}: each write() returns in the clock before the edge the HDL takes its value")
+                lines = pacedLines(output, scenario)
+                if gap == 10:
+                    check(lines == [], f"{scenario} logs no clock-paced notice (got {lines})")
+                else:
+                    check(len(lines) == 1 and lines[0].startswith(f'p.{scenario}.bfm:port p.{scenario}.ch')
+                          and f'{PACED} {THRESHOLD} transfers in a row' in lines[0]
+                          and 'one beat per two clocks' in lines[0]
+                          and 'remove the wait from the model' in lines[0],
+                          f"{scenario} logs one notice naming its port (got {lines})")
 
-            # The write is stamped before its delay, so the writer is seen
-            # coming back on its transfer edge, not one clock later.
+            # The write is stamped before its delay, so the writer is not
+            # seen as one that waits on the clock.
             scenario = f'{family}DstDelay'
             rec = records.get(scenario, {})
             check(rec.get('recv') == inOrder and gaps(rec.get('times', [])) == [20],
-                  f"{scenario}: a transactional writer with a fixed one-clock delay moves one beat per two clocks "
+                  f"{scenario}: a transactional writer with a fixed 15 ns delay moves one beat per two clocks "
                   f"(gaps {gaps(rec.get('times', []))})")
             check(pacedLines(output, scenario) == [],
                   f"{scenario} logs no clock-paced notice (got {pacedLines(output, scenario)})")
@@ -940,14 +950,13 @@ def test_bfm_model_rates():
                   f"{scenario}: a transactional model held up by a randomly ready peer logs no notice "
                   f"(got {pacedLines(output, scenario)})")
 
-            # Both ports move one beat per two clocks and the model comes back
-            # to its input on the first edge after each input transfer, but a
-            # delta after the edge's own, so only the delta rule keeps the src
-            # BFM quiet.
+            # The output's write returns at the sample point, so the model is
+            # back at its input before the falling edge and both ports move a
+            # beat on every edge.
             scenario = f'{family}RelayReady'
             rec = records.get(scenario, {})
-            check(rec.get('recv') == list(range(RELAY_BEATS)) and gaps(rec.get('times', [])) == [20],
-                  f"{scenario}: a one-thread relay into an always-ready sink moves one beat per two clocks "
+            check(rec.get('recv') == list(range(RELAY_BEATS)) and gaps(rec.get('times', [])) == [10],
+                  f"{scenario}: a one-thread relay into an always-ready sink moves one beat per clock "
                   f"(gaps {gaps(rec.get('times', []))})")
             check(pacedLines(output, scenario) == [],
                   f"{scenario} logs no clock-paced notice on either port (got {pacedLines(output, scenario)})")
@@ -968,10 +977,9 @@ def test_bfm_model_rates():
 
             scenario = f'{family}DstDepth'
             rec = records.get(scenario, {})
-            check(rec.get('times') == [80, 90, 100, 110] and rec.get('recv') == [0, 1, 2, 3]
-                  and rec.get('returns') == rec.get('times'),
-                  f"{scenario}: write(0) returns at 80 ns, the edge the HDL takes it, and each later write on "
-                  f"its own edge ({rec})")
+            check(rec.get('times') == [80, 90, 100, 110] and rec.get('recv') == [0, 1, 2, 3] and returnsBefore(rec),
+                  f"{scenario}: write(0) returns before 80 ns, the edge the HDL takes it, and each later write "
+                  f"before its own edge ({rec})")
 
         rec = records.get('rvDstMulti', {})
         check(rec.get('times') == list(range(80, 160, 10)) and rec.get('recv') == list(range(8)),

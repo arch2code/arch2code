@@ -8,6 +8,7 @@
 #include "q_assert.h"
 #include <cstddef>
 #include <format>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -165,8 +166,10 @@ struct bfmHeldRequest {
 // the BFM takes the request one time-resolution step before the falling edge.
 // A model that answers in zero time then has ack on the pins at the falling
 // edge, where a UVM monitor samples, and the next rising edge transfers it.
-// The high phase is measured at every falling edge, so the BFM follows the
-// clock it is given.
+// The same sample point serves a dst BFM, which completes a send there (see
+// waitTaken()). The high phase is measured at every falling edge, so the BFM
+// follows the clock it is given. rose() may be called by both a rising-edge
+// method and a thread woken by that edge, in either order.
 struct bfmSameClockAnswer {
     sc_time rise_;
     sc_time high_;
@@ -192,6 +195,139 @@ struct bfmSameClockAnswer {
             wait(clk.posedge_event());
             wait(sc_get_time_resolution());
         }
+    }
+    // Called at any point in a clock. False when the clock is low or this
+    // clock's sample point has passed.
+    bool waitSamplePointInClock(const sc_in<bool> &clk) {
+        const sc_time step = sc_get_time_resolution();
+        if (!clk.read() || high_ <= step) {
+            return false;
+        }
+        const sc_time at = rise_ + high_ - step;
+        const sc_time now = sc_time_stamp();
+        if (now > at) {
+            return false;
+        }
+        if (now < at) {
+            wait(at - now);
+        }
+        return clk.read();
+    }
+    // Lets a dst BFM complete the model's send when the HDL's transfer of the
+    // beat on its pins becomes certain: ready is high at the sample point,
+    // and no pin changes before the next rising edge. The model's next call
+    // then reaches its port before that edge, so a model that sends and then
+    // receives moves a beat per clock, as RTL whose ready follows its
+    // output's ready does. True at that sample point. False at a rising edge
+    // that took the beat with no such sample point, where the send completes
+    // instead. edge() runs at each rising edge waited on.
+    template <typename READY, typename EDGE>
+    bool waitTaken(const sc_in<bool> &clk, READY ready, EDGE edge) {
+        while (true) {
+            if (waitSamplePointInClock(clk) && ready()) {
+                return true;
+            }
+            wait(clk.posedge_event());
+            rose();
+            edge();
+            if (ready()) {
+                return false;
+            }
+        }
+    }
+    // Called by a src BFM that has driven ready low after a rising edge. A
+    // model receive that starts by this clock's sample point, such as one
+    // that follows a send a dst BFM completed there, goes on the pins at
+    // once. True once ready() holds by the sample point, false after it.
+    // entered fires as a receive starts.
+    template <typename READY>
+    bool waitReadyInClock(const sc_in<bool> &clk, const sc_event &entered, READY ready) {
+        const sc_time step = sc_get_time_resolution();
+        if (high_ <= step) {
+            return false;
+        }
+        const sc_time last = rise_ + high_ - step;
+        while (clk.read() && sc_time_stamp() <= last) {
+            if (ready()) {
+                return true;
+            }
+            wait(last + step - sc_time_stamp(), entered);
+        }
+        return false;
+    }
+    // The rising edge after waitTaken() returned true. False when ready fell
+    // before it, so the HDL did not take the beat; outside reset that breaks
+    // the pin timing, and lowered counts it.
+    template <typename READY>
+    bool waitTakenEdge(const sc_in<bool> &clk, const sc_in<bool> &rst_n, READY ready, bfmContractCheck &lowered) {
+        wait(clk.posedge_event());
+        rose();
+        if (ready()) {
+            return true;
+        }
+        if (rst_n.read()) {
+            lowered.fail(sc_time_stamp());
+        }
+        return false;
+    }
+};
+
+inline constexpr const char *BFM_READY_LOWERED =
+    "HDL lowered ready between the falling edge and the rising edge after it, after the model's send had completed";
+
+// Lets an ack-style, APB or LMMI dst BFM complete the model's call at the
+// sample point while its own thread keeps the request pins up to the edge
+// that takes them. The completion can wait out the channel's timed delay
+// past that edge, so it runs in a thread of its own.
+struct bfmCompleter {
+    std::function<void()> complete_;
+    sc_event start_;
+    sc_event done_;
+    bool busy_ = false;
+    bfmCompleter(std::function<void()> complete) : complete_(std::move(complete)) {
+        sc_core::sc_spawn([this]() { this->thread(); });
+    }
+    void start() {
+        busy_ = true;
+        start_.notify();
+    }
+    void waitDone() {
+        while (busy_) {
+            wait(done_);
+        }
+    }
+private:
+    void thread() {
+        while (true) {
+            wait(start_);
+            complete_();
+            busy_ = false;
+            done_.notify();
+        }
+    }
+};
+
+// The clock of each BFM, found through the channel its port binds. A model
+// part that stands for RTL storage clocked like one of the model's ports
+// takes that port's BFM clock from here; a channel with no BFM has none.
+struct bfmClocks {
+    struct entry {
+        sc_port_base *port;
+        const sc_in<bool> *clk;
+    };
+    // A function-local static for the same clang 18.1.8 crash as hdlWokeMap().
+    static std::vector<entry> &all() {
+        static std::vector<entry> entries;
+        return entries;
+    }
+    static void add(sc_port_base &port, const sc_in<bool> &clk) { all().push_back({&port, &clk}); }
+    static const sc_in<bool> *of(sc_interface *chnl) {
+        for (const entry &e : all()) {
+            if (e.port->get_interface() == chnl) {
+                return e.clk;
+            }
+        }
+        return nullptr;
     }
 };
 

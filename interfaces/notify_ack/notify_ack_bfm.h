@@ -29,6 +29,7 @@ public:
     SC_HAS_PROCESS (notify_ack_src_bfm);
 
     notify_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
@@ -97,25 +98,62 @@ public:
 
     SC_HAS_PROCESS (notify_ack_dst_bfm);
 
-    notify_ack_dst_bfm(sc_module_name modulename) {
+    notify_ack_dst_bfm(sc_module_name modulename) :
+        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_complete([this] { if_p->ack(); }) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
-    // The model's notify() blocks until ack(), which the BFM calls on the edge
-    // the HDL acks, so the BFM holds no notification of its own.
+    virtual void end_of_simulation() {
+        m_lowered.report();
+    }
+
+    // The model's notify() blocks until ack(), which the BFM calls at the
+    // sample point of the clock whose closing edge takes the notification
+    // (bfmSameClockAnswer::waitTaken()), so the BFM holds no notification of
+    // its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
+        m_clock.rose();
+        auto ready = [this] { return hdl_if_p->ack.read(); };
         while (true) {
             hdl_if_p->notify = false;
             if_p->waitNotify();
-            do {
-                hdl_if_p->notify = true;
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->ack);
+            m_clock.waitDrivePoint(clk);
+            hdl_if_p->notify = true;
+            const bool certain = m_clock.waitTaken(clk, ready, [] {});
+            m_complete.start();
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!ready());
+            }
             hdl_if_p->notify = false;
-            if_p->ack();
+            m_complete.waitDone();
         }
     }
+
+    void edge_monitor() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
+private:
+
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
+    bfmCompleter m_complete;
 
 };
 

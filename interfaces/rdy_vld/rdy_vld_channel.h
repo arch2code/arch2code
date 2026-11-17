@@ -228,6 +228,8 @@ public:
     const sc_time &readEnteredTime() const { return m_read_entered_time; }
     sc_dt::uint64 readEnteredDelta() const { return m_read_entered_delta; }
     const sc_object *readEnteredProcess() const { return m_read_entered_process; }
+    // Notified as each read() starts, once get_rdy() is true.
+    const sc_event &readEnteredEvent() const { return m_read_entered_event; }
     const sc_time &writeEnteredTime() const { return m_write_entered_time; }
     sc_dt::uint64 writeEnteredDelta() const { return m_write_entered_delta; }
     const sc_object *writeEnteredProcess() const { return m_write_entered_process; }
@@ -304,6 +306,7 @@ protected:
     sc_time m_read_entered_time;
     sc_dt::uint64 m_read_entered_delta = 0;
     const sc_object *m_read_entered_process = nullptr;
+    sc_event m_read_entered_event;
     sc_time m_write_entered_time;
     sc_dt::uint64 m_write_entered_delta = 0;
     const sc_object *m_write_entered_process = nullptr;
@@ -372,6 +375,7 @@ inline void rdy_vld_channel<T>::read( T& val_ )
     if (!m_user_ready_control) {
         m_ready = true;
     }
+    m_read_entered_event.notify();
     sc_prim_channel::request_update();
     sc_core::wait(m_channel_sync_event);
     val_ = m_value;

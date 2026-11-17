@@ -38,6 +38,7 @@ public:
     SC_HAS_PROCESS (apb_src_bfm);
 
     apb_src_bfm(sc_module_name modulename) : m_held(name()) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
@@ -163,8 +164,17 @@ public:
 
     SC_HAS_PROCESS (apb_dst_bfm);
 
-    apb_dst_bfm(sc_module_name modulename) {
+    apb_dst_bfm(sc_module_name modulename) :
+        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_complete([this] { complete(); }) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -173,76 +183,97 @@ public:
         if_p->setExternalEvent(&m_offer);
     }
 
+    virtual void end_of_simulation() {
+        m_lowered.report();
+    }
+
     // A request stays the model's until the HDL completes it. The BFM shows
-    // the offered request on the pins and takes it with reqReceive() on the
-    // edge PREADY completes it, so a posted write holds the model's next
-    // request() as the RTL's single APB transfer would, and the BFM holds no
-    // write of its own.
+    // the offered request on the pins and takes it with reqReceive() at the
+    // sample point of the access phase whose closing edge PREADY completes
+    // (bfmSameClockAnswer::waitTaken()), so a posted write holds the model's
+    // next request() as the RTL's single APB transfer would, and the BFM
+    // holds no write of its own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
+        m_clock.rose();
+        auto ready = [this] { return hdl_if_p->pready.read(); };
         while (true) {
-            ADDR_T addr;
-            DATA_T data;
-            bool is_write;
-            bool slverr;
-            while (!m_chnl->offered(is_write, addr, data)) {
+            while (!m_chnl->offered(m_isWrite, m_addr, m_data)) {
                 wait(m_offer);
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->psel = true;
-            hdl_if_p->paddr = addr.sc_pack();
-            if ( is_write ) {
+            hdl_if_p->paddr = m_addr.sc_pack();
+            if ( m_isWrite ) {
                 hdl_if_p->pwrite = true;
-                hdl_if_p->pwdata = data.sc_pack();
+                hdl_if_p->pwdata = m_data.sc_pack();
             }
             wait(clk.posedge_event());
+            m_clock.rose();
             hdl_if_p->penable = true;
             // Count access-phase cycles where the slave holds PREADY low (wait states).
             uint32_t wait_cycles = 0;
-            for (;;) {
-                wait(clk.posedge_event());
-                if (hdl_if_p->pready) {
-                    break;
-                }
-                if (wait_cycles < 255u) {
+            const bool certain = m_clock.waitTaken(clk, ready, [this, &wait_cycles] {
+                if (!hdl_if_p->pready && wait_cycles < 255u) {
                     ++wait_cycles;
                 }
+            });
+            if ( !m_isWrite ) {
+                m_data.sc_unpack(hdl_if_p->prdata);
             }
-            if ( !is_write ) {
-                data.sc_unpack(hdl_if_p->prdata);
+            m_complete.start();
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!ready());
             }
-            slverr = hdl_if_p->pslverr;
-            // The channel's timed delay runs in reqReceive() and complete(),
-            // after the pins are released, so the slave never sees a select
-            // without an access.
             hdl_if_p->penable = false;
             hdl_if_p->psel = false;
             hdl_if_p->paddr = VL_ADDR_T(0);
             hdl_if_p->pwrite = false;
             hdl_if_p->pwdata = VL_DATA_T(0);
-            {
-                ADDR_T takenAddr;
-                DATA_T takenData;
-                bool takenWrite;
-                if_p->reqReceive(takenWrite, takenAddr, takenData);
-            }
-            if( !is_write ) if_p->complete(data);
+            m_complete.waitDone();
 
             if (!observe_ifc.empty()) {
-                const uint32_t addr_u = static_cast<uint32_t>(addr._getAddress());
-                const uint32_t data_u = static_cast<uint32_t>(data._getData());
-                socket_observe_apb_resp(observe_ifc, is_write, addr_u, data_u,
+                const uint32_t addr_u = static_cast<uint32_t>(m_addr._getAddress());
+                const uint32_t data_u = static_cast<uint32_t>(m_data._getData());
+                socket_observe_apb_resp(observe_ifc, m_isWrite, addr_u, data_u,
                                         static_cast<uint8_t>(wait_cycles), true);
             }
-
-            // PSLVERR is legal for unmapped APB (rev3 §11.5); do not fatal.
-            (void)slverr;
         }
+    }
+
+    void edge_monitor() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
     }
 
 private:
 
+    // The channel's timed delay runs in reqReceive() and complete(), on the
+    // completer's thread, so the slave never sees a select without an access.
+    void complete() {
+        ADDR_T takenAddr;
+        DATA_T takenData;
+        bool takenWrite;
+        if_p->reqReceive(takenWrite, takenAddr, takenData);
+        if ( !m_isWrite ) {
+            if_p->complete(m_data);
+        }
+    }
+
     apb_channel<ADDR_T, DATA_T> *m_chnl = nullptr;
     sc_event m_offer;
+    ADDR_T m_addr;
+    DATA_T m_data;
+    bool m_isWrite = false;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
+    bfmCompleter m_complete;
 
 };
 

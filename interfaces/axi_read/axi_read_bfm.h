@@ -6,6 +6,7 @@
 #include "systemc.h"
 #include "axi_read_channel.h"
 #include "optionalPayload.h"
+#include "bfmContractCheck.h"
 #include "q_assert.h"
 
 // The ARUSER and RUSER sidebands are optional, so both of each one's template
@@ -50,12 +51,14 @@ struct axi_read_hdl_if: public sc_interface {
 // handshake of the rdy_vld BFMs on every one of them. Where the HDL sends,
 // the ready pin is driven one time resolution step after a rising edge, once
 // the model's zero-time work at that edge is done, from whether the model
-// waits to receive; it is driven after each transfer and on every edge while
-// it is low, and lowered on a transfer, so the BFM never takes a beat the
-// model has no room for. Where the model sends, the BFM shows the beat the
-// model offers on the pins and reads it on the edge the HDL transfers it, so
-// the model's send returns on that edge. Either way the BFM holds no beat of
-// its own.
+// waits to receive, or later in the clock while it is high if the model
+// starts to receive then; it is driven after each transfer and on every edge
+// while it is low, and lowered on a transfer, so the BFM never takes a beat
+// the model has no room for. Where the model sends, the BFM shows the beat
+// the model offers on the pins from a point in the clock's high phase and
+// reads it at the sample point before the edge the HDL transfers it
+// (bfmSameClockAnswer::waitTaken()), so the model's send returns before that
+// edge. Either way the BFM holds no beat of its own.
 template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T,
          typename VL_ARUSER_T = bool, typename VL_RUSER_T = bool, typename VL_ID_T = sc_bv<4>,
          typename ARU = std::monostate, typename RU = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
@@ -71,9 +74,16 @@ public:
 
     SC_HAS_PROCESS (axi_read_src_bfm);
 
-    axi_read_src_bfm(sc_module_name modulename) {
+    axi_read_src_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
+        SC_METHOD(clock_rise);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -83,6 +93,12 @@ public:
         m_r = dynamic_cast<rdy_vld_channel<axiReadRespSt<DATA_T, RU, ID, IDW>> *>(m_chnl->m_data_in.get_interface());
         Q_ASSERT_CTX(m_r != nullptr, name(), "axi_read channel does not carry R on a rdy_vld_channel");
         m_r->setExternalEvent(&m_rOffer);
+        m_ar = dynamic_cast<rdy_vld_channel<axiReadAddressSt<ADDR_T, ARU, ID, IDW>> *>(m_chnl->m_addr_in.get_interface());
+        Q_ASSERT_CTX(m_ar != nullptr, name(), "axi_read channel does not carry AR on a rdy_vld_channel");
+    }
+
+    virtual void end_of_simulation() {
+        m_lowered.report();
     }
 
     void bfm_driver_ar_thread() {
@@ -93,7 +109,10 @@ public:
         while (true) {
             if (sample) {
                 wait(sc_get_time_resolution());
-                hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
+                hdl_if_p->arready = m_ar->get_rdy();
+                if (!m_ar->get_rdy() && m_clock.waitReadyInClock(clk, m_ar->readEnteredEvent(), [this] { return m_ar->get_rdy(); })) {
+                    hdl_if_p->arready = true;
+                }
             }
             wait(clk.posedge_event());
             if (!rst_n.read()) {
@@ -142,24 +161,41 @@ public:
                 if_p->receiveDataCycle(r_data);
                 continue;
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->rvalid = 1;
             hdl_if_p->rid = r_data.rid;
             hdl_if_p->rdata = r_data.rdata.sc_pack();
             hdl_if_p->rresp = r_data.rresp;
             hdl_if_p->rlast = r_data.rlast;
             if constexpr (hasOptionalPayload<RU>) { hdl_if_p->ruser = r_data.user.sc_pack(); }
-            do {
-                wait(clk.posedge_event());
-            } while (rst_n.read() && !hdl_if_p->rready);
+            auto taken = [this] { return !rst_n.read() || hdl_if_p->rready.read(); };
+            const bool certain = m_clock.waitTaken(clk, taken, [] {});
             if_p->receiveDataCycle(r_data);
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, taken, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!taken());
+            }
         }
+    }
+
+    void clock_rise() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
     }
 
 private:
 
     axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> * m_chnl = nullptr;
     rdy_vld_channel<axiReadRespSt<DATA_T, RU, ID, IDW>> * m_r = nullptr;
+    rdy_vld_channel<axiReadAddressSt<ADDR_T, ARU, ID, IDW>> * m_ar = nullptr;
     sc_event m_rOffer;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
 
 };
 
@@ -178,9 +214,16 @@ public:
 
     SC_HAS_PROCESS (axi_read_dst_bfm);
 
-    axi_read_dst_bfm(sc_module_name modulename) {
+    axi_read_dst_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
+        SC_METHOD(clock_rise);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -190,6 +233,12 @@ public:
         m_ar = dynamic_cast<rdy_vld_channel<axiReadAddressSt<ADDR_T, ARU, ID, IDW>> *>(m_chnl->m_addr_in.get_interface());
         Q_ASSERT_CTX(m_ar != nullptr, name(), "axi_read channel does not carry AR on a rdy_vld_channel");
         m_ar->setExternalEvent(&m_arOffer);
+        m_r = dynamic_cast<rdy_vld_channel<axiReadRespSt<DATA_T, RU, ID, IDW>> *>(m_chnl->m_data_in.get_interface());
+        Q_ASSERT_CTX(m_r != nullptr, name(), "axi_read channel does not carry R on a rdy_vld_channel");
+    }
+
+    virtual void end_of_simulation() {
+        m_lowered.report();
     }
 
     void bfm_driver_ar_thread() {
@@ -206,6 +255,7 @@ public:
             while (!m_ar->offered(ar_data)) {
                 wait(m_arOffer);
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->arvalid = 1;
             hdl_if_p->arid = ar_data.arid;
             hdl_if_p->araddr = ar_data.araddr.sc_pack();
@@ -213,10 +263,15 @@ public:
             hdl_if_p->arsize = ar_data.arsize;
             hdl_if_p->arburst = ar_data.arburst;
             if constexpr (hasOptionalPayload<ARU>) { hdl_if_p->aruser = ar_data.user.sc_pack(); }
-            do {
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->arready);
+            auto arready = [this] { return hdl_if_p->arready.read(); };
+            const bool certain = m_clock.waitTaken(clk, arready, [] {});
             if_p->receiveAddr(ar_data);
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, arready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!arready());
+            }
         }
     }
 
@@ -228,7 +283,10 @@ public:
         while (true) {
             if (sample) {
                 wait(sc_get_time_resolution());
-                hdl_if_p->rready = m_chnl->m_data_out->get_rdy();
+                hdl_if_p->rready = m_r->get_rdy();
+                if (!m_r->get_rdy() && m_clock.waitReadyInClock(clk, m_r->readEnteredEvent(), [this] { return m_r->get_rdy(); })) {
+                    hdl_if_p->rready = true;
+                }
             }
             wait(clk.posedge_event());
             if (!(hdl_if_p->rvalid && hdl_if_p->rready)) {
@@ -246,11 +304,22 @@ public:
         }
     }
 
+    void clock_rise() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
 private:
 
     axi_read_channel<ADDR_T, DATA_T, ARU, RU, ID, IDW> * m_chnl = nullptr;
     rdy_vld_channel<axiReadAddressSt<ADDR_T, ARU, ID, IDW>> * m_ar = nullptr;
+    rdy_vld_channel<axiReadRespSt<DATA_T, RU, ID, IDW>> * m_r = nullptr;
     sc_event m_arOffer;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
 
 };
 

@@ -28,6 +28,7 @@ public:
     SC_HAS_PROCESS (pop_ack_src_bfm);
 
     pop_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
@@ -99,27 +100,65 @@ public:
 
     SC_HAS_PROCESS (pop_ack_dst_bfm);
 
-    pop_ack_dst_bfm(sc_module_name modulename) {
-        SC_CTHREAD(bfm_driver_thread, clk.pos());
+    pop_ack_dst_bfm(sc_module_name modulename) :
+        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_complete([this] { if_p->ack(m_rdata); }) {
+        bfmClocks::add(if_p, clk);
+        SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
-    // The model's pop() blocks until ack(), which the BFM calls on the edge
-    // the HDL acks, so the BFM holds no request of its own.
+    virtual void end_of_simulation() {
+        m_lowered.report();
+    }
+
+    // The model's pop() blocks until ack(), which the BFM calls with rdata at
+    // the sample point of the clock whose closing edge takes the request
+    // (bfmSameClockAnswer::waitTaken()), so the BFM holds no request of its
+    // own.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
+        m_clock.rose();
+        auto ready = [this] { return hdl_if_p->ack.read(); };
         while (true) {
-            RDATA_T rdata;
             if_p->popReceive();
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->pop = true;
-            do {
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->ack);
-            rdata.sc_unpack(hdl_if_p->rdata);
-            if_p->ack(rdata);
+            const bool certain = m_clock.waitTaken(clk, ready, [] {});
+            m_rdata.sc_unpack(hdl_if_p->rdata);
+            m_complete.start();
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!ready());
+            }
             hdl_if_p->pop = false;
+            m_complete.waitDone();
             wait(clk.posedge_event());
+            m_clock.rose();
         }
     }
+
+    void edge_monitor() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
+private:
+
+    RDATA_T m_rdata;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
+    bfmCompleter m_complete;
 
 };
 

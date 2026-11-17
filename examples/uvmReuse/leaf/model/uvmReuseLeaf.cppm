@@ -55,11 +55,6 @@ public:
     // block implementation members
 
 private:
-    // One beat between the input and the output thread. The RTL's path from
-    // in to out is combinational, so the model must take the next input
-    // while the output still waits on the last.
-    sc_fifo<uvmReuseBeatSt> beats;
-    void accept(void);
     void datapath(void);
 };
 
@@ -76,7 +71,6 @@ uvmReuseLeaf<Config>::uvmReuseLeaf(sc_module_name blockName, const char * varian
         ,_a2cRegs(log_)
         ,offset(typename uvmReuseOffSt::_packedSt(0x1))
 // GENERATED_CODE_END
-        ,beats("beats", 1)
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // Generated register/memory address offsets
@@ -87,25 +81,15 @@ uvmReuseLeaf<Config>::uvmReuseLeaf(sc_module_name blockName, const char * varian
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    SC_THREAD(accept);
     SC_THREAD(datapath);
 };
-
-template<typename Config>
-void uvmReuseLeaf<Config>::accept(void)
-{
-    while (true) {
-        uvmReuseBeatSt b;
-        in->read(b);
-        beats.write(b);
-    }
-}
 
 template<typename Config>
 void uvmReuseLeaf<Config>::datapath(void)
 {
     while (true) {
-        uvmReuseBeatSt b = beats.read();
+        uvmReuseBeatSt b;
+        in->read(b);
         b.pixel = static_cast<uvmReusePixelT>(b.pixel + offset.read().offset);
         out->write(b);
     }

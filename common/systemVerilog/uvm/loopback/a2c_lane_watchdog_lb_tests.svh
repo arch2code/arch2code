@@ -1227,6 +1227,32 @@
         endfunction
     endclass : pop_ack_mode_b_same_clock_test
 
+    // The model lane raises rdy one step before the falling edge of each
+    // clock, as a rdy_vld or axi4_stream src BFM does for a model that reads
+    // as soon as a dst BFM has completed its last write at the sample point.
+    // Both lanes take a beat on every clock and nothing is held back.
+    class rdy_vld_mode_b_same_clock_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : rdy_vld_mode_b_same_clock_test
+
+    class axi4_stream_mode_b_same_clock_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_mode_b_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : axi4_stream_mode_b_same_clock_test
+
     class rdy_vld_mode_b_clock_paced_test extends rv_skew;
         `uvm_component_utils(rdy_vld_mode_b_clock_paced_test)
 

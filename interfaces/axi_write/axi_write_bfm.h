@@ -6,6 +6,7 @@
 #include "systemc.h"
 #include "axi_write_channel.h"
 #include "optionalPayload.h"
+#include "bfmContractCheck.h"
 #include "q_assert.h"
 
 #include <mutex>
@@ -58,13 +59,16 @@ struct axi_write_hdl_if: public sc_interface {
 // handshake of the rdy_vld BFMs on every one of them. Where the HDL sends,
 // the ready pin is driven one time resolution step after a rising edge, once
 // the model's zero-time work at that edge is done, from whether the model
-// waits to receive; it is driven after each transfer and on every edge while
-// it is low, and lowered on a transfer, so the BFM never takes a beat the
-// model has no room for. Where the model sends, the BFM shows the beat the
-// model offers on the pins and reads it on the edge the HDL transfers it, so
-// the model's send returns on that edge. Either way the BFM holds no beat of
-// its own, except that a W channel carrying bursts to a cycle-mode BFM is
-// read a burst at a time, when the burst's first beat goes on the pins.
+// waits to receive, or later in the clock while it is high if the model
+// starts to receive then; it is driven after each transfer and on every edge
+// while it is low, and lowered on a transfer, so the BFM never takes a beat
+// the model has no room for. Where the model sends, the BFM shows the beat
+// the model offers on the pins from a point in the clock's high phase and
+// reads it at the sample point before the edge the HDL transfers it
+// (bfmSameClockAnswer::waitTaken()), so the model's send returns before that
+// edge. Either way the BFM holds no beat of its own, except that a W channel
+// carrying bursts to a cycle-mode BFM is read a burst at a time, when the
+// burst's first beat goes on the pins.
 template<typename ADDR_T, typename DATA_T, typename STRB_T, typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T,
          typename VL_AWUSER_T = bool, typename VL_WUSER_T = bool, typename VL_BUSER_T = bool, typename VL_ID_T = sc_bv<4>,
          typename AWU = std::monostate, typename WU = std::monostate, typename BU = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
@@ -80,10 +84,17 @@ public:
 
     SC_HAS_PROCESS (axi_write_src_bfm);
 
-    axi_write_src_bfm(sc_module_name modulename) {
+    axi_write_src_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
+        SC_METHOD(clock_rise);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -93,6 +104,14 @@ public:
         m_b = dynamic_cast<rdy_vld_channel<axiWriteRespSt<BU, ID, IDW>> *>(m_chnl->m_resp_in.get_interface());
         Q_ASSERT_CTX(m_b != nullptr, name(), "axi_write channel does not carry B on a rdy_vld_channel");
         m_b->setExternalEvent(&m_bOffer);
+        m_aw = dynamic_cast<rdy_vld_channel<axiWriteAddressSt<ADDR_T, AWU, ID, IDW>> *>(m_chnl->m_addr_in.get_interface());
+        Q_ASSERT_CTX(m_aw != nullptr, name(), "axi_write channel does not carry AW on a rdy_vld_channel");
+        m_w = dynamic_cast<rdy_vld_channel<axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>> *>(m_chnl->m_data_in.get_interface());
+        Q_ASSERT_CTX(m_w != nullptr, name(), "axi_write channel does not carry W on a rdy_vld_channel");
+    }
+
+    virtual void end_of_simulation() {
+        m_lowered.report();
     }
 
     void bfm_driver_aw_thread() {
@@ -103,7 +122,10 @@ public:
         while (true) {
             if (sample) {
                 wait(sc_get_time_resolution());
-                hdl_if_p->awready = m_chnl->m_addr_out->get_rdy();
+                hdl_if_p->awready = m_aw->get_rdy();
+                if (!m_aw->get_rdy() && m_clock.waitReadyInClock(clk, m_aw->readEnteredEvent(), [this] { return m_aw->get_rdy(); })) {
+                    hdl_if_p->awready = true;
+                }
             }
             wait(clk.posedge_event());
             if (!rst_n.read()) {
@@ -152,6 +174,9 @@ public:
         while (true) {
             wait(sc_get_time_resolution());
             hdl_if_p->wready = wReady();
+            if (!wReady() && m_clock.waitReadyInClock(clk, m_w->readEnteredEvent(), [this] { return wReady(); })) {
+                hdl_if_p->wready = true;
+            }
             wait(clk.posedge_event());
             if (!rst_n.read()) {
                 hdl_if_p->wready = 0;
@@ -212,22 +237,40 @@ public:
                 }
                 continue;
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->bvalid = 1;
             hdl_if_p->bid = b_data.bid;
             hdl_if_p->bresp = b_data.bresp;
             if constexpr (hasOptionalPayload<BU>) { hdl_if_p->buser = b_data.user.sc_pack(); }
-            do {
-                wait(clk.posedge_event());
-            } while (rst_n.read() && !hdl_if_p->bready);
+            auto taken = [this] { return !rst_n.read() || hdl_if_p->bready.read(); };
+            const bool certain = m_clock.waitTaken(clk, taken, [] {});
             if_p->receiveRespCycle(b_data);
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, taken, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!taken());
+            }
         }
+    }
+
+    void clock_rise() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
     }
 
 private:
 
     axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU, ID, IDW> * m_chnl = nullptr;
     rdy_vld_channel<axiWriteRespSt<BU, ID, IDW>> * m_b = nullptr;
+    rdy_vld_channel<axiWriteAddressSt<ADDR_T, AWU, ID, IDW>> * m_aw = nullptr;
+    rdy_vld_channel<axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>> * m_w = nullptr;
     sc_event m_bOffer;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
     std::mutex m_pending_mutex;
     int m_pending_w_beats = 0;
 
@@ -248,10 +291,17 @@ public:
 
     SC_HAS_PROCESS (axi_write_dst_bfm);
 
-    axi_write_dst_bfm(sc_module_name modulename) {
+    axi_write_dst_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
+        SC_METHOD(clock_rise);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
     }
 
     virtual void end_of_elaboration() {
@@ -264,6 +314,12 @@ public:
         m_w = dynamic_cast<rdy_vld_channel<axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>> *>(m_chnl->m_data_in.get_interface());
         Q_ASSERT_CTX(m_w != nullptr, name(), "axi_write channel does not carry W on a rdy_vld_channel");
         m_w->setExternalEvent(&m_wOffer);
+        m_b = dynamic_cast<rdy_vld_channel<axiWriteRespSt<BU, ID, IDW>> *>(m_chnl->m_resp_in.get_interface());
+        Q_ASSERT_CTX(m_b != nullptr, name(), "axi_write channel does not carry B on a rdy_vld_channel");
+    }
+
+    virtual void end_of_simulation() {
+        m_lowered.report();
     }
 
     void bfm_driver_aw_thread() {
@@ -280,6 +336,7 @@ public:
             while (!m_aw->offered(aw_data)) {
                 wait(m_awOffer);
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->awvalid = 1;
             hdl_if_p->awid = aw_data.awid;
             hdl_if_p->awaddr = aw_data.awaddr.sc_pack();
@@ -287,10 +344,15 @@ public:
             hdl_if_p->awsize = aw_data.awsize;
             hdl_if_p->awburst = aw_data.awburst;
             if constexpr (hasOptionalPayload<AWU>) { hdl_if_p->awuser = aw_data.user.sc_pack(); }
-            do {
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->awready);
+            auto awready = [this] { return hdl_if_p->awready.read(); };
+            const bool certain = m_clock.waitTaken(clk, awready, [] {});
             if_p->receiveAddr(aw_data);
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, awready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!awready());
+            }
         }
     }
 
@@ -311,6 +373,7 @@ public:
                 while (!m_w->offered(w_data)) {
                     wait(m_wOffer);
                 }
+                m_clock.waitDrivePoint(clk);
             }
             hdl_if_p->wvalid = 1;
             hdl_if_p->wid = w_data.wid;
@@ -318,11 +381,21 @@ public:
             hdl_if_p->wstrb = w_data.wstrb.sc_pack();
             hdl_if_p->wlast = w_data.wlast;
             if constexpr (hasOptionalPayload<WU>) { hdl_if_p->wuser = w_data.user.sc_pack(); }
-            do {
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->wready);
-            if (!bursts) {
-                if_p->receiveDataCycle(w_data);
+            if (bursts) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!hdl_if_p->wready);
+                continue;
+            }
+            auto wready = [this] { return hdl_if_p->wready.read(); };
+            const bool certain = m_clock.waitTaken(clk, wready, [] {});
+            if_p->receiveDataCycle(w_data);
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, wready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!wready());
             }
         }
     }
@@ -335,7 +408,10 @@ public:
         while (true) {
             if (sample) {
                 wait(sc_get_time_resolution());
-                hdl_if_p->bready = m_chnl->m_resp_out->get_rdy();
+                hdl_if_p->bready = m_b->get_rdy();
+                if (!m_b->get_rdy() && m_clock.waitReadyInClock(clk, m_b->readEnteredEvent(), [this] { return m_b->get_rdy(); })) {
+                    hdl_if_p->bready = true;
+                }
             }
             wait(clk.posedge_event());
             if (!(hdl_if_p->bvalid && hdl_if_p->bready)) {
@@ -351,13 +427,24 @@ public:
         }
     }
 
+    void clock_rise() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
 private:
 
     axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU, ID, IDW> * m_chnl = nullptr;
     rdy_vld_channel<axiWriteAddressSt<ADDR_T, AWU, ID, IDW>> * m_aw = nullptr;
     rdy_vld_channel<axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>> * m_w = nullptr;
+    rdy_vld_channel<axiWriteRespSt<BU, ID, IDW>> * m_b = nullptr;
     sc_event m_awOffer;
     sc_event m_wOffer;
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
 
 };
 

@@ -5,13 +5,13 @@ memory_dst_bfm drives a model's memory requests onto the pins of a memory the
 HDL holds. The memory registers read_data on the access edge, so the word
 arrives after that edge: in later delta cycles from Verilated RTL or a vendor
 simulator, 100 ps later from a UVM memory agent. The BFM must read it after
-both and before the next access edge, and hand it to the model at the
-following rising edge, so the model's next pin writes land after a posedge and
-not at the negedge where a UVM monitor samples. The probe's stub memory
-answers either way. Four writes and four reads go out back to back; every read
-must return the word written to its address, the writes must take consecutive
-clock edges and each later read a second edge, and every read must resume the
-model in a rising edge's timestep.
+both and hand it to the model at the sample point one time-resolution step
+before the falling edge, so the model's next pin writes land before the
+negedge where a UVM monitor samples, and the next rising edge takes them. The
+probe's stub memory answers either way. Four writes and four reads go out back
+to back; every read must return the word written to its address, every access
+must take the edge after the one before, and every read must resume the model
+at the sample point.
 
 memory_src_bfm serves one HDL access per enabled rising edge by calling the
 model's request(). A request() that takes simulated time lets enabled edges
@@ -118,7 +118,7 @@ SC_MODULE( dstProbe )
     std::vector<std::uint64_t> accessNs;
     std::string reads;
     bool done = false;
-    bool resumesOnPosedge = true;
+    bool resumesAtSamplePoint = true;
     sc_signal<sc_bv<32>> credit;
     sc_signal<bool> held;
     // Credits given, when each came, and whether held was high at any point
@@ -140,8 +140,8 @@ SC_MODULE( dstProbe )
         bfm.setModelCredit( &credit, &held );
         SC_THREAD( creditor );
     }
-    // Credit k comes 100 ps after the rising edge at 60 + 30 k ns, two
-    // edges later than the BFM's own pace.
+    // Credit k comes 100 ps after the rising edge at 60 + 30 k ns, later
+    // than the BFM's own pace of one access per edge.
     void creditor()
     {
         for (unsigned k = 0; k < grants; k++) {
@@ -164,7 +164,9 @@ SC_MODULE( dstProbe )
             wordSt a, d;
             a.w = i;
             out->request( false, a, d );
-            if (sc_time_stamp() % sc_time( 10, SC_NS ) != SC_ZERO_TIME || !clk.read()) { resumesOnPosedge = false; }
+            if (sc_time_stamp() % sc_time( 10, SC_NS ) != sc_time( 5, SC_NS ) - sc_get_time_resolution() || !clk.read()) {
+                resumesAtSamplePoint = false;
+            }
             reads += std::format( "{}0x{:x}", reads.empty() ? "" : ",", d.w );
         }
         done = true;
@@ -486,8 +488,8 @@ int sc_main( int argc, char *argv[] )
             edges += std::format( "{}{}", i ? "," : "", p.accessNs[i] );
             if (i) { gaps += std::format( "{}{}", i > 1 ? "," : "", p.accessNs[i] - p.accessNs[i - 1] ); }
         }
-        std::printf( "done=%d\\nreads=%s\\nedges=%s\\ngaps=%s\\nresumes_on_posedge=%d\\n", p.done, p.reads.c_str(),
-                     edges.c_str(), gaps.c_str(), p.resumesOnPosedge );
+        std::printf( "done=%d\\nreads=%s\\nedges=%s\\ngaps=%s\\nresumes_at_sample_point=%d\\n", p.done, p.reads.c_str(),
+                     edges.c_str(), gaps.c_str(), p.resumesAtSamplePoint );
     } else if (scenario.starts_with( "x2_" ) || scenario.starts_with( "n2_" )) {
         // x2_<case>, n2_<case>, or either with _off
         bool ordered = !scenario.ends_with( "_off" );
@@ -603,11 +605,11 @@ def test_memory_bfms():
             check(field(output, 'done') == '1', f"{scenario}: the requester finishes")
             check(field(output, 'reads') == '0x102,0x100,0x103,0x101',
                   f"{scenario}: each read returns the word written to its address (reads={field(output, 'reads')})")
-            check(field(output, 'gaps') == '10,10,10,10,20,20,20',
-                  f"{scenario}: the writes take consecutive edges and each later read a second edge "
+            check(field(output, 'gaps') == '10,10,10,10,10,10,10',
+                  f"{scenario}: the accesses take consecutive edges, reads included "
                   f"(edges={field(output, 'edges')})")
-            check(field(output, 'resumes_on_posedge') == '1',
-                  f"{scenario}: every read resumes the model in a rising edge's timestep")
+            check(field(output, 'resumes_at_sample_point') == '1',
+                  f"{scenario}: every read resumes the model at the sample point before the falling edge")
 
         outputs['dst_credit'] = output = runScenario(binPath, 'dst_credit')
         check(field(output, 'done') == '1' and field(output, 'reads') == '0x102,0x100,0x103,0x101',
@@ -625,7 +627,7 @@ def test_memory_bfms():
               f"(accesses={field(output, 'accesses')})")
         check(field(output, 'held_end') == '1', "dst_credit_short: held stays high while the seventh access waits")
         lines = bfmLines(output)
-        check(len(lines) == 1 and re.fullmatch(r"p\.bfm:the model's access 7 \(read 0x3\) waited for credit from \S+ ns "
+        check(len(lines) == 1 and re.fullmatch(r"p\.bfm:the model's access 7 \(read 0x3\) waited for credit from \S+ [pn]s "
                                                r"to the end, with 6 issued and credit 6: the DUT lane never made access 7", lines[0]) is not None,
               f"dst_credit_short: the BFM logs the waiting access once at the end (got {lines})")
 

@@ -30,6 +30,7 @@ public:
     raw_src_bfm(sc_module_name modulename) :
         m_missed(name(), "SystemC had not taken the previous raw word at a clock edge, so the word on that edge was lost", "clock edges",
                  true) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();
@@ -95,6 +96,7 @@ public:
     SC_HAS_PROCESS (raw_dst_bfm);
 
     raw_dst_bfm(sc_module_name modulename) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
     }
 

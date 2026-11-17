@@ -28,6 +28,7 @@ public:
     SC_HAS_PROCESS (push_ack_src_bfm);
 
     push_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
@@ -100,30 +101,68 @@ public:
 
     SC_HAS_PROCESS (push_ack_dst_bfm);
 
-    push_ack_dst_bfm(sc_module_name modulename) {
+    push_ack_dst_bfm(sc_module_name modulename) :
+        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_complete([this] { if_p->ack(); }) {
+        bfmClocks::add(if_p, clk);
         SC_THREAD(bfm_driver_thread);
+        SC_METHOD(edge_monitor);
+        sensitive << clk.pos();
+        dont_initialize();
+        SC_METHOD(clock_fall);
+        sensitive << clk.neg();
+        dont_initialize();
+    }
+
+    virtual void end_of_simulation() {
+        m_lowered.report();
     }
 
     // pushReceive() copies the value, but the model's push() blocks until
-    // ack(), which the BFM calls on the edge the HDL acks, so the push stays
-    // the model's outstanding write and the BFM holds no value of its own.
+    // ack(). The BFM calls it at the sample point of the clock whose closing
+    // edge takes the push (bfmSameClockAnswer::waitTaken()), so the push
+    // stays the model's outstanding write and the BFM holds no value of its
+    // own. A push whose ack falls after that point stays on the pins until
+    // the HDL takes it.
     void bfm_driver_thread() {
         do { wait(clk.posedge_event()); } while (!rst_n);
+        m_clock.rose();
         DATA_T data;
+        auto ready = [this] { return hdl_if_p->ack.read(); };
         while (true) {
             hdl_if_p->push = false;
             hdl_if_p->data = (VL_DATA_T) (0);
             if_p->pushReceive(data);
-            do {
-                hdl_if_p->push = true;
-                hdl_if_p->data = data.sc_pack();
-                wait(clk.posedge_event());
-            } while (!hdl_if_p->ack);
+            m_clock.waitDrivePoint(clk);
+            hdl_if_p->push = true;
+            hdl_if_p->data = data.sc_pack();
+            const bool certain = m_clock.waitTaken(clk, ready, [] {});
+            m_complete.start();
+            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                do {
+                    wait(clk.posedge_event());
+                    m_clock.rose();
+                } while (!ready());
+            }
             hdl_if_p->push = false;
             hdl_if_p->data = (VL_DATA_T) (0);
-            if_p->ack();
+            m_complete.waitDone();
         }
     }
+
+    void edge_monitor() {
+        m_clock.rose();
+    }
+
+    void clock_fall() {
+        m_clock.fell();
+    }
+
+private:
+
+    bfmSameClockAnswer m_clock;
+    bfmContractCheck m_lowered;
+    bfmCompleter m_complete;
 
 };
 
