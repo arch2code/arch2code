@@ -260,12 +260,13 @@ package a2c_uvm_pkg;
     // model_export is an A2C_CFG error. The base class holds everything but
     // the exports, so a2c_midstream_guard can list counters of any item type.
     //
-    // With expect_from_model set, each lane's count need not be declared.
-    // In Mode B a model lane transaction beyond the expected count raises
-    // the expected count of both lanes, so the model lane's count becomes
-    // the DUT lane's expectation; in Mode A a transaction beyond it raises
-    // it. A wait then ends once the lanes have been quiet for the quiet
-    // window with nothing outstanding.
+    // With expect_from_model set, each lane's count need not be declared: a
+    // model lane transaction beyond the expected count raises the expected
+    // count of both lanes, so the model lane's count becomes the DUT lane's
+    // expectation. A wait then ends once the lanes have been quiet for the
+    // quiet window with nothing outstanding. It needs dual: with one lane
+    // there is no model count, and an A2C_CFG error says so, since a DUT
+    // that delivered nothing would otherwise pass.
     //
     // With clk_vif set, a mid-run reset of its domain abandons what is in
     // flight: each lane's expected count drops to the count it has
@@ -319,6 +320,14 @@ package a2c_uvm_pkg;
             a2c_get_config_bit(this, "a2c_expect_from_model", expect_from_model);
         endfunction
 
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (expect_from_model && !dual) begin
+                `uvm_error("A2C_CFG", $sformatf("%s: expect_from_model is set, but dual is not, so there is no model lane to take the count from; declare the count with expect_count()",
+                                                port_name))
+            end
+        endfunction
+
         virtual task run_phase(uvm_phase phase);
             if (clk_vif == null) return;
             forever begin
@@ -355,7 +364,7 @@ package a2c_uvm_pkg;
                                                  where(lane), missing[lane]), UVM_LOW)
                 return;
             end
-            if (expect_from_model && received[lane] >= expected[lane] && (lane == A2C_MODEL_LANE || !dual)) begin
+            if (expect_from_model && dual && lane == A2C_MODEL_LANE && received[lane] >= expected[lane]) begin
                 foreach (expected[l]) expected[l]++;
             end
             received[lane]++;
@@ -473,7 +482,12 @@ package a2c_uvm_pkg;
                 end
             end
             if (failed) return;
-            if (dual) begin
+            if (dual && expect_from_model) begin
+                // The window is what ended the count, so a reader can tell a
+                // window shorter than the output's longest gap.
+                `uvm_info("A2C_TXN_COUNT", $sformatf("%s: received %0d transactions on the DUT lane and %0d on the model lane, the model lane's count, ended by a quiet window of %0d clocks",
+                                                 port_name, received[A2C_DUT_LANE], received[A2C_MODEL_LANE], quiet_cycles), UVM_LOW)
+            end else if (dual) begin
                 `uvm_info("A2C_TXN_COUNT", $sformatf("%s: received the %0d expected transactions on the DUT lane and the %0d on the model lane",
                                                  port_name, received[A2C_DUT_LANE], received[A2C_MODEL_LANE]), UVM_LOW)
             end else begin
@@ -3500,11 +3514,13 @@ package a2c_uvm_pkg;
     // (a2c_run_reset_aware()), so the pins go back to their reset values.
     // on_reset() returns the item the loop held, or had fetched and not yet
     // taken, with item_done(), sets the lane counts back to 0 and resets wd
-    // and replay. A protocol whose loop keeps more, such as the open bursts
-    // of a pipelined master, overrides it, returns what the sequence waits
-    // for and calls the base's. A loop takes its items through get_item()
-    // or try_item() and returns them through item_finished(), so on_reset()
-    // knows what it holds.
+    // and replay. Before each item_done() it calls abandon_held(), which a
+    // protocol overrides when its sequence waits for a response to the item
+    // or reads a status from it. A protocol whose loop keeps more, such as
+    // the open bursts of a pipelined master, overrides on_reset(), returns
+    // what the sequence waits for and calls the base's. A loop takes its
+    // items through get_item() or try_item() and returns them through
+    // item_finished(), so on_reset() knows what it holds.
     virtual class a2c_lane_driver #(type REQ = uvm_sequence_item, type VIF_T = virtual a2c_clk_if,
                                     type CFG_T = a2c_agent_config #(VIF_T), type REC_T = bit)
         extends uvm_driver #(REQ) implements a2c_lane_waits, a2c_replay_lanes, a2c_replay_holder, a2c_lane_joiner,
@@ -3632,9 +3648,13 @@ package a2c_uvm_pkg;
         endtask
 
         virtual function void on_reset();
-            if (holding) item_finished();
+            if (holding) begin
+                abandon_held(req);
+                item_finished();
+            end
             if (fetch_done) begin
                 fetch_done = 0;
+                abandon_held(fetch_req);
                 seq_item_port.item_done();
             end
             starts         = '{0, 0};
@@ -3643,6 +3663,13 @@ package a2c_uvm_pkg;
             response_delay = '{0, 0};
             if (replay != null) replay.reset();
             if (wd != null) wd.reset();
+        endfunction
+
+        // A mid-run reset abandons item, which the loop held or had fetched,
+        // just before its item_done(). A protocol answers it here when its
+        // sequence would otherwise wait for a response that never comes, or
+        // read the item's status as a completed transfer.
+        protected virtual function void abandon_held(REQ item);
         endfunction
 
         // The sequencer's get_next_item() runs in this process, which a

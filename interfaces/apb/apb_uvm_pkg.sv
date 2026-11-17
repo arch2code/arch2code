@@ -183,6 +183,12 @@ package apb_uvm_pkg;
         protected virtual function bit request_taken(int l);
             return lane[l].pready === 1'b1;
         endfunction
+
+        // A transfer a mid-run reset cut short failed, so apb_reg_adapter
+        // returns UVM_NOT_OK rather than OK with the data it was sent with.
+        protected virtual function void abandon_held(apb_item item);
+            item.slverr = 1'b1;
+        endfunction
     endclass : apb_master_driver
 
     // Serves each transfer from cfg.mem. The address, direction and write

@@ -1879,7 +1879,6 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             uvm_config_db#(int unsigned)::set(this, "rv_agent*", "a2c_joint_stall_cycles", 40);
-            uvm_config_db#(bit)::set(this, "agent.model_cmp", "a2c_allow_no_pairs", 1'b1);
             replay_demoter = lb_recording_demoter::type_id::create("replay_demoter");
             replay_demoter.demote_id = "A2C_REPLAY";
             uvm_report_cb::add(null, replay_demoter);

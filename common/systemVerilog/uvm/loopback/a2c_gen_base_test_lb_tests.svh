@@ -161,7 +161,8 @@
     // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
     // rule off. A run that sends nothing on an input and expects no output
     // transaction warns at check_phase, unless no_stimulus_expected
-    // (+a2c_no_stimulus_expected=1) is set. A run phase still running at
+    // (+a2c_no_stimulus_expected=1) is set, which also lets every
+    // comparator compare no pair. A run phase still running at
     // its run timeout, counted in clocks of clk, ends with one
     // A2C_RUN_TIMEOUT error naming the ports that wait and the objections
     // raised, and check_phase still runs. Left at -1, the timeout is
@@ -178,9 +179,11 @@
     // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
     // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With
     // expect_from_model (+a2c_expect_from_model=1) set, an output needs no
-    // expect_count(): in Mode B the model lane's count is the DUT lane's
+    // expect_count() in Mode B: the model lane's count is the DUT lane's
     // expectation, and wait_for_outputs() returns once the outputs have
-    // been quiet for quiet_cycles. reset_dut() pulses the resets mid-run.
+    // been quiet for quiet_cycles. A run with one DUT has no model lane,
+    // so build_phase clears expect_from_model there and the test declares
+    // its counts. reset_dut() pulses the resets mid-run.
     class lb_gen_base extends uvm_test implements a2c_run_work;
         lb_gen_env env;
         int unsigned output_deadline_cycles = 200000;
@@ -213,6 +216,7 @@
         endfunction
 
         virtual function void build_phase(uvm_phase phase);
+            bit dual;
             super.build_phase(phase);
             void'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));
             void'($value$plusargs("a2c_quiet_cycles=%d", quiet_cycles));
@@ -244,7 +248,10 @@
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);
             end
             uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);
+            if (!uvm_config_db#(bit)::get(this, "env", "a2c_dual_dut", dual)) dual = 0;
+            expect_from_model &= dual;
             uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", expect_from_model);
+            if (no_stimulus_expected) uvm_config_db#(bit)::set(this, "env*", "a2c_allow_no_pairs", 1'b1);
             if (lane_skew_cycles >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lane_skew_cycles", lane_skew_cycles);
             end
@@ -2641,7 +2648,6 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             mem_cmp = memory_comparator#(lb_mem_addr_t, lb_data_t)::type_id::create("mem_cmp", this);
-            mem_cmp.allow_no_pairs = 1;
         endfunction
 
         virtual task run_body();

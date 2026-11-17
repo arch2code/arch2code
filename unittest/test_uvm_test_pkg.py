@@ -292,7 +292,8 @@ LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env',
                           {'name': 'lb_out', 'agent': 'lb_out_agent', 'role': 'src', 'counter': 'lb_out_counter',
                            'clockVif': 'clk_vif'}],
                 'clocks': [{'clock': 'clk', 'vif': 'clk_vif', 'reset': 'rst_n'},
-                           {'clock': 'clk2', 'vif': 'clk2_vif', 'reset': None}]}
+                           {'clock': 'clk2', 'vif': 'clk2_vif', 'reset': None}],
+                'registerBus': None}
 
 
 def regions(path):

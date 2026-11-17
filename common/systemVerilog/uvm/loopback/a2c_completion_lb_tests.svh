@@ -194,3 +194,33 @@
             waive = 1;
         endfunction
     endclass : lb_no_pairs_waived_test
+
+    // A counter with a2c_expect_from_model set and dual clear has no model
+    // lane to take its count from, and would pass an output that delivered
+    // nothing: one A2C_CFG error says so.
+    class lb_expect_from_model_single_test extends lb_mode_b_base;
+        rv_counter_t counter;
+
+        `uvm_component_utils(lb_expect_from_model_single_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            demote_id   = "A2C_CFG";
+            want_errors = 1;
+            want_text.push_back("rv: expect_from_model is set, but dual is not");
+            super.build_phase(phase);
+            uvm_config_db#(bit)::set(this, "counter", "a2c_expect_from_model", 1'b1);
+            counter = rv_counter_t::type_id::create("counter", this);
+            counter.port_name = "rv";
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            phase.raise_objection(this);
+            clk_vif.wait_reset_release();
+            counter.wait_for_count(clk_vif, 100, 20);
+            phase.drop_objection(this);
+        endtask
+    endclass : lb_expect_from_model_single_test

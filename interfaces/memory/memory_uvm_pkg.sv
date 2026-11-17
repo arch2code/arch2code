@@ -261,6 +261,19 @@ package memory_uvm_pkg;
             owed      = 0;
         endfunction
 
+        // A read held in its gap or its enable clock is not in reads yet, so
+        // it is answered here, with 0 as those are.
+        protected virtual function void abandon_held(memory_item#(addr_t, data_t) item);
+            memory_item#(addr_t, data_t) rsp;
+            if (item.write) return;
+            rsp = memory_item#(addr_t, data_t)::type_id::create("rsp");
+            rsp.set_id_info(item);
+            rsp.write = 1'b0;
+            rsp.addr  = item.addr;
+            rsp.data  = '0;
+            seq_item_port.put_response(rsp);
+        endfunction
+
         // At most one read waits here: it was taken on the rising edge just
         // before this sample edge, so read_data now holds its word. The
         // response carries the DUT lane's word.
@@ -475,6 +488,12 @@ package memory_uvm_pkg;
             super.new(name, parent);
         endfunction
 
+        // A memory port reaches a memory or a register-mapped memory, which
+        // a test may never access, as register traffic is optional.
+        virtual function bit expects_pairs();
+            return 0;
+        endfunction
+
         protected function bit xz_read(item_t t);
             return !t.write && $isunknown(t.data);
         endfunction
@@ -510,6 +529,21 @@ package memory_uvm_pkg;
                                               held_model.convert2string(), held_at[A2C_MODEL_LANE], a2c_run_ended_clause()))
         endfunction
     endclass : memory_comparator
+
+    // The A2C_DST role's Mode B comparator, for a DUT that accesses a
+    // memory: in order, and like memory_comparator it expects no pairs.
+    class memory_access_comparator #(type addr_t = logic, type data_t = logic)
+        extends a2c_in_order_comparator #(memory_item#(addr_t, data_t));
+        `uvm_component_param_utils(memory_access_comparator#(addr_t, data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function bit expects_pairs();
+            return 0;
+        endfunction
+    endclass : memory_access_comparator
 
     // Coverage of the accesses on the DUT lane: read or write, the address in
     // 16 equal ranges of addr_t, and the two crossed.
@@ -549,7 +583,8 @@ package memory_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(memory_item#(addr_t, data_t)) sqr;
         memory_monitor#(addr_t, data_t)              mon;
-        // Mode B only. On the A2C_SRC role model_cmp is a memory_comparator.
+        // Mode B only. model_cmp is a memory_comparator on the A2C_SRC role
+        // and a memory_access_comparator on the A2C_DST role.
         memory_monitor#(addr_t, data_t)              model_mon;
         a2c_in_order_comparator #(item_t)            model_cmp;
 
@@ -576,7 +611,7 @@ package memory_uvm_pkg;
                 model_mon.cfg = cfg;
                 model_mon.vif = cfg.model_vif;
                 if (cfg.role == A2C_SRC) model_cmp = memory_comparator#(addr_t, data_t)::type_id::create("model_cmp", this);
-                else model_cmp = a2c_in_order_comparator#(item_t)::type_id::create("model_cmp", this);
+                else model_cmp = memory_access_comparator#(addr_t, data_t)::type_id::create("model_cmp", this);
             end
             if (cfg.is_active != UVM_ACTIVE) return;
             if (cfg.role == A2C_DST && cfg.mem == null) begin

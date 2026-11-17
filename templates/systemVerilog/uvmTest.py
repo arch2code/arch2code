@@ -70,7 +70,8 @@ def render_tests(uvm):
              "// own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the",
              "// rule off. A run that sends nothing on an input and expects no output",
              "// transaction warns at check_phase, unless no_stimulus_expected",
-             "// (+a2c_no_stimulus_expected=1) is set. A run phase still running at",
+             "// (+a2c_no_stimulus_expected=1) is set, which also lets every",
+             "// comparator compare no pair. A run phase still running at",
              f"// its run timeout, counted in clocks of {uvm['clocks'][0]['clock']}, ends with one",
              "// A2C_RUN_TIMEOUT error naming the ports that wait and the objections",
              "// raised, and check_phase still runs. Left at -1, the timeout is",
@@ -87,9 +88,11 @@ def render_tests(uvm):
              "// +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,",
              "// +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With",
              "// expect_from_model (+a2c_expect_from_model=1) set, an output needs no",
-             "// expect_count(): in Mode B the model lane's count is the DUT lane's",
+             "// expect_count() in Mode B: the model lane's count is the DUT lane's",
              "// expectation, and wait_for_outputs() returns once the outputs have",
-             "// been quiet for quiet_cycles. reset_dut() pulses the resets mid-run.",
+             "// been quiet for quiet_cycles. A run with one DUT has no model lane,",
+             "// so build_phase clears expect_from_model there and the test declares",
+             "// its counts. reset_dut() pulses the resets mid-run.",
              f"class {cls} extends uvm_test implements a2c_run_work;",
              f"    {uvm['tbEnvClass']} env;",
              '    int unsigned output_deadline_cycles = 200000;',
@@ -122,6 +125,7 @@ def render_tests(uvm):
              '    endfunction',
              '',
              '    virtual function void build_phase(uvm_phase phase);',
+             '        bit dual;',
              '        super.build_phase(phase);',
              '        void\'($value$plusargs("a2c_output_deadline_cycles=%d", output_deadline_cycles));',
              '        void\'($value$plusargs("a2c_quiet_cycles=%d", quiet_cycles));',
@@ -153,7 +157,10 @@ def render_tests(uvm):
              '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);',
              '        end',
              '        uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);',
+             '        if (!uvm_config_db#(bit)::get(this, "env", "a2c_dual_dut", dual)) dual = 0;',
+             '        expect_from_model &= dual;',
              '        uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", expect_from_model);',
+             '        if (no_stimulus_expected) uvm_config_db#(bit)::set(this, "env*", "a2c_allow_no_pairs", 1\'b1);',
              '        if (lane_skew_cycles >= 0) begin',
              '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lane_skew_cycles", lane_skew_cycles);',
              '        end',
@@ -232,12 +239,18 @@ def render_tests(uvm):
               '    endtask',
               '']
     resets = [clock for clock in uvm['clocks'] if clock['reset']]
+    hasRegModel = uvm['registerBus'] is not None
     lines += ['    // Pulses every reset of the block and returns once each clock samples',
               '    // its reset released. The RTL and the agents abandon what is in',
-              '    // flight, and the counters and comparators start again from the',
-              '    // release. The model has no mid-run reset, so a run that holds it',
-              '    // gets an A2C_RESET error instead.',
-              '    task reset_dut();',
+              '    // flight, and the counters and comparators start again from the']
+    if hasRegModel:
+        lines += ['    // release. The register model goes back to its reset values, as the',
+                  '    // registers do. The model has no mid-run reset, so a run that holds',
+                  '    // it gets an A2C_RESET error instead.']
+    else:
+        lines += ['    // release. The model has no mid-run reset, so a run that holds it',
+                  '    // gets an A2C_RESET error instead.']
+    lines += ['    task reset_dut();',
               '        bit model;',
               '        void\'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model));',
               '        if (model || env.dual_dut) begin',
@@ -248,6 +261,8 @@ def render_tests(uvm):
         lines.append('        fork')
         lines += [f"            env.{clock['vif']}.request_reset();" for clock in resets]
         lines.append('        join')
+        if hasRegModel:
+            lines.append('        env.regmodel.reset();')
     else:
         lines.append('        `uvm_error("A2C_RESET", "reset_dut(): the block has no reset to pulse")')
     lines += ['    endtask',

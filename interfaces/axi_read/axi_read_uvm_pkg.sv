@@ -389,6 +389,13 @@ package axi_read_uvm_pkg;
             ar_cur      = null;
         endfunction
 
+        // An item held in its gap has opened no burst, so it returns here
+        // with no beats; one whose AR is on the bus is an open burst, which
+        // on_reset() returns.
+        protected virtual function void abandon_held(item_t item);
+            if (ar_cur == null) seq_item_port.put_response(new_response(item));
+        endfunction
+
         // The response to req, with its AR fields and no beats yet.
         protected function item_t new_response(item_t req);
             item_t rsp = item_t::type_id::create("rsp");
