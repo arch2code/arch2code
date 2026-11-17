@@ -23,6 +23,10 @@
 #
 # The build and the logs go to ./loopback_<sim> under the current directory,
 # which the script empties first. The simulator setup must already be sourced.
+#
+# With UVM_COV=1 in the environment the build defines A2C_UVM_COV, so every
+# agent builds its coverage subscriber, and each test writes its covergroups
+# to its own database under ./loopback_<sim>/cov, named <test>.<seed>.
 
 set -u
 
@@ -111,21 +115,28 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 cd "$OUT" || exit 1
 
+COV_DEFINE=""
+[ -n "${UVM_COV:-}" ] && COV_DEFINE=+define+A2C_UVM_COV
+
 case $SIM in
     xcelium)
         # -uvmhome CDNS-1.2: without it xrun picks UVM 1.1d.
         xrun -64bit -sv -uvm -uvmhome CDNS-1.2 -timescale 1ns/1ps -incdir ${INCDIRS// / -incdir } -elaborate $SRCS \
-            -top a2c_uvm_loopback_tb -l build.log > /dev/null
+            -top a2c_uvm_loopback_tb ${COV_DEFINE:+$COV_DEFINE -coverage u} -l build.log > /dev/null
         BUILD=$?
-        run() { xrun -64bit -R +UVM_TESTNAME=$1 -svseed $SEED "${@:2}" -l $1.log > /dev/null; }
+        run() { xrun -64bit -R +UVM_TESTNAME=$1 -svseed $SEED "${@:2}" \
+                ${COV_DEFINE:+-covworkdir cov -covscope loopback -covtest $1.$SEED -covoverwrite} -l $1.log > /dev/null; }
         SEED_ARG=-svseed
-        seed_cmd() { echo "xrun -64bit -R +UVM_TESTNAME=$1 -svseed $2 ${*:3}"; }
+        # A check's two runs share one database name, which xrun would refuse to overwrite.
+        seed_cmd() { echo "xrun -64bit -R +UVM_TESTNAME=$1 -svseed $2 ${*:3}" \
+                          ${COV_DEFINE:+-covworkdir cov -covscope seed_repro -covtest $1 -covoverwrite}; }
         ;;
     vcs)
         vcs -full64 -sverilog -ntb_opts uvm-1.2 -timescale=1ns/1ps +incdir+${INCDIRS// / +incdir+} $SRCS \
-            -top a2c_uvm_loopback_tb -o simv -l build.log > /dev/null
+            -top a2c_uvm_loopback_tb $COV_DEFINE -o simv -l build.log > /dev/null
         BUILD=$?
-        run() { ./simv +UVM_TESTNAME=$1 +ntb_random_seed=$SEED "${@:2}" -l $1.log > /dev/null; }
+        run() { ./simv +UVM_TESTNAME=$1 +ntb_random_seed=$SEED "${@:2}" \
+                ${COV_DEFINE:+-cm_dir cov/$1.$SEED.vdb -cm_name $1.$SEED} -l $1.log > /dev/null; }
         SEED_ARG=+ntb_random_seed
         seed_cmd() { echo "./simv +UVM_TESTNAME=$1 +ntb_random_seed=$2 ${*:3}"; }
         ;;

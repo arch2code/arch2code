@@ -168,6 +168,17 @@ int sc_main(int argc, char* argv[])
         // Stage 2 re-parses stage 1's unrecognized and positional words, except the testBench name.
         std::erase_if(parsed1.options, [](const po::option& o) { return o.string_key == "testBench"; });
         std::vector<std::string> opts = po::collect_unrecognized(parsed1.options, po::include_positional);
+#ifdef VCS
+        // simv hands sc_main its own options too. Those a coverage run adds
+        // (SIMULATOR_INTEGRATION.md section 9.15) each take one value.
+        for (auto it = opts.begin(); it != opts.end();) {
+            if (*it == "-cm" || *it == "-cm_dir" || *it == "-cm_name") {
+                it = opts.erase(it, it + std::min<std::ptrdiff_t>(2, opts.end() - it));
+            } else {
+                ++it;
+            }
+        }
+#endif
         po::store(po::command_line_parser(opts).options(allOptions).run(), vm);
 
         if (vm.count("config"))

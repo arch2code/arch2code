@@ -34,6 +34,20 @@ ifdef WAVES
 XRUN_OPTS += -access +r
 XRUN_R_OPTS += -input $(A2C_ROOT)/include/make/a2c-waves-xrun.tcl
 endif
+# UVM_COV=1 (a2c-uvm.mk) elaborates with XRUN_COV_OPTS: block, expression,
+# FSM and toggle coverage of the RTL DUT, and covergroups and assertions (u).
+# A model DUT's snapshot holds the RTL only as an idle top, so it takes u
+# alone. Each run writes its database to cov/<snapshot>/<test>.<seed> under
+# the directory it starts from, or under RL_RUN_DIR, which regrLauncher.py
+# sets to each run's directory.
+XRUN_COV_CODE ?= b:e:f:t
+XRUN_COV_OPTS ?= $(if $(filter model,$(UVM_DUT)),-coverage u,-coverage $(XRUN_COV_CODE):u -covdut $(UVM_COV_DUT))
+ifdef UVM_COV
+ifndef USE_UVM
+$(error UVM_COV=1 needs USE_UVM=1)
+endif
+XRUN_OPTS += $(XRUN_COV_OPTS)
+endif
 
 # Boost enters the shared-library link, so it must be a shared or PIC library
 # (BOOST_LIBS, shared with the plain/VCS flows in a2c-systemc.mk). Boost.System
@@ -90,7 +104,7 @@ $(XRUN_STAMP): $(OBJ) $(XRUN_HDL_DEPS) $(XRUN_OPTS_STAMP)
 # waves.shm in the directory it starts from, A2C_WAVES_DIR. The build's
 # licence setting goes in too, so a test launched outside make finds the same
 # servers. What the script holds is recorded so a change rewrites it.
-XRUN_R_OPTS_TEXT = $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE) $(UVM_TEST)
+XRUN_R_OPTS_TEXT = $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) $(LM_LICENSE_FILE) $(UVM_TEST) $(UVM_COV)
 XRUN_R_OPTS_STAMP = $(XRUN_STAMP_DIR)/r_opts
 $(shell [ "$$(cat $(XRUN_R_OPTS_STAMP) 2>/dev/null)" = "$(XRUN_R_OPTS_TEXT)" ] || printf '%s\n' "$(XRUN_R_OPTS_TEXT)" > $(XRUN_R_OPTS_STAMP))
 
@@ -116,10 +130,41 @@ $(BIN_DIR)/$(BIN): $(XRUN_STAMP) $(XRUN_R_OPTS_STAMP)
 		'    esac' \
 		'done' \
 		$(if $(and $(USE_UVM),$(UVM_TEST)),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		$(if $(UVM_COV),$(XRUN_COV_RUN_LINES)) \
 		'[ -z "$$seed" ] || set -- "$$@" "+a2c_seed=$$seed"' \
 		'set -- "$$@" "+a2c_rerun=cd $$(printf %q "$$PWD") && $$r"' \
 		'cd $(XRUN_RUNDIR) && exec $(XRUN) -R -xmlibdirname $(XRUN_SNAPSHOT_DIR) $(XRUN_R_OPTS) $(EXTRA_XRUN_R_OPTS) "$$@"' > $@
 	chmod +x $@
+
+# The run script lines of a UVM_COV=1 snapshot. They name the run's database
+# <test>.<seed>, from its +UVM_TESTNAME, which UVM_TEST may have added, and
+# its seed.
+XRUN_COV_RUN_LINES = 'n=notest; for a; do case "$$a" in +UVM_TESTNAME=*) n=$${a\#+UVM_TESTNAME=} ;; esac; done' \
+	'set -- "$$@" -covworkdir "$${RL_RUN_DIR:-$$PWD}/cov" -covscope $(DUT_TOPOLOGY) -covtest "$$n$${seed:+.$$seed}" -covoverwrite'
+
+# Merges every run database under UVM_COV_RUNS, which by default holds those
+# of the runs started here and, under regr/, those of every regression, into
+# UVM_COV_REPORT/merged, and writes UVM_COV_REPORT/summary.txt, by instance,
+# covergroups.txt, every covergroup bin with the register model's, which no
+# instance holds, and an HTML report in UVM_COV_REPORT/html. The merged model
+# is the union of the runs', so runs of different snapshots merge. imc runs in
+# UVM_COV_REPORT, where it writes imc.log, and ships with vManager, not
+# Xcelium.
+IMC ?= imc
+UVM_COV_RUNS ?= .
+UVM_COV_REPORT ?= cov_report
+.PHONY: uvm_cov_merge
+uvm_cov_merge:
+	runs=$$(find $(abspath $(UVM_COV_RUNS)) -path '*/cov/*' -name '*.ucd' -printf '%h\n' | sort -u); \
+	[ -n "$$runs" ] || { echo "uvm_cov_merge: no Xcelium coverage database under $(UVM_COV_RUNS)" >&2; exit 1; }; \
+	mkdir -p $(UVM_COV_REPORT) && printf '%s\n' \
+		"merge $$(echo $$runs) -out $(abspath $(UVM_COV_REPORT))/merged -overwrite -initial_model union_all" \
+		'load -run $(abspath $(UVM_COV_REPORT))/merged' \
+		'report -summary -inst -metrics all -out $(abspath $(UVM_COV_REPORT))/summary.txt' \
+		'report -detail -metrics covergroup -all -out $(abspath $(UVM_COV_REPORT))/covergroups.txt' \
+		'report_metrics -summary -out $(abspath $(UVM_COV_REPORT))/html -overwrite' exit > $(UVM_COV_REPORT)/merge.tcl && \
+	cd $(UVM_COV_REPORT) && $(IMC) -exec merge.tcl -nocopyright > /dev/null && \
+	echo "uvm_cov_merge: $$(echo $$runs | wc -w) runs merged, see $(UVM_COV_REPORT)/summary.txt"
 
 help::
 	@echo "  XCELIUM_TOOLS / XRUN_GCC_VERS    - Xcelium install tools directory and -gcc_vers release (required with USE_XCELIUM=1)"

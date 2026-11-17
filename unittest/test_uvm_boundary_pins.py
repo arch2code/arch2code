@@ -71,6 +71,11 @@ A2C_UVM_BOTH_DUT only for both. The default UVM_TOPOLOGIES of dutU_v0
 builds the model, rtl and both snapshots in that order, and make gen refuses
 UVM_DUT=both for dutV, which has no model.
 
+UVM_COV=1 at dutU_v0 defines A2C_UVM_COV and elaborates with the vendor's
+coverage options: code coverage limited to the HDL top the manifest names for
+an RTL DUT, and none for a model DUT. Each run writes its own database.
+Without UVM_COV no step carries any of it.
+
 A builder layer's A2C_LAYER_UVM_F_FILES reaches the VCS RTL analysis and the
 Xcelium DUT library, each list behind -F, after a2c_uvm.f and before the
 top's variant package, test package and testbench module. Each list, and
@@ -732,6 +737,58 @@ def check_both_dut(work):
     return problems
 
 
+def check_coverage(work):
+    """UVM_COV=1 on dutU_v0: the A2C_UVM_COV define, the vendor's coverage
+    options on the elaboration, code coverage limited to the HDL top for an
+    RTL DUT and absent for a model DUT, the run script's per-run database,
+    and a merge recipe. Without UVM_COV none of it appears."""
+    problems = []
+    hdlTop = 'dutU_v0_hdl_sv_wrapper'
+    covTokens = {'+define+A2C_UVM_COV', '-coverage', '-covdut', '-cm', '-cm_hier', '-cm_dir', '-covworkdir'}
+    vendors = (('VCS', VCS_DRY_RUN, lambda line: ' vcs ' in line and '-syscelab' in line,
+                {'rtl': ['-cm line+cond+fsm+tgl+branch+assert -cm_hier '], 'model': []}, '-cm_dir', 'urg -full64'),
+               ('Xcelium', XRUN_DRY_RUN, lambda line: 'xrun ' in line and '-elaborate' in line,
+                {'rtl': [f'-coverage b:e:f:t:u -covdut {hdlTop} '], 'model': ['-coverage u ']}, '-covworkdir',
+                'imc -exec'))
+    rundir = os.path.join(work, 'top', 'rundir')
+    for flow, dryRun, isElab, elabOpts, runOpt, merger in vendors:
+        for dut, wanted in elabOpts.items():
+            for cov in (False, True):
+                what = f"{flow} UVM_DUT={dut}{' UVM_COV=1' if cov else ''}"
+                result = make(work, 'all', os.path.join('top', 'rundir'),
+                              extra=(*dryRun, 'UVM_TOP=dutU_v0', f'UVM_DUT={dut}', *(('UVM_COV=1',) if cov else ())))
+                if result.returncode != 0:
+                    problems.append(f"{what}: make -n failed (rc={result.returncode})\n{result.stderr}")
+                    continue
+                text = result.stdout.replace('\\\n', ' ')
+                if not cov:
+                    found = sorted(covTokens & set(text.split()))
+                    problems += [f"{what}: the dry run carries {found}"] if found else []
+                    continue
+                elab = [line for line in text.splitlines() if isElab(line)]
+                if len(elab) != 1:
+                    problems.append(f"{what}: {len(elab)} elaboration steps, expected 1")
+                    continue
+                problems += [f"{what}: the elaboration lacks {opt!r}" for opt in wanted if opt not in elab[0]]
+                if not wanted and any(opt in elab[0].split() for opt in ('-cm', '-coverage', '-covdut')):
+                    problems.append(f"{what}: the elaboration of a model DUT carries code coverage options")
+                if '+define+A2C_UVM_COV' not in text.split():
+                    problems.append(f"{what}: no step defines A2C_UVM_COV")
+                if runOpt not in text:
+                    problems.append(f"{what}: the run script does not name a per-run database with {runOpt}")
+                if flow == 'VCS' and dut == 'rtl':
+                    hier = glob.glob(os.path.join(rundir, 'build', '**', 'run_uvm_dutU_v0_rtl.cm_hier'), recursive=True)
+                    content = [open(path).read().strip() for path in hier]
+                    if content != [f'+moduletree {hdlTop}']:
+                        problems.append(f"{what}: the -cm_hier files {hier} hold {content}, expected "
+                                        f"['+moduletree {hdlTop}']")
+        result = make(work, 'uvm_cov_merge', os.path.join('top', 'rundir'),
+                      extra=(*dryRun, 'UVM_TOP=dutU_v0', 'UVM_COV=1'))
+        if result.returncode != 0 or merger not in result.stdout:
+            problems.append(f"{flow}: uvm_cov_merge does not run {merger!r} (rc={result.returncode})\n{result.stderr}")
+    return problems
+
+
 def check_layer_uvm_lists(work):
     """Two layer lists on A2C_LAYER_UVM_F_FILES, at the top dutV: their place
     in the vlogan RTL analysis and the xrun DUT library, and their place, with
@@ -820,6 +877,7 @@ def check_manifest(work):
         expected[f'A2C_UVM_TEST_SV_{top}'] = [os.path.join(uvmDir, f'{UVM_TOPS[stem][0]}_uvm_test_pkg.sv')]
         expected[f'A2C_UVM_TB_SV_{top}'] = [os.path.join(uvmDir, f'{top}.sv')]
         expected[f'A2C_UVM_PORTMAP_{top}'] = [os.path.join(root, '.gen', 'vl', f'{top}.portmap')]
+        expected[f'A2C_UVM_HDL_TOP_{top}'] = [f'{stem}_hdl_sv_wrapper']
         expected[f'A2C_UVM_DUTS_{top}'] = ['model', 'rtl', 'both'] if HAS_MDL[UVM_TOPS[stem][0]] else ['rtl']
     for block, stems in DEFAULT_TOPS.items():
         expected[f'A2C_UVM_DEFAULT_TOP_{block}'] = stems
@@ -854,7 +912,8 @@ def run_all_tests():
                                    ('SystemC wrapper, config and registrar', check_sc_files(work, design)),
                                    ('VCS shell analysis', check_vcs_shells(work)),
                                    ('layer agent lists', check_layer_uvm_lists(work)),
-                                   ('both DUT', check_both_dut(work))):
+                                   ('both DUT', check_both_dut(work)),
+                                   ('coverage', check_coverage(work))):
                 for problem in problems:
                     print(f"  FAIL: {name}: {problem}")
                 if not problems:

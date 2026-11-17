@@ -3004,6 +3004,109 @@ package a2c_uvm_pkg;
         pure virtual function string starvation_port();
     endclass : a2c_starvation_source
 
+    // Functional coverage. A UVM_COV=1 build defines A2C_UVM_COV, which sets
+    // the default of every agent config's has_coverage and has the generated
+    // env include the register coverage models. Off, no covergroup is
+    // constructed.
+`ifdef A2C_UVM_COV
+    localparam bit           a2c_cov_on  = 1;
+    localparam uvm_reg_cvr_t a2c_reg_cov = UVM_CVR_FIELD_VALS + UVM_CVR_ADDR_MAP;
+`else
+    localparam bit           a2c_cov_on  = 0;
+    localparam uvm_reg_cvr_t a2c_reg_cov = UVM_NO_COVERAGE;
+`endif
+
+    // An agent creates its coverage subscriber through create(), which keeps
+    // the creating thread's random state: creating a component seeds its
+    // generator from that thread's, so a run with coverage would otherwise
+    // draw other stimulus than the same seed without (IEEE 1800 section
+    // 18.14.1).
+    class a2c_coverage #(type T = uvm_component);
+        static function T create(string name, uvm_component parent);
+            process p = process::self();
+            string  state;
+            if (p != null) state = p.get_randstate();
+            create = T::type_id::create(name, parent);
+            if (p != null) p.set_randstate(state);
+        endfunction
+    endclass : a2c_coverage
+
+    // Coverage of a stream port's handshake timing, from the counts of its
+    // DUT lane's monitor (a2c_flow_counts). For each transfer: idle, the
+    // clocks since the previous transfer, or since reset release, on which
+    // the source offered no beat, and stall, those on which the sink refused
+    // the beat offered. A protocol with fields worth covering extends
+    // write().
+    class a2c_flow_coverage #(type T = uvm_sequence_item) extends uvm_subscriber #(T);
+        a2c_flow_counts            flow;
+        protected longint unsigned last_samples;
+        protected longint unsigned last_valid;
+
+        covergroup cg_flow with function sample(longint unsigned idle_clocks, longint unsigned stall_clocks);
+            option.per_instance = 1;
+            idle: coverpoint idle_clocks {
+                bins none = {0}; bins one = {1}; bins few = {[2:3]}; bins some = {[4:15]}; bins many = {[16:$]};
+            }
+            stall: coverpoint stall_clocks {
+                bins none = {0}; bins one = {1}; bins few = {[2:3]}; bins some = {[4:15]}; bins many = {[16:$]};
+            }
+            idle_x_stall: cross idle, stall;
+        endgroup
+
+        `uvm_component_param_utils(a2c_flow_coverage#(T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_flow = new();
+            cg_flow.set_inst_name({get_full_name(), ".cg_flow"});
+        endfunction
+
+        virtual function void write(T t);
+            longint unsigned samples, valid, ready, transfers;
+            flow.flow_counts(samples, valid, ready, transfers);
+            cg_flow.sample(samples - last_samples - (valid - last_valid), valid - last_valid - 1);
+            last_samples = samples;
+            last_valid   = valid;
+        endfunction
+    endclass : a2c_flow_coverage
+
+    // Coverage of a request and acknowledge port's timing, from the counts of
+    // its DUT lane's monitor (a2c_starvation_source). For each transfer:
+    // ack_wait, the clocks the request waited for ack, and idle, the clocks
+    // since the previous transfer, or since reset release, with no request.
+    class a2c_wait_coverage #(type T = uvm_sequence_item) extends uvm_subscriber #(T);
+        a2c_starvation_source      src;
+        protected longint unsigned last_samples;
+        protected longint unsigned last_withheld;
+
+        covergroup cg_wait with function sample(longint unsigned idle_clocks, longint unsigned wait_clocks);
+            option.per_instance = 1;
+            idle: coverpoint idle_clocks {
+                bins none = {0}; bins one = {1}; bins few = {[2:3]}; bins some = {[4:15]}; bins many = {[16:$]};
+            }
+            ack_wait: coverpoint wait_clocks {
+                bins none = {0}; bins one = {1}; bins few = {[2:3]}; bins some = {[4:15]}; bins many = {[16:$]};
+            }
+            idle_x_wait: cross idle, ack_wait;
+        endgroup
+
+        `uvm_component_param_utils(a2c_wait_coverage#(T))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_wait = new();
+            cg_wait.set_inst_name({get_full_name(), ".cg_wait"});
+        endfunction
+
+        virtual function void write(T t);
+            longint unsigned samples, withheld;
+            src.starvation_counts(samples, withheld);
+            cg_wait.sample(samples - last_samples - (withheld - last_withheld) - 1, withheld - last_withheld);
+            last_samples  = samples;
+            last_withheld = withheld;
+        endfunction
+    endclass : a2c_wait_coverage
+
     // The fields every a2c agent config has, whatever its protocol. VIF_T
     // is the protocol's virtual interface type.
     virtual class a2c_agent_config #(type VIF_T = virtual a2c_clk_if) extends uvm_object;
@@ -3019,6 +3122,10 @@ package a2c_uvm_pkg;
         // stall rule. The env clears it on its agents inside the DUT, whose
         // traffic can go on while the boundary deadlocks.
         bit                     joint_watch = 1;
+        // The agent builds its coverage subscriber, which samples the DUT
+        // lane's monitor only. A "has_coverage" bit in uvm_config_db for the
+        // agent overrides it.
+        bit                     has_coverage = a2c_cov_on;
 
         function new(string name = "a2c_agent_config");
             super.new(name);
@@ -3455,6 +3562,16 @@ package a2c_uvm_pkg;
         // comparator a death or cut reaches.
         protected virtual function bit needs_owner();
             return lane_cmp() != null;
+        endfunction
+
+        // Whether the agent builds its coverage subscriber on the DUT lane's
+        // monitor: the config's has_coverage, which a "has_coverage" bit in
+        // uvm_config_db for the agent overrides. The agent's build_phase
+        // calls it once it has the config.
+        protected function bit coverage_on();
+            lane_cfg_t cfg = lane_cfg();
+            a2c_get_config_bit(this, "has_coverage", cfg.has_coverage);
+            return cfg.has_coverage;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);

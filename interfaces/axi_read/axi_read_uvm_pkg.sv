@@ -1194,12 +1194,53 @@ package axi_read_uvm_pkg;
         endfunction
     endclass : axi_read_comparator
 
+    // Coverage of the bursts on the DUT lane: length, arsize and burst type,
+    // and length against type. Each size the bus can carry has its own bin.
+    class axi_read_coverage #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
+                              type ruser_t = logic, type id_t = logic [3:0])
+        extends uvm_subscriber #(axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t));
+        typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
+        localparam int unsigned MIN_SIZE = item_t::BYTE_LANES ? 0 : item_t::FULL_SIZE;
+
+        covergroup cg_burst with function sample(bit [7:0] len, bit [2:0] size, axi_burst_e burst);
+            option.per_instance = 1;
+            burst_len: coverpoint len {
+                bins single = {0}; bins two = {1}; bins upto4 = {[2:3]}; bins upto8 = {[4:7]};
+                bins upto16 = {[8:15]}; bins long = {[16:255]};
+            }
+            burst_size: coverpoint size {
+                bins size[] = {[MIN_SIZE:item_t::FULL_SIZE]};
+            }
+            burst_type: coverpoint burst {
+                bins fixed = {AXI_FIXED}; bins incr = {AXI_INCR}; bins wrap = {AXI_WRAP};
+            }
+            // WRAP takes 2, 4, 8 or 16 beats and FIXED at most 16.
+            len_x_type: cross burst_len, burst_type {
+                ignore_bins wrap_len  = binsof(burst_type.wrap) && (binsof(burst_len.single) || binsof(burst_len.long));
+                ignore_bins fixed_len = binsof(burst_type.fixed) && binsof(burst_len.long);
+            }
+        endgroup
+
+        `uvm_component_param_utils(axi_read_coverage#(addr_t, data_t, aruser_t, ruser_t, id_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_burst = new();
+            cg_burst.set_inst_name({get_full_name(), ".cg_burst"});
+        endfunction
+
+        virtual function void write(item_t t);
+            cg_burst.sample(t.len, t.size, t.burst);
+        endfunction
+    endclass : axi_read_coverage
+
     class axi_read_agent #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
                            type ruser_t = logic, type id_t = logic [3:0])
         extends a2c_lane_agent #(virtual axi_read_if #(.addr_t(addr_t), .data_t(data_t), .aruser_t(aruser_t), .ruser_t(ruser_t),
                                                        .id_t(id_t)));
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t)       item_t;
         typedef axi_read_config#(addr_t, data_t, aruser_t, ruser_t, id_t)     config_t;
+        typedef axi_read_coverage #(addr_t, data_t, aruser_t, ruser_t, id_t) cov_t;
         typedef axi_read_slave_driver#(addr_t, data_t, aruser_t, ruser_t, id_t) slave_t;
 
         config_t                                                    cfg;
@@ -1211,6 +1252,9 @@ package axi_read_uvm_pkg;
         // Mode B only.
         axi_read_monitor#(addr_t, data_t, aruser_t, ruser_t, id_t)    model_mon;
         axi_read_comparator#(addr_t, data_t, aruser_t, ruser_t, id_t) model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(axi_read_agent#(addr_t, data_t, aruser_t, ruser_t, id_t))
 
@@ -1226,6 +1270,7 @@ package axi_read_uvm_pkg;
             mon = axi_read_monitor#(addr_t, data_t, aruser_t, ruser_t, id_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) cov = a2c_coverage#(cov_t)::create("cov", this);
             if (cfg.model_vif != null) begin
                 model_mon = axi_read_monitor#(addr_t, data_t, aruser_t, ruser_t, id_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -1267,6 +1312,7 @@ package axi_read_uvm_pkg;
         virtual function void connect_phase(uvm_phase phase);
             a2c_lane_joiner lanes = lane_joiner();
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end

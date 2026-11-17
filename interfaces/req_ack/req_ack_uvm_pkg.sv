@@ -356,6 +356,7 @@ package req_ack_uvm_pkg;
     class req_ack_agent #(type data_t = logic, type rdata_t = logic) extends a2c_lane_agent #(virtual req_ack_if #(.data_t(data_t), .rdata_t(rdata_t)));
         typedef req_ack_item#(data_t, rdata_t)   item_t;
         typedef req_ack_config#(data_t, rdata_t) config_t;
+        typedef a2c_wait_coverage #(item_t) cov_t;
 
         req_ack_config#(data_t, rdata_t)    cfg;
         req_ack_driver#(data_t, rdata_t)    drv;
@@ -364,6 +365,9 @@ package req_ack_uvm_pkg;
         // Mode B only.
         req_ack_monitor#(data_t, rdata_t)   model_mon;
         a2c_in_order_comparator #(item_t)   model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(req_ack_agent#(data_t, rdata_t))
 
@@ -379,6 +383,10 @@ package req_ack_uvm_pkg;
             mon = req_ack_monitor#(data_t, rdata_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) begin
+                cov = a2c_coverage#(cov_t)::create("cov", this);
+                cov.src = mon;
+            end
             if (cfg.model_vif != null) begin
                 model_mon = req_ack_monitor#(data_t, rdata_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -399,6 +407,7 @@ package req_ack_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);

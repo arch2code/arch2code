@@ -1028,6 +1028,7 @@ The test package reaches the build through the manifest, as `A2C_UVM_TEST_SV_<to
 | `UVM_DUT` | the first of `A2C_UVM_DUTS_<top>`: `model`, or `rtl` for a block with no model | the DUT the snapshot holds. `rtl` adds `+define+A2C_UVM_RTL_DUT`. `both` adds `+define+A2C_UVM_BOTH_DUT` and builds Mode B, the RTL beside the model as its reference (section 9.12). A block with no model has neither `model` nor `both` |
 | `UVM_TEST` | empty | the `+UVM_TESTNAME` the run script adds when a run names none |
 | `UVM_TOPOLOGIES` | `<UVM_TOP>:<each DUT of its block>` | what `uvm_snapshots` builds: space-separated `<top>:<dut>[,<dut>]` entries |
+| `UVM_COV` | empty | `1` builds the snapshot for coverage and has each run write its own coverage database (section 9.16) |
 
 `make gen` checks `UVM_TOP` and `UVM_DUT` against the manifest and names the valid values. Under `USE_UVM` the flow sets `VL_INST` empty, `DUT_TOPOLOGY` to `uvm_<UVM_TOP>_<UVM_DUT>` and `DUT_ELAB_ARGS` to `<block>_uvm --uvmDut <dut> --uvmTop <top>`. It adds `common/systemVerilog/uvm/a2c_uvm.f`, then `-F` of each builder layer list in `A2C_LAYER_UVM_F_FILES`, and the defines `A2C_UVM_PKG=<variant package>` and, for `rtl`, `A2C_UVM_RTL_DUT` or, for `both`, `A2C_UVM_BOTH_DUT` to the HDL arguments. It appends the variant package, the test package and the testbench module to `A2C_SV_FILES`, after `rtl.f`, and makes them, the `.sv` and `.svh` files of the UVM library, the agent packages, each layer list and each file a layer list names prerequisites of the snapshot. A layer list holds file paths only, relative to its own directory. The RTL side's files, those that `a2c.f`, the HDL hooks and `rtl.f` name and every `.sv` and `.svh` in their include directories, are prerequisites too, with the gaps section 10.2 lists. It adds `$(A2C_UVM_SRC_DIRS)` to the C++ sources, and on VCS `common/systemc/uvm/uvmVcsElabStub.cpp` too.
 
@@ -1694,7 +1695,6 @@ This is the one list of the places where the flow departs from IEEE 1800.2 or fr
 | The env connects a monitor's `ap` to a subscriber's `analysis_export` in `connect_phase` | `a2c_rt_checker`'s `connect_in()` and `connect_out()` and `a2c_txn_digest::watch()` take the monitor component and find its ports among its children: `get_child("ap")` for the checker, every port component of the item type for the digest | the checker also reads the monitor's flow counts, `a2c_flow_counts`, and the digest hashes every analysis port of the monitor, so one call takes both. The lookup relies on the port component that UVM 1.2 creates as the port's child |
 | A component reads a setting with `uvm_config_db#(T)::get()` of one type | the drain, lane rule, real-time checker and run timeout knobs are read through `uvm_resource_pool`, accepting `int unsigned`, `int` and `uvm_config_int`, and `bit` for a flag, at the highest precedence (section 9.6). `+UVM_CONFIG_DB_TRACE` does not show these reads | a test, a hand-written env and `+uvm_set_config_int` set these knobs with different integer types, and a typed `get()` would silently miss every entry of another type |
 | Shared state lives in objects that the env creates and hands down through `uvm_config_db`, or in a `uvm_pool` | the output counter list, the replay drain, the joint stall record with its one run timeout, the real-time checker list, `a2c_pin_registry` and the child block catcher table are static members of classes in `a2c_uvm_pkg` | the drain, the joint stall rule and the run timeout span the whole simulation, and the pin registry links agents that share no component path, keyed by virtual interface handle, which a `uvm_pool` cannot index. An env-scoped context is not built, so two envs in one simulation share one drain, one joint stall record and one run timeout (section 10.1) |
-| Agents and register models carry coverage | no covergroups, coverpoints or cover properties, and the generated register model passes `UVM_NO_COVERAGE` | not built (section 10.1) |
 
 #### The register model
 
@@ -1704,6 +1704,15 @@ This is the one list of the places where the flow departs from IEEE 1800.2 or fr
 | UVM's own warnings pass unchanged | a report catcher demotes the `UVM/RSRC/NOREGEX` warning for child register blocks to a `UVM_HIGH` info (section 9.5) | UVM 1.2 registers each child block under its dotted full name and warns once per child. IEEE 1800.2 drops that registration |
 | A parent's register model holds its own classes | a parent holds a reused child's register block class from the child's variant package (section 9.15), and a root block locks the model only when it has no parent | one class serves the child's own bench and its parents', so a test or sequence written against it runs in both |
 | Registers have HDL paths for backdoor access | the generated register model has front-door access only, with no HDL paths | not built. A test that needs backdoor access or a backdoor-based built-in sequence cannot run (section 10.1) |
+
+#### Coverage
+
+| Convention | What the flow does | Reason |
+| :--- | :--- | :--- |
+| `UVM_CVR_FIELD_VALS` is sampled through `sample_values()`, which a test calls to record the mirrored field values at points it chooses | each register's `cg_vals` samples the fields from the data of every access, in the `sample()` override that `uvm_reg_predictor` calls (section 9.16) | every access the predictor sees is recorded without a call in each test. A test that wants the mirror sampled at chosen points adds its own covergroup |
+| The test calls `uvm_reg::include_coverage()` before the register model is built | the generated env calls it with the `UVM_COV` setting, and a test's earlier call wins | coverage follows the one build switch, and a test can still choose the models |
+| A component is created with `type_id::create()` | each agent creates its coverage subscriber through `a2c_coverage#(T)::create()`, which restores the creating thread's random state after the call | constructing a component draws from the creating thread's random generator, so a coverage build would otherwise draw other stimulus for the same seed than a build without coverage |
+| An agent's coverage collector samples its monitor's items | the stream and request-acknowledge subscribers also read the monitor's flow counters, for the idle and stall or wait clocks of each transfer | handshake timing is not part of the item, and the counters are the ones the real-time checker already reads |
 
 #### Video framing tests
 
@@ -1811,6 +1820,112 @@ The env of a `hasUvm` block with children has a passive agent and a digest per c
 
 `examples/uvmReuse` is the end-to-end bench. Its root `uvmReuseChain` holds two instances of the child project's parameterised leaf `uvmReuseLeaf`, which has a register and a configuration sequence, and a counter pair on a second clock. `uLeafA` reuses the leaf's w8 package in both tops; `uLeafB` matches w8 in v8 and w4 in v4, so its register classes are the root's own and both leaf packages compile in each top. The chain's test checks `out` against the chain of both leaves' contracts and the internal connection `mid` against `uLeafA`'s, and `uvmReuseChain_stall_test` deadlocks the boundary while the counter pair runs and passes only on one `A2C_JOINT_STALL`. Its SystemC and Verilator runs and RTL lint are the `uvm-reuse` pipeline target, and `make regr_uvm_xcelium` in each project's rundir runs its UVM regression.
 
+### 9.16 Coverage
+
+`UVM_COV=1` on the build collects three kinds of coverage, and `make uvm_cov_merge` merges the runs' databases into one report:
+
+- **Agent coverage.** Each agent builds a coverage subscriber, `cov`, on its DUT lane's monitor.
+- **Register coverage.** The generated register model covers each register's field values and each block's address map, sampled by the env's predictor.
+- **Code coverage** of the RTL DUT: line or block, condition or expression, FSM, toggle and, under VCS, branch and assertion coverage, limited to the HDL top the testbench module holds.
+
+Coverage is off by default. Without `UVM_COV` no covergroup is constructed, no coverage option reaches the simulator, and the simulator command lines, the run scripts and the run logs are those of a build that has no coverage code, apart from the source line numbers UVM prints. A `UVM_COV=1` build draws the same stimulus for a seed as the build without it; its run log adds only the simulator's coverage lines.
+
+#### What each agent covers
+
+| Agent | Subscriber | Covergroups, sampled once per item on the DUT lane |
+| :--- | :--- | :--- |
+| `rdy_vld`, `push_ack` | `a2c_flow_coverage` | `cg_flow`: `idle`, the clocks since the previous transfer, or since reset release, on which the source offered nothing; `stall`, the clocks the sink refused the offered beat; and the two crossed. Bins: 0, 1, 2-3, 4-15, 16 and more |
+| `axi4_stream` | `axi4_stream_coverage` | `cg_flow` as above, and `cg_last`: whether the beat ends a packet |
+| `pop_ack`, `req_ack` | `a2c_wait_coverage` | `cg_wait`: `idle`, the clocks with no request since the previous transfer; `ack_wait`, the clocks the request waited for its acknowledge; and the two crossed, with the bins of `cg_flow` |
+| `apb`, `memory`, Pro `lmmi` | `<type>_coverage` | `cg_access`: read or write, the address in 16 equal ranges of `addr_t`, and the two crossed |
+| `axi_read`, `axi_write` | `<type>_coverage` | `cg_burst`: burst length (1, 2, 3-4, 5-8, 9-16, 17-256 beats), size (one bin per size up to the data bus width, or the full width alone without `BYTE_LANES`), burst type, and length crossed with type, without the lengths WRAP and FIXED cannot take |
+| `notify_ack`, `status`, `external_reg`, `raw` | none | see "What the flow does not cover" below |
+
+Each subscriber extends `uvm_subscriber` of the agent's item and connects to `<agent>.mon.ap`. In Mode B that is the DUT lane, the RTL; the model lane, `model_mon`, is never sampled, so each transfer is counted once. The passive agents on the connections between a composed block's children (section 9.15) have no model lane and build their subscribers too, so a `UVM_COV=1` run of the RTL also covers the traffic between the children. The idle and wait counts come from the same monitor counters as the real-time checker (section 9.6). Every covergroup sets `option.per_instance` and is named after its component, such as `uvm_test_top.env.in_agent.cov.cg_flow`.
+
+The agent config's `has_coverage` decides whether the agent builds `cov`. A `UVM_COV=1` build sets its default to 1, and a `has_coverage` bit set in `uvm_config_db` for the agent overrides it, so a test turns one agent off:
+
+```systemverilog
+uvm_config_db#(bit)::set(this, "env.side_agent", "has_coverage", 0);
+```
+
+#### Register coverage
+
+The generated register model follows UVM's `build_coverage()` protocol. Each register class has `cg_vals`, one coverpoint per field over the field's bits, and constructs it when `has_coverage(UVM_CVR_FIELD_VALS)`. Each register block class with registers has `cg_map`, one bin per register offset crossed with read and write, without the write of a read-only register, and constructs it when `has_coverage(UVM_CVR_ADDR_MAP)`. Both override `sample()`, which `uvm_reg_predictor` calls for every bus access it predicts, so they record every access the register bus agent's monitor sees, including the ones a test makes without the register model.
+
+The env calls `uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov)` before it builds the model, and `regmodel.set_coverage(UVM_CVR_ALL)` after. `a2c_reg_cov` is `UVM_CVR_FIELD_VALS + UVM_CVR_ADDR_MAP` in a `UVM_COV=1` build and `UVM_NO_COVERAGE` otherwise. The first `include_coverage` setting wins, so a test that calls it in its `build_phase` before `super.build_phase()` chooses the models itself, for example `UVM_CVR_ADDR_MAP` alone. Memories keep `UVM_NO_COVERAGE`: `uvm_reg_predictor` does not sample memory accesses.
+
+#### Building and running
+
+`UVM_COV=1` needs `USE_UVM=1`. It adds `+define+A2C_UVM_COV` to the HDL arguments, the vendor options below to the elaboration, and coverage lines to the run script. The build records `UVM_COV` with its options, so switching it rebuilds the snapshot.
+
+| | Xcelium | VCS |
+| :--- | :--- | :--- |
+| Elaboration, RTL in the snapshot (`rtl`, `both`) | `-coverage b:e:f:t:u -covdut <hdl top>` | `-cm line+cond+fsm+tgl+branch+assert -cm_hier <build>/vcs/run_<snapshot>.cm_hier`, a file holding `+moduletree <hdl top>` |
+| Elaboration, `model` | `-coverage u`: the RTL is only an idle top | none: VCS collects covergroups without an option |
+| Change the code metrics | `XRUN_COV_CODE`, default `b:e:f:t` | `VCS_COV_METRICS`, default `line+cond+fsm+tgl+branch+assert` |
+| Replace the options | `XRUN_COV_OPTS` | `VCS_COV_OPTS` |
+| Each run adds | `-covworkdir <dir>/cov -covscope <snapshot> -covtest <test>.<seed> -covoverwrite` | `-cm <metrics>` (not for `model`) `-cm_dir <dir>/cov/<snapshot>/<test>.<seed>.vdb -cm_name <test>.<seed>` |
+| Run database | `<dir>/cov/<snapshot>/<test>.<seed>/`, beside the snapshot's model `icc_*.ucm` | `<dir>/cov/<snapshot>/<test>.<seed>.vdb`; the design is in `build/run_<snapshot>.simv.vdb` |
+
+`<hdl top>` is the HDL top the manifest records for the UVM top as `A2C_UVM_HDL_TOP_<tb top>`, `<snapshot>` is `uvm_<top>_<dut>`, `<test>` is the run's `+UVM_TESTNAME`, or `notest`, and `<seed>` is the run's `--seed`; without one the name is `<test>` alone, and the next such run overwrites it. `<dir>` is `RL_RUN_DIR`, which `regrLauncher.py` sets to each run's `run_<n>` directory, or the directory the run starts from. Code coverage covers the HDL top and everything below it: the RTL, and in a `both` snapshot the RTL lane only, since the model is SystemC. simv hands its whole command line to `sc_main` (section 9.7), whose option parser skips `-cm`, `-cm_dir` and `-cm_name` with their values in a VCS build.
+
+A regression collects coverage with `UVM_COV=1` appended to its build command, for example from `examples/uvmRegs/rundir`:
+
+```
+make regr_uvm_xcelium REGR_USER_OPTS="--attr build.command+=UVM_COV=1"
+make USE_UVM=1 USE_XCELIUM=1 UVM_COV=1 uvm_cov_merge UVM_COV_RUNS=regr
+```
+
+#### Merging and reports
+
+`make USE_UVM=1 USE_<VENDOR>=1 UVM_COV=1 uvm_cov_merge` finds every run database under `UVM_COV_RUNS`, default `.`, which holds the databases of runs started from the rundir and, under `regr/`, of every regression session, and writes to `UVM_COV_REPORT`, default `cov_report`:
+
+| | Xcelium | VCS |
+| :--- | :--- | :--- |
+| Tool | `imc`, variable `IMC`. It ships with vManager, not Xcelium, so `IMC` may need the full path, such as `<vManager install>/Linux/bin/imc`. It takes an IMC licence | `urg -full64 +urg+lic+wait`, variable `URG`, which waits for a licence |
+| Merge | `merge <runs> -out cov_report/merged -overwrite -initial_model union_all`, so runs of every snapshot merge | every run database with the design database of its snapshot, into `cov_report/merged.vdb` |
+| Report | `summary.txt`, every metric by instance; `covergroups.txt`, every covergroup bin, with the register model's, which sit under no component; `html/` | `html/dashboard.txt`, `html/groups.txt` and the HTML pages |
+| Log | `imc.log`, with the commands in `merge.tcl` | `urg.log` |
+
+`make clean` removes `cov/` under the rundir and `cov_report`.
+
+#### Adding coverage
+
+A test adds or replaces covergroups through the factory: it extends the agent's subscriber, `<port>_agent_t::cov_t`, and overrides it before the env builds.
+
+```systemverilog
+class my_in_coverage extends dut_v0_uvm_pkg::in_agent_t::cov_t;
+    covergroup cg_payload with function sample(dut_v0_uvm_pkg::in_item_t t);
+        option.per_instance = 1;
+        kind: coverpoint t.data.kind;
+    endgroup
+    `uvm_component_utils(my_in_coverage)
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+        cg_payload = new();
+    endfunction
+    virtual function void write(dut_v0_uvm_pkg::in_item_t t);
+        super.write(t);
+        cg_payload.sample(t);
+    endfunction
+endclass
+
+// In the test's build_phase, before super.build_phase():
+dut_v0_uvm_pkg::in_agent_t::cov_t::type_id::set_inst_override(my_in_coverage::get_type(), "env.in_agent.cov", this);
+```
+
+A subscriber of a project's own connects to `<agent>.mon.ap` in the env's `connect_phase`, and is guarded with `` `ifdef A2C_UVM_COV `` to cost nothing in a build without coverage. A hand-written passive agent on the same pins as a generated one sets `has_coverage` to 0, or each transfer is covered twice. The agents create `cov` with `a2c_uvm_pkg::a2c_coverage#(T)::create()`, which restores the creating thread's random state afterwards: constructing a component seeds its random generator from that thread's, so otherwise a coverage build would draw other stimulus for the same seed (IEEE 1800 section 18.14.1). A project component created only for coverage uses the same call.
+
+#### What the flow does not cover
+
+- No coverage plan. Nothing in the YAML sets goals, weights or bins, and the report is not mapped to a verification plan. The bins are generic: address ranges are 16 equal slices of the address type, not the block's register map.
+- No assertion or `cover property` in the interfaces or the HDL wrapper. VCS's `assert` metric counts only the RTL's own assertions.
+- `notify_ack`, `status`, `external_reg` and `raw` agents have no subscriber: `notify_ack` and `status` carry no transfer worth binning, an `external_reg` port is covered through the register model, and `raw` has no transfer boundary.
+- Error responses are not binned: `PSLVERR` on `apb` and the AXI `RRESP` and `BRESP`.
+- Memories in the register model, and data values on stream ports.
+- The SystemC model. Code coverage covers the RTL only; a `model` snapshot has agent and register coverage alone.
+
 ## 10. Limits and open items
 
 Section 10.1 lists what the flow does not verify, for a verification plan to cover by other means. Section 10.2 lists the build and tool items and the paths no base run has exercised yet.
@@ -1820,7 +1935,7 @@ Section 10.1 lists what the flow does not verify, for a verification plan to cov
 The UVM flow does not verify the following today. A plan that needs one of them covers it with a hand-written check, another flow or another tool, and does not count on this flow for it.
 
 - **Reset during a test.** The SystemC wrapper releases each reset once, a fixed number of its clock's cycles after time 0, and never asserts it again. Every driver, monitor, real-time checker and the generated base test waits for the release once, through `a2c_clk_if::wait_reset_release()`, and has no path for a reset that returns. Reset during traffic, reset length, a reset of one clock domain while the others run, and recovery after reset are not verified in any mode.
-- **Functional coverage.** No covergroup, coverpoint or `cover property` exists in `a2c_uvm_pkg`, `a2c_video_pkg`, the agent packages or the generated files. The generated register model passes `UVM_NO_COVERAGE`, and no make variable turns on the simulators' coverage collection or merges coverage databases. The flow's output cannot argue closure. A project writes its own subscribers on `<agent>.mon.ap`, adds the vendor's coverage options through `XRUN_OPTS` or the VCS options (section 3), and merges the databases itself.
+- **Coverage closure.** `UVM_COV=1` collects generic agent, register and code coverage and merges it (section 9.16), but nothing ties it to a plan: the YAML sets no goals, bins or weights, and the agent bins know nothing of the design, such as which addresses are registers or which burst shapes the DUT must take. There is no assertion or `cover property` coverage of the interfaces, no coverage of error responses, of register-mapped memories, of the `notify_ack`, `status`, `external_reg` and `raw` ports, or of the SystemC model's code. A closure argument needs project covergroups added through the factory (section 9.16) and a plan kept outside the flow.
 - **Register reconfiguration under traffic.** In Mode B, configuration changes only while the datapath is quiescent: `a2c_midstream_guard` fails a register write, and a read of a volatile register or a read-only memory, while any output has transactions pending (section 9.12). A video contract is computed when the frame is planned and must not read anything that changes while the run is sent (section 9.6). So a design whose registers change under traffic, such as an interrupt status that software clears, a flow-control threshold or a DMA descriptor, is checked neither against the model nor against a contract. Only a Mode A run with a project scoreboard that samples the register state itself checks it.
 - **Blocks whose outputs depend on input timing.** In Mode B both DUTs see the same values on the same clocks, but each lane completes on its own handshake, so the model does not see the RTL's exact input timing (section 9.12). A block whose outputs depend on when its inputs arrive, not only on their order, cannot be compared, because the transport that would replay the RTL's input timing to the model is not built. The model's timing is approximate, and the real-time checker only measures on the model DUT. Check such outputs against the specification on the RTL.
 - **The model's internal connections.** In a composed root, the passive agents on the connections between children watch the RTL only (section 9.15). The model's connections are inside SystemC, so in Mode B a defect localised to a child is found on the RTL lane alone. Comparing the model's internal connections needs SystemC taps, which do not exist.

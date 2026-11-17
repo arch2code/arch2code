@@ -14,6 +14,9 @@
 #                   names none
 #   UVM_TOPOLOGIES  what uvm_snapshots builds, <top>:<dut>[,<dut>]... per top;
 #                   defaults to UVM_TOP with each DUT its block has
+#   UVM_COV         1 builds the snapshot for coverage with A2C_UVM_COV
+#                   defined, and each run writes its own coverage database;
+#                   the vendor options are in a2c-vcs.mk and a2c-xrun.mk
 
 ifeq ($(USE_VCS)$(USE_XCELIUM),)
 $(error USE_UVM=1 needs USE_VCS=1 or USE_XCELIUM=1: the UVM flow runs on VCS and Xcelium only)
@@ -53,7 +56,9 @@ A2C_UVM_LIB_SV := $(wildcard $(A2C_ROOT)/common/systemVerilog/uvm/*.sv $(A2C_ROO
 A2C_LAYER_UVM_SV := $(foreach f,$(A2C_LAYER_UVM_F_FILES),$(addprefix $(dir $(f)),$(file < $(f))))
 A2C_UVM_SV_FILES := $(A2C_UVM_REUSED_SV_$(UVM_TB_TOP)) $(A2C_UVM_PKG_SV_$(UVM_TB_TOP)) $(A2C_UVM_TEST_SV_$(UVM_TB_TOP)) $(A2C_UVM_TB_SV_$(UVM_TB_TOP))
 A2C_UVM_HDL_DEFINES := A2C_UVM_PKG=$(A2C_UVM_PKG_$(UVM_TB_TOP)) $(if $(filter rtl,$(UVM_DUT)),A2C_UVM_RTL_DUT) \
-	$(if $(filter both,$(UVM_DUT)),A2C_UVM_BOTH_DUT)
+	$(if $(filter both,$(UVM_DUT)),A2C_UVM_BOTH_DUT) $(if $(UVM_COV),A2C_UVM_COV)
+# Code coverage covers the RTL DUT, the HDL top the testbench module holds.
+UVM_COV_DUT := $(A2C_UVM_HDL_TOP_$(UVM_TB_TOP))
 A2C_SV_FILES += $(A2C_UVM_SV_FILES)
 A2C_HDL_ARGS += -F $(A2C_UVM_F) $(addprefix -F ,$(A2C_LAYER_UVM_F_FILES)) $(addprefix +define+,$(A2C_UVM_HDL_DEFINES))
 A2C_HDL_DEPS += $(A2C_UVM_F) $(A2C_LAYER_UVM_F_FILES) $(A2C_LAYER_UVM_SV) $(A2C_UVM_LIB_SV) $(A2C_UVM_SV_FILES)
@@ -77,3 +82,5 @@ help::
 	@echo "  USE_UVM=1                        - build the UVM snapshot run_uvm_<UVM_TOP>_<UVM_DUT> (needs USE_VCS=1 or USE_XCELIUM=1)"
 	@echo "  UVM_TOP / UVM_DUT / UVM_TEST     - UVM testbench top stem, model, rtl or both DUT, default +UVM_TESTNAME"
 	@echo "  uvm_snapshots                    - build one UVM snapshot per top and DUT in UVM_TOPOLOGIES (<top>:<dut>[,<dut>]...)"
+	@echo "  UVM_COV=1                        - build for coverage; each run writes cov/<snapshot>/<test>.<seed> in its directory"
+	@echo "  uvm_cov_merge                    - merge the coverage runs under UVM_COV_RUNS (default .) into UVM_COV_REPORT (default cov_report)"

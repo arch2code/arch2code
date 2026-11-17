@@ -229,6 +229,7 @@ package push_ack_uvm_pkg;
     class push_ack_agent #(type data_t = logic) extends a2c_lane_agent #(virtual push_ack_if #(.data_t(data_t)));
         typedef push_ack_item#(data_t)   item_t;
         typedef push_ack_config#(data_t) config_t;
+        typedef a2c_flow_coverage #(item_t) cov_t;
 
         push_ack_config#(data_t)                cfg;
         push_ack_driver#(data_t)                drv;
@@ -238,6 +239,9 @@ package push_ack_uvm_pkg;
         // Mode B only. model_cmp exists on the A2C_DST role.
         push_ack_monitor#(data_t)               model_mon;
         a2c_in_order_comparator #(item_t)       model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(push_ack_agent#(data_t))
 
@@ -257,6 +261,10 @@ package push_ack_uvm_pkg;
             mon = push_ack_monitor#(data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) begin
+                cov = a2c_coverage#(cov_t)::create("cov", this);
+                cov.flow = mon;
+            end
             if (cfg.model_vif != null) begin
                 model_mon = push_ack_monitor#(data_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -274,6 +282,7 @@ package push_ack_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end

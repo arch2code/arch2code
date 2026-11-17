@@ -492,10 +492,38 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_comparator
 
+    // Coverage of the accesses on the DUT lane: read or write, the address in
+    // 16 equal ranges of addr_t, and the two crossed.
+    class memory_coverage #(type addr_t = logic, type data_t = logic) extends uvm_subscriber #(memory_item#(addr_t, data_t));
+        covergroup cg_access with function sample(bit is_write, bit [$bits(addr_t)-1:0] addr);
+            option.per_instance = 1;
+            dir: coverpoint is_write {
+                bins read = {0}; bins write = {1};
+            }
+            addr_range: coverpoint addr {
+                option.auto_bin_max = 16;
+            }
+            dir_x_addr: cross dir, addr_range;
+        endgroup
+
+        `uvm_component_param_utils(memory_coverage#(addr_t, data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_access = new();
+            cg_access.set_inst_name({get_full_name(), ".cg_access"});
+        endfunction
+
+        virtual function void write(memory_item#(addr_t, data_t) t);
+            cg_access.sample(t.write, t.addr);
+        endfunction
+    endclass : memory_coverage
+
     class memory_agent #(type addr_t = logic, type data_t = logic)
         extends a2c_lane_agent #(virtual memory_if #(.addr_t(addr_t), .data_t(data_t)));
         typedef memory_item#(addr_t, data_t)   item_t;
         typedef memory_config#(addr_t, data_t) config_t;
+        typedef memory_coverage #(addr_t, data_t) cov_t;
 
         config_t                                     cfg;
         memory_driver#(addr_t, data_t)               drv;
@@ -505,6 +533,9 @@ package memory_uvm_pkg;
         // Mode B only. On the A2C_SRC role model_cmp is a memory_comparator.
         memory_monitor#(addr_t, data_t)              model_mon;
         a2c_in_order_comparator #(item_t)            model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(memory_agent#(addr_t, data_t))
 
@@ -520,6 +551,7 @@ package memory_uvm_pkg;
             mon = memory_monitor#(addr_t, data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) cov = a2c_coverage#(cov_t)::create("cov", this);
             if (cfg.model_vif != null) begin
                 model_mon = memory_monitor#(addr_t, data_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -540,6 +572,7 @@ package memory_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) drv.seq_item_port.connect(sqr.seq_item_export);
             if (model_cmp != null) begin
                 mon.ap.connect(model_cmp.dut_export);

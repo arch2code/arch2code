@@ -49,8 +49,18 @@ def reg_class(cls, name, access, volatile, fields):
     width = sum(f[1] for f in fields)
     lines = [f'class {cls} extends uvm_reg;']
     lines += [f'rand uvm_reg_field {f[0]};' for f in fields]
-    lines += ['', f'`uvm_object_utils({cls})', '', f'function new(string name = "{name}");',
-              f'super.new(name, {width}, UVM_NO_COVERAGE);', 'endfunction', '', 'virtual function void build();']
+    lines += ['', "// UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.",
+              'covergroup cg_vals with function sample(uvm_reg_data_t data);', 'option.per_instance = 1;']
+    lsb = width
+    for field, w, _ in fields:
+        lsb -= w
+        lines.append(f'{field}: coverpoint data[{lsb + w - 1}:{lsb}];')
+    lines += ['endgroup', '', f'`uvm_object_utils({cls})', '', f'function new(string name = "{name}");',
+              f'super.new(name, {width}, build_coverage(UVM_CVR_FIELD_VALS));',
+              'if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();', 'endfunction', '',
+              'protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,',
+              'uvm_reg_map map);', 'if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);', 'endfunction', '',
+              'virtual function void build();', 'if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});']
     lsb = width
     for field, w, reset in fields:
         lsb -= w
@@ -67,10 +77,33 @@ def block_class(cls, regs, mems, children, a2c, root):
     lines += [f'rand {r[1]} {r[0]};' for r in regs]
     lines += [f'uvm_mem {m[0]};' for m in mems]
     lines += [f'rand {c[1]} {c[0]};' for c in children]
-    lines += ['', f'`uvm_object_utils({cls})', '', f'function new(string name = "{cls}");',
-              'super.new(name, UVM_NO_COVERAGE);', 'endfunction', '', 'virtual function void build();']
+    if regs:
+        lines += ['', '// UVM_CVR_ADDR_MAP: each register of this map read and written.',
+                  'covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);',
+                  'option.per_instance = 1;', 'reg_addr: coverpoint map_offset {']
+        lines += [f"bins {r[0]} = {{'h{r[2]:x}}};" for r in regs]
+        lines += ['}', 'dir: coverpoint is_read {', 'bins write = {0}; bins read = {1};', '}']
+        readOnly = [r[0] for r in regs if r[3] == 'RO']
+        if readOnly:
+            lines += ['reg_x_dir: cross reg_addr, dir {']
+            lines += [f'ignore_bins {n}_write = binsof(reg_addr.{n}) && binsof(dir.write);' for n in readOnly]
+            lines += ['}']
+        else:
+            lines.append('reg_x_dir: cross reg_addr, dir;')
+        lines.append('endgroup')
+    lines += ['', f'`uvm_object_utils({cls})', '', f'function new(string name = "{cls}");']
+    if regs:
+        lines += ['super.new(name, build_coverage(UVM_CVR_ADDR_MAP));',
+                  'if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();', 'endfunction', '',
+                  'protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);',
+                  'if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);']
+    else:
+        lines.append('super.new(name, UVM_NO_COVERAGE);')
+    lines += ['endfunction', '', 'virtual function void build();']
     if a2c:
         lines.append('a2c_uvm_pkg::a2c_reg_map a2c_map;')
+    if regs:
+        lines.append('if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});')
     catcher = root and children
     for r in regs:
         lines += [f'{r[0]} = {r[1]}::type_id::create("{r[0]}");', f'{r[0]}.configure(this);', f'{r[0]}.build();']

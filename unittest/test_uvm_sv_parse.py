@@ -17,6 +17,9 @@ a parameterized class's type member, which every generated env package uses.
 
 A generated test package imports the env package A2C_UVM_PKG names, so each
 example parses on its own with that define set to its env package.
+
+The agents' coverage subscribers exist only under A2C_UVM_COV, so the library
+is parsed once with it defined and once without.
 """
 
 import glob
@@ -137,6 +140,9 @@ def main():
     ok = parse('the UVM library and its loopback testbench', src,
                library + [os.path.join(LOOPBACK_DIR, 'a2c_uvm_loopback_tb.sv')],
                [common, UVM_DIR, LOOPBACK_DIR]) and ok
+    ok = parse('the UVM library and its loopback testbench with A2C_UVM_COV', src,
+               library + [os.path.join(LOOPBACK_DIR, 'a2c_uvm_loopback_tb.sv')],
+               [common, UVM_DIR, LOOPBACK_DIR], ['A2C_UVM_COV']) and ok
     for name in EXAMPLES:
         files, env_pkg = example_sources(name)
         ok = parse(f'examples/{name} generated UVM packages', src, library + files,

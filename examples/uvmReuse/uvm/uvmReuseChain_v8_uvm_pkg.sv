@@ -42,13 +42,26 @@ package uvmReuseChain_v8_uvm_pkg;
     class uvmReuseChain_uLeafB_reg_offset extends uvm_reg;
         rand uvm_reg_field offset;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            offset: coverpoint data[7:0];
+        endgroup
+
         `uvm_object_utils(uvmReuseChain_uLeafB_reg_offset)
 
         function new(string name = "offset");
-            super.new(name, 8, UVM_NO_COVERAGE);
+            super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             offset = uvm_reg_field::type_id::create("offset");
             offset.configure(this, 8, 0, "RW", 0, 8'h1, 1, 1, 0);
         endfunction
@@ -57,13 +70,31 @@ package uvmReuseChain_v8_uvm_pkg;
     class uvmReuseChain_uLeafB_reg_block extends uvm_reg_block;
         rand uvmReuseChain_uLeafB_reg_offset offset;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins offset = {'h0};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir;
+        endgroup
+
         `uvm_object_utils(uvmReuseChain_uLeafB_reg_block)
 
         function new(string name = "uvmReuseChain_uLeafB_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             offset = uvmReuseChain_uLeafB_reg_offset::type_id::create("offset");
             offset.configure(this);
             offset.build();
@@ -246,8 +277,13 @@ package uvmReuseChain_v8_uvm_pkg;
                 end
             end
 
+            // A UVM_COV=1 build covers field values and address maps. A
+            // test calling uvm_reg::include_coverage() in its build_phase
+            // sets it first, and the first setting wins.
+            uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov);
             regmodel = uvmReuseChain_reg_block::type_id::create("regmodel");
             regmodel.build();
+            void'(regmodel.set_coverage(UVM_CVR_ALL));
             regmodel.reset();
             adapter = apb_reg_adapter::type_id::create("adapter");
             predictor = uvm_reg_predictor#(apbReg_item_t)::type_id::create("predictor", this);

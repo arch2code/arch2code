@@ -354,10 +354,38 @@ package apb_uvm_pkg;
         endfunction
     endclass : apb_comparator
 
+    // Coverage of the APB transfers on the DUT lane: read or write, the address in
+    // 16 equal ranges of addr_t, and the two crossed.
+    class apb_coverage #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_subscriber #(apb_item);
+        covergroup cg_access with function sample(bit is_write, bit [$bits(addr_t)-1:0] addr);
+            option.per_instance = 1;
+            dir: coverpoint is_write {
+                bins read = {0}; bins write = {1};
+            }
+            addr_range: coverpoint addr {
+                option.auto_bin_max = 16;
+            }
+            dir_x_addr: cross dir, addr_range;
+        endgroup
+
+        `uvm_component_param_utils(apb_coverage#(addr_t, data_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_access = new();
+            cg_access.set_inst_name({get_full_name(), ".cg_access"});
+        endfunction
+
+        virtual function void write(apb_item t);
+            cg_access.sample(t.write, t.addr);
+        endfunction
+    endclass : apb_coverage
+
     class apb_agent #(type addr_t = logic [31:0], type data_t = logic [31:0])
         extends a2c_lane_agent #(virtual apb_if #(.addr_t(addr_t), .data_t(data_t)));
         typedef apb_item                    item_t;
         typedef apb_config#(addr_t, data_t) config_t;
+        typedef apb_coverage #(addr_t, data_t) cov_t;
 
         apb_config#(addr_t, data_t)  cfg;
         // apb_master_driver for A2C_SRC, apb_slave_driver for A2C_DST.
@@ -368,6 +396,9 @@ package apb_uvm_pkg;
         // Mode B only.
         apb_monitor#(addr_t, data_t) model_mon;
         apb_comparator               model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(apb_agent#(addr_t, data_t))
 
@@ -383,6 +414,7 @@ package apb_uvm_pkg;
             mon = apb_monitor#(addr_t, data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) cov = a2c_coverage#(cov_t)::create("cov", this);
             if (cfg.model_vif != null) begin
                 model_mon = apb_monitor#(addr_t, data_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -411,6 +443,7 @@ package apb_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end

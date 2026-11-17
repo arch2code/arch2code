@@ -26,6 +26,22 @@ ifdef VCS_DEBUG
 VCS_ELAB_OPTS += -kdb -debug_access
 VLOGAN_OPTS += +define+VCS_DEBUG
 endif
+# UVM_COV=1 (a2c-uvm.mk) links with VCS_COV_OPTS: line, condition, FSM,
+# toggle and branch coverage of the RTL DUT, to which VCS_COV_HIER limits
+# them, and assertion coverage. Covergroups need no option. A model DUT's
+# snapshot holds no RTL, so it takes none. Each run writes its database to
+# cov/<snapshot>/<test>.<seed>.vdb under the directory it starts from, or
+# under RL_RUN_DIR, which regrLauncher.py sets to each run's directory; the
+# snapshot's own <simv>.vdb holds the design the runs refer to.
+VCS_COV_METRICS ?= line+cond+fsm+tgl+branch+assert
+VCS_COV_HIER = $(VCS_STAMP_DIR)/$(BIN).cm_hier
+VCS_COV_OPTS ?= $(if $(filter model,$(UVM_DUT)),,-cm $(VCS_COV_METRICS) -cm_hier $(VCS_COV_HIER))
+ifdef UVM_COV
+ifndef USE_UVM
+$(error UVM_COV=1 needs USE_UVM=1)
+endif
+VCS_ELAB_OPTS += $(VCS_COV_OPTS)
+endif
 # UVM 1.2 from VCS_HOME/etc/uvm-1.2: vlogan needs it to analyze the packages
 # that import uvm_pkg, and vcs to link the UVM DPI library.
 ifdef USE_UVM
@@ -92,6 +108,9 @@ VCS_LD_FLAGS = $(filter-out -pthread,$(LD_FLAGS))
 VCS_LINK_OPTS = $(VCS_OPTS) $(VCS_ELAB_OPTS) $(EXTRA_VCS_OPTS) $(VCS_LD_FLAGS) $(DUT_ELAB_ARGS)
 VCS_ELAB_STAMP = $(VCS_STAMP_DIR)/$(BIN).elab_args
 $(shell mkdir -p $(VCS_STAMP_DIR); [ "$$(cat $(VCS_ELAB_STAMP) 2>/dev/null)" = "$(VCS_LINK_OPTS)" ] || printf '%s\n' "$(VCS_LINK_OPTS)" > $(VCS_ELAB_STAMP))
+ifdef UVM_COV
+$(shell [ "$$(cat $(VCS_COV_HIER) 2>/dev/null)" = "+moduletree $(UVM_COV_DUT)" ] || printf '%s\n' "+moduletree $(UVM_COV_DUT)" > $(VCS_COV_HIER))
+endif
 
 # A UVM snapshot's simv sits beside the run script that carries its name.
 VCS_SIMV = $(BIN_DIR)/$(BIN)$(if $(USE_UVM),.simv)
@@ -163,7 +182,7 @@ $(VCS_SIMV): $(OBJ)
 # names the FSDB file waves.fsdb, in the directory the run starts from, and
 # turns WAVES_SCOPE into +a2c_waves_scope. The default test and WAVES are
 # recorded so a change rewrites the script.
-VCS_RUN_SCRIPT_TEXT = $(UVM_TEST) $(WAVES)
+VCS_RUN_SCRIPT_TEXT = $(UVM_TEST) $(WAVES) $(UVM_COV)
 VCS_RUN_SCRIPT_STAMP = $(VCS_STAMP_DIR)/$(BIN).run_script
 $(shell [ -e $(VCS_RUN_SCRIPT_STAMP) ] && [ "$$(cat $(VCS_RUN_SCRIPT_STAMP))" = "$(VCS_RUN_SCRIPT_TEXT)" ] || printf '%s\n' "$(VCS_RUN_SCRIPT_TEXT)" > $(VCS_RUN_SCRIPT_STAMP))
 $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
@@ -192,6 +211,7 @@ $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 		'    esac' \
 		'done' \
 		$(if $(UVM_TEST),'[ -n "$$t" ] || set -- "$$@" +UVM_TESTNAME=$(UVM_TEST)') \
+		$(if $(UVM_COV),$(VCS_COV_RUN_LINES)) \
 		'[ -z "$$seed" ] || set -- "$$@" "+a2c_seed=$$seed"' \
 		'set -- "$$@" "+a2c_rerun=cd $$(printf %q "$$PWD") && $$r"' \
 		$(if $(WAVES),'set -- "$$@" +fsdbTrace +fsdbfile+waves.fsdb' \
@@ -199,6 +219,31 @@ $(BIN_DIR)/$(BIN): $(VCS_SIMV) $(VCS_RUN_SCRIPT_STAMP)
 		'exec $(VCS_SIMV) "$$@"' > $@
 	chmod +x $@
 endif
+
+# The run script lines of a UVM_COV=1 snapshot. They name the run's database
+# <test>.<seed>, from its +UVM_TESTNAME, which UVM_TEST may have added, and
+# its seed.
+VCS_COV_RUN_LINES = 'n=notest; for a; do case "$$a" in +UVM_TESTNAME=*) n=$${a\#+UVM_TESTNAME=} ;; esac; done' \
+	'n=$$n$${seed:+.$$seed}; d=$${RL_RUN_DIR:-$$PWD}/cov/$(DUT_TOPOLOGY); mkdir -p "$$d"' \
+	'set -- "$$@" $(if $(filter model,$(UVM_DUT)),,-cm $(VCS_COV_METRICS)) -cm_dir "$$d/$$n.vdb" -cm_name "$$n"'
+
+# Merges every run database under UVM_COV_RUNS, which by default holds those
+# of the runs started here and, under regr/, those of every regression, with
+# the design databases of their snapshots, into UVM_COV_REPORT/merged.vdb,
+# and writes a text and HTML report in UVM_COV_REPORT/html. A run's
+# snapshot is named by the directory above its database.
+URG ?= urg
+UVM_COV_RUNS ?= .
+UVM_COV_REPORT ?= cov_report
+.PHONY: uvm_cov_merge
+uvm_cov_merge:
+	runs=$$(find $(UVM_COV_RUNS) -name '*.vdb' -prune -path '*/cov/*' -print | sort); \
+	[ -n "$$runs" ] || { echo "uvm_cov_merge: no VCS coverage database under $(UVM_COV_RUNS)" >&2; exit 1; }; \
+	designs=$$(for r in $$runs; do d=$(BIN_DIR)/run_$$(basename $$(dirname $$r)).simv.vdb; [ ! -d $$d ] || echo $$d; done | sort -u); \
+	mkdir -p $(UVM_COV_REPORT) && \
+	$(URG) -full64 +urg+lic+wait $$(for d in $$designs $$runs; do printf ' -dir %s' $$d; done) \
+		-dbname $(UVM_COV_REPORT)/merged -report $(UVM_COV_REPORT)/html -format both -log $(UVM_COV_REPORT)/urg.log > /dev/null && \
+	echo "uvm_cov_merge: $$(echo $$runs | wc -w) runs merged, see $(UVM_COV_REPORT)/html/dashboard.txt"
 
 help::
 	@echo "  VCS_DEBUG=1                      - link with -kdb -debug_access and enable \$$fsdbDumpvars (+fsdbTrace)"

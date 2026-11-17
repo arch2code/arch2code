@@ -56,6 +56,12 @@ dual_dut, so a Mode A or rtl run builds and connects what it did before. The
 env's model_stable_point() calls stable_point() on each listed comparator
 with auto_stable set.
 
+Each register samples its fields at the bits the decoder serves them on, and
+the block samples each register's offset by direction, with no write bin for a
+read-only register. Both covergroups exist only when the env's
+include_coverage() call allows them, which a UVM_COV=1 build does, and the env
+turns sampling on after building the model.
+
 An agent whose port binds no parameter is spelled with no #(), which no port
 of the fixture exercises, so the typedef lines are also checked on a port
 built here.
@@ -157,25 +163,36 @@ def expected_regmodel(variant, offsets):
     w = UB_W[variant]
     lines = [
         'class ubDut_reg_ctrl extends uvm_reg;',
-        'super.new(name, 8, UVM_NO_COVERAGE);',
+        'super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));',
+        'data: coverpoint data[7:0];',
         configure('data', 8, 0, 'RW', 0, 0, 1),
         'class ubDut_reg_cfg extends uvm_reg;',
-        f'super.new(name, {8 + w}, UVM_NO_COVERAGE);',
+        f'super.new(name, {8 + w}, build_coverage(UVM_CVR_FIELD_VALS));',
+        f'hi: coverpoint data[{7 + w}:{w}];',
+        f'lo: coverpoint data[{w - 1}:0];',
         configure('hi', 8, w, 'RW', 0, 0, 1),
         configure('lo', w, 0, 'RW', 0, 5, 1),
         'class ubDut_reg_wide extends uvm_reg;',
-        'super.new(name, 40, UVM_NO_COVERAGE);',
+        'super.new(name, 40, build_coverage(UVM_CVR_FIELD_VALS));',
+        'word: coverpoint data[39:8];',
+        'tag: coverpoint data[7:0];',
         configure('word', 32, 8, 'RO', 1, 0, 0),
         configure('tag', 8, 0, 'RO', 1, 0, 0),
         'class ubDut_reg_aligned extends uvm_reg;',
-        'super.new(name, 24, UVM_NO_COVERAGE);',
+        'super.new(name, 24, build_coverage(UVM_CVR_FIELD_VALS));',
         configure('a', 8, 16, 'RW', 0, 3, 1),
         configure('reserved0', 8, 8, 'RW', 0, 2, 1),
         configure('b', 8, 0, 'RW', 0, 1, 1),
         'class ubDut_reg_ext extends uvm_reg;',
-        'super.new(name, 8, UVM_NO_COVERAGE);',
+        'super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));',
         configure('data', 8, 0, 'RW', 1, 3, 1),
         'class ubDut_reg_block extends uvm_reg_block;',
+        'covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);',
+    ] + [f"bins {name} = {{'h{offsets[name]:x}}};" for name in ('ctrl', 'cfg', 'wide', 'aligned', 'ext')] + [
+        # Only wide is read-only, so only its write is out of reach.
+        'reg_x_dir: cross reg_addr, dir {',
+        'ignore_bins wide_write = binsof(reg_addr.wide) && binsof(dir.write);',
+        'super.new(name, build_coverage(UVM_CVR_ADDR_MAP));',
         'a2c_uvm_pkg::a2c_reg_map a2c_map;',
         'lut = new("lut", 8, 8, "RW", UVM_NO_COVERAGE);',
         f'tbl = new("tbl", {UB_D[variant]}, {8 + w}, "RO", UVM_NO_COVERAGE);',
@@ -227,8 +244,10 @@ ENV_LINES = [
     'ubRegs_cfg.port_name = "ubRegs";',
     'mst_cfg.role = a2c_uvm_pkg::A2C_DST;',
     'rdM_cfg.id_unbound = 1;',
+    'uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov);',
     'regmodel = ubDut_reg_block::type_id::create("regmodel");',
     'regmodel.build();',
+    'void\'(regmodel.set_coverage(UVM_CVR_ALL));',
     'regmodel.reset();',
     'predictor = uvm_reg_predictor#(ubRegs_item_t)::type_id::create("predictor", this);',
     'out_agent.mon.ap.connect(out_counter.analysis_export);',
@@ -335,7 +354,8 @@ def class_build(lines, opener):
 # leaves its overlap check to the first lookup.
 def expected_root_build(variant, offsets):
     w = UB_W[variant]
-    lines = ['a2c_uvm_pkg::a2c_reg_map a2c_map;']
+    lines = ['a2c_uvm_pkg::a2c_reg_map a2c_map;',
+             'if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});']
     for name in ('ctrl', 'cfg', 'wide', 'aligned', 'ext'):
         lines += [f'{name} = ubDut_reg_{name}::type_id::create("{name}");', f'{name}.configure(this);',
                   f'{name}.build();']

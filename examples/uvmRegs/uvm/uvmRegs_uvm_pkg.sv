@@ -38,13 +38,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uScale0_reg_offset extends uvm_reg;
         rand uvm_reg_field offset;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            offset: coverpoint data[3:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uScale0_reg_offset)
 
         function new(string name = "offset");
-            super.new(name, 4, UVM_NO_COVERAGE);
+            super.new(name, 4, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             offset = uvm_reg_field::type_id::create("offset");
             offset.configure(this, 4, 0, "RW", 0, 4'h1, 1, 1, 0);
         endfunction
@@ -53,13 +66,31 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uScale0_reg_block extends uvm_reg_block;
         rand uvmRegs_uScale0_reg_offset offset;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins offset = {'h0};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir;
+        endgroup
+
         `uvm_object_utils(uvmRegs_uScale0_reg_block)
 
         function new(string name = "uvmRegs_uScale0_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             offset = uvmRegs_uScale0_reg_offset::type_id::create("offset");
             offset.configure(this);
             offset.build();
@@ -71,13 +102,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uScale1_reg_offset extends uvm_reg;
         rand uvm_reg_field offset;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            offset: coverpoint data[7:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uScale1_reg_offset)
 
         function new(string name = "offset");
-            super.new(name, 8, UVM_NO_COVERAGE);
+            super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             offset = uvm_reg_field::type_id::create("offset");
             offset.configure(this, 8, 0, "RW", 0, 8'h1, 1, 1, 0);
         endfunction
@@ -86,13 +130,31 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uScale1_reg_block extends uvm_reg_block;
         rand uvmRegs_uScale1_reg_offset offset;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins offset = {'h0};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir;
+        endgroup
+
         `uvm_object_utils(uvmRegs_uScale1_reg_block)
 
         function new(string name = "uvmRegs_uScale1_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             offset = uvmRegs_uScale1_reg_offset::type_id::create("offset");
             offset.configure(this);
             offset.build();
@@ -104,13 +166,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uStat_reg_mode extends uvm_reg;
         rand uvm_reg_field invert;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            invert: coverpoint data[0:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uStat_reg_mode)
 
         function new(string name = "mode");
-            super.new(name, 1, UVM_NO_COVERAGE);
+            super.new(name, 1, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             invert = uvm_reg_field::type_id::create("invert");
             invert.configure(this, 1, 0, "RW", 0, 1'h0, 1, 1, 0);
         endfunction
@@ -119,13 +194,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uStat_reg_count extends uvm_reg;
         rand uvm_reg_field count;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            count: coverpoint data[15:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uStat_reg_count)
 
         function new(string name = "count");
-            super.new(name, 16, UVM_NO_COVERAGE);
+            super.new(name, 16, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             count = uvm_reg_field::type_id::create("count");
             count.configure(this, 16, 0, "RO", 1, 16'h0, 1, 0, 0);
         endfunction
@@ -134,13 +222,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uStat_reg_scratch extends uvm_reg;
         rand uvm_reg_field value;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            value: coverpoint data[15:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uStat_reg_scratch)
 
         function new(string name = "scratch");
-            super.new(name, 16, UVM_NO_COVERAGE);
+            super.new(name, 16, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             value = uvm_reg_field::type_id::create("value");
             value.configure(this, 16, 0, "RW", 1, 16'h0, 1, 1, 0);
         endfunction
@@ -153,14 +254,36 @@ package uvmRegs_uvm_pkg;
         uvm_mem tab;
         uvm_mem hist;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins mode = {'h80};
+                bins count = {'h88};
+                bins scratch = {'h90};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir {
+                ignore_bins count_write = binsof(reg_addr.count) && binsof(dir.write);
+            }
+        endgroup
+
         `uvm_object_utils(uvmRegs_uStat_reg_block)
 
         function new(string name = "uvmRegs_uStat_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
             a2c_uvm_pkg::a2c_reg_map a2c_map;
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             mode = uvmRegs_uStat_reg_mode::type_id::create("mode");
             mode.configure(this);
             mode.build();
@@ -192,13 +315,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uBridge_uDeep_reg_ident extends uvm_reg;
         rand uvm_reg_field ident;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            ident: coverpoint data[15:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uBridge_uDeep_reg_ident)
 
         function new(string name = "ident");
-            super.new(name, 16, UVM_NO_COVERAGE);
+            super.new(name, 16, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             ident = uvm_reg_field::type_id::create("ident");
             ident.configure(this, 16, 0, "RO", 1, 16'h0, 1, 0, 0);
         endfunction
@@ -207,13 +343,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uBridge_uDeep_reg_cfg extends uvm_reg;
         rand uvm_reg_field value;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            value: coverpoint data[7:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uBridge_uDeep_reg_cfg)
 
         function new(string name = "cfg");
-            super.new(name, 8, UVM_NO_COVERAGE);
+            super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             value = uvm_reg_field::type_id::create("value");
             value.configure(this, 8, 0, "RW", 0, 8'h5a, 1, 1, 0);
         endfunction
@@ -223,13 +372,34 @@ package uvmRegs_uvm_pkg;
         rand uvmRegs_uBridge_uDeep_reg_ident ident;
         rand uvmRegs_uBridge_uDeep_reg_cfg cfg;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins ident = {'h0};
+                bins cfg = {'h8};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir {
+                ignore_bins ident_write = binsof(reg_addr.ident) && binsof(dir.write);
+            }
+        endgroup
+
         `uvm_object_utils(uvmRegs_uBridge_uDeep_reg_block)
 
         function new(string name = "uvmRegs_uBridge_uDeep_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             ident = uvmRegs_uBridge_uDeep_reg_ident::type_id::create("ident");
             ident.configure(this);
             ident.build();
@@ -263,13 +433,26 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uWrap_uInner_reg_tag extends uvm_reg;
         rand uvm_reg_field value;
 
+        // UVM_CVR_FIELD_VALS: each field's value on every access the predictor sees.
+        covergroup cg_vals with function sample(uvm_reg_data_t data);
+            option.per_instance = 1;
+            value: coverpoint data[7:0];
+        endgroup
+
         `uvm_object_utils(uvmRegs_uWrap_uInner_reg_tag)
 
         function new(string name = "tag");
-            super.new(name, 8, UVM_NO_COVERAGE);
+            super.new(name, 8, build_coverage(UVM_CVR_FIELD_VALS));
+            if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,
+                                               uvm_reg_map map);
+            if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);
         endfunction
 
         virtual function void build();
+            if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});
             value = uvm_reg_field::type_id::create("value");
             value.configure(this, 8, 0, "RW", 0, 8'h11, 1, 1, 0);
         endfunction
@@ -278,13 +461,31 @@ package uvmRegs_uvm_pkg;
     class uvmRegs_uWrap_uInner_reg_block extends uvm_reg_block;
         rand uvmRegs_uWrap_uInner_reg_tag tag;
 
+        // UVM_CVR_ADDR_MAP: each register of this map read and written.
+        covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);
+            option.per_instance = 1;
+            reg_addr: coverpoint map_offset {
+                bins tag = {'h0};
+            }
+            dir: coverpoint is_read {
+                bins write = {0}; bins read = {1};
+            }
+            reg_x_dir: cross reg_addr, dir;
+        endgroup
+
         `uvm_object_utils(uvmRegs_uWrap_uInner_reg_block)
 
         function new(string name = "uvmRegs_uWrap_uInner_reg_block");
-            super.new(name, UVM_NO_COVERAGE);
+            super.new(name, build_coverage(UVM_CVR_ADDR_MAP));
+            if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();
+        endfunction
+
+        protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);
+            if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);
         endfunction
 
         virtual function void build();
+            if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});
             tag = uvmRegs_uWrap_uInner_reg_tag::type_id::create("tag");
             tag.configure(this);
             tag.build();
@@ -501,8 +702,13 @@ package uvmRegs_uvm_pkg;
                 end
             end
 
+            // A UVM_COV=1 build covers field values and address maps. A
+            // test calling uvm_reg::include_coverage() in its build_phase
+            // sets it first, and the first setting wins.
+            uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov);
             regmodel = uvmRegs_reg_block::type_id::create("regmodel");
             regmodel.build();
+            void'(regmodel.set_coverage(UVM_CVR_ALL));
             regmodel.reset();
             adapter = apb_reg_adapter::type_id::create("adapter");
             predictor = uvm_reg_predictor#(apbReg_item_t)::type_id::create("predictor", this);

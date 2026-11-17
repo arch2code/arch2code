@@ -258,11 +258,37 @@ package axi4_stream_uvm_pkg;
         endfunction
     endclass : axi4_stream_monitor
 
+    // a2c_flow_coverage, and whether each beat ends a packet.
+    class axi4_stream_coverage #(type tdata_t = logic [31:0], type tid_t = logic [7:0], type tdest_t = logic [7:0],
+                                 type tuser_t = logic)
+        extends a2c_flow_coverage #(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t));
+        covergroup cg_last with function sample(bit tlast);
+            option.per_instance = 1;
+            last: coverpoint tlast {
+                bins mid = {0}; bins last = {1};
+            }
+        endgroup
+
+        `uvm_component_param_utils(axi4_stream_coverage#(tdata_t, tid_t, tdest_t, tuser_t))
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            cg_last = new();
+            cg_last.set_inst_name({get_full_name(), ".cg_last"});
+        endfunction
+
+        virtual function void write(axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t) t);
+            super.write(t);
+            cg_last.sample(t.tlast);
+        endfunction
+    endclass : axi4_stream_coverage
+
     class axi4_stream_agent #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
                               type tdest_t = logic [7:0], type tuser_t = logic)
         extends a2c_lane_agent #(virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)));
         typedef axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t)   item_t;
         typedef axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t) config_t;
+        typedef axi4_stream_coverage #(tdata_t, tid_t, tdest_t, tuser_t) cov_t;
 
         config_t                                               cfg;
         axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t)  drv;
@@ -271,6 +297,9 @@ package axi4_stream_uvm_pkg;
         // Mode B only. model_cmp exists on the A2C_DST role.
         axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t) model_mon;
         a2c_in_order_comparator #(item_t)                      model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(axi4_stream_agent#(tdata_t, tid_t, tdest_t, tuser_t))
 
@@ -286,6 +315,10 @@ package axi4_stream_uvm_pkg;
             mon = axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) begin
+                cov = a2c_coverage#(cov_t)::create("cov", this);
+                cov.flow = mon;
+            end
             if (cfg.model_vif != null) begin
                 model_mon = axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -303,6 +336,7 @@ package axi4_stream_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end

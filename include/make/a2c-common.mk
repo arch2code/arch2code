@@ -321,6 +321,9 @@ clean::
 	@# UVM transaction recording: tr_db.log is the UVM text database, waves.shm Xcelium's,
 	@# which a WAVES=1 Xcelium run also writes; a WAVES=1 VCS run writes waves.fsdb.
 	rm -rf $(VCS_RUNDIR)/tr_db.log $(VCS_RUNDIR)/waves.fsdb $(XRUN_RUNDIR)/waves.shm $(XRUN_RUNDIR)/tr_db.log
+	@# A UVM_COV=1 run's coverage database, what uvm_cov_merge writes by default, and the
+	@# FSM extraction a VCS -cm fsm link leaves where it runs.
+	rm -rf $(VCS_RUNDIR)/cov $(XRUN_RUNDIR)/cov $(PROJECT_RUNDIR)/cov_report $(VCS_RUNDIR)/.fsm.sch.verilog.xml
 
 
 help::

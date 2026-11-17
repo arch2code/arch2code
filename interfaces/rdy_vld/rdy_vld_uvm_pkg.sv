@@ -230,6 +230,7 @@ package rdy_vld_uvm_pkg;
     class rdy_vld_agent #(type data_t = logic) extends a2c_lane_agent #(virtual rdy_vld_if #(.data_t(data_t)));
         typedef rdy_vld_item#(data_t)   item_t;
         typedef rdy_vld_config#(data_t) config_t;
+        typedef a2c_flow_coverage #(item_t) cov_t;
 
         rdy_vld_config#(data_t)                cfg;
         rdy_vld_driver#(data_t)                drv;
@@ -238,6 +239,9 @@ package rdy_vld_uvm_pkg;
         // Mode B only. model_cmp exists on the A2C_DST role.
         rdy_vld_monitor#(data_t)               model_mon;
         a2c_in_order_comparator #(item_t)      model_cmp;
+
+        // has_coverage only.
+        cov_t cov;
 
         `uvm_component_param_utils(rdy_vld_agent#(data_t))
 
@@ -256,6 +260,10 @@ package rdy_vld_uvm_pkg;
             mon = rdy_vld_monitor#(data_t)::type_id::create("mon", this);
             mon.cfg = cfg;
             mon.vif = cfg.vif;
+            if (coverage_on()) begin
+                cov = a2c_coverage#(cov_t)::create("cov", this);
+                cov.flow = mon;
+            end
             if (cfg.model_vif != null) begin
                 model_mon = rdy_vld_monitor#(data_t)::type_id::create("model_mon", this);
                 model_mon.cfg = cfg;
@@ -273,6 +281,7 @@ package rdy_vld_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
+            if (cov != null) mon.ap.connect(cov.analysis_export);
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end

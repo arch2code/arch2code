@@ -866,6 +866,12 @@ python3 test_regr_rules_path.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: each regression run finds its own run directory in RL_RUN_DIR"
+echo "------------------------------------------------------------------------"
+python3 test_regr_run_dir.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: uvm.json fails a run on UVM error reports and a missing or non-zero summary"
 echo "------------------------------------------------------------------------"
 python3 test_regr_rules_uvm.py || FAILED=1

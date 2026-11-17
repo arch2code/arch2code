@@ -78,13 +78,26 @@ def reg_class(reg, variant):
     lines = [f"class {cls} extends uvm_reg;"]
     lines += [f"    rand uvm_reg_field {f['name']};" for f in fields]
     lines += ['',
+              '    // UVM_CVR_FIELD_VALS: each field\'s value on every access the predictor sees.',
+              '    covergroup cg_vals with function sample(uvm_reg_data_t data);',
+              '        option.per_instance = 1;']
+    lines += [f"        {f['name']}: coverpoint data[{f['lsb'] + f['width'] - 1}:{f['lsb']}];" for f in fields]
+    lines += ['    endgroup',
+              '',
               f"    `uvm_object_utils({cls})",
               '',
               f'    function new(string name = "{reg["name"]}");',
-              f"        super.new(name, {reg['width'][variant]}, UVM_NO_COVERAGE);",
+              f"        super.new(name, {reg['width'][variant]}, build_coverage(UVM_CVR_FIELD_VALS));",
+              '        if (has_coverage(UVM_CVR_FIELD_VALS)) cg_vals = new();',
               '    endfunction',
               '',
-              '    virtual function void build();']
+              '    protected virtual function void sample(uvm_reg_data_t data, uvm_reg_data_t byte_en, bit is_read,',
+              '                                           uvm_reg_map map);',
+              '        if (get_coverage(UVM_CVR_FIELD_VALS)) cg_vals.sample(data);',
+              '    endfunction',
+              '',
+              '    virtual function void build();',
+              '        if (cg_vals != null) cg_vals.set_inst_name({get_full_name(), ".cg_vals"});']
     access = reg['uvmAccess']
     volatile = int(reg['volatile'])
     isRand = int(access == 'RW')
@@ -102,16 +115,50 @@ def reg_block_class(block, variant):
     lines += [f"    rand {reg['className']} {reg['name']};" for reg in block['registers']]
     lines += [f"    uvm_mem {mem['name']};" for mem in block['memories']]
     lines += [f"    rand {child['className']} {child['name']};" for child in block['children']]
+    registers = block['registers']
+    if registers:
+        lines += ['',
+                  '    // UVM_CVR_ADDR_MAP: each register of this map read and written.',
+                  '    covergroup cg_map with function sample(uvm_reg_addr_t map_offset, bit is_read);',
+                  '        option.per_instance = 1;',
+                  '        reg_addr: coverpoint map_offset {']
+        lines += [f"            bins {reg['name']} = {{'h{reg['offset']:x}}};" for reg in registers]
+        lines += ['        }',
+                  '        dir: coverpoint is_read {',
+                  '            bins write = {0}; bins read = {1};',
+                  '        }']
+        readOnly = [reg['name'] for reg in registers if reg['uvmAccess'] == 'RO']
+        if readOnly:
+            lines.append('        reg_x_dir: cross reg_addr, dir {')
+            lines += [f"            ignore_bins {name}_write = binsof(reg_addr.{name}) && binsof(dir.write);"
+                      for name in readOnly]
+            lines.append('        }')
+        else:
+            lines.append('        reg_x_dir: cross reg_addr, dir;')
+        lines.append('    endgroup')
     lines += ['',
               f"    `uvm_object_utils({cls})",
               '',
-              f'    function new(string name = "{cls}");',
-              '        super.new(name, UVM_NO_COVERAGE);',
-              '    endfunction',
-              '',
-              '    virtual function void build();']
+              f'    function new(string name = "{cls}");']
+    if registers:
+        lines += ['        super.new(name, build_coverage(UVM_CVR_ADDR_MAP));',
+                  '        if (has_coverage(UVM_CVR_ADDR_MAP)) cg_map = new();',
+                  '    endfunction',
+                  '',
+                  '    protected virtual function void sample(uvm_reg_addr_t offset, bit is_read, uvm_reg_map map);',
+                  '        if (get_coverage(UVM_CVR_ADDR_MAP)) cg_map.sample(offset, is_read);',
+                  '    endfunction',
+                  '',
+                  '    virtual function void build();']
+    else:
+        lines += ['        super.new(name, UVM_NO_COVERAGE);',
+                  '    endfunction',
+                  '',
+                  '    virtual function void build();']
     if block['a2cMap']:
         lines.append('        a2c_uvm_pkg::a2c_reg_map a2c_map;')
+    if registers:
+        lines.append('        if (cg_map != null) cg_map.set_inst_name({get_full_name(), ".cg_map"});')
     catchChildren = block['isRoot'] and block['children']
     for reg in block['registers']:
         name = reg['name']
@@ -232,8 +279,13 @@ def env_class(uvm, hasRegModel, variant):
         lines.append('        end')
     if hasRegModel:
         lines += ['',
+                  '        // A UVM_COV=1 build covers field values and address maps. A',
+                  '        // test calling uvm_reg::include_coverage() in its build_phase',
+                  '        // sets it first, and the first setting wins.',
+                  '        uvm_reg::include_coverage("*", a2c_uvm_pkg::a2c_reg_cov);',
                   f'        regmodel = {uvm["regBlockClass"]}::type_id::create("regmodel");',
                   '        regmodel.build();',
+                  '        void\'(regmodel.set_coverage(UVM_CVR_ALL));',
                   '        regmodel.reset();',
                   f'        adapter = {bus["adapterClass"]}::type_id::create("adapter");',
                   f'        predictor = uvm_reg_predictor#({bus["port"]}_item_t)::type_id::create("predictor", this);',

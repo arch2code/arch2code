@@ -95,6 +95,7 @@ def _writeBuildManifestMk(rootDir, manifest):
         lines.append(f"A2C_UVM_TEST_SV_{name} := {top['testSv']}")
         lines.append(f"A2C_UVM_TB_SV_{name} := {top['tbSv']}")
         lines.append(f"A2C_UVM_PORTMAP_{name} := {top['portmap']}")
+        lines.append(f"A2C_UVM_HDL_TOP_{name} := {top['hdlTop']}")
         # The first is UVM_DUT's default.
         lines.append(f"A2C_UVM_DUTS_{name} := {asList(top['duts'])}")
     lines.append("")
