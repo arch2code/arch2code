@@ -20,8 +20,6 @@ receiveResp. A channel subclass records each sendRespCycle the BFM makes.
 Every case runs with no delay and with setTimed(10). Every B the HDL hands
 over must reach the BFM's sendRespCycle, and the model must receive every B
 in order.
-
-Set A2C_PROBE_TRACE_DIR to keep a VCD and an event log for each case.
 """
 
 import os
@@ -73,33 +71,21 @@ using bT = axiWriteRespSt<>;
 constexpr int BURSTS = 2;
 constexpr int LEN = 3;                     // four beats per burst
 
-static bool g_trace = false;
-static void ev( const char *what, std::uint64_t v )
-{
-    if (g_trace) { std::printf( "EV %.3f %s %llx\\n", sc_time_stamp().to_seconds() * 1e9, what, (unsigned long long)v ); }
-}
-
 // The BFM finds its channel with dynamic_cast<axi_write_channel *>, which a
 // subclass satisfies, so the probe sees every sendRespCycle the BFM makes.
 struct probeChan : chanT {
-    sc_signal<bool> *busy = nullptr;
     std::vector<std::uint64_t> bfmB;
     probeChan( const char *n ) : chanT( n, "tb" ) {}
     void sendRespCycle( const bT &b ) override
     {
-        ev( "bfm_b", b.bid );
         bfmB.push_back( b.bid );
-        busy->write( true );
         chanT::sendRespCycle( b );
-        busy->write( false );
     }
 };
 
 SC_MODULE( delayedSend )
 {
     sc_in<bool> clk, rst_n;
-    sc_signal<bool> busy{ "bfm_b_busy" };
-    sc_signal<int> modelB{ "model_b_count" };
     probeChan ch;
     axi_write_out<wordSt, wordSt, strbSt> out;
     hdlT hdl;
@@ -110,7 +96,6 @@ SC_MODULE( delayedSend )
     SC_HAS_PROCESS( delayedSend );
     delayedSend( sc_module_name n, bool batch_ ) : sc_module( n ), ch( "ch" ), out( "out" ), bfm( "bfm" ), batch( batch_ )
     {
-        ch.busy = &busy;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         SC_THREAD( slave ); SC_THREAD( addrThread ); SC_THREAD( dataThread ); SC_THREAD( respThread );
     }
@@ -149,7 +134,6 @@ SC_MODULE( delayedSend )
             bT b;
             out->receiveResp( b );
             received.push_back( b.bid );
-            modelB.write( (int)received.size() );
         }
     }
 
@@ -166,15 +150,12 @@ SC_MODULE( delayedSend )
             hdl.wready = 1;
             if (hdl.awvalid && hdl.awready) {
                 ids.push_back( (int)hdl.awid.read().to_uint() );
-                ev( "hdl_aw", hdl.awaddr.read().to_uint64() );
             }
             if (hdl.wvalid && hdl.wready) {
-                ev( "hdl_w", hdl.wdata.read().to_uint64() );
                 if (hdl.wlast) { resps.push_back( (int)hdl.wid.read().to_uint() ); written++; }
             }
             if (hdl.bvalid && hdl.bready) {
                 hdlB.push_back( hdl.bid.read().to_uint() );
-                ev( "hdl_b", hdlB.back() );
                 bUp = false;
             }
             if (!bUp && !resps.empty() && (!batch || written == BURSTS)) {
@@ -228,31 +209,11 @@ SC_MODULE( probe )
     }
 };
 
-int sc_main( int argc, char *argv[] )
+int sc_main( int, char *argv[] )
 {
     logging::GetInstance().setDefaultVerbosity( VERBOSITY_MEDIUM );
     probe p( "p", std::atoi( argv[1] ), std::string( argv[2] ) == "batch" );
-    sc_trace_file *tf = nullptr;
-    if (argc > 3) {
-        g_trace = true;
-        tf = sc_create_vcd_trace_file( argv[3] );
-        tf->set_time_unit( 1, SC_PS );
-        auto &h = p.dut.hdl;
-        sc_trace( tf, p.clk, "clk" );
-        sc_trace( tf, h.awvalid, "awvalid" );
-        sc_trace( tf, h.awready, "awready" );
-        sc_trace( tf, h.wvalid, "wvalid" );
-        sc_trace( tf, h.wready, "wready" );
-        sc_trace( tf, h.wlast, "wlast" );
-        sc_trace( tf, h.wdata, "wdata" );
-        sc_trace( tf, h.bvalid, "bvalid" );
-        sc_trace( tf, h.bready, "bready" );
-        sc_trace( tf, h.bid, "bid" );
-        sc_trace( tf, p.dut.busy, "bfm_b_busy" );
-        sc_trace( tf, p.dut.modelB, "model_b_count" );
-    }
     sc_start();
-    if (tf) { sc_close_vcd_trace_file( tf ); }
     std::printf( "probe done\\n" );
     return 0;
 }
@@ -274,11 +235,9 @@ def hexes(s):
     return [int(v, 16) for v in s.split(',') if v]
 
 
-def runCase(binPath, slave, delay, scLibdir, traceDir):
+def runCase(binPath, slave, delay, scLibdir):
     tag = f"{slave} slave, delay {delay} ns"
     cmd = [binPath, str(delay), slave]
-    if traceDir:
-        cmd.append(os.path.join(traceDir, f"b_{slave}_d{delay}"))
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
                              env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
@@ -286,9 +245,6 @@ def runCase(binPath, slave, delay, scLibdir, traceDir):
         check(False, f"{tag}: probe finishes within 60 s")
         return
     output = run.stdout + run.stderr
-    if traceDir:
-        with open(os.path.join(traceDir, f"b_{slave}_d{delay}.log"), 'w') as fh:
-            fh.write(output)
     before = len(FAILURES)
     check(run.returncode == 0 and 'probe done' in output, f"{tag}: probe runs to completion (status {run.returncode})")
     m = re.search(r'^delayed hdl_b=(\S*) bfm_b=(\S*) recv=(\S*)$', output, re.M)
@@ -299,15 +255,12 @@ def runCase(binPath, slave, delay, scLibdir, traceDir):
         check(hdlB == EXPECTED_B and bfmB == hdlB,
               f"{tag}: the BFM sent every B the HDL handed over (hdl bid={hdlB} bfm bid={bfmB})")
         check(received == EXPECTED_B, f"{tag}: the model received every B in order (bid={received})")
-    if len(FAILURES) > before and not traceDir:
+    if len(FAILURES) > before:
         print(output)
 
 
 def test_axi_write_dst_bfm_delayed_send():
     scLibdir = os.environ.get('SYSTEMC_LIBDIR', '')
-    traceDir = os.environ.get('A2C_PROBE_TRACE_DIR')
-    if traceDir:
-        os.makedirs(traceDir, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix='a2c_axi_write_dst_delayed_send_')
     try:
         binPath = buildProbe(tmpdir, PROBE_SRC)
@@ -315,7 +268,7 @@ def test_axi_write_dst_bfm_delayed_send():
             check(False, f"probe must build and link: {binPath}")
             return
         for slave, delay in CASES:
-            runCase(binPath, slave, delay, scLibdir, traceDir)
+            runCase(binPath, slave, delay, scLibdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -18,8 +18,6 @@ R beats through sendDataCycle. A channel subclass records each sendAddr the BFM
 makes. Every case runs with no delay and with setTimed(10). Every AR the HDL
 hands over must reach the BFM's sendAddr, and the HDL must get every R beat in
 order.
-
-Set A2C_PROBE_TRACE_DIR to keep a VCD and an event log for each case.
 """
 
 import os
@@ -69,32 +67,21 @@ using rT = axiReadRespSt<wordSt>;
 constexpr int BURSTS = 2;
 constexpr int LEN = 3;                     // four beats per burst
 
-static bool g_trace = false;
-static void ev( const char *what, std::uint64_t v )
-{
-    if (g_trace) { std::printf( "EV %.3f %s %llx\\n", sc_time_stamp().to_seconds() * 1e9, what, (unsigned long long)v ); }
-}
-
 // The BFM finds its channel with dynamic_cast<axi_read_channel *>, which a
 // subclass satisfies, so the probe sees every sendAddr the BFM makes.
 struct probeChan : chanT {
-    sc_signal<bool> *busy = nullptr;
     std::vector<std::uint64_t> bfmAddr;
     probeChan( const char *n ) : chanT( n, "tb" ) {}
     void sendAddr( const arT &a, std::optional<std::string> s ) override
     {
-        ev( "bfm_ar", a.araddr.w );
         bfmAddr.push_back( a.araddr.w );
-        busy->write( true );
         chanT::sendAddr( a, s );
-        busy->write( false );
     }
 };
 
 SC_MODULE( delayedSend )
 {
     sc_in<bool> clk, rst_n;
-    sc_signal<bool> busy{ "bfm_ar_busy" };
     probeChan ch;
     axi_read_in<wordSt, wordSt> in;
     hdlT hdl;
@@ -107,7 +94,6 @@ SC_MODULE( delayedSend )
     SC_HAS_PROCESS( delayedSend );
     delayedSend( sc_module_name n, bool pipe_ ) : sc_module( n ), ch( "ch" ), in( "in" ), bfm( "bfm" ), pipe( pipe_ )
     {
-        ch.busy = &busy;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         SC_THREAD( master ); SC_THREAD( addrThread ); SC_THREAD( dataThread );
     }
@@ -151,12 +137,10 @@ SC_MODULE( delayedSend )
             if (!rst_n) { hdl.arvalid = 0; continue; }
             if (hdl.arvalid && hdl.arready) {
                 hdlAddr.push_back( hdl.araddr.read().to_uint64() );
-                ev( "hdl_ar", hdlAddr.back() );
                 arUp = false;
             }
             if (hdl.rvalid && hdl.rready) {
                 hdlData.push_back( hdl.rdata.read().to_uint64() );
-                ev( "hdl_r", hdlData.back() );
                 if (hdl.rlast) { rDone++; }
             }
             // seq: the next AR waits for the previous burst's last R beat.
@@ -214,28 +198,11 @@ SC_MODULE( probe )
     }
 };
 
-int sc_main( int argc, char *argv[] )
+int sc_main( int, char *argv[] )
 {
     logging::GetInstance().setDefaultVerbosity( VERBOSITY_MEDIUM );
     probe p( "p", std::atoi( argv[1] ), std::string( argv[2] ) == "pipe" );
-    sc_trace_file *tf = nullptr;
-    if (argc > 3) {
-        g_trace = true;
-        tf = sc_create_vcd_trace_file( argv[3] );
-        tf->set_time_unit( 1, SC_PS );
-        auto &h = p.dut.hdl;
-        sc_trace( tf, p.clk, "clk" );
-        sc_trace( tf, h.arvalid, "arvalid" );
-        sc_trace( tf, h.arready, "arready" );
-        sc_trace( tf, h.araddr, "araddr" );
-        sc_trace( tf, h.rvalid, "rvalid" );
-        sc_trace( tf, h.rready, "rready" );
-        sc_trace( tf, h.rlast, "rlast" );
-        sc_trace( tf, h.rdata, "rdata" );
-        sc_trace( tf, p.dut.busy, "bfm_ar_busy" );
-    }
     sc_start();
-    if (tf) { sc_close_vcd_trace_file( tf ); }
     std::printf( "probe done\\n" );
     return 0;
 }
@@ -259,11 +226,9 @@ def hexes(s):
     return [int(v, 16) for v in s.split(',') if v]
 
 
-def runCase(binPath, master, delay, scLibdir, traceDir):
+def runCase(binPath, master, delay, scLibdir):
     tag = f"{master} master, delay {delay} ns"
     cmd = [binPath, str(delay), master]
-    if traceDir:
-        cmd.append(os.path.join(traceDir, f"ar_{master}_d{delay}"))
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
                              env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
@@ -271,9 +236,6 @@ def runCase(binPath, master, delay, scLibdir, traceDir):
         check(False, f"{tag}: probe finishes within 60 s")
         return
     output = run.stdout + run.stderr
-    if traceDir:
-        with open(os.path.join(traceDir, f"ar_{master}_d{delay}.log"), 'w') as fh:
-            fh.write(output)
     before = len(FAILURES)
     check(run.returncode == 0 and 'probe done' in output, f"{tag}: probe runs to completion (status {run.returncode})")
     m = re.search(r'^delayed hdl_ar=(\S*) bfm_ar=(\S*) hdl_r=(\S*)$', output, re.M)
@@ -284,15 +246,12 @@ def runCase(binPath, master, delay, scLibdir, traceDir):
         check(hdlAr == EXPECTED_AR and bfmAr == hdlAr,
               f"{tag}: the BFM sent every AR the HDL handed over (hdl={[hex(v) for v in hdlAr]} bfm={[hex(v) for v in bfmAr]})")
         check(hdlR == EXPECTED_R, f"{tag}: the HDL got every R beat in order ({[hex(v) for v in hdlR]})")
-    if len(FAILURES) > before and not traceDir:
+    if len(FAILURES) > before:
         print(output)
 
 
 def test_axi_read_src_bfm_delayed_send():
     scLibdir = os.environ.get('SYSTEMC_LIBDIR', '')
-    traceDir = os.environ.get('A2C_PROBE_TRACE_DIR')
-    if traceDir:
-        os.makedirs(traceDir, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix='a2c_axi_read_src_delayed_send_')
     try:
         binPath = buildProbe(tmpdir, PROBE_SRC)
@@ -300,7 +259,7 @@ def test_axi_read_src_bfm_delayed_send():
             check(False, f"probe must build and link: {binPath}")
             return
         for master, delay in CASES:
-            runCase(binPath, master, delay, scLibdir, traceDir)
+            runCase(binPath, master, delay, scLibdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

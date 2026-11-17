@@ -18,8 +18,6 @@ three requests through req(). A channel subclass records each ack() the BFM
 makes. Every case runs with no delay and with setTimed(10). The HDL must start
 exactly the model's requests, the BFM must ack each once, and the model must
 get each request's own rdata.
-
-Set A2C_PROBE_TRACE_DIR to keep a VCD and an event log for each case.
 """
 
 import os
@@ -65,38 +63,21 @@ using bfmT = req_ack_dst_bfm<wordSt, wordSt, sc_bv<32>, sc_bv<32>>;
 
 constexpr int REQUESTS = 3;
 
-static bool g_trace = false;
-static void ev( const char *what, std::uint64_t v )
-{
-    if (g_trace) { std::printf( "EV %.3f %s %llx\\n", sc_time_stamp().to_seconds() * 1e9, what, (unsigned long long)v ); }
-}
-
-// The BFM calls the channel through its port, so a subclass sees every
-// request it takes and every ack() it makes.
+// The BFM calls the channel through its port, so a subclass sees every ack()
+// it makes.
 struct probeChan : chanT {
-    sc_signal<bool> *busy = nullptr;
     std::vector<std::uint64_t> bfmAck;
     probeChan( const char *n ) : chanT( n, "tb" ) {}
-    void reqReceive( wordSt &d ) override
-    {
-        chanT::reqReceive( d );
-        ev( "bfm_req", d.w );
-    }
     void ack( const wordSt &a ) override
     {
-        ev( "bfm_ack", a.w );
         bfmAck.push_back( a.w );
-        busy->write( true );
         chanT::ack( a );
-        busy->write( false );
     }
 };
 
 SC_MODULE( delayedAck )
 {
     sc_in<bool> clk, rst_n;
-    sc_signal<bool> busy{ "bfm_ack_busy" };
-    sc_signal<int> modelAcks{ "model_acks" };
     probeChan ch;
     req_ack_out<wordSt, wordSt> out;
     hdlT hdl;
@@ -107,7 +88,6 @@ SC_MODULE( delayedAck )
     SC_HAS_PROCESS( delayedAck );
     delayedAck( sc_module_name n, int latency_ ) : sc_module( n ), ch( "ch" ), out( "out" ), bfm( "bfm" ), latency( latency_ )
     {
-        ch.busy = &busy;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         SC_THREAD( rtl ); SC_THREAD( model );
     }
@@ -120,7 +100,6 @@ SC_MODULE( delayedAck )
             d.w = 0xa0 + i;
             out->req( d, r );
             received.push_back( r.w );
-            modelAcks.write( (int)received.size() );
         }
     }
 
@@ -138,13 +117,11 @@ SC_MODULE( delayedAck )
             } else if (left == -1 && hdl.req) {
                 data = hdl.data.read().to_uint64();
                 hdlReq.push_back( data );
-                ev( "hdl_req", data );
                 left = latency;
             }
             if (left == 0) {
                 hdl.ack = 1;
                 hdl.rdata = sc_bv<32>( data + 0x1000 );
-                ev( "hdl_ack", data + 0x1000 );
                 left = -2;
             } else if (left > 0) {
                 left--;
@@ -191,26 +168,11 @@ SC_MODULE( probe )
     }
 };
 
-int sc_main( int argc, char *argv[] )
+int sc_main( int, char *argv[] )
 {
     logging::GetInstance().setDefaultVerbosity( VERBOSITY_MEDIUM );
     probe p( "p", std::atoi( argv[1] ), std::string( argv[2] ) == "slow" ? 3 : 1 );
-    sc_trace_file *tf = nullptr;
-    if (argc > 3) {
-        g_trace = true;
-        tf = sc_create_vcd_trace_file( argv[3] );
-        tf->set_time_unit( 1, SC_PS );
-        auto &h = p.dut.hdl;
-        sc_trace( tf, p.clk, "clk" );
-        sc_trace( tf, h.req, "req" );
-        sc_trace( tf, h.data, "data" );
-        sc_trace( tf, h.ack, "ack" );
-        sc_trace( tf, h.rdata, "rdata" );
-        sc_trace( tf, p.dut.busy, "bfm_ack_busy" );
-        sc_trace( tf, p.dut.modelAcks, "model_acks" );
-    }
     sc_start();
-    if (tf) { sc_close_vcd_trace_file( tf ); }
     std::printf( "probe done\\n" );
     return 0;
 }
@@ -233,11 +195,9 @@ def hexes(s):
     return [int(v, 16) for v in s.split(',') if v]
 
 
-def runCase(binPath, rtl, delay, scLibdir, traceDir):
+def runCase(binPath, rtl, delay, scLibdir):
     tag = f"{rtl} RTL, delay {delay} ns"
     cmd = [binPath, str(delay), rtl]
-    if traceDir:
-        cmd.append(os.path.join(traceDir, f"req_ack_{rtl}_d{delay}"))
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
                              env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
@@ -245,9 +205,6 @@ def runCase(binPath, rtl, delay, scLibdir, traceDir):
         check(False, f"{tag}: probe finishes within 60 s")
         return
     output = run.stdout + run.stderr
-    if traceDir:
-        with open(os.path.join(traceDir, f"req_ack_{rtl}_d{delay}.log"), 'w') as fh:
-            fh.write(output)
     before = len(FAILURES)
     check(run.returncode == 0 and 'probe done' in output, f"{tag}: probe runs to completion (status {run.returncode})")
     m = re.search(r'^delayed hdl_req=(\S*) bfm_ack=(\S*) recv=(\S*)$', output, re.M)
@@ -259,15 +216,12 @@ def runCase(binPath, rtl, delay, scLibdir, traceDir):
               f"{tag}: the HDL started each request once (started {[hex(v) for v in hdlReq]})")
         check(bfmAck == EXPECTED_ACK, f"{tag}: the BFM acked each request once ({[hex(v) for v in bfmAck]})")
         check(received == EXPECTED_ACK, f"{tag}: the model got each request's rdata ({[hex(v) for v in received]})")
-    if len(FAILURES) > before and not traceDir:
+    if len(FAILURES) > before:
         print(output)
 
 
 def test_req_ack_dst_bfm_delayed_ack():
     scLibdir = os.environ.get('SYSTEMC_LIBDIR', '')
-    traceDir = os.environ.get('A2C_PROBE_TRACE_DIR')
-    if traceDir:
-        os.makedirs(traceDir, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix='a2c_req_ack_dst_delayed_ack_')
     try:
         binPath = buildProbe(tmpdir, PROBE_SRC)
@@ -275,7 +229,7 @@ def test_req_ack_dst_bfm_delayed_ack():
             check(False, f"probe must build and link: {binPath}")
             return
         for rtl, delay in CASES:
-            runCase(binPath, rtl, delay, scLibdir, traceDir)
+            runCase(binPath, rtl, delay, scLibdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

@@ -19,8 +19,6 @@ sends two ARs, one after the other completes ('seq') or back to back
 sendDataCycle the BFM makes. Every case runs with no delay and with
 setTimed(10). Every R beat the HDL hands over must reach the BFM's
 sendDataCycle, and the model must receive every beat in order.
-
-Set A2C_PROBE_TRACE_DIR to keep a VCD and an event log for each case.
 """
 
 import os
@@ -70,33 +68,21 @@ using rT = axiReadRespSt<wordSt>;
 constexpr int BURSTS = 2;
 constexpr int LEN = 3;                     // four beats per burst
 
-static bool g_trace = false;
-static void ev( const char *what, std::uint64_t v )
-{
-    if (g_trace) { std::printf( "EV %.3f %s %llx\\n", sc_time_stamp().to_seconds() * 1e9, what, (unsigned long long)v ); }
-}
-
 // The BFM finds its channel with dynamic_cast<axi_read_channel *>, which a
 // subclass satisfies, so the probe sees every sendDataCycle the BFM makes.
 struct probeChan : chanT {
-    sc_signal<bool> *busy = nullptr;
     std::vector<std::uint64_t> bfmData;
     probeChan( const char *n ) : chanT( n, "tb" ) {}
     void sendDataCycle( const rT &r ) override
     {
-        ev( "bfm_r", r.rdata.w );
         bfmData.push_back( r.rdata.w );
-        busy->write( true );
         chanT::sendDataCycle( r );
-        busy->write( false );
     }
 };
 
 SC_MODULE( delayedSend )
 {
     sc_in<bool> clk, rst_n;
-    sc_signal<bool> busy{ "bfm_r_busy" };
-    sc_signal<int> modelBeats{ "model_r_beats" };
     probeChan ch;
     axi_read_out<wordSt, wordSt> out;
     hdlT hdl;
@@ -109,7 +95,6 @@ SC_MODULE( delayedSend )
     SC_HAS_PROCESS( delayedSend );
     delayedSend( sc_module_name n, bool pipe_ ) : sc_module( n ), ch( "ch" ), out( "out" ), bfm( "bfm" ), pipe( pipe_ )
     {
-        ch.busy = &busy;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         SC_THREAD( slave ); SC_THREAD( addrThread ); SC_THREAD( dataThread );
     }
@@ -135,7 +120,6 @@ SC_MODULE( delayedSend )
             rT r;
             out->receiveDataCycle( r );
             received.push_back( r.rdata.w );
-            modelBeats.write( (int)received.size() );
             if (r.rlast) { bursts++; burstDone.notify(); }
         }
     }
@@ -154,11 +138,9 @@ SC_MODULE( delayedSend )
             hdl.arready = 1;
             if (hdl.arvalid && hdl.arready) {
                 pending.emplace_back( hdl.araddr.read().to_uint64(), (int)hdl.arid.read().to_uint() );
-                ev( "hdl_ar", pending.back().first );
             }
             if (hdl.rvalid && hdl.rready) {
                 hdlData.push_back( hdl.rdata.read().to_uint64() );
-                ev( "hdl_r", hdlData.back() );
                 if (++beat > LEN) { beat = 0; pending.pop_front(); }
                 rUp = false;
             }
@@ -215,29 +197,11 @@ SC_MODULE( probe )
     }
 };
 
-int sc_main( int argc, char *argv[] )
+int sc_main( int, char *argv[] )
 {
     logging::GetInstance().setDefaultVerbosity( VERBOSITY_MEDIUM );
     probe p( "p", std::atoi( argv[1] ), std::string( argv[2] ) == "pipe" );
-    sc_trace_file *tf = nullptr;
-    if (argc > 3) {
-        g_trace = true;
-        tf = sc_create_vcd_trace_file( argv[3] );
-        tf->set_time_unit( 1, SC_PS );
-        auto &h = p.dut.hdl;
-        sc_trace( tf, p.clk, "clk" );
-        sc_trace( tf, h.arvalid, "arvalid" );
-        sc_trace( tf, h.arready, "arready" );
-        sc_trace( tf, h.araddr, "araddr" );
-        sc_trace( tf, h.rvalid, "rvalid" );
-        sc_trace( tf, h.rready, "rready" );
-        sc_trace( tf, h.rlast, "rlast" );
-        sc_trace( tf, h.rdata, "rdata" );
-        sc_trace( tf, p.dut.busy, "bfm_r_busy" );
-        sc_trace( tf, p.dut.modelBeats, "model_r_beats" );
-    }
     sc_start();
-    if (tf) { sc_close_vcd_trace_file( tf ); }
     std::printf( "probe done\\n" );
     return 0;
 }
@@ -260,11 +224,9 @@ def hexes(s):
     return [int(v, 16) for v in s.split(',') if v]
 
 
-def runCase(binPath, master, delay, scLibdir, traceDir):
+def runCase(binPath, master, delay, scLibdir):
     tag = f"{master} model, delay {delay} ns"
     cmd = [binPath, str(delay), master]
-    if traceDir:
-        cmd.append(os.path.join(traceDir, f"r_{master}_d{delay}"))
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
                              env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
@@ -272,9 +234,6 @@ def runCase(binPath, master, delay, scLibdir, traceDir):
         check(False, f"{tag}: probe finishes within 60 s")
         return
     output = run.stdout + run.stderr
-    if traceDir:
-        with open(os.path.join(traceDir, f"r_{master}_d{delay}.log"), 'w') as fh:
-            fh.write(output)
     before = len(FAILURES)
     check(run.returncode == 0 and 'probe done' in output, f"{tag}: probe runs to completion (status {run.returncode})")
     m = re.search(r'^delayed hdl_r=(\S*) bfm_r=(\S*) recv=(\S*)$', output, re.M)
@@ -285,15 +244,12 @@ def runCase(binPath, master, delay, scLibdir, traceDir):
         check(hdlR == EXPECTED_R and bfmR == hdlR,
               f"{tag}: the BFM sent every R beat the HDL handed over (hdl={len(hdlR)} bfm={[hex(v) for v in bfmR]})")
         check(received == EXPECTED_R, f"{tag}: the model received every beat in order ({len(received)} beats)")
-    if len(FAILURES) > before and not traceDir:
+    if len(FAILURES) > before:
         print(output)
 
 
 def test_axi_read_dst_bfm_delayed_send():
     scLibdir = os.environ.get('SYSTEMC_LIBDIR', '')
-    traceDir = os.environ.get('A2C_PROBE_TRACE_DIR')
-    if traceDir:
-        os.makedirs(traceDir, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix='a2c_axi_read_dst_delayed_send_')
     try:
         binPath = buildProbe(tmpdir, PROBE_SRC)
@@ -301,7 +257,7 @@ def test_axi_read_dst_bfm_delayed_send():
             check(False, f"probe must build and link: {binPath}")
             return
         for master, delay in CASES:
-            runCase(binPath, master, delay, scLibdir, traceDir)
+            runCase(binPath, master, delay, scLibdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
