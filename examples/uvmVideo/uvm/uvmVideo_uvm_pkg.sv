@@ -89,6 +89,7 @@ package uvmVideo_uvm_pkg;
             vout_counter = a2c_uvm_pkg::a2c_txn_counter#(vout_item_t)::type_id::create("vout_counter", this);
             vout_counter.port_name = "vout";
             vout_counter.dual = dual_dut;
+            vout_counter.clk_vif = clk_vif;
             vout_digest = a2c_uvm_pkg::a2c_txn_digest#(vout_item_t)::type_id::create("vout_digest", this);
             vout_digest.port_name = "vout";
             vout_digest.dual = dual_dut;

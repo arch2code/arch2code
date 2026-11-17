@@ -2,10 +2,10 @@
 // generates, so its handling of the drain knobs and of the run timeout is
 // simulated, not only read. The span between the RENDERED markers is
 // render_tests() of that template for lb_gen_env, a stand-in for the
-// generated env with two clocks, clk and clk2, an input port, lb_in, a
-// status input, lb_st, and one counted output, lb_out;
-// unittest/test_uvm_test_pkg.py fails when the span and the template
-// differ. Included in a2c_uvm_loopback_pkg after
+// generated env with two clocks, clk with a reset and clk2 without, an
+// input port, lb_in, a status input, lb_st, and one counted output,
+// lb_out; unittest/test_uvm_test_pkg.py fails when the span and the
+// template differ. Included in a2c_uvm_loopback_pkg after
 // a2c_replay_drain_lb_tests.svh, whose fake lanes the env's replay log
 // uses.
 
@@ -176,7 +176,11 @@
     // rt_on_model set the real-time rules of every a2c_rt_checker the
     // env holds; left at -1 each keeps the checker's own, and
     // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
-    // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them.
+    // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With
+    // expect_from_model (+a2c_expect_from_model=1) set, an output needs no
+    // expect_count(): in Mode B the model lane's count is the DUT lane's
+    // expectation, and wait_for_outputs() returns once the outputs have
+    // been quiet for quiet_cycles. reset_dut() pulses the resets mid-run.
     class lb_gen_base extends uvm_test implements a2c_run_work;
         lb_gen_env env;
         int unsigned output_deadline_cycles = 200000;
@@ -191,6 +195,7 @@
         int          joint_stall_cycles = -1;
         int          model_throttle_cycles = -1;
         bit          no_stimulus_expected;
+        bit          expect_from_model;
         int          run_timeout_cycles = -1;
         int          run_timeout_floor_cycles = -1;
         int          run_timeout_factor = -1;
@@ -223,6 +228,7 @@
             void'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));
             void'($value$plusargs("a2c_model_throttle_cycles=%d", model_throttle_cycles));
             void'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));
+            void'($value$plusargs("a2c_expect_from_model=%d", expect_from_model));
             void'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));
             void'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));
             void'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));
@@ -238,6 +244,7 @@
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);
             end
             uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);
+            uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", expect_from_model);
             if (lane_skew_cycles >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lane_skew_cycles", lane_skew_cycles);
             end
@@ -312,6 +319,23 @@
             if (env.dual_dut) begin
                 env.model_stable_point();
             end
+        endtask
+
+        // Pulses every reset of the block and returns once each clock samples
+        // its reset released. The RTL and the agents abandon what is in
+        // flight, and the counters and comparators start again from the
+        // release. The model has no mid-run reset, so a run that holds it
+        // gets an A2C_RESET error instead.
+        task reset_dut();
+            bit model;
+            void'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model));
+            if (model || env.dual_dut) begin
+                `uvm_error("A2C_RESET", "reset_dut(): the run holds the SystemC model, which cannot be reset mid-run; reset only with --uvmDut rtl")
+                return;
+            end
+            fork
+                env.clk_vif.request_reset();
+            join
         endtask
 
         // Warns about a run that sent nothing on any input and declared no
@@ -659,6 +683,63 @@
             want_warnings = 0;
         endfunction
     endclass : gen_base_output_declared_test
+
+    // reset_dut() in a run that holds the model, as lb_gen_env's Mode B
+    // does: one A2C_RESET error and no reset. With rtl_only set, the test
+    // clears dual_dut around the call as an RTL run would have it, and
+    // reset_dut() pulses clk's reset and returns once clk samples it
+    // released.
+    class gen_base_reset_test extends gen_base_no_stimulus_test;
+        bit               rtl_only = 0;
+        a2c_error_demoter refused;
+        int unsigned      asserted;
+        bit               released;
+
+        `uvm_component_utils(gen_base_reset_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            no_stimulus_expected = 1;
+            want_warnings        = 0;
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            refused = a2c_error_demoter::type_id::create("refused");
+            refused.demote_id = "A2C_RESET";
+            uvm_report_cb::add(null, refused);
+            super.build_phase(phase);
+        endfunction
+
+        virtual task run_body();
+            fork
+                forever begin
+                    env.clk_vif.wait_reset_assert();
+                    asserted++;
+                end
+            join_none
+            if (rtl_only) env.dual_dut = 0;
+            reset_dut();
+            released = !env.clk_vif.in_reset();
+            env.dual_dut = 1;
+        endtask
+
+        virtual function void report_phase(uvm_phase phase);
+            int unsigned want = rtl_only ? 1 : 0;
+            if (refused.demoted != 1 - want) `uvm_error("LB_GEN", $sformatf("%0d A2C_RESET errors, expected %0d", refused.demoted, 1 - want))
+            if (asserted != want) `uvm_error("LB_GEN", $sformatf("clk's reset asserted %0d times, expected %0d", asserted, want))
+            if (!released) `uvm_error("LB_GEN", "reset_dut() returned with clk's reset asserted")
+            super.report_phase(phase);
+        endfunction
+    endclass : gen_base_reset_test
+
+    class gen_base_reset_rtl_test extends gen_base_reset_test;
+        `uvm_component_utils(gen_base_reset_rtl_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            rtl_only = 1;
+        endfunction
+    endclass : gen_base_reset_rtl_test
 
     // a2c_items_sent::of() given no agent, an agent whose sequencer sends
     // another item type, or a component with neither a sequencer nor a
@@ -2532,6 +2613,7 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             cmp = a2c_in_order_comparator#(rv_item_t)::type_id::create("cmp", this);
+            cmp.allow_no_pairs = 1;
         endfunction
 
         virtual task run_body();
@@ -2559,6 +2641,7 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             mem_cmp = memory_comparator#(lb_mem_addr_t, lb_data_t)::type_id::create("mem_cmp", this);
+            mem_cmp.allow_no_pairs = 1;
         endfunction
 
         virtual task run_body();

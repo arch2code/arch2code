@@ -73,8 +73,14 @@ def pin_assigns(portPins, suffix):
     return out
 
 
-def dut_flags(rtl, model):
-    return [f"assign rtl_dut = 1'b{int(rtl)};", f"assign model_dut = 1'b{int(model)};"]
+def dut_flags(rtl, model, clocks):
+    # The SystemC side pulses the resets while any clock with one requests
+    # it. A run that holds the model never does, as the model cannot be
+    # reset mid-run.
+    requests = [f"{clock['clock']}_if.reset_request" for clock in clocks if clock['reset']]
+    request = ' | '.join(requests) if requests and not model else "1'b0"
+    return [f"assign rtl_dut = 1'b{int(rtl)};", f"assign model_dut = 1'b{int(model)};",
+            f"assign uvm_reset_req = {request};"]
 
 
 def render_body(prj, data, variant, top):
@@ -124,17 +130,17 @@ def render_body(prj, data, variant, top):
                 if port['modelCredit']:
                     both += [f"assign {port['name']}_model_credit = {port['name']}_credit.credit;",
                              f"assign {port['name']}_credit.held = {port['name']}_model_held;"]
-            both += dut_flags(True, True)
+            both += dut_flags(True, True, data['uvm']['clocks'])
             branches.append(('A2C_UVM_BOTH_DUT', both))
-        branches.append(('A2C_UVM_RTL_DUT', rtl + ties + dut_flags(True, False)))
+        branches.append(('A2C_UVM_RTL_DUT', rtl + ties + dut_flags(True, False, data['uvm']['clocks'])))
         for index, (define, lines) in enumerate(branches):
             out.append(f"`{'ifdef' if index == 0 else 'elsif'} {define}")
             out += [f'    {line}' if line else '' for line in lines]
         out.append('`else')
-        out += [f'    {line}' for line in pin_assigns(portPins, '') + creditTies + dut_flags(False, True)]
+        out += [f'    {line}' for line in pin_assigns(portPins, '') + creditTies + dut_flags(False, True, data['uvm']['clocks'])]
         out.append('`endif')
     else:
-        out += [f'    {line}' if line else '' for line in rtl + ties + dut_flags(True, False)]
+        out += [f'    {line}' if line else '' for line in rtl + ties + dut_flags(True, False, data['uvm']['clocks'])]
     out.append('')
 
     sets = [f'uvm_config_db#({top["pkgName"]}::{port["name"]}_vif_t)::set(null, "uvm_test_top.*", "{port["name"]}", {port["name"]});'

@@ -37,6 +37,12 @@ REG_BUS_WIDTH_BYTES = 4
 # memory row a UVM register model holds.
 UVM_REG_DATA_WIDTH = 64
 
+# DRIVE_SKEW of common/systemVerilog/uvm/a2c_clk_if.sv. A UVM agent drives
+# this long after a rising edge and samples at the falling edge, so the skew
+# must end before the falling edge.
+UVM_DRIVE_SKEW_PS = 100
+PS_PER_TIME_UNIT = {'ps': 1, 'ns': 1000, 'us': 1000000}
+
 # Names a register, memory or field of the generated register model cannot
 # take. A field is a member of its uvm_reg subclass, and a register or memory a
 # member of the uvm_reg_block subclass, so each would hide the base class
@@ -4190,10 +4196,11 @@ class projectOpen:
         # testbench drives what the DUT samples and samples what it drives,
         # while the SystemC side drives the clocks and resets into both. The
         # credit pins of each port the uvm view marks modelCredit follow, and
-        # the completion pins the SystemC wrapper watches come last. kind is
-        # port, clockReset, credit or completion. A port pin carries its
-        # port's interface type and DUT-side role, and a pin typed by a
-        # payload carries the type as uvmTypeRef names it.
+        # the pins the SystemC wrapper watches, the end of the run and the
+        # test's reset request, come last. kind is port, clockReset, credit
+        # or completion. A port pin carries its port's interface type and
+        # DUT-side role, and a pin typed by a payload carries the type as
+        # uvmTypeRef names it.
         inverse = {'input': 'output', 'output': 'input'}
         variantPkg = {top['hdlTop']: top['pkgName'] for top in self.uvmNames[ret['qualBlock']]['tops'].values()}[hdlTop]
         uvmPorts = {port['name']: port for port in ret['uvm']['ports']}
@@ -4221,6 +4228,7 @@ class projectOpen:
             {'pin': 'uvm_errors', 'direction': 'output', 'width': 32, 'vector': True, **completion},
             {'pin': 'rtl_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
             {'pin': 'model_dut', 'direction': 'output', 'width': 1, 'vector': False, **completion},
+            {'pin': 'uvm_reset_req', 'direction': 'output', 'width': 1, 'vector': False, **completion},
         ]
 
     def extractContext(self, structs, consts):
@@ -6039,6 +6047,16 @@ class projectCreate:
                     f"drives every clock and reset of the block and samples none. "
                     f"Make them inputs of '{block}', or clear hasUvm.")
                 failed = True
+            for name in [name for name, decl in domain.clocks.items() if decl.direction == 'input']:
+                periodPs = domain.resolvedPeriod[name] * PS_PER_TIME_UNIT[domain.resolvedTimeUnit[name]]
+                if periodPs <= 2 * UVM_DRIVE_SKEW_PS:
+                    printError(
+                        f"{where} but its clock '{name}' has a period of "
+                        f"{domain.resolvedPeriod[name]} {domain.resolvedTimeUnit[name]}. A UVM agent "
+                        f"drives {UVM_DRIVE_SKEW_PS} ps after each rising edge and samples at the "
+                        f"falling edge, so the period must exceed {2 * UVM_DRIVE_SKEW_PS} ps. "
+                        f"Lengthen the period of '{name}', or clear hasUvm.")
+                    failed = True
             # Each boundary port's interface type key, how the agent check
             # names where the port comes from, and the fix it offers.
             boundary = dict()
@@ -6083,6 +6101,7 @@ class projectCreate:
                        'uvm_errors': "the completion pin 'uvm_errors'",
                        'rtl_dut': "the completion pin 'rtl_dut'",
                        'model_dut': "the completion pin 'model_dut'",
+                       'uvm_reset_req': "the reset request pin 'uvm_reset_req'",
                        'srv': "the report server variable 'srv'"}
             tbNames.update({f"{clock}_if": f"the a2c_clk_if instance '{clock}_if' of clock '{clock}'"
                             for clock in domain.clocks})

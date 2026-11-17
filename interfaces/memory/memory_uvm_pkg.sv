@@ -219,7 +219,7 @@ package memory_uvm_pkg;
                 capture_reads();
             join_none
             forever begin
-                seq_item_port.try_next_item(req);
+                try_item();
                 if (req == null) begin
                     drive_enable(1'b0);
                     cfg.clk_vif.drive_edge();
@@ -243,9 +243,22 @@ package memory_uvm_pkg;
                     rsp.addr  = req.addr;
                     reads.push_back(rsp);
                 end
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
+
+        // A read taken before a mid-run reset returns a response of 0, so a
+        // sequence waiting for it goes on.
+        virtual function void on_reset();
+            super.on_reset();
+            while (reads.size() > 0) begin
+                memory_item#(addr_t, data_t) rsp = reads.pop_front();
+                rsp.data = '0;
+                seq_item_port.put_response(rsp);
+            end
+            in_access = '{0, 0};
+            owed      = 0;
+        endfunction
 
         // At most one read waits here: it was taken on the rising edge just
         // before this sample edge, so read_data now holds its word. The
@@ -388,7 +401,7 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_driver
 
-    class memory_monitor #(type addr_t = logic, type data_t = logic) extends uvm_monitor;
+    class memory_monitor #(type addr_t = logic, type data_t = logic) extends a2c_monitor;
         memory_config#(addr_t, data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual memory_if #(.addr_t(addr_t), .data_t(data_t)) vif;
@@ -409,12 +422,17 @@ package memory_uvm_pkg;
             ap.write(item);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             memory_item#(addr_t, data_t) item;
             memory_item#(addr_t, data_t) read;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 if (read != null) begin
                     read.data = vif.read_data;
                     publish(read);

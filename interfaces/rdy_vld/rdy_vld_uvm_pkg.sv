@@ -140,7 +140,7 @@ package rdy_vld_uvm_pkg;
         endtask
     endclass : rdy_vld_driver
 
-    class rdy_vld_monitor #(type data_t = logic) extends uvm_monitor implements a2c_flow_counts;
+    class rdy_vld_monitor #(type data_t = logic) extends a2c_monitor implements a2c_flow_counts;
         rdy_vld_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual rdy_vld_if #(.data_t(data_t))      vif;
@@ -159,7 +159,11 @@ package rdy_vld_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             logic vld;
             logic rdy;
             data_t data;
@@ -169,6 +173,7 @@ package rdy_vld_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 vld  = vif.vld;
                 rdy  = vif.rdy;
                 data = vif.data;

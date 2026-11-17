@@ -47,6 +47,34 @@ interface a2c_clk_if (input logic clk, input logic rst_n);
         do @(cb); while (cb.rst_n !== 1'b1);
     endtask
 
+    // Returns at the first rising edge that samples rst_n asserted after it
+    // was sampled released. Components that survive a mid-run reset abandon
+    // their in-flight work there, the edge a reset-aware RTL flop first sees.
+    task automatic wait_reset_assert();
+        do @(cb); while (cb.rst_n !== 1'b1);
+        do @(cb); while (cb.rst_n === 1'b1);
+    endtask
+
+    // The live pin, for a monitor deciding at its sample point whether the
+    // next rising edge transfers anything.
+    function automatic bit in_reset();
+        return rst_n !== 1'b1;
+    endfunction
+
+    // Raised by request_reset() and wired to the reset generator, which owns
+    // the pin: it asserts rst_n at the next rising edge of this clock and
+    // holds it for the reset's release cycles after the request drops.
+    bit reset_request;
+
+    // Pulses this domain's reset and returns at the first rising edge that
+    // samples it released again.
+    task automatic request_reset();
+        reset_request = 1'b1;
+        do @(cb); while (cb.rst_n === 1'b1);
+        reset_request = 1'b0;
+        do @(cb); while (cb.rst_n !== 1'b1);
+    endtask
+
     // The times of the last edges, and the period, from which a waiter tells
     // a clock that has stopped. The steady period changes only when three
     // consecutive intervals between rising edges agree within an eighth, and

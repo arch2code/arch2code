@@ -121,10 +121,6 @@ package pop_ack_uvm_pkg;
         extends a2c_lane_driver #(pop_ack_item#(rdata_t), virtual pop_ack_if #(.rdata_t(rdata_t)), pop_ack_config#(rdata_t), rdata_t);
         // src role: the rdata each lane returned.
         protected rdata_t rdata[2];
-        // dst role: a fetch of the DUT lane's response is under way, and
-        // has returned it in req.
-        protected bit     fetching;
-        protected bit     fetched;
 
         `uvm_component_param_utils(pop_ack_driver#(rdata_t))
 
@@ -171,35 +167,26 @@ package pop_ack_uvm_pkg;
 
         // Waits for the DUT lane's response in req until the next rising
         // edge, and returns at_edge set if the edge came first. The fetch
-        // runs in its own process and outlives the wait, so a responder that
-        // takes clocks to answer stalls only the DUT lane. Its response takes
-        // effect from the first drive point after it arrives, as it would
-        // with get_next_item() called in line.
+        // runs in the driver's fetcher() and outlives the wait, so a
+        // responder that takes clocks to answer stalls only the DUT lane.
+        // Its response takes effect from the first drive point after it
+        // arrives, as it would with get_next_item() called in line. A fetch
+        // still waiting at a mid-run reset answers the first pop after it.
         protected virtual task respond(output rdata_t r, output int unsigned delay, output bit at_edge);
-            if (!fetching) begin
-                fetching = 1;
-                fork
-                    begin
-                        seq_item_port.get_next_item(req);
-                        fetched = 1;
-                    end
-                join_none
-            end
+            fetch_wanted = 1;
             fork
                 begin
                     fork
-                        wait (fetched);
+                        wait (fetch_done);
                         @(cfg.clk_vif.cb);
                     join_any
                     disable fork;
                 end
             join
-            at_edge = !fetched;
-            if (!fetched) return;
-            fetched  = 0;
-            fetching = 0;
-            r        = req.rdata;
-            delay    = req.delay;
+            at_edge = !take_fetched();
+            if (at_edge) return;
+            r     = req.rdata;
+            delay = req.delay;
         endtask
 
         protected virtual function void idle_response(int l);
@@ -215,11 +202,11 @@ package pop_ack_uvm_pkg;
         protected virtual function void end_response(int l);
             lane[l].ack   <= 1'b0;
             lane[l].rdata <= '0;
-            if (l == A2C_DUT_LANE) seq_item_port.item_done();
+            if (l == A2C_DUT_LANE) item_finished();
         endfunction
     endclass : pop_ack_driver
 
-    class pop_ack_monitor #(type rdata_t = logic) extends uvm_monitor implements a2c_starvation_source;
+    class pop_ack_monitor #(type rdata_t = logic) extends a2c_monitor implements a2c_starvation_source;
         pop_ack_config#(rdata_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual pop_ack_if #(.rdata_t(rdata_t))     vif;
@@ -238,7 +225,11 @@ package pop_ack_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             logic   pop;
             logic   ack;
             rdata_t rdata;
@@ -247,6 +238,7 @@ package pop_ack_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 pop   = vif.pop;
                 ack   = vif.ack;
                 rdata = vif.rdata;

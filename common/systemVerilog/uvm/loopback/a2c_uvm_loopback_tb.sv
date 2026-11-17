@@ -881,6 +881,8 @@ package a2c_uvm_loopback_pkg;
     `include "a2c_joint_stall_lb_tests.svh"
     `include "a2c_reg_read_lb_tests.svh"
     `include "a2c_video_lb_tests.svh"
+    `include "a2c_completion_lb_tests.svh"
+    `include "a2c_reset_lb_tests.svh"
 
 endpackage : a2c_uvm_loopback_pkg
 
@@ -1378,7 +1380,21 @@ module a2c_uvm_loopback_tb;
         rst_n = 1'b1;
     end
 
-    a2c_clk_if clk_if(.clk(clk), .rst_n(rst_n));
+    // clk's reset as a test's clk_if.request_reset() pulses it, the way the
+    // SystemC side of a generated testbench does: asserted at the rising
+    // edge after the request rises, and released three rising edges after
+    // it drops.
+    bit req_rst_n = 1'b1;
+    initial forever begin
+        @(posedge clk_if.reset_request);
+        @(posedge clk);
+        req_rst_n <= 1'b0;
+        wait (!clk_if.reset_request);
+        repeat (3) @(posedge clk);
+        req_rst_n <= 1'b1;
+    end
+
+    a2c_clk_if clk_if(.clk(clk), .rst_n(rst_n && req_rst_n));
     a2c_clk_if clk2_if(.clk(clk2), .rst_n(rst_n));
     a2c_clk_if clk3_if(.clk(clk3), .rst_n(rst_n));
     a2c_clk_if clk4_if(.clk(clk4), .rst_n(1'b1));

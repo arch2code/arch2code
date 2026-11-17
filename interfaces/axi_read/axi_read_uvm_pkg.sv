@@ -335,8 +335,7 @@ package axi_read_uvm_pkg;
             return 0;
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
-            setup_lanes();
+        virtual task run_from_reset();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].arvalid <= 1'b0;
                 lane[l].arid    <= '0;
@@ -354,6 +353,25 @@ package axi_read_uvm_pkg;
             join_none
             run_ar();
         endtask
+
+        // Every burst open at a mid-run reset returns to the sequence with
+        // no beats, as once both lanes are dead.
+        virtual function void on_reset();
+            super.on_reset();
+            foreach (opened[i]) begin
+                item_t rsp = opened[i].rsp[A2C_DUT_LANE];
+                rsp.data  = new[0];
+                rsp.resp  = new[0];
+                rsp.ruser = new[0];
+                seq_item_port.put_response(rsp);
+            end
+            opened.delete();
+            skewed.delete();
+            foreach (pending[l]) pending[l].delete();
+            outstanding = '{0, 0};
+            drop_ar     = '{0, 0};
+            ar_cur      = null;
+        endfunction
 
         // The response to req, with its AR fields and no beats yet.
         protected function item_t new_response(item_t req);
@@ -406,7 +424,7 @@ package axi_read_uvm_pkg;
                     continue;
                 end
                 slot_held = 0;
-                seq_item_port.try_next_item(req);
+                try_item();
                 if (req == null) begin
                     drive_arvalid(1'b0);
                     cfg.clk_vif.drive_edge();
@@ -417,7 +435,7 @@ package axi_read_uvm_pkg;
                                                     cfg.port_name, req.convert2string(), req.total_bytes(),
                                                     cfg.max_transfer_bytes))
                     rsp = new_response(req);
-                    seq_item_port.item_done();
+                    item_finished();
                     seq_item_port.put_response(rsp);
                     continue;
                 end
@@ -445,7 +463,7 @@ package axi_read_uvm_pkg;
                     lane[l].aruser  <= req.aruser;
                 end
                 wait_ar(b);
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
 
@@ -883,9 +901,21 @@ package axi_read_uvm_pkg;
         // transfers. One process serves both lanes, the DUT lane first, so a
         // model lane waiting for a pick or a beat takes it at the drive
         // point the DUT lane makes it.
-        virtual task run_phase(uvm_phase phase);
+        // A mid-run reset drops every burst the lanes have taken, served or
+        // queued.
+        virtual function void on_reset();
+            super.on_reset();
+            foreach (queue[l]) queue[l].delete();
+            foreach (arrivals[l]) arrivals[l].delete();
+            cur      = '{null, null};
+            beat     = '{0, 0};
+            on_bus   = '{0, 0};
+            dut_pick = null;
+            held     = null;
+        endfunction
+
+        virtual task run_from_reset();
             bit ready;
-            setup_lanes();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].arready <= 1'b0;
                 lane[l].rvalid  <= 1'b0;
@@ -991,7 +1021,7 @@ package axi_read_uvm_pkg;
     endclass : axi_read_slave_driver
 
     class axi_read_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0], type aruser_t = logic,
-                             type ruser_t = logic, type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch, a2c_starvation_source;
+                             type ruser_t = logic, type id_t = logic [3:0]) extends a2c_monitor implements a2c_lane_watch, a2c_starvation_source;
         typedef axi_read_item#(addr_t, data_t, aruser_t, ruser_t, id_t) item_t;
         typedef bit [$bits(id_t)-1:0]                                   id_key_t;
         localparam int unsigned FULL_SIZE = item_t::FULL_SIZE;
@@ -1042,10 +1072,14 @@ package axi_read_uvm_pkg;
             return {get_full_name(), ".", cfg.port_name};
         endfunction
 
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
         // A stalled AR or R must hold its valid and payload until ready. R
         // is taken before AR on each clock, since a beat may not share the
         // rising edge of its own AR.
-        virtual task run_phase(uvm_phase phase);
+        virtual task run_from_reset();
             logic [$bits(id_t)+$bits(addr_t)+13+$bits(aruser_t):0] held_ar;
             logic [$bits(id_t)+$bits(data_t)+3+$bits(ruser_t):0]   held_r;
             bit                                                    ar_stalled;
@@ -1053,6 +1087,7 @@ package axi_read_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 if (r_stalled && r_pins() !== held_r) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before rready took the stalled beat", cfg.port_name,
                                                      a2c_select_str(vif.rvalid !== 1'b1, "rvalid dropped", "the R payload changed")))
@@ -1074,6 +1109,12 @@ package axi_read_uvm_pkg;
                 if (vif.arvalid === 1'b1 && vif.arready === 1'b1) take_ar();
             end
         endtask
+
+        // A reset ends every open burst unreported.
+        virtual function void on_reset();
+            open.delete();
+            n_open = 0;
+        endfunction
 
         protected function void take_ar();
             item_t           it = item_t::type_id::create("item");

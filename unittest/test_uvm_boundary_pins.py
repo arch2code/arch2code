@@ -2,8 +2,8 @@
 """A UVM testbench top's boundary files match the HDL top it instantiates.
 
 The testbench top drives what the DUT samples and samples what it drives, takes
-the DUT's clocks and resets as inputs, and adds four completion outputs:
-uvm_done, uvm_errors, rtl_dut and model_dut. The VCS port map and the Xcelium shell
+the DUT's clocks and resets as inputs, and adds five outputs: uvm_done,
+uvm_errors, rtl_dut, model_dut and the reset request uvm_reset_req. The VCS port map and the Xcelium shell
 `--vlBoundary` writes for it must say so with the DUT's widths at each variant,
 or the SystemC side binds mis-sized or mis-directed ports.
 
@@ -40,13 +40,16 @@ the port interfaces, carries each signal across through a second interface
 per port, <port>_model, and publishes those too. Each branch is checked on
 its own: it drives rtl_dut and model_dut to its DUT set and sets a2c_dual_dut
 in the config_db, and a2c_model_dut is set only when the model is the one DUT.
+A branch whose DUT set holds only the RTL drives uvm_reset_req from the reset
+requests of the clocks that have a reset; one that holds the model ties it
+low, as the model cannot be reset during a run.
 A block without a model always holds the RTL and sets a2c_dual_dut and
 a2c_model_dut to 0.
 
 Each block's SystemC wrapper must include the BFM header that declares its
 pin bridges, bind every testbench pin, check the shell's payload pin types,
 drive each clock at its period and hold each reset low from time 0 until its
-own clock releases it. It imports the block's base module only when the block
+own clock releases it, asserting it again only once uvm_reset_req rises. It imports the block's base module only when the block
 has a model, and with params its block module as well, because it names the
 model class at the factory as a container does for a child typed by its
 Config. With a model it carries each port through a BFM of the swapped role
@@ -220,7 +223,8 @@ PORT_DOMAIN = {('dutU', 'side'): ('clkB', 'rstB_n')}
 VCS_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_VCS=1', 'VCS_HOME=/placeholder/vcs')
 XRUN_DRY_RUN = ('-n', 'USE_UVM=1', 'USE_XCELIUM=1', 'XCELIUM_TOOLS=/placeholder/xcelium', 'XRUN_GCC_VERS=placeholder')
 COMPLETION_PINS = [('uvm_done', 'output', 1, False), ('uvm_errors', 'output', 32, True),
-                   ('rtl_dut', 'output', 1, False), ('model_dut', 'output', 1, False)]
+                   ('rtl_dut', 'output', 1, False), ('model_dut', 'output', 1, False),
+                   ('uvm_reset_req', 'output', 1, False)]
 
 
 def edit_fixture(work):
@@ -410,7 +414,11 @@ def check_testbenches(work, design):
         binds += [f'.{pin}({pin})' for pin, *_ in design.clock_reset_pins(block)]
 
         def flags(rtl, model):
-            return [f"assign rtl_dut = 1'b{int(rtl)};", f"assign model_dut = 1'b{int(model)};"]
+            requests = [f'{clock}_if.reset_request' for clock, reset in clock_domains(design, block)
+                        if reset is not None]
+            request = ' | '.join(requests) if requests and not model else "1'b0"
+            return [f"assign rtl_dut = 1'b{int(rtl)};", f"assign model_dut = 1'b{int(model)};",
+                    f"assign uvm_reset_req = {request};"]
 
         def carry(suffix):
             return [f'assign {pin} = {port}{suffix}.{signal};' if direction == 'input'
@@ -554,8 +562,14 @@ def check_sc_files(work, design):
                            for line in lines):
                     problems.append(f"{wrapperFile} does not release {reset} on {clock}")
             problems += [f"{wrapperFile} lacks the line {line!r}" for line in expected if line not in lines]
-        if 'rst.write(false);' in lines or re.search(r'_n\("\w+", true\)', text):
-            problems.append(f"{wrapperFile} releases a reset at time 0 or asserts it after construction")
+        if re.search(r'_n\("\w+", true\)', text):
+            problems.append(f"{wrapperFile} releases a reset at time 0")
+        requested = lines.index('wait(uvm_reset_req.posedge_event());') if \
+            'wait(uvm_reset_req.posedge_event());' in lines else len(lines)
+        if 'rst.write(false);' in lines[:requested]:
+            problems.append(f"{wrapperFile} asserts a reset after construction without a reset request")
+        if 'rst.write(false);' not in lines[requested:]:
+            problems.append(f"{wrapperFile} does not assert a reset on a reset request")
 
         bfmRoles = re.findall(r'^\s*(\w+)_bfm_inst = std::make_unique<rdy_vld_(src|dst)_bfm<', text, re.M)
         bfmDomains = re.findall(r'^\s*(\w+)_bfm_inst->clk\((\w+)\);\s*\n\s*\1_bfm_inst->rst_n\((\w+)\);',

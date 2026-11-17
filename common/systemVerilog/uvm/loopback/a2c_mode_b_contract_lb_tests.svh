@@ -320,6 +320,7 @@
             super.build_phase(phase);
             agent = lb_foreign_agent::type_id::create("agent", this);
             port  = a2c_mode_b_port#(rv_item_t)::type_id::create("port", this);
+            if (want_pairs == 0) uvm_config_db#(bit)::set(this, "port.model_cmp", "a2c_allow_no_pairs", 1'b1);
             port.agent    = agent;
             agent.clk_vif = clk_vif;
             agent.port    = "rv";

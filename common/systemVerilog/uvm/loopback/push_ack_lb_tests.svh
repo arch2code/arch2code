@@ -1344,6 +1344,7 @@
 
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
+            uvm_config_db#(bit)::set(this, "agent2.model_cmp", "a2c_allow_no_pairs", 1'b1);
             uvm_top.set_timeout(200us, 1);
         endfunction
 

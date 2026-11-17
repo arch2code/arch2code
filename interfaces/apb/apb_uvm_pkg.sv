@@ -108,7 +108,7 @@ package apb_uvm_pkg;
                 join_none
             end
             forever begin
-                seq_item_port.get_next_item(req);
+                get_item();
                 cfg.clk_vif.drive_edge();
                 for (int l = 0; l < lanes; l++) begin
                     if (wd.dead[l]) continue;
@@ -121,7 +121,7 @@ package apb_uvm_pkg;
                 cfg.clk_vif.drive_edge();
                 for (int l = 0; l < lanes; l++) if (!wd.dead[l]) lane[l].penable <= 1'b1;
                 wait_access();
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
 
@@ -264,7 +264,7 @@ package apb_uvm_pkg;
         endfunction
     endclass : apb_slave_driver
 
-    class apb_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends uvm_monitor;
+    class apb_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0]) extends a2c_monitor;
         apb_config#(addr_t, data_t)  cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual apb_if #(.addr_t(addr_t), .data_t(data_t)) vif;
@@ -277,6 +277,10 @@ package apb_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
         // An access phase continues the transfer when the clock before it was
         // the setup phase or an access phase pready did not end. Any other
         // clock with psel and penable high is an A2C_PROTO; penable with psel
@@ -284,7 +288,7 @@ package apb_uvm_pkg;
         // Within a transfer, each clock that changes paddr, pwrite, or a
         // write's pwdata gives one A2C_HOLD, and so does psel dropping before
         // the transfer completes.
-        virtual task run_phase(uvm_phase phase);
+        virtual task run_from_reset();
             apb_item item;
             bit      setup;
             bit      access;
@@ -295,6 +299,7 @@ package apb_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 setup  = (vif.psel === 1'b1 && vif.penable !== 1'b1);
                 access = (vif.psel === 1'b1 && vif.penable === 1'b1);
                 if (in_transfer && vif.psel !== 1'b1) begin

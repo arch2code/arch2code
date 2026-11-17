@@ -178,7 +178,7 @@ package axi4_stream_uvm_pkg;
     endclass : axi4_stream_driver
 
     class axi4_stream_monitor #(type tdata_t = logic [31:0], type tid_t = logic [7:0],
-                                type tdest_t = logic [7:0], type tuser_t = logic) extends uvm_monitor implements a2c_flow_counts;
+                                type tdest_t = logic [7:0], type tuser_t = logic) extends a2c_monitor implements a2c_flow_counts;
         axi4_stream_config#(tdata_t, tid_t, tdest_t, tuser_t)                     cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual axi4_stream_if #(.tdata_t(tdata_t), .tid_t(tid_t), .tdest_t(tdest_t), .tuser_t(tuser_t)) vif;
@@ -197,12 +197,17 @@ package axi4_stream_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t) item;
             axi4_stream_item#(tdata_t, tid_t, tdest_t, tuser_t) held;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 n_samples++;
                 n_valid     += (vif.tvalid === 1'b1);
                 n_ready     += (vif.tready === 1'b1);

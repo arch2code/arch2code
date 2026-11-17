@@ -12,11 +12,17 @@
 # A test that is the only one to print a library message, or a new agent role,
 # belongs here. Each layer's loopback directory holds its own reduced.tests.
 
+# a2c_completion_lb_tests.svh
+lb_expect_from_model_short_test
+lb_no_pairs_test
+
 # a2c_expected_error_lb_tests.svh
 expected_error_extra_test
 expected_error_text_test
 
 # a2c_gen_base_test_lb_tests.svh
+gen_base_reset_test
+gen_base_reset_rtl_test
 gen_base_drain_wrong_type_test
 a2c_items_sent_cfg_test
 gen_base_run_timeout_off_test
@@ -71,6 +77,9 @@ reg_read_pins_stride_hier_test
 # a2c_replay_drain_lb_tests.svh
 drain_busy_wording_test
 drain_catchup_stop_death_test
+
+# a2c_reset_lb_tests.svh
+lb_reset_mode_b_test
 
 # a2c_rt_checker_lb_tests.svh
 rt_rv_refusal_test

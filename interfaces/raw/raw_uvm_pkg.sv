@@ -89,7 +89,7 @@ package raw_uvm_pkg;
         endtask
     endclass : raw_driver
 
-    class raw_monitor #(type data_t = logic) extends uvm_monitor;
+    class raw_monitor #(type data_t = logic) extends a2c_monitor;
         raw_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual raw_if #(.data_t(data_t))      vif;
@@ -102,11 +102,16 @@ package raw_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             raw_item#(data_t) item;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 item = raw_item#(data_t)::type_id::create("item");
                 item.data = vif.data;
                 `uvm_info("A2C_TXN", a2c_txn({get_full_name(), ".", cfg.port_name}, cfg.role, item.convert2string(),

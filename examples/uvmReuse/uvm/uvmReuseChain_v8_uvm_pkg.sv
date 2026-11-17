@@ -219,6 +219,7 @@ package uvmReuseChain_v8_uvm_pkg;
             out_counter = a2c_uvm_pkg::a2c_txn_counter#(out_item_t)::type_id::create("out_counter", this);
             out_counter.port_name = "out";
             out_counter.dual = dual_dut;
+            out_counter.clk_vif = clk_vif;
             out_digest = a2c_uvm_pkg::a2c_txn_digest#(out_item_t)::type_id::create("out_digest", this);
             out_digest.port_name = "out";
             out_digest.dual = dual_dut;

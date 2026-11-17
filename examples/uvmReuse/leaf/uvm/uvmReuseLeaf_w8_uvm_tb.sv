@@ -43,7 +43,8 @@ module uvmReuseLeaf_w8_uvm_tb
     output bit uvm_done,
     output bit [31:0] uvm_errors,
     output bit rtl_dut,
-    output bit model_dut
+    output bit model_dut,
+    output bit uvm_reset_req
 );
 
     rdy_vld_if #(.data_t(uvmReuseLeaf_package::uvmReuseBeatSt)) in();
@@ -91,6 +92,7 @@ module uvmReuseLeaf_w8_uvm_tb
     assign apbReg_model.pslverr = apbReg_pslverr;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `elsif A2C_UVM_RTL_DUT
     uvmReuseLeaf_w8_hdl_sv_wrapper dut (
         .in_vld(in.vld),
@@ -121,6 +123,7 @@ module uvmReuseLeaf_w8_uvm_tb
     assign apbReg_pwdata = '0;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b0;
+    assign uvm_reset_req = clk_if.reset_request;
 `else
     assign in_vld = in.vld;
     assign in_data = in.data;
@@ -138,6 +141,7 @@ module uvmReuseLeaf_w8_uvm_tb
     assign apbReg.pslverr = apbReg_pslverr;
     assign rtl_dut = 1'b0;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `endif
 
     // Each SystemC BFM contract break, such as a model that stalls a

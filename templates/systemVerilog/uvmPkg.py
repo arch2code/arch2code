@@ -403,7 +403,8 @@ def agent_build(port, variant):
         counter = port['counter']
         lines += [f'        {counter} = a2c_uvm_pkg::a2c_txn_counter#({name}_item_t)::type_id::create("{counter}", this);',
                   f'        {counter}.port_name = "{name}";',
-                  f'        {counter}.dual = dual_dut;']
+                  f'        {counter}.dual = dual_dut;',
+                  f"        {counter}.clk_vif = {port['clockVif']};"]
     digest = port['digest']
     lines += [f'        {digest} = a2c_uvm_pkg::a2c_txn_digest#({name}_item_t)::type_id::create("{digest}", this);',
               f'        {digest}.port_name = "{name}";',

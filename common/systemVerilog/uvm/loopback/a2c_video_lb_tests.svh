@@ -1153,6 +1153,7 @@
             super.build_phase(phase);
             catcher.demote = 1;
             want("A2C_CFG", UVM_FATAL, reason(), 1);
+            uvm_config_db#(bit)::set(this, "*", "a2c_allow_no_pairs", 1'b1);
         endfunction
 
         virtual function void check_phase(uvm_phase phase);

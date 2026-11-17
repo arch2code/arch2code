@@ -75,6 +75,9 @@
                 },
                 "uvmReuseLeaf_fail_test": {
                     "args+": "+UVM_TESTNAME=uvmReuseLeaf_fail_test"
+                },
+                "uvmReuseLeaf_reset_test": {
+                    "args+": "+UVM_TESTNAME=uvmReuseLeaf_reset_test"
                 }
             }
         },

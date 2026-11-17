@@ -1,10 +1,10 @@
 # The SystemC wrapper of a hasUvm block's UVM testbench top, a class template
 # over the simulator shell of one variant's tb module and, for a block with
 # params, that variant's Config. It drives the clocks and resets into the
-# shell and ends the run once UVM finishes. With the model DUT, alone or
-# beside the RTL, it also holds the model and BFMs that carry each port over
-# the shell's pins; their roles are the DUT's swapped, because the BFMs face
-# the agents' side of the pins.
+# shell, pulses the resets when the test requests it, and ends the run once
+# UVM finishes. With the model DUT, alone or beside the RTL, it also holds the
+# model and BFMs that carry each port over the shell's pins; their roles are
+# the DUT's swapped, because the BFMs face the agents' side of the pins.
 import textwrap
 
 import pysrc.intf_gen_utils as intf_gen_utils
@@ -89,6 +89,7 @@ def render_class(args, prj, data):
                 ',\n'.join(f'{row["reset"]}("{row["reset"]}", false)' for row in data['resets']),
                 sec_clock_half_ctor_init(args, prj, data),
                 'uvm_done("uvm_done")', 'uvm_errors("uvm_errors")', 'rtl_dut("rtl_dut")', 'model_dut("model_dut")',
+                'uvm_reset_req("uvm_reset_req")',
                 *[f'{name}("{name}")' for name in creditSignals],
                 'm_eot(true)']
     ctorInit = ',\n'.join(entry for entry in ctorInit if entry)
@@ -97,7 +98,7 @@ def render_class(args, prj, data):
              for _, sig in ports for pin in sig['hdl_pins']]
     binds += [f'tb_hdl.{name}({name});' for name in intf_gen_utils.clock_reset_port_names(data)]
     binds += [f'tb_hdl.{name}({name});' for name in creditSignals]
-    binds += [f'tb_hdl.{name}({name});' for name in ('uvm_done', 'uvm_errors', 'rtl_dut', 'model_dut')]
+    binds += [f'tb_hdl.{name}({name});' for name in ('uvm_done', 'uvm_errors', 'rtl_dut', 'model_dut', 'uvm_reset_req')]
 
     out += ['public:',
             f'    using self_t = {wrapper}<{selfArgs}>;',
@@ -164,6 +165,7 @@ def render_class(args, prj, data):
             '    sc_signal<sc_bv<32>> uvm_errors;',
             '    sc_signal<bool> rtl_dut;',
             '    sc_signal<bool> model_dut;',
+            '    sc_signal<bool> uvm_reset_req;',
             *[f'    sc_signal<sc_bv<32>> {port}_model_credit;\n    sc_signal<bool> {port}_model_held;' for port in credited],
             '',
             indented('\n'.join(sig['hdl_if_decl'] for _, sig in ports), 4)]
@@ -184,13 +186,26 @@ def render_class(args, prj, data):
             '        }',
             '    }',
             '',
-            '    // The clock parameter is named reset_driver_clk, not clk, so it does not',
+            '    // Releases rst after cycles rising edges of its clock. While the test',
+            '    // raises uvm_reset_req it asserts rst again at the next rising edge,',
+            '    // and releases it cycles rising edges after the request drops. The',
+            '    // clock parameter is named reset_driver_clk, not clk, so it does not',
             '    // shadow a member clock named clk.',
             '    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {',
-            '        for (int cycle = 0; cycle < cycles; cycle++) {',
+            '        while (true) {',
+            '            for (int cycle = 0; cycle < cycles; cycle++) {',
+            '                wait(reset_driver_clk.posedge_event());',
+            '            }',
+            '            rst.write(true);',
+            '            while (!uvm_reset_req.read()) {',
+            '                wait(uvm_reset_req.posedge_event());',
+            '            }',
             '            wait(reset_driver_clk.posedge_event());',
+            '            rst.write(false);',
+            '            while (uvm_reset_req.read()) {',
+            '                wait(uvm_reset_req.negedge_event());',
+            '            }',
             '        }',
-            '        rst.write(true);',
             '    }',
             '',
             indented(sec_clock_gens(args, prj, data), 4),

@@ -85,7 +85,11 @@ def render_tests(uvm):
              "// rt_on_model set the real-time rules of every a2c_rt_checker the",
              "// env holds; left at -1 each keeps the checker's own, and",
              "// +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,",
-             "// +a2c_rt_refusal_cycles and +a2c_rt_on_model override them.",
+             "// +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With",
+             "// expect_from_model (+a2c_expect_from_model=1) set, an output needs no",
+             "// expect_count(): in Mode B the model lane's count is the DUT lane's",
+             "// expectation, and wait_for_outputs() returns once the outputs have",
+             "// been quiet for quiet_cycles. reset_dut() pulses the resets mid-run.",
              f"class {cls} extends uvm_test implements a2c_run_work;",
              f"    {uvm['tbEnvClass']} env;",
              '    int unsigned output_deadline_cycles = 200000;',
@@ -100,6 +104,7 @@ def render_tests(uvm):
              '    int          joint_stall_cycles = -1;',
              '    int          model_throttle_cycles = -1;',
              '    bit          no_stimulus_expected;',
+             '    bit          expect_from_model;',
              '    int          run_timeout_cycles = -1;',
              '    int          run_timeout_floor_cycles = -1;',
              '    int          run_timeout_factor = -1;',
@@ -132,6 +137,7 @@ def render_tests(uvm):
              '        void\'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));',
              '        void\'($value$plusargs("a2c_model_throttle_cycles=%d", model_throttle_cycles));',
              '        void\'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));',
+             '        void\'($value$plusargs("a2c_expect_from_model=%d", expect_from_model));',
              '        void\'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));',
              '        void\'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));',
              '        void\'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));',
@@ -147,6 +153,7 @@ def render_tests(uvm):
              '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);',
              '        end',
              '        uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);',
+             '        uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", expect_from_model);',
              '        if (lane_skew_cycles >= 0) begin',
              '            uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lane_skew_cycles", lane_skew_cycles);',
              '        end',
@@ -223,6 +230,27 @@ def render_tests(uvm):
               '            env.model_stable_point();',
               '        end',
               '    endtask',
+              '']
+    resets = [clock for clock in uvm['clocks'] if clock['reset']]
+    lines += ['    // Pulses every reset of the block and returns once each clock samples',
+              '    // its reset released. The RTL and the agents abandon what is in',
+              '    // flight, and the counters and comparators start again from the',
+              '    // release. The model has no mid-run reset, so a run that holds it',
+              '    // gets an A2C_RESET error instead.',
+              '    task reset_dut();',
+              '        bit model;',
+              '        void\'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model));',
+              '        if (model || env.dual_dut) begin',
+              '            `uvm_error("A2C_RESET", "reset_dut(): the run holds the SystemC model, which cannot be reset mid-run; reset only with --uvmDut rtl")',
+              '            return;',
+              '        end']
+    if resets:
+        lines.append('        fork')
+        lines += [f"            env.{clock['vif']}.request_reset();" for clock in resets]
+        lines.append('        join')
+    else:
+        lines.append('        `uvm_error("A2C_RESET", "reset_dut(): the block has no reset to pulse")')
+    lines += ['    endtask',
               '',
               '    // Warns about a run that sent nothing on any input and declared no',
               '    // transaction on any output, as the scaffolded smoke test does until',

@@ -13,6 +13,8 @@ package a2c_uvm_pkg;
     // port's modport: a DUT dst input gets an A2C_SRC agent.
     typedef enum {A2C_SRC, A2C_DST} a2c_role_e;
 
+    typedef virtual a2c_clk_if a2c_clk_vif_t;
+
     // cond ? when_true : when_false, typed string. VCS types a ?: of string
     // literals as a packed vector, which %s prints right-justified with
     // leading spaces.
@@ -190,6 +192,57 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_deadline_wait
 
+    // A component whose run-phase work starts again after a mid-run reset.
+    // run_from_reset() is that work, and begins by waiting for the reset
+    // release, as a run phase does. on_reset() drops what the killed work
+    // left behind, such as an item held from the sequencer.
+    interface class a2c_reset_aware;
+        pure virtual task run_from_reset();
+        pure virtual function void on_reset();
+    endclass : a2c_reset_aware
+
+    // Runs c.run_from_reset() until a rising edge of clk_vif samples rst_n
+    // asserted after a release, then kills it with every process it
+    // started, calls c.on_reset() and runs it again. At that edge an agent
+    // waits on the clock, for a drive point or a sample point, so the kill
+    // never lands inside a sequencer call, which the drivers make at a
+    // drive point. A protocol reset is synchronous to its clock, so a reset
+    // that a2c_clk_if::request_reset() raises is seen here one clock after
+    // the RTL sees it, and the monitors publish nothing they sample in
+    // between (a2c_clk_if::in_reset()).
+    task automatic a2c_run_reset_aware(virtual a2c_clk_if clk_vif, a2c_reset_aware c);
+        forever begin
+            fork
+                begin
+                    fork
+                        c.run_from_reset();
+                    join_none
+                    clk_vif.wait_reset_assert();
+                    disable fork;
+                end
+            join
+            c.on_reset();
+        end
+    endtask
+
+    // The monitor of an a2c agent: its run_from_reset() samples the lane and
+    // starts again at each mid-run reset, with its local state new.
+    virtual class a2c_monitor extends uvm_monitor implements a2c_reset_aware;
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        pure virtual function a2c_clk_vif_t monitor_clock();
+        pure virtual task run_from_reset();
+
+        virtual function void on_reset();
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            a2c_run_reset_aware(monitor_clock(), this);
+        endtask
+    endclass : a2c_monitor
+
     // Counts the transactions one output port delivers against the number
     // the test expects, with no check of their content. Each
     // wait_for_count() holds the test until every expected transaction has
@@ -206,9 +259,22 @@ package a2c_uvm_pkg;
     // analysis_export alone, its messages name no lane, and a transaction on
     // model_export is an A2C_CFG error. The base class holds everything but
     // the exports, so a2c_midstream_guard can list counters of any item type.
+    //
+    // With expect_from_model set, each lane's count need not be declared.
+    // In Mode B a model lane transaction beyond the expected count raises
+    // the expected count of both lanes, so the model lane's count becomes
+    // the DUT lane's expectation; in Mode A a transaction beyond it raises
+    // it. A wait then ends once the lanes have been quiet for the quiet
+    // window with nothing outstanding.
+    //
+    // With clk_vif set, a mid-run reset of its domain abandons what is in
+    // flight: each lane's expected count drops to the count it has
+    // received, and no shortfall stays reported.
     virtual class a2c_txn_counter_base extends uvm_component;
         string       port_name = "";
         bit          dual = 0;
+        bit          expect_from_model = 0;
+        virtual a2c_clk_if clk_vif;
         // A clock with no edge for this many of its periods has stopped. A
         // generated base test sets it from +a2c_clock_stop_cycles through
         // a2c_clock_stop_cycles in the config_db.
@@ -250,6 +316,22 @@ package a2c_uvm_pkg;
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             void'(a2c_get_config_int(this, "a2c_clock_stop_cycles", clock_stop_cycles));
+            a2c_get_config_bit(this, "a2c_expect_from_model", expect_from_model);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            if (clk_vif == null) return;
+            forever begin
+                clk_vif.wait_reset_assert();
+                reset();
+            end
+        endtask
+
+        function void reset();
+            foreach (expected[lane]) begin
+                expected[lane] = received[lane];
+                missing[lane]  = 0;
+            end
         endfunction
 
         protected function int unsigned lanes();
@@ -272,6 +354,9 @@ package a2c_uvm_pkg;
                 `uvm_info("A2C_TXN_COUNT", $sformatf("%s: late transaction, reported missing earlier; %0d still missing",
                                                  where(lane), missing[lane]), UVM_LOW)
                 return;
+            end
+            if (expect_from_model && received[lane] >= expected[lane] && (lane == A2C_MODEL_LANE || !dual)) begin
+                foreach (expected[l]) expected[l]++;
             end
             received[lane]++;
         endfunction
@@ -340,29 +425,44 @@ package a2c_uvm_pkg;
             w.waiter = process::self();
             w.clk    = clk_vif;
             waits.push_back(w);
-            while (outstanding() > 0 && cycles < deadline_cycles && running) begin
-                w.left = deadline_cycles - cycles;
-                clk_vif.next_sample(clock_stop_cycles, running);
-                if (running) cycles++;
+            forever begin
+                int unsigned seen;
+                while (outstanding() > 0 && cycles < deadline_cycles && running) begin
+                    w.left = deadline_cycles - cycles;
+                    clk_vif.next_sample(clock_stop_cycles, running);
+                    if (running) cycles++;
+                end
+                if (running) why = $sformatf("deadline of %0d clocks passed", deadline_cycles);
+                else why = $sformatf("the clock stopped after %0d clocks", cycles);
+                for (int lane = 0; lane < lanes(); lane++) begin
+                    if (received[lane] < expected[lane]) begin
+                        `uvm_error("A2C_TXN_COUNT", $sformatf("%s: %s: expected %0d transactions, received %0d (%0d missing)",
+                                                          where(lane), why, expected[lane], received[lane],
+                                                          expected[lane] - received[lane]))
+                        missing[lane] += expected[lane] - received[lane];
+                        expected[lane] = received[lane];
+                        failed = 1;
+                    end
+                end
+                if (failed) break;
+                // Under expect_from_model a transaction on either lane starts
+                // the window again, and a model lane transaction the DUT lane
+                // has not matched sends the wait back to its deadline.
+                seen = received[A2C_DUT_LANE] + received[A2C_MODEL_LANE];
+                for (int unsigned c = 0; c < quiet_cycles && running; c++) begin
+                    clk_vif.next_sample(clock_stop_cycles, running);
+                    if (expect_from_model && received[A2C_DUT_LANE] + received[A2C_MODEL_LANE] != seen) begin
+                        seen = received[A2C_DUT_LANE] + received[A2C_MODEL_LANE];
+                        c    = 0;
+                    end
+                end
+                if (!expect_from_model || outstanding() == 0 || !running) break;
             end
             foreach (waits[i]) if (waits[i] == w) begin
                 waits.delete(i);
                 break;
             end
-            if (running) why = $sformatf("deadline of %0d clocks passed", deadline_cycles);
-            else why = $sformatf("the clock stopped after %0d clocks", cycles);
-            for (int lane = 0; lane < lanes(); lane++) begin
-                if (received[lane] < expected[lane]) begin
-                    `uvm_error("A2C_TXN_COUNT", $sformatf("%s: %s: expected %0d transactions, received %0d (%0d missing)",
-                                                      where(lane), why, expected[lane], received[lane],
-                                                      expected[lane] - received[lane]))
-                    missing[lane] += expected[lane] - received[lane];
-                    expected[lane] = received[lane];
-                    failed = 1;
-                end
-            end
             if (failed) return;
-            for (int unsigned c = 0; c < quiet_cycles && running; c++) clk_vif.next_sample(clock_stop_cycles, running);
             for (int lane = 0; lane < lanes(); lane++) begin
                 if (received[lane] > expected[lane]) begin
                     `uvm_error("A2C_TXN_COUNT", $sformatf("%s: by the end of the quiet window received %0d transactions, expected %0d (%0d extra)",
@@ -636,13 +736,28 @@ package a2c_uvm_pkg;
     // lane's items in seen[] gets this; lane_dead() is virtual, so a
     // subclass may override it. is_dead() and died_at() let any checker
     // that holds the comparator ask about a lane.
+    //
+    // A comparator that compared no pair by the end of the test reports it
+    // as an A2C_NO_PAIRS UVM_ERROR, since a check that never ran passed
+    // nothing, unless allow_no_pairs is set, from a2c_allow_no_pairs in the
+    // config_db or by the env, a lane died, or expects_pairs() is 0.
+    //
+    // With clk_vif set, which a2c_lane_agent does from its config, a
+    // mid-run reset of that domain abandons what is in flight on both lanes:
+    // reset() drops the unpaired items, and the lanes pair again from the
+    // release, counting their items from 1. Pair numbers in messages and for
+    // inject_mismatch() run on across the reset.
     virtual class a2c_comparator_base extends uvm_component;
         int unsigned midstream_beats = 64;
         int unsigned max_reported = 10;
         bit          auto_stable = 1;
         bit          counted = 0;
+        bit          allow_no_pairs = 0;
+        virtual a2c_clk_if clk_vif;
 
+        // The pairs since the last reset, and those before it.
         protected int unsigned pairs;
+        protected int unsigned pairs_before_reset;
         // Indexed by a2c_lane_e: the items each side has delivered.
         protected int unsigned seen[2];
         protected int unsigned window_lo;
@@ -670,6 +785,35 @@ package a2c_uvm_pkg;
         endfunction
 
         virtual function void stable_point();
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            a2c_get_config_bit(this, "a2c_allow_no_pairs", allow_no_pairs);
+        endfunction
+
+        virtual task run_phase(uvm_phase phase);
+            if (clk_vif == null) return;
+            forever begin
+                clk_vif.wait_reset_assert();
+                reset();
+            end
+        endtask
+
+        // A subclass drops its unpaired items and calls this.
+        virtual function void reset();
+            pairs_before_reset += pairs;
+            pairs     = 0;
+            seen      = '{0, 0};
+            window_lo = 0;
+            window_hi = 0;
+        endfunction
+
+        // Whether a test that compares no pair fails; a comparator that
+        // compares only on request, as a status port's does outside its
+        // stable policy, overrides it.
+        virtual function bit expects_pairs();
+            return 1;
         endfunction
 
         // dut.compare(model), keeping the fields the items' do_compare()
@@ -738,7 +882,7 @@ package a2c_uvm_pkg;
         endfunction
 
         function int unsigned get_pairs();
-            return pairs;
+            return pairs_before_reset + pairs;
         endfunction
 
         // Whether the pair just counted falls in a midstream window.
@@ -759,7 +903,7 @@ package a2c_uvm_pkg;
             if (past_death()) return;
             pairs++;
             midstream = in_midstream_window();
-            if (same && pairs != inject_pair) return;
+            if (same && get_pairs() != inject_pair) return;
             mismatches++;
             if (mismatches > max_reported) begin
                 if (unprinted == 0) begin
@@ -770,9 +914,9 @@ package a2c_uvm_pkg;
                 if (!midstream) unprinted_errors++;
                 return;
             end
-            what = $sformatf("%s: pair %0d", get_full_name(), pairs);
+            what = $sformatf("%s: pair %0d", get_full_name(), get_pairs());
             if (key != "") what = {what, " key ", key};
-            if (pairs == inject_pair) what = {what, " (injected mismatch)"};
+            if (get_pairs() == inject_pair) what = {what, " (injected mismatch)"};
             what = {what, ": DUT ", dut.convert2string(), ", model ", model.convert2string()};
             if (midstream) what = {what, "; ", midstream_cause()};
             if (pair_at[A2C_DUT_LANE] >= 0 && pair_at[A2C_MODEL_LANE] >= 0) begin
@@ -794,6 +938,10 @@ package a2c_uvm_pkg;
                 if (unprinted_errors > 0) `uvm_error("A2C_MODEL_CMP", what)
                 else `uvm_warning("A2C_MODEL_CMP_MIDSTREAM", what)
             end
+            if (get_pairs() == 0 && !allow_no_pairs && !stopped() && expects_pairs()) begin
+                `uvm_error("A2C_NO_PAIRS", $sformatf("%s: the test compared no pair of DUT and model items, so this port went unchecked; send traffic through it, or set allow_no_pairs (a2c_allow_no_pairs in the config_db) where none is meant%s",
+                                                 get_full_name(), a2c_run_ended_clause()))
+            end
             if (!stopped()) return;
             what = "";
             foreach (dead[lane]) begin
@@ -801,7 +949,7 @@ package a2c_uvm_pkg;
                 what = {what, a2c_select_str(what == "", "", " and "), $sformatf("the %s lane dead at %0t", a2c_lane_name(a2c_lane_e'(lane)), dead_at[lane])};
             end
             `uvm_info("A2C_MODEL_CMP", $sformatf("%s: the comparison stopped after %0d pairs: the master declared %s. %0d DUT and %0d model items were not compared",
-                                             get_full_name(), pairs, what, uncompared(A2C_DUT_LANE), uncompared(A2C_MODEL_LANE)), UVM_MEDIUM)
+                                             get_full_name(), get_pairs(), what, uncompared(A2C_DUT_LANE), uncompared(A2C_MODEL_LANE)), UVM_MEDIUM)
         endfunction
     endclass : a2c_comparator_base
 
@@ -985,6 +1133,17 @@ package a2c_uvm_pkg;
             held[A2C_MODEL_LANE] = later;
         endfunction
 
+        virtual function void reset();
+            dut_q.delete();
+            model_q.delete();
+            foreach (held[l]) held[l].delete();
+            limit = 0;
+            dut_keyed.delete();
+            model_kept.delete();
+            quota.delete();
+            super.reset();
+        endfunction
+
         virtual function void uncut();
             limit = 0;
             quota.delete();
@@ -1015,7 +1174,7 @@ package a2c_uvm_pkg;
             if (n == 0) return;
             if (first_key != "") first = {"in key order, key ", first_key, ", ", first};
             `uvm_error("A2C_MODEL_CMP", $sformatf("%s: end of test with %0d %s items unpaired after %0d pairs, first %s%s",
-                                              get_full_name(), n, side, pairs, first, a2c_run_ended_clause()))
+                                              get_full_name(), n, side, get_pairs(), first, a2c_run_ended_clause()))
         endfunction
 
         virtual function void check_phase(uvm_phase phase);
@@ -1072,6 +1231,17 @@ package a2c_uvm_pkg;
 
         virtual function bit has_xz(T t);
             return 0;
+        endfunction
+
+        virtual function bit expects_pairs();
+            return policy == A2C_STATUS_STABLE;
+        endfunction
+
+        // A status level holds across a reset until the design changes it,
+        // so the latest values stay.
+        virtual function void reset();
+            window_open = 0;
+            super.reset();
         endfunction
 
         virtual function void open_midstream_window();
@@ -1504,6 +1674,12 @@ package a2c_uvm_pkg;
         pure virtual function bit is_read(T t, output uvm_reg_addr_t addr);
         pure virtual function bit same_but_data(T dut, T model);
 
+        // Register traffic is optional: a test that never touches the bus
+        // leaves no port of the datapath unchecked.
+        virtual function bit expects_pairs();
+            return 0;
+        endfunction
+
         protected function void skip_range(uvm_reg_addr_t lo, uvm_reg_addr_t hi, string name);
             skips.push_back('{lo: lo, hi: hi, name: name, reads: 0});
         endfunction
@@ -1567,6 +1743,11 @@ package a2c_uvm_pkg;
                 demoted[seen[A2C_DUT_LANE] + 1] = 1;
             end
             super.write_a2c_dut(t);
+        endfunction
+
+        virtual function void reset();
+            demoted.delete();
+            super.reset();
         endfunction
 
         protected virtual function void compare_pair(T dut, T model, string k);
@@ -1886,6 +2067,16 @@ package a2c_uvm_pkg;
             waiting = -1;
         endfunction
 
+        // For the driver at a mid-run reset, with its lane counts back at 0:
+        // the responses recorded and not replayed are dropped with the
+        // transactions they answer.
+        virtual function void reset();
+            replayed        = 0;
+            waiting         = -1;
+            starts_at_drain = '{0, 0};
+            since_start     = 0;
+        endfunction
+
         // Neither lane is inside a transaction, no recorded response waits
         // for the model lane, and the model lane waits for no record.
         function bit idle();
@@ -2049,6 +2240,13 @@ package a2c_uvm_pkg;
 
         virtual function int unsigned pending();
             return records.size();
+        endfunction
+
+        virtual function void reset();
+            records.delete();
+            delays.delete();
+            recorded_at.delete();
+            super.reset();
         endfunction
 
         // Whether the model lane's next transaction is recorded. Until it
@@ -2575,6 +2773,20 @@ package a2c_uvm_pkg;
             void'(a2c_get_config_int(master, "a2c_clock_stop_cycles", clock_stop_cycles));
         endfunction
 
+        // At a mid-run reset the lanes start level, with nothing held or
+        // trailing. A dead lane stays dead.
+        function void reset();
+            held         = 0;
+            stuck        = 0;
+            both_stuck   = 0;
+            stalled      = 0;
+            waited       = '{0, 0};
+            lag          = 0;
+            trailing_now = 0;
+            window_at    = $realtime;
+            moved_at     = '{$realtime, $realtime};
+        endfunction
+
         // Whether the port's clock has stopped, as next_rise() judges it.
         function bit clock_stopped();
             return clk_vif != null && clk_vif.stopped(clock_stop_cycles);
@@ -2973,8 +3185,6 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_joint_watch
 
-    typedef virtual a2c_clk_if a2c_clk_vif_t;
-
     // The per-clock flow of one stream port, which a2c_rt_checker reads to
     // tell the clocks the DUT owes from those the testbench caused. A
     // monitor counts at each sample point from its reset release, in the
@@ -3171,9 +3381,20 @@ package a2c_uvm_pkg;
     // transfers do not fit either loop overrides the task, and keeps
     // lane_starts(), lane_done() and lane_busy() true to it for the drain
     // (a2c_replay_lanes).
+    //
+    // At a mid-run reset of cfg.clk_vif's domain the run loop starts again
+    // (a2c_run_reset_aware()), so the pins go back to their reset values.
+    // on_reset() returns the item the loop held, or had fetched and not yet
+    // taken, with item_done(), sets the lane counts back to 0 and resets wd
+    // and replay. A protocol whose loop keeps more, such as the open bursts
+    // of a pipelined master, overrides it, returns what the sequence waits
+    // for and calls the base's. A loop takes its items through get_item()
+    // or try_item() and returns them through item_finished(), so on_reset()
+    // knows what it holds.
     virtual class a2c_lane_driver #(type REQ = uvm_sequence_item, type VIF_T = virtual a2c_clk_if,
                                     type CFG_T = a2c_agent_config #(VIF_T), type REC_T = bit)
-        extends uvm_driver #(REQ) implements a2c_lane_waits, a2c_replay_lanes, a2c_replay_holder, a2c_lane_joiner;
+        extends uvm_driver #(REQ) implements a2c_lane_waits, a2c_replay_lanes, a2c_replay_holder, a2c_lane_joiner,
+                                             a2c_reset_aware;
         typedef a2c_replay_log #(REC_T)   replay_t;
         typedef a2c_pin_registry #(VIF_T) registry_t;
 
@@ -3199,6 +3420,12 @@ package a2c_uvm_pkg;
         protected a2c_rsp_state_e rsp_state[2];
         protected REC_T           response[2];
         protected int unsigned    response_delay[2];
+        // Whether the loop holds req from the sequencer without item_done().
+        protected bit             holding;
+        // fetcher(): a fetch the loop waits for, and the item it fetched.
+        protected bit             fetch_wanted;
+        protected bit             fetch_done;
+        protected REQ             fetch_req;
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3270,9 +3497,71 @@ package a2c_uvm_pkg;
 
         virtual task run_phase(uvm_phase phase);
             setup_lanes();
+            fork
+                fetcher();
+            join_none
+            a2c_run_reset_aware(cfg.clk_vif, this);
+        endtask
+
+        virtual task run_from_reset();
             if (cfg.role == A2C_SRC) run_src();
             else run_dst();
         endtask
+
+        virtual function void on_reset();
+            if (holding) item_finished();
+            if (fetch_done) begin
+                fetch_done = 0;
+                seq_item_port.item_done();
+            end
+            starts         = '{0, 0};
+            done           = '{0, 0};
+            rsp_state      = '{A2C_RSP_IDLE, A2C_RSP_IDLE};
+            response_delay = '{0, 0};
+            if (replay != null) replay.reset();
+            if (wd != null) wd.reset();
+        endfunction
+
+        // The sequencer's get_next_item() runs in this process, which a
+        // reset does not kill, since a fetch killed while it waits leaves
+        // the sequencer taking the driver's next call for a second one.
+        protected task fetcher();
+            forever begin
+                wait (fetch_wanted);
+                seq_item_port.get_next_item(fetch_req);
+                fetch_wanted = 0;
+                fetch_done   = 1;
+            end
+        endtask
+
+        // As get_next_item(req).
+        protected task get_item();
+            fetch_wanted = 1;
+            wait (fetch_done);
+            void'(take_fetched());
+        endtask
+
+        // For a loop that sets fetch_wanted and waits for fetch_done with a
+        // limit: puts the fetched item in req, if there is one.
+        protected function bit take_fetched();
+            if (!fetch_done) return 0;
+            fetch_done = 0;
+            req        = fetch_req;
+            holding    = 1;
+            return 1;
+        endfunction
+
+        // As try_next_item(req).
+        protected task try_item();
+            seq_item_port.try_next_item(req);
+            holding = (req != null);
+        endtask
+
+        // As item_done().
+        protected function void item_finished();
+            seq_item_port.item_done();
+            holding = 0;
+        endfunction
 
         // The default of a hook that a loop cannot run without.
         protected function void must_override(string hook);
@@ -3292,7 +3581,7 @@ package a2c_uvm_pkg;
             // back-to-back items go out on consecutive clocks, and the
             // request drops on the first drive point with no item.
             forever begin
-                seq_item_port.try_next_item(req);
+                try_item();
                 if (req == null) begin
                     drop_requests();
                     cfg.clk_vif.drive_edge();
@@ -3304,7 +3593,7 @@ package a2c_uvm_pkg;
                 end
                 for (int l = 0; l < lanes; l++) if (!wd.dead[l]) raise_request(l);
                 wait_transfer();
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
 
@@ -3536,8 +3825,9 @@ package a2c_uvm_pkg;
     // of its pin sets (a2c_pin_registry::join_passive()). At
     // end_of_elaboration_phase a passive agent for which needs_owner()
     // holds raises A2C_PASSIVE when no active agent has claimed its DUT pin
-    // set (a2c_pin_registry::note_unowned()). A subclass that overrides
-    // either phase calls the base's.
+    // set (a2c_pin_registry::note_unowned()). Its connect_phase gives the
+    // comparator the agent's clock, so a mid-run reset reaches it. A
+    // subclass that overrides either phase calls the base's.
     virtual class a2c_lane_agent #(type VIF_T = virtual a2c_clk_if) extends uvm_agent;
         typedef a2c_pin_registry #(VIF_T) registry_t;
         typedef a2c_agent_config #(VIF_T) lane_cfg_t;
@@ -3578,6 +3868,7 @@ package a2c_uvm_pkg;
             lane_cfg_t      cfg = lane_cfg();
             a2c_lane_joiner drv = lane_joiner();
             super.connect_phase(phase);
+            if (lane_cmp() != null) lane_cmp().clk_vif = cfg.clk_vif;
             if (drv != null) begin
                 drv.join_lanes(this, lane_cmp(), lane_monitor(A2C_DUT_LANE), lane_monitor(A2C_MODEL_LANE));
             end else begin

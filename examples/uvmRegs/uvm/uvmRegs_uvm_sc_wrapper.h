@@ -59,6 +59,7 @@ public:
         uvm_errors("uvm_errors"),
         rtl_dut("rtl_dut"),
         model_dut("model_dut"),
+        uvm_reset_req("uvm_reset_req"),
         m_eot(true)
     {
         tb_hdl.in_vld(in_hdl_inst.vld);
@@ -81,6 +82,7 @@ public:
         tb_hdl.uvm_errors(uvm_errors);
         tb_hdl.rtl_dut(rtl_dut);
         tb_hdl.model_dut(model_dut);
+        tb_hdl.uvm_reset_req(uvm_reset_req);
 
         // The model and its BFMs exist when the run's DUT set holds the model;
         // with the RTL alone the pins toward SystemC stay bound to idle signals.
@@ -131,6 +133,7 @@ private:
     sc_signal<sc_bv<32>> uvm_errors;
     sc_signal<bool> rtl_dut;
     sc_signal<bool> model_dut;
+    sc_signal<bool> uvm_reset_req;
 
     rdy_vld_hdl_if<sc_bv<16>> in_hdl_inst;
     rdy_vld_hdl_if<sc_bv<16>> out_hdl_inst;
@@ -151,13 +154,26 @@ private:
         }
     }
 
-    // The clock parameter is named reset_driver_clk, not clk, so it does not
+    // Releases rst after cycles rising edges of its clock. While the test
+    // raises uvm_reset_req it asserts rst again at the next rising edge,
+    // and releases it cycles rising edges after the request drops. The
+    // clock parameter is named reset_driver_clk, not clk, so it does not
     // shadow a member clock named clk.
     void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &reset_driver_clk, int cycles) {
-        for (int cycle = 0; cycle < cycles; cycle++) {
+        while (true) {
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(reset_driver_clk.posedge_event());
+            }
+            rst.write(true);
+            while (!uvm_reset_req.read()) {
+                wait(uvm_reset_req.posedge_event());
+            }
             wait(reset_driver_clk.posedge_event());
+            rst.write(false);
+            while (uvm_reset_req.read()) {
+                wait(uvm_reset_req.negedge_event());
+            }
         }
-        rst.write(true);
     }
 
     void clock_gen_clk() { clock_gen(clk, clk_half_); }

@@ -391,8 +391,7 @@ package axi_write_uvm_pkg;
             return 0;
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
-            setup_lanes();
+        virtual task run_from_reset();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].awvalid <= 1'b0;
                 lane[l].awid    <= '0;
@@ -417,6 +416,24 @@ package axi_write_uvm_pkg;
             join_none
             run_aw();
         endtask
+
+        // Every burst open at a mid-run reset returns to the sequence with
+        // no beats, as once both lanes are dead.
+        virtual function void on_reset();
+            super.on_reset();
+            foreach (opened[i]) seq_item_port.put_response(no_beats(opened[i].rsp[A2C_DUT_LANE]));
+            opened.delete();
+            skewed.delete();
+            w_queue.delete();
+            foreach (pending[l]) pending[l].delete();
+            outstanding = '{0, 0};
+            drop_aw     = '{0, 0};
+            drop_w      = '{0, 0};
+            w_taken     = '{0, 0};
+            aw_cur      = null;
+            w_cur       = null;
+            w_beat      = 0;
+        endfunction
 
         // The response to req, with its AW fields and beats and no B yet.
         protected function item_t new_response(item_t req);
@@ -503,7 +520,7 @@ package axi_write_uvm_pkg;
                     continue;
                 end
                 slot_held = 0;
-                seq_item_port.try_next_item(req);
+                try_item();
                 if (req == null) begin
                     drive_awvalid(1'b0);
                     cfg.clk_vif.drive_edge();
@@ -513,7 +530,7 @@ package axi_write_uvm_pkg;
                 if (why != "") begin
                     `uvm_error("A2C_CFG", $sformatf("%s: %s %s, so it is not driven", cfg.port_name,
                                                     req.convert2string(), why))
-                    seq_item_port.item_done();
+                    item_finished();
                     seq_item_port.put_response(no_beats(new_response(req)));
                     continue;
                 end
@@ -538,7 +555,7 @@ package axi_write_uvm_pkg;
                     lane[l].awuser  <= req.awuser;
                 end
                 wait_aw(b);
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
 
@@ -1059,10 +1076,9 @@ package axi_write_uvm_pkg;
         // the B before it transfers. One process serves both lanes, the DUT
         // lane first, so a model lane waiting for a pick takes it at the
         // drive point the DUT lane makes it.
-        virtual task run_phase(uvm_phase phase);
+        virtual task run_from_reset();
             bit aw_ready;
             bit w_ready;
-            setup_lanes();
             for (int l = 0; l < lanes; l++) begin
                 lane[l].awready <= 1'b0;
                 lane[l].wready  <= 1'b0;
@@ -1104,6 +1120,18 @@ package axi_write_uvm_pkg;
                 cfg.clk_vif.drive_edge();
             end
         endtask
+
+        // A mid-run reset drops every burst the lanes have taken, its beats
+        // and its B.
+        virtual function void on_reset();
+            super.on_reset();
+            foreach (aw_queue[l]) aw_queue[l].delete();
+            foreach (w_queue[l]) w_queue[l].delete();
+            foreach (b_queue[l]) b_queue[l].delete();
+            foreach (arrivals[l]) arrivals[l].delete();
+            b_cur = '{null, null};
+            held  = null;
+        endfunction
 
         virtual function bit lane_busy(a2c_lane_e l);
             return aw_queue[l].size() != 0 || w_queue[l].size() != 0 || b_queue[l].size() != 0 || b_cur[l] != null
@@ -1179,7 +1207,7 @@ package axi_write_uvm_pkg;
 
     class axi_write_monitor #(type addr_t = logic [31:0], type data_t = logic [31:0], type strb_t = logic [3:0],
                               type awuser_t = logic, type wuser_t = logic, type buser_t = logic,
-                              type id_t = logic [3:0]) extends uvm_monitor implements a2c_lane_watch, a2c_starvation_source;
+                              type id_t = logic [3:0]) extends a2c_monitor implements a2c_lane_watch, a2c_starvation_source;
         typedef axi_write_item#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t) item_t;
         typedef item_t::strb_bits_t                                                        strb_bits_t;
         typedef bit [$bits(id_t)-1:0]                                                      id_key_t;
@@ -1250,10 +1278,21 @@ package axi_write_uvm_pkg;
             return {get_full_name(), ".", cfg.port_name};
         endfunction
 
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        // A reset ends every open write unreported.
+        virtual function void on_reset();
+            aw_open.delete();
+            w_early.delete();
+            b_open.delete();
+        endfunction
+
         // A stalled AW, W or B must hold its valid and payload until ready.
         // B is taken first on each clock, since a B may not share the rising
         // edge of its burst's last W.
-        virtual task run_phase(uvm_phase phase);
+        virtual task run_from_reset();
             logic [AW_W-1:0] held_aw;
             logic [W_W-1:0]  held_w;
             logic [B_W-1:0]  held_b;
@@ -1263,6 +1302,7 @@ package axi_write_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 if (b_stalled && b_pins() !== held_b) begin
                     `uvm_error("A2C_HOLD", $sformatf("%s: %s before bready took the stalled response", cfg.port_name,
                                                      a2c_select_str(vif.bvalid !== 1'b1, "bvalid dropped", "the B payload changed")))

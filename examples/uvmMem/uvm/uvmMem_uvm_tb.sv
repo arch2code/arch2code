@@ -55,7 +55,8 @@ module uvmMem_uvm_tb
     output bit uvm_done,
     output bit [31:0] uvm_errors,
     output bit rtl_dut,
-    output bit model_dut
+    output bit model_dut,
+    output bit uvm_reset_req
 );
 
     rdy_vld_if #(.data_t(uvmMem_package::uvmMemCmdSt)) cmd();
@@ -115,6 +116,7 @@ module uvmMem_uvm_tb
     assign rd_credit.held = rd_model_held;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `elsif A2C_UVM_RTL_DUT
     uvmMem_hdl_sv_wrapper dut (
         .cmd_vld(cmd.vld),
@@ -146,6 +148,7 @@ module uvmMem_uvm_tb
     assign rd_model_credit = '0;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b0;
+    assign uvm_reset_req = clk_if.reset_request;
 `else
     assign cmd_vld = cmd.vld;
     assign cmd_data = cmd.data;
@@ -167,6 +170,7 @@ module uvmMem_uvm_tb
     assign rd_model_credit = '0;
     assign rtl_dut = 1'b0;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `endif
 
     // Each SystemC BFM contract break, such as a model that stalls a

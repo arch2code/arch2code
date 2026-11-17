@@ -37,7 +37,8 @@ module uvmVideo_uvm_tb
     output bit uvm_done,
     output bit [31:0] uvm_errors,
     output bit rtl_dut,
-    output bit model_dut
+    output bit model_dut,
+    output bit uvm_reset_req
 );
 
     raw_if #(.data_t(uvmVideo_package::uvmVideoRawSt)) vin();
@@ -75,6 +76,7 @@ module uvmVideo_uvm_tb
     assign vout_model.tuser = vout_tuser;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `elsif A2C_UVM_RTL_DUT
     uvmVideo_hdl_sv_wrapper dut (
         .vin_data(vin.data),
@@ -95,6 +97,7 @@ module uvmVideo_uvm_tb
     assign vout_tready = 1'b0;
     assign rtl_dut = 1'b1;
     assign model_dut = 1'b0;
+    assign uvm_reset_req = clk_if.reset_request;
 `else
     assign vin_data = vin.data;
     assign vout.tvalid = vout_tvalid;
@@ -108,6 +111,7 @@ module uvmVideo_uvm_tb
     assign vout.tuser = vout_tuser;
     assign rtl_dut = 1'b0;
     assign model_dut = 1'b1;
+    assign uvm_reset_req = 1'b0;
 `endif
 
     // Each SystemC BFM contract break, such as a model that stalls a

@@ -129,7 +129,7 @@ package notify_ack_uvm_pkg;
         endfunction
     endclass : notify_ack_driver
 
-    class notify_ack_monitor extends uvm_monitor;
+    class notify_ack_monitor extends a2c_monitor;
         notify_ack_config                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual notify_ack_if                vif;
@@ -142,7 +142,11 @@ package notify_ack_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             logic notify;
             logic ack;
             bit   waiting = 0;
@@ -150,6 +154,7 @@ package notify_ack_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 notify = vif.notify;
                 ack    = vif.ack;
                 // A source waiting for ack must hold notify until the event completes.

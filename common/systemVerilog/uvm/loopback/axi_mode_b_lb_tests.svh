@@ -3718,6 +3718,12 @@
             super.new(name, parent);
             trail = 1;
         endfunction
+
+        // axr's model lane never reads.
+        virtual function void build_phase(uvm_phase phase);
+            uvm_config_db#(bit)::set(this, "rd.model_cmp", "a2c_allow_no_pairs", 1'b1);
+            super.build_phase(phase);
+        endfunction
     endclass : axi_mode_b_two_port_trail_test
 
     // ------------------------------------------------- passive agents alone
@@ -3780,6 +3786,7 @@
             po_agent_t  po_src;
             mem_agent_t mem_src;
             super.build_phase(phase);
+            uvm_config_db#(bit)::set(this, "*", "a2c_allow_no_pairs", 1'b1);
             notes    = lb_id_texts::type_id::create("notes");
             notes.id = "A2C_PASSIVE";
             uvm_report_cb::add(null, notes);

@@ -459,6 +459,7 @@
             guard   = a2c_midstream_guard::type_id::create("guard", this);
             counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
             cmp     = lb_cmp_t::type_id::create("cmp", this);
+            cmp.allow_no_pairs = !with_cmp;
             ctrl    = lb_reg::type_id::create("ctrl");
             counter.port_name = "rv";
             counter.dual      = 1;
@@ -1294,6 +1295,7 @@
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
             cmp     = lb_st_cmp_t::type_id::create("cmp", this);
+            cmp.allow_no_pairs = 1;
             catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
             uvm_report_cb::add(null, catcher);
         endfunction

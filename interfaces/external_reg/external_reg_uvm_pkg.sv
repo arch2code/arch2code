@@ -138,7 +138,7 @@ package external_reg_uvm_pkg;
             cfg.clk_vif.wait_reset_release();
             cfg.clk_vif.drive_edge();
             forever begin
-                seq_item_port.try_next_item(req);
+                try_item();
                 if (req == null) begin
                     drive_write('0);
                     cfg.clk_vif.drive_edge();
@@ -154,7 +154,7 @@ package external_reg_uvm_pkg;
                 end
                 cfg.clk_vif.drive_edge();
                 drive_write('0);
-                seq_item_port.item_done();
+                item_finished();
             end
         endtask
 
@@ -193,6 +193,11 @@ package external_reg_uvm_pkg;
             join
         endtask
 
+        virtual function void on_reset();
+            super.on_reset();
+            ahead = 0;
+        endfunction
+
         // A write starts and completes on the clock that takes it. A model
         // lane write the DUT lane has yet to make waits, as the model lane
         // of a handshake port would, until the DUT lane's write of the same
@@ -211,7 +216,7 @@ package external_reg_uvm_pkg;
         endfunction
     endclass : external_reg_driver
 
-    class external_reg_monitor #(type data_t = logic [31:0]) extends uvm_monitor;
+    class external_reg_monitor #(type data_t = logic [31:0]) extends a2c_monitor;
         external_reg_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual external_reg_if #(.data_t(data_t))     vif;
@@ -228,13 +233,18 @@ package external_reg_uvm_pkg;
             rdata_ap = new("rdata_ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             external_reg_item#(data_t) item;
             data_t                     last;
             bit                        first = 1;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 if (first || vif.rdata !== last) begin
                     first = 0;
                     last  = vif.rdata;

@@ -95,7 +95,7 @@ package status_uvm_pkg;
         endfunction
     endclass : status_driver
 
-    class status_monitor #(type data_t = logic) extends uvm_monitor;
+    class status_monitor #(type data_t = logic) extends a2c_monitor;
         status_config#(data_t)                    cfg;
         // The lane this monitor samples, cfg.vif or cfg.model_vif.
         virtual status_if #(.data_t(data_t))      vif;
@@ -108,13 +108,18 @@ package status_uvm_pkg;
             ap = new("ap", this);
         endfunction
 
-        virtual task run_phase(uvm_phase phase);
+        virtual function a2c_clk_vif_t monitor_clock();
+            return cfg.clk_vif;
+        endfunction
+
+        virtual task run_from_reset();
             status_item#(data_t) item;
             data_t               last;
             bit                  first = 1;
             cfg.clk_vif.wait_reset_release();
             forever begin
                 cfg.clk_vif.sample_edge();
+                if (cfg.clk_vif.in_reset()) continue;
                 if (!first && vif.data === last) continue;
                 first = 0;
                 last  = vif.data;
@@ -188,6 +193,7 @@ package status_uvm_pkg;
 
         virtual function void connect_phase(uvm_phase phase);
             if (model_cmp != null) begin
+                model_cmp.clk_vif = cfg.clk_vif;
                 mon.ap.connect(model_cmp.dut_export);
                 model_mon.ap.connect(model_cmp.model_export);
             end

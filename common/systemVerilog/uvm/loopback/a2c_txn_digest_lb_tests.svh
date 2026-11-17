@@ -49,6 +49,8 @@
             dual_d.dual = 1;
             in_order = a2c_in_order_comparator#(rv_item_t)::type_id::create("in_order", this);
             status   = a2c_status_comparator#(rv_item_t)::type_id::create("status", this);
+            in_order.allow_no_pairs = 1;
+            status.allow_no_pairs   = 1;
         endfunction
 
         function rv_digest_t digest(string port);
@@ -183,6 +185,8 @@
             d_digest.dual      = 1;
             c_digest.cmp       = a2c_in_order_comparator#(rv_item_t)::type_id::create("c_cmp", this);
             d_digest.cmp       = a2c_status_comparator#(rv_item_t)::type_id::create("d_cmp", this);
+            c_digest.cmp.allow_no_pairs = 1;
+            d_digest.cmp.allow_no_pairs = 1;
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);

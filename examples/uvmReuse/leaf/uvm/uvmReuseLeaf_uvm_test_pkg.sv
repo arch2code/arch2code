@@ -78,7 +78,11 @@ package uvmReuseLeaf_uvm_test_pkg;
     // rt_on_model set the real-time rules of every a2c_rt_checker the
     // env holds; left at -1 each keeps the checker's own, and
     // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
-    // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them.
+    // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With
+    // expect_from_model (+a2c_expect_from_model=1) set, an output needs no
+    // expect_count(): in Mode B the model lane's count is the DUT lane's
+    // expectation, and wait_for_outputs() returns once the outputs have
+    // been quiet for quiet_cycles. reset_dut() pulses the resets mid-run.
     class uvmReuseLeaf_base_test extends uvm_test implements a2c_run_work;
         uvmReuseLeaf_tb_env env;
         int unsigned output_deadline_cycles = 200000;
@@ -93,6 +97,7 @@ package uvmReuseLeaf_uvm_test_pkg;
         int          joint_stall_cycles = -1;
         int          model_throttle_cycles = -1;
         bit          no_stimulus_expected;
+        bit          expect_from_model;
         int          run_timeout_cycles = -1;
         int          run_timeout_floor_cycles = -1;
         int          run_timeout_factor = -1;
@@ -125,6 +130,7 @@ package uvmReuseLeaf_uvm_test_pkg;
             void'($value$plusargs("a2c_joint_stall_cycles=%d", joint_stall_cycles));
             void'($value$plusargs("a2c_model_throttle_cycles=%d", model_throttle_cycles));
             void'($value$plusargs("a2c_no_stimulus_expected=%d", no_stimulus_expected));
+            void'($value$plusargs("a2c_expect_from_model=%d", expect_from_model));
             void'($value$plusargs("a2c_run_timeout_cycles=%d", run_timeout_cycles));
             void'($value$plusargs("a2c_run_timeout_floor_cycles=%d", run_timeout_floor_cycles));
             void'($value$plusargs("a2c_run_timeout_factor=%d", run_timeout_factor));
@@ -140,6 +146,7 @@ package uvmReuseLeaf_uvm_test_pkg;
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_drain_catchup_cycles", drain_catchup_cycles);
             end
             uvm_config_db#(bit)::set(this, "env*", "a2c_drain_cut_expected", drain_cut_expected);
+            uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", expect_from_model);
             if (lane_skew_cycles >= 0) begin
                 uvm_config_db#(int unsigned)::set(this, "env*", "a2c_lane_skew_cycles", lane_skew_cycles);
             end
@@ -215,6 +222,23 @@ package uvmReuseLeaf_uvm_test_pkg;
             end
         endtask
 
+        // Pulses every reset of the block and returns once each clock samples
+        // its reset released. The RTL and the agents abandon what is in
+        // flight, and the counters and comparators start again from the
+        // release. The model has no mid-run reset, so a run that holds it
+        // gets an A2C_RESET error instead.
+        task reset_dut();
+            bit model;
+            void'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model));
+            if (model || env.dual_dut) begin
+                `uvm_error("A2C_RESET", "reset_dut(): the run holds the SystemC model, which cannot be reset mid-run; reset only with --uvmDut rtl")
+                return;
+            end
+            fork
+                env.clk_vif.request_reset();
+            join
+        endtask
+
         // Warns about a run that sent nothing on any input and declared no
         // transaction on any output, as the scaffolded smoke test does until
         // its run_body() sends stimulus. A Mode B comparator or a check of the
@@ -287,6 +311,123 @@ package uvmReuseLeaf_uvm_test_pkg;
             super.new(name, parent);
         endfunction
     endclass : uvmReuseLeaf_smoke_test
+
+    // Sends n beats with pixels first, first + 1, ..., as one line of one
+    // frame. after_reset is the index of the first beat the driver took
+    // after a reset, which the test counts in resets.
+    class uvmReuseLeaf_beat_seq extends uvm_sequence #(in_item_t);
+        int unsigned n;
+        int unsigned first;
+        int unsigned resets;
+        int          after_reset = -1;
+
+        `uvm_object_utils(uvmReuseLeaf_beat_seq)
+
+        function new(string name = "uvmReuseLeaf_beat_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            for (int unsigned i = 0; i < n; i++) begin
+                in_item_t it = in_item_t::type_id::create("it");
+                start_item(it);
+                if (resets > 0 && after_reset < 0) after_reset = i;
+                it.data       = '0;
+                it.data.pixel = uvmReusePixelT'(first + i);
+                it.data.sof   = i == 0;
+                it.data.eol   = i == n - 1;
+                it.data.eof   = i == n - 1;
+                it.gap        = 0;
+                finish_item(it);
+            end
+        endtask
+    endclass : uvmReuseLeaf_beat_seq
+
+    // A mid-run reset of the RTL, which only a Mode A run on the RTL can
+    // take. The test programs offset 5, streams with out stalling, and
+    // resets the DUT while the input driver holds a beat the DUT has not
+    // taken. The driver abandons that beat and the stream goes on from the
+    // next one after the release. Each pixel out before the reset carries
+    // offset 5; the offset register must read its default of 1 after the
+    // release, and each pixel after it must carry that.
+    class uvmReuseLeaf_reset_test extends uvmReuseLeaf_base_test;
+        uvm_tlm_analysis_fifo #(out_item_t) out_fifo;
+
+        `uvm_component_utils(uvmReuseLeaf_reset_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+        endfunction
+
+        virtual function void build_phase(uvm_phase phase);
+            super.build_phase(phase);
+            out_fifo = new("out_fifo", this);
+        endfunction
+
+        virtual function void connect_phase(uvm_phase phase);
+            super.connect_phase(phase);
+            env.out_agent.mon.ap.connect(out_fifo.analysis_export);
+        endfunction
+
+        // Checks the next n pixels out against first + i + offset.
+        protected function void check_out(int unsigned n, int unsigned first, uvm_reg_data_t offset);
+            for (int unsigned i = 0; i < n; i++) begin
+                out_item_t it;
+                if (!out_fifo.try_get(it)) begin
+                    `uvm_error("RESET_TEST", $sformatf("%0d of %0d pixels out", i, n))
+                    return;
+                end
+                if (it.data.pixel != uvmReusePixelT'(first + i + offset)) begin
+                    `uvm_error("RESET_TEST", $sformatf("pixel %0d out is 'h%0h, expected 'h%0h", i, it.data.pixel,
+                                                       uvmReusePixelT'(first + i + offset)))
+                end
+            end
+        endfunction
+
+        virtual task run_body();
+            uvmReuseLeaf_config_seq cfg_seq = uvmReuseLeaf_config_seq::type_id::create("config_seq");
+            uvmReuseLeaf_beat_seq   beats = uvmReuseLeaf_beat_seq::type_id::create("beats");
+            uvm_status_e            status;
+            int unsigned            out_at_reset;
+            int unsigned            rest;
+            bit                     done;
+            cfg_seq.offset = 5;
+            cfg_seq.model  = env.regmodel;
+            cfg_seq.start(null);
+            env.out_agent.cfg.ready_pct = 30;
+            beats.n     = 64;
+            beats.first = 'h100;
+            env.out_counter.expect_count(beats.n);
+            fork
+                forever begin
+                    env.clk_vif.wait_reset_assert();
+                    beats.resets++;
+                end
+                begin
+                    beats.start(env.in_agent.sqr);
+                    done = 1;
+                end
+            join_none
+            while (out_fifo.used() < 8) env.clk_vif.sample_edge();
+            reset_dut();
+            out_at_reset = out_fifo.used();
+            env.out_agent.cfg.ready_pct = 100;
+            check_out(out_at_reset, beats.first, 5);
+            env.regmodel.reset();
+            env.regmodel.offset.mirror(status, UVM_CHECK);
+            wait (done);
+            if (beats.after_reset <= int'(out_at_reset)) begin
+                `uvm_error("RESET_TEST", $sformatf("nothing was in flight at the reset: %0d beats out, and the first beat after it is beat %0d",
+                                                   out_at_reset, beats.after_reset))
+            end
+            `uvm_info("RESET_TEST", $sformatf("%0d beats out before the reset, beats %0d to %0d abandoned, %0d sent after it", out_at_reset,
+                                              out_at_reset, beats.after_reset - 1, beats.n - beats.after_reset), UVM_LOW)
+            rest = beats.n - beats.after_reset;
+            env.out_counter.expect_count(rest);
+            wait_for_outputs();
+            check_out(rest, beats.first + beats.after_reset, 1);
+        endtask
+    endclass : uvmReuseLeaf_reset_test
 
 // GENERATED_CODE_BEGIN --template=uvmTest --section=footer
 

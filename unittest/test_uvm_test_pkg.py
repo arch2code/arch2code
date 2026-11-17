@@ -291,7 +291,8 @@ LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env',
                           {'name': 'lb_st', 'agent': 'lb_st_agent', 'role': 'dst', 'counter': None},
                           {'name': 'lb_out', 'agent': 'lb_out_agent', 'role': 'src', 'counter': 'lb_out_counter',
                            'clockVif': 'clk_vif'}],
-                'clocks': [{'clock': 'clk', 'vif': 'clk_vif'}, {'clock': 'clk2', 'vif': 'clk2_vif'}]}
+                'clocks': [{'clock': 'clk', 'vif': 'clk_vif', 'reset': 'rst_n'},
+                           {'clock': 'clk2', 'vif': 'clk2_vif', 'reset': None}]}
 
 
 def regions(path):
@@ -336,7 +337,8 @@ def check_layout(path, hasOutput, hasModel=True):
                                   ('footer', footer, footerTests + FOOTER)):
         if not in_order(lines, expected):
             problems.append(f"{name} {what} is\n    {lines}\n  expected in order\n    {expected}")
-    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT + OUTPUT_DECLARED + OUTPUT_WORK + FAIL_TEST[:1]):
+    # OUTPUT_WAIT's fork and join also open reset_dut()'s requests.
+    if not hasOutput and any(line in tests + footer for line in OUTPUT_WAIT[1:2] + OUTPUT_DECLARED + OUTPUT_WORK + FAIL_TEST[:1]):
         problems.append(f"{name} waits on an output or declares a fail test, and the block has no counted output")
     if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")

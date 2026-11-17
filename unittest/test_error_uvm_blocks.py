@@ -5,7 +5,11 @@ The testbench instantiates the block's HDL verification wrapper, gives every
 boundary port an agent of its interface type, and drives every clock and reset
 of the block. `validateUvmBlocks` (`pysrc/processYaml.py`) rejects a block
 that breaks one of those assumptions, naming the block and, where one is at
-fault, the port and its interface type. The boundary covers more than ports:.
+fault, the port and its interface type. An agent drives 100 ps after a rising
+edge and samples at the falling edge, so a clock period of 200 ps or less is
+rejected; 202 ps, the shortest even period above it, is accepted. A block with
+no input clock is already rejected by the clock and reset rules every hasVl
+block meets, which the arm with only an output clock pins. The boundary covers more than ports:.
 A connectionMaps boundary port, a memoryConnections port and a
 registerConnections port need no ports: row, and the wrapper still has a pin
 group for each. A memoryConnections port has type memory, and a
@@ -17,8 +21,8 @@ the row's structures, an agent in the env with the role opposite the port,
 the testbench module its interface, and the wrapper its X/Z checker. A
 one-bit payload pin is a scalar bit, as the simulator shell binds a bool. The
 testbench module also declares names of its own: the DUT instance `dut`, the
-completion pins, the report server `srv` and one `<clock>_if` per clock,
-beside one `<port>_<signal>` pin per port signal and, for a block with a
+completion pins, the reset request pin, the report server `srv` and one
+`<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal and, for a block with a
 model, the model DUT's `<port>_model` interface per port and, per port of a
 type that sets uvmModelCredit, the Mode B credit names `<port>_model_credit`,
 `<port>_model_held` and `<port>_credit`, so a port, clock or reset named like
@@ -257,6 +261,20 @@ REJECTED = [
     ('a port named like the model completion pin', ROOT_PROJECT,
      [(ARCH, [('            out: {', '            model_dut: {'), ('srcport: out,', 'srcport: model_dut,')])],
      [WHERE, "its port 'model_dut' has the name of the completion pin 'model_dut'"]),
+    ('a port named like the reset request pin', ROOT_PROJECT,
+     [(ARCH, [('            out: {', '            uvm_reset_req: {'), ('srcport: out,', 'srcport: uvm_reset_req,')])],
+     [WHERE, "its port 'uvm_reset_req' has the name of the reset request pin 'uvm_reset_req'"]),
+    ('a clock period of 200 ps', ROOT_PROJECT,
+     [(ROOT_PROJECT, [('topInstance: ubTb\n',
+                       'topInstance: ubTb\n\nclocks:\n    clk: { desc: "Main clock", period: 200, timeUnit: ps }\n')])],
+     [WHERE, "its clock 'clk' has a period of 200 ps", "the period must exceed 200 ps"]),
+    ('only an output clock', ROOT_PROJECT,
+     [(ARCH, [('        hasUvm: true\n',
+               '        hasUvm: true\n'
+               '        clocks:\n'
+               '            clkOut: { direction: output }\n'),
+      ('addressGroup: top }', 'addressGroup: top, clocks: { clkOut: ~ } }')])],
+     ["Block 'ubDut' has no default clock (every declared clock is direction: output)"]),
     ('a port named like another port\'s model interface', ROOT_PROJECT,
      [(ARCH, [('            out: {', '            in_model: {'), ('srcport: out,', 'srcport: in_model,')])],
      [WHERE, "its port 'in_model' has the name of the model DUT's interface instance 'in_model' of port 'in'"]),
@@ -401,6 +419,9 @@ REJECTED = [
 ACCEPTED = [
     ('rdy_vld ports and an apb register bus', ROOT_PROJECT, []),
     ('a child-owned block with rdy_vld ports', CHILD_ROOT_PROJECT, []),
+    ('a clock period of 202 ps', ROOT_PROJECT,
+     [(ROOT_PROJECT, [('topInstance: ubTb\n',
+                       'topInstance: ubTb\n\nclocks:\n    clk: { desc: "Main clock", period: 202, timeUnit: ps }\n')])]),
     ('a block without a model with a port named like another port\'s model interface', ROOT_PROJECT,
      [(ARCH, [('        desc: "DUT under the UVM testbench"\n        hasMdl: true\n',
                '        desc: "DUT under the UVM testbench"\n        hasMdl: false\n'),

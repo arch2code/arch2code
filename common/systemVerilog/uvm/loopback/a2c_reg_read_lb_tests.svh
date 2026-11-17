@@ -792,6 +792,7 @@
             super.connect_phase(phase);
             catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
             uvm_report_cb::add(null, catcher);
+            data_cmp.allow_no_pairs = 1;
             cmp.skip_reg(regs.status, regs.alt_map);
         endfunction
 
@@ -819,6 +820,7 @@
             super.connect_phase(phase);
             catcher = lb_cfg_fatal_catcher::type_id::create("catcher");
             uvm_report_cb::add(null, catcher);
+            data_cmp.allow_no_pairs = 1;
             cmp.skip_mem(regs.rom, regs.alt_map);
         endfunction
 
@@ -1409,6 +1411,7 @@
 
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
+            data_cmp.allow_no_pairs = 1;
             hier = lb_hier::type_id::create("lb_hier");
             hier.build();
             child_guard  = a2c_midstream_guard::type_id::create("child_guard", this);
