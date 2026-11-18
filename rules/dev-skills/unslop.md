@@ -1,6 +1,6 @@
 ---
 name: unslop
-description: Cut AI tells from any writing. Must always apply.
+description: Cut AI tells from prose an agent writes, such as reports, plans, skill and rule files, commit messages, PR descriptions, markdown docs, code comments and docstrings. Apply it to every such text before handing it back.
 ---
 
 # Unslop
@@ -82,7 +82,8 @@ Removing patterns is half the job. Sterile, voiceless writing is just as obvious
 ## Scope in this repo
 
 Applies to prose an agent writes or edits: reports, plan files, skill and rule
-files, commit messages, PR descriptions, and markdown documentation. It does not
+files, commit messages, PR descriptions, markdown documentation, code comments
+and docstrings. It does not
 govern generated code, YAML, or generated regions, whose formatting is owned by
 the templates.
 
