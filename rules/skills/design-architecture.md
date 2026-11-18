@@ -276,6 +276,8 @@ An `ro` or `ext` register that no `registerConnections` row connects lives insid
 
 Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem.
 
+On a write-one-to-clear register, `warn` waives only the read compare. A clear that lands between the two sides' sets still leaves them different, so the block must order its clears against its sets as the RTL does, for example with a synchLock site (A2C Pro).
+
 ```yaml
 registers:
   - {register: dmaStatus, regType: ro, block: dma, structure: dmaStatusSt, desc: "Engine state", tandem: warn}

@@ -10752,8 +10752,8 @@ class projectCreate:
             registerPolicies[regKey] = self._tandemPolicy(reg['tandem'], label)
             if registerPolicies[regKey] is not None and reg['regType'] not in ('ro', 'ext'):
                 self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro or ext "
-                              f"register takes the key. An rw register reaches a leaf as a status input, which a "
-                              f"Tandem run does not compare, and a memory register has no read compare of its own.")
+                              f"register takes the key. Firmware writes an rw register, so both sides read back "
+                              f"the same data, and a Tandem run always compares the reads of a memory register.")
         # An ro or ext register no registerConnections row connects stays inside
         # its own block, so a Tandem run sees it only through firmware reads on
         # the block's register bus. The key sets how the register-bus tee
@@ -10769,7 +10769,7 @@ class projectCreate:
                 self.logError(f"{registerLabels[regKey]} sets tandem:, but block '{reg['block']}' owns it, and "
                               f"{why}. On a register no registerConnections row connects, tandem: sets how a "
                               f"Tandem run of the owning block compares firmware reads of it.")
-            elif reg['regType'] in ('ro', 'ext'):
+            else:
                 registerReads.setdefault(reg['blockKey'], dict())[reg['register']] = policy
         self.config.setConfig('TANDEMREGISTERREADS', registerReads, bin=True)
 
@@ -10788,11 +10788,16 @@ class projectCreate:
             instance = flat['instances'][rc['instanceKey']]
             why = notTandem(instance['instanceTypeKey'])
             if policy is not None:
-                if reg['regType'] != 'ro':
+                if reg['regType'] == 'ext':
+                    self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: ext and "
+                                  f"this row connects it, so it reaches '{rc['instance']}' on an external_reg "
+                                  f"port, which a Tandem run always compares. tandem: on an ext register applies "
+                                  f"only when no registerConnections row connects it.")
+                elif reg['regType'] != 'ro':
                     self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: "
                                   f"{reg['regType']}. Only an ro register reaches a leaf as a status output; an rw "
-                                  f"register reaches it as a status input, and ext and memory registers are not "
-                                  f"status ports.")
+                                  f"register reaches it as a status input, and a memory register is not a status "
+                                  f"port.")
                 if why:
                     self.logError(f"{label} sets tandem:, but '{rc['instance']}' is an instance of block "
                                   f"'{instance['instanceType']}', and {why}.")

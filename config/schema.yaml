@@ -802,7 +802,9 @@ registers:
   isParameterizable: auto(regIsParameterizable)
   maxBytes: auto(regMaxBytes)
   # Tandem status-compare policy of each leaf port its registerConnections
-  # rows define; see connections.
+  # rows define; see connections. On an ro or ext register no
+  # registerConnections row connects, how a Tandem run compares firmware
+  # reads of it.
   tandem: optional()
   registerBlock:
     _key:

@@ -34,13 +34,21 @@ from pysrc.processYaml import projectOpen
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
           wrap_out_extra='', leaf_ro_extra='', leaf_ext_extra='', leaf_rw_extra='', leaf_mem_extra='',
-          ext_reg_extra=''):
+          ext_reg_extra='', wide_ext_extra=None):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
-    duplicate port, so only a case make db rejects uses it."""
+    duplicate port, so only a case make db rejects uses it. A wide_ext_extra adds a
+    64-bit ext register to regLeaf, which make db rejects as wider than the bus."""
+    wide = '' if wide_ext_extra is None else (
+        '    - { register: wideExt, regType: ext, block: regLeaf, structure: wideRegSt, desc: "wide ext"'
+        + wide_ext_extra + ' }\n')
     fan = '' if fan_extra is None else (
         "    - { interface: statIf, src: uSrcA, dst: uSinkB" + fan_extra + " }\n")
-    preamble = APB_PREAMBLE + """    statIf:
+    preamble = APB_PREAMBLE.replace('structures:\n', """structures:
+    wideRegSt:
+        lo: { varType: apbDataT, generator: register, desc: "low word" }
+        hi: { varType: apbDataT, generator: register, desc: "high word" }
+""", 1) + """    statIf:
         desc: "status"
         interfaceType: status
         structures:
@@ -90,7 +98,7 @@ registers:
     - { register: leafExt, regType: ext, block: regLeaf, structure: cfgRegSt, desc: "leaf ext" """ + leaf_ext_extra + """ }
     - { register: leafMem, regType: memory, block: regLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 8, desc: "leaf memory" """ + leaf_mem_extra + """ }
     - { register: extReg, regType: ext, block: regOwner, structure: cfgRegSt, desc: "connected ext" """ + ext_reg_extra + """ }
-
+""" + wide + """
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
     - { register: rwReg, block: regOwner, instance: uRegLeaf""" + rw_rc_extra + """ }
@@ -215,12 +223,18 @@ def run_all_tests():
     reject("an rw registers row", ["register 'rwReg' of block 'regOwner'", "regType: rw"],
            rw_reg_extra=', tandem: fatal')
     reject("an rw registers row of a leaf", ["register 'leafRw' of block 'regLeaf'", "regType: rw",
-                                             "an ro or ext register"], leaf_rw_extra=', tandem: warn')
+                                             "an ro or ext register", "read back the same data"],
+           leaf_rw_extra=', tandem: warn')
     reject("a memory registers row of a leaf", ["register 'leafMem' of block 'regLeaf'", "regType: memory",
-                                                "an ro or ext register"], leaf_mem_extra=', tandem: warn')
+                                                "an ro or ext register", "always compares the reads of a memory register"],
+           leaf_mem_extra=', tandem: warn')
     reject("an ext register a registerConnections row connects",
-           ["registerConnections entry for register 'extReg'", "regType: ext", "not status ports"],
+           ["registerConnections entry for register 'extReg'", "regType: ext", "external_reg port",
+            "only when no registerConnections row connects it"],
            ext_reg_extra=', tandem: warn')
+    reject("an ext register wider than the register bus",
+           ["ext register 'wideExt' of block 'regLeaf'", "wider than the 32-bit register bus", "one bus access"],
+           wide_ext_extra=', tandem: warn')
     reject("an ext register no registerConnections row connects, with a bad value",
            ["register 'leafExt' of block 'regLeaf'", "tandem: loud"], leaf_ext_extra=', tandem: loud')
     reject("an ro register no registerConnections row connects, owned by a container",
