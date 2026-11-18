@@ -6,6 +6,8 @@ row that defines such a port sets how: fatal, warn, final, off, or a level windo
 in ns. The rows that can define a leaf's status output are a status connection
 (its src end), a connectionMaps entry with direction src, and a registerConnections
 entry of an ro register, whose registers row may give the value for all of them.
+The same rows of an ext register set how a Tandem run compares the value the
+connected leaf publishes on its external_reg port.
 An ro or ext register no registerConnections row connects stays inside its own
 leaf, and the key on its registers row sets how the leaf's register-bus tee
 compares firmware reads of it.
@@ -13,9 +15,9 @@ compares firmware reads of it.
 projectCreate persists the resolved policy per (block, port), and getBlockData
 returns the block's map as tandemStatusPolicy, and the read table as
 tandemRegisterReads. make db rejects an unknown value, a non-positive number, the
-key on a port that is not a leaf's status output or on a register no Tandem run
-reads, and a port or register whose defining rows disagree, across instances or
-fan-out.
+key on a port that is not a leaf's status output or ext register port, or on a
+register no Tandem run reads, and a port or register whose defining rows
+disagree, across instances or fan-out.
 """
 
 import sys
@@ -34,11 +36,18 @@ from pysrc.processYaml import projectOpen
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
           wrap_out_extra='', leaf_ro_extra='', leaf_ext_extra='', leaf_rw_extra='', leaf_mem_extra='',
-          ext_reg_extra='', wide_ext_extra=None):
+          ext_reg_extra='', ext_rc_extra='', wide_ext_extra=None, ext_tb_extra=None):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
     duplicate port, so only a case make db rejects uses it. A wide_ext_extra adds a
-    64-bit ext register to regLeaf, which make db rejects as wider than the bus."""
+    64-bit ext register to regLeaf, which make db rejects as wider than the bus. An
+    ext_tb_extra connects a second ext register to an instance of rtlOnly, which has
+    hasMdl: false."""
+    tbInst = '' if ext_tb_extra is None else "    uRegTb:     { container: regOwner, instanceType: rtlOnly }\n"
+    tbReg = '' if ext_tb_extra is None else (
+        '    - { register: extTb, regType: ext, block: regOwner, structure: cfgRegSt, desc: "ext to tb" }\n')
+    tbRc = '' if ext_tb_extra is None else (
+        "    - { register: extTb, block: regOwner, instance: uRegTb" + ext_tb_extra + " }\n")
     wide = '' if wide_ext_extra is None else (
         '    - { register: wideExt, regType: ext, block: regLeaf, structure: wideRegSt, desc: "wide ext"'
         + wide_ext_extra + ' }\n')
@@ -64,7 +73,10 @@ blocks:
 """ + render_plain_block('top', '        hasRtl: false\n') + render_router('apbDecode', 'top')
             + render_plain_block('srcLeaf') + render_plain_block('sinkLeaf') + render_plain_block('wrap')
             + render_plain_block('regOwner') + render_plain_block('tbSrc', '        hasRtl: false\n')
-            + render_plain_block('regLeaf') + """
+            + render_plain_block('regLeaf') + """    rtlOnly:
+        desc: "RTL-only block"
+        hasMdl: false
+
 instances:
     uTop:       { container: top, instanceType: top }
     uAPBDecode: { container: top, instanceType: apbDecode }
@@ -78,7 +90,7 @@ instances:
     uRegOwner:  { container: top, instanceType: regOwner, addressGroup: top }
     uRegLeaf:   { container: regOwner, instanceType: sinkLeaf }
     uOwnLeaf:   { container: top, instanceType: regLeaf, addressGroup: top }
-
+""" + tbInst + """
 connections:
     - { interface: statIf, src: uSrcA, dst: uSinkA""" + conn_extra + """ }
 """ + fan + """    - { interface: statIf, src: uSrcB, dst: uSinkB, dstport: statB""" + second_extra + """ }
@@ -98,12 +110,12 @@ registers:
     - { register: leafExt, regType: ext, block: regLeaf, structure: cfgRegSt, desc: "leaf ext" """ + leaf_ext_extra + """ }
     - { register: leafMem, regType: memory, block: regLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 8, desc: "leaf memory" """ + leaf_mem_extra + """ }
     - { register: extReg, regType: ext, block: regOwner, structure: cfgRegSt, desc: "connected ext" """ + ext_reg_extra + """ }
-""" + wide + """
+""" + wide + tbReg + """
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
     - { register: rwReg, block: regOwner, instance: uRegLeaf""" + rw_rc_extra + """ }
-    - { register: extReg, block: regOwner, instance: uRegLeaf }
-""")
+    - { register: extReg, block: regOwner, instance: uRegLeaf""" + ext_rc_extra + """ }
+""" + tbRc)
 
 
 RESULTS = []
@@ -191,6 +203,14 @@ def run_all_tests():
            policy(sinkLeaf={'roReg': 'off'}), ro_reg_extra=', tandem: off')
     accept("the same tandem: on the registers row and its registerConnections row",
            policy(sinkLeaf={'roReg': 'warn'}), ro_reg_extra=', tandem: warn', ro_rc_extra=', tandem: warn')
+    for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
+                            ('250', 250.0)):
+        accept(f"tandem: {value} on a connected ext registers row applies to its external_reg port",
+               policy(sinkLeaf={'extReg': resolved}), ext_reg_extra=f', tandem: {value}')
+    accept("tandem: on a registerConnections row of an ext register",
+           policy(sinkLeaf={'extReg': 'final'}), ext_rc_extra=', tandem: final')
+    accept("the same tandem: on an ext registers row and its registerConnections row",
+           policy(sinkLeaf={'extReg': 'warn'}), ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: warn')
     accept_reads("a leaf with no tagged register has no read table", None)
     for value, resolved in (('fatal', 'fatal'), ('warn', 'warn'), ('final', 'final'), ('off', 'off'),
                             ('250', 250.0)):
@@ -219,7 +239,7 @@ def run_all_tests():
     reject("a container's status output", ["connection statIf from 'uWrap' to 'uSinkB'", "contains instances (uInner)",
                                            "connectionMaps row"], wrap_out_extra=', tandem: fatal')
     reject("an rw registerConnections row", ["registerConnections entry for register 'rwReg'", "regType: rw",
-                                             "status input"], rw_rc_extra=', tandem: fatal')
+                                             "Only an ro or ext register", "status input"], rw_rc_extra=', tandem: fatal')
     reject("an rw registers row", ["register 'rwReg' of block 'regOwner'", "regType: rw"],
            rw_reg_extra=', tandem: fatal')
     reject("an rw registers row of a leaf", ["register 'leafRw' of block 'regLeaf'", "regType: rw",
@@ -228,10 +248,14 @@ def run_all_tests():
     reject("a memory registers row of a leaf", ["register 'leafMem' of block 'regLeaf'", "regType: memory",
                                                 "an ro or ext register", "always compares the reads of a memory register"],
            leaf_mem_extra=', tandem: warn')
-    reject("an ext register a registerConnections row connects",
-           ["registerConnections entry for register 'extReg'", "regType: ext", "external_reg port",
-            "only when no registerConnections row connects it"],
-           ext_reg_extra=', tandem: warn')
+    reject("an ext registers row and its registerConnections row that differ",
+           ["register 'extReg'", "tandem: final", "tandem: warn", "Set it in one place"],
+           ext_reg_extra=', tandem: warn', ext_rc_extra=', tandem: final')
+    reject("a connected ext register with a bad value",
+           ["registerConnections entry for register 'extReg'", "tandem: loud"], ext_rc_extra=', tandem: loud')
+    reject("an ext register connected to a block that does not run in Tandem",
+           ["registerConnections entry for register 'extTb'", "block 'rtlOnly'", "both hasMdl and hasRtl"],
+           ext_tb_extra=', tandem: warn')
     reject("an ext register wider than the register bus",
            ["ext register 'wideExt' of block 'regLeaf'", "wider than the 32-bit register bus", "one bus access"],
            wide_ext_extra=', tandem: warn')

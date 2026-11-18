@@ -88,7 +88,7 @@ public:
 
 
     blockGRegsChannels(std::string name, std::string srcName) :
-    rwG(("rwG"+name).c_str(), srcName)
+    rwG(("rwG"+name).c_str(), srcName, dRegSt::_packedSt(0x0))
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( blockGRegsBase<Config> *a, blockGRegsInverted<Config> *b)

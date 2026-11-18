@@ -802,7 +802,8 @@ registers:
   isParameterizable: auto(regIsParameterizable)
   maxBytes: auto(regMaxBytes)
   # Tandem status-compare policy of each leaf port its registerConnections
-  # rows define; see connections. On an ro or ext register no
+  # rows define; see connections. On an ext register that port publishes the
+  # value firmware reads. On an ro or ext register no
   # registerConnections row connects, how a Tandem run compares firmware
   # reads of it.
   tandem: optional()
@@ -883,6 +884,7 @@ registerConnections:
       field: instance
   isParameterizable: auto(registerConnectionIsParameterizable)
   # Tandem status-compare policy of the instance's port; see connections.
+  # Only an ro or ext register takes it.
   tandem: optional()
   # A registerConnections row carries no clock: of its own; the register's
   # domain is that of the bus reaching its owning block's register port, and

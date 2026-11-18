@@ -10669,12 +10669,13 @@ class projectCreate:
                       f"Use one of {', '.join(self.TANDEM_STATUS_POLICIES)}, or a positive level window in ns.")
 
     def calcTandemStatusPolicy(self):
-        """A Tandem run compares each status output of a leaf block by the
-        policy the tandem: key of the row defining that port names. The
-        Tandem wrapper is generated once per block, so every row that defines
-        one port of a block, across instances and fan-out, must agree, set or
-        unset. Persists {blockKey: {portName: policy}} for the ports that set
-        one.
+        """A Tandem run compares each status output of a leaf block, and the
+        value the leaf publishes on the external_reg port of an ext register
+        it owns, by the policy the tandem: key of the row defining that port
+        names. The Tandem wrapper is generated once per block, so every row
+        that defines one port of a block, across instances and fan-out, must
+        agree, set or unset. Persists {blockKey: {portName: policy}} for the
+        ports that set one.
         """
         flat = self.flatData
         blocks = flat['blocks']
@@ -10701,7 +10702,8 @@ class projectCreate:
             return self.diagnosticLocation(row['_context'], row.get('lc'))
 
         # (blockKey, portName) -> [(policy, row label)] for every row that
-        # defines a status output of a block that can run in Tandem
+        # defines a status output or an ext register port of a block that can
+        # run in Tandem
         ports = dict()
 
         for conn in flat['connections'].values():
@@ -10714,7 +10716,11 @@ class projectCreate:
                 if not isStatus(conn['interfaceKey']):
                     self.logError(f"{label} sets tandem:, but interface {conn['interface']} is of type "
                                   f"{flat['interfaces'][conn['interfaceKey']]['interfaceType']}. tandem: sets "
-                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                                  f"how a Tandem run compares a status output. On an external_reg port, "
+                                  f"the value the owner publishes compares under the run-wide default "
+                                  f"(--tandemStatusFatal, --tandemLevelWindow), and only a registers or "
+                                  f"registerConnections row of an ext register can set it. Other interfaces "
+                                  f"always compare.")
                 if why:
                     self.logError(f"{label} sets tandem:, but its src '{conn['src']}' is an instance of block "
                                   f"'{src['instanceType']}', and {why}. tandem: sets how a Tandem run compares "
@@ -10734,7 +10740,11 @@ class projectCreate:
                 if not isStatus(connMap['interfaceKey']):
                     self.logError(f"{label} sets tandem:, but interface {connMap['interface']} is of type "
                                   f"{flat['interfaces'][connMap['interfaceKey']]['interfaceType']}. tandem: sets "
-                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                                  f"how a Tandem run compares a status output. On an external_reg port, "
+                                  f"the value the owner publishes compares under the run-wide default "
+                                  f"(--tandemStatusFatal, --tandemLevelWindow), and only a registers or "
+                                  f"registerConnections row of an ext register can set it. Other interfaces "
+                                  f"always compare.")
                 if connMap['direction'] != 'src':
                     self.logError(f"{label} sets tandem:, but the entry has direction: dst, so the port of "
                                   f"'{connMap['instance']}' is a status input, which a Tandem run does not compare.")
@@ -10788,20 +10798,16 @@ class projectCreate:
             instance = flat['instances'][rc['instanceKey']]
             why = notTandem(instance['instanceTypeKey'])
             if policy is not None:
-                if reg['regType'] == 'ext':
-                    self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: ext and "
-                                  f"this row connects it, so it reaches '{rc['instance']}' on an external_reg "
-                                  f"port, which a Tandem run always compares. tandem: on an ext register applies "
-                                  f"only when no registerConnections row connects it.")
-                elif reg['regType'] != 'ro':
+                if reg['regType'] not in ('ro', 'ext'):
                     self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: "
-                                  f"{reg['regType']}. Only an ro register reaches a leaf as a status output; an rw "
-                                  f"register reaches it as a status input, and a memory register is not a status "
-                                  f"port.")
+                                  f"{reg['regType']}. Only an ro or ext register reaches a leaf as an output a "
+                                  f"Tandem run compares by level: an ro register as a status output, and an ext "
+                                  f"register as the value the leaf publishes for firmware to read. An rw register "
+                                  f"reaches it as a status input, and a memory register is not a status port.")
                 if why:
                     self.logError(f"{label} sets tandem:, but '{rc['instance']}' is an instance of block "
                                   f"'{instance['instanceType']}', and {why}.")
-            if reg['regType'] == 'ro' and not why:
+            if reg['regType'] in ('ro', 'ext') and not why:
                 ports.setdefault((instance['instanceTypeKey'], reg['register']), []).append((policy, label))
 
         policies = dict()

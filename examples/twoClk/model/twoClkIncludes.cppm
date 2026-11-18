@@ -92,7 +92,7 @@ struct twoClkRegAddrSt {
     }
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
-    inline twoClkRegAddrT _getAddress(void) { return( address); }
+    inline twoClkRegAddrT _getAddress(void) const { return( address); }
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));
@@ -227,7 +227,7 @@ struct twoClkTblAddrSt {
     }
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
-    inline twoClkTblAddrBitsT _getAddress(void) { return( address); }
+    inline twoClkTblAddrBitsT _getAddress(void) const { return( address); }
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));
@@ -370,7 +370,7 @@ struct twoClkLutAddrSt {
     }
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
-    inline twoClkLutAddrBitsT _getAddress(void) { return( address); }
+    inline twoClkLutAddrBitsT _getAddress(void) const { return( address); }
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, sizeof(_ret));

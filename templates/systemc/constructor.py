@@ -141,7 +141,7 @@ def constructorInit(args, prj, data):
             channelTitle = dst + "_" + channelBase
             extra, autoMode = intf_gen_utils.sc_multicycle_ctor_args(
                 chnlInfo, chnl_table[chnl]['multicycle_types'], prj)
-            if chnl_table[chnl]['set_initial_value']:
+            if chnl_table[chnl]['initial_value'] is not None:
                 # The structure type for the channel's default-value
                 # initializer must match the channel's own template
                 # arguments. The channel derives those arguments from the
@@ -154,7 +154,7 @@ def constructorInit(args, prj, data):
                 # the enclosing class template parameter Config.
                 typenameKw = 'typename ' if '<Config>' in channelStruct else ''
                 channelStruct = bareParameterizedType(channelStruct, hasOwnParams)
-                defaultValue = f", {typenameKw}{channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
+                defaultValue = f", {typenameKw}{channelStruct}::_packedSt({chnl_table[chnl]['initial_value']})"
             else:
                 defaultValue = ''
 

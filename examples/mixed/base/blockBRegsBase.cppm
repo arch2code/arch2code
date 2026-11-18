@@ -137,12 +137,12 @@ public:
 
 
     blockBRegsChannels(std::string name, std::string srcName) :
-    rwD(("rwD"+name).c_str(), srcName)
+    rwD(("rwD"+name).c_str(), srcName, dRegSt::_packedSt(0x0))
     ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
     ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
-    ,roBsize(("roBsize"+name).c_str(), srcName)
+    ,roBsize(("roBsize"+name).c_str(), srcName, bSizeRegSt::_packedSt(0x0))
     {};
     void bind( blockBRegsBase *a, blockBRegsInverted *b)
     {
