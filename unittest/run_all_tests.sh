@@ -699,6 +699,12 @@ python3 test_bfm_delayed_call.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: BFMs hand each beat over at the RTL handshake edge (expected failures mark today's hidden beat)"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_handover.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
 echo "------------------------------------------------------------------------"
 python3 test_tb_completion_gate.py || FAILED=1
