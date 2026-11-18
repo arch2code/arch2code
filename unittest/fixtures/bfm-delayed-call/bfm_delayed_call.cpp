@@ -18,16 +18,20 @@
 
 #include "systemc.h"
 #include "logging.h"
+#include "ahb_bfm.h"
 #include "apb_bfm.h"
 #include "axi4_stream_bfm.h"
 #include "axi_read_bfm.h"
 #include "axi_write_bfm.h"
+#include "external_reg_bfm.h"
 #include "memory_bfm.h"
 #include "notify_ack_bfm.h"
 #include "pop_ack_bfm.h"
 #include "push_ack_bfm.h"
+#include "raw_bfm.h"
 #include "rdy_vld_bfm.h"
 #include "req_ack_bfm.h"
+#include "status_bfm.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -472,8 +476,9 @@ void runProbe( int delayNs, const std::string &mode )
 // is <delay ns> <family> <dir> <rtl> <busy ns> <bp>:
 //   family  rv, rvmulti (rdy_vld with 4-beat ping-pong bursts), axis, and the
 //           AXI channels ar, r, aw, w, b; wfirst (w src with the W beats on
-//           the wire 30 ns before the AW); then popack, pushack, notifyack,
-//           reqack, apb and mem
+//           the wire 30 ns before the AW); the _ack lanes popack, pushack,
+//           notifyack and reqack; the buses mem, apb and ahb; the levels
+//           status, raw and extreg (external_reg)
 //   dir     dst: the model starts the transfer and the RTL receives it;
 //           src: the RTL starts it
 //   rtl     how the stand-in drives rdy (dst) or vld (src): always, hold (low
@@ -486,6 +491,14 @@ void runProbe( int delayNs, const std::string &mode )
 //           waiting (vld rises only after the model is in read()) and
 //           parked (the model first reads 15 ns after vld rises, so beat 0
 //           sits on the wire across an edge)
+//           A bus runs four operations, write, read, write, read: always,
+//           reset, slow (the RTL completer adds two wait states, or the
+//           RTL master two idle edges), error (apb and ahb: operations 1
+//           and 2 end in an error response; the dst model posts write 2
+//           and waits for the response to the others), and for src parked
+//           (the model asks 15 ns after the first request). A level runs
+//           values 1 to 8: always, reset, and for src every3 (the RTL
+//           steps the level every third edge)
 //   busy    ns the src model spends after each read
 //   bp      allowed or none
 // A lane starts on the edge at or before the model's first send (dst), or on
@@ -497,8 +510,17 @@ void runProbe( int delayNs, const std::string &mode )
 //   hs         the RTL takes or hands over a beat on this edge
 //   rst        an edge the mid-run reset covers
 //   rsths      a src RTL sees vld and ready high on a reset edge, with this beat
+//   rstvld     a src RTL has vld high on a reset edge, with this beat
 //   req, ack   non-handshake RTL: it starts an operation, or the operation
 //              completes on this edge
+//   rerr       a bus RTL sees the completion's error response
+//   err        a dst bus model gets this error response
+//   errfirst   an ahb RTL sees the first cycle of an error response
+//   rcall, rcv a src bus model asks for a request, and gets it
+//   drv, smp   a level RTL drives this value, or samples a new one
+//   pin        a level dst BFM puts this value on the wire
+//   mir, pub   external_reg: the model's mirror changes (dst), or the
+//              model publishes this value (src)
 // After the run it prints "probe done", then "probe assert <message>" if a
 // Q_ASSERT stopped the run.
 
@@ -519,13 +541,16 @@ void logEv( const char *kind, std::uint64_t value )
 
 bool pastNs( int ns ) { return sc_time_stamp() >= sc_time( ns, SC_NS ); }
 
-// One handshake lane on the wire: its vld and rdy, the beat it carries, and
-// how an RTL sender puts beat n on it.
+// One handshake lane on the wire: its vld and rdy, the beat it carries, how
+// an RTL sender puts beat n on it, and how an RTL receiver drives the data
+// it returns with the nth handshake. A lane with no beat (notify) counts its
+// handshakes instead.
 struct lane {
     sc_signal<bool> &vld, &rdy;
     std::function<std::uint64_t()> beat;
     std::function<void( int )> drive;
     const sc_event &dataEv;
+    std::function<void( int )> respond = {};
 };
 
 struct handoverBase : sc_module
@@ -536,6 +561,7 @@ struct handoverBase : sc_module
     sc_time laneStart;
     sc_event started;
     bool modelReading = false;
+    sc_event firstRequest;
 
     handoverBase( sc_module_name n, const runCfg &c ) : sc_module( n ), cfg( c ) {}
 
@@ -558,8 +584,9 @@ struct handoverBase : sc_module
 
     bool holdOver() { return laneStart != SC_ZERO_TIME && sc_time_stamp() >= laneStart + sc_time( 70, SC_NS ); }
 
-    // The model runs setup, then writes beats 0..BEATS-1 back to back.
-    void measureDst( lane l, std::function<void()> setup, std::function<void( int )> send )
+    // The model runs setup, then sends beats 0..BEATS-1 back to back. send
+    // returns the value the model gets back: the beat, or the response.
+    void measureDst( lane l, std::function<void()> setup, std::function<std::uint64_t( int )> send )
     {
         sc_spawn( [this, setup, send] {
             wait( 33, SC_NS );
@@ -567,8 +594,7 @@ struct handoverBase : sc_module
             startLane();
             for (int k = 0; k < BEATS; k++) {
                 logEv( "call", k );
-                send( k );
-                logEv( "ret", k );
+                logEv( "ret", send( k ) );
             }
         } );
         sc_spawn( [this, l] { receiver( l ); } );
@@ -608,7 +634,7 @@ struct handoverBase : sc_module
     {
         while (true) {
             sc_core::wait( l.vld.value_changed_event() | l.dataEv );
-            if (l.vld) { logEv( "vld", l.beat() ); }
+            if (l.vld) { logEv( "vld", l.beat ? l.beat() : 0 ); }
         }
     }
 
@@ -617,10 +643,16 @@ struct handoverBase : sc_module
     void receiver( lane l )
     {
         std::mt19937 rng( 1 );
+        int n = 0;
         if (cfg.rtl != "comb") { l.rdy = cfg.rtl == "always" || cfg.rtl == "reset"; }
+        if (l.respond) { l.respond( n ); }
         for (int edge = 1;; edge++) {
             waitEdge();
-            if (rst_n && l.vld && l.rdy) { logEv( "hs", l.beat() ); }
+            if (rst_n && l.vld && l.rdy) {
+                logEv( "hs", l.beat ? l.beat() : n );
+                n++;
+                if (l.respond) { l.respond( n ); }
+            }
             if (cfg.rtl == "hold") { l.rdy = holdOver(); }
             if (cfg.rtl == "every3") { l.rdy = edge % 3 == 0; }
             if (cfg.rtl == "random") { l.rdy = rng() & 1; }
@@ -636,12 +668,13 @@ struct handoverBase : sc_module
         for (int edge = 1;; edge++) {
             waitEdge();
             if (!rst_n) {
-                if (l.vld && l.rdy) { logEv( "rsths", l.beat() ); }
+                if (l.vld && l.rdy) { logEv( "rsths", l.beat ? l.beat() : n ); }
+                if (l.vld) { logEv( "rstvld", l.beat ? l.beat() : n ); }
                 l.vld = false;
                 continue;
             }
             if (l.vld && l.rdy) {
-                logEv( "hs", l.beat() );
+                logEv( "hs", l.beat ? l.beat() : n );
                 n++;
                 lastHs = edge;
             } else if (l.vld) {
@@ -651,7 +684,7 @@ struct handoverBase : sc_module
             bool offer = cfg.rtl == "hold" ? holdOver() : cfg.rtl == "every3" ? edge % 3 == 0 && edge - lastHs >= 3
                        : cfg.rtl == "random" ? bool( rng() & 1 ) : cfg.rtl == "waiting" ? modelReading : true;
             l.vld = offer && n < BEATS && go();
-            l.drive( n );
+            if (l.drive) { l.drive( n ); }
         }
     }
 
@@ -662,12 +695,12 @@ struct handoverBase : sc_module
         while (true) {
             wait( clk.posedge_event() | l.rdy.value_changed_event() | rst_n.value_changed_event() );
             if (clk.posedge() && rst_n && l.vld && l.rdy) {
-                logEv( "hs", l.beat() );
+                logEv( "hs", l.beat ? l.beat() : n );
                 n++;
             }
             if (rst_n && go()) { startLane(); }
             l.vld = rst_n && l.rdy && n < BEATS && go();
-            l.drive( n );
+            if (l.drive) { l.drive( n ); }
         }
     }
 
@@ -710,8 +743,9 @@ struct handoverBase : sc_module
     // A model that makes OPS requests from 33 ns; op returns the value it got.
     void modelRequests( std::function<std::uint64_t( int )> op )
     {
-        sc_spawn( [op] {
-            sc_core::wait( 33, SC_NS );
+        sc_spawn( [this, op] {
+            wait( 33, SC_NS );
+            startLane();
             for (int k = 0; k < OPS; k++) {
                 logEv( "call", k );
                 logEv( "ret", op( k ) );
@@ -719,13 +753,20 @@ struct handoverBase : sc_module
         } );
     }
 
-    // A model that serves OPS requests: receive takes the request, complete
-    // answers request k.
+    // A model that serves OPS requests: receive takes request k, complete
+    // answers it. A parked model first calls receive 15 ns after the RTL's
+    // first request.
     void modelServes( std::function<void()> receive, std::function<void( int )> complete )
     {
-        sc_spawn( [receive, complete] {
+        sc_spawn( [this, receive, complete] {
+            if (cfg.rtl == "parked") {
+                wait( firstRequest );
+                wait( 15, SC_NS );
+            }
             for (int k = 0; k < OPS; k++) {
+                logEv( "rcall", k );
                 receive();
+                logEv( "rcv", k );
                 logEv( "call", k );
                 complete( k );
                 logEv( "ret", k );
@@ -733,47 +774,13 @@ struct handoverBase : sc_module
         } );
     }
 
-    // The RTL responder starts an operation on an edge where it is idle and
-    // sees req, raises ack on the next edge and drops it on the edge after.
-    void responder( sc_signal<bool> &req, sc_signal<bool> &ack, std::function<std::uint64_t( int )> reqValue,
-                    std::function<void( int )> driveRdata )
+    // The RTL bus master logs request n on the edge it drives it.
+    void masterRequests( int n )
     {
-        int n = 0, state = 0;
-        while (true) {
-            waitEdge();
-            if (!rst_n) { ack = false; state = 0; continue; }
-            if (state == 2) {
-                logEv( "ack", n++ );
-                ack = false;
-                state = 0;
-            } else if (state == 1) {
-                ack = true;
-                if (driveRdata) { driveRdata( n ); }
-                state = 2;
-            } else if (req) {
-                logEv( "req", reqValue( n ) );
-                state = 1;
-            }
-        }
-    }
-
-    // The RTL requester raises req for item n, holds it until it samples ack,
-    // and drops it for at least one edge.
-    void requester( sc_signal<bool> &req, sc_signal<bool> &ack, std::function<void( int )> drive,
-                    std::function<std::uint64_t( int )> ackValue )
-    {
-        int n = 0;
-        while (true) {
-            waitEdge();
-            if (!rst_n) { req = false; continue; }
-            if (req && ack) {
-                logEv( "ack", ackValue( n++ ) );
-                req = false;
-            } else if (!req && n < OPS) {
-                logEv( "req", n );
-                req = true;
-                if (drive) { drive( n ); }
-            }
+        logEv( "req", n );
+        if (n == 0) {
+            startLane();
+            firstRequest.notify();
         }
     }
 };
@@ -825,6 +832,7 @@ struct rvDst : handoverBase
             wordSt v;
             v.w = k;
             if (cfg.family == "rvmulti") { out->writeClocked( v ); } else { out->write( v ); }
+            return k;
         } );
     }
 };
@@ -865,6 +873,7 @@ struct axisDst : handoverBase
             s.tdata.w = k;
             s.tlast = false;
             out->sendInfo( s );
+            return k;
         } );
     }
 };
@@ -940,7 +949,7 @@ struct arDst : handoverBase
     {
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        measureDst( arLane( hdl ), {}, [this]( int k ) { out->sendAddr( makeAr( k, 0 ) ); } );
+        measureDst( arLane( hdl ), {}, [this]( int k ) { out->sendAddr( makeAr( k, 0 ) ); return k; } );
     }
 };
 
@@ -982,6 +991,7 @@ struct rDst : handoverBase
             r.rresp = AXIRESP_OKAY;
             r.rlast = k == BEATS - 1;
             in->sendDataCycle( r );
+            return k;
         } );
     }
 };
@@ -1081,7 +1091,7 @@ struct awDst : handoverBase
     {
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        measureDst( awLane( hdl ), {}, [this]( int k ) { out->sendAddr( makeAw( 1, k, 0 ) ); } );
+        measureDst( awLane( hdl ), {}, [this]( int k ) { out->sendAddr( makeAw( 1, k, 0 ) ); return k; } );
     }
 };
 
@@ -1127,7 +1137,7 @@ struct wDst : handoverBase
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
         sc_spawn( [this] { accept( hdl.awvalid, hdl.awready ); } );
         measureDst( wLane( hdl ), [this] { out->sendAddr( makeAw( 1, 0x1000, BEATS - 1 ) ); },
-                    [this]( int k ) { out->sendDataCycle( makeW( 1, k, k == BEATS - 1 ) ); } );
+                    [this]( int k ) { out->sendDataCycle( makeW( 1, k, k == BEATS - 1 ) ); return k; } );
     }
 };
 
@@ -1170,6 +1180,7 @@ struct bDst : wrSrcBase
             b.bid = k;
             b.bresp = AXIRESP_OKAY;
             in->sendRespCycle( b );
+            return k;
         } );
     }
 };
@@ -1200,45 +1211,15 @@ struct bSrc : handoverBase
     }
 };
 
-// pop_ack, push_ack, notify_ack and req_ack. The RTL returns n as the data of
-// operation n.
+// push_ack, pop_ack, notify_ack and req_ack are handshake lanes too: the
+// request (push, pop, notify, req) is vld and ack is rdy. A src model takes
+// each request in two calls, receive then ack(). pop and req return data
+// with the ack: the RTL returns n with its nth ack, and a src model returns
+// beat k.
 
 using popHdl = pop_ack_hdl_if<sc_bv<32>>;
 using pushHdl = push_ack_hdl_if<sc_bv<32>>;
 using reqHdl = req_ack_hdl_if<sc_bv<32>, sc_bv<32>>;
-
-struct popAckDst : handoverBase
-{
-    pop_ack_channel<wordSt> ch;
-    pop_ack_out<wordSt> out;
-    popHdl hdl;
-    pop_ack_dst_bfm<wordSt, sc_bv<32>> bfm;
-
-    popAckDst( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
-    {
-        timed = &ch;
-        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelRequests( [this]( int ) { wordSt r; out->pop( r ); return r.w; } );
-        sc_spawn( [this] { responder( hdl.pop, hdl.ack, []( int i ) { return i; },
-                                      [this]( int i ) { hdl.rdata = sc_bv<32>( i ); } ); } );
-    }
-};
-
-struct popAckSrc : handoverBase
-{
-    pop_ack_channel<wordSt> ch;
-    pop_ack_in<wordSt> in;
-    popHdl hdl;
-    pop_ack_src_bfm<wordSt, sc_bv<32>> bfm;
-
-    popAckSrc( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
-    {
-        timed = &ch;
-        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelServes( [this] { in->popReceive(); }, [this]( int k ) { wordSt v; v.w = k; in->ack( v ); } );
-        sc_spawn( [this] { requester( hdl.pop, hdl.ack, {}, [this]( int ) { return hdl.rdata.read().to_uint64(); } ); } );
-    }
-};
 
 struct pushAckDst : handoverBase
 {
@@ -1251,8 +1232,8 @@ struct pushAckDst : handoverBase
     {
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelRequests( [this]( int k ) { wordSt v; v.w = k; out->push( v ); return std::uint64_t( k ); } );
-        sc_spawn( [this] { responder( hdl.push, hdl.ack, [this]( int ) { return hdl.data.read().to_uint64(); }, {} ); } );
+        measureDst( { hdl.push, hdl.ack, [this] { return hdl.data.read().to_uint64(); }, {}, hdl.data.value_changed_event() },
+                    {}, [this]( int k ) { wordSt v; v.w = k; out->push( v ); return k; } );
     }
 };
 
@@ -1267,9 +1248,44 @@ struct pushAckSrc : handoverBase
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelServes( [this] { wordSt v; in->pushReceive( v ); }, [this]( int ) { in->ack(); } );
-        sc_spawn( [this] { requester( hdl.push, hdl.ack, [this]( int i ) { hdl.data = sc_bv<32>( i ); },
-                                      []( int i ) { return i; } ); } );
+        measureSrc( { hdl.push, hdl.ack, [this] { return hdl.data.read().to_uint64(); },
+                      [this]( int i ) { hdl.data = sc_bv<32>( i ); }, hdl.data.value_changed_event() },
+                    {}, [this] { wordSt v; in->pushReceive( v ); in->ack(); return v.w; }, [] { return true; } );
+    }
+};
+
+struct popAckDst : handoverBase
+{
+    pop_ack_channel<wordSt> ch;
+    pop_ack_out<wordSt> out;
+    popHdl hdl;
+    pop_ack_dst_bfm<wordSt, sc_bv<32>> bfm;
+
+    popAckDst( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        measureDst( { hdl.pop, hdl.ack, {}, {}, hdl.pop.value_changed_event(),
+                      [this]( int i ) { hdl.rdata = sc_bv<32>( i ); } },
+                    {}, [this]( int ) { wordSt r; out->pop( r ); return r.w; } );
+    }
+};
+
+struct popAckSrc : handoverBase
+{
+    pop_ack_channel<wordSt> ch;
+    pop_ack_in<wordSt> in;
+    popHdl hdl;
+    pop_ack_src_bfm<wordSt, sc_bv<32>> bfm;
+    std::uint64_t served = 0;
+
+    popAckSrc( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        measureSrc( { hdl.pop, hdl.ack, [this] { return hdl.rdata.read().to_uint64(); }, {}, hdl.rdata.value_changed_event() },
+                    {}, [this] { in->popReceive(); wordSt v; v.w = served++; in->ack( v ); return v.w; },
+                    [] { return true; } );
     }
 };
 
@@ -1284,8 +1300,8 @@ struct notifyAckDst : handoverBase
     {
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelRequests( [this]( int k ) { out->notify(); return std::uint64_t( k ); } );
-        sc_spawn( [this] { responder( hdl.notify, hdl.ack, []( int i ) { return i; }, {} ); } );
+        measureDst( { hdl.notify, hdl.ack, {}, {}, hdl.notify.value_changed_event() },
+                    {}, [this]( int k ) { out->notify(); return k; } );
     }
 };
 
@@ -1295,13 +1311,31 @@ struct notifyAckSrc : handoverBase
     notify_ack_in<> in;
     notify_ack_hdl_if<> hdl;
     notify_ack_src_bfm<> bfm;
+    std::uint64_t served = 0;
 
     notifyAckSrc( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelServes( [this] { in->waitNotify(); }, [this]( int ) { in->ack(); } );
-        sc_spawn( [this] { requester( hdl.notify, hdl.ack, {}, []( int i ) { return i; } ); } );
+        measureSrc( { hdl.notify, hdl.ack, {}, {}, hdl.notify.value_changed_event() },
+                    {}, [this] { in->waitNotify(); in->ack(); return served++; }, [] { return true; } );
+    }
+};
+
+struct reqAckDstHandover : handoverBase
+{
+    req_ack_channel<wordSt, wordSt> ch;
+    req_ack_out<wordSt, wordSt> out;
+    reqHdl hdl;
+    req_ack_dst_bfm<wordSt, wordSt, sc_bv<32>, sc_bv<32>> bfm;
+
+    reqAckDstHandover( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        measureDst( { hdl.req, hdl.ack, [this] { return hdl.data.read().to_uint64(); }, {}, hdl.data.value_changed_event(),
+                      [this]( int i ) { hdl.rdata = sc_bv<32>( i ); } },
+                    {}, [this]( int k ) { wordSt d, a; d.w = k; out->req( d, a ); return a.w; } );
     }
 };
 
@@ -1316,15 +1350,27 @@ struct reqAckSrc : handoverBase
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelServes( [this] { wordSt d; in->reqReceive( d ); },
-                     [this]( int k ) { wordSt a; a.w = k; in->ack( a ); } );
-        sc_spawn( [this] { requester( hdl.req, hdl.ack, [this]( int i ) { hdl.data = sc_bv<32>( i ); },
-                                      [this]( int ) { return hdl.rdata.read().to_uint64(); } ); } );
+        measureSrc( { hdl.req, hdl.ack, [this] { return hdl.data.read().to_uint64(); },
+                      [this]( int i ) { hdl.data = sc_bv<32>( i ); }, hdl.data.value_changed_event() },
+                    {}, [this] { wordSt d; in->reqReceive( d ); in->ack( d ); return d.w; }, [] { return true; } );
     }
 };
 
-// apb and memory. Operation k writes or reads address k / 2 + 1: writes on
-// even k with data 0x11 * (k / 2 + 1), reads on odd k.
+// apb, ahb and memory. Operation k writes or reads address k / 2 + 1: writes
+// on even k with data 0x11 * (k / 2 + 1), reads on odd k. Besides the run
+// modes above, an RTL completer can add two wait states (slow), an RTL
+// master can idle two edges between operations (slow), and in error runs
+// operations 1 and 2 end with an error: the dst model sends 0, 1 and 3
+// with requestWithResponse() and 2 as a posted write, and the src model
+// completes 1 and 2 with the error bit. The RTL logs "req" on the edge it
+// first sees (completer) or drives (master) a request, and "ack" and "rerr"
+// on the edge the operation completes; a dst model logs "err" for each
+// response-aware call.
+
+bool opWrites( int k ) { return k % 2 == 0; }
+int opAddr( int k ) { return k / 2 + 1; }
+int opData( int k ) { return 0x11 * (k / 2 + 1); }
+bool errorOp( const runCfg &c, int n ) { return c.rtl == "error" && (n == 1 || n == 2); }
 
 // apb_dst_bfm reads its payloads through _getAddress() and _getData().
 struct apbWordSt : wordSt {
@@ -1333,11 +1379,23 @@ struct apbWordSt : wordSt {
 };
 
 using apbHdl = apb_hdl_if<sc_bv<32>, sc_bv<32>>;
+using ahbHdl = ahb_hdl_if<sc_bv<32>, sc_bv<32>>;
 using memHdl = memory_hdl_if<sc_bv<32>, sc_bv<32>>;
 
-bool opWrites( int k ) { return k % 2 == 0; }
-int opAddr( int k ) { return k / 2 + 1; }
-int opData( int k ) { return 0x11 * (k / 2 + 1); }
+// The model side of a dst register bus: op k as above.
+template <class OUT>
+std::uint64_t busRequest( OUT &out, const runCfg &c, int k )
+{
+    apbWordSt a, d;
+    a.w = opAddr( k );
+    d.w = opWrites( k ) ? opData( k ) : 0;
+    if (c.rtl == "error" && k != 2) {
+        logEv( "err", out->requestWithResponse( opWrites( k ), a, d ) );
+    } else {
+        out->request( opWrites( k ), a, d );
+    }
+    return d.w;
+}
 
 struct apbDst : handoverBase
 {
@@ -1350,34 +1408,57 @@ struct apbDst : handoverBase
     {
         timed = &ch;
         out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        modelRequests( [this]( int k ) {
-            apbWordSt a, d;
-            a.w = opAddr( k );
-            d.w = opWrites( k ) ? opData( k ) : 0;
-            out->request( opWrites( k ), a, d );
-            return d.w;
-        } );
+        modelRequests( [this]( int k ) { return busRequest( out, cfg, k ); } );
         SC_THREAD( completer );
     }
 
-    // Answers an access phase with pready on the next edge.
+    // Sees the setup phase and raises pready for the access phase that
+    // follows, after any wait states.
     SC_HAS_PROCESS( apbDst );
     void completer()
     {
         std::map<std::uint64_t, std::uint64_t> mem;
+        int n = 0, waits = 0;
+        bool busy = false;
+        auto respond = [&] {
+            std::uint64_t addr = hdl.paddr.read().to_uint64();
+            if (hdl.pwrite) { mem[addr] = hdl.pwdata.read().to_uint64(); } else { hdl.prdata = sc_bv<32>( mem[addr] ); }
+            hdl.pready = true;
+            hdl.pslverr = errorOp( cfg, n );
+        };
         while (true) {
             waitEdge();
-            if (!rst_n) { hdl.pready = false; continue; }
-            if (hdl.pready) {
+            if (!rst_n) { hdl.pready = false; hdl.pslverr = false; busy = false; continue; }
+            if (busy && hdl.psel && hdl.penable && hdl.pready) {
                 logEv( "ack", hdl.pwrite ? 0 : hdl.prdata.read().to_uint64() );
+                logEv( "rerr", hdl.pslverr );
                 hdl.pready = false;
-            } else if (hdl.psel && hdl.penable) {
-                std::uint64_t addr = hdl.paddr.read().to_uint64();
-                logEv( "req", addr );
-                if (hdl.pwrite) { mem[addr] = hdl.pwdata.read().to_uint64(); } else { hdl.prdata = sc_bv<32>( mem[addr] ); }
-                hdl.pready = true;
+                hdl.pslverr = false;
+                busy = false;
+                n++;
+            } else if (busy && waits > 0 && --waits == 0) {
+                respond();
+            } else if (!busy && hdl.psel && !hdl.penable) {
+                logEv( "req", n );
+                busy = true;
+                waits = cfg.rtl == "slow" ? 2 : 0;
+                if (waits == 0) { respond(); }
             }
         }
+    }
+};
+
+// The model side of a src register bus: it serves op k as above.
+template <class IN>
+struct busServer {
+    std::map<std::uint64_t, std::uint64_t> mem;
+    bool isWrite = false;
+    apbWordSt a, d;
+    void receive( IN &in ) { in->reqReceive( isWrite, a, d ); }
+    void complete( IN &in, const runCfg &c, int k )
+    {
+        if (isWrite) { mem[a.w] = d.w; } else { d.w = mem[a.w]; }
+        in->complete( d, errorOp( c, k ) );
     }
 };
 
@@ -1387,60 +1468,171 @@ struct apbSrc : handoverBase
     apb_in<apbWordSt, apbWordSt> in;
     apbHdl hdl;
     apb_src_bfm<apbWordSt, apbWordSt, sc_bv<32>, sc_bv<32>> bfm;
-    std::map<std::uint64_t, std::uint64_t> mem;
+    busServer<apb_in<apbWordSt, apbWordSt>> server;
 
     apbSrc( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
     {
         timed = &ch;
         in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
-        SC_THREAD( model );
+        modelServes( [this] { server.receive( in ); }, [this]( int k ) { server.complete( in, cfg, k ); } );
         SC_THREAD( manager );
     }
 
+    // Setup phase, access phase, then waits for pready; a new setup phase
+    // may start on the edge an access completes.
     SC_HAS_PROCESS( apbSrc );
-
-    // apb_src_bfm sends every request with requestWithResponse(), so a write
-    // waits for its complete() too.
-    void model()
-    {
-        for (int k = 0; k < OPS; k++) {
-            bool isWrite;
-            apbWordSt a, d;
-            in->reqReceive( isWrite, a, d );
-            logEv( "call", k );
-            if (isWrite) {
-                mem[a.w] = d.w;
-            } else {
-                d.w = mem[a.w];
-            }
-            in->complete( d );
-            logEv( "ret", d.w );
-        }
-    }
-
-    // Setup phase, access phase, then waits for pready.
     void manager()
     {
-        int k = 0, phase = 0;
+        int k = 0, phase = 0, idle = 0;
         while (true) {
             waitEdge();
-            if (!rst_n) { hdl.psel = false; hdl.penable = false; continue; }
+            if (!rst_n) { hdl.psel = false; hdl.penable = false; phase = 0; continue; }
             if (phase == 2 && hdl.pready) {
                 logEv( "ack", opWrites( k ) ? 0 : hdl.prdata.read().to_uint64() );
+                logEv( "rerr", hdl.pslverr );
                 hdl.psel = false;
                 hdl.penable = false;
                 k++;
                 phase = 0;
+                idle = cfg.rtl == "slow" ? 2 : 0;
             } else if (phase == 1) {
                 hdl.penable = true;
                 phase = 2;
-            } else if (phase == 0 && k < OPS) {
-                logEv( "req", k );
+            }
+            if (phase == 0 && k < OPS && idle-- <= 0) {
+                masterRequests( k );
                 hdl.psel = true;
                 hdl.pwrite = opWrites( k );
                 hdl.paddr = sc_bv<32>( opAddr( k ) );
                 hdl.pwdata = sc_bv<32>( opWrites( k ) ? opData( k ) : 0 );
                 phase = 1;
+            }
+        }
+    }
+};
+
+struct ahbDst : handoverBase
+{
+    ahb_channel<apbWordSt, apbWordSt> ch;
+    ahb_out<apbWordSt, apbWordSt> out;
+    ahbHdl hdl;
+    ahb_dst_bfm<apbWordSt, apbWordSt, sc_bv<32>, sc_bv<32>> bfm;
+
+    ahbDst( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        modelRequests( [this]( int k ) { return busRequest( out, cfg, k ); } );
+        SC_THREAD( slave );
+    }
+
+    // Samples an address phase on an edge with hready, then holds the data
+    // phase for any wait states. An error takes two cycles, HRESP high with
+    // HREADYOUT low and then with HREADYOUT high.
+    SC_HAS_PROCESS( ahbDst );
+    void slave()
+    {
+        std::map<std::uint64_t, std::uint64_t> mem;
+        int n = 0, waits = 0;
+        bool data = false, isWrite = false, err = false, errShown = false;
+        std::uint64_t addr = 0;
+        hdl.hreadyout = true;
+        while (true) {
+            waitEdge();
+            if (!rst_n) { hdl.hreadyout = true; hdl.hresp = false; data = false; continue; }
+            bool ready = hdl.hreadyout;
+            if (data && ready) {
+                if (isWrite) { mem[addr] = hdl.hwdata.read().to_uint64(); }
+                logEv( "ack", isWrite ? 0 : hdl.hrdata.read().to_uint64() );
+                logEv( "rerr", hdl.hresp );
+                data = false;
+                n++;
+            }
+            if (ready && hdl.hsel && hdl.htrans.read()[1].to_bool()) {
+                addr = hdl.haddr.read().to_uint64();
+                isWrite = hdl.hwrite;
+                logEv( "req", n );
+                data = true;
+                waits = cfg.rtl == "slow" ? 2 : 0;
+                err = errorOp( cfg, n );
+                errShown = false;
+            }
+            if (!data) {
+                hdl.hreadyout = true;
+                hdl.hresp = false;
+            } else if (waits > 0) {
+                waits--;
+                hdl.hreadyout = false;
+                hdl.hresp = false;
+            } else if (err && !errShown) {
+                errShown = true;
+                hdl.hreadyout = false;
+                hdl.hresp = true;
+            } else {
+                hdl.hreadyout = true;
+                hdl.hresp = err;
+                if (!isWrite) { hdl.hrdata = sc_bv<32>( mem[addr] ); }
+            }
+        }
+    }
+};
+
+struct ahbSrc : handoverBase
+{
+    ahb_channel<apbWordSt, apbWordSt> ch;
+    ahb_in<apbWordSt, apbWordSt> in;
+    ahbHdl hdl;
+    ahb_src_bfm<apbWordSt, apbWordSt, sc_bv<32>, sc_bv<32>> bfm;
+    busServer<ahb_in<apbWordSt, apbWordSt>> server;
+
+    ahbSrc( sc_module_name n, const runCfg &c ) : handoverBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        modelServes( [this] { server.receive( in ); }, [this]( int k ) { server.complete( in, cfg, k ); } );
+        SC_THREAD( master );
+        SC_METHOD( tieHready );
+        sensitive << hdl.hreadyout;
+    }
+
+    SC_HAS_PROCESS( ahbSrc );
+    void tieHready() { hdl.hready = hdl.hreadyout.read(); }
+
+    // A pipelined master: the next address phase goes out with the data
+    // phase of the one before. It logs "errfirst" on the edge it sees the
+    // first cycle of an error response.
+    void master()
+    {
+        int next = 0, addrOp = -1, dataOp = -1, idle = 0;
+        while (true) {
+            waitEdge();
+            if (!rst_n) { hdl.hsel = false; hdl.htrans = sc_bv<2>( 0 ); addrOp = dataOp = -1; continue; }
+            if (hdl.hreadyout) {
+                if (dataOp >= 0) {
+                    logEv( "ack", opWrites( dataOp ) ? 0 : hdl.hrdata.read().to_uint64() );
+                    logEv( "rerr", hdl.hresp );
+                    dataOp = -1;
+                    idle = cfg.rtl == "slow" ? 2 : 0;
+                }
+                if (addrOp >= 0) {
+                    dataOp = addrOp;
+                    addrOp = -1;
+                    hdl.hwdata = sc_bv<32>( opWrites( dataOp ) ? opData( dataOp ) : 0 );
+                }
+            } else if (dataOp >= 0 && hdl.hresp) {
+                logEv( "errfirst", dataOp );
+            }
+            if (addrOp < 0 && next < OPS && (cfg.rtl != "slow" || (dataOp < 0 && idle-- <= 0))) {
+                addrOp = next++;
+                masterRequests( addrOp );
+                hdl.hsel = true;
+                hdl.htrans = sc_bv<2>( AHB_HTRANS_NONSEQ );
+                hdl.hwrite = opWrites( addrOp );
+                hdl.hsize = sc_bv<3>( AHB_HSIZE_WORD );
+                hdl.haddr = sc_bv<32>( opAddr( addrOp ) );
+            } else if (addrOp < 0) {
+                hdl.hsel = false;
+                hdl.htrans = sc_bv<2>( 0 );
             }
         }
     }
@@ -1472,11 +1664,12 @@ struct memDst : handoverBase
     void ram()
     {
         std::map<std::uint64_t, std::uint64_t> mem;
+        int n = 0;
         while (true) {
             waitEdge();
             if (!rst_n || !hdl.enable) { continue; }
             std::uint64_t addr = hdl.addr.read().to_uint64();
-            logEv( "req", addr );
+            logEv( "req", n++ );
             if (hdl.wr_en) {
                 mem[addr] = hdl.write_data.read().to_uint64();
                 logEv( "ack", 0 );
@@ -1519,12 +1712,13 @@ struct memSrc : handoverBase
 
     struct { bool write; std::uint64_t addr, data; } pending{};
 
-    // Drives one access per edge, and reads the data of a read access on the
-    // edge after the one that sampled it.
+    // Drives an access, and reads the data of a read access on the edge
+    // after the one that sampled it. A slow master idles two edges between
+    // accesses.
     SC_HAS_PROCESS( memSrc );
     void manager()
     {
-        int k = 0, sampled = -1;
+        int k = 0, sampled = -1, idle = 0, logged = -1;
         while (true) {
             waitEdge();
             if (!rst_n) { hdl.enable = false; continue; }
@@ -1533,13 +1727,236 @@ struct memSrc : handoverBase
                 sampled = -1;
             }
             if (hdl.enable) {
-                logEv( "req", k );
                 sampled = k++;
+                idle = cfg.rtl == "slow" ? 2 : 0;
             }
-            hdl.enable = k < OPS;
+            bool drive = k < OPS && idle-- <= 0;
+            if (drive && k != logged) { masterRequests( logged = k ); }
+            hdl.enable = drive;
             hdl.wr_en = opWrites( k );
             hdl.addr = sc_bv<32>( opAddr( k ) );
             hdl.write_data = sc_bv<32>( opWrites( k ) ? opData( k ) : 0 );
+        }
+    }
+};
+
+// status, raw and external_reg carry levels, with no handshake. The RTL
+// logs "drv v" on the edge it drives value v, and "smp v" on the edge it
+// samples a new value; the model logs "call v" when it writes and "ret v"
+// when a read returns. Values run 1..BEATS. A src RTL changes its value on
+// every edge (always) or every third edge (every3), and drives 0 in reset.
+
+using statusHdl = status_hdl_if<sc_bv<32>>;
+using rawHdl = raw_hdl_if<sc_bv<32>>;
+using extHdl = external_reg_hdl_if<sc_bv<32>>;
+
+// The model writes 1..BEATS from 33 ns, one every clock.
+void modelWritesLevels( std::function<void( int )> write )
+{
+    sc_spawn( [write] {
+        sc_core::wait( 33, SC_NS );
+        for (int v = 1; v <= BEATS; v++) {
+            logEv( "call", v );
+            write( v );
+            logEv( "ret", v );
+            sc_core::wait( 10, SC_NS );
+        }
+    } );
+}
+
+struct levelBase : handoverBase
+{
+    levelBase( sc_module_name n, const runCfg &c ) : handoverBase( n, c ) {}
+
+    // An RTL source register: 0 from the start, then 1..BEATS, then holds
+    // BEATS.
+    void driveLevels( std::function<void( int )> drive )
+    {
+        int v = 0;
+        logEv( "drv", 0 );
+        for (int edge = 1;; edge++) {
+            waitEdge();
+            if (!rst_n) {
+                if (v != 0 && pastNs( 30 )) { v = 0; drive( 0 ); logEv( "drv", 0 ); }
+                continue;
+            }
+            startLane();
+            bool step = cfg.rtl == "every3" ? edge % 3 == 0 : true;
+            if (step && next < BEATS) {
+                v = ++next;
+                drive( v );
+                logEv( "drv", v );
+            }
+        }
+    }
+
+    // An RTL sink register: logs each new value it samples out of reset.
+    void sampleLevels( std::function<std::uint64_t()> read )
+    {
+        std::uint64_t last = 0;
+        while (true) {
+            waitEdge();
+            if (!rst_n) { continue; }
+            std::uint64_t v = read();
+            if (v != last) { logEv( "smp", v ); last = v; }
+        }
+    }
+
+    int next = 0;
+};
+
+struct statusDst : levelBase
+{
+    status_channel<wordSt> ch;
+    status_out<wordSt> out;
+    statusHdl hdl;
+    status_dst_bfm<wordSt, sc_bv<32>> bfm;
+
+    statusDst( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        modelWritesLevels( [this]( int v ) { startLane(); wordSt d; d.w = v; out->write( d ); } );
+        sc_spawn( [this] { sampleLevels( [this] { return hdl.data.read().to_uint64(); } ); } );
+        sc_spawn( [this] { while (true) { wait( hdl.data.value_changed_event() ); logEv( "pin", hdl.data.read().to_uint64() ); } } );
+    }
+};
+
+struct statusSrc : levelBase
+{
+    status_channel<wordSt> ch;
+    status_in<wordSt> in;
+    statusHdl hdl;
+    status_src_bfm<wordSt, sc_bv<32>> bfm;
+
+    statusSrc( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        sc_spawn( [this] { driveLevels( [this]( int v ) { hdl.data = sc_bv<32>( v ); } ); } );
+        sc_spawn( [this] { while (true) { wordSt d; in->read( d ); logEv( "ret", d.w ); } } );
+    }
+};
+
+struct rawDst : levelBase
+{
+    raw_channel<wordSt> ch;
+    raw_out<wordSt> out;
+    rawHdl hdl;
+    raw_dst_bfm<wordSt, sc_bv<32>> bfm;
+
+    rawDst( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        sc_spawn( [this] {
+            wait( 33, SC_NS );
+            startLane();
+            for (int v = 1; v <= BEATS; v++) {
+                logEv( "call", v );
+                wordSt d;
+                d.w = v;
+                out->write( d );
+                logEv( "ret", v );
+            }
+        } );
+        sc_spawn( [this] { sampleLevels( [this] { return hdl.data.read().to_uint64(); } ); } );
+        sc_spawn( [this] { while (true) { wait( hdl.data.value_changed_event() ); logEv( "pin", hdl.data.read().to_uint64() ); } } );
+    }
+};
+
+struct rawSrc : levelBase
+{
+    raw_channel<wordSt> ch;
+    raw_in<wordSt> in;
+    rawHdl hdl;
+    raw_src_bfm<wordSt, sc_bv<32>> bfm;
+
+    rawSrc( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        sc_spawn( [this] { driveLevels( [this]( int v ) { hdl.data = sc_bv<32>( v ); } ); } );
+        sc_spawn( [this] { while (true) { wordSt d; in->read( d ); logEv( "ret", d.w ); } } );
+    }
+};
+
+// The model is the register handler: it issues reg_write_cmd(v) and watches
+// the mirror. The RTL owner takes each strobe and drives rdata = wdata + 0x100.
+struct extregDst : levelBase
+{
+    external_reg_channel<wordSt> ch;
+    external_reg_out<wordSt> out;
+    extHdl hdl;
+    external_reg_dst_bfm<wordSt, sc_bv<32>> bfm;
+
+    extregDst( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), out( "out" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        out( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        modelWritesLevels( [this]( int v ) { startLane(); wordSt d; d.w = v; out->reg_write_cmd( d ); } );
+        sc_spawn( [this] { while (true) { out->wait_mirror(); logEv( "mir", out->readNonBlocking().w ); } } );
+        SC_THREAD( owner );
+    }
+
+    SC_HAS_PROCESS( extregDst );
+    void owner()
+    {
+        while (true) {
+            waitEdge();
+            if (!rst_n) { continue; }
+            if (hdl.write.read().or_reduce()) {
+                std::uint64_t v = hdl.wdata.read().to_uint64();
+                logEv( "smp", v );
+                hdl.rdata = sc_bv<32>( v + 0x100 );
+                logEv( "drv", v + 0x100 );
+            }
+        }
+    }
+};
+
+// The model owns the register: it reads each command and publishes
+// value + 0x100. The RTL handler strobes 1..BEATS and samples rdata.
+struct extregSrc : levelBase
+{
+    external_reg_channel<wordSt> ch;
+    external_reg_in<wordSt> in;
+    extHdl hdl;
+    external_reg_src_bfm<wordSt, sc_bv<32>> bfm;
+
+    extregSrc( sc_module_name n, const runCfg &c ) : levelBase( n, c ), ch( "ch", "tb" ), in( "in" ), bfm( "bfm" )
+    {
+        timed = &ch;
+        in( ch ); bfm.if_p( ch ); bfm.hdl_if_p( hdl ); bfm.clk( clk ); bfm.rst_n( rst_n );
+        sc_spawn( [this] {
+            while (true) {
+                wordSt d;
+                in->read( d );
+                logEv( "ret", d.w );
+                d.w += 0x100;
+                in->update_mirror( d );
+                logEv( "pub", d.w );
+            }
+        } );
+        sc_spawn( [this] { sampleLevels( [this] { return hdl.rdata.read().to_uint64(); } ); } );
+        SC_THREAD( handler );
+    }
+
+    // Strobes write for one cycle per value.
+    SC_HAS_PROCESS( extregSrc );
+    void handler()
+    {
+        for (int edge = 1;; edge++) {
+            waitEdge();
+            hdl.write = 0;
+            if (!rst_n) { continue; }
+            startLane();
+            bool step = cfg.rtl == "every3" ? edge % 3 == 0 : true;
+            if (step && next < BEATS) {
+                hdl.write = 1;
+                hdl.wdata = sc_bv<32>( ++next );
+                logEv( "drv", next );
+            }
         }
     }
 };
@@ -1625,13 +2042,22 @@ void runHandover( const runCfg &c )
     if (key == "popack src") { runHandover<popAckSrc>( c ); }
     if (key == "pushack dst") { runHandover<pushAckDst>( c ); }
     if (key == "pushack src") { runHandover<pushAckSrc>( c ); }
+    if (key == "reqack dst") { runHandover<reqAckDstHandover>( c ); }
     if (key == "notifyack dst") { runHandover<notifyAckDst>( c ); }
     if (key == "notifyack src") { runHandover<notifyAckSrc>( c ); }
     if (key == "reqack src") { runHandover<reqAckSrc>( c ); }
     if (key == "apb dst") { runHandover<apbDst>( c ); }
     if (key == "apb src") { runHandover<apbSrc>( c ); }
+    if (key == "ahb dst") { runHandover<ahbDst>( c ); }
+    if (key == "ahb src") { runHandover<ahbSrc>( c ); }
     if (key == "mem dst") { runHandover<memDst>( c ); }
     if (key == "mem src") { runHandover<memSrc>( c ); }
+    if (key == "status dst") { runHandover<statusDst>( c ); }
+    if (key == "status src") { runHandover<statusSrc>( c ); }
+    if (key == "raw dst") { runHandover<rawDst>( c ); }
+    if (key == "raw src") { runHandover<rawSrc>( c ); }
+    if (key == "extreg dst") { runHandover<extregDst>( c ); }
+    if (key == "extreg src") { runHandover<extregSrc>( c ); }
 }
 
 int sc_main( int argc, char *argv[] )
