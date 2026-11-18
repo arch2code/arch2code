@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""The UVM library, its loopback testbench and the generated UVM packages of
-examples/uvmMem, uvmRegs and uvmVideo parse with no simulator licence.
+"""The UVM library lints, and its loopback testbench and the generated UVM
+packages of examples/uvmMem, uvmRegs and uvmVideo parse, with no simulator
+licence.
 
 Verilator parses each against the open-source Accellera UVM 1.2 that
 UVM_HOME names (its src/ holds uvm_pkg.sv); the VCS and Xcelium copies of
@@ -9,11 +10,12 @@ check is skipped.
 
 The parse resolves macros, includes and package imports, so it finds syntax
 errors, an undefined macro, a missing include and an import of an unknown
-package, in hand-written and generated SV alike. It stops before type
-checking: an undeclared name, a wrong argument count or a type mismatch is
-left to the simulators. A full Verilator lint goes further but rejects
-constructs both simulators accept: ++ inside ?:, and :: through a typedef of
-a parameterized class's type member, which every generated env package uses.
+package, in hand-written and generated SV alike. The library, every package
+a2c_uvm.f lists, also gets Verilator's full lint, which adds undeclared
+names, wrong argument counts and type mismatches, in parameterized classes
+too. The loopback and the generated packages stop at the parse, because the
+lint rejects :: through a typedef of a parameterized class's type member,
+which both simulators accept and every generated env package uses.
 
 A generated test package imports the env package A2C_UVM_PKG names, so each
 example parses on its own with that define set to its env package.
@@ -69,21 +71,23 @@ def protected_files(src):
     return found
 
 
-def parse(label, src, files, incdirs, defines=()):
-    """Whether Verilator parses UVM and files with no error; prints the
-    verdict, and Verilator's errors on a failure."""
-    cmd = ['verilator', '--lint-only', '--debug-exit-parse', '--timing', '-Wno-fatal',
-           '+define+UVM_NO_DPI', f'+incdir+{src}']
+def parse(label, src, files, incdirs, defines=(), lint=False):
+    """Whether Verilator parses, or with lint lints, UVM and files with no
+    error; prints the verdict, and Verilator's errors on a failure."""
+    cmd = ['verilator', '--lint-only'] + ([] if lint else ['--debug-exit-parse'])
+    # IMPURE is a limit of Verilator's scheduler on a function that writes
+    # outside its scope, not an SV error.
+    cmd += ['--timing', '-Wno-fatal', '-Wno-lint', '-Wno-style', '-Wno-IMPURE', '+define+UVM_NO_DPI', f'+incdir+{src}']
     cmd += [f'+incdir+{d}' for d in incdirs] + [f'+define+{d}' for d in defines]
     cmd += [os.path.join(src, 'uvm_pkg.sv')] + list(files)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     errors = [line for line in (result.stdout + result.stderr).splitlines() if line.startswith('%Error')]
     if result.returncode != 0 or errors:
-        print(f'FAIL: {label}: parse errors (verilator exit {result.returncode}):')
+        print(f'FAIL: {label}: {"lint" if lint else "parse"} errors (verilator exit {result.returncode}):')
         for line in errors or (result.stdout + result.stderr).splitlines()[-20:]:
             print(f'    {line}')
         return False
-    print(f'PASS: {label}: no parse error in {len(files)} files')
+    print(f'PASS: {label}: no {"lint" if lint else "parse"} error in {len(files)} files')
     return True
 
 
@@ -125,7 +129,8 @@ def example_sources(name):
 def main():
     src, why = uvm_src()
     if src is None:
-        print(f'SKIP: {why}. Set it to an Accellera UVM 1.2 release to parse the UVM SV.')
+        print(f'SKIP: {why}, so the UVM library is not linted and no UVM SV is parsed. Set UVM_HOME to an '
+              f'unpacked Accellera UVM 1.2 release, the directory whose src/ holds uvm_pkg.sv.')
         print('ALL TESTS PASSED')
         return 0
     encrypted = protected_files(src)
@@ -137,6 +142,7 @@ def main():
     library = layer_sources(os.path.join(UVM_DIR, 'a2c_uvm.f'))
     common = os.path.dirname(UVM_DIR)
     ok = prove_parse(src, library)
+    ok = parse('the UVM library', src, library, [common, UVM_DIR], lint=True) and ok
     ok = parse('the UVM library and its loopback testbench', src,
                library + [os.path.join(LOOPBACK_DIR, 'a2c_uvm_loopback_tb.sv')],
                [common, UVM_DIR, LOOPBACK_DIR]) and ok

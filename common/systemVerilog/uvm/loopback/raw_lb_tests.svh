@@ -98,7 +98,8 @@
     // clock; passive dst peers report each lane, and the two lanes must carry
     // the same word on every clock. As A2C_DST it monitors both lanes against
     // two src peers whose words differ in every tag, and the run must end
-    // with no error, because raw is not compared. Neither role builds a
+    // with no error, because raw is not compared, and with one A2C_UNCOMPARED
+    // warning, which the A2C_SRC role does not raise. Neither role builds a
     // comparator.
     class raw_mode_b_test extends lb_mode_b_base;
         a2c_role_e                 role = A2C_SRC;
@@ -208,6 +209,9 @@
             if (agent.has_child("model_cmp")) `uvm_error("LB_MODE_B", "the raw agent built a comparator")
             if (role == A2C_SRC && differ != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes carried different words on %0d clocks", differ))
             if (role == A2C_DST && differ == 0) `uvm_error("LB_MODE_B", "the lanes never differed, so nothing tested that raw is not compared")
+            if (uvm_report_server::get_server().get_id_count("A2C_UNCOMPARED") != (role == A2C_DST))
+                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_UNCOMPARED reports, expected %0d",
+                                                  uvm_report_server::get_server().get_id_count("A2C_UNCOMPARED"), role == A2C_DST))
         endfunction
     endclass : raw_mode_b_test
 

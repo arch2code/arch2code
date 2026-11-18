@@ -5991,6 +5991,12 @@ class projectCreate:
             interfaceRow = self.flatData['interfaces'][interfaceKey]
             return (interfaceRow['interfaceTypeKey'], f" has interface '{interfaceRow['interface']}' of type",
                     f"Use an interface type with an agent for '{name}'")
+        # The file that defines each interface type, beside which its agent
+        # package <type>_uvm_pkg.sv sits. A system definition's rows carry
+        # the _a2csystem context, not the file.
+        definitionFiles = {row['interface_type']: row['_context'] for row in self.flatData['interface_defs'].values()}
+        for systemFile in self.systemFiles:
+            definitionFiles.update({intfType: systemFile for intfType in self.yamlRaw[systemFile].get('interface_defs') or {}})
         failed = False
         # The env sets these agent config fields, so only a type with an
         # agent may ask for them.
@@ -6179,6 +6185,24 @@ class projectCreate:
             # Without a testbench top the tree has no values to resolve at.
             if hasTops:
                 failed |= self.deriveUvmRegisterTrees(blockRow, where, descriptors)
+                # The register model's bus, as getBDUvm picks it: the
+                # block's own register bus when it owns rows, else the tree's.
+                busPort = self.uvmRegisterTreeBusPorts[blockKey]
+                if any(w['registers'] or w['memories'] for w in self.uvmRegisterWidths[blockKey].values()):
+                    busPort = domain.registerBusPort
+                if busPort is not None:
+                    typeRow = self.flatData['interface_defs'][boundary[busPort][0]]
+                    busType = typeRow['interface_type']
+                    pkg = os.path.join(os.path.dirname(definitionFiles[busType]), f"{busType}_uvm_pkg.sv")
+                    if not (os.path.isfile(pkg) and
+                            re.search(rf'^\s*class\s+{busType}_reg_adapter\b', open(pkg).read(), re.MULTILINE)):
+                        printError(
+                            f"{where} but its register model's bus '{busPort}' has type '{busType}', whose "
+                            f"agent package {pkg} declares no {busType}_reg_adapter. The generated env "
+                            f"drives the register model through {busType}_reg_adapter, so the testbench "
+                            f"would not compile. Give the register bus a type with an adapter, such as apb, "
+                            f"or clear hasUvm.")
+                        failed = True
         if failed:
             exit(warningAndErrorReport())
 

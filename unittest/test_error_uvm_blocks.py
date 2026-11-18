@@ -49,6 +49,11 @@ uvm_reg_block member is rejected. Classes join the instance path with '_', so
 two paths that join to one class name are rejected, a register named `block`
 included. The routed copy is test_uvm_register_tree.py's.
 
+The env drives the register model through <type>_reg_adapter, named after
+the type of the register model's bus, its own or a tree's, so a bus whose
+agent package, <type>_uvm_pkg.sv beside its definition, declares no such
+class is rejected.
+
 The uvm-blocks fixture holds ubDut, an accepted hasUvm block with two rdy_vld
 ports and an apb register bus, and declares ub_no_agent, an interface type of
 its own with no agent, for the agent check. Each negative arm edits one rule's violation
@@ -142,8 +147,50 @@ ROUTED_CHILD_EDITS = [
       ('connections:\n',
        'parameters:\n    ubChildDut:\n        v0: { UB_W: 8 }\n\nconnections:\n')])]
 
+# ub_bus, an APB-shaped register bus type with an agent and no agent
+# package, so no register adapter, and ubRegs on it.
+NO_ADAPTER_EDITS = [
+    (os.path.join('yaml', 'ubIf.yaml'),
+     [('interface_defs:\n',
+       'interface_defs:\n'
+       '  ub_bus :\n'
+       '    timing: elastic\n'
+       '    backpressure: { default: true, overridable: false }\n'
+       '    addressBus : true\n'
+       '    uvmAgent: true\n'
+       '    parameters :\n'
+       '      addr_t : { datatype : struct }\n'
+       '      data_t : { datatype : struct }\n'
+       '    signals:\n'
+       '      paddr : addr_t\n'
+       '      psel : bool\n'
+       '      penable : bool\n'
+       '      pwrite : bool\n'
+       '      pwdata : data_t\n'
+       '      pready : bool\n'
+       '      prdata : data_t\n'
+       '      pslverr : bool\n'
+       '    modports :\n'
+       '      src :\n'
+       "        inputs : ['pready', 'prdata', 'pslverr']\n"
+       "        outputs: ['paddr', 'psel', 'penable', 'pwrite', 'pwdata']\n"
+       '      dst :\n'
+       "        inputs : ['paddr', 'psel', 'penable', 'pwrite', 'pwdata']\n"
+       "        outputs: ['pready', 'prdata', 'pslverr']\n"
+       '    sc_channel :\n'
+       "      type : 'ub_bus'\n"
+       '      multicycle_types : []\n')]),
+    (ARCH, [('        interfaceType: apb\n', '        interfaceType: ub_bus\n')])]
+NO_ADAPTER_MESSAGE = "but its register model's bus 'ubRegs' has type 'ub_bus', whose agent package "
+NO_ADAPTER_CLASS = "yaml/ub_bus_uvm_pkg.sv declares no ub_bus_reg_adapter. The generated env drives the register model"
+
 # (name, project file, [(yaml file, edits)], required substrings)
 REJECTED = [
+    ('a register bus of a type without a register adapter', ROOT_PROJECT, NO_ADAPTER_EDITS,
+     [WHERE, NO_ADAPTER_MESSAGE, NO_ADAPTER_CLASS]),
+    ('a routed top whose register bus has a type without a register adapter', ROOT_PROJECT,
+     [(ARCH, ROUTED)] + NO_ADAPTER_EDITS,
+     [WHERE, NO_ADAPTER_MESSAGE, NO_ADAPTER_CLASS]),
     ('hasUvm without hasVl', ROOT_PROJECT,
      [(ARCH, [('        hasVl: true\n        hasUvm: true\n',
        '        hasVl: false\n        hasUvm: true\n')])],

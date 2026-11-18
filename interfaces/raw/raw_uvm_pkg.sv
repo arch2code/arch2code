@@ -20,6 +20,8 @@
 //   DUT dst port, A2C_SRC agent: none
 //   DUT src port, A2C_DST agent: the word stream: no transfer boundary, and
 //   the model lane is best effort
+// so such an agent reports an A2C_UNCOMPARED UVM_WARNING naming its port at
+// end_of_elaboration_phase, and a run that passes says what it did not check.
 package raw_uvm_pkg;
 
     import uvm_pkg::*;
@@ -165,6 +167,13 @@ package raw_uvm_pkg;
             if (sqr != null) begin
                 drv.seq_item_port.connect(sqr.seq_item_export);
             end
+        endfunction
+
+        virtual function void end_of_elaboration_phase(uvm_phase phase);
+            super.end_of_elaboration_phase(phase);
+            if (cfg.model_vif == null || cfg.role != A2C_DST) return;
+            `uvm_warning("A2C_UNCOMPARED", $sformatf("%s: Mode B does not compare raw port %s; the DUT's words on it are monitored but not checked against the model's",
+                                                     get_full_name(), cfg.port_name))
         endfunction
     endclass : raw_agent
 

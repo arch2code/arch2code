@@ -1393,11 +1393,14 @@ package axi_read_uvm_pkg;
         // active slave on their pin sets, which has registered by now. With
         // no such log a monitor keeps the replay a hand-written env gave it.
         virtual function void end_of_elaboration_phase(uvm_phase phase);
+            a2c_pin_watchers pins;
             super.end_of_elaboration_phase(phase);
             if (drv != null) return;
-            if (registry_t::of(cfg.vif).log != null) mon.replay = registry_t::of(cfg.vif).log;
+            pins = registry_t::of(cfg.vif);
+            if (pins.log != null) mon.replay = pins.log;
             if (model_mon == null) return;
-            if (registry_t::of(cfg.model_vif).log != null) model_mon.replay = registry_t::of(cfg.model_vif).log;
+            pins = registry_t::of(cfg.model_vif);
+            if (pins.log != null) model_mon.replay = pins.log;
         endfunction
 
         virtual function lane_cfg_t lane_cfg();

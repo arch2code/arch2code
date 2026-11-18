@@ -1476,7 +1476,9 @@ package a2c_uvm_pkg;
     // UVM_INFO at UVM_HIGH only when it names a block below the root, so a
     // resource of any other name still warns. install() puts the catcher
     // ahead of any other, which then sees the info. A second install() for
-    // one root, or a remove() with none, is an A2C_CFG fatal.
+    // one root, or a remove() with none, is an A2C_CFG fatal. An IEEE 1800.2
+    // library raises no such warning, so there the catcher, which matches
+    // UVM 1.2's message text, is never added.
     class a2c_child_block_catcher extends uvm_report_catcher;
         protected static a2c_child_block_catcher catchers[uvm_reg_block];
         protected uvm_reg_block                   root;
@@ -1497,7 +1499,9 @@ package a2c_uvm_pkg;
             c = a2c_child_block_catcher::type_id::create({root.get_name(), "_child_blocks"});
             c.root = root;
             catchers[root] = c;
+`ifdef UVM_VERSION_1_2
             uvm_report_cb::add(null, c, UVM_PREPEND);
+`endif
         endfunction
 
         static function void remove(uvm_reg_block root);
@@ -1506,7 +1510,9 @@ package a2c_uvm_pkg;
                                                         root.get_full_name()), uvm_root::get())
                 return;
             end
+`ifdef UVM_VERSION_1_2
             uvm_report_cb::delete(null, catchers[root]);
+`endif
             catchers.delete(root);
         endfunction
 
@@ -2998,7 +3004,8 @@ package a2c_uvm_pkg;
                     stuck = 0;
                     return A2C_PROGRESS;
                 end
-                return (++stuck >= lone_lane_cycles) ? A2C_LONE_STALL : A2C_PROGRESS;
+                stuck++;
+                return (stuck >= lone_lane_cycles) ? A2C_LONE_STALL : A2C_PROGRESS;
             end
             // A lane that trails is the skew bound's while it is on, so the
             // two rules never race on one stall.
@@ -3012,7 +3019,8 @@ package a2c_uvm_pkg;
                 both_stuck = 0;
                 return A2C_PROGRESS;
             end
-            return (++both_stuck >= joint_stall_cycles) ? A2C_BOTH_STALL : A2C_PROGRESS;
+            both_stuck++;
+            return (both_stuck >= joint_stall_cycles) ? A2C_BOTH_STALL : A2C_PROGRESS;
         endfunction
 
         // The rule counting toward its bound on this port, if any, and the
@@ -3364,7 +3372,11 @@ package a2c_uvm_pkg;
             process p = process::self();
             string  state;
             if (p != null) state = p.get_randstate();
-            create = T::type_id::create(name, parent);
+            // T::type_id::create() through the factory, as Verilator's lint
+            // cannot resolve type_id on a type parameter.
+            if (!$cast(create, uvm_factory::get().create_component_by_type(T::get_type(), parent.get_full_name(), name, parent)))
+                `uvm_fatal("A2C_CFG", $sformatf("%s.%s: the factory's override of %s is not of that type",
+                                                parent.get_full_name(), name, T::get_type().get_type_name()))
             if (p != null) p.set_randstate(state);
         endfunction
     endclass : a2c_coverage
