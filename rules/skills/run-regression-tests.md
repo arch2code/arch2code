@@ -7,7 +7,7 @@ description: Authoritative Arch2Code workflow for creating, editing, running, fi
 ## References
 *   Launcher documentation: `builder/base/document/source/modules/ROOT/pages/regrLauncher.adoc`.
 *   Working example: `examples/apbDecode/rundir` (`regr_apbDecode.json`, `default.json`, `Makefile`).
-*   Related skills: `manage-build`, `verify-testbench`, and in A2C Pro, `run-tandem`.
+*   Related skills: `manage-build`, `verify-testbench`, `verify-uvm` for UVM tests, and in A2C Pro, `run-tandem`.
 
 ## Running regressions
 1.  Run from `rundir/`. `make regr` runs `regrLauncher.py --build` on `regr_<projectName>.json`. A new project's Makefile has this target, but no regression file and no rules file exist until you write them.
