@@ -550,6 +550,11 @@ class projectOpen:
             exit(warningAndErrorReport())
         # for open we open the database read only to allow concurrency via makefile
         openString = f"file:{dbFile}?mode=ro"
+        # Close the connection this replaces. Once unreferenced it stays open
+        # until the cyclic garbage collector runs, keeping its file open (on
+        # NFS that blocks removing the file's directory).
+        if g.db is not None:
+            g.db.close()
         g.db = sqlite3.connect(openString, uri = True)
         if g.debug:
             # in debug mode, dont use the sqlite optimized row factory as its a pain in the debugger
@@ -593,6 +598,7 @@ class projectOpen:
         self.contextRtlDir = self._contextRtlDirs(self.compileContexts)
         printIfDebug("Data Loaded")
         self.loadData()
+        self.rtlOutputContexts = self._rtlOutputContexts()
         self.generateHierarchy()
         # Memoization for the per-block config bundle. Read repeatedly per
         # parent block during view assembly; identical for the lifetime of
@@ -1371,6 +1377,7 @@ class projectOpen:
         # context another project owns resolves under that project's rtl
         # segment.
         ret['contextRtlDir'] = self.contextRtlDir
+        ret['rtlOutputContexts'] = self.rtlOutputContexts
         # True when a type reachable from this context derives its width from a
         # log2, which makes the generated width expressions call clog2(). The
         # SystemC emitters use it to decide whether the artifact needs
@@ -1402,6 +1409,12 @@ class projectOpen:
         deps = self.structureParamDeps[declKey] if declKind == 'structure' else self.typeParamDeps[declKey]
         constants = self.data['constants']
         return [constants[key] for key in deps]
+
+    def _rtlOutputContexts(self):
+        # Only a package or a block's RTL lands in a context's RTL directory.
+        packages = self.config.getConfig('INCLUDEFILES').get('package_sv', dict())
+        owners = {v['_context'] for v in self.data['blocks'].values()}
+        return {c for c in self.compileContexts if c in packages or c in owners}
 
     def _contextRtlDirs(self, contexts):
         # Directory of each context's generated RTL, relative to the root

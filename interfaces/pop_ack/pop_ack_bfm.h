@@ -61,8 +61,11 @@ public:
 
     SC_HAS_PROCESS (pop_ack_dst_bfm);
 
+    // An SC_THREAD, as in the other BFMs: in an SC_CTHREAD, SystemC 2.3.4
+    // runs wait(event) as wait(event) then wait() (sc_wait.cpp), so each
+    // wait below would take two edges and miss a one-cycle ack.
     pop_ack_dst_bfm(sc_module_name modulename) {
-        SC_CTHREAD(bfm_driver_thread, clk.pos());
+        SC_THREAD(bfm_driver_thread);
     }
 
     void bfm_driver_thread() {
@@ -75,8 +78,10 @@ public:
                 wait(clk.posedge_event());
             } while (!hdl_if_p->ack);
             rdata.sc_unpack(hdl_if_p->rdata);
-            if_p->ack(rdata);
+            // A delayed ack() blocks across clock edges, and the HDL must not
+            // see pop on them, or it pops the next entry.
             hdl_if_p->pop = false;
+            if_p->ack(rdata);
             wait(clk.posedge_event());
         }
     }
