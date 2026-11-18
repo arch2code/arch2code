@@ -6,9 +6,9 @@ row that defines such a port sets how: fatal, warn, final, off, or a level windo
 in ns. The rows that can define a leaf's status output are a status connection
 (its src end), a connectionMaps entry with direction src, and a registerConnections
 entry of an ro register, whose registers row may give the value for all of them.
-An ro register no registerConnections row connects is driven by its own leaf, and
-the key on its registers row sets how the leaf's register-bus tee compares
-firmware reads of it.
+An ro or ext register no registerConnections row connects stays inside its own
+leaf, and the key on its registers row sets how the leaf's register-bus tee
+compares firmware reads of it.
 
 projectCreate persists the resolved policy per (block, port), and getBlockData
 returns the block's map as tandemStatusPolicy, and the read table as
@@ -33,7 +33,8 @@ from pysrc.processYaml import projectOpen
 
 def _arch(conn_extra='', fan_extra=None, second_extra='', map_extra='', rv_extra='', in_extra='',
           ro_reg_extra='', rw_reg_extra='', ro_rc_extra='', rw_rc_extra='', own_reg_extra='',
-          wrap_out_extra='', leaf_ro_extra=''):
+          wrap_out_extra='', leaf_ro_extra='', leaf_ext_extra='', leaf_rw_extra='', leaf_mem_extra='',
+          ext_reg_extra=''):
     """Each *_extra is appended inside one row's inline dict, e.g. ', tandem: warn'.
     A fan_extra adds a second row from uSrcA's statIf, which getBlockData rejects as a
     duplicate port, so only a case make db rejects uses it."""
@@ -85,11 +86,15 @@ registers:
     - { register: rwReg,  regType: rw, block: regOwner, structure: cfgRegSt, desc: "rw" """ + rw_reg_extra + """ }
     - { register: ownReg, regType: ro, block: regOwner, structure: cfgRegSt, desc: "internal" """ + own_reg_extra + """ }
     - { register: leafRo, regType: ro, block: regLeaf, structure: cfgRegSt, desc: "leaf ro" """ + leaf_ro_extra + """ }
-    - { register: leafRw, regType: rw, block: regLeaf, structure: cfgRegSt, desc: "leaf rw" }
+    - { register: leafRw, regType: rw, block: regLeaf, structure: cfgRegSt, desc: "leaf rw" """ + leaf_rw_extra + """ }
+    - { register: leafExt, regType: ext, block: regLeaf, structure: cfgRegSt, desc: "leaf ext" """ + leaf_ext_extra + """ }
+    - { register: leafMem, regType: memory, block: regLeaf, structure: cfgRegSt, addressStruct: apbAddrSt, wordLines: 8, desc: "leaf memory" """ + leaf_mem_extra + """ }
+    - { register: extReg, regType: ext, block: regOwner, structure: cfgRegSt, desc: "connected ext" """ + ext_reg_extra + """ }
 
 registerConnections:
     - { register: roReg, block: regOwner, instance: uRegLeaf""" + ro_rc_extra + """ }
     - { register: rwReg, block: regOwner, instance: uRegLeaf""" + rw_rc_extra + """ }
+    - { register: extReg, block: regOwner, instance: uRegLeaf }
 """)
 
 
@@ -183,6 +188,10 @@ def run_all_tests():
                             ('250', 250.0)):
         accept_reads(f"tandem: {value} on an ro registers row no registerConnections row connects",
                      {'leafRo': resolved}, leaf_ro_extra=f', tandem: {value}')
+        accept_reads(f"tandem: {value} on an ext registers row no registerConnections row connects",
+                     {'leafExt': resolved}, leaf_ext_extra=f', tandem: {value}')
+    accept_reads("tandem: on an ro and an ext register of one leaf", {'leafRo': 'off', 'leafExt': 'warn'},
+                 leaf_ro_extra=', tandem: off', leaf_ext_extra=', tandem: warn')
 
     all_src = {k: v.format(v='fatal') for k, v in both.items()}
     reject("an unknown word", ["tandem: loud", "not a tandem status-compare policy"],
@@ -205,6 +214,15 @@ def run_all_tests():
                                              "status input"], rw_rc_extra=', tandem: fatal')
     reject("an rw registers row", ["register 'rwReg' of block 'regOwner'", "regType: rw"],
            rw_reg_extra=', tandem: fatal')
+    reject("an rw registers row of a leaf", ["register 'leafRw' of block 'regLeaf'", "regType: rw",
+                                             "an ro or ext register"], leaf_rw_extra=', tandem: warn')
+    reject("a memory registers row of a leaf", ["register 'leafMem' of block 'regLeaf'", "regType: memory",
+                                                "an ro or ext register"], leaf_mem_extra=', tandem: warn')
+    reject("an ext register a registerConnections row connects",
+           ["registerConnections entry for register 'extReg'", "regType: ext", "not status ports"],
+           ext_reg_extra=', tandem: warn')
+    reject("an ext register no registerConnections row connects, with a bad value",
+           ["register 'leafExt' of block 'regLeaf'", "tandem: loud"], leaf_ext_extra=', tandem: loud')
     reject("an ro register no registerConnections row connects, owned by a container",
            ["register 'ownReg' of block 'regOwner'", "contains instances (uRegLeaf)", "firmware reads"],
            own_reg_extra=', tandem: fatal')

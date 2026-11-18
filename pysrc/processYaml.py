@@ -10750,12 +10750,12 @@ class projectCreate:
             label = f"In {where(reg)}, register '{reg['register']}' of block '{reg['block']}'"
             registerLabels[regKey] = label
             registerPolicies[regKey] = self._tandemPolicy(reg['tandem'], label)
-            if registerPolicies[regKey] is not None and reg['regType'] != 'ro':
-                self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro register "
-                              f"reaches a leaf as a status output; an rw register reaches it as a status input, "
-                              f"and ext and memory registers are not status ports.")
-        # An ro register no registerConnections row connects is driven by its own
-        # block, so its value reaches a Tandem run only through firmware reads on
+            if registerPolicies[regKey] is not None and reg['regType'] not in ('ro', 'ext'):
+                self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro or ext "
+                              f"register takes the key. An rw register reaches a leaf as a status input, which a "
+                              f"Tandem run does not compare, and a memory register has no read compare of its own.")
+        # An ro or ext register no registerConnections row connects stays inside
+        # its own block, so a Tandem run sees it only through firmware reads on
         # the block's register bus. The key sets how the register-bus tee
         # compares those reads.
         connectedRegisters = {rc['registerBlockKey'] for rc in flat['registerConnections'].values()}
@@ -10769,7 +10769,7 @@ class projectCreate:
                 self.logError(f"{registerLabels[regKey]} sets tandem:, but block '{reg['block']}' owns it, and "
                               f"{why}. On a register no registerConnections row connects, tandem: sets how a "
                               f"Tandem run of the owning block compares firmware reads of it.")
-            elif reg['regType'] == 'ro':
+            elif reg['regType'] in ('ro', 'ext'):
                 registerReads.setdefault(reg['blockKey'], dict())[reg['register']] = policy
         self.config.setConfig('TANDEMREGISTERREADS', registerReads, bin=True)
 

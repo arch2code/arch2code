@@ -197,7 +197,7 @@ connectionMaps:
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. |
 | `offset` | Manual offset. Default `0`, auto-assigned. |
-| `tandem` | On an `ro` register, the default for every `registerConnections` row of it. On an `ro` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
+| `tandem` | On an `ro` register, the default for every `registerConnections` row of it. On an `ro` or `ext` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
 
 ### Memories (`memories:`)
 
@@ -262,11 +262,11 @@ Rows that define a leaf's status output:
 *   A `connectionMaps:` row with a `status` interface and `direction: src`. The key applies to the child's port.
 *   A `registerConnections:` row of an `ro` register. A `registers:` row of an `ro` register sets the default for all of its rows. If both set it, the values must match.
 
-`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, and an `rw`, `ext` or `memory` register. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
+`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, an `rw` or `memory` register, and an `ext` register that a `registerConnections` row connects. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
 
 #### Register reads
 
-An `ro` register that no `registerConnections` row connects is written by its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address:
+An `ro` or `ext` register that no `registerConnections` row connects lives inside its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address:
 
 | Value | Read data mismatch |
 | :--- | :--- |
