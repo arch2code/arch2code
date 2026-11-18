@@ -3307,12 +3307,13 @@ class projectOpen:
             ret['ports'][portType['dest']] = dict(newPorts)
 
     def _stampPortArray(self, portRow, isRegisterPort):
-        """A port that takes a whole register array is an array of interfaces:
-        arrayCount is the count as the YAML spells it, arrayCountValue its
-        value. Both are None for any other port. A Verilator top pin is a
-        scalar or a packed vector, so pinPrefixes names the flat pin set of
-        each interface the port carries: the port name, or <port>_<k> for
-        element k of an array."""
+        """A port that takes a whole register array is an array of interfaces.
+        arrayCount is the count as the YAML spells it when every owner names
+        the same count, otherwise the resolved integer. arrayCountValue is
+        always the resolved integer. Both are None for any other port. A
+        Verilator top pin is a scalar or a packed vector, so pinPrefixes
+        names the flat pin set of each interface the port carries: the port
+        name, or <port>_<k> for element k of an array."""
         connection = portRow['connection']
         isArray = (isRegisterPort and connection['countValue'] is not None
                    and not connection['isElementPort'])

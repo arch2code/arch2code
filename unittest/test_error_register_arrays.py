@@ -444,7 +444,7 @@ def run_all_tests():
         ("a duplicate registerConnections row",
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uB', 0) + _conn('arr', 'uB', 1)), False,
          ["register 'arr'", "instance 'uB'", "repeats the entry", "Remove one of the two entries"]),
-        # rule 1: one form per child block, every instance included
+        # one form per child block, every instance included
         ("index and whole rows within one child block",
          _arch(_reg('arr', extra=', count: 4'), _conn('arr', 'uA0', 0) + _conn('arr', 'uA1')), False,
          ["register 'arr'", "block 'childA'", "two forms", "an index, or none"]),
@@ -474,7 +474,7 @@ def run_all_tests():
          ["uAx1 in 'ownerX' (", "uAy in 'ownerY' (", "Add a registerConnections row for uAy that",
           "so uAx1 cannot take it", "use a separate block for uAx1"], 'childA',
          ["row for uAx1", "row for uAy, uAx1", "row for uAx1, uAy"]),
-        # rule 2: an ro or ext element has one consumer
+        # an ro or ext register, or each element of one, has one consumer
         ("an ro element given to two instances",
          _arch(_reg('arr', 'ro', ', count: 2'), _conn('arr', 'uA0', 0) + _conn('arr', 'uA1', 0)), False,
          ["register 'arr'", "element 0 goes to instances uA0, uA1", "Give element 0 to one instance"]),
