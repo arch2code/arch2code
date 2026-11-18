@@ -3,9 +3,9 @@
 // simulated, not only read. The span between the RENDERED markers is
 // render_tests() of that template for lb_gen_env, a stand-in for the
 // generated env with two clocks, clk with a reset and clk2 without, an
-// input port, lb_in, a status input, lb_st, and one counted output,
-// lb_out; unittest/test_uvm_test_pkg.py fails when the span and the
-// template differ. Included in a2c_uvm_loopback_pkg after
+// input port, lb_in, a status input, lb_st, a register bus, lb_reg, and
+// one counted output, lb_out; unittest/test_uvm_test_pkg.py fails when the
+// span and the template differ. Included in a2c_uvm_loopback_pkg after
 // a2c_replay_drain_lb_tests.svh, whose fake lanes the env's replay log
 // uses.
 
@@ -29,6 +29,7 @@
     endclass : lb_gen_item
 
     typedef lb_gen_item lb_in_item_t;
+    typedef lb_gen_item lb_reg_item_t;
     typedef st_item_t   lb_st_item_t;
 
     // Takes each item at once.
@@ -88,9 +89,19 @@
         endtask
     endclass : lb_gen_seq
 
+    // The register model of the stand-in env, with no registers.
+    class lb_gen_reg_block extends uvm_reg_block;
+        `uvm_object_utils(lb_gen_reg_block)
+
+        function new(string name = "lb_gen_reg_block");
+            super.new(name);
+        endfunction
+    endclass : lb_gen_reg_block
+
     // What the base test reads of a generated env: one replay log, the
     // driver path of an AXI agent, an input port's agent, a status input's
-    // agent on the st pin set and an output's counter.
+    // agent on the st pin set, a register bus's agent and register model,
+    // and an output's counter.
     class lb_gen_env extends uvm_env;
         virtual a2c_clk_if                 clk_vif;
         virtual a2c_clk_if                 clk2_vif;
@@ -99,6 +110,8 @@
         lb_gen_scope                       axi_drv;
         lb_gen_in_agent                    lb_in_agent;
         st_agent_t                         lb_st_agent;
+        lb_gen_in_agent                    lb_reg_agent;
+        lb_gen_reg_block                   regmodel;
         a2c_txn_counter #(lb_gen_item)     lb_out_counter;
 
         `uvm_component_utils(lb_gen_env)
@@ -124,6 +137,8 @@
             st_cfg.port_name = "lb_st";
             uvm_config_db#(st_config_t)::set(this, "lb_st_agent", "cfg", st_cfg);
             lb_st_agent    = st_agent_t::type_id::create("lb_st_agent", this);
+            lb_reg_agent   = lb_gen_in_agent::type_id::create("lb_reg_agent", this);
+            regmodel       = lb_gen_reg_block::type_id::create("regmodel");
             lb_out_counter = a2c_txn_counter#(lb_gen_item)::type_id::create("lb_out_counter", this);
             lb_out_counter.port_name = "lb_out";
         endfunction
@@ -159,7 +174,8 @@
     // with the DUT lane ready for it, for model_throttle_cycles clocks in a
     // row raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's
     // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
-    // rule off. A run that sends nothing on an input and expects no output
+    // rule off. A run that sends nothing on an input, the register bus
+    // aside on a block with another input, and expects no output
     // transaction warns at check_phase, unless no_stimulus_expected
     // (+a2c_no_stimulus_expected=1) is set, which also lets every
     // comparator compare no pair. A run phase still running at
@@ -331,8 +347,9 @@
         // Pulses every reset of the block and returns once each clock samples
         // its reset released. The RTL and the agents abandon what is in
         // flight, and the counters and comparators start again from the
-        // release. The model has no mid-run reset, so a run that holds it
-        // gets an A2C_RESET error instead.
+        // release. The register model goes back to its reset values, as the
+        // registers do. The model has no mid-run reset, so a run that holds
+        // it gets an A2C_RESET error instead.
         task reset_dut();
             bit model;
             void'(uvm_config_db#(bit)::get(this, "env", "a2c_model_dut", model));
@@ -343,23 +360,36 @@
             fork
                 env.clk_vif.request_reset();
             join
+            env.regmodel.reset();
         endtask
 
-        // Warns about a run that sent nothing on any input and declared no
-        // transaction on any output, as the scaffolded smoke test does until
-        // its run_body() sends stimulus. A Mode B comparator or a check of the
-        // test's own may still have run, so the warning claims no more.
+        // Warns about a run that sent nothing on any input but the register
+        // bus and declared no transaction on any output, as the scaffolded
+        // smoke test does until its run_body() sends stimulus, since register
+        // writes alone leave the data path unexercised. A Mode B comparator or
+        // a check of the test's own may still have run, so the warning claims
+        // no more.
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (no_stimulus_expected || stimulus_sent() != 0) return;
+            if (no_stimulus_expected || data_stimulus_sent() != 0) return;
             if (env.lb_out_counter.declared() != 0) return;
-            `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents' sequencers or a status input's cfg.value, and declare each output's transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",
+            `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input other than the register bus and declared no transaction on any output. Send stimulus in run_body(), through the input agents' sequencers or a status input's cfg.value, and declare each output's transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",
                                                       get_type_name()))
         endfunction
 
         // The items the input ports' agents have sent, through their
         // sequencers or, for a status input, their drivers.
         virtual function int unsigned stimulus_sent();
+            int unsigned n = 0;
+            n += a2c_items_sent#(lb_in_item_t)::of(env.lb_in_agent);
+            n += a2c_items_sent#(lb_st_item_t)::of(env.lb_st_agent);
+            n += a2c_items_sent#(lb_reg_item_t)::of(env.lb_reg_agent);
+            return n;
+        endfunction
+
+        // The items the input ports' agents other than the register bus's
+        // have sent.
+        virtual function int unsigned data_stimulus_sent();
             int unsigned n = 0;
             n += a2c_items_sent#(lb_in_item_t)::of(env.lb_in_agent);
             n += a2c_items_sent#(lb_st_item_t)::of(env.lb_st_agent);
@@ -596,13 +626,15 @@
     endclass : gen_base_drain_wrong_type_test
 
     // The base test's check that a run did something. It sends n_sent
-    // items on lb_in, sets the status input lb_st if set_status is set, and
-    // declares n_declared transactions on lb_out, which it then delivers
-    // itself, so the counter is satisfied; it expects want_warnings
-    // A2C_NO_STIMULUS, which must name the test and the way out.
+    // items on lb_in and n_reg on the register bus lb_reg, sets the status
+    // input lb_st if set_status is set, and declares n_declared
+    // transactions on lb_out, which it then delivers itself, so the counter
+    // is satisfied; it expects want_warnings A2C_NO_STIMULUS, which must
+    // name the test and the way out.
     class gen_base_no_stimulus_test extends lb_gen_base;
         lb_id_counter ids;
         int unsigned  n_sent;
+        int unsigned  n_reg;
         bit           set_status;
         int unsigned  n_declared;
         int unsigned  want_warnings = 1;
@@ -623,15 +655,18 @@
 
         virtual task run_body();
             lb_gen_seq seq = lb_gen_seq::type_id::create("seq");
+            lb_gen_seq reg_seq = lb_gen_seq::type_id::create("reg_seq");
             seq.n = n_sent;
             seq.start(env.lb_in_agent.sqr);
+            reg_seq.n = n_reg;
+            reg_seq.start(env.lb_reg_agent.sqr);
             if (set_status) env.lb_st_agent.cfg.value = '{tag: 4'h1, value: 20'h5};
             env.lb_out_counter.expect_count(n_declared);
             repeat (n_declared) env.lb_out_counter.analysis_export.write(lb_gen_item::type_id::create("out"));
         endtask
 
         virtual function void report_phase(uvm_phase phase);
-            string            want = {get_type_name(), " sent no transaction on any input and declared no transaction on any output. ",
+            string            want = {get_type_name(), " sent no transaction on any input other than the register bus and declared no transaction on any output. ",
                                       "Send stimulus in run_body(), through the input agents' sequencers or a status input's cfg.value, and declare each output's transactions ",
                                       "with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing"};
             uvm_report_server srv = uvm_report_server::get_server();
@@ -678,6 +713,17 @@
             want_warnings = 0;
         endfunction
     endclass : gen_base_status_stimulus_test
+
+    // Register writes alone leave the data path idle: the warning still
+    // fires.
+    class gen_base_reg_only_test extends gen_base_no_stimulus_test;
+        `uvm_component_utils(gen_base_reg_only_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            n_reg = 2;
+        endfunction
+    endclass : gen_base_reg_only_test
 
     // One transaction declared on the output, with none sent, checks the
     // DUT's output: no warning.

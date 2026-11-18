@@ -101,6 +101,23 @@ struct bfmClocks {
     static std::vector<std::string> droveAt(const sc_time &at, const bfmSameClockAnswer *except);
 };
 
+// The tail of a break of the sample-point precondition: the port, what was
+// sampled when, and the BFM ports that drove a pin in that time step, the
+// candidates for the combinational path.
+inline std::string bfmPreconditionBreak(const bfmSameClockAnswer *self, const std::string &sampledWhat, const sc_time &sampled) {
+    const std::vector<std::string> drove = bfmClocks::droveAt(sampled, self);
+    std::string ports;
+    for (const std::string &p : drove) {
+        ports += (ports.empty() ? "" : ", ") + p;
+    }
+    return std::format(
+        " ({}, {} at {}). The RTL breaks the precondition that on BFM ports an HDL ready, ack "
+        "or read data does not depend combinationally on a pin another BFM drives; {}",
+        bfmClocks::portOf(self), sampledWhat, sampled.to_string(),
+        drove.empty() ? std::string("no other tracked BFM port drove a pin in the sample point's time step")
+                      : "BFM ports that drove a pin in the sample point's time step: " + ports);
+}
+
 // A dst BFM completes the model's call at the sample point, when ready is
 // high there, so the HDL must keep ready high to the next rising edge. A
 // ready that falls in between leaves the model with a transfer the HDL never
@@ -113,17 +130,30 @@ struct bfmReadyLowered : bfmContractCheck {
         : bfmContractCheck(name, "HDL lowered ready after the sample point where the model's call completed", "clock edges",
                            false, true) {}
     void fail(const bfmSameClockAnswer *self, const sc_time &sampled) {
-        const std::vector<std::string> drove = bfmClocks::droveAt(sampled, self);
-        std::string ports;
-        for (const std::string &p : drove) {
-            ports += (ports.empty() ? "" : ", ") + p;
+        bfmContractCheck::fail(sc_time_stamp(), bfmPreconditionBreak(self, "ready sampled high", sampled));
+    }
+};
+
+// The read data a dst BFM hands the model at the sample point must still be
+// on the pins at the next rising edge, where the HDL transfers it. Read data
+// that changes in between gives the model a value the HDL never sent, so it
+// fails the run in every flow, as bfmReadyLowered does.
+template <typename PINS_T>
+struct bfmReadDataChanged : bfmContractCheck {
+    PINS_T sampled_{};
+    sc_time sampledAt_;
+    bfmReadDataChanged(std::string name)
+        : bfmContractCheck(name, "HDL changed read data after the sample point where the model received it", "clock edges",
+                           false, true) {}
+    void sample(const PINS_T &pins) {
+        sampled_ = pins;
+        sampledAt_ = sc_time_stamp();
+    }
+    // At the rising edge after sample(), outside reset.
+    void check(const bfmSameClockAnswer *self, const PINS_T &pins) {
+        if (!(pins == sampled_)) {
+            fail(sc_time_stamp(), bfmPreconditionBreak(self, "read data sampled", sampledAt_));
         }
-        bfmContractCheck::fail(sc_time_stamp(), std::format(
-            " ({}, ready sampled high at {}). The RTL breaks the precondition that on BFM ports an HDL ready, ack "
-            "or read data does not depend combinationally on a pin another BFM drives; {}",
-            bfmClocks::portOf(self), sampled.to_string(),
-            drove.empty() ? std::string("no other tracked BFM port drove a pin in the sample point's time step")
-                          : "BFM ports that drove a pin in the sample point's time step: " + ports));
     }
 };
 

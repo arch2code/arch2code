@@ -166,6 +166,7 @@ public:
 
     apb_dst_bfm(sc_module_name modulename) :
         m_lowered(name()),
+        m_prdataChanged(name()),
         m_complete([this] { complete(); }) {
         bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
@@ -185,6 +186,7 @@ public:
 
     virtual void end_of_simulation() {
         m_lowered.report();
+        m_prdataChanged.report();
     }
 
     // A request stays the model's until the HDL completes it. The BFM shows
@@ -220,13 +222,20 @@ public:
             });
             if ( !m_isWrite ) {
                 m_data.sc_unpack(hdl_if_p->prdata);
+                m_prdataChanged.sample(hdl_if_p->prdata.read());
             }
             m_complete.start();
-            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
-                do {
-                    wait(clk.posedge_event());
-                    m_clock.rose();
-                } while (!ready());
+            if (certain) {
+                if (m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                    if (!m_isWrite && rst_n.read()) {
+                        m_prdataChanged.check(&m_clock, hdl_if_p->prdata.read());
+                    }
+                } else {
+                    do {
+                        wait(clk.posedge_event());
+                        m_clock.rose();
+                    } while (!ready());
+                }
             }
             hdl_if_p->penable = false;
             hdl_if_p->psel = false;
@@ -273,6 +282,7 @@ private:
     bool m_isWrite = false;
     bfmSameClockAnswer m_clock;
     bfmReadyLowered m_lowered;
+    bfmReadDataChanged<VL_DATA_T> m_prdataChanged;
     bfmCompleter m_complete;
 
 };

@@ -105,6 +105,7 @@ public:
 
     req_ack_dst_bfm(sc_module_name modulename) :
         m_lowered(name()),
+        m_rdataChanged(name()),
         m_complete([this] { if_p->ack(m_rdata); }) {
         bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
@@ -118,6 +119,7 @@ public:
 
     virtual void end_of_simulation() {
         m_lowered.report();
+        m_rdataChanged.report();
     }
 
     // The model's req() blocks until ack(), which the BFM calls with rdata at
@@ -136,12 +138,19 @@ public:
             hdl_if_p->data = data.sc_pack();
             const bool certain = m_clock.waitTaken(clk, ready, [] {});
             m_rdata.sc_unpack(hdl_if_p->rdata);
+            m_rdataChanged.sample(hdl_if_p->rdata.read());
             m_complete.start();
-            if (certain && !m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
-                do {
-                    wait(clk.posedge_event());
-                    m_clock.rose();
-                } while (!ready());
+            if (certain) {
+                if (m_clock.waitTakenEdge(clk, rst_n, ready, m_lowered)) {
+                    if (rst_n.read()) {
+                        m_rdataChanged.check(&m_clock, hdl_if_p->rdata.read());
+                    }
+                } else {
+                    do {
+                        wait(clk.posedge_event());
+                        m_clock.rose();
+                    } while (!ready());
+                }
             }
             hdl_if_p->req = false;
             m_complete.waitDone();
@@ -163,6 +172,7 @@ private:
     RDATA_T m_rdata;
     bfmSameClockAnswer m_clock;
     bfmReadyLowered m_lowered;
+    bfmReadDataChanged<VL_RDATA_T> m_rdataChanged;
     bfmCompleter m_complete;
 
 };

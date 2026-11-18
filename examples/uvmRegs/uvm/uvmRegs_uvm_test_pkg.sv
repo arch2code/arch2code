@@ -213,7 +213,8 @@ package uvmRegs_uvm_test_pkg;
     // with the DUT lane ready for it, for model_throttle_cycles clocks in a
     // row raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's
     // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
-    // rule off. A run that sends nothing on an input and expects no output
+    // rule off. A run that sends nothing on an input, the register bus
+    // aside on a block with another input, and expects no output
     // transaction warns at check_phase, unless no_stimulus_expected
     // (+a2c_no_stimulus_expected=1) is set, which also lets every
     // comparator compare no pair. A run phase still running at
@@ -400,15 +401,17 @@ package uvmRegs_uvm_test_pkg;
             env.regmodel.reset();
         endtask
 
-        // Warns about a run that sent nothing on any input and declared no
-        // transaction on any output, as the scaffolded smoke test does until
-        // its run_body() sends stimulus. A Mode B comparator or a check of the
-        // test's own may still have run, so the warning claims no more.
+        // Warns about a run that sent nothing on any input but the register
+        // bus and declared no transaction on any output, as the scaffolded
+        // smoke test does until its run_body() sends stimulus, since register
+        // writes alone leave the data path unexercised. A Mode B comparator or
+        // a check of the test's own may still have run, so the warning claims
+        // no more.
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (no_stimulus_expected || stimulus_sent() != 0) return;
+            if (no_stimulus_expected || data_stimulus_sent() != 0) return;
             if (env.out_counter.declared() != 0) return;
-            `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents' sequencers or a status input's cfg.value, and declare each output's transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",
+            `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input other than the register bus and declared no transaction on any output. Send stimulus in run_body(), through the input agents' sequencers or a status input's cfg.value, and declare each output's transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",
                                                       get_type_name()))
         endfunction
 
@@ -418,6 +421,14 @@ package uvmRegs_uvm_test_pkg;
             int unsigned n = 0;
             n += a2c_items_sent#(in_item_t)::of(env.in_agent);
             n += a2c_items_sent#(apbReg_item_t)::of(env.apbReg_agent);
+            return n;
+        endfunction
+
+        // The items the input ports' agents other than the register bus's
+        // have sent.
+        virtual function int unsigned data_stimulus_sent();
+            int unsigned n = 0;
+            n += a2c_items_sent#(in_item_t)::of(env.in_agent);
             return n;
         endfunction
 
@@ -548,9 +559,12 @@ package uvmRegs_uvm_test_pkg;
     // each lane ends missing exactly missing_count transactions, and nothing
     // else raised a UVM_ERROR or UVM_FATAL, so a counter that stops reporting
     // or reports the wrong shortfall fails it. The missing transaction never
-    // closes its unit, so the real-time rules are off.
-    // It also fails when the smoke test sent no stimulus, since the shortfall
-    // alone would then pass with a dead data path.
+    // closes its unit, so the real-time rules are off. It clears
+    // expect_from_model, whose model lane would absorb the missing count, so
+    // the smoke test declares its counts as in a run with one DUT.
+    // It also fails when the smoke test sent no stimulus on an input other
+    // than the register bus, since the shortfall alone would then pass with a
+    // dead data path.
     class uvmRegs_fail_test extends uvmRegs_smoke_test;
         a2c_error_demoter demoter;
         int unsigned missing_count = 1;
@@ -569,6 +583,8 @@ package uvmRegs_uvm_test_pkg;
             uvm_report_cb::add(null, demoter);
             // Wins over the rt_* knobs, plusargs and set_limits().
             uvm_config_db#(bit)::set(this, "env*", "a2c_rt_off", 1'b1);
+            expect_from_model = 0;
+            uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", 1'b0);
         endfunction
 
         virtual task run_body();
@@ -594,8 +610,8 @@ package uvmRegs_uvm_test_pkg;
                                                       pending, missing_count)};
                 end
             end
-            if (stimulus_sent() == 0) begin
-                `uvm_error("A2C_FAIL_TEST", "uvmRegs_smoke_test sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")
+            if (data_stimulus_sent() == 0) begin
+                `uvm_error("A2C_FAIL_TEST", "uvmRegs_smoke_test sent no stimulus on an input other than the register bus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")
             end else if (demoter.demoted != want || others != 0 || shortfall != "") begin
                 `uvm_error("A2C_FAIL_TEST", $sformatf("expected exactly %s and no other error; caught %0d A2C_TXN_COUNT, %0d other UVM_ERROR/UVM_FATAL%s",
                                                       expected, demoter.demoted, others, shortfall))

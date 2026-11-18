@@ -23,7 +23,10 @@ wait_for_outputs() is a stable point for the model comparators. At its
 check_phase a run whose input agents sent no item, through their sequencers
 or a status input's driver, and whose counters were declared no transaction
 warns A2C_NO_STIMULUS, unless
-no_stimulus_expected is set, as the scaffolded smoke test does. The base
+no_stimulus_expected is set, as the scaffolded smoke test does. Register
+writes alone leave the data path idle, so on a block with another input the
+register bus's items do not count, through data_stimulus_sent(); on a block
+whose only input is its register bus they do. The base
 test implements a2c_run_work, so its run timeout, an a2c_run_timeout child
 on the block's first clock, can derive its budget from the items sent and
 the transactions the counters expect. It hands that child
@@ -36,8 +39,9 @@ adds the missing transactions to the first counted output after the smoke
 stimulus, turns the real-time rules off with a2c_rt_off, because
 the missing transaction never closes its unit, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
 in Mode B, with each lane's pending count equal to the missing count, and only
-when the smoke test sent stimulus, since a dead data path also misses the
-transactions. The rt-fire test sets rt_lag_cycles to 1 on the smoke
+when the smoke test sent data-path stimulus, since a dead data path also
+misses the transactions. It clears expect_from_model and its config key, whose
+model lane would absorb the missing count. The rt-fire test sets rt_lag_cycles to 1 on the smoke
 stimulus, demotes A2C_RT_DEADLINE, and passes only when env holds a checker
 that is not off, each such checker failed every unit it paired once, and
 the demoted errors are those of the checkers that judge. A block
@@ -218,13 +222,19 @@ STABLE_POINT = [
 NO_STIMULUS = [
     'virtual function void check_phase(uvm_phase phase);',
     'super.check_phase(phase);',
-    'if (no_stimulus_expected || stimulus_sent() != 0) return;',
+    'if (no_stimulus_expected || data_stimulus_sent() != 0) return;',
 ]
 OUTPUT_DECLARED = ['if (env.out_counter.declared() != 0) return;']
 STIMULUS_SENT = [
-    '`uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
+    '`uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input other than the register bus and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
     'endfunction',
     'virtual function int unsigned stimulus_sent();',
+    'int unsigned n = 0;',
+    'n += a2c_items_sent#(in_item_t)::of(env.in_agent);',
+    'n += a2c_items_sent#(ubRegs_item_t)::of(env.ubRegs_agent);',
+    'return n;',
+    'endfunction',
+    'virtual function int unsigned data_stimulus_sent();',
     'int unsigned n = 0;',
     'n += a2c_items_sent#(in_item_t)::of(env.in_agent);',
     'return n;',
@@ -254,6 +264,8 @@ FAIL_TEST = [
     'demoter.demote_id = "A2C_TXN_COUNT";',
     'uvm_report_cb::add(null, demoter);',
     'uvm_config_db#(bit)::set(this, "env*", "a2c_rt_off", 1\'b1);',
+    'expect_from_model = 0;',
+    'uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", 1\'b0);',
     'super.run_body();',
     'env.out_counter.expect_count(missing_count);',
     'int unsigned want = 1;',
@@ -262,8 +274,8 @@ FAIL_TEST = [
     'for (int lane = 0; lane < want; lane++) begin',
     "int unsigned pending = env.out_counter.lane_pending(a2c_lane_e'(lane));",
     'if (pending != missing_count) begin',
-    'if (stimulus_sent() == 0) begin',
-    '`uvm_error("A2C_FAIL_TEST", "ubDut_smoke_test sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")',
+    'if (data_stimulus_sent() == 0) begin',
+    '`uvm_error("A2C_FAIL_TEST", "ubDut_smoke_test sent no stimulus on an input other than the register bus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()")',
     'end else if (demoter.demoted != want || others != 0 || shortfall != "") begin',
     'endclass : ubDut_fail_test',
 ]
@@ -308,11 +320,12 @@ LOOPBACK_COPY = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm', 'loopba
 LOOPBACK_UVM = {'baseTestClass': 'lb_gen_base', 'tbEnvClass': 'lb_gen_env',
                 'ports': [{'name': 'lb_in', 'agent': 'lb_in_agent', 'role': 'dst', 'counter': None},
                           {'name': 'lb_st', 'agent': 'lb_st_agent', 'role': 'dst', 'counter': None},
+                          {'name': 'lb_reg', 'agent': 'lb_reg_agent', 'role': 'dst', 'counter': None},
                           {'name': 'lb_out', 'agent': 'lb_out_agent', 'role': 'src', 'counter': 'lb_out_counter',
                            'clockVif': 'clk_vif'}],
                 'clocks': [{'clock': 'clk', 'vif': 'clk_vif', 'reset': 'rst_n'},
                            {'clock': 'clk2', 'vif': 'clk2_vif', 'reset': None}],
-                'registerBus': None}
+                'registerBus': {'port': 'lb_reg', 'agent': 'lb_reg_agent', 'adapterClass': 'apb_reg_adapter'}}
 
 
 def regions(path):
@@ -341,6 +354,12 @@ def in_order(lines, expected):
     return True
 
 
+def data_stimulus_body(lines):
+    """The lines of data_stimulus_sent()'s body."""
+    start = lines.index('virtual function int unsigned data_stimulus_sent();')
+    return lines[start + 1:lines.index('endfunction', start)]
+
+
 def check_layout(path, hasOutput, hasModel=True):
     problems = []
     name = os.path.basename(path)
@@ -363,6 +382,8 @@ def check_layout(path, hasOutput, hasModel=True):
         problems.append(f"{name} waits on an output or declares a fail or rt-fire test, and the block has no counted output")
     if not (hasOutput and hasModel) and MISMATCH_TEST[0] in footer:
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")
+    if any('ubRegs_agent' in line for line in data_stimulus_body(tests)):
+        problems.append(f"{name} counts the register bus in data_stimulus_sent(): {data_stimulus_body(tests)}")
     start = tests.index(MODE_B_TAIL[0]) if MODE_B_TAIL[0] in tests else -1
     if start < 0 or tests[start:start + len(MODE_B_TAIL)] != MODE_B_TAIL:
         problems.append(f"{name} tests section is\n    {tests}\n  expected the Mode B tail\n    {MODE_B_TAIL}")
@@ -463,6 +484,24 @@ def check_loopback_copy(_project):
     return []
 
 
+def check_register_bus_only(_project):
+    """A block whose only input is its register bus counts that bus as
+    stimulus, and its warning and fail test say "on any input"."""
+    uvm = dict(LOOPBACK_UVM, ports=[port for port in LOOPBACK_UVM['ports'] if port['name'] in ('lb_reg', 'lb_out')],
+               smokeTestClass='lb_smoke_test')
+    lines = [line.strip() for line in uvmTest.render_tests(uvm).splitlines()]
+    problems = []
+    if data_stimulus_body(lines) != ['int unsigned n = 0;', 'n += a2c_items_sent#(lb_reg_item_t)::of(env.lb_reg_agent);',
+                                     'return n;']:
+        problems.append(f"data_stimulus_sent() does not count the only input, the register bus: {data_stimulus_body(lines)}")
+    if not any('"%s sent no transaction on any input and declared' in line for line in lines):
+        problems.append("the A2C_NO_STIMULUS warning names an input other than the register bus on a block with none")
+    footer = uvmTest.fail_test(uvm, {'className': 'lb_fail_test', 'counter': 'lb_out_counter'})
+    if not any('"lb_smoke_test sent no stimulus, so' in line for line in footer):
+        problems.append("the fail test names an input other than the register bus on a block with none")
+    return problems
+
+
 def run_all_tests():
     print("\n" + "=" * 70)
     print("UVM TEST PACKAGE SCAFFOLD")
@@ -474,6 +513,7 @@ def run_all_tests():
                             ('no fail or rt-fire test without a counted output', check_no_output),
                             ('no model mismatch test without a model', check_no_model),
                             ('no generated drain for an apb master port', check_master),
+                            ('the register bus counts as stimulus when it is the only input', check_register_bus_only),
                             ('the loopback simulates the current base test', check_loopback_copy)):
             problems = check(os.path.join(tmp, check.__name__))
             for problem in problems:

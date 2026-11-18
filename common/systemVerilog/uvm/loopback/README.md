@@ -22,13 +22,12 @@ The seedRepro checks at the end of the script run with or without `--subset`.
 
 ## Before a commit
 
-A change to the UVM library, an agent package, the loopback or a UVM template passes these before it is committed, all at one seed:
+A change to the UVM library, an agent package, the loopback or a UVM template passes these before it is committed:
 
 1. `make unittest` in base, with `UVM_HOME` set to an Accellera UVM 1.2 release so `test_uvm_sv_parse.py` parses the SV, and `make unit-test` in Pro;
-2. the full loopback with Pro on Xcelium;
-3. the reduced loopback with Pro on VCS: one VCS licence, under 20 minutes.
+2. the full loopback with Pro on Xcelium.
 
-The full loopback with Pro on VCS runs after the commit.
+VCS licences are scarce, so no VCS run blocks a commit. The reduced loopback with Pro on VCS, one VCS licence and under 20 minutes, runs when a licence is free, before or after the commit, and a failure there is fixed in a later commit. The full loopback with Pro on VCS runs the same way. Use one seed for every loopback run of a change.
 
 The two simulators treat some legal SV differently, and only a run on each shows it. A `?:` between two string literals is the one difference a unit test catches, `test_sv_string_select.py`: VCS prints the shorter literal padded with leading spaces, so use `a2c_select_str()`.
 

@@ -38,10 +38,19 @@ def render_header(args, prj, data, uvm):
     return '\n' + '\n'.join(out) + '\n' + textwrap.indent('\n'.join(lines), ' '*4) + '\n'
 
 
+def data_inputs(uvm):
+    # Register writes alone leave the data path idle, so the register bus
+    # counts as stimulus only on a block it is the only input of.
+    inputs = [port for port in uvm['ports'] if port['role'] == 'dst']
+    bus = uvm['registerBus']['port'] if uvm['registerBus'] else None
+    return [port for port in inputs if port['name'] != bus] or inputs
+
+
 def render_tests(uvm):
     cls = uvm['baseTestClass']
     counters = [port for port in uvm['ports'] if port['counter']]
     inputs = [port for port in uvm['ports'] if port['role'] == 'dst']
+    dataInputs = data_inputs(uvm)
     lines = ["// Waits for reset, runs run_body(), then waits for every output's",
              "// expected transactions. A test sets its own default deadline, quiet",
              "// window and clock stop in its constructor; +a2c_output_deadline_cycles,",
@@ -68,7 +77,8 @@ def render_tests(uvm):
              "// with the DUT lane ready for it, for model_throttle_cycles clocks in a",
              "// row raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's",
              "// own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the",
-             "// rule off. A run that sends nothing on an input and expects no output",
+             "// rule off. A run that sends nothing on an input, the register bus",
+             "// aside on a block with another input, and expects no output",
              "// transaction warns at check_phase, unless no_stimulus_expected",
              "// (+a2c_no_stimulus_expected=1) is set, which also lets every",
              "// comparator compare no pair. A run phase still running at",
@@ -265,17 +275,28 @@ def render_tests(uvm):
             lines.append('        env.regmodel.reset();')
     else:
         lines.append('        `uvm_error("A2C_RESET", "reset_dut(): the block has no reset to pulse")')
+    skipsBus = len(dataInputs) < len(inputs)
     lines += ['    endtask',
-              '',
-              '    // Warns about a run that sent nothing on any input and declared no',
-              '    // transaction on any output, as the scaffolded smoke test does until',
-              '    // its run_body() sends stimulus. A Mode B comparator or a check of the',
-              "    // test's own may still have run, so the warning claims no more.",
-              '    virtual function void check_phase(uvm_phase phase);',
+              '']
+    if skipsBus:
+        lines += ['    // Warns about a run that sent nothing on any input but the register',
+                  '    // bus and declared no transaction on any output, as the scaffolded',
+                  '    // smoke test does until its run_body() sends stimulus, since register',
+                  '    // writes alone leave the data path unexercised. A Mode B comparator or',
+                  "    // a check of the test's own may still have run, so the warning claims",
+                  '    // no more.']
+        sentWhere = 'on any input other than the register bus'
+    else:
+        lines += ['    // Warns about a run that sent nothing on any input and declared no',
+                  '    // transaction on any output, as the scaffolded smoke test does until',
+                  '    // its run_body() sends stimulus. A Mode B comparator or a check of the',
+                  "    // test's own may still have run, so the warning claims no more."]
+        sentWhere = 'on any input'
+    lines += ['    virtual function void check_phase(uvm_phase phase);',
               '        super.check_phase(phase);',
-              '        if (no_stimulus_expected || stimulus_sent() != 0) return;']
+              '        if (no_stimulus_expected || data_stimulus_sent() != 0) return;']
     lines += [f"        if (env.{port['counter']}.declared() != 0) return;" for port in counters]
-    lines += ['        `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction on any input and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
+    lines += [f'        `uvm_warning("A2C_NO_STIMULUS", $sformatf("%s sent no transaction {sentWhere} and declared no transaction on any output. Send stimulus in run_body(), through the input agents\' sequencers or a status input\'s cfg.value, and declare each output\'s transactions with expect_count() on its counter, or set no_stimulus_expected (+a2c_no_stimulus_expected=1) in a test meant to send nothing",',
               '                                                  get_type_name()))',
               '    endfunction',
               '',
@@ -284,6 +305,18 @@ def render_tests(uvm):
               '    virtual function int unsigned stimulus_sent();',
               '        int unsigned n = 0;']
     lines += [f"        n += a2c_items_sent#({port['name']}_item_t)::of(env.{port['agent']});" for port in inputs]
+    lines += ['        return n;',
+              '    endfunction',
+              '']
+    if skipsBus:
+        lines += ["    // The items the input ports' agents other than the register bus's",
+                  '    // have sent.']
+    else:
+        lines += ["    // The items the input ports' agents have sent, as stimulus_sent()",
+                  '    // counts them before a test adds its own.']
+    lines += ['    virtual function int unsigned data_stimulus_sent();',
+              '        int unsigned n = 0;']
+    lines += [f"        n += a2c_items_sent#({port['name']}_item_t)::of(env.{port['agent']});" for port in dataInputs]
     lines += ['        return n;',
               '    endfunction',
               '',
@@ -316,17 +349,22 @@ def fail_test(uvm, failTest):
     cls = failTest['className']
     # A block with no input port cannot send stimulus, so its fail test has
     # nothing to require of the smoke test.
-    hasInputs = any(port['role'] == 'dst' for port in uvm['ports'])
+    inputs = [port for port in uvm['ports'] if port['role'] == 'dst']
+    hasInputs = bool(inputs)
+    sentWhere = ' on an input other than the register bus' if len(data_inputs(uvm)) < len(inputs) else ''
     lines = ["// The smoke test with more transactions expected on the first output than",
             "// the DUT delivers (+a2c_fail_missing_count, default 1). It passes only if",
             "// the counter reported exactly one A2C_TXN_COUNT, one per lane in Mode B,",
             "// each lane ends missing exactly missing_count transactions, and nothing",
             "// else raised a UVM_ERROR or UVM_FATAL, so a counter that stops reporting",
             "// or reports the wrong shortfall fails it. The missing transaction never",
-            "// closes its unit, so the real-time rules are off."]
+            "// closes its unit, so the real-time rules are off. It clears",
+            "// expect_from_model, whose model lane would absorb the missing count, so",
+            "// the smoke test declares its counts as in a run with one DUT."]
     if hasInputs:
-        lines += ["// It also fails when the smoke test sent no stimulus, since the shortfall",
-                  "// alone would then pass with a dead data path."]
+        lines += ['// ' + line for line in textwrap.wrap(
+            f"It also fails when the smoke test sent no stimulus{sentWhere}, since the shortfall alone "
+            "would then pass with a dead data path.", 71)]
     lines += [f"class {cls} extends {uvm['smokeTestClass']};",
             '    a2c_error_demoter demoter;',
             '    int unsigned missing_count = 1;',
@@ -345,6 +383,8 @@ def fail_test(uvm, failTest):
             '        uvm_report_cb::add(null, demoter);',
             "        // Wins over the rt_* knobs, plusargs and set_limits().",
             '        uvm_config_db#(bit)::set(this, "env*", "a2c_rt_off", 1\'b1);',
+            '        expect_from_model = 0;',
+            '        uvm_config_db#(bit)::set(this, "env*", "a2c_expect_from_model", 1\'b0);',
             '    endfunction',
             '',
             '    virtual task run_body();',
@@ -371,8 +411,8 @@ def fail_test(uvm, failTest):
             '            end',
             '        end']
     if hasInputs:
-        lines += ['        if (stimulus_sent() == 0) begin',
-                  f"            `uvm_error(\"A2C_FAIL_TEST\", \"{uvm['smokeTestClass']} sent no stimulus, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()\")",
+        lines += ['        if (data_stimulus_sent() == 0) begin',
+                  f"            `uvm_error(\"A2C_FAIL_TEST\", \"{uvm['smokeTestClass']} sent no stimulus{sentWhere}, so the missing transactions would also be missing with a dead data path; send stimulus in its run_body()\")",
                   '        end else if (demoter.demoted != want || others != 0 || shortfall != "") begin']
     else:
         lines += ['        if (demoter.demoted != want || others != 0 || shortfall != "") begin']

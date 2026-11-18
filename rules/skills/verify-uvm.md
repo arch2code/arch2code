@@ -146,7 +146,7 @@ make -j8 USE_UVM=1 USE_XCELIUM=1 UVM_DUT=rtl all
 3.  Add `+UVM_VERBOSITY=UVM_HIGH`, or `+uvm_set_verbosity=<component path>,<id>,<level>,run` for one port. `--verbosity` controls the SystemC side separately.
 4.  For waves, rebuild with `WAVES=1` and run the `A2C_RERUN` command. `WAVES_SCOPE=<scope>` narrows the dump.
 5.  An `A2C_MODEL_CMP` report gives the pair index and each lane's sample time. Spec section 9.14, "From a pair to the waveform", walks from there to the signals.
-6.  Spec section 9.14, "When a check fires", covers the real-time checker, `A2C_MODEL_THROTTLE` and the `HDL lowered ready` break.
+6.  Spec section 9.14, "When a check fires", covers the real-time checker, `A2C_MODEL_THROTTLE` and the `HDL lowered ready` and `HDL changed read data` breaks.
 
 ## Constraints
 *   Never hand-edit generated sections to make a test pass. Fix the test, the YAML, the model or the RTL, then regenerate.

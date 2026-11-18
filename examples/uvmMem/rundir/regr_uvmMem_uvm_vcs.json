@@ -79,6 +79,12 @@
                 },
                 "uvmMem_model_mismatch_test": {
                     "args+": "+UVM_TESTNAME=uvmMem_model_mismatch_test"
+                },
+                "uvmMem_smoke_test_from_model": {
+                    "args+": "+UVM_TESTNAME=uvmMem_smoke_test +a2c_expect_from_model=1"
+                },
+                "uvmMem_fail_test_from_model": {
+                    "args+": "+UVM_TESTNAME=uvmMem_fail_test +a2c_expect_from_model=1"
                 }
             }
         }

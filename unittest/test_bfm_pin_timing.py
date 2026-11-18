@@ -32,7 +32,13 @@ standing in for the RTL, outside UVM, and expects:
   src BFM handed the model its input there, against a destination whose ack
   follows push combinationally, as a UVM same-clock responder's does, reads
   the ack it had before its own push and takes each push at the next rising
-  edge: every value once, in order, one per clock, and no break.
+  edge: every value once, in order, one per clock, and no break;
+- req_ack, pop_ack, memory and apb dst BFMs whose HDL read data follows
+  push_ack port P's push, with P's push raised at each one's sample point,
+  hand the model the read data from before P's push and each fail the run
+  once with `HDL changed read data after the sample point`, naming its own
+  BFM and channel, the sample point and P as the BFM port that drove a pin
+  in that time step.
 """
 
 import os
@@ -53,6 +59,8 @@ PROBE_SRC = """
 #include "rdy_vld_bfm.h"
 #include "axi_write_bfm.h"
 #include "memory_bfm.h"
+#include "pop_ack_bfm.h"
+#include "apb_bfm.h"
 #include <cstdint>
 #include <cstdio>
 #include <format>
@@ -67,6 +75,8 @@ struct bitsSt {
     typedef std::uint64_t _packedSt;
     static const char* getValueType() { return ""; }
     std::uint64_t getStructValue() const { return w; }
+    std::uint64_t _getAddress() const { return w; }
+    std::uint64_t _getData() const { return w; }
     void pack( _packedSt& v ) const { v = w; }
     void unpack( const _packedSt& v ) { w = v; }
     sc_bv<W> sc_pack() const { sc_bv<W> p; p = w; return p; }
@@ -349,6 +359,91 @@ SC_MODULE( culprit )
     }
 };
 
+// RTL whose read data follows a pin another BFM drives: the read data of
+// req_ack D, pop_ack O, memory M and apb A each go up by one while push_ack
+// P's push is high. Each trigger pushes on F, which completes at its sample
+// point, and then on P at once, so P's push rises in the time step where the
+// victim samples its read data, clear of follow's pushes. Every ack and
+// ready follows its request, so only the read data breaks the precondition.
+SC_MODULE( rdataFollows )
+{
+    sc_in<bool> clk, rst_n;
+    req_ack_channel<wordSt, wordSt> chD;
+    pop_ack_channel<wordSt> chO;
+    memory_channel<wordSt, wordSt> chM;
+    apb_channel<wordSt, wordSt> chA;
+    push_ack_channel<wordSt> chF, chP;
+    req_ack_out<wordSt, wordSt> pD;
+    pop_ack_out<wordSt> pO;
+    memory_out<wordSt, wordSt> pM;
+    apb_out<wordSt, wordSt> pA;
+    push_ack_out<wordSt> pF, pP;
+    req_ack_hdl_if<bv, bv> hD;
+    pop_ack_hdl_if<bv> hO;
+    memory_hdl_if<bv, bv> hM;
+    apb_hdl_if<bv, bv> hA;
+    push_ack_hdl_if<bv> hF, hP;
+    req_ack_dst_bfm<wordSt, wordSt, bv, bv> bD;
+    pop_ack_dst_bfm<wordSt, bv> bO;
+    memory_dst_bfm<wordSt, wordSt, bv, bv> bM;
+    apb_dst_bfm<wordSt, wordSt, bv, bv> bA;
+    push_ack_dst_bfm<wordSt, bv> bF, bP;
+    std::uint64_t memAddr = 0;
+    std::vector<std::uint64_t> got;
+    SC_HAS_PROCESS( rdataFollows );
+    rdataFollows( sc_module_name n ) : sc_module( n ), chD( "chD", "blk" ), chO( "chO", "blk" ), chM( "chM", "blk" ),
+        chA( "chA", "blk" ), chF( "chF", "blk" ), chP( "chP", "blk" ),
+        bD( "bD" ), bO( "bO" ), bM( "bM" ), bA( "bA" ), bF( "bF" ), bP( "bP" )
+    {
+        pD( chD ); pO( chO ); pM( chM ); pA( chA ); pF( chF ); pP( chP );
+        bD.if_p( chD ); bO.if_p( chO ); bM.if_p( chM ); bA.if_p( chA ); bF.if_p( chF ); bP.if_p( chP );
+        bD.hdl_if_p( hD ); bO.hdl_if_p( hO ); bM.hdl_if_p( hM ); bA.hdl_if_p( hA ); bF.hdl_if_p( hF ); bP.hdl_if_p( hP );
+        bD.clk( clk ); bO.clk( clk ); bM.clk( clk ); bA.clk( clk ); bF.clk( clk ); bP.clk( clk );
+        bD.rst_n( rst_n ); bO.rst_n( rst_n ); bM.rst_n( rst_n ); bA.rst_n( rst_n ); bF.rst_n( rst_n ); bP.rst_n( rst_n );
+        SC_METHOD( comb ); sensitive << hD.req << hO.pop << hA.psel << hA.penable << hF.push << hP.push << clk.pos();
+        SC_THREAD( model ); SC_THREAD( trigger );
+    }
+    void comb()
+    {
+        const int up = hP.push.read() ? 1 : 0;
+        hD.ack = hD.req.read();
+        hD.rdata = bv( 500 + up );
+        hO.ack = hO.pop.read();
+        hO.rdata = bv( 800 + up );
+        if (clk.posedge() && hM.enable.read()) { memAddr = hM.addr.read().to_uint64(); }
+        hM.read_data = bv( 600 + memAddr + up );
+        hA.pready = hA.psel.read() && hA.penable.read();
+        hA.prdata = bv( 700 + up );
+        hF.ack = hF.push.read();
+        hP.ack = hP.push.read();
+    }
+    void model()
+    {
+        wordSt v, r;
+        wait( 161, SC_NS );
+        pD->req( v, r );
+        got.push_back( r.w );
+        wait( sc_time( 181, SC_NS ) - sc_time_stamp() );
+        pO->pop( r );
+        got.push_back( r.w );
+        wait( sc_time( 271, SC_NS ) - sc_time_stamp() );
+        pM->request( false, v, r );
+        got.push_back( r.w );
+        wait( sc_time( 321, SC_NS ) - sc_time_stamp() );
+        pA->request( false, v, r );
+        got.push_back( r.w );
+    }
+    void trigger()
+    {
+        for (int t : { 161, 181, 281, 331 }) {
+            wait( sc_time( t, SC_NS ) - sc_time_stamp() );
+            wordSt v;
+            pF->push( v );
+            pP->push( v );
+        }
+    }
+};
+
 SC_MODULE( probe )
 {
     sc_clock clk;
@@ -358,12 +453,14 @@ SC_MODULE( probe )
     follow fol;
     memPhase mem;
     culprit cuA, cuB;
+    rdataFollows rdf;
     SC_HAS_PROCESS( probe );
     probe( sc_module_name n ) : sc_module( n ), clk( "clk", 10, SC_NS ), arb( "arb" ), bur( "bur" ), fol( "fol" ), mem( "mem" ),
-        cuA( "cuA", true, sc_time( 400, SC_NS ) ), cuB( "cuB", false, sc_time( 440, SC_NS ) )
+        cuA( "cuA", true, sc_time( 400, SC_NS ) ), cuB( "cuB", false, sc_time( 440, SC_NS ) ), rdf( "rdf" )
     {
         arb.clk( clk ); arb.rst_n( rst_n ); bur.clk( clk ); bur.rst_n( rst_n ); fol.clk( clk ); fol.rst_n( rst_n );
         mem.clk( clk ); mem.rst_n( rst_n ); cuA.clk( clk ); cuA.rst_n( rst_n ); cuB.clk( clk ); cuB.rst_n( rst_n );
+        rdf.clk( clk ); rdf.rst_n( rst_n );
         SC_THREAD( run );
     }
     void run()
@@ -381,6 +478,7 @@ SC_MODULE( probe )
         std::printf( "rec mem sent=%s rise=%s data=%s\\n", join( mem.sent ).c_str(), join( mem.rise ).c_str(), join( mem.data ).c_str() );
         std::printf( "rec follow pushed=%s taken=%s vals=%s\\n", join( fol.pushed ).c_str(), join( fol.taken ).c_str(),
                      join( fol.vals ).c_str() );
+        std::printf( "rec rdataFollows got=%s\\n", join( rdf.got ).c_str() );
         sc_stop();
     }
 };
@@ -397,6 +495,7 @@ int sc_main( int, char *[] )
 """
 
 LOWERED = 'HDL lowered ready after the sample point'
+CHANGED = 'HDL changed read data after the sample point where the model received it'
 FAILURES = []
 
 
@@ -483,6 +582,22 @@ def test_bfm_pin_timing():
               f"(taken={taken} vals={fol.get('vals')})")
         check(not any(line.startswith('p.fol.') and LOWERED in line for line in output.splitlines()),
               "follow: an ack that follows push in the sample point's time step breaks nothing")
+        mr = re.search(r'^rec rdataFollows (.*)$', output, re.M)
+        rdf = dict(re.findall(r'(\w+)=([\d,]*)', mr.group(1))) if mr else {}
+        check(rdf.get('got') == '500,800,600,700,',
+              f"rdataFollows: each model call gets the read data from before P's push (got={rdf.get('got')})")
+        for bfm, edge, sampled in [('bD', '170 ns', '164999 ps'), ('bO', '190 ns', '184999 ps'),
+                                   ('bM', '290 ns', '284999 ps'), ('bA', '340 ns', '334999 ps')]:
+            changed = [line for line in output.splitlines() if line.startswith(f'p.rdf.{bfm}:') and CHANGED in line]
+            first = changed[0] if changed else ''
+            check(len(changed) == 2 and f'at {edge}' in first
+                  and f'(p.rdf.{bfm} on p.rdf.ch{bfm[1]}, read data sampled at {sampled})' in first
+                  and 'depend combinationally on a pin another BFM drives' in first
+                  and first.endswith("BFM ports that drove a pin in the sample point's time step: p.rdf.bP on p.rdf.chP"),
+                  f"rdataFollows {bfm}: read data that follows P's push logs the break at the {edge} edge, naming the "
+                  f"port, its sample point and P, and its total at the end (got {changed})")
+        check(not any(line.startswith('p.rdf.') and LOWERED in line for line in output.splitlines()),
+              "rdataFollows: an ack or ready that follows its request breaks nothing")
         if len(FAILURES) > before:
             print(output[-6000:])
     finally:

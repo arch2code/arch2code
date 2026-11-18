@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The UVM library lints, and its loopback testbench and the generated UVM
-packages of examples/uvmMem, uvmRegs and uvmVideo parse, with no simulator
-licence.
+packages of examples/uvmMem, uvmRegs, uvmVideo and uvmReuse parse, with no
+simulator licence.
 
 Verilator parses each against the open-source Accellera UVM 1.2 that
 UVM_HOME names (its src/ holds uvm_pkg.sv); the VCS and Xcelium copies of
@@ -18,7 +18,10 @@ lint rejects :: through a typedef of a parameterized class's type member,
 which both simulators accept and every generated env package uses.
 
 A generated test package imports the env package A2C_UVM_PKG names, so each
-example parses on its own with that define set to its env package.
+example parses one top on its own with that define set to its env package.
+uvmReuse parses its leaf project's top and its root's, whose env reuses the
+leaf's variant packages and their user .svh span, compiled before it as the
+build compiles them.
 
 The agents' coverage subscribers exist only under A2C_UVM_COV, so the library
 is parsed once with it defined and once without.
@@ -35,7 +38,16 @@ base_dir = os.path.dirname(test_dir)
 
 UVM_DIR = os.path.join(base_dir, 'common', 'systemVerilog', 'uvm')
 LOOPBACK_DIR = os.path.join(UVM_DIR, 'loopback')
-EXAMPLES = ('uvmMem', 'uvmRegs', 'uvmVideo')
+# Per example: its directory under examples/, its UVM block, the variant of
+# the top it parses, None for a block with one, and the child variant
+# packages that top reuses, in the build's order.
+EXAMPLES = (
+    ('uvmMem', 'uvmMem', None, ()),
+    ('uvmRegs', 'uvmRegs', None, ()),
+    ('uvmVideo', 'uvmVideo', None, ()),
+    ('uvmReuse/leaf', 'uvmReuseLeaf', 'w4', ()),
+    ('uvmReuse', 'uvmReuseChain', 'v4', ('leaf/uvm/uvmReuseLeaf_w8_uvm_pkg.sv', 'leaf/uvm/uvmReuseLeaf_w4_uvm_pkg.sv')),
+)
 
 
 def uvm_src():
@@ -110,9 +122,10 @@ def prove_parse(src, library):
     return True
 
 
-def example_sources(name):
-    """An example's RTL packages from its rtl.f, then its generated UVM env
-    package, test package and testbench, and the env package's name."""
+def example_sources(name, block, variant, reused):
+    """An example's RTL packages from its rtl.f, then the reused child
+    packages, its generated UVM env package, test package and testbench,
+    the env package's name and the directories their includes need."""
     root = os.path.join(base_dir, 'examples', name)
     rtl = os.path.join(root, 'rtl')
     files = []
@@ -121,9 +134,11 @@ def example_sources(name):
         if line and not line.startswith(('+', '//', '-')):
             files.append(os.path.join(rtl, line))
     uvm = os.path.join(root, 'uvm')
-    env_pkg = os.path.join(uvm, f'{name}_uvm_pkg.sv')
-    files += [env_pkg, os.path.join(uvm, f'{name}_uvm_test_pkg.sv'), os.path.join(uvm, f'{name}_uvm_tb.sv')]
-    return files, f'{name}_uvm_pkg'
+    top = f'{block}_{variant}' if variant else block
+    reused = [os.path.join(root, path) for path in reused]
+    files += reused + [os.path.join(uvm, f'{top}_uvm_pkg.sv'), os.path.join(uvm, f'{block}_uvm_test_pkg.sv'),
+                       os.path.join(uvm, f'{top}_uvm_tb.sv')]
+    return files, f'{top}_uvm_pkg', sorted({os.path.dirname(path) for path in reused} | {uvm})
 
 
 def main():
@@ -149,10 +164,10 @@ def main():
     ok = parse('the UVM library and its loopback testbench with A2C_UVM_COV', src,
                library + [os.path.join(LOOPBACK_DIR, 'a2c_uvm_loopback_tb.sv')],
                [common, UVM_DIR, LOOPBACK_DIR], ['A2C_UVM_COV']) and ok
-    for name in EXAMPLES:
-        files, env_pkg = example_sources(name)
+    for name, block, variant, reused in EXAMPLES:
+        files, env_pkg, incdirs = example_sources(name, block, variant, reused)
         ok = parse(f'examples/{name} generated UVM packages', src, library + files,
-                   [common, UVM_DIR], [f'A2C_UVM_PKG={env_pkg}']) and ok
+                   [common, UVM_DIR] + incdirs, [f'A2C_UVM_PKG={env_pkg}']) and ok
     print('ALL TESTS PASSED' if ok else 'SOME TESTS FAILED')
     return 0 if ok else 1
 

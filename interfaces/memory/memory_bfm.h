@@ -188,7 +188,7 @@ public:
 
     SC_HAS_PROCESS (memory_dst_bfm);
 
-    memory_dst_bfm(sc_module_name modulename) : log_(name()) {
+    memory_dst_bfm(sc_module_name modulename) : log_(name()), m_readDataChanged(name()) {
         bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(clock_rise);
@@ -226,6 +226,7 @@ public:
     }
 
     virtual void end_of_simulation() {
+        m_readDataChanged.report();
         if (m_waiting) {
             const uint32_t credit = m_credit->read().to_uint();
             // Credit past the access means the BFM missed the change that
@@ -296,6 +297,8 @@ public:
                 // rising edge, so the pins never change while the clock is low.
                 if (m_clock.waitSamplePointInClock(clk)) {
                     data.sc_unpack(hdl_if_p->read_data);
+                    m_readDataChanged.sample(hdl_if_p->read_data.read());
+                    m_readDataDue = true;
                 } else {
                     if (clk.read()) {
                         wait(clk.negedge_event());
@@ -309,8 +312,17 @@ public:
         }
     }
 
+    // The driver thread may already have the model's next access on the
+    // pins, so the edge after a read completed at the sample point is
+    // checked here.
     void clock_rise() {
         m_clock.rose();
+        if (m_readDataDue) {
+            m_readDataDue = false;
+            if (rst_n.read()) {
+                m_readDataChanged.check(&m_clock, hdl_if_p->read_data.read());
+            }
+        }
     }
 
     void clock_fall() {
@@ -366,6 +378,8 @@ private:
 
     logBlock log_;
     bfmSameClockAnswer m_clock;
+    bfmReadDataChanged<VL_DATA_T> m_readDataChanged;
+    bool m_readDataDue = false;
     sc_signal<sc_bv<32>> *m_credit = nullptr;
     sc_signal<bool> *m_held = nullptr;
     memory_write_order *m_order = nullptr;
