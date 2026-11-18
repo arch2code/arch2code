@@ -1399,7 +1399,8 @@ struct apbSrc : handoverBase
 
     SC_HAS_PROCESS( apbSrc );
 
-    // A write is posted, so only a read has a complete().
+    // apb_src_bfm sends every request with requestWithResponse(), so a write
+    // waits for its complete() too.
     void model()
     {
         for (int k = 0; k < OPS; k++) {
@@ -1411,8 +1412,8 @@ struct apbSrc : handoverBase
                 mem[a.w] = d.w;
             } else {
                 d.w = mem[a.w];
-                in->complete( d );
             }
+            in->complete( d );
             logEv( "ret", d.w );
         }
     }

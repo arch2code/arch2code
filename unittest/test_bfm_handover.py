@@ -255,9 +255,6 @@ EXPECTED_FAILURES = [
     XFail(('w',), 'src', (DONE,), resetNoDelay, 'hang',
           f"axi_write_bfm.h:145-146 {RESET_SPIN}"),
 
-    XFail(('popack',), 'dst', ('served once', 'values'), anyCase, None,
-          "pop_ack_bfm.h:65 is SC_CTHREAD, so each wait(clk.posedge_event()) takes two edges, and line 78 calls "
-          "ack() before line 79 drops pop; #197 fixed both on main, but not in this branch's base"),
     XFail(('apb',), 'src', ('completion edge',), anyCase, None,
           "apb_bfm.h:61 waits an edge after request() returns before line 62 raises pready, so the RTL "
           "completes one edge late"),
