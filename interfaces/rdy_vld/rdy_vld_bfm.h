@@ -31,7 +31,7 @@ public:
         m_lostBeats(name(), "HDL transferred a beat the BFM did not sample", "beats"),
         m_scStalls(name(), "SystemC stalled a backpressure: false producer", "clock edges"),
         m_paced(name()) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(transfer_monitor);
         sensitive << clk.pos();
@@ -160,9 +160,9 @@ public:
 
     rdy_vld_dst_bfm(sc_module_name modulename) :
         m_stalls(name(), "HDL stalled a backpressure: false interface", "clock edges"),
-        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_lowered(name()),
         m_paced(name()) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();
@@ -210,6 +210,7 @@ public:
             hdl_if_p->data = VL_DATA_T(0);
             if (m_chnl->isMultiCycle()) {
                 if_p->readClocked(data);
+                m_clock.waitDrivePoint(clk);
                 hdl_if_p->vld = 1;
                 hdl_if_p->data = data.sc_pack();
                 do {
@@ -266,7 +267,7 @@ private:
     sc_event m_offer;
     bool m_noBackpressure = false;
     bfmContractCheck m_stalls;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
     bfmClockPaced m_paced;
     bfmSameClockAnswer m_clock;
 

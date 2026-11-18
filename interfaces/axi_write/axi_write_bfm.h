@@ -84,8 +84,8 @@ public:
 
     SC_HAS_PROCESS (axi_write_src_bfm);
 
-    axi_write_src_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
-        bfmClocks::add(if_p, clk);
+    axi_write_src_bfm(sc_module_name modulename) : m_lowered(name()) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
@@ -270,7 +270,7 @@ private:
     rdy_vld_channel<axiWriteDataSt<DATA_T, STRB_T, WU, ID, IDW>> * m_w = nullptr;
     sc_event m_bOffer;
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
     std::mutex m_pending_mutex;
     int m_pending_w_beats = 0;
 
@@ -291,8 +291,8 @@ public:
 
     SC_HAS_PROCESS (axi_write_dst_bfm);
 
-    axi_write_dst_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
-        bfmClocks::add(if_p, clk);
+    axi_write_dst_bfm(sc_module_name modulename) : m_lowered(name()) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_aw_thread);
         SC_THREAD(bfm_driver_w_thread);
         SC_THREAD(bfm_driver_b_thread);
@@ -373,8 +373,8 @@ public:
                 while (!m_w->offered(w_data)) {
                     wait(m_wOffer);
                 }
-                m_clock.waitDrivePoint(clk);
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->wvalid = 1;
             hdl_if_p->wid = w_data.wid;
             hdl_if_p->wdata = w_data.wdata.sc_pack();
@@ -444,7 +444,7 @@ private:
     sc_event m_awOffer;
     sc_event m_wOffer;
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
 
 };
 

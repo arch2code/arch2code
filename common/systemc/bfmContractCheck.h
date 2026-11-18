@@ -19,7 +19,9 @@
 // warnOnly for the testbench module. It takes each with
 // a2c_bfm_contract_break() and raises it as a UVM_ERROR, so a test can expect
 // one with a report catcher. A violation the testbench never took fails the
-// run at the end (failUntaken()).
+// run at the end (failUntaken()). A check built failsRun fails the run at its
+// first violation in every flow, UVM included, as one after which the model
+// and the HDL disagree on a transfer.
 struct bfmContractCheck {
     static inline bool toUvm = false;
     // A function-local static for the same clang 18.1.8 crash as hdlWokeMap().
@@ -32,15 +34,19 @@ struct bfmContractCheck {
     const std::string what_;
     const std::string unit_;
     const bool warnOnly_;
+    const bool failsRun_;
     uint64_t count_ = 0;
-    bfmContractCheck(std::string name, std::string what, std::string unit, bool warnOnly = false)
-        : log_(name), what_(what), unit_(unit), warnOnly_(warnOnly) {}
-    void fail(const sc_time &edge) {
+    bfmContractCheck(std::string name, std::string what, std::string unit, bool warnOnly = false, bool failsRun = false)
+        : log_(name), what_(what), unit_(unit), warnOnly_(warnOnly), failsRun_(failsRun) {}
+    void fail(const sc_time &edge, const std::string &detail = "") {
         if (count_++ == 0) {
-            const std::string msg = std::format("{} at {}", what_, edge.to_string());
+            const std::string msg = std::format("{} at {}{}", what_, edge.to_string(), detail);
             log_.logPrint(msg, LOG_IMPORTANT);
             if (toUvm && !warnOnly_) {
                 uvmBreaks().push_back(log_.getLogPrefix() + msg);
+            }
+            if (failsRun_) {
+                errorCode::fail(log_.getLogPrefix() + msg);
             }
         }
     }
@@ -54,6 +60,70 @@ struct bfmContractCheck {
             errorCode::fail(std::format("{} BFM contract break(s) never reached UVM, the first: {}",
                                         uvmBreaks().size() - uvmTaken, uvmBreaks()[uvmTaken]));
         }
+    }
+};
+
+struct bfmSameClockAnswer;
+
+// The clock of each BFM, found through the channel its port binds. A model
+// part that stands for RTL storage clocked like one of the model's ports
+// takes that port's BFM clock from here; a channel with no BFM has none.
+// A BFM registered with its bfmSameClockAnswer is also named by
+// droveAt() when it drove a pin at a given time.
+struct bfmClocks {
+    struct entry {
+        sc_port_base *port;
+        const sc_in<bool> *clk;
+        const bfmSameClockAnswer *answer;
+    };
+    // A function-local static for the same clang 18.1.8 crash as hdlWokeMap().
+    static std::vector<entry> &all() {
+        static std::vector<entry> entries;
+        return entries;
+    }
+    static void add(sc_port_base &port, const sc_in<bool> &clk, const bfmSameClockAnswer *answer = nullptr) {
+        all().push_back({&port, &clk, answer});
+    }
+    static const sc_in<bool> *of(sc_interface *chnl) {
+        for (const entry &e : all()) {
+            if (e.port->get_interface() == chnl) {
+                return e.clk;
+            }
+        }
+        return nullptr;
+    }
+    // The BFM and the channel its port binds, which carries the model port's name.
+    static std::string describe(const entry &e) {
+        const auto *chnl = dynamic_cast<const sc_object *>(e.port->get_interface());
+        return std::format("{} on {}", e.port->get_parent_object()->name(), chnl != nullptr ? chnl->name() : "an unbound port");
+    }
+    static std::string portOf(const bfmSameClockAnswer *answer);
+    static std::vector<std::string> droveAt(const sc_time &at, const bfmSameClockAnswer *except);
+};
+
+// A dst BFM completes the model's call at the sample point, when ready is
+// high there, so the HDL must keep ready high to the next rising edge. A
+// ready that falls in between leaves the model with a transfer the HDL never
+// made, so it fails the run in every flow. BFM pins change up to and at the
+// sample point, so RTL whose ready, ack or read data follows a pin another
+// BFM drives combinationally can drop it after the BFM read it; the message
+// names the BFM ports that drove a pin in that time step.
+struct bfmReadyLowered : bfmContractCheck {
+    bfmReadyLowered(std::string name)
+        : bfmContractCheck(name, "HDL lowered ready after the sample point where the model's call completed", "clock edges",
+                           false, true) {}
+    void fail(const bfmSameClockAnswer *self, const sc_time &sampled) {
+        const std::vector<std::string> drove = bfmClocks::droveAt(sampled, self);
+        std::string ports;
+        for (const std::string &p : drove) {
+            ports += (ports.empty() ? "" : ", ") + p;
+        }
+        bfmContractCheck::fail(sc_time_stamp(), std::format(
+            " ({}, ready sampled high at {}). The RTL breaks the precondition that on BFM ports an HDL ready, ack "
+            "or read data does not depend combinationally on a pin another BFM drives; {}",
+            bfmClocks::portOf(self), sampled.to_string(),
+            drove.empty() ? std::string("no other tracked BFM port drove a pin in the sample point's time step")
+                          : "BFM ports that drove a pin in the sample point's time step: " + ports));
     }
 };
 
@@ -173,8 +243,14 @@ struct bfmHeldRequest {
 struct bfmSameClockAnswer {
     sc_time rise_;
     sc_time high_;
+    sc_time drove_;
+    sc_time droveBefore_;
+    bool hasDriven_ = false;
+    bool hasDrivenBefore_ = false;
+    sc_time sampled_;
     void rose() { rise_ = sc_time_stamp(); }
     void fell() { high_ = sc_time_stamp() - rise_; }
+    bool drove(const sc_time &at) const { return (hasDriven_ && drove_ == at) || (hasDrivenBefore_ && droveBefore_ == at); }
     // Called at a rising edge. False, with the request not to be taken in
     // this clock, until a high phase has been measured, or when the clock
     // fell earlier than the last one did.
@@ -195,6 +271,7 @@ struct bfmSameClockAnswer {
             wait(clk.posedge_event());
             wait(sc_get_time_resolution());
         }
+        driving();
     }
     // Called at any point in a clock. False when the clock is low or this
     // clock's sample point has passed.
@@ -225,6 +302,7 @@ struct bfmSameClockAnswer {
     bool waitTaken(const sc_in<bool> &clk, READY ready, EDGE edge) {
         while (true) {
             if (waitSamplePointInClock(clk) && ready()) {
+                sampled_ = sc_time_stamp();
                 return true;
             }
             wait(clk.posedge_event());
@@ -249,6 +327,7 @@ struct bfmSameClockAnswer {
         const sc_time last = rise_ + high_ - step;
         while (clk.read() && sc_time_stamp() <= last) {
             if (ready()) {
+                driving();
                 return true;
             }
             wait(last + step - sc_time_stamp(), entered);
@@ -256,24 +335,35 @@ struct bfmSameClockAnswer {
         return false;
     }
     // The rising edge after waitTaken() returned true. False when ready fell
-    // before it, so the HDL did not take the beat; outside reset that breaks
-    // the pin timing, and lowered counts it.
+    // before it, so the HDL did not take the beat; outside reset lowered
+    // fails the run.
     template <typename READY>
-    bool waitTakenEdge(const sc_in<bool> &clk, const sc_in<bool> &rst_n, READY ready, bfmContractCheck &lowered) {
+    bool waitTakenEdge(const sc_in<bool> &clk, const sc_in<bool> &rst_n, READY ready, bfmReadyLowered &lowered) {
         wait(clk.posedge_event());
         rose();
         if (ready()) {
             return true;
         }
         if (rst_n.read()) {
-            lowered.fail(sc_time_stamp());
+            lowered.fail(this, sampled_);
         }
         return false;
     }
+    // Called as the BFM changes its pins, for bfmReadyLowered. The time
+    // before the latest is kept too: a BFM whose transfer was certain at the
+    // sample point drives its next beat at the rising edge, in the delta
+    // where waitTakenEdge() asks who drove at the sample point.
+    void driving() {
+        const sc_time now = sc_time_stamp();
+        if (hasDriven_ && drove_ == now) {
+            return;
+        }
+        droveBefore_ = drove_;
+        hasDrivenBefore_ = hasDriven_;
+        drove_ = now;
+        hasDriven_ = true;
+    }
 };
-
-inline constexpr const char *BFM_READY_LOWERED =
-    "HDL lowered ready between the falling edge and the rising edge after it, after the model's send had completed";
 
 // Lets an ack-style, APB or LMMI dst BFM complete the model's call at the
 // sample point while its own thread keeps the request pins up to the edge
@@ -307,29 +397,24 @@ private:
     }
 };
 
-// The clock of each BFM, found through the channel its port binds. A model
-// part that stands for RTL storage clocked like one of the model's ports
-// takes that port's BFM clock from here; a channel with no BFM has none.
-struct bfmClocks {
-    struct entry {
-        sc_port_base *port;
-        const sc_in<bool> *clk;
-    };
-    // A function-local static for the same clang 18.1.8 crash as hdlWokeMap().
-    static std::vector<entry> &all() {
-        static std::vector<entry> entries;
-        return entries;
-    }
-    static void add(sc_port_base &port, const sc_in<bool> &clk) { all().push_back({&port, &clk}); }
-    static const sc_in<bool> *of(sc_interface *chnl) {
-        for (const entry &e : all()) {
-            if (e.port->get_interface() == chnl) {
-                return e.clk;
-            }
+inline std::string bfmClocks::portOf(const bfmSameClockAnswer *answer) {
+    for (const entry &e : all()) {
+        if (e.answer == answer) {
+            return describe(e);
         }
-        return nullptr;
     }
-};
+    return "unregistered";
+}
+
+inline std::vector<std::string> bfmClocks::droveAt(const sc_time &at, const bfmSameClockAnswer *except) {
+    std::vector<std::string> ports;
+    for (const entry &e : all()) {
+        if (e.answer != nullptr && e.answer != except && e.answer->drove(at)) {
+            ports.push_back(describe(e));
+        }
+    }
+    return ports;
+}
 
 // Only a channel built with BACKPRESSURE_NONE promises that the consumer never
 // lowers rdy.

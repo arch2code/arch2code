@@ -189,7 +189,7 @@ public:
     SC_HAS_PROCESS (memory_dst_bfm);
 
     memory_dst_bfm(sc_module_name modulename) : log_(name()) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(clock_rise);
         sensitive << clk.pos();
@@ -266,6 +266,7 @@ public:
                 }
                 waitOrder(stamp, is_write, addr);
             }
+            m_clock.waitDrivePoint(clk);
             hdl_if_p->enable = true;
             hdl_if_p->addr = addr.sc_pack();
             if (is_write) {

@@ -6,6 +6,7 @@
 #include "bfmContractCheck.h"
 #include "q_assert.h"
 #include <deque>
+#include <format>
 #include <string>
 
 // A model's stand-in for an RTL FIFO whose full flag is registered, as Pro's
@@ -21,12 +22,14 @@
 // first rising edge after t. An entry is readable as soon as it is written,
 // as the RTL FIFO's head is in the clock after the edge that pushes it: a
 // model whose input comes from a src BFM writes on that edge. With no BFM on
-// that channel, as in a model-only run, a read frees its slot at once.
+// that channel, as in a model-only run, a read frees its slot at once. A
+// run that has BFMs but none on that channel is logged once, as a FIFO left
+// untimed where the RTL's is not.
 template <typename T>
 class registeredFifo {
 public:
     registeredFifo(const char *name, int depth, sc_port_base &clockPort)
-        : m_name(name), m_depth(depth), m_clockPort(clockPort) {
+        : m_name(name), m_depth(depth), m_clockPort(clockPort), m_log(name) {
         Q_ASSERT_CTX(depth > 0, m_name, "registeredFifo depth must be positive");
         sc_core::sc_spawn([this]() { this->clockThread(); });
     }
@@ -65,6 +68,12 @@ private:
         if (!m_resolved) {
             m_clk = bfmClocks::of(m_clockPort.get_interface());
             m_resolved = true;
+            if (m_clk == nullptr && !bfmClocks::all().empty()) {
+                m_log.logPrint(std::format("registeredFifo on port {}: no BFM is bound to the port's channel, so the "
+                                           "FIFO frees a slot as soon as it is read, though this run has BFMs",
+                                           m_clockPort.name()),
+                               LOG_IMPORTANT);
+            }
         }
         return m_clk;
     }
@@ -91,6 +100,7 @@ private:
     const std::string m_name;
     const int m_depth;
     sc_port_base &m_clockPort;
+    logBlock m_log;
     const sc_in<bool> *m_clk = nullptr;
     bool m_resolved = false;
     std::deque<T> m_data;

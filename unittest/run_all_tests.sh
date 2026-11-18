@@ -704,6 +704,12 @@ python3 test_registered_fifo.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: dst BFM pins change only in the high phase; a ready lowered after the sample point fails the run"
+echo "------------------------------------------------------------------------"
+python3 test_bfm_pin_timing.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: axi_write src BFM delivers W beats an HDL master sends before AW"
 echo "------------------------------------------------------------------------"
 python3 test_axi_write_src_bfm_w_first.py || FAILED=1

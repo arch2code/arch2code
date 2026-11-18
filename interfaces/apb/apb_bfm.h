@@ -165,9 +165,9 @@ public:
     SC_HAS_PROCESS (apb_dst_bfm);
 
     apb_dst_bfm(sc_module_name modulename) :
-        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_lowered(name()),
         m_complete([this] { complete(); }) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();
@@ -272,7 +272,7 @@ private:
     DATA_T m_data;
     bool m_isWrite = false;
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
     bfmCompleter m_complete;
 
 };

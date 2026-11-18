@@ -74,8 +74,8 @@ public:
 
     SC_HAS_PROCESS (axi_read_src_bfm);
 
-    axi_read_src_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
-        bfmClocks::add(if_p, clk);
+    axi_read_src_bfm(sc_module_name modulename) : m_lowered(name()) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(clock_rise);
@@ -195,7 +195,7 @@ private:
     rdy_vld_channel<axiReadAddressSt<ADDR_T, ARU, ID, IDW>> * m_ar = nullptr;
     sc_event m_rOffer;
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
 
 };
 
@@ -214,8 +214,8 @@ public:
 
     SC_HAS_PROCESS (axi_read_dst_bfm);
 
-    axi_read_dst_bfm(sc_module_name modulename) : m_lowered(name(), BFM_READY_LOWERED, "clock edges") {
-        bfmClocks::add(if_p, clk);
+    axi_read_dst_bfm(sc_module_name modulename) : m_lowered(name()) {
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_ar_thread);
         SC_THREAD(bfm_driver_r_thread);
         SC_METHOD(clock_rise);
@@ -319,7 +319,7 @@ private:
     rdy_vld_channel<axiReadRespSt<DATA_T, RU, ID, IDW>> * m_r = nullptr;
     sc_event m_arOffer;
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
 
 };
 

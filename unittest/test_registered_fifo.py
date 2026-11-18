@@ -7,7 +7,8 @@ The probe expects:
 - behind a BFM's clock, a slot read in the middle of a clock takes a write
   from the next rising edge, and one read at a rising edge's own time from
   the edge after it. Entries are readable as soon as they are written;
-- with no BFM on the clock port's channel, a read frees its slot at once;
+- with no BFM on the clock port's channel, a read frees its slot at once.
+  As other BFMs exist, that FIFO is logged once, naming it and its port;
 - a model that reads a rdy_vld src BFM into the FIFO in one thread and
   drains it into a rdy_vld dst BFM in another, the FIFO sized DEPTH less the
   two beats its threads hold, accepts and drops exactly the input beats the
@@ -291,6 +292,10 @@ def test_registered_fifo():
         check(r.get('write') == [32, 32, 44, 60] and r.get('vals') == [0, 1],
               f"untimed: with no BFM on the clock port's channel a read frees its slot at once "
               f"(write={r.get('write')} read={r.get('read')})")
+        unclocked = [line for line in output.splitlines() if "no BFM is bound to the port's channel" in line]
+        check(len(unclocked) == 1 and unclocked[0].startswith('fifo:registeredFifo on port p.untimed.in:'),
+              f"untimed: in a run with BFMs, the FIFO with none on its clock port's channel is logged once, "
+              f"by name and port (got {unclocked})")
 
         accepted, outClocks, outVals = rdyVldFifo(DEPTH, CLOCKS, stallReady, 200)
         r = rec.get('regStall', {})

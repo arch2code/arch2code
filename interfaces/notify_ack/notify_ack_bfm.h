@@ -29,7 +29,7 @@ public:
     SC_HAS_PROCESS (notify_ack_src_bfm);
 
     notify_ack_src_bfm(sc_module_name modulename) : m_held(name()) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(request_monitor);
         sensitive << clk.pos();
@@ -99,9 +99,9 @@ public:
     SC_HAS_PROCESS (notify_ack_dst_bfm);
 
     notify_ack_dst_bfm(sc_module_name modulename) :
-        m_lowered(name(), BFM_READY_LOWERED, "clock edges"),
+        m_lowered(name()),
         m_complete([this] { if_p->ack(); }) {
-        bfmClocks::add(if_p, clk);
+        bfmClocks::add(if_p, clk, &m_clock);
         SC_THREAD(bfm_driver_thread);
         SC_METHOD(edge_monitor);
         sensitive << clk.pos();
@@ -152,7 +152,7 @@ public:
 private:
 
     bfmSameClockAnswer m_clock;
-    bfmContractCheck m_lowered;
+    bfmReadyLowered m_lowered;
     bfmCompleter m_complete;
 
 };

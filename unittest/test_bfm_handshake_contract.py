@@ -27,8 +27,9 @@ for the RTL, with bfmContractCheck::toUvm set as in a UVM run, and expects:
   one per two clocks on req_ack and pop_ack, whose BFMs drop the request for
   a clock between requests. A timed delay on the completion that outlasts
   the edge still drops the request there, and an ack that falls after the
-  sample point logs `HDL lowered ready` and keeps the request on the pins
-  until the HDL takes it, or under a reset asserted then logs nothing;
+  sample point fails the run with `HDL lowered ready` and keeps the request
+  on the pins until the HDL takes it, or under a reset asserted then logs
+  nothing;
 - on every axi_read and axi_write channel, a beat the HDL sends reaches the
   model on the edge the HDL transfers it, and a model send returns at the
   sample point before the edge the HDL takes the beat, whether the model or
@@ -40,9 +41,9 @@ for the RTL, with bfmContractCheck::toUvm set as in a UVM run, and expects:
   once the model holds a beat. An axi_read slave model that takes an address
   and sends its one R beat takes an address on every clock;
 - a dst BFM whose HDL lowers ready after the model's send completed at the
-  sample point logs `HDL lowered ready` and queues it, outside reset, and
-  still delivers the beat; under a reset that asserts in that window it logs
-  nothing and delivers the beat after reset;
+  sample point fails the run with `HDL lowered ready`, naming its port, and
+  queues it, outside reset, and still delivers the beat; under a reset that
+  asserts in that window it logs nothing and delivers the beat after reset;
 - a model reader that waits on the clock between reads is logged once with a
   fix-the-model message and never queued, so it does not fail a UVM run.
   Behind a rdy_vld src BFM such a reader leaves rdy low for one clock after
@@ -1197,6 +1198,7 @@ int sc_main( int, char *[] )
     bfmContractCheck::toUvm = true;
     probe p( "p" );
     sc_start();
+    std::printf( "exit code %d\\n", errorCode::getExitCode() );
     std::printf( "probe done\\n" );
     return 0;
 }
@@ -1204,7 +1206,7 @@ int sc_main( int, char *[] )
 
 HELD = 'HDL dropped or changed a request between the edge the BFM took it and the edge it completed'
 PACED = 'remove the wait from the model'
-LOWERED = 'HDL lowered ready between the falling edge and the rising edge after it'
+LOWERED = 'HDL lowered ready after the sample point'
 FAILURES = []
 
 
@@ -1380,6 +1382,10 @@ def test_bfm_handshake_contract():
               and any('at 70 ns' in line for line in logged(output, 'pushDstLowered', LOWERED)),
               f"pushDstLowered: ack lowered in the low phase logs the break at the 70 ns edge and queues it once "
               f"(got {logged(output, 'pushDstLowered', LOWERED)})")
+        check(all('(p.pushDstLowered.bfm on p.pushDstLowered.ch, ready sampled high at 64999 ps)' in line
+                  for line in queued(output, 'pushDstLowered', LOWERED))
+              and 'exit code 1' in output,
+              "pushDstLowered: the break names the port and its sample point, and fails the run")
         r = rec.get('pushDstReset', {})
         check(r.get('vals') == ['0', '1', '2', '3'] and logged(output, 'pushDstReset', LOWERED) == []
               and queued(output, 'pushDstReset', LOWERED) == [],
