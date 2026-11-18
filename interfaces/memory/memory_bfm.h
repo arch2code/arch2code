@@ -199,7 +199,7 @@ public:
         dont_initialize();
     }
 
-    // UVM Mode B only. credit counts the accesses the DUT lane has made on
+    // UVM paired mode only. credit counts the accesses the DUT lane has made on
     // this port, and the model's access n reaches the pins only once credit
     // exceeds n, so the model lane never runs ahead of the RTL's access and
     // replays the word the RTL read. held is high while an access waits.

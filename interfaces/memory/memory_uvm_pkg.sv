@@ -16,7 +16,7 @@
 // inspect, or share between agents. Pin timing follows a2c_clk_if: drive at
 // drive_edge(), sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
 // each access on both lanes on the same clock, so the lanes stay in step,
 // and the read responses come from the DUT lane. Its model_cmp, a
@@ -95,7 +95,7 @@ package memory_uvm_pkg;
 
     class memory_config #(type addr_t = logic, type data_t = logic)
         extends a2c_agent_config #(virtual memory_if #(.addr_t(addr_t), .data_t(data_t)));
-        // dst role in Mode B: the model lane's credit and held pins.
+        // dst role in paired mode: the model lane's credit and held pins.
         virtual a2c_credit_if   credit_vif;
         // dst role: the storage the driver serves. The agent creates one when
         // the test leaves it null.
@@ -149,7 +149,7 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_base_seq
 
-    // In Mode B the dst role records, for the model lane's access of the
+    // In paired mode the dst role records, for the model lane's access of the
     // same index, the word the DUT lane's read returned, or 0 for a write.
     // Each lane's done counts an access by the sample point at which its
     // monitor reports it: a write at the sample edge before its clock, a
@@ -171,8 +171,8 @@ package memory_uvm_pkg;
         protected int unsigned owed;
         protected int unsigned uncredited_n;
         protected realtime     uncredited_at;
-        // Mode B: the sample edges at which held was high, and the rises of
-        // held, one per access the model's BFM held for credit, however
+        // Paired mode: the sample edges at which held was high, and the rises
+        // of held, one per access the model's BFM held for credit, however
         // briefly.
         protected int unsigned held_clocks;
         protected int unsigned held_accesses;
@@ -193,7 +193,7 @@ package memory_uvm_pkg;
             super.build_phase(phase);
             if (replay == null) return;
             if (cfg.credit_vif == null) begin
-                `uvm_fatal("A2C_CFG", $sformatf("%s: a Mode B memory responder needs cfg.credit_vif, the model lane's credit and held pins",
+                `uvm_fatal("A2C_CFG", $sformatf("%s: a paired-mode memory responder needs cfg.credit_vif, the model lane's credit and held pins",
                                                 cfg.port_name))
             end
             replay.credit_held = 1;
@@ -468,8 +468,8 @@ package memory_uvm_pkg;
         endtask
     endclass : memory_monitor
 
-    // The A2C_SRC role's Mode B comparator, for a DUT that is the memory. A
-    // pair of reads in which either word has X or Z is held, not compared.
+    // The A2C_SRC role's paired-mode comparator, for a DUT that is the memory.
+    // A pair of reads in which either word has X or Z is held, not compared.
     // It passes if each lane whose word has X or Z makes its next access a
     // write of the same address, which replaces the word, and is a mismatch
     // otherwise, as the memory checker's next-access rule fails it. A pair
@@ -530,7 +530,7 @@ package memory_uvm_pkg;
         endfunction
     endclass : memory_comparator
 
-    // The A2C_DST role's Mode B comparator, for a DUT that accesses a
+    // The A2C_DST role's paired-mode comparator, for a DUT that accesses a
     // memory: in order, and like memory_comparator it expects no pairs.
     class memory_access_comparator #(type addr_t = logic, type data_t = logic)
         extends a2c_in_order_comparator #(memory_item#(addr_t, data_t));
@@ -583,8 +583,8 @@ package memory_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(memory_item#(addr_t, data_t)) sqr;
         memory_monitor#(addr_t, data_t)              mon;
-        // Mode B only. model_cmp is a memory_comparator on the A2C_SRC role
-        // and a memory_access_comparator on the A2C_DST role.
+        // Paired mode only. model_cmp is a memory_comparator on the A2C_SRC
+        // role and a memory_access_comparator on the A2C_DST role.
         memory_monitor#(addr_t, data_t)              model_mon;
         a2c_in_order_comparator #(item_t)            model_cmp;
 

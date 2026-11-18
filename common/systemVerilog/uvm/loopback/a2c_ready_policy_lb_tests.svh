@@ -100,18 +100,18 @@
         endfunction
     endclass : notify_ack_dst_same_clock_test
 
-    // Mode B: the A2C_DST agent with a2c_always_ready_policy acks both lanes,
-    // whose peers push with gaps drawn per lane, so either lane reaches a
-    // transfer first. The DUT lane must ack every transfer in the clock its
-    // push rises. The model lane must ack transfer n in the clock its own
-    // push rises if the DUT lane has acked n by then, and otherwise in the
-    // clock the DUT lane acks it. lb_hs_mode_b checks the rest.
-    class push_ack_mode_b_dst_same_clock_test extends pa_mode_b;
+    // Paired mode: the A2C_DST agent with a2c_always_ready_policy acks both
+    // lanes, whose peers push with gaps drawn per lane, so either lane
+    // reaches a transfer first. The DUT lane must ack every transfer in the
+    // clock its push rises. The model lane must ack transfer n in the clock
+    // its own push rises if the DUT lane has acked n by then, and otherwise
+    // in the clock the DUT lane acks it. lb_hs_paired checks the rest.
+    class push_ack_paired_dst_same_clock_test extends pa_paired;
         // Per lane, the clocks each transfer's push rose and its ack came.
         int unsigned started[2][$];
         int unsigned ended[2][$];
 
-        `uvm_component_utils(push_ack_mode_b_dst_same_clock_test)
+        `uvm_component_utils(push_ack_paired_dst_same_clock_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -177,7 +177,7 @@
                 `uvm_error("LB_SAME_CLOCK", $sformatf("the model lane waited on %0d of %0d transfers, so one timing went untested", waited, n))
             end
         endfunction
-    endclass : push_ack_mode_b_dst_same_clock_test
+    endclass : push_ack_paired_dst_same_clock_test
 
     // The dst agent's policy is a2c_pattern_ready_policy, by a type override,
     // with a stall pattern for rdy. The rdy level of every clock must follow

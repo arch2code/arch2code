@@ -1,4 +1,4 @@
-// Loopback tests of a2c_uvm_pkg's Mode B classes: the in-order and status
+// Loopback tests of a2c_uvm_pkg's paired-mode classes: the in-order and status
 // comparators, the midstream guard and its register write subscriber, and
 // the replay log. Included in a2c_uvm_loopback_pkg after the rdy_vld, status,
 // apb and a2c_txn_counter tests, whose item types and typedefs they use.
@@ -64,7 +64,7 @@
     // each side with its own random gaps. Every pair matches. Subclasses
     // change model items, add unpaired items to one side, reorder across
     // keys, or inject a mismatch.
-    class model_cmp_match_test extends lb_mode_b_base;
+    class model_cmp_match_test extends lb_paired_base;
         lb_cmp_t                       cmp;
         uvm_analysis_port #(rv_item_t) dut_ap;
         uvm_analysis_port #(rv_item_t) model_ap;
@@ -142,10 +142,10 @@
                                             cmp.get_pairs(), led[A2C_DUT_LANE], led[A2C_MODEL_LANE], demoter.demoted, demote_id),
                       UVM_NONE)
             if (cmp.get_pairs() != want_pairs) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected %0d pairs, got %0d", want_pairs, cmp.get_pairs()))
+                `uvm_error("LB_PAIRED", $sformatf("expected %0d pairs, got %0d", want_pairs, cmp.get_pairs()))
             end
             if (led[A2C_DUT_LANE] == 0 || led[A2C_MODEL_LANE] == 0) begin
-                `uvm_error("LB_MODE_B", "one side never led, so pairing with the other side first went untested")
+                `uvm_error("LB_PAIRED", "one side never led, so pairing with the other side first went untested")
             end
             super.report_phase(phase);
         endfunction
@@ -231,7 +231,7 @@
         virtual function void report_phase(uvm_phase phase);
             `uvm_info("LB_STATS", $sformatf("%0d of %0d model items arrive at another position than the DUT's", moved, n_items),
                       UVM_NONE)
-            if (moved == 0) `uvm_error("LB_MODE_B", "the model order matches the DUT order, so keys were not exercised")
+            if (moved == 0) `uvm_error("LB_PAIRED", "the model order matches the DUT order, so keys were not exercised")
             super.report_phase(phase);
         endfunction
     endclass : model_cmp_keyed_test
@@ -282,14 +282,14 @@
 
         virtual function void report_phase(uvm_phase phase);
             if (injected.demoted != 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("the marker demoter demoted %0d reports, expected the injected one", injected.demoted))
+                `uvm_error("LB_PAIRED", $sformatf("the marker demoter demoted %0d reports, expected the injected one", injected.demoted))
             end
             super.report_phase(phase);
         endfunction
     endclass : model_cmp_inject_text_test
 
     // A status comparator under the policy configure() sets, fed by hand.
-    class lb_status_cmp_base extends lb_mode_b_base;
+    class lb_status_cmp_base extends lb_paired_base;
         lb_st_cmp_t                    cmp;
         uvm_analysis_port #(st_item_t) dut_ap;
         uvm_analysis_port #(st_item_t) model_ap;
@@ -343,7 +343,7 @@
         virtual task run_phase(uvm_phase phase);
             phase.raise_objection(this);
             if (cmp.policy != A2C_STATUS_STABLE || !cmp.auto_stable) begin
-                `uvm_error("LB_MODE_B", $sformatf("defaults: policy %s, auto_stable %0d", cmp.policy.name(), cmp.auto_stable))
+                `uvm_error("LB_PAIRED", $sformatf("defaults: policy %s, auto_stable %0d", cmp.policy.name(), cmp.auto_stable))
             end
             cmp.stable_point();
             model('h100001);
@@ -356,7 +356,7 @@
             cmp.stable_point();
             dut('h300003);
             cmp.stable_point();
-            if (cmp.get_pairs() != 3) `uvm_error("LB_MODE_B", $sformatf("expected 3 pairs, got %0d", cmp.get_pairs()))
+            if (cmp.get_pairs() != 3) `uvm_error("LB_PAIRED", $sformatf("expected 3 pairs, got %0d", cmp.get_pairs()))
             phase.drop_objection(this);
         endtask
     endclass : status_cmp_stable_test
@@ -390,7 +390,7 @@
             model('h201);
             model('h180);
             cmp.stable_point();
-            if (cmp.get_pairs() != 0) `uvm_error("LB_MODE_B", $sformatf("bounds compared %0d pairs", cmp.get_pairs()))
+            if (cmp.get_pairs() != 0) `uvm_error("LB_PAIRED", $sformatf("bounds compared %0d pairs", cmp.get_pairs()))
             phase.drop_objection(this);
         endtask
     endclass : status_cmp_bounds_test
@@ -420,7 +420,7 @@
             end
             logged = uvm_report_server::get_server().get_id_count("A2C_STATUS");
             `uvm_info("LB_STATS", $sformatf("%0d A2C_STATUS lines", logged), UVM_NONE)
-            if (logged != 6) `uvm_error("LB_MODE_B", $sformatf("expected 6 A2C_STATUS lines, got %0d", logged))
+            if (logged != 6) `uvm_error("LB_PAIRED", $sformatf("expected 6 A2C_STATUS lines, got %0d", logged))
             phase.drop_objection(this);
         endtask
     endclass : status_cmp_off_test
@@ -436,7 +436,7 @@
 
     // A guard over a dual-lane counter and an in-order comparator, with
     // uvm_reg_items written to it by hand as a2c_reg_write_subscriber would.
-    class lb_guard_base extends lb_mode_b_base;
+    class lb_guard_base extends lb_paired_base;
         a2c_midstream_guard               guard;
         a2c_txn_counter #(rv_item_t)      counter;
         lb_cmp_t                          cmp;
@@ -559,8 +559,8 @@
             lane(A2C_MODEL_LANE, 6, 1);
             `uvm_info("LB_STATS", $sformatf("%0d A2C_MIDSTREAM, %0d A2C_MODEL_CMP_MIDSTREAM", srv.get_id_count("A2C_MIDSTREAM"),
                                             srv.get_id_count("A2C_MODEL_CMP_MIDSTREAM")), UVM_NONE)
-            if (srv.get_id_count("A2C_MIDSTREAM") != 1) `uvm_error("LB_MODE_B", "expected one A2C_MIDSTREAM info line")
-            if (srv.get_id_count("A2C_MODEL_CMP_MIDSTREAM") != 4) `uvm_error("LB_MODE_B", "expected four A2C_MODEL_CMP_MIDSTREAM warnings")
+            if (srv.get_id_count("A2C_MIDSTREAM") != 1) `uvm_error("LB_PAIRED", "expected one A2C_MIDSTREAM info line")
+            if (srv.get_id_count("A2C_MODEL_CMP_MIDSTREAM") != 4) `uvm_error("LB_PAIRED", "expected four A2C_MODEL_CMP_MIDSTREAM warnings")
             phase.drop_objection(this);
         endtask
     endclass : midstream_guard_predict_test
@@ -571,7 +571,7 @@
     // must get the recorded response handle and delay. The model lane has
     // the longer gaps, so it never waits; with follow set it has the
     // shorter ones and must wait for some.
-    class replay_log_test extends lb_mode_b_base;
+    class replay_log_test extends lb_paired_base;
         lb_replay_t  log;
         int unsigned n;
         bit          follow = 0;
@@ -841,7 +841,7 @@
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
-            if (demoter.count("pair 11:") != 0) `uvm_error("LB_MODE_B", "pair 11 printed beyond max_reported")
+            if (demoter.count("pair 11:") != 0) `uvm_error("LB_PAIRED", "pair 11 printed beyond max_reported")
             super.report_phase(phase);
         endfunction
     endclass : model_cmp_cap_test
@@ -898,7 +898,7 @@
             lane(A2C_MODEL_LANE, 20, 1);
             warned = uvm_report_server::get_server().get_id_count("A2C_MODEL_CMP_MIDSTREAM");
             `uvm_info("LB_STATS", $sformatf("%0d A2C_MODEL_CMP_MIDSTREAM", warned), UVM_NONE)
-            if (warned != 14) `uvm_error("LB_MODE_B", $sformatf("expected 14 A2C_MODEL_CMP_MIDSTREAM warnings, got %0d", warned))
+            if (warned != 14) `uvm_error("LB_PAIRED", $sformatf("expected 14 A2C_MODEL_CMP_MIDSTREAM warnings, got %0d", warned))
             phase.drop_objection(this);
         endtask
     endclass : midstream_window_anchor_test
@@ -931,7 +931,7 @@
 
         function void expect_pending(int unsigned outstanding, int unsigned pending);
             if (counter.outstanding() != outstanding || counter.pending() != pending) begin
-                `uvm_error("LB_MODE_B", $sformatf("outstanding %0d and pending %0d, expected %0d and %0d", counter.outstanding(),
+                `uvm_error("LB_PAIRED", $sformatf("outstanding %0d and pending %0d, expected %0d and %0d", counter.outstanding(),
                                               counter.pending(), outstanding, pending))
             end
         endfunction
@@ -957,7 +957,7 @@
 
         virtual function void report_phase(uvm_phase phase);
             if (count_demoter.demoted != 1 || count_demoter.count("rv DUT lane: deadline") != 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected one DUT lane A2C_TXN_COUNT, got %p", count_demoter.messages))
+                `uvm_error("LB_PAIRED", $sformatf("expected one DUT lane A2C_TXN_COUNT, got %p", count_demoter.messages))
             end
             super.report_phase(phase);
         endfunction
@@ -984,7 +984,7 @@
             cmp.stable_point();
             cmp.stable_point();
             warned = uvm_report_server::get_server().get_id_count("A2C_MODEL_CMP_MIDSTREAM");
-            if (warned != 1) `uvm_error("LB_MODE_B", $sformatf("expected one A2C_MODEL_CMP_MIDSTREAM warning, got %0d", warned))
+            if (warned != 1) `uvm_error("LB_PAIRED", $sformatf("expected one A2C_MODEL_CMP_MIDSTREAM warning, got %0d", warned))
             phase.drop_objection(this);
         endtask
     endclass : status_cmp_midstream_test
@@ -1084,7 +1084,7 @@
             lane(A2C_DUT_LANE, 1);
             lane(A2C_MODEL_LANE, 1);
             if (demoter.count("write to lb_regs.wide while") != 2) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected two writes to lb_regs.wide: %p", demoter.messages))
+                `uvm_error("LB_PAIRED", $sformatf("expected two writes to lb_regs.wide: %p", demoter.messages))
             end
             phase.drop_objection(this);
         endtask
@@ -1098,7 +1098,7 @@
     // no error. With uncut_at_end set the test calls uncut() at the end, so
     // pairs 5 to 12 are compared in order too and pair 6 is one
     // A2C_MODEL_CMP.
-    class model_cmp_keyed_cut_test extends lb_mode_b_base;
+    class model_cmp_keyed_cut_test extends lb_paired_base;
         lb_keyed_cmp                   cmp;
         uvm_analysis_port #(rv_item_t) dut_ap;
         uvm_analysis_port #(rv_item_t) model_ap;
@@ -1133,10 +1133,10 @@
             for (int unsigned i = 1; i <= 2; i++) model_ap.write(lb_rv_item(data(i)));
             cmp.cut(4);
             for (int unsigned i = 3; i <= 12; i++) model_ap.write(lb_rv_item(data(i, i == 6)));
-            if (cmp.get_pairs() != 4) `uvm_error("LB_MODE_B", $sformatf("%0d pairs after the cut, expected 4", cmp.get_pairs()))
+            if (cmp.get_pairs() != 4) `uvm_error("LB_PAIRED", $sformatf("%0d pairs after the cut, expected 4", cmp.get_pairs()))
             if (uncut_at_end) begin
                 cmp.uncut();
-                if (cmp.get_pairs() != 12) `uvm_error("LB_MODE_B", $sformatf("%0d pairs after uncut(), expected 12", cmp.get_pairs()))
+                if (cmp.get_pairs() != 12) `uvm_error("LB_PAIRED", $sformatf("%0d pairs after uncut(), expected 12", cmp.get_pairs()))
             end
             phase.drop_objection(this);
         endtask
@@ -1160,7 +1160,7 @@
     // three of each key, and each releases one held model item of its key.
     // A real drain takes this path when the DUT lane's within-cut bursts
     // complete after the cut. Pairs 1 to 6 match, and the rest are dropped.
-    class model_cmp_keyed_cut_late_dut_test extends lb_mode_b_base;
+    class model_cmp_keyed_cut_late_dut_test extends lb_paired_base;
         lb_keyed_cmp cmp;
 
         `uvm_component_utils(model_cmp_keyed_cut_late_dut_test)
@@ -1180,7 +1180,7 @@
         endfunction
 
         protected function void check_pairs(int unsigned want, string when);
-            if (cmp.get_pairs() != want) `uvm_error("LB_MODE_B", $sformatf("%0d pairs %s, expected %0d", cmp.get_pairs(), when, want))
+            if (cmp.get_pairs() != want) `uvm_error("LB_PAIRED", $sformatf("%0d pairs %s, expected %0d", cmp.get_pairs(), when, want))
         endfunction
 
         virtual task run_phase(uvm_phase phase);
@@ -1227,7 +1227,7 @@
     // cut after pair 4, which keeps two items with no key. Of the model
     // side's three items with no key it pairs two and holds the third, so
     // check_phase finds none unpaired.
-    class model_cmp_mixed_key_cut_test extends lb_mode_b_base;
+    class model_cmp_mixed_key_cut_test extends lb_paired_base;
         lb_mixed_key_cmp cmp;
 
         `uvm_component_utils(model_cmp_mixed_key_cut_test)
@@ -1254,7 +1254,7 @@
             for (int unsigned n = 1; n <= 3; n++) cmp.write_a2c_model(item(3, n));
             cmp.write_a2c_model(item(0, 1));
             cmp.write_a2c_model(item(1, 1));
-            if (cmp.get_pairs() != 4) `uvm_error("LB_MODE_B", $sformatf("%0d pairs, expected 4", cmp.get_pairs()))
+            if (cmp.get_pairs() != 4) `uvm_error("LB_PAIRED", $sformatf("%0d pairs, expected 4", cmp.get_pairs()))
             phase.drop_objection(this);
         endtask
     endclass : model_cmp_mixed_key_cut_test
@@ -1310,7 +1310,7 @@
         virtual function void report_phase(uvm_phase phase);
             if (catcher.messages.size() != 1 || !a2c_contains(catcher.messages[0], "uvm_test_top.cmp: ")
                     || !a2c_contains(catcher.messages[0], "does not override cut()")) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected one A2C_CFG fatal from cut(): %p", catcher.messages))
+                `uvm_error("LB_PAIRED", $sformatf("expected one A2C_CFG fatal from cut(): %p", catcher.messages))
             end
             super.report_phase(phase);
         endfunction
@@ -1366,7 +1366,7 @@
     // and each reports the death in one line, with 3 DUT and 3 model items
     // not compared. is_dead() and died_at() name the model lane and the
     // death's time, and nothing before it.
-    class model_cmp_lane_dead_test extends lb_mode_b_base;
+    class model_cmp_lane_dead_test extends lb_paired_base;
         lb_cmp_t        plain;
         lb_keyed_cmp    keyed;
         lb_hand_cmp     hand;
@@ -1425,7 +1425,7 @@
             foreach (cmps[i]) begin
                 if (cmps[i].is_dead(A2C_DUT_LANE) || cmps[i].died_at(A2C_DUT_LANE) != 0 || cmps[i].is_dead(A2C_MODEL_LANE) != after
                         || cmps[i].died_at(A2C_MODEL_LANE) != (after ? died : 0)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%s %s the death: is_dead %0d and %0d, died_at %0t and %0t, the death at %0t",
+                    `uvm_error("LB_PAIRED", $sformatf("%s %s the death: is_dead %0d and %0d, died_at %0t and %0t, the death at %0t",
                                                       cmps[i].get_full_name(), a2c_select_str(after, "after", "before"), cmps[i].is_dead(A2C_DUT_LANE),
                                                       cmps[i].is_dead(A2C_MODEL_LANE), cmps[i].died_at(A2C_DUT_LANE),
                                                       cmps[i].died_at(A2C_MODEL_LANE), died))
@@ -1439,14 +1439,14 @@
                 string head = {cmps[i].get_full_name(), ": the comparison stopped after 6 pairs: the master declared the model lane dead at "};
                 int    found[$];
                 if (cmps[i].get_pairs() != 6 || cmps[i].uncompared(A2C_DUT_LANE) != 3 || cmps[i].uncompared(A2C_MODEL_LANE) != 3) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%s: %0d pairs and %0d DUT and %0d model items not compared, expected 6, 3 and 3",
+                    `uvm_error("LB_PAIRED", $sformatf("%s: %0d pairs and %0d DUT and %0d model items not compared, expected 6, 3 and 3",
                                                       cmps[i].get_full_name(), cmps[i].get_pairs(), cmps[i].uncompared(A2C_DUT_LANE),
                                                       cmps[i].uncompared(A2C_MODEL_LANE)))
                 end
                 found = infos.messages.find_index(m) with (a2c_contains(m, head)
                                                            && a2c_contains(m, ". 3 DUT and 3 model items were not compared"));
                 if (found.size() != 1) begin
-                    `uvm_error("LB_MODE_B", $sformatf("no one report of the death from %s: %p", cmps[i].get_full_name(), infos.messages))
+                    `uvm_error("LB_PAIRED", $sformatf("no one report of the death from %s: %p", cmps[i].get_full_name(), infos.messages))
                 end
             end
             `uvm_info("LB_STATS", $sformatf("%0d death reports", infos.messages.size()), UVM_NONE)

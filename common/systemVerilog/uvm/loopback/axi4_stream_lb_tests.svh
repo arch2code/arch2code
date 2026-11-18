@@ -120,16 +120,16 @@
 
     typedef a2c_txn_counter #(axis_item_t) axis_counter_t;
 
-    // Mode B. The agent under test has axis as its DUT lane and axis_model
-    // as its model lane, and each lane has a single-lane peer of the other
-    // role. As A2C_SRC the agent sends n_items beats to two dst peers, tready
-    // 50% on axis and 80% on axis_model. As A2C_DST it gives both lanes one
-    // random tready, against two src peers that send the same beats with
-    // different gaps. Each lane must deliver every beat once, in order, and a
-    // dual counter on the agent's two monitors must see n_items on each. The
-    // lanes' tvalid must differ on some clocks, and on the A2C_DST role their
-    // tready never.
-    class axi4_stream_mode_b_test extends lb_mode_b_base;
+    // Paired mode. The agent under test has axis as its DUT lane and
+    // axis_model as its model lane, and each lane has a single-lane peer of
+    // the other role. As A2C_SRC the agent sends n_items beats to two dst
+    // peers, tready 50% on axis and 80% on axis_model. As A2C_DST it gives
+    // both lanes one random tready, against two src peers that send the same
+    // beats with different gaps. Each lane must deliver every beat once, in
+    // order, and a dual counter on the agent's two monitors must see n_items
+    // on each. The lanes' tvalid must differ on some clocks, and on the
+    // A2C_DST role their tready never.
+    class axi4_stream_paired_test extends lb_paired_base;
         a2c_role_e                  role = A2C_SRC;
         axis_agent_t                agent;
         axis_agent_t                peer;
@@ -144,7 +144,7 @@
         int unsigned                valid_skew;
         int unsigned                ready_skew;
 
-        `uvm_component_utils(axi4_stream_mode_b_test)
+        `uvm_component_utils(axi4_stream_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -262,32 +262,32 @@
             super.check_phase(phase);
             `uvm_info("LB_STATS", $sformatf("%0d beats on the DUT lane and %0d on the model lane; tvalid differed on %0d clocks, tready on %0d",
                                             sb.matched, model_sb.matched, valid_skew, ready_skew), UVM_NONE)
-            if (valid_skew == 0) `uvm_error("LB_MODE_B", "the lanes' tvalid never differed, so per-lane completion went untested")
+            if (valid_skew == 0) `uvm_error("LB_PAIRED", "the lanes' tvalid never differed, so per-lane completion went untested")
             if (role == A2C_SRC) begin
-                if (agent.has_child("model_cmp")) `uvm_error("LB_MODE_B", "the A2C_SRC agent built a comparator")
+                if (agent.has_child("model_cmp")) `uvm_error("LB_PAIRED", "the A2C_SRC agent built a comparator")
             end else begin
-                if (ready_skew != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes' tready differed on %0d clocks", ready_skew))
-                if (agent.model_cmp == null) `uvm_error("LB_MODE_B", "the A2C_DST agent built no comparator")
+                if (ready_skew != 0) `uvm_error("LB_PAIRED", $sformatf("the lanes' tready differed on %0d clocks", ready_skew))
+                if (agent.model_cmp == null) `uvm_error("LB_PAIRED", "the A2C_DST agent built no comparator")
                 else if (agent.model_cmp.get_pairs() != n_items) begin
-                    `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d beats, expected %0d", agent.model_cmp.get_pairs(), n_items))
+                    `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d beats, expected %0d", agent.model_cmp.get_pairs(), n_items))
                 end
             end
         endfunction
-    endclass : axi4_stream_mode_b_test
+    endclass : axi4_stream_paired_test
 
-    class axi4_stream_mode_b_dst_test extends axi4_stream_mode_b_test;
-        `uvm_component_utils(axi4_stream_mode_b_dst_test)
+    class axi4_stream_paired_dst_test extends axi4_stream_paired_test;
+        `uvm_component_utils(axi4_stream_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : axi4_stream_mode_b_dst_test
+    endclass : axi4_stream_paired_dst_test
 
     // The model lane's peer sends one beat with a different tdest: one
     // A2C_MODEL_CMP naming the pair, with both beats printed.
-    class axi4_stream_mode_b_mismatch_test extends axi4_stream_mode_b_dst_test;
-        `uvm_component_utils(axi4_stream_mode_b_mismatch_test)
+    class axi4_stream_paired_mismatch_test extends axi4_stream_paired_dst_test;
+        `uvm_component_utils(axi4_stream_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -300,4 +300,4 @@
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", k + 1,
                                           items[k].convert2string(), model_items[k].convert2string()));
         endfunction
-    endclass : axi4_stream_mode_b_mismatch_test
+    endclass : axi4_stream_paired_mismatch_test

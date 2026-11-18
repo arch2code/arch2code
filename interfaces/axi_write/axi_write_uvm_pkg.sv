@@ -30,7 +30,7 @@
 // Pin timing follows a2c_clk_if: drive at drive_edge(), sample at
 // sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon, and model_cmp, an
 // axi_write_comparator, compares the bursts the two lanes report in order per
 // ID: AW fields, every beat's wdata, wstrb and wuser, and bresp and buser.
@@ -887,7 +887,8 @@ package axi_write_uvm_pkg;
     // cfg.reorder in any order that keeps each ID's bursts in AW order. W beats
     // belong to the AWs in order, whether they come before or after the AW.
     // A burst's W ends at wlast, or at its last beat when wlast is missing.
-    // In Mode B the DUT lane writes and chooses, and the model lane follows.
+    // In paired mode the DUT lane writes and chooses, and the model lane
+    // follows.
     class axi_write_slave_driver #(type addr_t = logic [31:0], type data_t = logic [31:0],
                                    type strb_t = logic [3:0], type awuser_t = logic, type wuser_t = logic,
                                    type buser_t = logic, type id_t = logic [3:0])
@@ -1000,7 +1001,7 @@ package axi_write_uvm_pkg;
         endfunction
 
         // The DUT lane's next B, chosen by the DUT lane alone and recorded
-        // for the model lane in Mode B.
+        // for the model lane in paired mode.
         protected function void dut_choose();
             int    pick;
             pick_t p;
@@ -1255,7 +1256,7 @@ package axi_write_uvm_pkg;
                                .wuser_t(wuser_t), .buser_t(buser_t), .id_t(id_t))  vif;
         // One item per burst, at its B, with its AW fields, beats and B.
         uvm_analysis_port #(item_t)                                                 ap;
-        // The replay log of the Mode B slave on this monitor's pin set, or
+        // The replay log of the paired-mode slave on this monitor's pin set, or
         // null. A run the drain cut ends with bursts open on purpose.
         a2c_replay_log_base                                                         replay;
         // When the master declared this monitor's lane dead, or 0, and the
@@ -1489,7 +1490,7 @@ package axi_write_uvm_pkg;
         endfunction
     endclass : axi_write_monitor
 
-    // The Mode B comparator: AXI orders bursts only within an ID, so it
+    // The paired-mode comparator: AXI orders bursts only within an ID, so it
     // pairs the two lanes' bursts in order per ID.
     class axi_write_comparator #(type addr_t = logic [31:0], type data_t = logic [31:0], type strb_t = logic [3:0],
                                  type awuser_t = logic, type wuser_t = logic, type buser_t = logic,
@@ -1566,7 +1567,7 @@ package axi_write_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(item_t)                                                           sqr;
         monitor_t                                                                         mon;
-        // Mode B only.
+        // Paired mode only.
         monitor_t                                                                         model_mon;
         axi_write_comparator#(addr_t, data_t, strb_t, awuser_t, wuser_t, buser_t, id_t) model_cmp;
 
@@ -1631,8 +1632,8 @@ package axi_write_uvm_pkg;
             end
         endfunction
 
-        // An active Mode B slave's monitors read the cut from its own replay
-        // log.
+        // An active paired-mode slave's monitors read the cut from its own
+        // replay log.
         virtual function void connect_phase(uvm_phase phase);
             a2c_lane_joiner lanes = lane_joiner();
             super.connect_phase(phase);

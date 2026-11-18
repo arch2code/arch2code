@@ -1,4 +1,4 @@
-// Loopback tests of the joint stall rule in Mode A, on the lb_rt_pipe
+// Loopback tests of the joint stall rule in single mode, on the lb_rt_pipe
 // stand-in DUT between rv_in and rv_out, and between axis_in and axis_out
 // where a second port is needed, and on the AXI master and slave pairs.
 // Included in a2c_uvm_loopback_pkg after a2c_rt_checker_lb_tests.svh,
@@ -6,10 +6,10 @@
 // periods: clk 10ns, rising 5ns after each falling edge, where the monitors
 // sample; clk3 20ns.
 
-    // The last sentence of a Mode A A2C_JOINT_STALL, in a test with a run
-    // timeout, which the stall ends the run through, and in one without.
-    localparam string LB_JS_MODE_A_END = "No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. With one DUT no lane dies, and the run ends here.";
-    localparam string LB_JS_MODE_A_WAIT = "No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.";
+    // The last sentence of a single-mode A2C_JOINT_STALL, in a test with a
+    // run timeout, which the stall ends the run through, and in one without.
+    localparam string LB_JS_SINGLE_END = "No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. With one DUT no lane dies, and the run ends here.";
+    localparam string LB_JS_SINGLE_WAIT = "No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.";
 
     // What every test here shares: rv_in's master has the joint stall
     // bound joint, and with budget above 0 the run has an a2c_run_timeout
@@ -103,7 +103,7 @@
         protected function void expect_ended_at_stall();
             realtime stall = demoter.first_at("A2C_JOINT_STALL");
             if ($realtime != stall) `uvm_error("LB_JS", $sformatf("check_phase ran at %0t, not at the stall at %0t", $realtime, stall))
-            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_MODE_A_END) != 1) `uvm_error("LB_JS", $sformatf("the A2C_JOINT_STALL does not end '%s': %p", LB_JS_MODE_A_END, demoter.msgs))
+            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_SINGLE_END) != 1) `uvm_error("LB_JS", $sformatf("the A2C_JOINT_STALL does not end '%s': %p", LB_JS_SINGLE_END, demoter.msgs))
             if (a2c_run_ended_by != "the joint stall rule" || a2c_run_ended_id != "A2C_JOINT_STALL" || a2c_run_ended_at != stall) begin
                 `uvm_error("LB_JS", $sformatf("the run's end is recorded as %s (%s) at %0t", a2c_run_ended_by, a2c_run_ended_id, a2c_run_ended_at))
             end
@@ -141,7 +141,7 @@
                                     joint);
             expect_at("A2C_JOINT_STALL", last_handshake() + (joint + 1) * 10ns);
             if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, head) != 1) `uvm_error("LB_JS", $sformatf("no A2C_JOINT_STALL reads '%s': %p", head, demoter.msgs))
-            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_MODE_A_WAIT) != 1) `uvm_error("LB_JS", $sformatf("the A2C_JOINT_STALL does not end '%s': %p", LB_JS_MODE_A_WAIT, demoter.msgs))
+            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_SINGLE_WAIT) != 1) `uvm_error("LB_JS", $sformatf("the A2C_JOINT_STALL does not end '%s': %p", LB_JS_SINGLE_WAIT, demoter.msgs))
             if (clocks < max_clocks) `uvm_error("LB_JS", $sformatf("the run ended after %0d clocks, before the 2 bounds after the stall", clocks))
             expect_waiting_uncounted();
         endfunction
@@ -452,7 +452,7 @@
             string head = $sformatf("axr: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: axr (uvm_test_top.master.drv), waiting for the R beats of ",
                                     joint);
             super.check_phase(phase);
-            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, head) != 1 || demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_MODE_A_WAIT) != 1
+            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, head) != 1 || demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_SINGLE_WAIT) != 1
                 || demoter.count("A2C_PROTO", UVM_ERROR, "the run ended with 1 bursts still waiting for their last beat") != 2 || demoter.errors() != 3) begin
                 `uvm_error("LB_JS", $sformatf("expected one A2C_JOINT_STALL reading '%s', and the master's and slave's monitors each reporting the open burst at the end: %p", head, demoter.msgs))
             end
@@ -511,7 +511,7 @@
             string head = $sformatf("axw: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: axw (uvm_test_top.master.drv), waiting for the B of ",
                                     joint);
             super.check_phase(phase);
-            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, head) != 1 || demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_MODE_A_WAIT) != 1
+            if (demoter.count("A2C_JOINT_STALL", UVM_ERROR, head) != 1 || demoter.count("A2C_JOINT_STALL", UVM_ERROR, LB_JS_SINGLE_WAIT) != 1
                 || demoter.count("A2C_PROTO", UVM_ERROR, "1 bursts waiting for B") != 2 || demoter.errors() != 3) begin
                 `uvm_error("LB_JS", $sformatf("expected one A2C_JOINT_STALL reading '%s', and the master's and slave's monitors each reporting the open burst at the end: %p", head, demoter.msgs))
             end

@@ -224,13 +224,13 @@ package a2c_uvm_loopback_pkg;
         endtask
     endclass : lb_cut_tracker
 
-    // What every Mode B test shares: a demoter on demote_id that records
+    // What every paired-mode test shares: a demoter on demote_id that records
     // the messages, and a report_phase check that it demoted exactly
     // want_errors, some kept message holding each want_text, and none
     // holding any unwant_text, and that the passive agents with no active
     // agent on their pin set raised want_unowned A2C_PASSIVE infos. A test
     // adds the logs whose cuts it checks to tracker.logs.
-    class lb_mode_b_base extends lb_base_test;
+    class lb_paired_base extends lb_base_test;
         lb_recording_demoter demoter;
         string               demote_id = "A2C_MODEL_CMP";
         int unsigned         want_errors = 0;
@@ -239,7 +239,7 @@ package a2c_uvm_loopback_pkg;
         int unsigned         want_unowned = 0;
         lb_cut_tracker       tracker;
 
-        `uvm_component_utils(lb_mode_b_base)
+        `uvm_component_utils(lb_paired_base)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -260,7 +260,7 @@ package a2c_uvm_loopback_pkg;
         protected function void check_cut(a2c_replay_log_base log, int unsigned floor, int unsigned pairs, int unsigned dut_done,
                                           int unsigned model_done);
             int unsigned cut = log.get_cut();
-            if (cut <= floor) `uvm_error("LB_MODE_B", $sformatf("the drain cut the run after transfer %0d, expected one after %0d", cut, floor))
+            if (cut <= floor) `uvm_error("LB_PAIRED", $sformatf("the drain cut the run after transfer %0d, expected one after %0d", cut, floor))
             // A cut the drain reaches on its own clock ends the run before
             // the tracker's look 1ps later.
             if (!tracker.starts_at_cut.exists(log) && cut != 0 && $realtime == log.clk_vif.last_rise) begin
@@ -268,16 +268,16 @@ package a2c_uvm_loopback_pkg;
                 tracker.cut_time[log]      = $realtime;
             end
             if (!tracker.starts_at_cut.exists(log)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the tracker saw no cut of %s", log.get_full_name()))
+                `uvm_error("LB_PAIRED", $sformatf("the tracker saw no cut of %s", log.get_full_name()))
             end else if (tracker.starts_at_cut[log] != cut) begin
-                `uvm_error("LB_MODE_B", $sformatf("the cut keeps %0d transfers, but the DUT lane had started %0d on the clock of the cut",
+                `uvm_error("LB_PAIRED", $sformatf("the cut keeps %0d transfers, but the DUT lane had started %0d on the clock of the cut",
                                                   cut, tracker.starts_at_cut[log]))
             end
-            if (pairs != cut) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected the %0d the cut keeps", pairs, cut))
+            if (pairs != cut) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d transfers, expected the %0d the cut keeps", pairs, cut))
             if (dut_done < cut || model_done < cut) begin
-                `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d and %0d transfers, short of the %0d the cut keeps", dut_done, model_done, cut))
+                `uvm_error("LB_PAIRED", $sformatf("the lanes completed %0d and %0d transfers, short of the %0d the cut keeps", dut_done, model_done, cut))
             end
-            if (uvm_report_server::get_server().get_id_count("A2C_CUT") == 0) `uvm_error("LB_MODE_B", "no A2C_CUT report of the cut")
+            if (uvm_report_server::get_server().get_id_count("A2C_CUT") == 0) `uvm_error("LB_PAIRED", "no A2C_CUT report of the cut")
         endfunction
 
         // A drain that cuts at its deadline ends at most quiet clocks after
@@ -285,33 +285,33 @@ package a2c_uvm_loopback_pkg;
         // one off.
         protected function void check_cut_time(int unsigned took, int unsigned quiet, int unsigned deadline);
             if (took + 1 < deadline || took > deadline + quiet + 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end within %0d clocks more",
+                `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end within %0d clocks more",
                                                   took, deadline, quiet))
             end
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
             if (demoter.demoted != want_errors) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected %0d %s, got %0d: %p", want_errors, demote_id, demoter.demoted,
+                `uvm_error("LB_PAIRED", $sformatf("expected %0d %s, got %0d: %p", want_errors, demote_id, demoter.demoted,
                                               demoter.messages))
             end
             foreach (want_text[i]) begin
                 if (demoter.count(want_text[i]) == 0) begin
-                    `uvm_error("LB_MODE_B", $sformatf("no %s message holds '%s': %p", demote_id, want_text[i], demoter.messages))
+                    `uvm_error("LB_PAIRED", $sformatf("no %s message holds '%s': %p", demote_id, want_text[i], demoter.messages))
                 end
             end
             foreach (unwant_text[i]) begin
                 if (demoter.count(unwant_text[i]) != 0) begin
-                    `uvm_error("LB_MODE_B", $sformatf("a %s message holds '%s': %p", demote_id, unwant_text[i], demoter.messages))
+                    `uvm_error("LB_PAIRED", $sformatf("a %s message holds '%s': %p", demote_id, unwant_text[i], demoter.messages))
                 end
             end
             if (uvm_report_server::get_server().get_id_count("A2C_PASSIVE") != want_unowned) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_PASSIVE reports, expected %0d", uvm_report_server::get_server().get_id_count("A2C_PASSIVE"),
+                `uvm_error("LB_PAIRED", $sformatf("%0d A2C_PASSIVE reports, expected %0d", uvm_report_server::get_server().get_id_count("A2C_PASSIVE"),
                                                   want_unowned))
             end
             super.report_phase(phase);
         endfunction
-    endclass : lb_mode_b_base
+    endclass : lb_paired_base
 
     // Sends a prepared list of items in order.
     class lb_list_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
@@ -351,7 +351,7 @@ package a2c_uvm_loopback_pkg;
         endfunction
     endclass : lb_arrivals
 
-    // What a Mode B test of a handshake port varies. LB_DUT_EXTRA and
+    // What a paired-mode test of a handshake port varies. LB_DUT_EXTRA and
     // LB_MODEL_EXTRA give one lane's peer one transfer more; LB_DRAIN holds
     // the model lane's last transfer back until after the test drops its
     // objection; LB_BUSY keeps both peers sending after the drop, the model
@@ -367,7 +367,7 @@ package a2c_uvm_loopback_pkg;
     typedef enum {LB_MATCH, LB_MODEL_LEADS, LB_DUT_EXTRA, LB_MODEL_EXTRA, LB_DRAIN, LB_BUSY, LB_BUSY_ZERO, LB_SLOW,
                   LB_TAIL, LB_MISMATCH, LB_AFTER_EXPIRY} lb_variant_e;
 
-    // Mode B on one push_ack, notify_ack, req_ack or pop_ack port. agent,
+    // Paired mode on one push_ack, notify_ack, req_ack or pop_ack port. agent,
     // the agent under test, has the port as its DUT lane and <port>_model
     // as its model lane, and each lane has a single-lane peer of the other
     // role. As A2C_SRC the agent sends items and the peers answer. As
@@ -380,8 +380,8 @@ package a2c_uvm_loopback_pkg;
     // transfer before the DUT lane, each lane must reach some transfers
     // first, and model_cmp must pair every transfer. A family's test
     // defines new_item() and configure(), and sets role and variant.
-    virtual class lb_hs_mode_b #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item,
-                                 type CFG_T = uvm_object, type VIF_T = int) extends lb_mode_b_base;
+    virtual class lb_hs_paired #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item,
+                                 type CFG_T = uvm_object, type VIF_T = int) extends lb_paired_base;
         string               port;
         a2c_role_e           role = A2C_SRC;
         lb_variant_e         variant = LB_MATCH;
@@ -421,8 +421,8 @@ package a2c_uvm_loopback_pkg;
         int unsigned         pending_at_second_drop;
         int unsigned         pending_at_third_drop;
         bit                  busy_at_third_drop;
-        // A passive Mode B agent on the port, which must build no driver and
-        // pair what agent pairs, a cut run included. On a busy port the
+        // A passive paired-mode agent on the port, which must build no driver
+        // and pair what agent pairs, a cut run included. On a busy port the
         // model lane's peer then pauses 10 clocks after the drop, so the DUT
         // lane completes transfers past the cut while the model lane catches
         // up, which only a cut model_cmp holds back.
@@ -733,13 +733,13 @@ package a2c_uvm_loopback_pkg;
             int unsigned n = expected[lane].size();
             if (busy()) n = got.items.size();
             else if (got.items.size() != n) begin
-                `uvm_error("LB_MODE_B", $sformatf("the %s lane reported %0d transfers, expected %0d", a2c_lane_name(lane),
+                `uvm_error("LB_PAIRED", $sformatf("the %s lane reported %0d transfers, expected %0d", a2c_lane_name(lane),
                                                   got.items.size(), n))
             end
             for (int unsigned i = 0; i < n && i < got.items.size(); i++) begin
                 if (lane == A2C_MODEL_LANE && i == skip_model) continue;
                 if (!got.items[i].compare(expected[lane][i])) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%s lane transfer %0d: reported %s, expected %s", a2c_lane_name(lane), i,
+                    `uvm_error("LB_PAIRED", $sformatf("%s lane transfer %0d: reported %s, expected %s", a2c_lane_name(lane), i,
                                                       got.items[i].convert2string(), expected[lane][i].convert2string()))
                 end
             end
@@ -761,96 +761,96 @@ package a2c_uvm_loopback_pkg;
                 realtime last = (arrivals.at[i] > model_arrivals.at[i]) ? arrivals.at[i] : model_arrivals.at[i];
                 if (arrivals.at[i] != model_arrivals.at[i]) apart++;
                 if (role == A2C_SRC && i + 1 < n && (arrivals.at[i + 1] <= last || model_arrivals.at[i + 1] <= last)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("transfer %0d completed on a lane before both lanes had completed transfer %0d", i + 1, i))
+                    `uvm_error("LB_PAIRED", $sformatf("transfer %0d completed on a lane before both lanes had completed transfer %0d", i + 1, i))
                 end
                 if (role == A2C_DST && model_arrivals.at[i] < arrivals.at[i]) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the model lane completed transfer %0d before the DUT lane", i))
+                    `uvm_error("LB_PAIRED", $sformatf("the model lane completed transfer %0d before the DUT lane", i))
                 end
             end
             `uvm_info("LB_STATS", $sformatf("%0d and %0d transfers on the DUT and model lanes, %0d on different clocks; %0d pairs; the model lane led %0d; %0d unreplayed at the drop; the drain took %0d clocks",
                                             arrivals.items.size(), model_arrivals.items.size(), apart, pairs, model_led,
                                             pending_at_drop, drain_clocks()), UVM_NONE)
             if (watch_passive) begin
-                if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+                if (watcher.drv != null) `uvm_error("LB_PAIRED", "the passive agent built a driver")
                 if (pairs == 0 || watcher.model_cmp.get_pairs() != pairs) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(), pairs))
+                    `uvm_error("LB_PAIRED", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(), pairs))
                 end
                 if (busy() && arrivals.items.size() <= agent.drv.replay.get_cut()) begin
-                    `uvm_error("LB_MODE_B", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
+                    `uvm_error("LB_PAIRED", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
                 end
             end
             if (role == A2C_SRC) begin
-                if (apart == 0) `uvm_error("LB_MODE_B", "the lanes completed every transfer on the same clock, so per-lane completion went untested")
+                if (apart == 0) `uvm_error("LB_PAIRED", "the lanes completed every transfer on the same clock, so per-lane completion went untested")
                 if (agent.model_cmp != null && pairs != n) begin
-                    `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", pairs, n))
+                    `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d transfers, expected %0d", pairs, n))
                 end
                 return;
             end
-            if (!busy() && pairs != n) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", pairs, n))
+            if (!busy() && pairs != n) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d transfers, expected %0d", pairs, n))
             case (variant)
                 LB_MATCH, LB_MISMATCH: begin
                     if (model_led == 0 || model_led >= n) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the model lane led %0d of %0d transfers, so one lane never led", model_led, n))
+                        `uvm_error("LB_PAIRED", $sformatf("the model lane led %0d of %0d transfers, so one lane never led", model_led, n))
                     end
                 end
                 LB_MODEL_LEADS: begin
-                    if (model_led != n) `uvm_error("LB_MODE_B", $sformatf("the model lane led %0d of %0d transfers", model_led, n))
+                    if (model_led != n) `uvm_error("LB_PAIRED", $sformatf("the model lane led %0d of %0d transfers", model_led, n))
                 end
                 // One drain must hold the run phase until the model lane is
                 // done: the call at the test's drop and the one at the drain's.
                 LB_DRAIN: begin
-                    if (pending_at_drop == 0) `uvm_error("LB_MODE_B", "the model lane had replayed every transfer at the drop, so the drain went untested")
-                    if (ready_calls != 2) `uvm_error("LB_MODE_B", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
+                    if (pending_at_drop == 0) `uvm_error("LB_PAIRED", "the model lane had replayed every transfer at the drop, so the drain went untested")
+                    if (ready_calls != 2) `uvm_error("LB_PAIRED", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
                 end
                 LB_AFTER_EXPIRY: begin
                     `uvm_info("LB_STATS", $sformatf("%0d phase_ready_to_end calls; the first drain took %0d clocks; %0d and %0d unreplayed at the second and third drops",
                                                     ready_calls, resumed_at - dropped_at, pending_at_second_drop,
                                                     pending_at_third_drop), UVM_NONE)
-                    if (ready_calls < 2) `uvm_error("LB_MODE_B", "the first drain never dropped, so the second round never ran")
-                    if (ready_calls < 4) `uvm_error("LB_MODE_B", "the second drain never dropped, so the third round never ran")
+                    if (ready_calls < 2) `uvm_error("LB_PAIRED", "the first drain never dropped, so the second round never ran")
+                    if (ready_calls < 4) `uvm_error("LB_PAIRED", "the second drain never dropped, so the third round never ran")
                     // The clock counter races the drain on each edge, so it may be one off.
                     if (resumed_at - dropped_at + 1 < 10 || resumed_at - dropped_at > 11) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the first drain took %0d clocks, expected its deadline of 10", resumed_at - dropped_at))
+                        `uvm_error("LB_PAIRED", $sformatf("the first drain took %0d clocks, expected its deadline of 10", resumed_at - dropped_at))
                     end
                     if (pending_at_second_drop == 0) begin
-                        `uvm_error("LB_MODE_B", "the model lane had replayed the last transfer at the second drop, so the second drain went untested")
+                        `uvm_error("LB_PAIRED", "the model lane had replayed the last transfer at the second drop, so the second drain went untested")
                     end
                     if (pending_at_third_drop == 0 && !busy_at_third_drop) begin
-                        `uvm_error("LB_MODE_B", "the lanes were done with the extra transfer at the third drop, so the third drain went untested")
+                        `uvm_error("LB_PAIRED", "the lanes were done with the extra transfer at the third drop, so the third drain went untested")
                     end
                 end
                 LB_MODEL_EXTRA, LB_DUT_EXTRA: begin
                     // The clock counter races the drain on each edge, so it may be one off.
                     if (drain_clocks() + 1 < drain_deadline || drain_clocks() > drain_deadline + 1) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected its deadline of %0d", drain_clocks(), drain_deadline))
+                        `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected its deadline of %0d", drain_clocks(), drain_deadline))
                     end
                 end
                 LB_TAIL: begin
-                    if (agent.drv.replay.get_cut() != 0) `uvm_error("LB_MODE_B", "the drain cut a port that paused before its deadline")
+                    if (agent.drv.replay.get_cut() != 0) `uvm_error("LB_PAIRED", "the drain cut a port that paused before its deadline")
                     if (arrivals.items.size() != n_items + 60) begin
-                        `uvm_error("LB_MODE_B", "the DUT lane stopped before the end of its tail, so the tail went untested")
+                        `uvm_error("LB_PAIRED", "the DUT lane stopped before the end of its tail, so the tail went untested")
                     end
-                    if (drain_clocks() >= drain_deadline) `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, its whole deadline", drain_clocks()))
-                    if (ready_calls != 2) `uvm_error("LB_MODE_B", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
+                    if (drain_clocks() >= drain_deadline) `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, its whole deadline", drain_clocks()))
+                    if (ready_calls != 2) `uvm_error("LB_PAIRED", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
                 end
                 LB_BUSY, LB_BUSY_ZERO, LB_SLOW: begin
                     check_cut(agent.drv.replay, n_items, pairs, arrivals.items.size(), model_arrivals.items.size());
                     if (arrivals.items.size() <= n_items) begin
-                        `uvm_error("LB_MODE_B", "the DUT lane's peer stopped at the drop, so the busy port went untested")
+                        `uvm_error("LB_PAIRED", "the DUT lane's peer stopped at the drop, so the busy port went untested")
                     end
                     if (arrivals.items.size() >= items.size()) begin
-                        `uvm_error("LB_MODE_B", "the DUT lane's peer ran out of transfers, so the port paused")
+                        `uvm_error("LB_PAIRED", "the DUT lane's peer ran out of transfers, so the port paused")
                     end
-                    if (ready_calls != 2) `uvm_error("LB_MODE_B", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
+                    if (ready_calls != 2) `uvm_error("LB_PAIRED", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
                     if (variant == LB_SLOW && model_led == 0) begin
-                        `uvm_error("LB_MODE_B", "the model lane never waited for the slow responder")
+                        `uvm_error("LB_PAIRED", "the model lane never waited for the slow responder")
                     end
                     check_cut_time(drain_clocks(), drain_quiet, drain_deadline);
                 end
                 default: ;
             endcase
         endfunction
-    endclass : lb_hs_mode_b
+    endclass : lb_hs_paired
 
     `include "rdy_vld_lb_tests.svh"
     `include "axi4_stream_lb_tests.svh"
@@ -866,9 +866,9 @@ package a2c_uvm_loopback_pkg;
     `include "axi_read_lb_tests.svh"
     `include "axi_write_lb_tests.svh"
     `include "a2c_txn_digest_lb_tests.svh"
-    `include "axi_mode_b_lb_tests.svh"
+    `include "axi_paired_lb_tests.svh"
     `include "a2c_lane_watchdog_lb_tests.svh"
-    `include "a2c_mode_b_contract_lb_tests.svh"
+    `include "a2c_paired_contract_lb_tests.svh"
     `include "no_backpressure_lb_tests.svh"
     `include "a2c_txn_counter_lb_tests.svh"
     `include "a2c_expected_error_lb_tests.svh"
@@ -1330,7 +1330,7 @@ module a2c_uvm_loopback_tb;
             #10;
         end
     end
-    // pa2's clock in push_ack_mode_b_dst_two_clock_test.
+    // pa2's clock in push_ack_paired_dst_two_clock_test.
     bit clk2;
     always #15 clk2 = ~clk2;
     // A gated clock for the tests of a clock that stops.
@@ -1412,7 +1412,7 @@ module a2c_uvm_loopback_tb;
     raw_if #(.data_t(lb_data_t)) raw();
     status_if #(.data_t(lb_data_t)) st();
     apb_if #(.addr_t(lb_apb_word_t), .data_t(lb_apb_word_t)) apb();
-    // The model lanes of the Mode B tests.
+    // The model lanes of the paired-mode tests.
     rdy_vld_if #(.data_t(lb_data_t)) rv_model();
     axi4_stream_if #(.tdata_t(lb_tdata_t), .tid_t(lb_tid_t), .tdest_t(lb_tdest_t), .tuser_t(lb_tuser_t)) axis_model();
     raw_if #(.data_t(lb_data_t)) raw_model();
@@ -1433,7 +1433,7 @@ module a2c_uvm_loopback_tb;
     pop_ack_if #(.rdata_t(lb_data_t)) po_model();
     memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem_model();
     memory_if #(.addr_t(lb_mem_addr_t), .data_t(lb_data_t)) mem2_model();
-    // Mode B credit of mem and mem2, from the A2C_DST agent to the model lane's peer.
+    // Paired-mode credit of mem and mem2, from the A2C_DST agent to the model lane's peer.
     a2c_credit_if mem_credit();
     a2c_credit_if mem2_credit();
     external_reg_if #(.data_t(lb_data_t)) er_model();

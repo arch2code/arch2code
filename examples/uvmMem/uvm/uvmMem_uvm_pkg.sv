@@ -42,9 +42,9 @@ package uvmMem_uvm_pkg;
         a2c_uvm_pkg::a2c_txn_digest #(wr_item_t) wr_digest;
         a2c_uvm_pkg::a2c_txn_digest #(rd_item_t) rd_digest;
         virtual a2c_clk_if clk_vif;
-        // Mode B, set from a2c_dual_dut: each agent also drives and monitors
-        // the model DUT's <port>_model pins, and comparators lists the agents'
-        // model_cmp comparators.
+        // Paired mode, set from a2c_dual_dut: each agent also drives and
+        // monitors the model DUT's <port>_model pins, and comparators lists the
+        // agents' model_cmp comparators.
         bit dual_dut;
         a2c_uvm_pkg::a2c_comparator_base comparators[$];
 
@@ -188,7 +188,7 @@ package uvmMem_uvm_pkg;
             end
         endfunction
 
-        // The base test calls this in Mode B each time wait_for_outputs()
+        // The base test calls this in paired mode each time wait_for_outputs()
         // returns. A comparator with auto_stable cleared takes its stable
         // points from the user region instead.
         function void model_stable_point();

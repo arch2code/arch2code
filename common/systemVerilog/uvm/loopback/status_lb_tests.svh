@@ -76,8 +76,8 @@
         endfunction
     endclass : status_test
 
-    // Mode B. The agent under test has st as its DUT lane and st_model as
-    // its model lane.
+    // Paired mode. The agent under test has st as its DUT lane and st_model
+    // as its model lane.
     //
     // As A2C_SRC the agent holds one level on both lanes and the test
     // changes it as status_test does. Passive dst peers must each report
@@ -91,7 +91,7 @@
     // settled the test calls model_cmp.stable_point(). Under the default
     // stable policy each call pairs the two latest values, and every pair
     // must match: one after reset and one per value.
-    class status_mode_b_test extends lb_mode_b_base;
+    class status_paired_test extends lb_paired_base;
         a2c_role_e                role = A2C_SRC;
         st_agent_t                agent;
         st_agent_t                peer;
@@ -109,7 +109,7 @@
         // 1, finds the model lane on a different value; 0 for none.
         int unsigned              mismatch_at;
 
-        `uvm_component_utils(status_mode_b_test)
+        `uvm_component_utils(status_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -245,34 +245,34 @@
             `uvm_info("LB_STATS", $sformatf("%0d values on the DUT lane and %0d on the model lane; the lanes differed on %0d clocks",
                                             sb.matched, model_sb.matched, differ), UVM_NONE)
             if (role == A2C_SRC) begin
-                if (differ != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes carried different values on %0d clocks", differ))
-                if (agent.has_child("model_cmp")) `uvm_error("LB_MODE_B", "the A2C_SRC agent built a comparator")
+                if (differ != 0) `uvm_error("LB_PAIRED", $sformatf("the lanes carried different values on %0d clocks", differ))
+                if (agent.has_child("model_cmp")) `uvm_error("LB_PAIRED", "the A2C_SRC agent built a comparator")
                 return;
             end
-            if (differ == 0) `uvm_error("LB_MODE_B", "the lanes never differed, so the stable policy saw no intermediate value")
+            if (differ == 0) `uvm_error("LB_PAIRED", "the lanes never differed, so the stable policy saw no intermediate value")
             check_pairs();
         endfunction
 
         virtual function void check_pairs();
             if (agent.model_cmp.get_pairs() != changes + 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d values, expected %0d", agent.model_cmp.get_pairs(), changes + 1))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d values, expected %0d", agent.model_cmp.get_pairs(), changes + 1))
             end
         endfunction
-    endclass : status_mode_b_test
+    endclass : status_paired_test
 
-    class status_mode_b_dst_test extends status_mode_b_test;
-        `uvm_component_utils(status_mode_b_dst_test)
+    class status_paired_dst_test extends status_paired_test;
+        `uvm_component_utils(status_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : status_mode_b_dst_test
+    endclass : status_paired_dst_test
 
     // The model lane settles on a different value once: one A2C_MODEL_CMP
     // from that stable point.
-    class status_mode_b_mismatch_test extends status_mode_b_dst_test;
-        `uvm_component_utils(status_mode_b_mismatch_test)
+    class status_paired_mismatch_test extends status_paired_dst_test;
+        `uvm_component_utils(status_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -284,18 +284,18 @@
             want_errors = 1;
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT ", mismatch_at + 1));
         endfunction
-    endclass : status_mode_b_mismatch_test
+    endclass : status_paired_mismatch_test
 
     // The bounds policy on the agent's own comparator, with no subclass.
     // Every value lies within lo..hi but one intermediate value of the model
     // lane: one A2C_MODEL_CMP naming the model lane.
-    class status_mode_b_bounds_test extends status_mode_b_dst_test;
+    class status_paired_bounds_test extends status_paired_dst_test;
         localparam bit [63:0] LO = 64'h50_0000;
         localparam bit [63:0] HI = 64'h5f_ffff;
         int unsigned          outside_at;
         int unsigned          moves;
 
-        `uvm_component_utils(status_mode_b_bounds_test)
+        `uvm_component_utils(status_paired_bounds_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -330,21 +330,21 @@
         endfunction
 
         virtual function void check_pairs();
-            if (want_text.size() != 1) `uvm_error("LB_MODE_B", "the out-of-range value was never driven")
+            if (want_text.size() != 1) `uvm_error("LB_PAIRED", "the out-of-range value was never driven")
         endfunction
-    endclass : status_mode_b_bounds_test
+    endclass : status_paired_bounds_test
 
     // The bounds policy with every two-state value within lo..hi, and lo
     // above 0. One intermediate value of the model lane is all X, which
     // value() would read as 0, outside the bounds: one A2C_XZ naming the
     // model lane and no A2C_MODEL_CMP.
-    class status_mode_b_bounds_xz_test extends status_mode_b_dst_test;
+    class status_paired_bounds_xz_test extends status_paired_dst_test;
         localparam bit [63:0] LO = 64'h50_0000;
         localparam bit [63:0] HI = 64'h5f_ffff;
         int unsigned          x_at;
         int unsigned          moves;
 
-        `uvm_component_utils(status_mode_b_bounds_xz_test)
+        `uvm_component_utils(status_paired_bounds_xz_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -380,6 +380,6 @@
         endfunction
 
         virtual function void check_pairs();
-            if (want_text.size() != 1) `uvm_error("LB_MODE_B", "the X value was never driven")
+            if (want_text.size() != 1) `uvm_error("LB_PAIRED", "the X value was never driven")
         endfunction
-    endclass : status_mode_b_bounds_xz_test
+    endclass : status_paired_bounds_xz_test

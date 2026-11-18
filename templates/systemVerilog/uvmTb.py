@@ -50,7 +50,7 @@ def group_comment(pin):
         case 'port':
             return f"// {pin['interfaceType']}_if.{pin['role']} on the DUT"
         case 'credit':
-            return f"// Mode B credit of {pin['port']}, between its agent and the model's BFM"
+            return f"// Paired-mode credit of {pin['port']}, between its agent and the model's BFM"
         case 'completion':
             return '// completion, read by the SystemC side'
     return None
@@ -111,8 +111,8 @@ def render_body(prj, data, variant, top):
     rtl = [f"{top['hdlTop']} dut ("]
     rtl += [f"    {bind}," for bind in binds[:-1]] + [f"    {binds[-1]}", ');', '']
     creditPins = [pin for pin in pins if pin['kind'] == 'credit']
-    # Only Mode B has a model lane to hold, so elsewhere the credit stays 0
-    # and the wrapper gives the BFM no credit.
+    # Only paired mode has a model lane to hold, so elsewhere the credit stays
+    # 0 and the wrapper gives the BFM no credit.
     creditTies = [f"assign {pin['pin']} = '0;" for pin in creditPins if pin['direction'] == 'output']
     ties = list()
     for pin in portPins:

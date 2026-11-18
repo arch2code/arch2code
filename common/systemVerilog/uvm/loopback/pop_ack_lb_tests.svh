@@ -432,11 +432,11 @@
         endfunction
     endclass : po_corrupt_responder
 
-    // Mode B on po and po_model; lb_hs_mode_b has the checks. Every
+    // Paired mode on po and po_model; lb_hs_paired has the checks. Every
     // responder is a po_echo_responder, so both lanes' answers match and
     // their delays differ. As A2C_SRC each item must come back with the DUT
     // lane's rdata, which the DUT lane's check makes sure of.
-    class po_mode_b extends lb_hs_mode_b #(po_agent_t, po_item_t, po_config_t, po_vif_t);
+    class po_paired extends lb_hs_paired #(po_agent_t, po_item_t, po_config_t, po_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "po";
@@ -467,90 +467,90 @@
             end
             uvm_config_db#(uvm_object_wrapper)::set(this, "model_peer.sqr.run_phase", "default_sequence", echo);
         endfunction
-    endclass : po_mode_b
+    endclass : po_paired
 
     // The agent pops each item on both lanes, and model_cmp compares the
     // answers.
-    class pop_ack_mode_b_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_test)
+    class pop_ack_paired_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_SRC;
             variant = LB_MATCH;
         endfunction
-    endclass : pop_ack_mode_b_test
+    endclass : pop_ack_paired_test
 
     // The model lane's peer answers one pop differently: one A2C_MODEL_CMP,
     // and the item still carries the DUT lane's rdata.
-    class pop_ack_mode_b_mismatch_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_mismatch_test)
+    class pop_ack_paired_mismatch_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_SRC;
             variant = LB_MISMATCH;
         endfunction
-    endclass : pop_ack_mode_b_mismatch_test
+    endclass : pop_ack_paired_mismatch_test
 
     // The agent answers both lanes, replaying the DUT lane's responses.
-    class pop_ack_mode_b_dst_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_test)
+    class pop_ack_paired_dst_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MATCH;
         endfunction
-    endclass : pop_ack_mode_b_dst_test
+    endclass : pop_ack_paired_dst_test
 
     // The model lane reaches every transfer first and waits for the DUT lane.
-    class pop_ack_mode_b_dst_model_leads_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_model_leads_test)
+    class pop_ack_paired_dst_model_leads_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_model_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MODEL_LEADS;
         endfunction
-    endclass : pop_ack_mode_b_dst_model_leads_test
+    endclass : pop_ack_paired_dst_model_leads_test
 
     // The DUT lane makes one transfer more: the drain runs to its deadline and
     // the replay log reports the record the model lane never replayed.
-    class pop_ack_mode_b_dst_dut_extra_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_dut_extra_test)
+    class pop_ack_paired_dst_dut_extra_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_dut_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_DUT_EXTRA;
         endfunction
-    endclass : pop_ack_mode_b_dst_dut_extra_test
+    endclass : pop_ack_paired_dst_dut_extra_test
 
     // The model lane makes one transfer more, which it waits for until the
     // drain's deadline: one A2C_REPLAY.
-    class pop_ack_mode_b_dst_model_extra_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_model_extra_test)
+    class pop_ack_paired_dst_model_extra_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_model_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MODEL_EXTRA;
         endfunction
-    endclass : pop_ack_mode_b_dst_model_extra_test
+    endclass : pop_ack_paired_dst_model_extra_test
 
     // The test drops its objection when the DUT lane is done, before the model
     // lane starts its last transfer: the drain must hold the run phase until
     // the model lane has replayed it.
-    class pop_ack_mode_b_dst_drain_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_drain_test)
+    class pop_ack_paired_dst_drain_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_DRAIN;
         endfunction
-    endclass : pop_ack_mode_b_dst_drain_test
+    endclass : pop_ack_paired_dst_drain_test
 
     // As po_echo_responder, with every ack 3 clocks late.
     class po_late_responder extends po_echo_responder;
@@ -566,12 +566,12 @@
         endfunction
     endclass : po_late_responder
 
-    // As pop_ack_mode_b_dst_drain_test with a quiet window of one clock
+    // As pop_ack_paired_dst_drain_test with a quiet window of one clock
     // and every ack 3 clocks late, and the drop once the DUT lane is idle.
     // Once the model lane has replayed its last pop, only its wait for that
     // ack keeps the window from closing before the pop completes.
-    class pop_ack_mode_b_dst_drain_short_quiet_test extends pop_ack_mode_b_dst_drain_test;
-        `uvm_component_utils(pop_ack_mode_b_dst_drain_short_quiet_test)
+    class pop_ack_paired_dst_drain_short_quiet_test extends pop_ack_paired_dst_drain_test;
+        `uvm_component_utils(pop_ack_paired_dst_drain_short_quiet_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -586,66 +586,66 @@
             super.wait_drop();
             repeat (2) clk_vif.sample_edge();
         endtask
-    endclass : pop_ack_mode_b_dst_drain_short_quiet_test
+    endclass : pop_ack_paired_dst_drain_short_quiet_test
 
     // Both peers keep sending after the test drops its objection, so the
     // drain's quiet window never comes: it must cut the run at its deadline
     // and end once both lanes have completed what the cut keeps, with no
     // A2C_REPLAY.
-    class pop_ack_mode_b_dst_drain_busy_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_drain_busy_test)
+    class pop_ack_paired_dst_drain_busy_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_drain_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_BUSY;
         endfunction
-    endclass : pop_ack_mode_b_dst_drain_busy_test
+    endclass : pop_ack_paired_dst_drain_busy_test
 
-    // As pop_ack_mode_b_dst_drain_busy_test, with a passive Mode B agent watching the port: the drain's
+    // As pop_ack_paired_dst_drain_busy_test, with a passive paired-mode agent watching the port: the drain's
     // cut must cut its model_cmp too, so it pairs what the agent pairs and
     // reports no unpaired transfer.
-    class pop_ack_mode_b_dst_busy_passive_test extends pop_ack_mode_b_dst_drain_busy_test;
-        `uvm_component_utils(pop_ack_mode_b_dst_busy_passive_test)
+    class pop_ack_paired_dst_busy_passive_test extends pop_ack_paired_dst_drain_busy_test;
+        `uvm_component_utils(pop_ack_paired_dst_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : pop_ack_mode_b_dst_busy_passive_test
+    endclass : pop_ack_paired_dst_busy_passive_test
 
     // The agent's responder takes three clocks to answer each pop, and both
     // peers keep popping after the drop: the model lane's ack and rdata must
     // drop on time, and its pops be seen, while the DUT lane waits for its
     // response, and the drain must cut the run at its deadline.
-    class pop_ack_mode_b_dst_slow_responder_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_slow_responder_test)
+    class pop_ack_paired_dst_slow_responder_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_slow_responder_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_SLOW;
         endfunction
-    endclass : pop_ack_mode_b_dst_slow_responder_test
+    endclass : pop_ack_paired_dst_slow_responder_test
 
     // The first drain expires with the model lane's late transfer pending,
     // and the test sends the last transfer after it: the model lane's start
     // since the expiry must bring a second drain that replays it. One more
     // transfer, sent after the second drain and late on the model lane, must
     // bring a third.
-    class pop_ack_mode_b_dst_after_expiry_test extends po_mode_b;
-        `uvm_component_utils(pop_ack_mode_b_dst_after_expiry_test)
+    class pop_ack_paired_dst_after_expiry_test extends po_paired;
+        `uvm_component_utils(pop_ack_paired_dst_after_expiry_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_AFTER_EXPIRY;
         endfunction
-    endclass : pop_ack_mode_b_dst_after_expiry_test
+    endclass : pop_ack_paired_dst_after_expiry_test
 
     // lb_withdraw_waiting on a pop_ack port.
-    class pop_ack_mode_b_dst_withdraw_waiting_test extends lb_withdraw_waiting #(po_agent_t, po_config_t, po_vif_t);
-        `uvm_component_utils(pop_ack_mode_b_dst_withdraw_waiting_test)
+    class pop_ack_paired_dst_withdraw_waiting_test extends lb_withdraw_waiting #(po_agent_t, po_config_t, po_vif_t);
+        `uvm_component_utils(pop_ack_paired_dst_withdraw_waiting_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -660,4 +660,4 @@
         virtual function bit acked(po_vif_t v);
             return v.ack === 1'b1;
         endfunction
-    endclass : pop_ack_mode_b_dst_withdraw_waiting_test
+    endclass : pop_ack_paired_dst_withdraw_waiting_test

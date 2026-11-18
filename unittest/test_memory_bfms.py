@@ -27,7 +27,7 @@ Under bfmContractCheck::toUvm, as in a UVM run, it also queues the first break
 once for the testbench, which a2c_bfm_contract_break() hands out and then
 returns "" for; failUntaken() sets the exit code only while one is untaken.
 
-In UVM Mode B, memory_dst_bfm takes a credit pin and drives a held pin
+In UVM paired mode, memory_dst_bfm takes a credit pin and drives a held pin
 (setModelCredit). The probe's creditor raises the credit by one, 100 ps after
 a rising edge as a UVM agent drives it, once per access, each later than the
 BFM would otherwise go. Every access must reach the pins only on an edge after

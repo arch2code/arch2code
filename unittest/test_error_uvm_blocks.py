@@ -24,9 +24,9 @@ testbench module also declares names of its own: the DUT instance `dut`, the
 completion pins, the reset request pin, the report server `srv` and one
 `<clock>_if` per clock, beside one `<port>_<signal>` pin per port signal and, for a block with a
 model, the model DUT's `<port>_model` interface per port and, per port of a
-type that sets uvmModelCredit, the Mode B credit names `<port>_model_credit`,
-`<port>_model_held` and `<port>_credit`, so a port, clock or reset named like
-one of them is rejected. A block without a model may name a
+type that sets uvmModelCredit, the paired-mode credit names
+`<port>_model_credit`, `<port>_model_held` and `<port>_credit`, so a port,
+clock or reset named like one of them is rejected. A block without a model may name a
 port `<port>_model`. A UVM register or memory row holds at most
 64 bits, so a register or memory row over 64 bits at any standalone variant
 is rejected. A memory's row stride does not count, since the register model
@@ -336,7 +336,7 @@ REJECTED = [
                'memoryConnections:\n'
                '    - { memory: tbl, block: ubTb, instance: uDut, port: port1 }\n\n'
                'registers:\n')])],
-     [WHERE, "its port 'tbl_model_held' has the name of the Mode B held pin 'tbl_model_held' of port 'tbl'"]),
+     [WHERE, "its port 'tbl_model_held' has the name of the paired-mode held pin 'tbl_model_held' of port 'tbl'"]),
     ('a register wider than 64 bits at one variant', ROOT_PROJECT,
      [(ARCH, [('\ntypes:\n',
                '\nipParameters:\n'

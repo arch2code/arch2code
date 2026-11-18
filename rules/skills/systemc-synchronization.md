@@ -59,7 +59,7 @@ Tandem is an A2C Pro feature that runs two implementations of a block side by si
 
 In both modes the primary sends each `lock()` and `arb()` decision, and the receiving copy waits for each one and replays them in order. In RTL-model tandem the model is always the receiving copy. Put the model's `lock()` and `arb()` calls where the RTL arbitrates, with the same choices. A call the RTL has no counterpart for waits for a decision that never comes.
 
-The UVM Mode B testbench follows the same rule for the responses and arbitration choices its agents make, such as which AXI burst a slave answers next: the RTL's lane decides and the model's lane replays (`specs/SIMULATOR_INTEGRATION.md` section 9.12).
+The UVM paired-mode testbench follows the same rule for the responses and arbitration choices its agents make, such as which AXI burst a slave answers next: the RTL's lane decides and the model's lane replays (`specs/SIMULATOR_INTEGRATION.md` section 9.12).
 
 ### Creating a lock
 Declare a member and initialize it in the constructor's initializer slot:

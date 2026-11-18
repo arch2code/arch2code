@@ -40,24 +40,24 @@ package uvmReuseLeaf_uvm_test_pkg;
     // window and clock stop in its constructor; +a2c_output_deadline_cycles,
     // +a2c_quiet_cycles and +a2c_clock_stop_cycles override them. A clock
     // with no edge for clock_stop_cycles of its periods has stopped. In
-    // Mode B the drain at the end of the run phase has its own window,
+    // paired mode the drain at the end of the run phase has its own window,
     // deadline and catch-up after a cut, which a test may set in its
     // constructor too, and +a2c_drain_quiet_cycles,
     // +a2c_drain_deadline_cycles and +a2c_drain_catchup_cycles override.
     // Left at -1, the window and deadline take quiet_cycles and
     // output_deadline_cycles, and the catch-up takes each replay log's
     // deadline. +a2c_drain_cut_expected=1 reports the drain's cuts as
-    // UVM_INFO. A master in Mode B declares a lane dead when it trails
+    // UVM_INFO. A master in paired mode declares a lane dead when it trails
     // the other by lane_skew_cycles clocks, and the other lane dead too
     // when, left alone, it makes no progress for lone_lane_cycles
     // clocks. In either mode a master that holds an item while no port
     // makes a handshake for joint_stall_cycles clocks raises one
-    // A2C_JOINT_STALL. In Mode B the masters then declare every live
-    // lane dead, and in Mode A the run ends there, as at the run
+    // A2C_JOINT_STALL. In paired mode the masters then declare every live
+    // lane dead, and in single mode the run ends there, as at the run
     // timeout. Left at -1 each keeps the master's own
     // 200000, +a2c_lane_skew_cycles, +a2c_lone_lane_cycles and
     // +a2c_joint_stall_cycles override them, and 0 turns a rule off. A
-    // Mode B master that holds its next item back for the model lane,
+    // paired-mode master that holds its next item back for the model lane,
     // with the DUT lane ready for it, for model_throttle_cycles clocks in a
     // row raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's
     // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
@@ -82,7 +82,7 @@ package uvmReuseLeaf_uvm_test_pkg;
     // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
     // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With
     // expect_from_model (+a2c_expect_from_model=1) set, an output needs no
-    // expect_count() in Mode B: the model lane's count is the DUT lane's
+    // expect_count() in paired mode: the model lane's count is the DUT lane's
     // expectation, and wait_for_outputs() returns once the outputs have
     // been quiet for quiet_cycles. A run with one DUT has no model lane,
     // so build_phase clears expect_from_model there and the test declares
@@ -219,8 +219,8 @@ package uvmReuseLeaf_uvm_test_pkg;
         endtask
 
         // Each output waits on its own clock. A test may call this between
-        // frames too. In Mode B its return is a stable point for the model
-        // comparators.
+        // frames too. In paired mode its return is a stable point for the
+        // model comparators.
         task wait_for_outputs();
             fork
                 env.out_counter.wait_for_count(env.clk_vif, output_deadline_cycles, quiet_cycles);
@@ -252,9 +252,9 @@ package uvmReuseLeaf_uvm_test_pkg;
         // Warns about a run that sent nothing on any input but the register
         // bus and declared no transaction on any output, as the scaffolded
         // smoke test does until its run_body() sends stimulus, since register
-        // writes alone leave the data path unexercised. A Mode B comparator or
-        // a check of the test's own may still have run, so the warning claims
-        // no more.
+        // writes alone leave the data path unexercised. A paired-mode
+        // comparator or a check of the test's own may still have run, so the
+        // warning claims no more.
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (no_stimulus_expected || data_stimulus_sent() != 0) return;
@@ -363,7 +363,7 @@ package uvmReuseLeaf_uvm_test_pkg;
         endtask
     endclass : uvmReuseLeaf_beat_seq
 
-    // A mid-run reset of the RTL, which only a Mode A run on the RTL can
+    // A mid-run reset of the RTL, which only a single-mode run on the RTL can
     // take. The test programs offset 5, streams with out stalling, and
     // resets the DUT while the input driver holds a beat the DUT has not
     // taken. The driver abandons that beat and the stream goes on from the
@@ -452,13 +452,13 @@ package uvmReuseLeaf_uvm_test_pkg;
 
     // The smoke test with more transactions expected on the first output than
     // the DUT delivers (+a2c_fail_missing_count, default 1). It passes only if
-    // the counter reported exactly one A2C_TXN_COUNT, one per lane in Mode B,
-    // each lane ends missing exactly missing_count transactions, and nothing
-    // else raised a UVM_ERROR or UVM_FATAL, so a counter that stops reporting
-    // or reports the wrong shortfall fails it. The missing transaction never
-    // closes its unit, so the real-time rules are off. It clears
-    // expect_from_model, whose model lane would absorb the missing count, so
-    // the smoke test declares its counts as in a run with one DUT.
+    // the counter reported exactly one A2C_TXN_COUNT, one per lane in paired
+    // mode, each lane ends missing exactly missing_count transactions, and
+    // nothing else raised a UVM_ERROR or UVM_FATAL, so a counter that stops
+    // reporting or reports the wrong shortfall fails it. The missing
+    // transaction never closes its unit, so the real-time rules are off. It
+    // clears expect_from_model, whose model lane would absorb the missing
+    // count, so the smoke test declares its counts as in a run with one DUT.
     // It also fails when the smoke test sent no stimulus on an input other
     // than the register bus, since the shortfall alone would then pass with a
     // dead data path.
@@ -591,7 +591,7 @@ package uvmReuseLeaf_uvm_test_pkg;
 
     // The smoke test with a mismatch injected at pair +a2c_model_mismatch_at
     // (default 1) of the first counted output's model comparator. It runs
-    // only in Mode B. Only the injected A2C_MODEL_CMP is demoted, so any
+    // only in paired mode. Only the injected A2C_MODEL_CMP is demoted, so any
     // other mismatch stays an error. It passes only if that one report
     // arrived, the comparator compared at least mismatch_at pairs, and
     // nothing else raised a UVM_ERROR or UVM_FATAL.

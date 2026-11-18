@@ -14,7 +14,7 @@
 // in the hierarchy or with a factory override. Pin timing follows
 // a2c_clk_if: drive at drive_edge(), sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver pops on
 // both lanes at one drive point, and each lane drops pop once its own transfer
 // has happened; the next item starts when both have, with the DUT lane's rdata
@@ -115,7 +115,7 @@ package pop_ack_uvm_pkg;
 
     // ack and rdata are driven for one clock per transfer, and rise only
     // after pop has been sampled, so with no delay a transfer takes two
-    // clocks. rdata is zero while ack is low. In Mode B the src role
+    // clocks. rdata is zero while ack is low. In paired mode the src role
     // returns the DUT lane's rdata in req, or the model lane's once the DUT
     // lane is dead.
     class pop_ack_driver #(type rdata_t = logic)
@@ -292,7 +292,7 @@ package pop_ack_uvm_pkg;
         pop_ack_driver#(rdata_t)                drv;
         uvm_sequencer #(pop_ack_item#(rdata_t)) sqr;
         pop_ack_monitor#(rdata_t)               mon;
-        // Mode B only.
+        // Paired mode only.
         pop_ack_monitor#(rdata_t)               model_mon;
         a2c_in_order_comparator #(item_t)       model_cmp;
 

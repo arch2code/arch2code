@@ -141,11 +141,11 @@
 
     typedef a2c_txn_counter #(rv_item_t) rv_counter_t;
 
-    // Mode B. The agent under test has rv as its DUT lane and rv_model as
-    // its model lane, and each lane has a single-lane peer of the other role.
-    // As A2C_SRC the agent sends n_items beats to two dst peers, random ready
-    // on rv and burst ready on rv_model. As A2C_DST it gives both lanes one
-    // random rdy, against two src peers that send the same beats with
+    // Paired mode. The agent under test has rv as its DUT lane and rv_model
+    // as its model lane, and each lane has a single-lane peer of the other
+    // role. As A2C_SRC the agent sends n_items beats to two dst peers, random
+    // ready on rv and burst ready on rv_model. As A2C_DST it gives both lanes
+    // one random rdy, against two src peers that send the same beats with
     // different gaps. Each lane must deliver every beat once, in order, and a
     // dual counter on the agent's two monitors must see n_items on each. The
     // lanes' vld must differ on some clocks, and on the A2C_DST role their
@@ -153,7 +153,7 @@
     // backpressure: false with ready_pct 0, so a dst driver that does not
     // hold rdy high stalls the run. As A2C_SRC both lanes then transfer
     // every beat on the same clock and their vld must never differ.
-    class rdy_vld_mode_b_test extends lb_mode_b_base;
+    class rdy_vld_paired_test extends lb_paired_base;
         a2c_role_e                role = A2C_SRC;
         bit                       no_backpressure = 0;
         rv_agent_t                agent;
@@ -169,7 +169,7 @@
         int unsigned              vld_skew;
         int unsigned              rdy_skew;
 
-        `uvm_component_utils(rdy_vld_mode_b_test)
+        `uvm_component_utils(rdy_vld_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -290,53 +290,53 @@
             `uvm_info("LB_STATS", $sformatf("%0d beats on the DUT lane and %0d on the model lane; vld differed on %0d clocks, rdy on %0d",
                                             sb.matched, model_sb.matched, vld_skew, rdy_skew), UVM_NONE)
             if (role == A2C_SRC && no_backpressure) begin
-                if (vld_skew != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes' vld differed on %0d clocks with neither lane stalling", vld_skew))
+                if (vld_skew != 0) `uvm_error("LB_PAIRED", $sformatf("the lanes' vld differed on %0d clocks with neither lane stalling", vld_skew))
             end else if (vld_skew == 0) begin
-                `uvm_error("LB_MODE_B", "the lanes' vld never differed, so per-lane completion went untested")
+                `uvm_error("LB_PAIRED", "the lanes' vld never differed, so per-lane completion went untested")
             end
             if (role == A2C_SRC) begin
-                if (agent.has_child("model_cmp")) `uvm_error("LB_MODE_B", "the A2C_SRC agent built a comparator")
+                if (agent.has_child("model_cmp")) `uvm_error("LB_PAIRED", "the A2C_SRC agent built a comparator")
             end else begin
-                if (rdy_skew != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes' rdy differed on %0d clocks", rdy_skew))
-                if (agent.model_cmp == null) `uvm_error("LB_MODE_B", "the A2C_DST agent built no comparator")
+                if (rdy_skew != 0) `uvm_error("LB_PAIRED", $sformatf("the lanes' rdy differed on %0d clocks", rdy_skew))
+                if (agent.model_cmp == null) `uvm_error("LB_PAIRED", "the A2C_DST agent built no comparator")
                 else if (agent.model_cmp.get_pairs() != n_items) begin
-                    `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d beats, expected %0d", agent.model_cmp.get_pairs(), n_items))
+                    `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d beats, expected %0d", agent.model_cmp.get_pairs(), n_items))
                 end
             end
         endfunction
-    endclass : rdy_vld_mode_b_test
+    endclass : rdy_vld_paired_test
 
-    class rdy_vld_mode_b_dst_test extends rdy_vld_mode_b_test;
-        `uvm_component_utils(rdy_vld_mode_b_dst_test)
+    class rdy_vld_paired_dst_test extends rdy_vld_paired_test;
+        `uvm_component_utils(rdy_vld_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : rdy_vld_mode_b_dst_test
+    endclass : rdy_vld_paired_dst_test
 
-    class rdy_vld_mode_b_no_bp_test extends rdy_vld_mode_b_test;
-        `uvm_component_utils(rdy_vld_mode_b_no_bp_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-            no_backpressure = 1;
-        endfunction
-    endclass : rdy_vld_mode_b_no_bp_test
-
-    class rdy_vld_mode_b_no_bp_dst_test extends rdy_vld_mode_b_dst_test;
-        `uvm_component_utils(rdy_vld_mode_b_no_bp_dst_test)
+    class rdy_vld_paired_no_bp_test extends rdy_vld_paired_test;
+        `uvm_component_utils(rdy_vld_paired_no_bp_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             no_backpressure = 1;
         endfunction
-    endclass : rdy_vld_mode_b_no_bp_dst_test
+    endclass : rdy_vld_paired_no_bp_test
+
+    class rdy_vld_paired_no_bp_dst_test extends rdy_vld_paired_dst_test;
+        `uvm_component_utils(rdy_vld_paired_no_bp_dst_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            no_backpressure = 1;
+        endfunction
+    endclass : rdy_vld_paired_no_bp_dst_test
 
     // The model lane's peer sends one beat with different data: one
     // A2C_MODEL_CMP naming the pair, with both beats printed.
-    class rdy_vld_mode_b_mismatch_test extends rdy_vld_mode_b_dst_test;
-        `uvm_component_utils(rdy_vld_mode_b_mismatch_test)
+    class rdy_vld_paired_mismatch_test extends rdy_vld_paired_dst_test;
+        `uvm_component_utils(rdy_vld_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -349,4 +349,4 @@
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", k + 1,
                                           items[k].convert2string(), model_items[k].convert2string()));
         endfunction
-    endclass : rdy_vld_mode_b_mismatch_test
+    endclass : rdy_vld_paired_mismatch_test

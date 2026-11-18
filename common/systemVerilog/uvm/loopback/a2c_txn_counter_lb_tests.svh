@@ -200,9 +200,9 @@
         endfunction
     endclass : txn_count_late_test
 
-    // The exact text of a Mode A shortfall: no lane is named.
-    class txn_count_mode_a_text_test extends txn_count_missing_test;
-        `uvm_component_utils(txn_count_mode_a_text_test)
+    // The exact text of a single-mode shortfall: no lane is named.
+    class txn_count_single_text_test extends txn_count_missing_test;
+        `uvm_component_utils(txn_count_single_text_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -216,7 +216,7 @@
             end
             super.report_phase(phase);
         endfunction
-    endclass : txn_count_mode_a_text_test
+    endclass : txn_count_single_text_test
 
     // Both lanes reach the count. The model lane finishes after the DUT
     // lane, so a wait that ran the quiet window on the DUT lane alone would

@@ -13,9 +13,9 @@
 // the model DUT it is best effort: the SystemC raw BFM is not transactional,
 // so the model can drop or repeat a word.
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
-// beside the DUT's and monitors it with model_mon. The src driver puts the
-// same word on both lanes every clock. Nothing is compared. What the DUT
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin
+// set beside the DUT's and monitors it with model_mon. The src driver puts
+// the same word on both lanes every clock. Nothing is compared. What the DUT
 // produces that is not compared:
 //   DUT dst port, A2C_SRC agent: none
 //   DUT src port, A2C_DST agent: the word stream: no transfer boundary, and
@@ -131,7 +131,7 @@ package raw_uvm_pkg;
         raw_driver#(data_t)       drv;
         uvm_sequencer #(item_t)   sqr;
         raw_monitor#(data_t)      mon;
-        // Mode B only.
+        // Paired mode only.
         raw_monitor#(data_t)      model_mon;
         // Always null, because raw compares nothing; the env lists every
         // agent's model_cmp that is set.
@@ -172,7 +172,7 @@ package raw_uvm_pkg;
         virtual function void end_of_elaboration_phase(uvm_phase phase);
             super.end_of_elaboration_phase(phase);
             if (cfg.model_vif == null || cfg.role != A2C_DST) return;
-            `uvm_warning("A2C_UNCOMPARED", $sformatf("%s: Mode B does not compare raw port %s; the DUT's words on it are monitored but not checked against the model's",
+            `uvm_warning("A2C_UNCOMPARED", $sformatf("%s: paired mode does not compare raw port %s; the DUT's words on it are monitored but not checked against the model's",
                                                      get_full_name(), cfg.port_name))
         endfunction
     endclass : raw_agent

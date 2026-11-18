@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Each memory port the DUT drives gets a model credit rendezvous in Mode B.
+"""Each memory port the DUT drives gets a model credit rendezvous in paired mode.
 
-memory has no handshake, so in Mode B the A2C_DST agent of a DUT `src` memory
-port tells the model's BFM how many accesses the DUT lane has made, and the
-BFM holds the model's access n until that count exceeds n
+memory has no handshake, so in paired mode the A2C_DST agent of a DUT `src`
+memory port tells the model's BFM how many accesses the DUT lane has made, and
+the BFM holds the model's access n until that count exceeds n
 (SIMULATOR_INTEGRATION.md section 9.12). The interface definition opts in with
 `uvmModelCredit: true`. For each such port, `<port>_model_credit`, 32 bits out
 of the testbench module, and `<port>_model_held`, one bit in, sit after the
@@ -201,7 +201,7 @@ def check_no_model(work):
 
 def run_all_tests():
     print("\n" + "=" * 70)
-    print("UVM MODE B MEMORY CREDIT")
+    print("UVM PAIRED MODE MEMORY CREDIT")
     print("=" * 70)
     for edits, checks in ((EDITS, (check_boundary, check_testbench, check_env, check_wrapper)),
                           (EDITS + [NO_MODEL], (check_no_model,))):

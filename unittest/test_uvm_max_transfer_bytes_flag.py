@@ -3,14 +3,14 @@
 
 The generated env sets `<port>_cfg.max_transfer_bytes` on every port of a type
 flagged `uvmMaxTransferBytes: true`, and `<port>_cfg.id_unbound` on a port that
-leaves the parameter named by the type's `uvmIdParam` unbound, and in Mode B
-`<port>_cfg.credit_vif` on every DUT src port of a type flagged
+leaves the parameter named by the type's `uvmIdParam` unbound, and in paired
+mode `<port>_cfg.credit_vif` on every DUT src port of a type flagged
 `uvmModelCredit: true` (`getBDUvm` in pysrc/processYaml.py,
 `templates/systemVerilog/uvmPkg.py`). A flag on a type
 whose `<type>_config` lacks the member passes `make db` and fails only when a
 simulator compiles the env. A config that has the member on an unflagged type
 is never set, so its agent runs without the limit the model's channel needs,
-or compares IDs a port never drives, or stops in Mode B for want of the
+or compares IDs a port never drives, or stops in paired mode for want of the
 credit pins its testbench top never carries. Every flag needs `uvmAgent: true`, since
 only a type with an agent has a config, and `uvmIdParam` must name one of the
 type's parameters.

@@ -238,9 +238,9 @@ def env_class(uvm, hasRegModel, variant):
         lines += [f"    {uvm['regBlockClass']} regmodel;",
                   f"    {bus['adapterClass']} adapter;",
                   f"    uvm_reg_predictor #({bus['port']}_item_t) predictor;"]
-    lines += ["    // Mode B, set from a2c_dual_dut: each agent also drives and monitors",
-              "    // the model DUT's <port>_model pins, and comparators lists the agents'",
-              "    // model_cmp comparators."]
+    lines += ["    // Paired mode, set from a2c_dual_dut: each agent also drives and",
+              "    // monitors the model DUT's <port>_model pins, and comparators lists the",
+              "    // agents' model_cmp comparators."]
     lines += ['    bit dual_dut;',
               '    a2c_uvm_pkg::a2c_comparator_base comparators[$];']
     if hasRegModel:
@@ -296,9 +296,9 @@ def env_class(uvm, hasRegModel, variant):
     lines += ['    endfunction', '']
     if hasRegModel:
         lines += ["    // The register model's mirror follows the DUT lane's bus through the",
-                  "    // explicit predictor, not the register calls' own prediction. In Mode B",
-                  "    // the guard sees every write on the DUT lane's bus, and the bus agent's",
-                  "    // comparator asks it about each read."]
+                  "    // explicit predictor, not the register calls' own prediction. In paired",
+                  "    // mode the guard sees every write on the DUT lane's bus, and the bus",
+                  "    // agent's comparator asks it about each read."]
     lines.append('    virtual function void connect_phase(uvm_phase phase);')
     lines += [f"        {port['agent']}.mon.ap.connect({port['counter']}.analysis_export);" for port in counters]
     lines += [f"        {port['digest']}.watch({port['agent']}.mon, a2c_uvm_pkg::A2C_DUT_LANE);" for port in ports]
@@ -336,7 +336,7 @@ def env_class(uvm, hasRegModel, variant):
     lines += ['        end',
               '    endfunction',
               '',
-              '    // The base test calls this in Mode B each time wait_for_outputs()',
+              '    // The base test calls this in paired mode each time wait_for_outputs()',
               '    // returns. A comparator with auto_stable cleared takes its stable',
               '    // points from the user region instead.',
               '    function void model_stable_point();',

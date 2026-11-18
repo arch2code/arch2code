@@ -93,15 +93,15 @@
         endfunction
     endclass : raw_test
 
-    // Mode B. The agent under test has raw as its DUT lane and raw_model as
-    // its model lane. As A2C_SRC it puts n_items words on both lanes, one per
-    // clock; passive dst peers report each lane, and the two lanes must carry
-    // the same word on every clock. As A2C_DST it monitors both lanes against
-    // two src peers whose words differ in every tag, and the run must end
-    // with no error, because raw is not compared, and with one A2C_UNCOMPARED
-    // warning, which the A2C_SRC role does not raise. Neither role builds a
-    // comparator.
-    class raw_mode_b_test extends lb_mode_b_base;
+    // Paired mode. The agent under test has raw as its DUT lane and raw_model
+    // as its model lane. As A2C_SRC it puts n_items words on both lanes, one
+    // per clock; passive dst peers report each lane, and the two lanes must
+    // carry the same word on every clock. As A2C_DST it monitors both lanes
+    // against two src peers whose words differ in every tag, and the run must
+    // end with no error, because raw is not compared, and with one
+    // A2C_UNCOMPARED warning, which the A2C_SRC role does not raise. Neither
+    // role builds a comparator.
+    class raw_paired_test extends lb_paired_base;
         a2c_role_e                 role = A2C_SRC;
         raw_agent_t                agent;
         raw_agent_t                peer;
@@ -114,7 +114,7 @@
         raw_item_t                 model_items[$];
         int unsigned               differ;
 
-        `uvm_component_utils(raw_mode_b_test)
+        `uvm_component_utils(raw_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -205,21 +205,21 @@
             super.check_phase(phase);
             `uvm_info("LB_STATS", $sformatf("%0d words on the DUT lane and %0d on the model lane; the lanes differed on %0d clocks",
                                             sb.matched, model_sb.matched, differ), UVM_NONE)
-            if (agent.model_mon == null) `uvm_error("LB_MODE_B", "the agent built no model_mon")
-            if (agent.has_child("model_cmp")) `uvm_error("LB_MODE_B", "the raw agent built a comparator")
-            if (role == A2C_SRC && differ != 0) `uvm_error("LB_MODE_B", $sformatf("the lanes carried different words on %0d clocks", differ))
-            if (role == A2C_DST && differ == 0) `uvm_error("LB_MODE_B", "the lanes never differed, so nothing tested that raw is not compared")
+            if (agent.model_mon == null) `uvm_error("LB_PAIRED", "the agent built no model_mon")
+            if (agent.has_child("model_cmp")) `uvm_error("LB_PAIRED", "the raw agent built a comparator")
+            if (role == A2C_SRC && differ != 0) `uvm_error("LB_PAIRED", $sformatf("the lanes carried different words on %0d clocks", differ))
+            if (role == A2C_DST && differ == 0) `uvm_error("LB_PAIRED", "the lanes never differed, so nothing tested that raw is not compared")
             if (uvm_report_server::get_server().get_id_count("A2C_UNCOMPARED") != (role == A2C_DST))
-                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_UNCOMPARED reports, expected %0d",
+                `uvm_error("LB_PAIRED", $sformatf("%0d A2C_UNCOMPARED reports, expected %0d",
                                                   uvm_report_server::get_server().get_id_count("A2C_UNCOMPARED"), role == A2C_DST))
         endfunction
-    endclass : raw_mode_b_test
+    endclass : raw_paired_test
 
-    class raw_mode_b_dst_test extends raw_mode_b_test;
-        `uvm_component_utils(raw_mode_b_dst_test)
+    class raw_paired_dst_test extends raw_paired_test;
+        `uvm_component_utils(raw_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : raw_mode_b_dst_test
+    endclass : raw_paired_dst_test

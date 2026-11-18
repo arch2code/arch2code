@@ -385,12 +385,12 @@
     // The bench's video test. A subclass sets family, and the knobs below,
     // in its constructor. want() lists the reports a test expects; with any
     // listed, report_phase passes only on exactly those, and on none at
-    // UVM_ERROR or above that it did not list. In Mode A a no_blank or
+    // UVM_ERROR or above that it did not list. In single mode a no_blank or
     // back_to_back test also requires every planned back-to-back beat to be
     // offered so, unless it sets holds_input.
     class lb_vid_test extends a2c_video_test #(lb_vid_base);
         lb_vid_family_e       family = LB_VID_RAW_AXIS;
-        bit                   mode_b;
+        bit                   paired;
         // The test holds the input sequencer itself, so the driver idles
         // where the plan has no gap.
         bit                   holds_input;
@@ -438,10 +438,10 @@
             rv_ad   = lb_vid_rv_adapter::type_id::create("rv_ad");
             rv1_ad  = lb_vid_rv1_adapter::type_id::create("rv1_ad");
             if (contract == null) contract = a2c_video_contract::type_id::create("contract");
-            uvm_config_db#(bit)::set(this, "*", "a2c_dual_dut", mode_b || dual_cfg_only);
+            uvm_config_db#(bit)::set(this, "*", "a2c_dual_dut", paired || dual_cfg_only);
             super.build_phase(phase);
             env.family   = family;
-            env.dual_dut = mode_b;
+            env.dual_dut = paired;
         endfunction
 
         virtual function void video_ports();
@@ -512,14 +512,14 @@
                                                    want_sev[i].name(), want_sub[i], got, catcher.msgs))
                 end
             end
-            if (!mode_b && !holds_input && video.valid && corner inside {"no_blank", "back_to_back"} && !video.cfg.clocked) begin
+            if (!paired && !holds_input && video.valid && corner inside {"no_blank", "back_to_back"} && !video.cfg.clocked) begin
                 int unsigned planned;
                 int unsigned dut;
                 int unsigned model;
                 bit          two;
                 video.in.exactness(planned, dut, model, two);
                 if (planned == 0 || dut != planned) begin
-                    `uvm_error("LB_VID", $sformatf("corner %s: %0d of %0d planned back-to-back beats offered so in Mode A", corner, dut, planned))
+                    `uvm_error("LB_VID", $sformatf("corner %s: %0d of %0d planned back-to-back beats offered so in single mode", corner, dut, planned))
                 end
             end
             foreach (catcher.sevs[i]) seen += catcher.sevs[i] inside {UVM_ERROR, UVM_FATAL};
@@ -1006,15 +1006,15 @@
         endtask
     endclass : vid_defect_pixel_test
 
-    // Mode B: the model lane's pipe drops the short line's EOL. The model
-    // lane's checker and model_cmp fire, and the DUT lane's checker does
-    // not.
-    class vid_mode_b_model_defect_test extends vid_defect_base;
-        `uvm_component_utils(vid_mode_b_model_defect_test)
+    // Paired mode: the model lane's pipe drops the short line's EOL. The
+    // model lane's checker and model_cmp fire, and the DUT lane's checker
+    // does not.
+    class vid_paired_model_defect_test extends vid_defect_base;
+        `uvm_component_utils(vid_paired_model_defect_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
             family = LB_VID_RV_RV;
-            mode_b = 1;
+            paired = 1;
             corner = "short_line";
         endfunction
         virtual function void build_phase(uvm_phase phase);
@@ -1028,7 +1028,7 @@
             super.configure_dut(cfg);
             lb_vid_pipe_cfg[LB_VID_C_MODEL].no_eol_short = 1;
         endtask
-    endclass : vid_mode_b_model_defect_test
+    endclass : vid_paired_model_defect_test
 
     // Leaves the frames which lists unspecified and checks the pixels of the
     // others exactly.
@@ -1162,18 +1162,18 @@
         endfunction
     endclass : vid_unspecified_reject_base
 
-    class vid_unspecified_mode_b_test extends vid_unspecified_reject_base;
-        `uvm_component_utils(vid_unspecified_mode_b_test)
+    class vid_unspecified_paired_test extends vid_unspecified_reject_base;
+        `uvm_component_utils(vid_unspecified_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
 
         virtual function string reason();
-            return "both lanes run (Mode B)";
+            return "both lanes run (paired mode)";
         endfunction
-    endclass : vid_unspecified_mode_b_test
+    endclass : vid_unspecified_paired_test
 
     class vid_unspecified_unchecked_test extends vid_unspecified_reject_base;
         `uvm_component_utils(vid_unspecified_unchecked_test)
@@ -1320,16 +1320,16 @@
         endfunction
     endclass : vid_unspecified_clocked_test
 
-    // Mode B on raw: every corner a clocked input allows, at random, and the
-    // two lanes' input words identical clock for clock.
-    class vid_mode_b_raw_test extends lb_vid_a_rb_test_random;
+    // Paired mode on raw: every corner a clocked input allows, at random, and
+    // the two lanes' input words identical clock for clock.
+    class vid_paired_raw_test extends lb_vid_a_rb_test_random;
         lb_arrivals #(lb_vid_raw_item_t) dut_in;
         lb_arrivals #(lb_vid_raw_item_t) model_in;
 
-        `uvm_component_utils(vid_mode_b_raw_test)
+        `uvm_component_utils(vid_paired_raw_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
@@ -1350,45 +1350,46 @@
             foreach (dut_in.items[i]) if (i < model_in.items.size() && !dut_in.items[i].compare(model_in.items[i])) differ++;
             if (differ != 0) `uvm_error("LB_VID", $sformatf("%0d input words differ between the lanes", differ))
         endfunction
-    endclass : vid_mode_b_raw_test
+    endclass : vid_paired_raw_test
 
-    // Mode B on rdy_vld with random corners and blanking, both pipes good.
-    class vid_mode_b_pass_test extends lb_vid_c_rb_test_random;
-        `uvm_component_utils(vid_mode_b_pass_test)
+    // Paired mode on rdy_vld with random corners and blanking, both pipes
+    // good.
+    class vid_paired_pass_test extends lb_vid_c_rb_test_random;
+        `uvm_component_utils(vid_paired_pass_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
-    endclass : vid_mode_b_pass_test
+    endclass : vid_paired_pass_test
 
-    // Mode B on rdy_vld with the DUT lane's pipe taking one clock in four
-    // and the model lane's pipe at no latency. The model lane takes each
+    // Paired mode on rdy_vld with the DUT lane's pipe taking one clock in
+    // four and the model lane's pipe at no latency. The model lane takes each
     // beat up to three clocks before the DUT lane and sends an EOF on two
     // clocks after taking it, so a model-lane frame can end before the
     // sequence has finished sending it, and the checker must hold its plan
     // by then.
-    class vid_mode_b_dut_trail_test extends lb_vid_c_test;
-        `uvm_component_utils(vid_mode_b_dut_trail_test)
+    class vid_paired_dut_trail_test extends lb_vid_c_test;
+        `uvm_component_utils(vid_paired_dut_trail_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
         virtual task configure_dut(a2c_video_cfg cfg);
             super.configure_dut(cfg);
             lb_vid_pipe_cfg[LB_VID_C].accept_every  = 4;
             lb_vid_pipe_cfg[LB_VID_C_MODEL].latency = 0;
         endtask
-    endclass : vid_mode_b_dut_trail_test
+    endclass : vid_paired_dut_trail_test
 
-    // Mode B on axi4_stream with no blanking, the model lane's pipe refusing
-    // every third clock: the model lane trails, which the master reports
-    // once as a model throttle, so the DUT lane gets idle clocks the plan
-    // never asked for, and the corner test warns.
-    class vid_mode_b_trail_test extends lb_vid_b_test_no_blank;
-        `uvm_component_utils(vid_mode_b_trail_test)
+    // Paired mode on axi4_stream with no blanking, the model lane's pipe
+    // refusing every third clock: the model lane trails, which the master
+    // reports once as a model throttle, so the DUT lane gets idle clocks the
+    // plan never asked for, and the corner test warns.
+    class vid_paired_trail_test extends lb_vid_b_test_no_blank;
+        `uvm_component_utils(vid_paired_trail_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
@@ -1400,7 +1401,7 @@
             super.configure_dut(cfg);
             lb_vid_pipe_cfg[LB_VID_B_MODEL].refuse_every = 3;
         endtask
-    endclass : vid_mode_b_trail_test
+    endclass : vid_paired_trail_test
 
     // Long blanking on a handshaked input with a small run timeout: the
     // budget holds only because stimulus_sent() counts the idle clocks, and
@@ -1835,9 +1836,9 @@
         endfunction
     endclass : vid_random_cut_parity_test
 
-    // Mode A under DUT backpressure: every planned back-to-back beat is still
-    // offered on the clock after the beat before. The planned beats are the
-    // lines' first. The pipe refuses on one clock in four, counted from
+    // Single mode under DUT backpressure: every planned back-to-back beat is
+    // still offered on the clock after the beat before. The planned beats are
+    // the lines' first. The pipe refuses on one clock in four, counted from
     // reset, and a 32-beat line takes 42 or 43 clocks, so the lines' start
     // phases mod 4 cycle through three values, the refused one among them,
     // and every third line starts on a refused clock whatever the first
@@ -1891,9 +1892,9 @@
         endtask
     endclass : lb_vid_other_seq
 
-    // Mode B on rdy_vld with no blanking: 40 other items before the first
-    // run and 40 more before a second, each pipe dropping them as frame 1
-    // and line 26. Every planned beat goes out on the clock after the beat
+    // Paired mode on rdy_vld with no blanking: 40 other items before the
+    // first run and 40 more before a second, each pipe dropping them as frame
+    // 1 and line 26. Every planned beat goes out on the clock after the beat
     // before on both lanes, and the lane watch must count each one so. With
     // the planned beats counted over the video beats alone, the first
     // run's line-1 beat would be looked for among the other items, which
@@ -1902,7 +1903,7 @@
         `uvm_component_utils(vid_lane_watch_other_items_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);
@@ -1974,15 +1975,16 @@
         endtask
     endclass : lb_vid_hold_seq
 
-    // Mode A on rdy_vld with no blanking, under DUT backpressure, with the
-    // sequencer held for 5 clocks as the third line's last beat transfers.
-    // The fourth line's first beat, a planned one, goes out after idle
-    // clocks, so the DUT lane gets one planned beat fewer than planned. The
-    // lane rendezvous warning is for Mode B, so it must stay silent here.
-    class vid_lane_watch_mode_a_test extends lb_vid_c_test_no_blank;
+    // Single mode on rdy_vld with no blanking, under DUT backpressure, with
+    // the sequencer held for 5 clocks as the third line's last beat
+    // transfers. The fourth line's first beat, a planned one, goes out after
+    // idle clocks, so the DUT lane gets one planned beat fewer than planned.
+    // The lane rendezvous warning is for paired mode, so it must stay silent
+    // here.
+    class vid_lane_watch_single_test extends lb_vid_c_test_no_blank;
         lb_vid_eol_watch eols;
 
-        `uvm_component_utils(vid_lane_watch_mode_a_test)
+        `uvm_component_utils(vid_lane_watch_single_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
             holds_input = 1;
@@ -2019,12 +2021,12 @@
             bit          two;
             video.in.exactness(planned, dut, model, two);
             if (two || planned < 2 || dut + 1 != planned) begin
-                `uvm_error("LB_VID", $sformatf("%0d of %0d planned back-to-back beats offered so in Mode A; expected one fewer than planned, the one the hold delayed",
+                `uvm_error("LB_VID", $sformatf("%0d of %0d planned back-to-back beats offered so in single mode; expected one fewer than planned, the one the hold delayed",
                                                dut, planned))
             end
             super.report_phase(phase);
         endfunction
-    endclass : vid_lane_watch_mode_a_test
+    endclass : vid_lane_watch_single_test
 
     // The cut_frame corner's log line names its cut, so a regression entry
     // that moves the cut with +a2c_video_cut_after_line logs a different one.
@@ -2151,10 +2153,10 @@
         endfunction
     endclass : vid_corner_sent_cfg_test
 
-    // Mode B on rdy_vld with no blanking, with another sequence sending 40
-    // one-beat frames on the same sequencer during the video run, which each
-    // pipe drops. The sequencer interleaves them with the video beats, and
-    // the lane watch must still find every planned beat on both lanes,
+    // Paired mode on rdy_vld with no blanking, with another sequence sending
+    // 40 one-beat frames on the same sequencer during the video run, which
+    // each pipe drops. The sequencer interleaves them with the video beats,
+    // and the lane watch must still find every planned beat on both lanes,
     // offered on the clock after the beat before.
     class vid_lane_watch_concurrent_test extends lb_vid_c_test_no_blank;
         time other_done;
@@ -2163,7 +2165,7 @@
         `uvm_component_utils(vid_lane_watch_concurrent_test)
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
         virtual function void build_phase(uvm_phase phase);
             super.build_phase(phase);

@@ -321,14 +321,14 @@
         return cfg;
     endfunction
 
-    // Mode B with the agent as master: apb is its DUT lane and apb_model its
-    // model lane, each served by a slave peer. The peers' memories have the
+    // Paired mode with the agent as master: apb is its DUT lane and apb_model
+    // its model lane, each served by a slave peer. The peers' memories have the
     // same random fill and the same error range over 'h100 to 'h17f. The DUT
     // lane's peer adds up to one wait clock per transfer and the model lane's
     // up to three, so the lanes fall out of step. apb_check_seq checks every
     // transfer against the DUT lane's memory, so req must carry the DUT
     // lane's response. model_cmp must pair every transfer with no mismatch.
-    class apb_mode_b_test extends lb_mode_b_base;
+    class apb_paired_test extends lb_paired_base;
         apb_agent_t                         agent;
         apb_agent_t                         peer;
         apb_agent_t                         model_peer;
@@ -341,7 +341,7 @@
         int unsigned                        want_pairs;
         int unsigned                        skew;
 
-        `uvm_component_utils(apb_mode_b_test)
+        `uvm_component_utils(apb_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -411,19 +411,19 @@
             if (seq.matched != n_items) `uvm_error("LB_APB", $sformatf("matched %0d of %0d transfers", seq.matched, n_items))
             if (seq.reads == 0 || seq.writes == 0 || seq.errors == 0) `uvm_error("LB_APB", "the sequence missed a read, a write or an error")
             if (agent.model_cmp.get_pairs() != want_pairs) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), want_pairs))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), want_pairs))
             end
-            if (skew == 0) `uvm_error("LB_MODE_B", "the lanes never fell out of step, so per-lane completion went untested")
+            if (skew == 0) `uvm_error("LB_PAIRED", "the lanes never fell out of step, so per-lane completion went untested")
         endfunction
-    endclass : apb_mode_b_test
+    endclass : apb_paired_test
 
     // The model lane's peer alone has an error range over 'h300, which one
     // more read fetches: one A2C_MODEL_CMP, and req carries the DUT lane's
     // word and pslverr 0.
-    class apb_mode_b_mismatch_test extends apb_mode_b_test;
+    class apb_paired_mismatch_test extends apb_paired_test;
         bit [31:0] word;
 
-        `uvm_component_utils(apb_mode_b_mismatch_test)
+        `uvm_component_utils(apb_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -461,7 +461,7 @@
             end
             observed.flush();
         endtask
-    endclass : apb_mode_b_mismatch_test
+    endclass : apb_paired_mismatch_test
 
     // Sends a list of transfers with idle clocks before each. With follow
     // set, transfer hold_at waits until follow has reported that many
@@ -493,8 +493,8 @@
         endtask
     endclass : apb_gap_seq
 
-    // Mode B with the agent as slave: apb is its DUT lane and apb_model its
-    // model lane, each driven by a master peer. The peers send the same
+    // Paired mode with the agent as slave: apb is its DUT lane and apb_model
+    // its model lane, each driven by a master peer. The peers send the same
     // n_items transfers to 16 words, one of them in an error range, each lane
     // with its own random idle clocks between transfers, so either lane may
     // reach a transfer first. The agent serves both lanes from one memory
@@ -504,7 +504,7 @@
     // model_cmp must pair every transfer with no mismatch, and each lane must
     // reach the setup phase of some transfers first. The DUT lane applies
     // every transfer, so the model lane must never complete one before it.
-    class apb_mode_b_slave_test extends lb_mode_b_base;
+    class apb_paired_slave_test extends lb_paired_base;
         apb_agent_t              agent;
         apb_agent_t              peer;
         apb_agent_t              model_peer;
@@ -531,7 +531,7 @@
         bit                      done[2];
         int unsigned             idle;
 
-        `uvm_component_utils(apb_mode_b_slave_test)
+        `uvm_component_utils(apb_paired_slave_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -665,7 +665,7 @@
             `uvm_info("LB_STATS", $sformatf("%0d pairs; the DUT lane led %0d transfers and the model lane %0d", agent.model_cmp.get_pairs(),
                                             led[A2C_DUT_LANE], led[A2C_MODEL_LANE]), UVM_NONE)
             if (agent.model_cmp.get_pairs() != want_pairs()) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), want_pairs()))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d transfers, expected %0d", agent.model_cmp.get_pairs(), want_pairs()))
             end
             check_led();
         endfunction
@@ -675,16 +675,16 @@
         endfunction
 
         virtual function void check_led();
-            if (led[A2C_DUT_LANE] == 0 || led[A2C_MODEL_LANE] == 0) `uvm_error("LB_MODE_B", "one lane never led, so replay went untested")
+            if (led[A2C_DUT_LANE] == 0 || led[A2C_MODEL_LANE] == 0) `uvm_error("LB_PAIRED", "one lane never led, so replay went untested")
         endfunction
-    endclass : apb_mode_b_slave_test
+    endclass : apb_paired_slave_test
 
     // The model lane's peer writes different data in one transfer, which it
     // starts only after the DUT lane has completed it, so the DUT lane
     // applies the transfer: one A2C_MODEL_CMP, and the memory and every read
     // still match the reference.
-    class apb_mode_b_slave_mismatch_test extends apb_mode_b_slave_test;
-        `uvm_component_utils(apb_mode_b_slave_mismatch_test)
+    class apb_paired_slave_mismatch_test extends apb_paired_slave_test;
+        `uvm_component_utils(apb_paired_slave_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -704,7 +704,7 @@
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT %s, model %s", k + 1,
                                           seq.items[k].convert2string(), m.convert2string()));
         endfunction
-    endclass : apb_mode_b_slave_mismatch_test
+    endclass : apb_paired_slave_mismatch_test
 
     // The model lane's peer starts every transfer on the first clock it can
     // and the DUT lane's peer one to three clocks later, so the model lane
@@ -713,8 +713,8 @@
     // The DUT lane applies the write, so both lanes must read the DUT
     // lane's data and the memory must match the reference: one
     // A2C_MODEL_CMP, for the write.
-    class apb_mode_b_slave_model_leads_test extends apb_mode_b_slave_test;
-        `uvm_component_utils(apb_mode_b_slave_model_leads_test)
+    class apb_paired_slave_model_leads_test extends apb_paired_slave_test;
+        `uvm_component_utils(apb_paired_slave_model_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -746,16 +746,16 @@
 
         virtual function void check_led();
             if (led[A2C_MODEL_LANE] != n_items) begin
-                `uvm_error("LB_MODE_B", $sformatf("the model lane led %0d of %0d transfers", led[A2C_MODEL_LANE], n_items))
+                `uvm_error("LB_PAIRED", $sformatf("the model lane led %0d of %0d transfers", led[A2C_MODEL_LANE], n_items))
             end
         endfunction
-    endclass : apb_mode_b_slave_model_leads_test
+    endclass : apb_paired_slave_model_leads_test
 
     // The model lane's peer sends one transfer more than the DUT lane's. The
     // DUT lane never records it, so the model lane waits for it until the
     // slave's end-of-test drain gives up: one A2C_REPLAY.
-    class apb_mode_b_slave_extra_test extends apb_mode_b_slave_test;
-        `uvm_component_utils(apb_mode_b_slave_extra_test)
+    class apb_paired_slave_extra_test extends apb_paired_slave_test;
+        `uvm_component_utils(apb_paired_slave_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -771,22 +771,22 @@
             want_text.push_back($sformatf("uvm_test_top.agent.drv.replay: the model lane waited for transaction %0d, which the DUT lane never recorded",
                                           n_items + 1));
         endfunction
-    endclass : apb_mode_b_slave_extra_test
+    endclass : apb_paired_slave_extra_test
 
-    // The test ends as a generated Mode B test does once its outputs are
+    // The test ends as a generated paired-mode test does once its outputs are
     // done: it drops its objection, and the drain of the slave's replay log
     // holds the run phase. Here the outputs are done when the DUT lane
     // has completed every transfer, and the model lane's peer starts the
     // last one 50 clocks later, after a quiet window of 20 clocks: the model
     // lane must still replay it and model_cmp must pair it, with no
     // A2C_REPLAY.
-    class apb_mode_b_slave_drain_test extends apb_mode_b_slave_test;
+    class apb_paired_slave_drain_test extends apb_paired_slave_test;
         int unsigned clocks;
         int unsigned dropped_at;
         int unsigned pending_at_drop;
         bit          waiting_at_drop;
 
-        `uvm_component_utils(apb_mode_b_slave_drain_test)
+        `uvm_component_utils(apb_paired_slave_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -830,26 +830,26 @@
             `uvm_info("LB_STATS", $sformatf("%0d responses unreplayed and model lane waiting %0d at the drop; the drain took %0d clocks",
                                             pending_at_drop, waiting_at_drop, drain_clocks()), UVM_NONE)
             if (pending_at_drop == 0) begin
-                `uvm_error("LB_MODE_B", "the model lane had replayed every response at the drop, so the drain went untested")
+                `uvm_error("LB_PAIRED", "the model lane had replayed every response at the drop, so the drain went untested")
             end
         endfunction
 
         // The clock counter races the drain on each edge, so it may be one off.
         protected function void check_deadline();
             if (drain_clocks() + 1 < drain_deadline || drain_clocks() > drain_deadline + 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected the deadline of %0d", drain_clocks(),
+                `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected the deadline of %0d", drain_clocks(),
                                                   drain_deadline))
             end
         endfunction
-    endclass : apb_mode_b_slave_drain_test
+    endclass : apb_paired_slave_drain_test
 
-    // As apb_mode_b_slave_drain_test, with the model lane's last transfer 40
+    // As apb_paired_slave_drain_test, with the model lane's last transfer 40
     // clocks late and a quiet window and deadline of 10 clocks: the drain
     // gives up at the deadline, and the replay log's check_phase() reports
     // the responses left in one A2C_REPLAY. The unpaired DUT lane transfers are
     // the replay log's to report, so model_cmp is marked counted.
-    class apb_mode_b_slave_drain_deadline_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_deadline_test)
+    class apb_paired_slave_drain_deadline_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_deadline_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -870,12 +870,12 @@
             agent.model_cmp.counted = 1;
         endfunction
 
-        // The lanes' data checks of apb_mode_b_slave_test would read the
+        // The lanes' data checks of apb_paired_slave_test would read the
         // model lane's transfer that never ran.
         virtual function void check_phase(uvm_phase phase);
             check_deadline();
         endfunction
-    endclass : apb_mode_b_slave_drain_deadline_test
+    endclass : apb_paired_slave_drain_deadline_test
 
     // The model lane leads every transfer, and the DUT lane's peer starts
     // the last one 20 clocks late. The test drops its objection while the
@@ -883,8 +883,8 @@
     // one clock, so the waiting model lane holds the run phase until both
     // lanes have completed the transfer and the log settles: no cut, no
     // A2C_REPLAY, and every pair compared.
-    class apb_mode_b_slave_drain_model_leads_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_model_leads_test)
+    class apb_paired_slave_drain_model_leads_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_model_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -912,20 +912,20 @@
         virtual function void check_led();
             `uvm_info("LB_STATS", $sformatf("model lane waiting %0d at the drop; the drain took %0d clocks", waiting_at_drop,
                                             drain_clocks()), UVM_NONE)
-            if (!waiting_at_drop) `uvm_error("LB_MODE_B", "the model lane was not waiting at the drop, so the drain went untested")
+            if (!waiting_at_drop) `uvm_error("LB_PAIRED", "the model lane was not waiting at the drop, so the drain went untested")
             if (slave.replay.get_cut() != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain cut the run after transfer %0d of a port that paused", slave.replay.get_cut()))
+                `uvm_error("LB_PAIRED", $sformatf("the drain cut the run after transfer %0d of a port that paused", slave.replay.get_cut()))
             end
         endfunction
-    endclass : apb_mode_b_slave_drain_model_leads_test
+    endclass : apb_paired_slave_drain_model_leads_test
 
     // The model lane's peer sends one transfer more than the DUT lane's. The
     // test drops its objection when the DUT lane is done, before the model
     // lane has started the extra transfer. The quiet window sees it start,
     // the model lane then waits for it until the drain's deadline, and the
     // replay log reports the wait: one A2C_REPLAY.
-    class apb_mode_b_slave_drain_extra_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_extra_test)
+    class apb_paired_slave_drain_extra_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -947,15 +947,15 @@
         virtual function void check_led();
             check_deadline();
         endfunction
-    endclass : apb_mode_b_slave_drain_extra_test
+    endclass : apb_paired_slave_drain_extra_test
 
-    // As apb_mode_b_slave_drain_test, with one read more on the DUT lane
+    // As apb_paired_slave_drain_test, with one read more on the DUT lane
     // only, which its peer starts 60 clocks after the drop, after the model
     // lane's late transfer. The model lane never starts it, so the drain
     // must not end inside it. The drain runs to its deadline, and the
     // replay log reports the response in one A2C_REPLAY.
-    class apb_mode_b_slave_drain_dut_late_extra_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_dut_late_extra_test)
+    class apb_paired_slave_drain_dut_late_extra_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_dut_late_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -983,19 +983,19 @@
             super.check_led();
             check_deadline();
             if (arrivals.items.size() != n_items + 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("the DUT lane completed %0d transfers, expected %0d", arrivals.items.size(), n_items + 1))
+                `uvm_error("LB_PAIRED", $sformatf("the DUT lane completed %0d transfers, expected %0d", arrivals.items.size(), n_items + 1))
             end
-            if (uvm_report_server::get_server().get_id_count("A2C_DRAIN") != 1) `uvm_error("LB_MODE_B", "expected one A2C_DRAIN warning")
+            if (uvm_report_server::get_server().get_id_count("A2C_DRAIN") != 1) `uvm_error("LB_PAIRED", "expected one A2C_DRAIN warning")
         endfunction
-    endclass : apb_mode_b_slave_drain_dut_late_extra_test
+    endclass : apb_paired_slave_drain_dut_late_extra_test
 
     // The lanes run in step, and after the drop both peers send three reads
     // more with no idle clocks. The DUT lane's peer then stops and the
     // model lane's sends one transfer more, which the model lane waits for.
     // The DUT lane has long stopped at the deadline, so the drain gives up
     // there rather than cut: one A2C_REPLAY.
-    class apb_mode_b_slave_drain_busy_extra_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_busy_extra_test)
+    class apb_paired_slave_drain_busy_extra_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_busy_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1033,15 +1033,15 @@
         virtual function void check_led();
             check_deadline();
         endfunction
-    endclass : apb_mode_b_slave_drain_busy_extra_test
+    endclass : apb_paired_slave_drain_busy_extra_test
 
-    // As apb_mode_b_slave_drain_extra_test with 3 idle clocks before the
+    // As apb_paired_slave_drain_extra_test with 3 idle clocks before the
     // extra transfer. Between the last transfer and the extra one every
     // lane is idle with nothing recorded or waited for, and only the quiet
     // window keeps the drain open until the model lane starts the extra
     // transfer.
-    class apb_mode_b_slave_drain_extra_gap_test extends apb_mode_b_slave_drain_extra_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_extra_gap_test)
+    class apb_paired_slave_drain_extra_gap_test extends apb_paired_slave_drain_extra_test;
+        `uvm_component_utils(apb_paired_slave_drain_extra_gap_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1051,12 +1051,12 @@
             super.build_streams();
             model_seq.gaps[n_items] = 3;
         endfunction
-    endclass : apb_mode_b_slave_drain_extra_gap_test
+    endclass : apb_paired_slave_drain_extra_gap_test
 
-    // As apb_mode_b_slave_drain_extra_test, with the drop in the setup phase
+    // As apb_paired_slave_drain_extra_test, with the drop in the setup phase
     // of the extra transfer.
-    class apb_mode_b_slave_drain_extra_setup_test extends apb_mode_b_slave_drain_extra_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_extra_setup_test)
+    class apb_paired_slave_drain_extra_setup_test extends apb_paired_slave_drain_extra_test;
+        `uvm_component_utils(apb_paired_slave_drain_extra_setup_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1067,9 +1067,9 @@
             while (model_arrivals.items.size() < n_items || model_vif.psel !== 1'b1 || model_vif.penable === 1'b1);
             clk_vif.sample_edge();
         endtask
-    endclass : apb_mode_b_slave_drain_extra_setup_test
+    endclass : apb_paired_slave_drain_extra_setup_test
 
-    // As apb_mode_b_slave_drain_test, in two rounds. The first sends every
+    // As apb_paired_slave_drain_test, in two rounds. The first sends every
     // transfer but the last, and its drain replays them all. On its second
     // phase_ready_to_end() call, which comes when that drain drops, the test
     // raises its objection again, sends the last transfer with the model
@@ -1077,7 +1077,7 @@
     // completed the transfer. Only a second drain from the replay log's
     // repeated phase_ready_to_end() keeps the run phase alive until the model lane
     // replays it: no A2C_REPLAY, and every pair compared.
-    class apb_mode_b_slave_drain_twice_test extends apb_mode_b_slave_drain_test;
+    class apb_paired_slave_drain_twice_test extends apb_paired_slave_drain_test;
         apb_gap_seq  last_seq;
         apb_gap_seq  model_last_seq;
         int unsigned ready_calls;
@@ -1085,7 +1085,7 @@
         int unsigned resumed_at;
         int unsigned pending_at_second_drop;
 
-        `uvm_component_utils(apb_mode_b_slave_drain_twice_test)
+        `uvm_component_utils(apb_paired_slave_drain_twice_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1145,23 +1145,23 @@
         virtual function void check_led();
             `uvm_info("LB_STATS", $sformatf("%0d phase_ready_to_end calls; %0d responses unreplayed at the second drop",
                                             ready_calls, pending_at_second_drop), UVM_NONE)
-            if (!resumed) `uvm_error("LB_MODE_B", "the first drain never dropped, so the second round never ran")
+            if (!resumed) `uvm_error("LB_PAIRED", "the first drain never dropped, so the second round never ran")
             if (pending_at_second_drop == 0) begin
-                `uvm_error("LB_MODE_B", {"the model lane had replayed the last transfer at the second drop, ",
+                `uvm_error("LB_PAIRED", {"the model lane had replayed the last transfer at the second drop, ",
                                          "so the second drain went untested"})
             end
         endfunction
-    endclass : apb_mode_b_slave_drain_twice_test
+    endclass : apb_paired_slave_drain_twice_test
 
-    // As apb_mode_b_slave_drain_twice_test, with the model lane's peer 40
+    // As apb_paired_slave_drain_twice_test, with the model lane's peer 40
     // clocks late on the first round's last transfer and a quiet window and
     // deadline of 10 clocks, so the first drain expires with the model lane
     // busy. The test sends the last transfer once the model lane has completed
     // the late one, and raises the deadline to 400 clocks. The model lane
     // started a transfer after the expiry, so the slave must drain again: no
     // A2C_REPLAY, and every pair compared.
-    class apb_mode_b_slave_drain_after_expiry_test extends apb_mode_b_slave_drain_twice_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_after_expiry_test)
+    class apb_paired_slave_drain_after_expiry_test extends apb_paired_slave_drain_twice_test;
+        `uvm_component_utils(apb_paired_slave_drain_after_expiry_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1185,10 +1185,10 @@
             super.check_led();
             // The clock counter races the drain on each edge, so it may be one off.
             if (first + 1 < 10 || first > 11) begin
-                `uvm_error("LB_MODE_B", $sformatf("the first drain took %0d clocks, expected its deadline of 10", first))
+                `uvm_error("LB_PAIRED", $sformatf("the first drain took %0d clocks, expected its deadline of 10", first))
             end
         endfunction
-    endclass : apb_mode_b_slave_drain_after_expiry_test
+    endclass : apb_paired_slave_drain_after_expiry_test
 
     // Both peers keep reading after the DUT lane has completed n_items
     // transfers and the test drops its objection, the model lane a clock
@@ -1198,8 +1198,8 @@
     // model_cmp pairs exactly those transfers. The idle clocks repeat 0 to
     // 3 and the slave never waits, so the cut falls at the same place
     // whatever the seed.
-    class apb_mode_b_slave_drain_busy_test extends apb_mode_b_slave_drain_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_busy_test)
+    class apb_paired_slave_drain_busy_test extends apb_paired_slave_drain_test;
+        `uvm_component_utils(apb_paired_slave_drain_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1238,21 +1238,21 @@
             `uvm_info("LB_STATS", $sformatf("%0d and %0d transfers on the DUT and model lanes; the drain took %0d clocks",
                                             arrivals.items.size(), model_arrivals.items.size(), drain_clocks()), UVM_NONE)
             check_cut(slave.replay, n_items, agent.model_cmp.get_pairs(), arrivals.items.size(), model_arrivals.items.size());
-            if (arrivals.items.size() <= n_items) `uvm_error("LB_MODE_B", "the DUT lane's peer stopped at the drop, so the busy port went untested")
-            if (arrivals.items.size() >= seq.items.size()) `uvm_error("LB_MODE_B", "the DUT lane's peer ran out of transfers, so the port paused")
+            if (arrivals.items.size() <= n_items) `uvm_error("LB_PAIRED", "the DUT lane's peer stopped at the drop, so the busy port went untested")
+            if (arrivals.items.size() >= seq.items.size()) `uvm_error("LB_PAIRED", "the DUT lane's peer ran out of transfers, so the port paused")
             check_cut_time(drain_clocks(), drain_quiet, drain_deadline);
         endfunction
-    endclass : apb_mode_b_slave_drain_busy_test
+    endclass : apb_paired_slave_drain_busy_test
 
-    // As apb_mode_b_slave_drain_busy_test, with a passive Mode B agent
+    // As apb_paired_slave_drain_busy_test, with a passive paired-mode agent
     // watching the port: the drain's cut must cut its model_cmp too, so it
     // pairs what the agent pairs and reports no unpaired transfer. The model
     // lane pauses 10 clocks after the drop, so the DUT lane completes
     // transfers past the cut while the model lane catches up.
-    class apb_mode_b_slave_busy_passive_test extends apb_mode_b_slave_drain_busy_test;
+    class apb_paired_slave_busy_passive_test extends apb_paired_slave_drain_busy_test;
         apb_agent_t watcher;
 
-        `uvm_component_utils(apb_mode_b_slave_busy_passive_test)
+        `uvm_component_utils(apb_paired_slave_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1275,21 +1275,21 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (watcher.drv != null) `uvm_error("LB_PAIRED", "the passive agent built a driver")
             if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
-                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                `uvm_error("LB_PAIRED", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
                                                   agent.model_cmp.get_pairs()))
             end
             if (arrivals.items.size() <= slave.replay.get_cut()) begin
-                `uvm_error("LB_MODE_B", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
+                `uvm_error("LB_PAIRED", "the DUT lane completed no transfer past the cut, so the passive agent's cut went untested")
             end
         endfunction
-    endclass : apb_mode_b_slave_busy_passive_test
+    endclass : apb_paired_slave_busy_passive_test
 
-    // As apb_mode_b_slave_drain_busy_test with no idle clocks, so the port
+    // As apb_paired_slave_drain_busy_test with no idle clocks, so the port
     // never rests from the drop to the end of the test.
-    class apb_mode_b_slave_drain_busy_zero_test extends apb_mode_b_slave_drain_busy_test;
-        `uvm_component_utils(apb_mode_b_slave_drain_busy_zero_test)
+    class apb_paired_slave_drain_busy_zero_test extends apb_paired_slave_drain_busy_test;
+        `uvm_component_utils(apb_paired_slave_drain_busy_zero_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1302,4 +1302,4 @@
                 model_seq.gaps[i] = (i == 0);
             end
         endfunction
-    endclass : apb_mode_b_slave_drain_busy_zero_test
+    endclass : apb_paired_slave_drain_busy_zero_test

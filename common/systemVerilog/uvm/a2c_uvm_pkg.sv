@@ -31,7 +31,7 @@ package a2c_uvm_pkg;
                          a2c_select_str(role == A2C_SRC, "src", "dst"), fields, hex);
     endfunction
 
-    // The two pin sets of a Mode B port: the DUT under test, which is the
+    // The two pin sets of a paired-mode port: the DUT under test, which is the
     // RTL, and the model DUT that is its reference.
     typedef enum {A2C_DUT_LANE, A2C_MODEL_LANE} a2c_lane_e;
 
@@ -581,7 +581,7 @@ package a2c_uvm_pkg;
     // sampled, in arrival order. report_phase() prints one line per lane, the
     // model lane only with dual set:
     //   A2C_DIGEST <port> <DUT|model> paired=<0|1> items=<n> digest=<16 hex digits>
-    // items counts what the monitor's ap reports, the stream the Mode B
+    // items counts what the monitor's ap reports, the stream the paired-mode
     // comparator, cmp, sees. paired is cmp's pairs_every_item() at
     // report_phase, 1 when cmp paired every item of one lane with one of the
     // other, so the two lanes must count the same, and 0 with no cmp.
@@ -699,8 +699,8 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_txn_digest
 
-    // What every Mode B comparator shares, so the env and a2c_midstream_guard
-    // can hold comparators of any item type in one list.
+    // What every paired-mode comparator shares, so the env and
+    // a2c_midstream_guard can hold comparators of any item type in one list.
     //
     // Pairs count from 1. A mismatch is a UVM_ERROR with id A2C_MODEL_CMP.
     // The first max_reported mismatches print both items; later ones are
@@ -738,7 +738,7 @@ package a2c_uvm_pkg;
     // comparator a replay log drives must override both; this cut() stops
     // the run with A2C_CFG, so a comparator cannot ignore a cut by omission.
     //
-    // lane_dead(), which a Mode B master calls when it declares a lane
+    // lane_dead(), which a paired-mode master calls when it declares a lane
     // dead, ends the comparison there: check_pair() compares the pairs
     // completed up to and including the time step of the death, whatever
     // the order of the monitor and the master in that step, and none after
@@ -1199,7 +1199,7 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_in_order_comparator
 
-    // The checks a status port gets in Mode B. The model updates a status
+    // The checks a status port gets in paired mode. The model updates a status
     // level sooner than the RTL, so the two are not compared beat for beat.
     // The policy decides what is checked:
     //   A2C_STATUS_STABLE  at each stable_point(), the latest DUT value against
@@ -1552,10 +1552,10 @@ package a2c_uvm_pkg;
                                                 c.get_full_name(), map.get_full_name(), map.get_root_map().get_full_name()), c)
     endfunction
 
-    // Holds Mode B to configuration changes while the datapath is quiescent.
-    // It takes the writes a2c_reg_write_subscriber converts. A write while any
-    // listed counter has pending transactions on either lane, a reported
-    // shortfall included, is a UVM_ERROR with id A2C_MIDSTREAM. With
+    // Holds paired mode to configuration changes while the datapath is
+    // quiescent. It takes the writes a2c_reg_write_subscriber converts. A write
+    // while any listed counter has pending transactions on either lane, a
+    // reported shortfall included, is a UVM_ERROR with id A2C_MIDSTREAM. With
     // +a2c_predict_midstream=1 the write is logged as UVM_INFO instead and
     // opens the midstream window of every listed comparator. Traffic counts
     // only once a test has declared it with expect_count().
@@ -1661,12 +1661,12 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_midstream_guard
 
-    // The Mode B comparator of a register bus agent. It compares a read on
+    // The paired-mode comparator of a register bus agent. It compares a read on
     // its skip list without the read data, and lets the guard demote a
     // volatile read. The <block>_tb_env subclass fills the list in its
-    // connect_phase, in Mode B only, where model_cmp exists. A list entry is
-    // an address range, so a memory of any size costs one entry. The env
-    // sets guard in Mode B when the block has a register model. A demotion
+    // connect_phase, in paired mode only, where model_cmp exists. A list entry
+    // is an address range, so a memory of any size costs one entry. The env
+    // sets guard in paired mode when the block has a register model. A demotion
     // is keyed by the read's place in the DUT lane's arrival order, so a
     // subclass must not override key().
     virtual class a2c_reg_comparator #(type T = uvm_sequence_item) extends a2c_in_order_comparator #(T);
@@ -1966,8 +1966,8 @@ package a2c_uvm_pkg;
         endtask
     endclass : a2c_reg_test
 
-    // What a Mode B responder driver tells its a2c_replay_log about the two
-    // lanes it serves, for the end-of-test drain. lane_starts() and
+    // What a paired-mode responder driver tells its a2c_replay_log about the
+    // two lanes it serves, for the end-of-test drain. lane_starts() and
     // lane_busy() must change away from the rising edge of the log's
     // clk_vif, at the falling edge or the drive point, as the built-in
     // drivers do: the drain reads them at the rising edge. A driver that
@@ -1999,28 +1999,28 @@ package a2c_uvm_pkg;
     typedef class a2c_replay_log_base;
     typedef class a2c_joint_watch;
 
-    // A monitor that a Mode B master tells when it declares the lane of the
-    // monitor's pin set dead, with the ID of the error that declared it.
+    // A monitor that a paired-mode master tells when it declares the lane of
+    // the monitor's pin set dead, with the ID of the error that declared it.
     interface class a2c_lane_watch;
         pure virtual function void lane_dead(string id);
     endclass : a2c_lane_watch
 
     // The passive agents on one pin set, which the active agent of its port
     // tells of a death and of a cut as it tells its own monitors and
-    // model_cmp. A Mode B master declaring lane l dead tells mons of lane
-    // l's pin set and cmps of the DUT lane's; the replay log of a Mode B
+    // model_cmp. A paired-mode master declaring lane l dead tells mons of lane
+    // l's pin set and cmps of the DUT lane's; the replay log of a paired-mode
     // slave cuts cmps of its DUT lane's pin set with its own cmp, and a
     // passive monitor takes log, the slave's log, to read the cut.
     class a2c_pin_watchers;
         // The passive agents' monitors on this pin set.
         a2c_lane_watch      mons[$];
-        // The model_cmps of the passive Mode B agents whose DUT lane is this
-        // pin set.
+        // The model_cmps of the passive paired-mode agents whose DUT lane is
+        // this pin set.
         a2c_comparator_base cmps[$];
-        // The replay log of the active Mode B slave with a lane on this pin
-        // set, or null.
+        // The replay log of the active paired-mode slave with a lane on this
+        // pin set, or null.
         a2c_replay_log_base log;
-        // The full name of the active Mode B agent whose DUT lane is this
+        // The full name of the active paired-mode agent whose DUT lane is this
         // pin set, or "".
         string              owner;
     endclass : a2c_pin_watchers
@@ -2060,14 +2060,14 @@ package a2c_uvm_pkg;
             if (cmp != null) of(vif).cmps.push_back(cmp);
         endfunction
 
-        // For a passive Mode B agent at end_of_elaboration_phase. A port the
-        // env leaves to other drivers, such as an internal port of a top
+        // For a passive paired-mode agent at end_of_elaboration_phase. A port
+        // the env leaves to other drivers, such as an internal port of a top
         // design, has no owner and needs none, so this is an info. It names
         // the config field, not the instance: %p of a virtual interface
         // prints a handle on Xcelium and every signal on VCS.
         static function void note_unowned(VIF_T vif, uvm_component agent, string port_name);
             if (of(vif).owner != "") return;
-            `uvm_info_context("A2C_PASSIVE", $sformatf("%s: no active Mode B agent has the interface instance in this agent's cfg.vif as its own, so the agent learns of no lane death and no drain cut on the port. If an active agent drives the port, give it this same interface instance: another instance on the same nets does not match",
+            `uvm_info_context("A2C_PASSIVE", $sformatf("%s: no active paired-mode agent has the interface instance in this agent's cfg.vif as its own, so the agent learns of no lane death and no drain cut on the port. If an active agent drives the port, give it this same interface instance: another instance on the same nets does not match",
                                                        port_name), UVM_LOW, agent)
         endfunction
     endclass : a2c_pin_registry
@@ -2291,7 +2291,7 @@ package a2c_uvm_pkg;
         // beside it, main_phase() among them, have ended too, so a
         // hand-written test that objects only in main_phase() still drains,
         // from its drop when the phases after main_phase() hold no
-        // objection (push_ack_mode_b_dst_main_phase_test).
+        // objection (push_ack_paired_dst_main_phase_test).
         virtual function void phase_ready_to_end(uvm_phase phase);
             super.phase_ready_to_end(phase);
             if (driver == null || phase.get_imp() != uvm_run_phase::get()) return;
@@ -2337,7 +2337,7 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_replay_log_base
 
-    // Lets one responder serve both lanes of a Mode B port from one shared
+    // Lets one responder serve both lanes of a paired-mode port from one shared
     // model. The DUT lane applies each transaction and record()s its
     // response and delay; the model lane replays them in order and never
     // applies a transaction's effect. A driver sets driver and clk_vif, and
@@ -2456,7 +2456,7 @@ package a2c_uvm_pkg;
     //     back, its check_phase() reports what the lanes have left by the
     //     end of the test, and the drain's end must not hang on a clock
     //     that may never return.
-    // A Mode B master that declares a lane dead tells lane_dead(), which
+    // A paired-mode master that declares a lane dead tells lane_dead(), which
     // only keeps the death for the reports: the drain goes on watching every
     // log, since a master's port has no log of its own. A report of an event,
     // such as a cut, a held pick or a record the model lane never replayed,
@@ -2767,7 +2767,7 @@ package a2c_uvm_pkg;
     localparam int unsigned A2C_MODEL_THROTTLE_CYCLES = 1;
 
     // The sentence that ends a report of one lane trailing the other in
-    // Mode B. The model is untimed, so the RTL never waits on it: a model
+    // paired mode. The model is untimed, so the RTL never waits on it: a model
     // lane that trails is a model defect, and a DUT lane that trails a model
     // lane that has finished is held by the RTL.
     function automatic string a2c_trailing_clause(a2c_lane_e trailing);
@@ -2792,10 +2792,11 @@ package a2c_uvm_pkg;
     //     any lane of any port (a2c_joint_watch) for this many of the port's
     //     clocks in a row ends the run in one A2C_JOINT_STALL for the whole
     //     environment. A port that waits while another port moves never
-    //     stalls, however long it waits. Without the rule a Mode B run that
-    //     stops waits for UVM's global timeout. The bound decides only
+    //     stalls, however long it waits. Without the rule a paired-mode run
+    //     that stops waits for UVM's global timeout. The bound decides only
     //     whether this port can raise the stall: once any port raises it,
-    //     every Mode B port's live lanes die, and those that wait are named;
+    //     every paired-mode port's live lanes die, and those that wait are
+    //     named;
     //   - model_throttle_cycles: both lanes live, and the master holds its
     //     next item, or for a burst master its next address, W beat or
     //     outstanding slot, because the DUT lane is ready for it and the
@@ -2804,15 +2805,15 @@ package a2c_uvm_pkg;
     //     conforming model lane never holds the RTL's input back.
     // 0 turns a rule off. A lane that has nothing to wait for counts as
     // making progress, so an idle port never stalls. A master declares a
-    // lane dead only in Mode B. With one lane, in Mode A, only the joint
-    // stall rule applies, on the same bound and message. The master holds
+    // lane dead only in paired mode. With one lane, in single mode, only the
+    // joint stall rule applies, on the same bound and message. The master holds
     // an item, and its lane waits, on each clock it calls progress() with
     // the lane neither taking nor idle: from the drive point that raises
     // the item's request to its handshake, or for a burst master while an
     // address is on the bus or a burst is outstanding. An item the
     // sequence has started that the driver has not yet put on the pins,
     // in its gap clocks or at the sequencer, is not held, and a responder
-    // never holds one. No lane dies in Mode A: the stall ends the run
+    // never holds one. No lane dies in single mode: the stall ends the run
     // through the test's a2c_run_timeout, and in a test with none the
     // master goes on waiting and the port stops counting toward another.
     class a2c_lane_watchdog;
@@ -2830,7 +2831,7 @@ package a2c_uvm_pkg;
         // step(): the clocks the model lane has held the next item back.
         protected int unsigned held;
         // The component that reports, the port's name in its messages, and
-        // its lane count, 2 in Mode B.
+        // its lane count, 2 in paired mode.
         uvm_component       master;
         string              port_name;
         int unsigned        lanes;
@@ -2876,7 +2877,7 @@ package a2c_uvm_pkg;
         // A port clock with no rising edge for this many of its periods and
         // a half has stopped, as for the output counters and replay logs.
         int unsigned           clock_stop_cycles = 1000;
-        // The clocks progress() has counted, by which a2c_mode_b_port tells
+        // The clocks progress() has counted, by which a2c_paired_port tells
         // a watchdog its master steps from one it only built.
         int unsigned           steps;
 
@@ -3028,7 +3029,7 @@ package a2c_uvm_pkg;
         // two, the lone lane rule while that lane makes no progress; with
         // both live, the skew rule while one trails, which some masters
         // count themselves, so at most a whole bound, or else the joint
-        // stall rule while no port moves, as with the one lane of Mode A.
+        // stall rule while no port moves, as with the one lane of single mode.
         // "" when none is counting. A master resets the counts on the clock
         // its lanes make progress or finish.
         function string counting(output int unsigned left);
@@ -3102,7 +3103,7 @@ package a2c_uvm_pkg;
         endfunction
 
         // Declares each live lane dead for a2c_joint_watch, whatever this
-        // port's joint_stall_cycles. In Mode A no lane dies.
+        // port's joint_stall_cycles. In single mode no lane dies.
         function void die_jointly();
             bit fell[2];
             if (lanes != 2) return;
@@ -3140,7 +3141,7 @@ package a2c_uvm_pkg;
             throttled_at = $realtime;
             if (model_throttle_cycles == 0 || run != model_throttle_cycles || throttle_reported) return;
             throttle_reported = 1;
-            `uvm_error_context("A2C_MODEL_THROTTLE", $sformatf("%s: the master has held its next %s back for the model lane for %0d clocks (model_throttle_cycles, +a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for %s. Mode B slows the RTL's input to the model lane's pace, so input the RTL would take back to back goes untested. %s Raising model_throttle_cycles hides the defect.",
+            `uvm_error_context("A2C_MODEL_THROTTLE", $sformatf("%s: the master has held its next %s back for the model lane for %0d clocks (model_throttle_cycles, +a2c_model_throttle_cycles): the DUT lane was ready for it and the model lane was not, as it waits for %s. Paired mode slows the RTL's input to the model lane's pace, so input the RTL would take back to back goes untested. %s Raising model_throttle_cycles hides the defect.",
                                                                port_name, unit, run,
                                                                waits.waiting_for(A2C_MODEL_LANE), a2c_trailing_clause(A2C_MODEL_LANE)), master)
         endfunction
@@ -3163,8 +3164,8 @@ package a2c_uvm_pkg;
             bit led = 0;
             bit lags;
             bit idle[2];
-            // In Mode A pending[] stays set: the lane goes on waiting after a
-            // joint stall.
+            // In single mode pending[] stays set: the lane goes on waiting
+            // after a joint stall.
             if (lanes != 2) begin
                 if (progress(took, idle, 0) == A2C_BOTH_STALL) declare_joint();
                 return;
@@ -3229,10 +3230,10 @@ package a2c_uvm_pkg;
     // in a time step never moves the bound. It reports once for the run:
     // the first watchdog to reach its bound calls stall(), which names
     // every port whose live lanes waited and declares every live lane of
-    // every Mode B port dead, so no Mode B port can stall again. A Mode A
-    // port, whose lane cannot die, reads stalled() and counts no more, and
-    // with no Mode B port the stall ends the run through the test's
-    // a2c_run_timeout, as the timeout does.
+    // every paired-mode port dead, so no paired-mode port can stall again. A
+    // single-mode port, whose lane cannot die, reads stalled() and counts no
+    // more, and with no paired-mode port the stall ends the run through the
+    // test's a2c_run_timeout, as the timeout does.
     typedef class a2c_run_timeout;
 
     class a2c_joint_watch;
@@ -3266,7 +3267,7 @@ package a2c_uvm_pkg;
             found = dogs;
         endfunction
 
-        // The test's run timeout, which ends the run after a Mode A stall.
+        // The test's run timeout, which ends the run after a single-mode stall.
         static function void register_timeout(a2c_run_timeout t);
             timeout = t;
         endfunction
@@ -3281,14 +3282,14 @@ package a2c_uvm_pkg;
             string after = a2c_select_str(timeout != null, "With one DUT no lane dies, and the run ends here.",
                                           "With one DUT no lane dies, and with no run timeout to end the run the masters go on waiting.");
             string trail = "";
-            bit    mode_b;
+            bit    paired;
             // The lanes that waited, over every port, one bit per a2c_lane_e.
             bit [1:0] waited = '0;
             raised = 1;
             foreach (dogs[i]) begin
                 if (dogs[i].lanes != 2) continue;
-                mode_b = 1;
-                after = $sformatf("Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead%s, and serves its open and later items as it does once both lanes are dead.",
+                paired = 1;
+                after = $sformatf("Every paired-mode master, whatever its own joint_stall_cycles, declares the live lanes of its port dead%s, and serves its open and later items as it does once both lanes are dead.",
                                   a2c_replay_drain::death_context($realtime));
                 break;
             end
@@ -3297,16 +3298,16 @@ package a2c_uvm_pkg;
                 ports = {ports, a2c_select_str(ports == "", "", "; "), dogs[i].wait_text()};
                 waited |= dogs[i].lanes_waited();
             end
-            if (mode_b && waited == 2'b10) trail = {"Only model lanes wait. ", a2c_trailing_clause(A2C_MODEL_LANE), " "};
-            if (mode_b && waited == 2'b01) trail = {"Only DUT lanes wait. ", a2c_trailing_clause(A2C_DUT_LANE), " "};
+            if (paired && waited == 2'b10) trail = {"Only model lanes wait. ", a2c_trailing_clause(A2C_MODEL_LANE), " "};
+            if (paired && waited == 2'b01) trail = {"Only DUT lanes wait. ", a2c_trailing_clause(A2C_DUT_LANE), " "};
             `uvm_error_context("A2C_JOINT_STALL", $sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s. No port made progress, so the cause may lie in the DUT, the model or the stimulus, such as a deadlock between ports or an event that nothing produces. %s%s%s",
                                                             by.port_name, by.joint_stall_cycles, ports, trail,
                                                             a2c_replay_drain::waiting_responders(), after), by.master)
             foreach (dogs[i]) dogs[i].die_jointly();
-            // Mode B lanes die and the test reaches its own end; a Mode A
-            // master would wait for ever. Without a run timeout, in a test
-            // that does not extend the generated base test, it does.
-            if (!mode_b && timeout != null) timeout.end_run(uvm_domain::get_common_domain().find(uvm_run_phase::get()), "the joint stall rule", "fired", "A2C_JOINT_STALL");
+            // Paired-mode lanes die and the test reaches its own end; a
+            // single-mode master would wait for ever. Without a run timeout, in
+            // a test that does not extend the generated base test, it does.
+            if (!paired && timeout != null) timeout.end_run(uvm_domain::get_common_domain().find(uvm_run_phase::get()), "the joint stall rule", "fired", "A2C_JOINT_STALL");
         endfunction
 
         // The ports whose live lanes wait now, whatever the joint stall's
@@ -3461,7 +3462,7 @@ package a2c_uvm_pkg;
     // is the protocol's virtual interface type.
     virtual class a2c_agent_config #(type VIF_T = virtual a2c_clk_if) extends uvm_object;
         VIF_T                   vif;
-        // The model DUT's pin set in Mode B; null otherwise.
+        // The model DUT's pin set in paired mode; null otherwise.
         VIF_T                   model_vif;
         virtual a2c_clk_if      clk_vif;
         uvm_active_passive_enum is_active = UVM_ACTIVE;
@@ -3489,8 +3490,8 @@ package a2c_uvm_pkg;
     // each call, so a config randomized or changed during the run still
     // applies; the default draws from them as the config describes. A
     // channel is the pin the decision drives, so a driver with two ready
-    // pins keeps their runs apart. In Mode B the driver draws once and both
-    // lanes get the result.
+    // pins keeps their runs apart. In paired mode the driver draws once and
+    // both lanes get the result.
     class a2c_ready_policy extends uvm_object;
         // The knobs of the current draw.
         int unsigned      ready_pct = 100;
@@ -3601,16 +3602,16 @@ package a2c_uvm_pkg;
         // See a2c_lane_driver::join_lanes().
         pure virtual function void join_lanes(uvm_component agent, a2c_comparator_base model_cmp, uvm_monitor mon,
                                               uvm_monitor model_mon);
-        // A Mode B responder's replay log; null otherwise.
+        // A paired-mode responder's replay log; null otherwise.
         pure virtual function a2c_replay_log_base lane_replay();
     endclass : a2c_lane_joiner
 
     // What the driver of every a2c agent shares about its lanes: cfg.vif is
-    // the DUT lane, cfg.model_vif the model lane in Mode B, and lanes is 2
-    // in Mode B and 1 otherwise, all set in connect_phase. A master
+    // the DUT lane, cfg.model_vif the model lane in paired mode, and lanes is 2
+    // in paired mode and 1 otherwise, all set in connect_phase. A master
     // (lane_master()) owns wd, created in connect_phase and configured at
     // the start of the run phase, which bounds the lanes against each other
-    // and keeps which are dead. A Mode B responder (has_replay()) owns
+    // and keeps which are dead. A paired-mode responder (has_replay()) owns
     // replay, created in build_phase, and its DUT lane records each response
     // there for the model lane. join_lanes() hands both the agent's
     // model_cmp, monitors and the pin sets' passive agents.
@@ -3647,7 +3648,7 @@ package a2c_uvm_pkg;
         typedef a2c_pin_registry #(VIF_T) registry_t;
 
         CFG_T               cfg;
-        // A responder in Mode B only.
+        // A responder in paired mode only.
         replay_t            replay;
         // A master only.
         a2c_lane_watchdog   wd;
@@ -3707,8 +3708,8 @@ package a2c_uvm_pkg;
         endfunction
 
         // The agent's connect_phase runs after this one, so join_lanes()
-        // finds wd, and an agent that implements a2c_mode_b_agent can give
-        // it to a2c_mode_b_port.
+        // finds wd, and an agent that implements a2c_paired_agent can give
+        // it to a2c_paired_port.
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
             lane[A2C_DUT_LANE]   = cfg.vif;
@@ -3717,7 +3718,7 @@ package a2c_uvm_pkg;
             if (lane_master()) wd = new(this, cfg.port_name, lanes, unit, none_left);
         endfunction
 
-        // For the active agent in its connect_phase, in Mode B: a master
+        // For the active agent in its connect_phase, in paired mode: a master
         // tells model_cmp, the monitors that are a2c_lane_watch and the
         // passive agents on both pin sets of a lane it declares dead, and the
         // replay log cuts model_cmp and the passive agents' model_cmps on
@@ -3920,8 +3921,8 @@ package a2c_uvm_pkg;
 
         // Returns at the drive point after the last live lane's transfer,
         // which is the rising edge before it. A lane whose transfer has
-        // happened drops its request from the next drive point on. In Mode B
-        // wd bounds how long one lane may trail the other and how long the
+        // happened drops its request from the next drive point on. In paired
+        // mode wd bounds how long one lane may trail the other and how long the
         // lanes may stall (a2c_lane_watchdog), and a lane it declares dead
         // drops out of the wait.
         protected virtual task wait_transfer();
@@ -3947,7 +3948,7 @@ package a2c_uvm_pkg;
             else if (finished[A2C_MODEL_LANE]) return_response(A2C_MODEL_LANE);
         endtask
 
-        // Mode B: a dead lane keeps its raised request and payload until
+        // Paired mode: a dead lane keeps its raised request and payload until
         // that transfer happens, as the protocols require, and drops the
         // request at the drive point after it. No later item drives the
         // lane.
@@ -4176,10 +4177,10 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_lane_driver
 
-    // The Mode B wiring of an a2c agent whose driver is an a2c_lane_driver.
-    // In connect_phase an active agent hands its driver the lanes
-    // (a2c_lane_joiner::join_lanes()) and a passive one joins the watchers
-    // of its pin sets (a2c_pin_registry::join_passive()). At
+    // The paired-mode wiring of an a2c agent whose driver is an
+    // a2c_lane_driver. In connect_phase an active agent hands its driver the
+    // lanes (a2c_lane_joiner::join_lanes()) and a passive one joins the
+    // watchers of its pin sets (a2c_pin_registry::join_passive()). At
     // end_of_elaboration_phase a passive agent for which needs_owner()
     // holds raises A2C_PASSIVE when no active agent has claimed its DUT pin
     // set (a2c_pin_registry::note_unowned()). Its connect_phase gives the
@@ -4198,7 +4199,7 @@ package a2c_uvm_pkg;
         // The driver; null on a passive agent.
         pure virtual function a2c_lane_joiner lane_joiner();
         // The monitor on lane l's pin set; null for the model lane outside
-        // Mode B.
+        // paired mode.
         pure virtual function uvm_monitor lane_monitor(a2c_lane_e l);
         // The comparator that a lane's death and a drain's cut reach, or
         // null.
@@ -4242,10 +4243,10 @@ package a2c_uvm_pkg;
     endclass : a2c_lane_agent
 
     // What an agent that a2c does not provide implements to take part in
-    // Mode B, where one stimulus drives the DUT's pin set and the model
-    // DUT's, and a2c compares what the two lanes report. a2c_mode_b_port
+    // paired mode, where one stimulus drives the DUT's pin set and the model
+    // DUT's, and a2c compares what the two lanes report. a2c_paired_port
     // reads it.
-    interface class a2c_mode_b_agent #(type T = uvm_sequence_item);
+    interface class a2c_paired_agent #(type T = uvm_sequence_item);
         // The analysis port of the monitor on lane l's pin set, which writes
         // one item per transfer, in transfer order, on the clock of the
         // transfer. Each lane has its own.
@@ -4263,7 +4264,7 @@ package a2c_uvm_pkg;
         // lanes alike on every clock, as a sink that only drives a ready
         // does, and so needs neither a watchdog nor a replay log.
         pure virtual function bit lanes_in_lock_step();
-    endclass : a2c_mode_b_agent
+    endclass : a2c_paired_agent
 
     // Counts each item a lane's monitor writes as a handshake for the joint
     // stall rule. A monitor that calls a2c_joint_watch::handshake() itself
@@ -4280,7 +4281,7 @@ package a2c_uvm_pkg;
         endfunction
     endclass : a2c_handshake_tap
 
-    // Compares the two lanes of an agent that implements a2c_mode_b_agent:
+    // Compares the two lanes of an agent that implements a2c_paired_agent:
     // model_cmp pairs lane_ap(A2C_DUT_LANE) with lane_ap(A2C_MODEL_LANE) in
     // order, each item either lane writes counts for the joint stall rule
     // unless joint_watch is cleared, the agent's watchdog tells model_cmp of
@@ -4288,12 +4289,12 @@ package a2c_uvm_pkg;
     // role and joint_watch before connect_phase, and calls set_is_active()
     // for an agent that keeps whether it drives the port in its own config
     // rather than in uvm_agent::get_is_active().
-    // The port raises an A2C_MODE_B_CONTRACT error for each broken part of
+    // The port raises an A2C_PAIRED_CONTRACT error for each broken part of
     // the contract in the first phase that can see it: connect_phase for the
     // agent and its analysis ports, end_of_elaboration_phase for the
     // watchdog and the replay log, and check_phase for a watchdog that never
     // ran.
-    class a2c_mode_b_port #(type T = uvm_sequence_item) extends uvm_component;
+    class a2c_paired_port #(type T = uvm_sequence_item) extends uvm_component;
         uvm_agent                         agent;
         // The side of the port the agent plays.
         a2c_role_e                        role = A2C_SRC;
@@ -4302,14 +4303,14 @@ package a2c_uvm_pkg;
         // before connect_phase for an agent inside the DUT.
         bit                               joint_watch = 1;
         a2c_in_order_comparator #(T)      model_cmp;
-        protected a2c_mode_b_agent #(T)   lanes;
+        protected a2c_paired_agent #(T)   lanes;
         protected a2c_handshake_tap #(T)  tap;
         protected uvm_active_passive_enum is_active;
         protected bit                     is_active_set;
         // The watchdog that check_phase checks, or null.
         protected a2c_lane_watchdog       wd;
 
-        `uvm_component_param_utils(a2c_mode_b_port#(T))
+        `uvm_component_param_utils(a2c_paired_port#(T))
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -4333,13 +4334,13 @@ package a2c_uvm_pkg;
         endfunction
 
         protected function void broken(string why);
-            `uvm_error("A2C_MODE_B_CONTRACT", $sformatf("%s: %s", (agent == null) ? get_full_name() : agent.get_full_name(), why))
+            `uvm_error("A2C_PAIRED_CONTRACT", $sformatf("%s: %s", (agent == null) ? get_full_name() : agent.get_full_name(), why))
         endfunction
 
         virtual function void connect_phase(uvm_phase phase);
             super.connect_phase(phase);
             if (agent == null || !$cast(lanes, agent)) begin
-                broken("the agent does not implement a2c_mode_b_agent, so its lanes cannot be compared");
+                broken("the agent does not implement a2c_paired_agent, so its lanes cannot be compared");
                 lanes = null;
                 return;
             end
@@ -4371,7 +4372,7 @@ package a2c_uvm_pkg;
             end else if (wd == null && log == null && !lanes.lanes_in_lock_step()) begin
                 broken("an active A2C_DST agent gives neither a lane watchdog nor a replay log, and lanes_in_lock_step() is 0, so it is either a master the env set as A2C_DST or a responder whose model lane gets no record of the DUT lane's responses");
             end else if (wd != null && wd.lanes != 2) begin
-                broken($sformatf("the lane watchdog counts %0d lanes, not the 2 of Mode B", wd.lanes));
+                broken($sformatf("the lane watchdog counts %0d lanes, not the 2 of paired mode", wd.lanes));
                 wd = null;
             end else if (wd != null) begin
                 wd.cmp = model_cmp;
@@ -4397,7 +4398,7 @@ package a2c_uvm_pkg;
                                  model_cmp.get_pairs()));
             end
         endfunction
-    endclass : a2c_mode_b_port
+    endclass : a2c_paired_port
 
     // Marks the end of a unit of a stream, such as a frame or a line. A unit
     // opens at the first beat after the previous unit closed and closes at
@@ -4505,9 +4506,9 @@ package a2c_uvm_pkg;
     // release.
     //
     // It judges only the DUT lane, agent.mon, and never compares the timing
-    // of the two lanes, which the model does not keep. Once a Mode B master
-    // declares the DUT lane dead it stops, and the summary says so. On the
-    // model DUT (a2c_model_dut) it measures and raises no error unless
+    // of the two lanes, which the model does not keep. Once a paired-mode
+    // master declares the DUT lane dead it stops, and the summary says so. On
+    // the model DUT (a2c_model_dut) it measures and raises no error unless
     // on_model is set.
     //
     // Every failure is a UVM_ERROR that does not stop the run. The first
@@ -4859,7 +4860,7 @@ package a2c_uvm_pkg;
             if (out_fc == null) return;
             clk_vif = out_fc.flow_clock();
             clk_vif.wait_reset_release();
-            // Every Mode B master's watchdog exists once the run phase has
+            // Every paired-mode master's watchdog exists once the run phase has
             // passed its first clock.
             a2c_joint_watch::get_dogs(dogs);
             forever begin
@@ -5338,7 +5339,7 @@ package a2c_uvm_pkg;
                              late_done, never, pending);
             if (resets != 0) what = {what, $sformatf("; %0d resets abandoned %0d units", resets, abandoned)};
             if (!judging) what = {what, $sformatf("; measured only, on the model DUT: %0d failures not raised", unjudged)};
-            if (stopped) what = {what, $sformatf("; stopped judging at %0t, when a Mode B master declared the DUT lane dead", stopped_at)};
+            if (stopped) what = {what, $sformatf("; stopped judging at %0t, when a paired-mode master declared the DUT lane dead", stopped_at)};
             if (pending != 0) what = {what, a2c_run_ended_clause()};
             `uvm_info("A2C_RT", what, UVM_LOW)
             if (unprinted != 0) begin
@@ -5496,8 +5497,8 @@ package a2c_uvm_pkg;
     // The progress rules report a stop in their own words, so a rule that is
     // counting toward its bound when a derived budget is reached may fire
     // first, whatever its bound: the output deadline of a wait_for_count(),
-    // a Mode B master's lane skew or lone lane rule, a master's joint stall
-    // rule in either mode, the drain's deadline and catch-up, and an a2c_rt_checker's real-time
+    // a paired-mode master's lane skew or lone lane rule, a master's joint
+    // stall rule in either mode, the drain's deadline and catch-up, and an a2c_rt_checker's real-time
     // rules. The count then collects the rules counting at that clock,
     // leaving out a lane rule or checker whose clock has stopped, each with the clocks it may still take to report, which
     // covers its clock stopping or pausing, converted into clocks of clk_vif
@@ -5520,10 +5521,10 @@ package a2c_uvm_pkg;
     // a2c_run_timeout_phase_cb ends each task phase other than run as it
     // begins, a runtime phase or a user-defined one: UVM's own timeout
     // lives in the run phase and ends with it, so nothing else would bound
-    // a later phase that waits. Ending prematurely skips the Mode B drain,
+    // a later phase that waits. Ending prematurely skips the paired-mode drain,
     // and UVM clears the objections still raised with an OBJTN_CLEAR
     // warning. A run that ends in time logs its length against the budget.
-    // Verified on UVM 1.2. A Mode A A2C_JOINT_STALL ends the run the same
+    // Verified on UVM 1.2. A single-mode A2C_JOINT_STALL ends the run the same
     // way through end_run(), and then the count stops.
     class a2c_run_timeout extends uvm_component;
         // Set by the base test in connect_phase.
@@ -5710,7 +5711,8 @@ package a2c_uvm_pkg;
             derive();
             forever begin
                 @(posedge clk_vif.clk);
-                // A Mode A joint stall ended the run earlier in this time step.
+                // A single-mode joint stall ended the run earlier in this time
+                // step.
                 if (expired) return;
                 elapsed++;
                 if (is_off() || elapsed < budget || elapsed < defer_to) continue;

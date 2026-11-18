@@ -1,8 +1,8 @@
-// Mode B with agents that a2c does not provide, compared by a2c_mode_b_port:
-// hand-written rdy_vld sources and sinks that implement only
-// a2c_mode_b_agent, two of them on a2c_lane_driver, and one test per way of
-// breaking the contract. Included in a2c_uvm_loopback_pkg after the rdy_vld
-// and push_ack tests, whose typedefs and sequences it uses.
+// Paired mode with agents that a2c does not provide, compared by
+// a2c_paired_port: hand-written rdy_vld sources and sinks that implement
+// only a2c_paired_agent, two of them on a2c_lane_driver, and one test per
+// way of breaking the contract. Included in a2c_uvm_loopback_pkg after the
+// rdy_vld and push_ack tests, whose typedefs and sequences it uses.
 
     // How a test breaks the contract, if it does.
     typedef enum {LB_FA_NONE, LB_FA_NOT_AGENT, LB_FA_NULL_AP, LB_FA_SAME_AP, LB_FA_NO_WATCHDOG, LB_FA_ONE_LANE,
@@ -100,7 +100,7 @@
 
     // The test sets the pins, the clock, the port name and fault before the
     // agent's build_phase.
-    class lb_foreign_agent extends uvm_agent implements a2c_mode_b_agent #(rv_item_t);
+    class lb_foreign_agent extends uvm_agent implements a2c_paired_agent #(rv_item_t);
         rv_vif_t                    vif[2];
         virtual a2c_clk_if          clk_vif;
         string                      port;
@@ -217,7 +217,7 @@
     // A foreign agent whose driver is lb_lane_source on A2C_SRC and
     // lb_lane_sink on A2C_DST. The test sets cfg before the agent's
     // build_phase; fault breaks the sink's replay log.
-    class lb_foreign_lane_agent extends uvm_agent implements a2c_mode_b_agent #(rv_item_t);
+    class lb_foreign_lane_agent extends uvm_agent implements a2c_paired_agent #(rv_item_t);
         rv_config_t                                          cfg;
         lb_fa_fault_e                                        fault;
         a2c_lane_driver #(rv_item_t, rv_vif_t, rv_config_t) drv;
@@ -284,22 +284,22 @@
     endtask
 
     // The foreign source sends n_items beats to an a2c rdy_vld sink on each
-    // lane, each with random rdy, and a2c_mode_b_port pairs every beat. Its
+    // lane, each with random rdy, and a2c_paired_port pairs every beat. Its
     // watchdog takes model_cmp from the port. A test that sets fault expects
-    // the one A2C_MODE_B_CONTRACT its want_text names, demoted, and
+    // the one A2C_PAIRED_CONTRACT its want_text names, demoted, and
     // want_pairs pairs.
-    class mode_b_foreign_agent_test extends lb_mode_b_base;
+    class paired_foreign_agent_test extends lb_paired_base;
         lb_foreign_agent             agent;
         rv_agent_t                   sinks[2];
-        a2c_mode_b_port #(rv_item_t) port;
+        a2c_paired_port #(rv_item_t) port;
         lb_fa_fault_e                fault;
         int unsigned                 want_pairs;
 
-        `uvm_component_utils(mode_b_foreign_agent_test)
+        `uvm_component_utils(paired_foreign_agent_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            demote_id = "A2C_MODE_B_CONTRACT";
+            demote_id = "A2C_PAIRED_CONTRACT";
             n_items   = 100;
         endfunction
 
@@ -319,7 +319,7 @@
             configure();
             super.build_phase(phase);
             agent = lb_foreign_agent::type_id::create("agent", this);
-            port  = a2c_mode_b_port#(rv_item_t)::type_id::create("port", this);
+            port  = a2c_paired_port#(rv_item_t)::type_id::create("port", this);
             if (want_pairs == 0) uvm_config_db#(bit)::set(this, "port.model_cmp", "a2c_allow_no_pairs", 1'b1);
             port.agent    = agent;
             agent.clk_vif = clk_vif;
@@ -352,99 +352,99 @@
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (port.model_cmp.get_pairs() != want_pairs) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d beats, expected %0d", port.model_cmp.get_pairs(), want_pairs))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d beats, expected %0d", port.model_cmp.get_pairs(), want_pairs))
             end
-            if (fault == LB_FA_NONE && agent.drv.wd.cmp != port.model_cmp) `uvm_error("LB_MODE_B", "the port did not hand model_cmp to the watchdog")
+            if (fault == LB_FA_NONE && agent.drv.wd.cmp != port.model_cmp) `uvm_error("LB_PAIRED", "the port did not hand model_cmp to the watchdog")
         endfunction
-    endclass : mode_b_foreign_agent_test
+    endclass : paired_foreign_agent_test
 
     // The env hands the port an a2c agent, which does not implement
-    // a2c_mode_b_agent: raised at connect_phase, and nothing pairs.
-    class mode_b_contract_not_agent_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_not_agent_test)
+    // a2c_paired_agent: raised at connect_phase, and nothing pairs.
+    class paired_contract_not_agent_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_not_agent_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_NOT_AGENT;
-            want_text.push_back("uvm_test_top.sink0: the agent does not implement a2c_mode_b_agent");
+            want_text.push_back("uvm_test_top.sink0: the agent does not implement a2c_paired_agent");
         endfunction
-    endclass : mode_b_contract_not_agent_test
+    endclass : paired_contract_not_agent_test
 
     // The model lane's analysis port is null.
-    class mode_b_contract_null_ap_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_null_ap_test)
+    class paired_contract_null_ap_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_null_ap_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_NULL_AP;
             want_text.push_back("uvm_test_top.agent: lane_ap(A2C_MODEL_LANE) is null");
         endfunction
-    endclass : mode_b_contract_null_ap_test
+    endclass : paired_contract_null_ap_test
 
     // Both lanes give the DUT lane's analysis port, which would match every
     // beat against itself.
-    class mode_b_contract_same_ap_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_same_ap_test)
+    class paired_contract_same_ap_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_same_ap_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_SAME_AP;
             want_text.push_back("uvm_test_top.agent: lane_ap() returns one analysis port for both lanes");
         endfunction
-    endclass : mode_b_contract_same_ap_test
+    endclass : paired_contract_same_ap_test
 
-    // The foreign source builds no watchdog: one A2C_MODE_B_CONTRACT naming
+    // The foreign source builds no watchdog: one A2C_PAIRED_CONTRACT naming
     // it, and the beats still pair.
-    class mode_b_foreign_agent_no_watchdog_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_foreign_agent_no_watchdog_test)
+    class paired_foreign_agent_no_watchdog_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_foreign_agent_no_watchdog_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_NO_WATCHDOG;
             want_text.push_back("uvm_test_top.agent: an active master gives no lane watchdog");
         endfunction
-    endclass : mode_b_foreign_agent_no_watchdog_test
+    endclass : paired_foreign_agent_no_watchdog_test
 
     // The source builds its watchdog with one lane.
-    class mode_b_contract_one_lane_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_one_lane_test)
+    class paired_contract_one_lane_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_one_lane_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_ONE_LANE;
-            want_text.push_back("uvm_test_top.agent: the lane watchdog counts 1 lanes, not the 2 of Mode B");
+            want_text.push_back("uvm_test_top.agent: the lane watchdog counts 1 lanes, not the 2 of paired mode");
         endfunction
-    endclass : mode_b_contract_one_lane_test
+    endclass : paired_contract_one_lane_test
 
     // The env gives the port the role A2C_DST for a master with no
     // watchdog.
-    class mode_b_contract_mislabelled_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_mislabelled_test)
+    class paired_contract_mislabelled_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_mislabelled_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_MISLABELLED;
             want_text.push_back("uvm_test_top.agent: an active A2C_DST agent gives neither a lane watchdog nor a replay log");
         endfunction
-    endclass : mode_b_contract_mislabelled_test
+    endclass : paired_contract_mislabelled_test
 
     // The source builds and configures its watchdog and never steps it:
     // raised at check_phase, once model_cmp has paired the beats.
-    class mode_b_contract_unstepped_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_unstepped_test)
+    class paired_contract_unstepped_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_unstepped_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             fault = LB_FA_UNSTEPPED;
             want_text.push_back("uvm_test_top.agent: model_cmp paired 100 items, but the master never stepped its lane watchdog");
         endfunction
-    endclass : mode_b_contract_unstepped_test
+    endclass : paired_contract_unstepped_test
 
     // The source steps its watchdog and never configures it. An
     // unconfigured watchdog keeps its default model throttle bound, so both
     // sinks are always ready.
-    class mode_b_contract_unconfigured_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_contract_unconfigured_test)
+    class paired_contract_unconfigured_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_contract_unconfigured_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -455,14 +455,14 @@
         virtual function void configure_sink(int l, rv_config_t cfg);
             cfg.ready_pct = 100;
         endfunction
-    endclass : mode_b_contract_unconfigured_test
+    endclass : paired_contract_unconfigured_test
 
     // The model lane's sink never raises rdy, so the foreign source's
     // watchdog declares the model lane dead after 30 clocks: one A2C_SKEW,
     // and model_cmp, which the port gave the watchdog, reports none of the
     // DUT lane's unpaired beats.
-    class mode_b_foreign_model_death_test extends mode_b_foreign_agent_test;
-        `uvm_component_utils(mode_b_foreign_model_death_test)
+    class paired_foreign_model_death_test extends paired_foreign_agent_test;
+        `uvm_component_utils(paired_foreign_model_death_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -484,10 +484,10 @@
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (!agent.drv.wd.dead[A2C_MODEL_LANE] || agent.drv.wd.dead[A2C_DUT_LANE]) begin
-                `uvm_error("LB_MODE_B", $sformatf("the lanes died %p, expected the model lane alone", agent.drv.wd.dead))
+                `uvm_error("LB_PAIRED", $sformatf("the lanes died %p, expected the model lane alone", agent.drv.wd.dead))
             end
         endfunction
-    endclass : mode_b_foreign_model_death_test
+    endclass : paired_foreign_model_death_test
 
     // Foreign agents on a2c_lane_driver, each on its own port. With
     // foreign_src a foreign source drives rv and rv_model, and otherwise an
@@ -496,12 +496,12 @@
     // two acks, with joint_stall_cycles 100, while the rdy_vld beats flow.
     // With stall_expected the joint stall kills every lane before n_items
     // beats, and the ports pair fewer.
-    class lb_foreign_lane_base extends lb_mode_b_base;
+    class lb_foreign_lane_base extends lb_paired_base;
         lb_foreign_lane_agent        src;
         rv_agent_t                   a2c_src;
         lb_foreign_lane_agent        sink;
-        a2c_mode_b_port #(rv_item_t) src_port;
-        a2c_mode_b_port #(rv_item_t) sink_port;
+        a2c_paired_port #(rv_item_t) src_port;
+        a2c_paired_port #(rv_item_t) sink_port;
         pa_agent_t                   pa_src;
         pa_agent_t                   pa_dst;
         bit                          foreign_src;
@@ -513,7 +513,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            demote_id = "A2C_MODE_B_CONTRACT";
+            demote_id = "A2C_PAIRED_CONTRACT";
             n_items   = 100;
         endfunction
 
@@ -544,13 +544,13 @@
             sink = lb_foreign_lane_agent::type_id::create("sink", this);
             sink.cfg   = rv_cfg("sink_cfg", A2C_DST);
             sink.fault = fault;
-            sink_port  = a2c_mode_b_port#(rv_item_t)::type_id::create("sink_port", this);
+            sink_port  = a2c_paired_port#(rv_item_t)::type_id::create("sink_port", this);
             sink_port.agent = sink;
             sink_port.role  = A2C_DST;
             if (foreign_src) begin
                 src = lb_foreign_lane_agent::type_id::create("src", this);
                 src.cfg  = rv_cfg("src_cfg", A2C_SRC);
-                src_port = a2c_mode_b_port#(rv_item_t)::type_id::create("src_port", this);
+                src_port = a2c_paired_port#(rv_item_t)::type_id::create("src_port", this);
                 src_port.agent = src;
             end else begin
                 uvm_config_db#(rv_config_t)::set(this, "a2c_src", "cfg", rv_cfg("a2c_src_cfg", A2C_SRC));
@@ -586,49 +586,49 @@
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (stall_expected) begin
-                if (sink_port.model_cmp.get_pairs() >= n_items) `uvm_error("LB_MODE_B", "the sink's model_cmp paired every beat, though the lanes died")
+                if (sink_port.model_cmp.get_pairs() >= n_items) `uvm_error("LB_PAIRED", "the sink's model_cmp paired every beat, though the lanes died")
                 return;
             end
             if (sink_port.model_cmp.get_pairs() != n_items) begin
-                `uvm_error("LB_MODE_B", $sformatf("the sink's model_cmp paired %0d beats, expected %0d", sink_port.model_cmp.get_pairs(), n_items))
+                `uvm_error("LB_PAIRED", $sformatf("the sink's model_cmp paired %0d beats, expected %0d", sink_port.model_cmp.get_pairs(), n_items))
             end
             if (fault == LB_FA_NONE && sink.drv.replay.cmp != sink_port.model_cmp) begin
-                `uvm_error("LB_MODE_B", "the port did not hand model_cmp to the replay log")
+                `uvm_error("LB_PAIRED", "the port did not hand model_cmp to the replay log")
             end
             if (!foreign_src) return;
             if (src_port.model_cmp.get_pairs() != n_items) begin
-                `uvm_error("LB_MODE_B", $sformatf("the source's model_cmp paired %0d beats, expected %0d", src_port.model_cmp.get_pairs(), n_items))
+                `uvm_error("LB_PAIRED", $sformatf("the source's model_cmp paired %0d beats, expected %0d", src_port.model_cmp.get_pairs(), n_items))
             end
-            if (src.drv.wd.cmp != src_port.model_cmp) `uvm_error("LB_MODE_B", "the port did not hand model_cmp to the watchdog")
-            if (src.drv.wd.steps == 0) `uvm_error("LB_MODE_B", "the lane driver never stepped its watchdog")
+            if (src.drv.wd.cmp != src_port.model_cmp) `uvm_error("LB_PAIRED", "the port did not hand model_cmp to the watchdog")
+            if (src.drv.wd.steps == 0) `uvm_error("LB_PAIRED", "the lane driver never stepped its watchdog")
         endfunction
     endclass : lb_foreign_lane_base
 
     // A foreign source on a2c_lane_driver, whose watchdog exists from its
     // connect_phase, and a foreign sink with a replay log, each through its
-    // own port: no A2C_MODE_B_CONTRACT, and both ports pair every beat.
-    class mode_b_foreign_lane_driver_test extends lb_foreign_lane_base;
-        `uvm_component_utils(mode_b_foreign_lane_driver_test)
+    // own port: no A2C_PAIRED_CONTRACT, and both ports pair every beat.
+    class paired_foreign_lane_driver_test extends lb_foreign_lane_base;
+        `uvm_component_utils(paired_foreign_lane_driver_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             foreign_src = 1;
         endfunction
-    endclass : mode_b_foreign_lane_driver_test
+    endclass : paired_foreign_lane_driver_test
 
     // An a2c rdy_vld source and a foreign sink whose model lane replays the
     // DUT lane's recorded delays.
-    class mode_b_foreign_responder_test extends lb_foreign_lane_base;
-        `uvm_component_utils(mode_b_foreign_responder_test)
+    class paired_foreign_responder_test extends lb_foreign_lane_base;
+        `uvm_component_utils(paired_foreign_responder_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
         endfunction
-    endclass : mode_b_foreign_responder_test
+    endclass : paired_foreign_responder_test
 
     // The foreign sink's replay log has no driver.
-    class mode_b_contract_log_no_driver_test extends lb_foreign_lane_base;
-        `uvm_component_utils(mode_b_contract_log_no_driver_test)
+    class paired_contract_log_no_driver_test extends lb_foreign_lane_base;
+        `uvm_component_utils(paired_contract_log_no_driver_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -636,14 +636,14 @@
             want_errors = 1;
             want_text.push_back("uvm_test_top.sink: the replay log has no driver or no clk_vif");
         endfunction
-    endclass : mode_b_contract_log_no_driver_test
+    endclass : paired_contract_log_no_driver_test
 
     // The foreign sink's replay log has no clk_vif, which the log reports
     // too, as A2C_CFG.
-    class mode_b_contract_log_no_clk_test extends lb_foreign_lane_base;
+    class paired_contract_log_no_clk_test extends lb_foreign_lane_base;
         a2c_expected_error no_clk;
 
-        `uvm_component_utils(mode_b_contract_log_no_clk_test)
+        `uvm_component_utils(paired_contract_log_no_clk_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -658,14 +658,14 @@
             no_clk.id   = "A2C_CFG";
             no_clk.text = "uvm_test_top.sink.drv.replay: the replay log has no clk_vif";
         endfunction
-    endclass : mode_b_contract_log_no_clk_test
+    endclass : paired_contract_log_no_clk_test
 
     // Only the ports count the foreign rdy_vld transfers as handshakes, as
     // no monitor on rv or rv_model calls handshake(). They keep the push_ack
     // master's 300-clock waits, three times its joint_stall_cycles, from
     // raising A2C_JOINT_STALL.
-    class mode_b_foreign_handshake_test extends lb_foreign_lane_base;
-        `uvm_component_utils(mode_b_foreign_handshake_test)
+    class paired_foreign_handshake_test extends lb_foreign_lane_base;
+        `uvm_component_utils(paired_foreign_handshake_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -676,16 +676,16 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (pa_src.drv.wd.steps < 300) `uvm_error("LB_MODE_B", $sformatf("the push_ack master waited %0d clocks, short of one ack of 300", pa_src.drv.wd.steps))
+            if (pa_src.drv.wd.steps < 300) `uvm_error("LB_PAIRED", $sformatf("the push_ack master waited %0d clocks, short of one ack of 300", pa_src.drv.wd.steps))
         endfunction
-    endclass : mode_b_foreign_handshake_test
+    endclass : paired_foreign_handshake_test
 
-    // As mode_b_foreign_handshake_test with joint_watch cleared on both
+    // As paired_foreign_handshake_test with joint_watch cleared on both
     // ports, as for agents inside the DUT: the rdy_vld transfers count for
     // nothing, so the push_ack master's first 300-clock wait raises the one
     // A2C_JOINT_STALL.
-    class mode_b_foreign_joint_watch_off_test extends lb_foreign_lane_base;
-        `uvm_component_utils(mode_b_foreign_joint_watch_off_test)
+    class paired_foreign_joint_watch_off_test extends lb_foreign_lane_base;
+        `uvm_component_utils(paired_foreign_joint_watch_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -703,4 +703,4 @@
             src_port.joint_watch  = 0;
             sink_port.joint_watch = 0;
         endfunction
-    endclass : mode_b_foreign_joint_watch_off_test
+    endclass : paired_foreign_joint_watch_off_test

@@ -10,9 +10,9 @@
 // interface the agent plays; a dst agent has nothing to drive. Pin timing
 // follows a2c_clk_if: drive at drive_edge(), sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
-// beside the DUT's and monitors it with model_mon. The src driver holds the
-// same level on both lanes. On the A2C_DST role model_cmp, a
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin
+// set beside the DUT's and monitors it with model_mon. The src driver holds
+// the same level on both lanes. On the A2C_DST role model_cmp, a
 // status_comparator, checks the two lanes under its policy, stable by
 // default. What the DUT produces that is not compared:
 //   DUT dst port, A2C_SRC agent: none
@@ -132,7 +132,7 @@ package status_uvm_pkg;
         endtask
     endclass : status_monitor
 
-    // The status agent's Mode B comparator. value() reads data, so the
+    // The status agent's paired-mode comparator. value() reads data, so the
     // bounds policy needs no subclass; a data_t wider than 64 bits is
     // bounded on its low 64 bits, and a signed data_t compares as unsigned
     // 64-bit. has_xz() checks every bit of data, including bits above the
@@ -161,7 +161,7 @@ package status_uvm_pkg;
         config_t                cfg;
         status_driver#(data_t)  drv;
         status_monitor#(data_t) mon;
-        // Mode B only. model_cmp exists on the A2C_DST role.
+        // Paired mode only. model_cmp exists on the A2C_DST role.
         status_monitor#(data_t)    model_mon;
         status_comparator#(data_t) model_cmp;
 

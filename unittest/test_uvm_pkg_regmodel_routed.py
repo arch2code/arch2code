@@ -20,7 +20,7 @@ uvm_reg_map. Classes are named <top>_<instance path>_reg_<register> and
 variants get classes of their own widths.
 
 The env reaches the model only through regmodel.default_map, the root map:
-the sequencer, the predictor, the Mode B guard and its write subscriber all
+the sequencer, the predictor, the paired-mode guard and its write subscriber all
 take it. The env class of the routed top must therefore be the leaf top's,
 line for line.
 

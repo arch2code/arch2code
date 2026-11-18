@@ -5,7 +5,7 @@
 
     typedef a2c_replay_log #(bit) lb_bit_log_t;
 
-    // The lanes of a Mode B responder with no pins behind them.
+    // The lanes of a paired-mode responder with no pins behind them.
     class lb_fake_lanes implements a2c_replay_lanes;
         bit          busy[2];
         int unsigned starts[2];
@@ -29,7 +29,7 @@
     // after the drop. on_ready() runs on each of the run phase's
     // phase_ready_to_end() calls, in the time step the drain starts or
     // ends.
-    class lb_drain_base extends lb_mode_b_base;
+    class lb_drain_base extends lb_paired_base;
         lb_bit_log_t  logs[$];
         lb_fake_lanes lanes[$];
         realtime      drop_time;

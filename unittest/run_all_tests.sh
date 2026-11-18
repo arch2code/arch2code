@@ -956,7 +956,7 @@ python3 test_uvm_max_transfer_bytes_flag.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: a DUT's memory src ports carry the Mode B model credit pins"
+echo "Test Suite ${idx}: a DUT's memory src ports carry the paired-mode model credit pins"
 echo "------------------------------------------------------------------------"
 python3 test_uvm_model_credit.py || FAILED=1
 idx=$((idx+1))

@@ -149,7 +149,7 @@ interface_defs:
   # the parameter that carries the transaction ID; a port that leaves it
   # unbound gets its agent config's id_unbound set
   uvmIdParam: optional()
-  # the type has no handshake to hold a Mode B model lane, so each port's
+  # the type has no handshake to hold a paired-mode model lane, so each port's
   # model lane waits on a2c_credit_if pins, <port>_model_credit and
   # <port>_model_held, for the DUT lane's transaction of the same index
   uvmModelCredit: optional(false)

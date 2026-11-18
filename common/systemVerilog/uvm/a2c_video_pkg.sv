@@ -1338,9 +1338,9 @@ package a2c_video_pkg;
     // before on a handshaked input, and how many the driver offered so: with
     // valid high on every clock since the lane's previous transfer, read from
     // the monitor's flow counts. A sink that refuses a beat therefore does
-    // not count against it. In Mode B the driver holds each beat until both
-    // lanes took the one before, so a lane that trails gives the other idle
-    // clocks the plan never asked for. A planned beat is found by the
+    // not count against it. In paired mode the driver holds each beat until
+    // both lanes took the one before, so a lane that trails gives the other
+    // idle clocks the plan never asked for. A planned beat is found by the
     // monitor's own count, so items the test sends on the same agent around
     // or between the video runs move nothing.
     class a2c_video_lane_watch #(type ITEM = uvm_sequence_item) extends uvm_component;
@@ -1580,7 +1580,7 @@ package a2c_video_pkg;
             return mon;
         endfunction
 
-        // In Mode B, an A2C_CFG error when the agent has no model_mon.
+        // In paired mode, an A2C_CFG error when the agent has no model_mon.
         function bit has_model_mon(a2c_video_env env);
             if (a2c_video_child(agent, "model_mon") != null) return 1;
             `uvm_error("A2C_CFG", $sformatf("video port %s: both lanes run (a2c_dual_dut), but %s has no model-lane monitor model_mon, so the model lane goes unchecked",
@@ -1621,7 +1621,7 @@ package a2c_video_pkg;
         a2c_txn_counter_base counter;
         a2c_video_contract   contract;
         // Set for an output only the DUT lane has, such as a connection
-        // inside the RTL, which in Mode B gets no model-lane checker.
+        // inside the RTL, which in paired mode gets no model-lane checker.
         bit                  dut_lane_only;
 
         protected a2c_video_expected cache[a2c_video_frame];
@@ -1696,8 +1696,8 @@ package a2c_video_pkg;
     endclass : a2c_video_output_base
 
     // The video input: the input agent's sequencer and the port's adapter.
-    // On a handshaked input it also watches the agent's mon and, in Mode B,
-    // its model_mon.
+    // On a handshaked input it also watches the agent's mon and, in paired
+    // mode, its model_mon.
     class a2c_video_input #(type ITEM = uvm_sequence_item) extends a2c_video_input_base;
         typedef a2c_video_input #(ITEM) this_t;
 
@@ -1780,8 +1780,8 @@ package a2c_video_pkg;
     // One checked video output: the port's adapter, and optionally a
     // contract other than the default; video_connect() gives it its agent
     // and optionally its a2c_txn_counter, which the video test declares the
-    // contract's beats to. In Mode B (a2c_dual_dut) a second checker judges
-    // the agent's model_mon.
+    // contract's beats to. In paired mode (a2c_dual_dut) a second checker
+    // judges the agent's model_mon.
     class a2c_video_output #(type ITEM = uvm_sequence_item) extends a2c_video_output_base;
         typedef a2c_video_output #(ITEM) this_t;
 
@@ -1865,7 +1865,7 @@ package a2c_video_pkg;
         a2c_video_input_base                 in;
         a2c_video_output_base                outs[$];
         uvm_analysis_port #(a2c_video_frame) plan_ap;
-        // Mode B, from a2c_dual_dut.
+        // Paired mode, from a2c_dual_dut.
         bit                                  dual;
         // Every frame planned so far, over all runs.
         a2c_video_frame                      plan[$];
@@ -1992,7 +1992,7 @@ package a2c_video_pkg;
                     `uvm_info("A2C_VIDEO", $sformatf("output %s checks the contract %s", outs[i].port_name, outs[i].contract.describe()),
                               UVM_LOW)
                 end
-                // In Mode B a dropped beat would be declared to both lanes, once
+                // In paired mode a dropped beat would be declared to both lanes, once
                 // by each lane's checker.
                 if (outs[i].leaves_unspecified(p) && (dual || outs[i].adapter_base.clocked
                         || outs[i].contract.pixel_check != A2C_VIDEO_PIX_EXACT)) begin
@@ -2000,7 +2000,7 @@ package a2c_video_pkg;
                                                     outs[i].port_name, outs[i].contract.get_type_name(),
                                                     a2c_select_str(outs[i].adapter_base.clocked, "clocked", "handshaked"),
                                                     outs[i].contract.pixel_check.name(),
-                                                    a2c_select_str(dual, "both lanes run (Mode B)", "one DUT lane runs")))
+                                                    a2c_select_str(dual, "both lanes run (paired mode)", "one DUT lane runs")))
                     return;
                 end
                 begin
@@ -2041,8 +2041,8 @@ package a2c_video_pkg;
         endfunction
 
         // A zero-gap corner is exact on a lane only while the other lane keeps
-        // up, so in Mode B a corner test warns when its corner did not reach
-        // the DUT lane as planned.
+        // up, so in paired mode a corner test warns when its corner did not
+        // reach the DUT lane as planned.
         virtual function void report_phase(uvm_phase phase);
             int unsigned planned;
             int unsigned dut;
@@ -2055,7 +2055,7 @@ package a2c_video_pkg;
             `uvm_info("A2C_VIDEO", $sformatf("%0d planned back-to-back beats were offered back to back on the DUT lane%s, of %0d",
                                              dut, two ? $sformatf(" and %0d on the model lane", model) : "", planned), UVM_LOW)
             if (two && corner inside {"no_blank", "back_to_back"} && dut < planned) begin
-                `uvm_warning("A2C_VIDEO", $sformatf("corner %s: %0d of %0d planned back-to-back beats reached the DUT lane as planned; in Mode B the driver holds each beat until both lanes took the one before, so a trailing lane adds idle clocks",
+                `uvm_warning("A2C_VIDEO", $sformatf("corner %s: %0d of %0d planned back-to-back beats reached the DUT lane as planned; in paired mode the driver holds each beat until both lanes took the one before, so a trailing lane adds idle clocks",
                                                     corner, dut, planned))
             end
         endfunction

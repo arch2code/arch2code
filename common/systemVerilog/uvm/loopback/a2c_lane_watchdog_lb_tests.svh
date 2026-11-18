@@ -1,12 +1,12 @@
-// Mode B lane-death tests of the single-transfer masters (push_ack,
+// Paired-mode lane-death tests of the single-transfer masters (push_ack,
 // notify_ack, req_ack, pop_ack, rdy_vld, axi4_stream and apb), and of the
 // joint stall rule across ports (a2c_joint_watch), included in
 // a2c_uvm_loopback_pkg after the agents' tests, whose typedefs and
-// sequences it uses, and after axi_mode_b_lb_tests.svh, whose lb_frozen it
+// sequences it uses, and after axi_paired_lb_tests.svh, whose lb_frozen it
 // uses.
 
     // What a lane-death test varies. late_at, stall_at and the delays are
-    // members of lb_skew_mode_b:
+    // members of lb_skew_paired:
     //   - LB_SK_MODEL_LATE and LB_SK_DUT_LATE: that lane answers item
     //     late_at late_by clocks late, so it trails the other lane by more
     //     than the skew bound and dies;
@@ -35,7 +35,7 @@
                   LB_SK_JOINT_OFF, LB_SK_JOINT_UNDER, LB_SK_JOINT_MODEL_LATE, LB_SK_JOINT_DUT_LATE, LB_SK_ONE_LATE,
                   LB_SK_DUT_ONE_LATE, LB_SK_ON_TIME} lb_skew_variant_e;
 
-    // Mode B on one port of a master that puts one item on both lanes and
+    // Paired mode on one port of a master that puts one item on both lanes and
     // waits for each live lane to complete it. agent, the A2C_SRC agent under
     // test, has the port as its DUT lane and <port>_model as its model lane,
     // and a passive agent, watcher, watches both. Each lane's other side is
@@ -61,8 +61,8 @@
     //   - with same_clock set, that each lane makes one transfer per clock.
     // A family's test defines the pin accessors, new_item() and watchdog(),
     // and, with a response, item_ok().
-    virtual class lb_skew_mode_b #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item, type CFG_T = uvm_object,
-                                   type VIF_T = int) extends lb_mode_b_base;
+    virtual class lb_skew_paired #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item, type CFG_T = uvm_object,
+                                   type VIF_T = int) extends lb_paired_base;
         string            port;
         lb_skew_variant_e variant = LB_SK_MODEL_LATE;
         AGENT_T           agent;
@@ -208,7 +208,7 @@
                     want_text.push_back($sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s (uvm_test_top.agent.drv), %s waiting for ",
                                                   port, joint, port, waiters));
                     want_text.push_back(". No port made progress, so the cause may lie in the DUT, the model or the stimulus");
-                    want_text.push_back(". Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead, and serves its open and later items as it does once both lanes are dead.");
+                    want_text.push_back(". Every paired-mode master, whatever its own joint_stall_cycles, declares the live lanes of its port dead, and serves its open and later items as it does once both lanes are dead.");
                     // Only a late lane alone points at the model or the RTL.
                     if (variant == LB_SK_JOINT) unwant_text.push_back("Only ");
                     else want_text.push_back($sformatf("nothing produces. Only %s lanes wait. %s ", lane(late_lane()), a2c_trailing_clause(late_lane())));
@@ -407,42 +407,42 @@
             for (int l = 0; l < 2; l++) begin
                 a2c_lane_e e = a2c_lane_e'(l);
                 if (served[l] != want_served(e)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lane made %0d transfers, expected %0d", lane(l), served[l], want_served(e)))
+                    `uvm_error("LB_PAIRED", $sformatf("the %s lane made %0d transfers, expected %0d", lane(l), served[l], want_served(e)))
                 end
                 if (wd.dead[l] != want_dead(e)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lane is %s, expected it %s", lane(l), a2c_select_str(wd.dead[l], "dead", "live"),
+                    `uvm_error("LB_PAIRED", $sformatf("the %s lane is %s, expected it %s", lane(l), a2c_select_str(wd.dead[l], "dead", "live"),
                                                       a2c_select_str(want_dead(e), "dead", "live")))
                 end
                 if (wd.dead[l] && want_dead(e) && wd.died_at[l] != want_died(e)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lane died at %0t, expected %0t", lane(l), wd.died_at[l], want_died(e)))
+                    `uvm_error("LB_PAIRED", $sformatf("the %s lane died at %0t, expected %0t", lane(l), wd.died_at[l], want_died(e)))
                 end
             end
             if (variant inside {LB_SK_MODEL_LATE, LB_SK_DUT_LATE, LB_SK_LONE, LB_SK_LONE_OFF, LB_SK_JOINT_UNDER}) begin
                 int d = (variant == LB_SK_DUT_LATE) ? A2C_DUT_LANE : A2C_MODEL_LANE;
                 if (seen_at[1 - d].size() <= late_at + 1 || took_at[d].size() <= late_at || seen_at[1 - d][late_at + 1] >= took_at[d][late_at]) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lane did not request item %0d before the dead %s lane's late transfer",
+                    `uvm_error("LB_PAIRED", $sformatf("the %s lane did not request item %0d before the dead %s lane's late transfer",
                                                       lane(1 - d), late_at + 1, lane(d)))
                 end
                 // The death ends the item the dead lane owed within its
                 // clock, at the sample point or the drive point after it.
                 if (seq.done_at.size() <= late_at || seq.done_at[late_at] < wd.died_at[d] || seq.done_at[late_at] >= wd.died_at[d] + period) begin
-                    `uvm_error("LB_MODE_B", $sformatf("item %0d completed at %0t, expected within the clock of the %s lane's death at %0t", late_at,
+                    `uvm_error("LB_PAIRED", $sformatf("item %0d completed at %0t, expected within the clock of the %s lane's death at %0t", late_at,
                                                       (seq.done_at.size() > late_at) ? seq.done_at[late_at] : 0, lane(d), wd.died_at[d]))
                 end
             end
             foreach (items[i]) begin
                 if (!item_ok(i, items[i], answered(i))) begin
-                    `uvm_error("LB_MODE_B", $sformatf("item %0d holds %s", i, items[i].convert2string()))
+                    `uvm_error("LB_PAIRED", $sformatf("item %0d holds %s", i, items[i].convert2string()))
                 end
             end
             if (watcher_role == A2C_DST && want_dead(A2C_MODEL_LANE) && !watcher.model_cmp.is_dead(A2C_MODEL_LANE)) begin
-                `uvm_error("LB_MODE_B", "the passive A2C_DST watcher's model_cmp was not told of the model lane's death")
+                `uvm_error("LB_PAIRED", "the passive A2C_DST watcher's model_cmp was not told of the model lane's death")
             end
             if (same_clock) begin
                 for (int l = 0; l < 2; l++) begin
                     for (int i = 1; i < took_at[l].size(); i++) begin
                         if (took_at[l][i] - took_at[l][i - 1] != period) begin
-                            `uvm_error("LB_MODE_B", $sformatf("the %s lane made transfer %0d %0t after transfer %0d, expected one clock, %0t",
+                            `uvm_error("LB_PAIRED", $sformatf("the %s lane made transfer %0d %0t after transfer %0d, expected one clock, %0t",
                                                               lane(l), i, took_at[l][i] - took_at[l][i - 1], i - 1, period))
                             break;
                         end
@@ -450,18 +450,18 @@
                 end
             end
             if (throttle >= 0 && (wd.throttled != want_throttled() || wd.throttled_max != want_held())) begin
-                `uvm_error("LB_MODE_B", $sformatf("the master held the next item for the model lane on %0d clocks, at most %0d in a row, expected %0d and %0d",
+                `uvm_error("LB_PAIRED", $sformatf("the master held the next item for the model lane on %0d clocks, at most %0d in a row, expected %0d and %0d",
                                                   wd.throttled, wd.throttled_max, want_throttled(), want_held()))
             end
         endfunction
-    endclass : lb_skew_mode_b
+    endclass : lb_skew_paired
 
     // The response the scripts give to transfer k.
     function automatic logic [31:0] lb_skew_answer(int unsigned k);
         return 32'(k * 37 + 11);
     endfunction
 
-    class pa_skew extends lb_skew_mode_b #(pa_agent_t, pa_item_t, pa_config_t, pa_vif_t);
+    class pa_skew extends lb_skew_paired #(pa_agent_t, pa_item_t, pa_config_t, pa_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "pa";
@@ -491,118 +491,118 @@
         endfunction
     endclass : pa_skew
 
-    class push_ack_mode_b_model_late_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_model_late_test)
+    class push_ack_paired_model_late_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : push_ack_mode_b_model_late_test
+    endclass : push_ack_paired_model_late_test
 
     // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
     // which the master must tell of the model lane's death.
-    class push_ack_mode_b_dst_watcher_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_dst_watcher_test)
+    class push_ack_paired_dst_watcher_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_dst_watcher_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant      = LB_SK_MODEL_LATE;
             watcher_role = A2C_DST;
         endfunction
-    endclass : push_ack_mode_b_dst_watcher_test
+    endclass : push_ack_paired_dst_watcher_test
 
-    class push_ack_mode_b_dut_late_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_dut_late_test)
+    class push_ack_paired_dut_late_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : push_ack_mode_b_dut_late_test
+    endclass : push_ack_paired_dut_late_test
 
-    class push_ack_mode_b_joint_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_joint_test)
+    class push_ack_paired_joint_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : push_ack_mode_b_joint_test
+    endclass : push_ack_paired_joint_test
 
-    class push_ack_mode_b_lag_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_lag_test)
+    class push_ack_paired_lag_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_LAG;
         endfunction
-    endclass : push_ack_mode_b_lag_test
+    endclass : push_ack_paired_lag_test
 
-    class push_ack_mode_b_skew_off_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_skew_off_test)
+    class push_ack_paired_skew_off_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_skew_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_SKEW_OFF;
         endfunction
-    endclass : push_ack_mode_b_skew_off_test
+    endclass : push_ack_paired_skew_off_test
 
-    class push_ack_mode_b_lone_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_lone_test)
+    class push_ack_paired_lone_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_lone_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_LONE;
         endfunction
-    endclass : push_ack_mode_b_lone_test
+    endclass : push_ack_paired_lone_test
 
-    class push_ack_mode_b_lone_off_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_lone_off_test)
+    class push_ack_paired_lone_off_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_lone_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_LONE_OFF;
         endfunction
-    endclass : push_ack_mode_b_lone_off_test
+    endclass : push_ack_paired_lone_off_test
 
-    class push_ack_mode_b_joint_off_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_joint_off_test)
+    class push_ack_paired_joint_off_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_joint_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT_OFF;
         endfunction
-    endclass : push_ack_mode_b_joint_off_test
+    endclass : push_ack_paired_joint_off_test
 
-    class push_ack_mode_b_joint_under_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_joint_under_test)
+    class push_ack_paired_joint_under_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT_UNDER;
         endfunction
-    endclass : push_ack_mode_b_joint_under_test
+    endclass : push_ack_paired_joint_under_test
 
-    class push_ack_mode_b_joint_model_late_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_joint_model_late_test)
+    class push_ack_paired_joint_model_late_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_joint_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT_MODEL_LATE;
         endfunction
-    endclass : push_ack_mode_b_joint_model_late_test
+    endclass : push_ack_paired_joint_model_late_test
 
-    class push_ack_mode_b_joint_dut_late_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_joint_dut_late_test)
+    class push_ack_paired_joint_dut_late_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_joint_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT_DUT_LATE;
         endfunction
-    endclass : push_ack_mode_b_joint_dut_late_test
+    endclass : push_ack_paired_joint_dut_late_test
 
-    class na_skew extends lb_skew_mode_b #(na_agent_t, na_item_t, na_config_t, na_vif_t);
+    class na_skew extends lb_skew_paired #(na_agent_t, na_item_t, na_config_t, na_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "na";
@@ -629,46 +629,46 @@
         endfunction
     endclass : na_skew
 
-    class notify_ack_mode_b_model_late_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_model_late_test)
+    class notify_ack_paired_model_late_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : notify_ack_mode_b_model_late_test
+    endclass : notify_ack_paired_model_late_test
 
     // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
     // which the master must tell of the model lane's death.
-    class notify_ack_mode_b_dst_watcher_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_dst_watcher_test)
+    class notify_ack_paired_dst_watcher_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_dst_watcher_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant      = LB_SK_MODEL_LATE;
             watcher_role = A2C_DST;
         endfunction
-    endclass : notify_ack_mode_b_dst_watcher_test
+    endclass : notify_ack_paired_dst_watcher_test
 
-    class notify_ack_mode_b_dut_late_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_dut_late_test)
+    class notify_ack_paired_dut_late_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : notify_ack_mode_b_dut_late_test
+    endclass : notify_ack_paired_dut_late_test
 
-    class notify_ack_mode_b_joint_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_joint_test)
+    class notify_ack_paired_joint_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : notify_ack_mode_b_joint_test
+    endclass : notify_ack_paired_joint_test
 
-    class ra_skew extends lb_skew_mode_b #(ra_agent_t, ra_item_t, ra_config_t, ra_vif_t);
+    class ra_skew extends lb_skew_paired #(ra_agent_t, ra_item_t, ra_config_t, ra_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "ra";
@@ -704,34 +704,34 @@
         endfunction
     endclass : ra_skew
 
-    class req_ack_mode_b_model_late_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_model_late_test)
+    class req_ack_paired_model_late_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : req_ack_mode_b_model_late_test
+    endclass : req_ack_paired_model_late_test
 
-    class req_ack_mode_b_dut_late_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_dut_late_test)
+    class req_ack_paired_dut_late_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : req_ack_mode_b_dut_late_test
+    endclass : req_ack_paired_dut_late_test
 
-    class req_ack_mode_b_joint_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_joint_test)
+    class req_ack_paired_joint_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : req_ack_mode_b_joint_test
+    endclass : req_ack_paired_joint_test
 
-    class po_skew extends lb_skew_mode_b #(po_agent_t, po_item_t, po_config_t, po_vif_t);
+    class po_skew extends lb_skew_paired #(po_agent_t, po_item_t, po_config_t, po_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "po";
@@ -765,34 +765,34 @@
         endfunction
     endclass : po_skew
 
-    class pop_ack_mode_b_model_late_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_model_late_test)
+    class pop_ack_paired_model_late_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : pop_ack_mode_b_model_late_test
+    endclass : pop_ack_paired_model_late_test
 
-    class pop_ack_mode_b_dut_late_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_dut_late_test)
+    class pop_ack_paired_dut_late_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : pop_ack_mode_b_dut_late_test
+    endclass : pop_ack_paired_dut_late_test
 
-    class pop_ack_mode_b_joint_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_joint_test)
+    class pop_ack_paired_joint_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : pop_ack_mode_b_joint_test
+    endclass : pop_ack_paired_joint_test
 
-    class rv_skew extends lb_skew_mode_b #(rv_agent_t, rv_item_t, rv_config_t, rv_vif_t);
+    class rv_skew extends lb_skew_paired #(rv_agent_t, rv_item_t, rv_config_t, rv_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "rv";
@@ -822,46 +822,46 @@
         endfunction
     endclass : rv_skew
 
-    class rdy_vld_mode_b_model_late_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_model_late_test)
+    class rdy_vld_paired_model_late_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : rdy_vld_mode_b_model_late_test
+    endclass : rdy_vld_paired_model_late_test
 
     // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
     // which the master must tell of the model lane's death.
-    class rdy_vld_mode_b_dst_watcher_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_dst_watcher_test)
+    class rdy_vld_paired_dst_watcher_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_dst_watcher_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant      = LB_SK_MODEL_LATE;
             watcher_role = A2C_DST;
         endfunction
-    endclass : rdy_vld_mode_b_dst_watcher_test
+    endclass : rdy_vld_paired_dst_watcher_test
 
-    class rdy_vld_mode_b_dut_late_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_dut_late_test)
+    class rdy_vld_paired_dut_late_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : rdy_vld_mode_b_dut_late_test
+    endclass : rdy_vld_paired_dut_late_test
 
-    class rdy_vld_mode_b_joint_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_joint_test)
+    class rdy_vld_paired_joint_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : rdy_vld_mode_b_joint_test
+    endclass : rdy_vld_paired_joint_test
 
-    class axis_skew extends lb_skew_mode_b #(axis_agent_t, axis_item_t, axis_config_t, axis_vif_t);
+    class axis_skew extends lb_skew_paired #(axis_agent_t, axis_item_t, axis_config_t, axis_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "axis";
@@ -890,47 +890,47 @@
         endfunction
     endclass : axis_skew
 
-    class axi4_stream_mode_b_model_late_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_model_late_test)
+    class axi4_stream_paired_model_late_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : axi4_stream_mode_b_model_late_test
+    endclass : axi4_stream_paired_model_late_test
 
     // A passive A2C_DST agent on the port's pin sets builds a model_cmp,
     // which the master must tell of the model lane's death.
-    class axi4_stream_mode_b_dst_watcher_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_dst_watcher_test)
+    class axi4_stream_paired_dst_watcher_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_dst_watcher_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant      = LB_SK_MODEL_LATE;
             watcher_role = A2C_DST;
         endfunction
-    endclass : axi4_stream_mode_b_dst_watcher_test
+    endclass : axi4_stream_paired_dst_watcher_test
 
-    class axi4_stream_mode_b_dut_late_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_dut_late_test)
+    class axi4_stream_paired_dut_late_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : axi4_stream_mode_b_dut_late_test
+    endclass : axi4_stream_paired_dut_late_test
 
-    class axi4_stream_mode_b_joint_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_joint_test)
+    class axi4_stream_paired_joint_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : axi4_stream_mode_b_joint_test
+    endclass : axi4_stream_paired_joint_test
 
     // Even items write and odd ones read, so item late_at reads.
-    class apb_skew extends lb_skew_mode_b #(apb_agent_t, apb_item_t, apb_config_t, apb_vif_t);
+    class apb_skew extends lb_skew_paired #(apb_agent_t, apb_item_t, apb_config_t, apb_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "apb";
@@ -975,32 +975,32 @@
         endfunction
     endclass : apb_skew
 
-    class apb_mode_b_model_late_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_model_late_test)
+    class apb_paired_model_late_test extends apb_skew;
+        `uvm_component_utils(apb_paired_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_MODEL_LATE;
         endfunction
-    endclass : apb_mode_b_model_late_test
+    endclass : apb_paired_model_late_test
 
-    class apb_mode_b_dut_late_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_dut_late_test)
+    class apb_paired_dut_late_test extends apb_skew;
+        `uvm_component_utils(apb_paired_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_DUT_LATE;
         endfunction
-    endclass : apb_mode_b_dut_late_test
+    endclass : apb_paired_dut_late_test
 
-    class apb_mode_b_joint_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_joint_test)
+    class apb_paired_joint_test extends apb_skew;
+        `uvm_component_utils(apb_paired_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_SK_JOINT;
         endfunction
-    endclass : apb_mode_b_joint_test
+    endclass : apb_paired_joint_test
 
     // The model throttle rule on each family's master: a model lane that
     // answers one item 10 clocks late against a bound of 10 raises one
@@ -1013,189 +1013,178 @@
     // the default bound. On apb, lanes that both answer in the first access
     // phase, as a slave with no wait states and a model answering through
     // apb_src_bfm do, raise none under the default bound.
-    class push_ack_mode_b_throttle_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_throttle_test)
+    class push_ack_paired_throttle_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : push_ack_mode_b_throttle_test
+    endclass : push_ack_paired_throttle_test
 
-    class push_ack_mode_b_on_time_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_on_time_test)
+    class push_ack_paired_on_time_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : push_ack_mode_b_on_time_test
+    endclass : push_ack_paired_on_time_test
 
-    class notify_ack_mode_b_throttle_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_throttle_test)
+    class notify_ack_paired_throttle_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : notify_ack_mode_b_throttle_test
+    endclass : notify_ack_paired_throttle_test
 
-    class notify_ack_mode_b_on_time_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_on_time_test)
+    class notify_ack_paired_on_time_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : notify_ack_mode_b_on_time_test
+    endclass : notify_ack_paired_on_time_test
 
-    class req_ack_mode_b_throttle_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_throttle_test)
+    class req_ack_paired_throttle_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : req_ack_mode_b_throttle_test
+    endclass : req_ack_paired_throttle_test
 
-    class req_ack_mode_b_on_time_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_on_time_test)
+    class req_ack_paired_on_time_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : req_ack_mode_b_on_time_test
+    endclass : req_ack_paired_on_time_test
 
-    class pop_ack_mode_b_throttle_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_throttle_test)
+    class pop_ack_paired_throttle_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : pop_ack_mode_b_throttle_test
+    endclass : pop_ack_paired_throttle_test
 
-    class pop_ack_mode_b_on_time_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_on_time_test)
+    class pop_ack_paired_on_time_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : pop_ack_mode_b_on_time_test
+    endclass : pop_ack_paired_on_time_test
 
-    class rdy_vld_mode_b_throttle_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_throttle_test)
+    class rdy_vld_paired_throttle_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : rdy_vld_mode_b_throttle_test
+    endclass : rdy_vld_paired_throttle_test
 
-    class rdy_vld_mode_b_on_time_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_on_time_test)
+    class rdy_vld_paired_on_time_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : rdy_vld_mode_b_on_time_test
+    endclass : rdy_vld_paired_on_time_test
 
-    class axi4_stream_mode_b_throttle_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_throttle_test)
+    class axi4_stream_paired_throttle_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : axi4_stream_mode_b_throttle_test
+    endclass : axi4_stream_paired_throttle_test
 
-    class axi4_stream_mode_b_on_time_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_on_time_test)
+    class axi4_stream_paired_on_time_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : axi4_stream_mode_b_on_time_test
+    endclass : axi4_stream_paired_on_time_test
 
-    class apb_mode_b_throttle_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_throttle_test)
+    class apb_paired_throttle_test extends apb_skew;
+        `uvm_component_utils(apb_paired_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 10;
         endfunction
-    endclass : apb_mode_b_throttle_test
+    endclass : apb_paired_throttle_test
 
-    class apb_mode_b_on_time_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_on_time_test)
+    class apb_paired_on_time_test extends apb_skew;
+        `uvm_component_utils(apb_paired_on_time_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ON_TIME;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : apb_mode_b_on_time_test
+    endclass : apb_paired_on_time_test
 
-    class push_ack_mode_b_throttle_at_bound_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_throttle_at_bound_test)
+    class push_ack_paired_throttle_at_bound_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_throttle_at_bound_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_ONE_LATE;
             throttle = 11;
         endfunction
-    endclass : push_ack_mode_b_throttle_at_bound_test
+    endclass : push_ack_paired_throttle_at_bound_test
 
-    class push_ack_mode_b_throttle_lag_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_throttle_lag_test)
+    class push_ack_paired_throttle_lag_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_throttle_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_LAG;
             throttle = 30;
         endfunction
-    endclass : push_ack_mode_b_throttle_lag_test
+    endclass : push_ack_paired_throttle_lag_test
 
-    class push_ack_mode_b_throttle_dut_late_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_throttle_dut_late_test)
+    class push_ack_paired_throttle_dut_late_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_throttle_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant  = LB_SK_DUT_ONE_LATE;
             throttle = 9;
         endfunction
-    endclass : push_ack_mode_b_throttle_dut_late_test
+    endclass : push_ack_paired_throttle_dut_late_test
 
-    class push_ack_mode_b_same_clock_test extends pa_skew;
-        `uvm_component_utils(push_ack_mode_b_same_clock_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-            variant    = LB_SK_ON_TIME;
-            throttle   = A2C_MODEL_THROTTLE_CYCLES;
-            same_clock = 1;
-        endfunction
-    endclass : push_ack_mode_b_same_clock_test
-
-    class notify_ack_mode_b_same_clock_test extends na_skew;
-        `uvm_component_utils(notify_ack_mode_b_same_clock_test)
+    class push_ack_paired_same_clock_test extends pa_skew;
+        `uvm_component_utils(push_ack_paired_same_clock_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1203,21 +1192,10 @@
             throttle   = A2C_MODEL_THROTTLE_CYCLES;
             same_clock = 1;
         endfunction
-    endclass : notify_ack_mode_b_same_clock_test
+    endclass : push_ack_paired_same_clock_test
 
-    class req_ack_mode_b_same_clock_test extends ra_skew;
-        `uvm_component_utils(req_ack_mode_b_same_clock_test)
-
-        function new(string name, uvm_component parent);
-            super.new(name, parent);
-            variant    = LB_SK_ON_TIME;
-            throttle   = A2C_MODEL_THROTTLE_CYCLES;
-            same_clock = 1;
-        endfunction
-    endclass : req_ack_mode_b_same_clock_test
-
-    class pop_ack_mode_b_same_clock_test extends po_skew;
-        `uvm_component_utils(pop_ack_mode_b_same_clock_test)
+    class notify_ack_paired_same_clock_test extends na_skew;
+        `uvm_component_utils(notify_ack_paired_same_clock_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1225,14 +1203,36 @@
             throttle   = A2C_MODEL_THROTTLE_CYCLES;
             same_clock = 1;
         endfunction
-    endclass : pop_ack_mode_b_same_clock_test
+    endclass : notify_ack_paired_same_clock_test
+
+    class req_ack_paired_same_clock_test extends ra_skew;
+        `uvm_component_utils(req_ack_paired_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : req_ack_paired_same_clock_test
+
+    class pop_ack_paired_same_clock_test extends po_skew;
+        `uvm_component_utils(pop_ack_paired_same_clock_test)
+
+        function new(string name, uvm_component parent);
+            super.new(name, parent);
+            variant    = LB_SK_ON_TIME;
+            throttle   = A2C_MODEL_THROTTLE_CYCLES;
+            same_clock = 1;
+        endfunction
+    endclass : pop_ack_paired_same_clock_test
 
     // The model lane raises rdy one step before the falling edge of each
     // clock, as a rdy_vld or axi4_stream src BFM does for a model that reads
     // as soon as a dst BFM has completed its last write at the sample point.
     // Both lanes take a beat on every clock and nothing is held back.
-    class rdy_vld_mode_b_same_clock_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_same_clock_test)
+    class rdy_vld_paired_same_clock_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_same_clock_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1240,10 +1240,10 @@
             throttle   = A2C_MODEL_THROTTLE_CYCLES;
             same_clock = 1;
         endfunction
-    endclass : rdy_vld_mode_b_same_clock_test
+    endclass : rdy_vld_paired_same_clock_test
 
-    class axi4_stream_mode_b_same_clock_test extends axis_skew;
-        `uvm_component_utils(axi4_stream_mode_b_same_clock_test)
+    class axi4_stream_paired_same_clock_test extends axis_skew;
+        `uvm_component_utils(axi4_stream_paired_same_clock_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1251,10 +1251,10 @@
             throttle   = A2C_MODEL_THROTTLE_CYCLES;
             same_clock = 1;
         endfunction
-    endclass : axi4_stream_mode_b_same_clock_test
+    endclass : axi4_stream_paired_same_clock_test
 
-    class rdy_vld_mode_b_clock_paced_test extends rv_skew;
-        `uvm_component_utils(rdy_vld_mode_b_clock_paced_test)
+    class rdy_vld_paired_clock_paced_test extends rv_skew;
+        `uvm_component_utils(rdy_vld_paired_clock_paced_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1262,10 +1262,10 @@
             lag      = 1;
             throttle = A2C_MODEL_THROTTLE_CYCLES;
         endfunction
-    endclass : rdy_vld_mode_b_clock_paced_test
+    endclass : rdy_vld_paired_clock_paced_test
 
-    class apb_mode_b_zero_wait_test extends apb_skew;
-        `uvm_component_utils(apb_mode_b_zero_wait_test)
+    class apb_paired_zero_wait_test extends apb_skew;
+        `uvm_component_utils(apb_paired_zero_wait_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1278,7 +1278,7 @@
         virtual function bit requested(a2c_lane_e l);
             return vif[l].psel === 1'b1;
         endfunction
-    endclass : apb_mode_b_zero_wait_test
+    endclass : apb_paired_zero_wait_test
 
     // The master a2c_lane_watchdog_rules_test gives its watchdogs, which
     // says each lane waits for what the test puts in waits_for.
@@ -1311,7 +1311,7 @@
     //     on, and not once it is off;
     //   - lone: with one lane dead, the other stuck fires A2C_LONE_STALL on
     //     the lone_lane_cycles-th clock, and 0 turns the rule off;
-    //   - Mode A: the one lane waiting fires A2C_BOTH_STALL on the
+    //   - Single mode: the one lane waiting fires A2C_BOTH_STALL on the
     //     joint_stall_cycles-th clock, a handshake elsewhere restarts the
     //     count, an idle lane never stalls, and 0 turns the rule off;
     //   - after one quiet clock, wait_text() names the lanes that waited in
@@ -1344,7 +1344,7 @@
             return wd;
         endfunction
 
-        // A Mode A watchdog, of one lane.
+        // A single-mode watchdog, of one lane.
         protected function a2c_lane_watchdog make_one(int unsigned joint);
             a2c_lane_watchdog wd = new(master, "unit", 1, "item", "nothing");
             wd.joint_stall_cycles = joint;
@@ -1454,10 +1454,10 @@
             expect_rule("joint while trailing, skew off", make(0, 3, 5), 20, 1, 0, 5, A2C_BOTH_STALL);
             expect_rule("lone", make(10, 3, 5, 1), 20, 0, 0, 3, A2C_LONE_STALL);
             expect_rule("lone off", make(10, 0, 5, 1), 100, 0, 0, 0, A2C_PROGRESS);
-            expect_rule("Mode A joint", make_one(5), 20, 0, 0, 5, A2C_BOTH_STALL);
-            expect_rule("Mode A joint after a handshake on another port", make_one(5), 20, 0, 0, 10, A2C_BOTH_STALL, 4);
-            expect_rule("Mode A joint, the lane idle", make_one(5), 100, 0, 0, 0, A2C_PROGRESS, 0, 1);
-            expect_rule("Mode A joint off", make_one(0), 100, 0, 0, 0, A2C_PROGRESS);
+            expect_rule("Single-mode joint", make_one(5), 20, 0, 0, 5, A2C_BOTH_STALL);
+            expect_rule("Single-mode joint after a handshake on another port", make_one(5), 20, 0, 0, 10, A2C_BOTH_STALL, 4);
+            expect_rule("Single-mode joint, the lane idle", make_one(5), 100, 0, 0, 0, A2C_PROGRESS, 0, 1);
+            expect_rule("Single-mode joint off", make_one(0), 100, 0, 0, 0, A2C_PROGRESS);
             expect_text("both lanes, one text", make(10, 3, 5), 0, 0, "x", "x", "unit (uvm_test_top.master), both lanes waiting for x");
             expect_text("both lanes, two texts", make(10, 3, 5), 0, 0, "x", "y",
                         "unit (uvm_test_top.master), the DUT lane waiting for x and the model lane for y");
@@ -1480,7 +1480,7 @@
         endtask
     endclass : a2c_lane_watchdog_rules_test
 
-    // Mode A agents on one port that keep it moving from reset until stop
+    // Single-mode agents on one port that keep it moving from reset until stop
     // is set, for the joint stall tests: an A2C_SRC agent sends round after
     // round of items to an A2C_DST agent, or alone where the interface needs
     // no answer, or a script makes the requests of an A2C_DST agent alone.
@@ -1748,12 +1748,12 @@
     //     last, so pa's DUT lane dies alone, pa has no item left, and rv
     //     then raises the stall;
     //   - LB_JS_MOVER: rv's lanes hold item 0 for hold clocks while pa sends
-    //     nothing and a Mode A pair on another port, mover, moves.
+    //     nothing and a single-mode pair on another port, mover, moves.
     typedef enum {LB_JS_ONE_WAITS, LB_JS_STOP, LB_JS_PAUSE_OFF, LB_JS_RV_WAITS, LB_JS_RV_DST, LB_JS_PA_DST, LB_JS_KNOB_OFF, LB_JS_LONE,
                   LB_JS_LONE_DIES, LB_JS_MOVER} lb_joint_variant_e;
 
-    // Mode B on two ports at once, push_ack pa and rdy_vld rv, each with an
-    // A2C_SRC agent whose lanes' other sides are scripts that answer item k
+    // Paired mode on two ports at once, push_ack pa and rdy_vld rv, each with
+    // an A2C_SRC agent whose lanes' other sides are scripts that answer item k
     // after the delay the variant gives it, on both lanes alike but in
     // LB_JS_LONE and LB_JS_LONE_DIES, so no lane ever trails the other
     // there. In LB_JS_RV_DST and LB_JS_PA_DST that port's agent is an
@@ -1765,12 +1765,12 @@
     //     from rv's watchdog in the last two, which names both ports and
     //     what their live lanes wait for, and every live lane dies with it,
     //     on the clock joint + 1 clocks after the last handshake; an idle
-    //     Mode A notify_ack pair beside them, bystander, keeps its master's
-    //     lane live; in LB_JS_LONE pa's model lane dies earlier, alone, by
-    //     A2C_SKEW;
+    //     single-mode notify_ack pair beside them, bystander, keeps its
+    //     master's lane live; in LB_JS_LONE pa's model lane dies earlier,
+    //     alone, by A2C_SKEW;
     //   - LB_JS_LONE_DIES: as LB_JS_LONE, except that both of pa's lanes die
     //     by A2C_SKEW before the stall, which names rv alone.
-    virtual class lb_joint_env extends lb_mode_b_base;
+    virtual class lb_joint_env extends lb_paired_base;
         lb_joint_variant_e   variant;
         pa_agent_t           pa_agent;
         rv_agent_t           rv_agent;
@@ -2075,33 +2075,33 @@
                 a2c_lane_e   e = a2c_lane_e'(l);
                 int unsigned want_rv = stalls() ? stop_at : n_rv;
                 if (pa_served[l] != want_pa(e) || rv_served[l] != want_rv) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the %s lanes made %0d pa and %0d rv transfers, expected %0d and %0d", a2c_lane_name(e),
+                    `uvm_error("LB_PAIRED", $sformatf("the %s lanes made %0d pa and %0d rv transfers, expected %0d and %0d", a2c_lane_name(e),
                                                       pa_served[l], rv_served[l], want_pa(e), want_rv))
                 end
                 foreach (wd[p]) begin
                     string by = want_died_by(wd[p].port_name, e);
                     if (wd[p].dead[l] != (by != "") || wd[p].died_by[l] != by) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the %s lane of %s is %s by '%s', expected %s by '%s'", a2c_lane_name(e), wd[p].port_name,
+                        `uvm_error("LB_PAIRED", $sformatf("the %s lane of %s is %s by '%s', expected %s by '%s'", a2c_lane_name(e), wd[p].port_name,
                                                           a2c_select_str(wd[p].dead[l], "dead", "live"), wd[p].died_by[l], a2c_select_str(by != "", "dead", "live"), by))
                     end
                     if (by == "A2C_JOINT_STALL" && wd[p].died_at[l] != stall_at) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the %s lane of %s died at %0t, expected %0d clocks after the last handshake at %0t",
+                        `uvm_error("LB_PAIRED", $sformatf("the %s lane of %s died at %0t, expected %0d clocks after the last handshake at %0t",
                                                           a2c_lane_name(e), wd[p].port_name, wd[p].died_at[l], joint + 1, last_at))
                     end
                 end
             end
             if (stalls() && (bystander.src.drv.wd.dead[A2C_DUT_LANE] || bystander.src.drv.wd.dead[A2C_MODEL_LANE])) begin
-                `uvm_error("LB_MODE_B", "the joint stall declared a lane of the Mode A notify_ack master dead")
+                `uvm_error("LB_PAIRED", "the joint stall declared a lane of the single-mode notify_ack master dead")
             end
             if (skews.demoted != want_skews) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_SKEW, expected %0d: %p", skews.demoted, want_skews, skews.messages))
+                `uvm_error("LB_PAIRED", $sformatf("%0d A2C_SKEW, expected %0d: %p", skews.demoted, want_skews, skews.messages))
             end
             if (variant inside {LB_JS_ONE_WAITS, LB_JS_RV_WAITS, LB_JS_RV_DST, LB_JS_PA_DST} && moved_while_waiting < hold / 4) begin
-                `uvm_error("LB_MODE_B", $sformatf("the other port made %0d transfers while one waited, so the wait was not tested beside a moving port",
+                `uvm_error("LB_PAIRED", $sformatf("the other port made %0d transfers while one waited, so the wait was not tested beside a moving port",
                                                   moved_while_waiting))
             end
             if (variant == LB_JS_MOVER && (wait_ended == 0 || mover.started_at > wait_began || mover.sent <= sent_at_wait_end)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the %s mover ran from %0t through %0d rounds, %0d of them by %0t, so it did not move throughout rv's wait from %0t",
+                `uvm_error("LB_PAIRED", $sformatf("the %s mover ran from %0t through %0d rounds, %0d of them by %0t, so it did not move throughout rv's wait from %0t",
                                                   mover.port, mover.started_at, mover.sent, sent_at_wait_end, wait_ended, wait_began))
             end
         endfunction

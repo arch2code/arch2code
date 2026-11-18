@@ -1,9 +1,9 @@
-// Mode B loopback tests of the axi_read and axi_write agents, included in
+// Paired-mode loopback tests of the axi_read and axi_write agents, included in
 // a2c_uvm_loopback_pkg after both agents' tests, whose typedefs, sequences
 // and reference model they use.
 
-    // What a Mode B AXI test varies. AXB_DUT_EXTRA and AXB_MODEL_EXTRA give
-    // one lane's master one burst more, at the end. AXB_BUSY keeps both
+    // What a paired-mode AXI test varies. AXB_DUT_EXTRA and AXB_MODEL_EXTRA
+    // give one lane's master one burst more, at the end. AXB_BUSY keeps both
     // masters sending with no gap after the test drops its objection, the
     // model lane's a clock behind, so the drain must cut. As A2C_DST:
     //   - AXB_CROSS: the model lane's master sends some adjacent bursts of
@@ -126,7 +126,7 @@
 
         protected function void fail(string why);
             errors++;
-            if (errors <= 3) `uvm_error("LB_MODE_B", $sformatf("%s of the dead lane: %s at %0t", what, why, $realtime))
+            if (errors <= 3) `uvm_error("LB_PAIRED", $sformatf("%s of the dead lane: %s at %0t", what, why, $realtime))
         endfunction
 
         // died is the lane's death time; a death at this falling edge took
@@ -155,7 +155,7 @@
         endfunction
     endclass : lb_frozen
 
-    // Mode B on one AXI port. agent, the agent under test, has the port as
+    // Paired mode on one AXI port. agent, the agent under test, has the port as
     // its DUT lane and <port>_model as its model lane.
     //
     // As A2C_DST the agent's slave reorders, and each lane has its own
@@ -172,8 +172,8 @@
     //
     // A family's test defines the items, the configs, the sequences and its
     // own checks.
-    virtual class lb_axi_mode_b #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item, type CFG_T = uvm_object,
-                                  type VIF_T = int) extends lb_mode_b_base;
+    virtual class lb_axi_paired #(type AGENT_T = uvm_agent, type ITEM_T = uvm_sequence_item, type CFG_T = uvm_object,
+                                  type VIF_T = int) extends lb_paired_base;
         string               port;
         a2c_role_e           role = A2C_DST;
         lb_axb_variant_e     variant = AXB_MATCH;
@@ -216,7 +216,7 @@
         // The A2C_DRAIN and A2C_CUT reports.
         lb_id_texts          drains;
         lb_id_texts          cuts;
-        // A passive Mode B agent on the port, which must build no driver
+        // A passive paired-mode agent on the port, which must build no driver
         // and pair what agent pairs.
         bit                  watch_passive;
         AGENT_T              watcher;
@@ -414,7 +414,7 @@
         protected function void check_ready(a2c_lane_e l, logic ready, string name);
             if (!is_dead(l) || died(l) == $realtime || ready === 1'b0) return;
             ready_errors++;
-            if (ready_errors <= 3) `uvm_error("LB_MODE_B", $sformatf("%s of the dead %s lane is %b at %0t", name, a2c_lane_name(l), ready, $realtime))
+            if (ready_errors <= 3) `uvm_error("LB_PAIRED", $sformatf("%s of the dead %s lane is %b at %0t", name, a2c_lane_name(l), ready, $realtime))
         endfunction
 
         // The A2C_SRC variants that test the lane skew bound, and those in
@@ -497,7 +497,7 @@
                 int          of_id[$] = items.find_index(it) with (int'(it.id) == id);
                 if (!next.exists(id)) next[id] = 0;
                 if (next[id] >= of_id.size() || items[of_id[next[id]]].addr !== r.addr || items[of_id[next[id]]].len !== r.len) begin
-                    `uvm_error("LB_MODE_B", $sformatf("response %0d, %s, is not the next burst of its ID the sequence sent", n, item_text(r)))
+                    `uvm_error("LB_PAIRED", $sformatf("response %0d, %s, is not the next burst of its ID the sequence sent", n, item_text(r)))
                 end
                 next[id]++;
             end
@@ -793,7 +793,7 @@
                     want_text.push_back($sformatf("%s: no port has made a handshake on any lane for %0d of this port's clocks (joint_stall_cycles, +a2c_joint_stall_cycles), while lanes waited on these ports: %s (uvm_test_top.agent.drv), ",
                                                   port, joint_stall, port));
                     want_text.push_back("(uvm_test_top.agent.drv), both lanes waiting for the ");
-                    want_text.push_back(". Every Mode B master, whatever its own joint_stall_cycles, declares the live lanes of its port dead");
+                    want_text.push_back(". Every paired-mode master, whatever its own joint_stall_cycles, declares the live lanes of its port dead");
                     want_text.push_back("serves its open and later items as it does once both lanes are dead.");
                     uvm_config_db#(int unsigned)::set(this, "agent.drv", "a2c_joint_stall_cycles", joint_stall);
                 end
@@ -963,7 +963,7 @@
                     end
                 join_none
                 for (int unsigned i = 0; !done[A2C_DUT_LANE] && i < items.size() * (lane_skew + lag + 100); i++) clk_vif.sample_edge();
-                if (!done[A2C_DUT_LANE]) `uvm_error("LB_MODE_B", "the master did not return every burst to the sequence")
+                if (!done[A2C_DUT_LANE]) `uvm_error("LB_PAIRED", "the master did not return every burst to the sequence")
                 repeat (2) clk_vif.sample_edge();
                 // A lane dies once.
                 if (dies()) kill_again(dead_lane());
@@ -1036,10 +1036,10 @@
             string   near   = a2c_replay_drain::death_context(died(l) - period * (bound / 2));
             string   far    = a2c_replay_drain::death_context(far_at);
             if (far_at <= 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the %s lane died at %0t, too soon after time 0 to test the date of its death", a2c_lane_name(l), died(l)))
+                `uvm_error("LB_PAIRED", $sformatf("the %s lane died at %0t, too soon after time 0 to test the date of its death", a2c_lane_name(l), died(l)))
             end
             if (!a2c_contains(near, tag) || a2c_contains(far, tag)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the %s lane died at %0t, %0d clocks after it began to trail, but the clause of an event %0d clocks before the death is '%s' and of one %0d clocks before it '%s'",
+                `uvm_error("LB_PAIRED", $sformatf("the %s lane died at %0t, %0d clocks after it began to trail, but the clause of an event %0d clocks before the death is '%s' and of one %0d clocks before it '%s'",
                                                   a2c_lane_name(l), died(l), bound, bound / 2, near, bound + 2, far))
             end
         endfunction
@@ -1059,19 +1059,19 @@
             got[A2C_MODEL_LANE] = model_arrivals;
             `uvm_info("LB_STATS", $sformatf("the lanes completed bursts at most %0d clocks apart; the DUT lane, alone, went at most %0d clocks without completing a burst",
                                             skew, lone_gap), UVM_NONE)
-            if (returned() != items.size()) `uvm_error("LB_MODE_B", $sformatf("%0d bursts sent, %0d returned", items.size(), returned()))
+            if (returned() != items.size()) `uvm_error("LB_PAIRED", $sformatf("%0d bursts sent, %0d returned", items.size(), returned()))
             if (!dies()) begin
                 if (arrivals.items.size() != items.size() || model_arrivals.items.size() != items.size()) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d and %0d bursts, expected %0d each",
+                    `uvm_error("LB_PAIRED", $sformatf("the lanes completed %0d and %0d bursts, expected %0d each",
                                                       arrivals.items.size(), model_arrivals.items.size(), items.size()))
                 end
-                if (pairs != items.size()) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, items.size()))
+                if (pairs != items.size()) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, items.size()))
                 for (int l = 0; l < 2; l++) begin
-                    if (is_dead(a2c_lane_e'(l))) `uvm_error("LB_MODE_B", {"the master declared the ", a2c_lane_name(a2c_lane_e'(l)), " lane dead"})
+                    if (is_dead(a2c_lane_e'(l))) `uvm_error("LB_PAIRED", {"the master declared the ", a2c_lane_name(a2c_lane_e'(l)), " lane dead"})
                 end
-                if (skew < lag / 2) `uvm_error("LB_MODE_B", $sformatf("the lanes completed bursts at most %0d clocks apart, so the lag went untested", skew))
+                if (skew < lag / 2) `uvm_error("LB_PAIRED", $sformatf("the lanes completed bursts at most %0d clocks apart, so the lag went untested", skew))
                 if (variant == AXB_LAG && skew >= lane_skew) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the lanes completed a burst %0d clocks apart, not under the bound of %0d", skew, lane_skew))
+                    `uvm_error("LB_PAIRED", $sformatf("the lanes completed a burst %0d clocks apart, not under the bound of %0d", skew, lane_skew))
                 end
                 return;
             end
@@ -1079,30 +1079,30 @@
                 a2c_lane_e lane = a2c_lane_e'(l);
                 bit        want = both_die() || lane != live;
                 if (is_dead(lane) != want) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the master %s the %s lane dead", a2c_select_str(want, "did not declare", "declared"), a2c_lane_name(lane)))
+                    `uvm_error("LB_PAIRED", $sformatf("the master %s the %s lane dead", a2c_select_str(want, "did not declare", "declared"), a2c_lane_name(lane)))
                 end
                 if (!is_dead(lane)) continue;
                 late = 0;
                 foreach (got[l].at[i]) late += (got[l].at[i] > died(lane));
                 if (late > 1) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the dead %s lane completed %0d bursts after its death, at most 1 expected",
+                    `uvm_error("LB_PAIRED", $sformatf("the dead %s lane completed %0d bursts after its death, at most 1 expected",
                                                       a2c_lane_name(lane), late))
                 end
             end
             for (int l = 0; l < 2; l++) begin
                 if (agent.model_cmp.uncompared(a2c_lane_e'(l)) != got[l].items.size() - pairs) begin
-                    `uvm_error("LB_MODE_B", $sformatf("model_cmp counts %0d %s items uncompared, expected %0d",
+                    `uvm_error("LB_PAIRED", $sformatf("model_cmp counts %0d %s items uncompared, expected %0d",
                                                       agent.model_cmp.uncompared(a2c_lane_e'(l)), a2c_lane_name(a2c_lane_e'(l)),
                                                       got[l].items.size() - pairs))
                 end
                 foreach (frozen[l][i]) begin
                     if (is_dead(a2c_lane_e'(l)) && frozen[l][i].errors != 0) begin
-                        `uvm_error("LB_MODE_B", $sformatf("%0d clocks moved %s of the dead %s lane", frozen[l][i].errors, frozen[l][i].what,
+                        `uvm_error("LB_PAIRED", $sformatf("%0d clocks moved %s of the dead %s lane", frozen[l][i].errors, frozen[l][i].what,
                                                           a2c_lane_name(a2c_lane_e'(l))))
                     end
                 end
             end
-            if (!agent.model_cmp.stopped()) `uvm_error("LB_MODE_B", "model_cmp was not told of the dead lane")
+            if (!agent.model_cmp.stopped()) `uvm_error("LB_PAIRED", "model_cmp was not told of the dead lane")
             // The first death trails by the skew bound, and a second, of the
             // lane left alone, by the lone lane bound, 150 here.
             if (variant == AXB_BOTH_DEAD) begin
@@ -1115,7 +1115,7 @@
                 realtime last = (last_hs_at[0] > last_hs_at[1]) ? last_hs_at[0] : last_hs_at[1];
                 for (int l = 0; l < 2; l++) check_since(a2c_lane_e'(l), joint_stall + int'((last - last_hs_at[l]) / period));
                 if (died(A2C_DUT_LANE) != died(A2C_MODEL_LANE)) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the lanes died at %0t and %0t, expected together", died(A2C_DUT_LANE), died(A2C_MODEL_LANE)))
+                    `uvm_error("LB_PAIRED", $sformatf("the lanes died at %0t and %0t, expected together", died(A2C_DUT_LANE), died(A2C_MODEL_LANE)))
                 end
             end else begin
                 check_since(dead_lane(), lane_skew);
@@ -1123,57 +1123,57 @@
             check_order();
             if (variant inside {AXB_ORDER_A, AXB_ORDER_W}
                     && !(answered_at(0) < died(A2C_MODEL_LANE) && answered_at(1) == died(A2C_MODEL_LANE) && answered_at(2) > died(A2C_MODEL_LANE))) begin
-                `uvm_error("LB_MODE_B", $sformatf("the DUT lane completed bursts 0 to 2 at %0t, %0t and %0t and the model lane died at %0t, so the order around the death went untested",
+                `uvm_error("LB_PAIRED", $sformatf("the DUT lane completed bursts 0 to 2 at %0t, %0t and %0t and the model lane died at %0t, so the order around the death went untested",
                                                   answered_at(0), answered_at(1), answered_at(2), died(A2C_MODEL_LANE)))
             end
             if (order_model != 0 && answered_at(order_model - 1, A2C_MODEL_LANE) != died(A2C_MODEL_LANE)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the model lane completed burst %0d at %0t and died at %0t, so a burst completed in the time step of the death went untested",
+                `uvm_error("LB_PAIRED", $sformatf("the model lane completed burst %0d at %0t and died at %0t, so a burst completed in the time step of the death went untested",
                                                   order_model - 1, answered_at(order_model - 1, A2C_MODEL_LANE), died(A2C_MODEL_LANE)))
             end
             if (variant inside {AXB_LONE_STALL, AXB_LONE_OFF} && lone_gap < lane_skew + 100) begin
-                `uvm_error("LB_MODE_B", $sformatf("the DUT lane, alone, went at most %0d clocks without completing a burst, so the stall went untested", lone_gap))
+                `uvm_error("LB_PAIRED", $sformatf("the DUT lane, alone, went at most %0d clocks without completing a burst, so the stall went untested", lone_gap))
             end
             if (stray && strays.demoted != 2) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_PROTO errors of the stray R beat, expected one from each monitor of the model lane", strays.demoted))
+                `uvm_error("LB_PAIRED", $sformatf("%0d A2C_PROTO errors of the stray R beat, expected one from each monitor of the model lane", strays.demoted))
             end
-            if (pairs < want_pairs) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d bursts, expected at least %0d", pairs, want_pairs))
+            if (pairs < want_pairs) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d bursts, expected at least %0d", pairs, want_pairs))
             if (pairs != pairs_at_death) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d bursts, but %0d by the death", pairs, pairs_at_death))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d bursts, but %0d by the death", pairs, pairs_at_death))
             end
             // Only the lane that died last returns beats once the other is
             // dead.
             if (variant == AXB_BOTH_DEAD) begin
                 a2c_lane_e last = dut_first ? A2C_MODEL_LANE : A2C_DUT_LANE;
                 if (empties() != items.size() - got[last].items.size()) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%0d bursts returned with no beats, expected the %0d the %s lane did not complete",
+                    `uvm_error("LB_PAIRED", $sformatf("%0d bursts returned with no beats, expected the %0d the %s lane did not complete",
                                                       empties(), items.size() - got[last].items.size(), a2c_lane_name(last)))
                 end
-                if (addr_count(A2C_DUT_LANE) < both_at) `uvm_error("LB_MODE_B", "the DUT lane died before it took address both_at")
+                if (addr_count(A2C_DUT_LANE) < both_at) `uvm_error("LB_PAIRED", "the DUT lane died before it took address both_at")
                 return;
             end
             if (variant == AXB_JOINT) begin
                 if (got[A2C_DUT_LANE].items.size() != both_at || got[A2C_MODEL_LANE].items.size() != both_at) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d and %0d bursts, expected the %0d before the stall",
+                    `uvm_error("LB_PAIRED", $sformatf("the lanes completed %0d and %0d bursts, expected the %0d before the stall",
                                                       got[A2C_DUT_LANE].items.size(), got[A2C_MODEL_LANE].items.size(), both_at))
                 end
                 if (empties() != items.size() - both_at) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%0d bursts returned with no beats, expected %0d", empties(), items.size() - both_at))
+                    `uvm_error("LB_PAIRED", $sformatf("%0d bursts returned with no beats, expected %0d", empties(), items.size() - both_at))
                 end
                 return;
             end
-            if (empties() != 0) `uvm_error("LB_MODE_B", $sformatf("%0d bursts returned with no beats", empties()))
+            if (empties() != 0) `uvm_error("LB_PAIRED", $sformatf("%0d bursts returned with no beats", empties()))
             if (got[live].items.size() != items.size()) begin
-                `uvm_error("LB_MODE_B", $sformatf("the live %s lane completed %0d bursts, expected %0d", a2c_lane_name(live),
+                `uvm_error("LB_PAIRED", $sformatf("the live %s lane completed %0d bursts, expected %0d", a2c_lane_name(live),
                                                   got[live].items.size(), items.size()))
             end
             if (left(live) != 0 || queued(live) != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the master counts %0d bursts outstanding and %0d queued on the live %s lane at the end",
+                `uvm_error("LB_PAIRED", $sformatf("the master counts %0d bursts outstanding and %0d queued on the live %s lane at the end",
                                                   left(live), queued(live), a2c_lane_name(live)))
             end
             // The first A2C_SKEW error comes one bound after the DUT lane's
             // first burst; the clock counter may be one off either way.
             if (variant == AXB_MUTE && (first_skew_at + 1 < first_dut_at + lane_skew || first_skew_at > first_dut_at + lane_skew + 1)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the first A2C_SKEW error came %0d clocks after the DUT lane's first burst, expected %0d",
+                `uvm_error("LB_PAIRED", $sformatf("the first A2C_SKEW error came %0d clocks after the DUT lane's first burst, expected %0d",
                                                   first_skew_at - first_dut_at, lane_skew))
             end
         endfunction
@@ -1199,14 +1199,14 @@
                                             arrivals.items.size(), model_arrivals.items.size(), apart, pairs, ids.num(),
                                             out_of_order(), model_led, took), UVM_NONE)
             if (watch_passive) begin
-                if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+                if (watcher.drv != null) `uvm_error("LB_PAIRED", "the passive agent built a driver")
                 if (pairs == 0 || watcher.model_cmp.get_pairs() != pairs) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d bursts, the agent's %0d", watcher.model_cmp.get_pairs(), pairs))
+                    `uvm_error("LB_PAIRED", $sformatf("the passive agent's model_cmp paired %0d bursts, the agent's %0d", watcher.model_cmp.get_pairs(), pairs))
                 end
-                if (dies() && !watcher.model_cmp.is_dead(dead_lane())) `uvm_error("LB_MODE_B", "the passive agent's model_cmp was not told of the death")
+                if (dies() && !watcher.model_cmp.is_dead(dead_lane())) `uvm_error("LB_PAIRED", "the passive agent's model_cmp was not told of the death")
             end
             if (dead_early && demoter.count(death_text()) != demoter.messages.size()) begin
-                `uvm_error("LB_MODE_B", $sformatf("a demoted report does not name the death: %p", demoter.messages))
+                `uvm_error("LB_PAIRED", $sformatf("a demoted report does not name the death: %p", demoter.messages))
             end
             if (role == A2C_SRC && skews()) begin
                 check_skews(pairs);
@@ -1215,44 +1215,44 @@
             if (id_unbound) begin
                 int unsigned sent[int unsigned];
                 foreach (items[i]) sent[int'(items[i].id)] = 1;
-                if (sent.num() < 2) `uvm_error("LB_MODE_B", "the bursts were sent with one ID, so the masters' ID 0 went untested")
-                foreach (arrivals.items[i]) if (arrivals.items[i].id !== '0) `uvm_error("LB_MODE_B", "a DUT lane burst has an ID other than 0")
-                foreach (model_arrivals.items[i]) if (model_arrivals.items[i].id !== '0) `uvm_error("LB_MODE_B", "a model lane burst has an ID other than 0")
+                if (sent.num() < 2) `uvm_error("LB_PAIRED", "the bursts were sent with one ID, so the masters' ID 0 went untested")
+                foreach (arrivals.items[i]) if (arrivals.items[i].id !== '0) `uvm_error("LB_PAIRED", "a DUT lane burst has an ID other than 0")
+                foreach (model_arrivals.items[i]) if (model_arrivals.items[i].id !== '0) `uvm_error("LB_PAIRED", "a model lane burst has an ID other than 0")
             end else if (ids.num() < 2) begin
-                `uvm_error("LB_MODE_B", "the bursts used one ID, so per-ID order went untested")
+                `uvm_error("LB_PAIRED", "the bursts used one ID, so per-ID order went untested")
             end
-            if (kinds.num() != 3) `uvm_error("LB_MODE_B", "the DUT lane did not complete a FIXED, an INCR and a WRAP burst")
+            if (kinds.num() != 3) `uvm_error("LB_PAIRED", "the DUT lane did not complete a FIXED, an INCR and a WRAP burst")
             if (variant inside {AXB_MATCH, AXB_MISMATCH, AXB_DUT_EXTRA, AXB_MODEL_EXTRA, AXB_CROSS}
                 && uvm_report_server::get_server().get_id_count("A2C_PROTO") != want_proto) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d A2C_PROTO reports, expected %0d", uvm_report_server::get_server().get_id_count("A2C_PROTO"),
+                `uvm_error("LB_PAIRED", $sformatf("%0d A2C_PROTO reports, expected %0d", uvm_report_server::get_server().get_id_count("A2C_PROTO"),
                                                   want_proto))
             end
             check_family();
             if (role == A2C_SRC) begin
                 if (arrivals.items.size() != items.size() || model_arrivals.items.size() != items.size()) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d and %0d bursts, expected %0d", arrivals.items.size(),
+                    `uvm_error("LB_PAIRED", $sformatf("the lanes completed %0d and %0d bursts, expected %0d", arrivals.items.size(),
                                                       model_arrivals.items.size(), items.size()))
                 end
-                if (pairs != items.size()) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, items.size()))
+                if (pairs != items.size()) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, items.size()))
                 if (apart == 0 && !id_unbound) begin
-                    `uvm_error("LB_MODE_B", "the lanes completed every burst in the same order, so the per-ID pairing went untested")
+                    `uvm_error("LB_PAIRED", "the lanes completed every burst in the same order, so the per-ID pairing went untested")
                 end
                 return;
             end
             if (apart != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the lanes completed %0d bursts in different places, so the model lane did not serve the DUT lane's picks in order",
+                `uvm_error("LB_PAIRED", $sformatf("the lanes completed %0d bursts in different places, so the model lane did not serve the DUT lane's picks in order",
                                                   apart))
             end
             if (out_of_order() == 0 && !(variant inside {AXB_BUSY, AXB_SKIP_CUT})) begin
-                `uvm_error("LB_MODE_B", "the DUT lane served every burst in AR order, so the reorder pick went untested")
+                `uvm_error("LB_PAIRED", "the DUT lane served every burst in AR order, so the reorder pick went untested")
             end
             if (!(variant inside {AXB_BUSY, AXB_SKIP_CUT}) && pairs != n) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, n))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d bursts, expected %0d", pairs, n))
             end
             case (variant)
                 AXB_MATCH, AXB_MISMATCH: begin
                     if (model_led == 0 || model_led >= n) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the model lane waited for %0d of %0d picks, so one lane never led", model_led, n))
+                        `uvm_error("LB_PAIRED", $sformatf("the model lane waited for %0d of %0d picks, so one lane never led", model_led, n))
                     end
                 end
                 // The lane left with a burst keeps the drain to its deadline,
@@ -1261,15 +1261,15 @@
                 // each edge, so it may be one off.
                 AXB_DUT_EXTRA, AXB_MODEL_EXTRA, AXB_SERIAL, AXB_DUT_MID, AXB_DEAD_DRAIN: begin
                     if (took + 1 < drain_deadline || took > drain_deadline + 1) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected its deadline of %0d", took, drain_deadline))
+                        `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected its deadline of %0d", took, drain_deadline))
                     end
                     if (variant == AXB_DEAD_DRAIN && (drains.messages.size() != 1 || drains.count(death_text()) != 1)) begin
-                        `uvm_error("LB_MODE_B", $sformatf("expected one A2C_DRAIN report, naming the death: %p", drains.messages))
+                        `uvm_error("LB_PAIRED", $sformatf("expected one A2C_DRAIN report, naming the death: %p", drains.messages))
                     end
                     // The model lane has taken the extra burst's pick and has
                     // no burst of its own, so lane_holding() names it.
                     if (variant == AXB_DUT_EXTRA && drains.count(") is idle and holds a response or pick whose request it has not made") != 1) begin
-                        `uvm_error("LB_MODE_B", $sformatf("expected one A2C_DRAIN report saying the model lane is idle and holds a pick: %p", drains.messages))
+                        `uvm_error("LB_PAIRED", $sformatf("expected one A2C_DRAIN report saying the model lane is idle and holds a pick: %p", drains.messages))
                     end
                     // "; " separates the requests the held report lists.
                     if (variant == AXB_DUT_MID) begin
@@ -1278,7 +1278,7 @@
                             int unsigned listed = 1;
                             if (!a2c_contains(m, "the first 3: ")) continue;
                             for (int c = 0; c + 1 < m.len(); c++) listed += (m.substr(c, c + 1) == "; ");
-                            if (listed != 3) `uvm_error("LB_MODE_B", $sformatf("the held report lists %0d requests, expected 3: %s", listed, m))
+                            if (listed != 3) `uvm_error("LB_PAIRED", $sformatf("the held report lists %0d requests, expected 3: %s", listed, m))
                         end
                     end
                 end
@@ -1288,43 +1288,43 @@
                     // lane completes bursts past the cut, which model_cmp
                     // must hold back.
                     if (model_stall != 0 && arrivals.items.size() <= replay().get_cut()) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the DUT lane completed %0d bursts, none past the cut at %0d, so the hold went untested",
+                        `uvm_error("LB_PAIRED", $sformatf("the DUT lane completed %0d bursts, none past the cut at %0d, so the hold went untested",
                                                           arrivals.items.size(), replay().get_cut()))
                     end
                     if (arrivals.items.size() >= items.size()) begin
-                        `uvm_error("LB_MODE_B", "the DUT lane's master ran out of bursts, so the port paused")
+                        `uvm_error("LB_PAIRED", "the DUT lane's master ran out of bursts, so the port paused")
                     end
-                    if (ready_calls != 2) `uvm_error("LB_MODE_B", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
+                    if (ready_calls != 2) `uvm_error("LB_PAIRED", $sformatf("%0d phase_ready_to_end calls, expected 2", ready_calls))
                     // A death during the catch-up neither ends the drain nor
                     // holds it, and the cut's report names it.
                     if (dead_in_catchup && caught_up) begin
-                        `uvm_error("LB_MODE_B", "the lanes had caught up with the cut before the death, so a death during the catch-up went untested")
+                        `uvm_error("LB_PAIRED", "the lanes had caught up with the cut before the death, so a death during the catch-up went untested")
                     end
                     // The cut came before a death in the catch-up, so its
                     // report names only an earlier one.
                     if (dead_early ? cuts.count(death_text()) != 1 : cuts.count(related_text()) != 0) begin
-                        `uvm_error("LB_MODE_B", $sformatf("expected an A2C_CUT report %s the death: %p", a2c_select_str(dead_early, "naming", "not naming"),
+                        `uvm_error("LB_PAIRED", $sformatf("expected an A2C_CUT report %s the death: %p", a2c_select_str(dead_early, "naming", "not naming"),
                                                           cuts.messages))
                     end
                     // After the cut each lane completes the bursts the DUT
                     // lane had started: up to four, of up to 32 beats, at
                     // 70 percent ready.
                     if (took + 1 < drain_deadline || took > drain_deadline + 200) begin
-                        `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end within 200 clocks more",
+                        `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end within 200 clocks more",
                                                           took, drain_deadline))
                     end
                 end
-                AXB_CROSS: if (cross_swaps == 0) `uvm_error("LB_MODE_B", "no two bursts of different IDs were swapped, so the cross-ID order went untested")
+                AXB_CROSS: if (cross_swaps == 0) `uvm_error("LB_PAIRED", "no two bursts of different IDs were swapped, so the cross-ID order went untested")
                 // More catch-up clocks would not help, so the advice to
                 // raise them must not appear.
                 AXB_SKIP_CUT: begin
-                    if (replay().get_cut() <= lone_at) `uvm_error("LB_MODE_B", $sformatf("the cut at %0d does not keep the skipped burst", replay().get_cut()))
-                    if (demoter.count("drain_catchup_cycles") != 0) `uvm_error("LB_MODE_B", "an A2C_REPLAY report advises drain_catchup_cycles for a held pick")
+                    if (replay().get_cut() <= lone_at) `uvm_error("LB_PAIRED", $sformatf("the cut at %0d does not keep the skipped burst", replay().get_cut()))
+                    if (demoter.count("drain_catchup_cycles") != 0) `uvm_error("LB_PAIRED", "an A2C_REPLAY report advises drain_catchup_cycles for a held pick")
                 end
                 default: ;
             endcase
         endfunction
-    endclass : lb_axi_mode_b
+    endclass : lb_axi_paired
 
     // ---------------------------------------------------------------- axi_read
 
@@ -1601,9 +1601,9 @@
         endtask
     endclass : axr_script_slave
 
-    // Mode B on an axi_read port whose DUT masters it: the agent is the
+    // Paired mode on an axi_read port whose DUT masters it: the agent is the
     // slave, serving both lanes from one memory with the random fill.
-    class axi_read_mode_b_test extends lb_axi_mode_b #(axr_agent_t, axr_item_t, axr_config_t, axr_vif_t);
+    class axi_read_paired_test extends lb_axi_paired #(axr_agent_t, axr_item_t, axr_config_t, axr_vif_t);
         axi_read_mem_t       mem;
         // A2C_SRC: the model lane's slave's memory, a copy of mem.
         axi_read_mem_t       model_mem;
@@ -1623,7 +1623,7 @@
         // AXB_ORDER_A: each lane's slave.
         axr_script_slave     scripts[2];
 
-        `uvm_component_utils(axi_read_mode_b_test)
+        `uvm_component_utils(axi_read_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1848,7 +1848,7 @@
                 clk_vif.sample_edge();
                 for (int l = 0; l < 2; l++) begin
                     if (role == A2C_SRC && !dies() && v[l].arvalid === 1'b1 && ars[l] > ars[1 - l]) begin
-                        `uvm_error("LB_MODE_B", $sformatf("AR %0d went out on the %s lane before the other lane took AR %0d", ars[l] + 1,
+                        `uvm_error("LB_PAIRED", $sformatf("AR %0d went out on the %s lane before the other lane took AR %0d", ars[l] + 1,
                                                           a2c_lane_name(a2c_lane_e'(l)), ars[l]))
                     end
                     if (role == A2C_SRC && skews()) begin
@@ -1887,74 +1887,74 @@
                                             peak[A2C_DUT_LANE], peak[A2C_MODEL_LANE], ar_apart,
                                             interleaver == null ? 0 : interleaver.switches), UVM_NONE)
             if (variant inside {AXB_MATCH, AXB_MISMATCH, AXB_DUT_EXTRA, AXB_MODEL_EXTRA} && (peak[A2C_DUT_LANE] != 4 || peak[A2C_MODEL_LANE] != 4)) begin
-                `uvm_error("LB_MODE_B", $sformatf("max_outstanding is 4, but at most %0d and %0d bursts were outstanding",
+                `uvm_error("LB_PAIRED", $sformatf("max_outstanding is 4, but at most %0d and %0d bursts were outstanding",
                                                   peak[A2C_DUT_LANE], peak[A2C_MODEL_LANE]))
             end
             if (slverr) begin
                 `uvm_info("LB_STATS", $sformatf("%0d and %0d SLVERR beats on the DUT and model lanes", seqs[A2C_DUT_LANE].slverr_beats,
                                                 seqs[A2C_MODEL_LANE].slverr_beats), UVM_NONE)
                 if (seqs[A2C_DUT_LANE].slverr_beats == 0 || seqs[A2C_MODEL_LANE].slverr_beats != seqs[A2C_DUT_LANE].slverr_beats) begin
-                    `uvm_error("LB_MODE_B", "the lanes did not both read the same SLVERR beats, so the rresp replay went untested")
+                    `uvm_error("LB_PAIRED", "the lanes did not both read the same SLVERR beats, so the rresp replay went untested")
                 end
             end
             if (role != A2C_SRC) return;
-            if (variant == AXB_BOTH_DEAD && !rready_cut) `uvm_error("LB_MODE_B", "the model lane, alone, returned no beat of a burst before its last")
+            if (variant == AXB_BOTH_DEAD && !rready_cut) `uvm_error("LB_PAIRED", "the model lane, alone, returned no beat of a burst before its last")
             if (seqs[A2C_DUT_LANE].responses.size() != items.size()) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d bursts sent, %0d returned", items.size(), seqs[A2C_DUT_LANE].responses.size()))
+                `uvm_error("LB_PAIRED", $sformatf("%0d bursts sent, %0d returned", items.size(), seqs[A2C_DUT_LANE].responses.size()))
             end
             if (interleaver != null && interleaver.switches == 0 && !id_unbound) begin
-                `uvm_error("LB_MODE_B", "the model lane's slave never interleaved, so interleaved R went untested")
+                `uvm_error("LB_PAIRED", "the model lane's slave never interleaved, so interleaved R went untested")
             end
-            if (ar_apart == 0) `uvm_error("LB_MODE_B", "every AR transferred on both lanes on one clock, so the per-lane handshake went untested")
+            if (ar_apart == 0) `uvm_error("LB_PAIRED", "every AR transferred on both lanes on one clock, so the per-lane handshake went untested")
         endfunction
-    endclass : axi_read_mode_b_test
+    endclass : axi_read_paired_test
 
-    class axi_read_mode_b_mismatch_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_mismatch_test)
+    class axi_read_paired_mismatch_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MISMATCH;
         endfunction
-    endclass : axi_read_mode_b_mismatch_test
+    endclass : axi_read_paired_mismatch_test
 
     // The DUT lane's master sends one burst more, which the model lane
     // never issues: the slave reports it at the end of the run.
-    class axi_read_mode_b_dut_extra_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_dut_extra_test)
+    class axi_read_paired_dut_extra_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_dut_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_EXTRA;
         endfunction
-    endclass : axi_read_mode_b_dut_extra_test
+    endclass : axi_read_paired_dut_extra_test
 
-    class axi_read_mode_b_model_extra_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_model_extra_test)
+    class axi_read_paired_model_extra_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_model_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MODEL_EXTRA;
         endfunction
-    endclass : axi_read_mode_b_model_extra_test
+    endclass : axi_read_paired_model_extra_test
 
     // Both masters keep sending with no gap after the drop, so the drain
     // cuts the slave's log, and model_cmp, keyed per ID, holds the bursts
     // past the cut.
-    class axi_read_mode_b_busy_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_busy_test)
+    class axi_read_paired_busy_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_BUSY;
         endfunction
-    endclass : axi_read_mode_b_busy_test
+    endclass : axi_read_paired_busy_test
 
-    // As axi_read_mode_b_busy_test with the model lane stalled across the
+    // As axi_read_paired_busy_test with the model lane stalled across the
     // cut, so the DUT lane completes bursts past the cut before the model
     // lane reaches it.
-    class axi_read_mode_b_busy_lag_test extends axi_read_mode_b_busy_test;
-        `uvm_component_utils(axi_read_mode_b_busy_lag_test)
+    class axi_read_paired_busy_lag_test extends axi_read_paired_busy_test;
+        `uvm_component_utils(axi_read_paired_busy_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1967,187 +1967,187 @@
             if (stall) kept = model_peer_cfg.rready_pct;
             model_peer_cfg.rready_pct = stall ? 0 : kept;
         endfunction
-    endclass : axi_read_mode_b_busy_lag_test
+    endclass : axi_read_paired_busy_lag_test
 
     // The agent is the master. The DUT lane's slave reorders, and the model
     // lane's interleaves R beats across IDs.
-    class axi_read_mode_b_master_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_master_test)
+    class axi_read_paired_master_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_master_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_SRC;
         endfunction
-    endclass : axi_read_mode_b_master_test
+    endclass : axi_read_paired_master_test
 
-    class axi_read_mode_b_master_mismatch_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_mismatch_test)
+    class axi_read_paired_master_mismatch_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MISMATCH;
         endfunction
-    endclass : axi_read_mode_b_master_mismatch_test
+    endclass : axi_read_paired_master_mismatch_test
 
     // The model lane's master sends some bursts of different IDs in the
     // other order, so the model lane must find each pick by its ID and its
     // place among the bursts of that ID.
-    class axi_read_mode_b_cross_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_cross_test)
+    class axi_read_paired_cross_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_cross_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_CROSS;
         endfunction
-    endclass : axi_read_mode_b_cross_test
+    endclass : axi_read_paired_cross_test
 
     // The model lane's master sends its next AR only after the last
     // response, and the DUT lane reorders: the model lane holds the first
     // reordered pick, whose AR its master waits to send, and the slave
     // reports the pick and the ARs behind it as a model defect.
-    class axi_read_mode_b_serial_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_serial_test)
+    class axi_read_paired_serial_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_serial_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SERIAL;
         endfunction
-    endclass : axi_read_mode_b_serial_test
+    endclass : axi_read_paired_serial_test
 
     // The DUT lane's master sends one burst more mid-run, among the others:
     // the model lane holds that pick, with its later ARs behind it, until
     // the end.
-    class axi_read_mode_b_dut_mid_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_dut_mid_test)
+    class axi_read_paired_dut_mid_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_dut_mid_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_MID;
         endfunction
-    endclass : axi_read_mode_b_dut_mid_test
+    endclass : axi_read_paired_dut_mid_test
 
     // Both masters keep sending, and the model lane's skips one burst
     // mid-run. The drain cuts the run past that burst, and the slave still
     // reports the held pick, which the cut keeps.
-    class axi_read_mode_b_skip_cut_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_skip_cut_test)
+    class axi_read_paired_skip_cut_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_skip_cut_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SKIP_CUT;
         endfunction
-    endclass : axi_read_mode_b_skip_cut_test
+    endclass : axi_read_paired_skip_cut_test
 
     // The agent is the master of a port that binds no id_t: it sends every
     // burst on both lanes with ID 0.
-    class axi_read_mode_b_master_id_unbound_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_id_unbound_test)
+    class axi_read_paired_master_id_unbound_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_id_unbound_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             id_unbound = 1;
         endfunction
-    endclass : axi_read_mode_b_master_id_unbound_test
+    endclass : axi_read_paired_master_id_unbound_test
 
     // The agent is the master, and the model lane's slave never answers.
     // The model lane dies lane_skew clocks after the DUT lane completes the
     // first burst, and the DUT lane serves the rest.
-    class axi_read_mode_b_master_mute_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_mute_test)
+    class axi_read_paired_master_mute_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_mute_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MUTE;
         endfunction
-    endclass : axi_read_mode_b_master_mute_test
+    endclass : axi_read_paired_master_mute_test
 
     // The agent is the master, and the model lane's slave takes no AR. The
     // model lane dies lane_skew clocks after the DUT lane took the first,
     // with its arvalid held, and the DUT lane serves every burst.
-    class axi_read_mode_b_master_deaf_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_deaf_test)
+    class axi_read_paired_master_deaf_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_deaf_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DEAF;
         endfunction
-    endclass : axi_read_mode_b_master_deaf_test
+    endclass : axi_read_paired_master_deaf_test
 
-    // As axi_read_mode_b_master_mute_test with the joint stall bound below
+    // As axi_read_paired_master_mute_test with the joint stall bound below
     // the skew bound: the model lane trails on a burst's last beat.
-    class axi_read_mode_b_master_mute_joint_under_test extends axi_read_mode_b_master_mute_test;
-        `uvm_component_utils(axi_read_mode_b_master_mute_joint_under_test)
+    class axi_read_paired_master_mute_joint_under_test extends axi_read_paired_master_mute_test;
+        `uvm_component_utils(axi_read_paired_master_mute_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             joint_under = 1;
         endfunction
-    endclass : axi_read_mode_b_master_mute_joint_under_test
+    endclass : axi_read_paired_master_mute_joint_under_test
 
-    // As axi_read_mode_b_master_deaf_test with the joint stall bound below
+    // As axi_read_paired_master_deaf_test with the joint stall bound below
     // the skew bound: the model lane trails on the AR alone.
-    class axi_read_mode_b_master_deaf_joint_under_test extends axi_read_mode_b_master_deaf_test;
-        `uvm_component_utils(axi_read_mode_b_master_deaf_joint_under_test)
+    class axi_read_paired_master_deaf_joint_under_test extends axi_read_paired_master_deaf_test;
+        `uvm_component_utils(axi_read_paired_master_deaf_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             joint_under = 1;
         endfunction
-    endclass : axi_read_mode_b_master_deaf_joint_under_test
+    endclass : axi_read_paired_master_deaf_joint_under_test
 
     // The DUT lane answers one burst past the bound and dies, and the model
     // lane serves that burst and the rest.
-    class axi_read_mode_b_master_dut_late_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_dut_late_test)
+    class axi_read_paired_master_dut_late_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_LATE;
         endfunction
-    endclass : axi_read_mode_b_master_dut_late_test
+    endclass : axi_read_paired_master_dut_late_test
 
     // The model lane answers one burst and the next past the bound. It dies
     // on the first, and raises no second A2C_SKEW error on the next.
-    class axi_read_mode_b_master_model_late_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_model_late_test)
+    class axi_read_paired_master_model_late_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MODEL_LATE;
         endfunction
-    endclass : axi_read_mode_b_master_model_late_test
+    endclass : axi_read_paired_master_model_late_test
 
     // The model lane's slave stops taking ARs for a while. The model lane
     // dies on the AR it missed, and takes that AR once, with arvalid low
     // after it, when its slave resumes.
-    class axi_read_mode_b_master_stall_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_stall_test)
+    class axi_read_paired_master_stall_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_STALL;
         endfunction
-    endclass : axi_read_mode_b_master_stall_test
+    endclass : axi_read_paired_master_stall_test
 
     // The model lane answers every burst lag clocks late, under the bound,
     // so no burst is an A2C_SKEW error.
-    class axi_read_mode_b_master_lag_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_lag_test)
+    class axi_read_paired_master_lag_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LAG;
         endfunction
-    endclass : axi_read_mode_b_master_lag_test
+    endclass : axi_read_paired_master_lag_test
 
     // As the lag test with the model throttle bound at 20 clocks: the
     // model lane's late answers fill its outstanding slots and hold the
     // next burst back for that long, which raises one
     // A2C_MODEL_THROTTLE.
-    class axi_read_mode_b_master_throttle_test extends axi_read_mode_b_master_lag_test;
+    class axi_read_paired_master_throttle_test extends axi_read_paired_master_lag_test;
         a2c_expected_error throttle_err;
 
-        `uvm_component_utils(axi_read_mode_b_master_throttle_test)
+        `uvm_component_utils(axi_read_paired_master_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -2160,212 +2160,212 @@
             throttle_err.id   = "A2C_MODEL_THROTTLE";
             throttle_err.text = "axr: the master has held its next burst back for the model lane for 20 clocks (model_throttle_cycles, +a2c_model_throttle_cycles)";
         endfunction
-    endclass : axi_read_mode_b_master_throttle_test
+    endclass : axi_read_paired_master_throttle_test
 
     // As the lag test with lane_skew_cycles 0, which turns the bound off.
-    class axi_read_mode_b_master_skew_off_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_skew_off_test)
+    class axi_read_paired_master_skew_off_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_skew_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SKEW_OFF;
         endfunction
-    endclass : axi_read_mode_b_master_skew_off_test
+    endclass : axi_read_paired_master_skew_off_test
 
     // The DUT lane's slave stops answering and the DUT lane dies, and later
     // the master's rready goes low mid-burst, so the model lane dies too and
     // the sequence gets the rest of its bursts back with no beats, the one
     // the model lane had returned part of included.
-    class axi_read_mode_b_master_both_dead_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_both_dead_test)
+    class axi_read_paired_master_both_dead_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_both_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant   = AXB_BOTH_DEAD;
             dut_first = 1;
         endfunction
-    endclass : axi_read_mode_b_master_both_dead_test
+    endclass : axi_read_paired_master_both_dead_test
 
     // Both lanes' slaves stop answering at one burst, so neither lane
     // trails: the joint stall bound declares both dead in one
     // A2C_JOINT_STALL.
-    class axi_read_mode_b_master_joint_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_joint_test)
+    class axi_read_paired_master_joint_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_JOINT;
         endfunction
-    endclass : axi_read_mode_b_master_joint_test
+    endclass : axi_read_paired_master_joint_test
 
     // The model lane dies on an AR while the DUT lane returns three bursts
     // of one ID around the death, and the sequence must get them back in
     // order.
-    class axi_read_mode_b_master_order_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_order_test)
+    class axi_read_paired_master_order_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_order_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_ORDER_A;
         endfunction
-    endclass : axi_read_mode_b_master_order_test
+    endclass : axi_read_paired_master_order_test
 
     // As the order test, with the model lane's slave answering burst 0 on
     // the clock of the death, on which the DUT lane completes burst 1.
-    class axi_read_mode_b_master_order_m0_test extends axi_read_mode_b_master_order_test;
-        `uvm_component_utils(axi_read_mode_b_master_order_m0_test)
+    class axi_read_paired_master_order_m0_test extends axi_read_paired_master_order_test;
+        `uvm_component_utils(axi_read_paired_master_order_m0_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             order_model = 1;
         endfunction
-    endclass : axi_read_mode_b_master_order_m0_test
+    endclass : axi_read_paired_master_order_m0_test
 
     // As the order test, with both lanes completing burst 1 on the clock of
     // the death.
-    class axi_read_mode_b_master_order_both_test extends axi_read_mode_b_master_order_test;
-        `uvm_component_utils(axi_read_mode_b_master_order_both_test)
+    class axi_read_paired_master_order_both_test extends axi_read_paired_master_order_test;
+        `uvm_component_utils(axi_read_paired_master_order_both_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             order_model = 2;
         endfunction
-    endclass : axi_read_mode_b_master_order_both_test
+    endclass : axi_read_paired_master_order_both_test
 
     // The model lane dies, and the DUT lane, alone, then waits lane_skew +
     // 150 clocks for four bursts, under the default lone lane bound.
-    class axi_read_mode_b_master_lone_stall_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_lone_stall_test)
+    class axi_read_paired_master_lone_stall_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_lone_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LONE_STALL;
         endfunction
-    endclass : axi_read_mode_b_master_lone_stall_test
+    endclass : axi_read_paired_master_lone_stall_test
 
     // As the lone stall test with a2c_lone_lane_cycles 0, which turns the
     // rule off.
-    class axi_read_mode_b_master_lone_off_test extends axi_read_mode_b_master_test;
-        `uvm_component_utils(axi_read_mode_b_master_lone_off_test)
+    class axi_read_paired_master_lone_off_test extends axi_read_paired_master_test;
+        `uvm_component_utils(axi_read_paired_master_lone_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LONE_OFF;
         endfunction
-    endclass : axi_read_mode_b_master_lone_off_test
+    endclass : axi_read_paired_master_lone_off_test
 
     // As the mute test, with IDs 0 to 2 only, and the model lane's slave
     // sends one R beat of ID 3 before the death. Both monitors of the model
     // lane must still report it as an A2C_PROTO error, the agent's
     // included, though the master later tells it of the death.
-    class axi_read_mode_b_master_stray_test extends axi_read_mode_b_master_mute_test;
-        `uvm_component_utils(axi_read_mode_b_master_stray_test)
+    class axi_read_paired_master_stray_test extends axi_read_paired_master_mute_test;
+        `uvm_component_utils(axi_read_paired_master_stray_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             stray = 1;
         endfunction
-    endclass : axi_read_mode_b_master_stray_test
+    endclass : axi_read_paired_master_stray_test
 
     // The DUT lane's master sends one burst the model lane's never does,
     // and a master elsewhere declares the model lane dead before the drop:
     // the drain still waits to its deadline, and its A2C_DRAIN report names
     // the death. The slave held the pick before the death, so its report of
     // the pick names none.
-    class axi_read_mode_b_dead_drain_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_dead_drain_test)
+    class axi_read_paired_dead_drain_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_dead_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DEAD_DRAIN;
         endfunction
-    endclass : axi_read_mode_b_dead_drain_test
+    endclass : axi_read_paired_dead_drain_test
 
-    // As axi_read_mode_b_dead_drain_test with the death on the first clock,
+    // As axi_read_paired_dead_drain_test with the death on the first clock,
     // before the pick, so the report of the pick names it too.
-    class axi_read_mode_b_dead_early_drain_test extends axi_read_mode_b_dead_drain_test;
-        `uvm_component_utils(axi_read_mode_b_dead_early_drain_test)
+    class axi_read_paired_dead_early_drain_test extends axi_read_paired_dead_drain_test;
+        `uvm_component_utils(axi_read_paired_dead_early_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_read_mode_b_dead_early_drain_test
+    endclass : axi_read_paired_dead_early_drain_test
 
-    // As axi_read_mode_b_model_extra_test with a death on the first clock:
+    // As axi_read_paired_model_extra_test with a death on the first clock:
     // every report of the slave names it.
-    class axi_read_mode_b_model_extra_dead_test extends axi_read_mode_b_model_extra_test;
-        `uvm_component_utils(axi_read_mode_b_model_extra_dead_test)
+    class axi_read_paired_model_extra_dead_test extends axi_read_paired_model_extra_test;
+        `uvm_component_utils(axi_read_paired_model_extra_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_read_mode_b_model_extra_dead_test
+    endclass : axi_read_paired_model_extra_dead_test
 
-    // As axi_read_mode_b_master_mute_test after a death on another port, so
+    // As axi_read_paired_master_mute_test after a death on another port, so
     // the master's A2C_SKEW report names that death.
-    class axi_read_mode_b_master_mute_cascade_test extends axi_read_mode_b_master_mute_test;
-        `uvm_component_utils(axi_read_mode_b_master_mute_cascade_test)
+    class axi_read_paired_master_mute_cascade_test extends axi_read_paired_master_mute_test;
+        `uvm_component_utils(axi_read_paired_master_mute_cascade_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_read_mode_b_master_mute_cascade_test
+    endclass : axi_read_paired_master_mute_cascade_test
 
-    // A passive Mode B agent watches the port of a master whose model lane
+    // A passive paired-mode agent watches the port of a master whose model lane
     // dies: its monitors and model_cmp learn of the death, so they raise
     // no A2C_PROTO or A2C_MODEL_CMP error.
-    class axi_read_mode_b_master_late_passive_test extends axi_read_mode_b_master_model_late_test;
-        `uvm_component_utils(axi_read_mode_b_master_late_passive_test)
+    class axi_read_paired_master_late_passive_test extends axi_read_paired_master_model_late_test;
+        `uvm_component_utils(axi_read_paired_master_late_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_read_mode_b_master_late_passive_test
+    endclass : axi_read_paired_master_late_passive_test
 
-    // A passive Mode B agent watches a port the drain cuts: its model_cmp
+    // A passive paired-mode agent watches a port the drain cuts: its model_cmp
     // is cut with the slave's, and its monitors learn of the cut.
-    class axi_read_mode_b_busy_passive_test extends axi_read_mode_b_busy_lag_test;
-        `uvm_component_utils(axi_read_mode_b_busy_passive_test)
+    class axi_read_paired_busy_passive_test extends axi_read_paired_busy_lag_test;
+        `uvm_component_utils(axi_read_paired_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_read_mode_b_busy_passive_test
+    endclass : axi_read_paired_busy_passive_test
 
-    // A passive Mode B agent watches the port beside the slave under test.
-    class axi_read_mode_b_passive_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_passive_test)
+    // A passive paired-mode agent watches the port beside the slave under test.
+    class axi_read_paired_passive_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_read_mode_b_passive_test
+    endclass : axi_read_paired_passive_test
 
     // The slave answers SLVERR on a quarter of the addresses, and the model
     // lane must replay each beat's rresp.
-    class axi_read_mode_b_slverr_test extends axi_read_mode_b_test;
-        `uvm_component_utils(axi_read_mode_b_slverr_test)
+    class axi_read_paired_slverr_test extends axi_read_paired_test;
+        `uvm_component_utils(axi_read_paired_slverr_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             slverr = 1;
         endfunction
-    endclass : axi_read_mode_b_slverr_test
+    endclass : axi_read_paired_slverr_test
 
-    class axi_read_mode_b_slverr_mismatch_test extends axi_read_mode_b_slverr_test;
-        `uvm_component_utils(axi_read_mode_b_slverr_mismatch_test)
+    class axi_read_paired_slverr_mismatch_test extends axi_read_paired_slverr_test;
+        `uvm_component_utils(axi_read_paired_slverr_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MISMATCH;
         endfunction
-    endclass : axi_read_mode_b_slverr_mismatch_test
+    endclass : axi_read_paired_slverr_mismatch_test
 
     // --------------------------------------------------------------- axi_write
 
@@ -2595,10 +2595,10 @@
         endtask
     endclass : axw_script_slave
 
-    // Mode B on an axi_write port whose DUT masters it: the agent is the
+    // Paired mode on an axi_write port whose DUT masters it: the agent is the
     // slave, and only its DUT lane writes the memory. The model lane's
     // master sends each burst's W before its AW. The port runs on clk2.
-    class axi_write_mode_b_test extends lb_axi_mode_b #(axw_agent_t, axw_item_t, axw_config_t, axw_vif_t);
+    class axi_write_paired_test extends lb_axi_paired #(axw_agent_t, axw_item_t, axw_config_t, axw_vif_t);
         axi_write_mem_t mem;
         // A2C_SRC: the model lane's slave's memory.
         axi_write_mem_t model_mem;
@@ -2623,7 +2623,7 @@
         // AXB_ORDER_A and AXB_ORDER_W: each lane's slave.
         axw_script_slave scripts[2];
 
-        `uvm_component_utils(axi_write_mode_b_test)
+        `uvm_component_utils(axi_write_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -2883,11 +2883,11 @@
                 clk_vif.sample_edge();
                 for (int l = 0; l < 2; l++) begin
                     if (role == A2C_SRC && !dies() && v[l].awvalid === 1'b1 && aws[l] > aws[1 - l]) begin
-                        `uvm_error("LB_MODE_B", $sformatf("AW %0d went out on the %s lane before the other lane took AW %0d", aws[l] + 1,
+                        `uvm_error("LB_PAIRED", $sformatf("AW %0d went out on the %s lane before the other lane took AW %0d", aws[l] + 1,
                                                           a2c_lane_name(a2c_lane_e'(l)), aws[l]))
                     end
                     if (role == A2C_SRC && !dies() && v[l].wvalid === 1'b1 && ws[l] > ws[1 - l]) begin
-                        `uvm_error("LB_MODE_B", $sformatf("W beat %0d went out on the %s lane before the other lane took beat %0d", ws[l] + 1,
+                        `uvm_error("LB_PAIRED", $sformatf("W beat %0d went out on the %s lane before the other lane took beat %0d", ws[l] + 1,
                                                           a2c_lane_name(a2c_lane_e'(l)), ws[l]))
                     end
                     if (role == A2C_SRC && skews()) begin
@@ -2943,84 +2943,84 @@
             int unsigned compared;
             `uvm_info("LB_STATS", $sformatf("at most %0d and %0d bursts outstanding, %0d of one ID on the DUT lane; %0d and %0d clocks with an AW or a W beat on one lane only; %0d model lane W bursts ahead of their AW",
                                             peak[A2C_DUT_LANE], peak[A2C_MODEL_LANE], same_peak, aw_apart, w_apart, w_led), UVM_NONE)
-            if (same_id && same_peak < 2) `uvm_error("LB_MODE_B", "no two bursts of one ID waited for B at once, so the same-ID order went untested")
+            if (same_id && same_peak < 2) `uvm_error("LB_PAIRED", "no two bursts of one ID waited for B at once, so the same-ID order went untested")
             if (variant inside {AXB_MATCH, AXB_MISMATCH, AXB_DUT_EXTRA, AXB_MODEL_EXTRA} && (peak[A2C_DUT_LANE] != 4 || peak[A2C_MODEL_LANE] != 4)) begin
-                `uvm_error("LB_MODE_B", $sformatf("max_outstanding is 4, but at most %0d and %0d bursts were outstanding",
+                `uvm_error("LB_PAIRED", $sformatf("max_outstanding is 4, but at most %0d and %0d bursts were outstanding",
                                                   peak[A2C_DUT_LANE], peak[A2C_MODEL_LANE]))
             end
             if (role == A2C_DST) begin
-                if (w_led == 0) `uvm_error("LB_MODE_B", "no model lane W burst started before its AW, so W before AW went untested")
+                if (w_led == 0) `uvm_error("LB_PAIRED", "no model lane W burst started before its AW, so W before AW went untested")
                 if (variant inside {AXB_BUSY, AXB_SKIP_CUT}) return;
-                compared = seqs[A2C_DUT_LANE].model.check(mem, "LB_MODE_B");
+                compared = seqs[A2C_DUT_LANE].model.check(mem, "LB_PAIRED");
                 `uvm_info("LB_MEM", $sformatf("%0d bytes compared with the DUT lane's bursts", compared), UVM_NONE)
                 return;
             end
             if (seqs[A2C_DUT_LANE].responses.size() != items.size()) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d bursts sent, %0d returned", items.size(), seqs[A2C_DUT_LANE].responses.size()))
+                `uvm_error("LB_PAIRED", $sformatf("%0d bursts sent, %0d returned", items.size(), seqs[A2C_DUT_LANE].responses.size()))
             end
             if (aw_apart == 0 || w_apart == 0) begin
-                `uvm_error("LB_MODE_B", "every AW, or every W beat, transferred on both lanes on one clock, so the per-lane handshake went untested")
+                `uvm_error("LB_PAIRED", "every AW, or every W beat, transferred on both lanes on one clock, so the per-lane handshake went untested")
             end
             // The scripts keep no memory.
             if (variant inside {AXB_ORDER_A, AXB_ORDER_W}) return;
-            compared = seqs[A2C_DUT_LANE].model.check(mem, "LB_MODE_B");
-            if (variant == AXB_MATCH) compared += seqs[A2C_DUT_LANE].model.check(model_mem, "LB_MODE_B");
+            compared = seqs[A2C_DUT_LANE].model.check(mem, "LB_PAIRED");
+            if (variant == AXB_MATCH) compared += seqs[A2C_DUT_LANE].model.check(model_mem, "LB_PAIRED");
             `uvm_info("LB_MEM", $sformatf("%0d bytes compared on the two lanes' memories", compared), UVM_NONE)
         endfunction
-    endclass : axi_write_mode_b_test
+    endclass : axi_write_paired_test
 
-    class axi_write_mode_b_mismatch_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_mismatch_test)
+    class axi_write_paired_mismatch_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MISMATCH;
         endfunction
-    endclass : axi_write_mode_b_mismatch_test
+    endclass : axi_write_paired_mismatch_test
 
-    class axi_write_mode_b_dut_extra_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_dut_extra_test)
+    class axi_write_paired_dut_extra_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_dut_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_EXTRA;
         endfunction
-    endclass : axi_write_mode_b_dut_extra_test
+    endclass : axi_write_paired_dut_extra_test
 
-    class axi_write_mode_b_model_extra_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_model_extra_test)
+    class axi_write_paired_model_extra_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_model_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MODEL_EXTRA;
         endfunction
-    endclass : axi_write_mode_b_model_extra_test
+    endclass : axi_write_paired_model_extra_test
 
-    // As axi_write_mode_b_model_extra_test with a death on the first clock:
+    // As axi_write_paired_model_extra_test with a death on the first clock:
     // every report of the slave names it.
-    class axi_write_mode_b_model_extra_dead_test extends axi_write_mode_b_model_extra_test;
-        `uvm_component_utils(axi_write_mode_b_model_extra_dead_test)
+    class axi_write_paired_model_extra_dead_test extends axi_write_paired_model_extra_test;
+        `uvm_component_utils(axi_write_paired_model_extra_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_write_mode_b_model_extra_dead_test
+    endclass : axi_write_paired_model_extra_dead_test
 
-    class axi_write_mode_b_busy_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_busy_test)
+    class axi_write_paired_busy_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_BUSY;
         endfunction
-    endclass : axi_write_mode_b_busy_test
+    endclass : axi_write_paired_busy_test
 
-    // As axi_write_mode_b_busy_test with the model lane stalled across the
+    // As axi_write_paired_busy_test with the model lane stalled across the
     // cut, so the DUT lane completes bursts past the cut before the model
     // lane reaches it.
-    class axi_write_mode_b_busy_lag_test extends axi_write_mode_b_busy_test;
-        `uvm_component_utils(axi_write_mode_b_busy_lag_test)
+    class axi_write_paired_busy_lag_test extends axi_write_paired_busy_test;
+        `uvm_component_utils(axi_write_paired_busy_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3033,211 +3033,211 @@
             if (stall) kept = model_peer_cfg.bready_pct;
             model_peer_cfg.bready_pct = stall ? 0 : kept;
         endfunction
-    endclass : axi_write_mode_b_busy_lag_test
+    endclass : axi_write_paired_busy_lag_test
 
     // The agent is the master; each lane's slave reorders on its own and
     // has its own memory.
-    class axi_write_mode_b_master_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_master_test)
+    class axi_write_paired_master_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_master_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_SRC;
         endfunction
-    endclass : axi_write_mode_b_master_test
+    endclass : axi_write_paired_master_test
 
-    class axi_write_mode_b_master_mismatch_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_mismatch_test)
+    class axi_write_paired_master_mismatch_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MISMATCH;
         endfunction
-    endclass : axi_write_mode_b_master_mismatch_test
+    endclass : axi_write_paired_master_mismatch_test
 
     // The model lane's master sends some bursts of different IDs in the
     // other order, so the model lane must find each pick by its ID and its
     // place among the bursts of that ID.
-    class axi_write_mode_b_cross_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_cross_test)
+    class axi_write_paired_cross_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_cross_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_CROSS;
         endfunction
-    endclass : axi_write_mode_b_cross_test
+    endclass : axi_write_paired_cross_test
 
     // The model lane's master sends its next AW only after the last
     // response, and the DUT lane reorders: the model lane holds the first
     // reordered pick, whose AW its master waits to send, and the slave
     // reports the pick and the AWs behind it as a model defect.
-    class axi_write_mode_b_serial_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_serial_test)
+    class axi_write_paired_serial_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_serial_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SERIAL;
         endfunction
-    endclass : axi_write_mode_b_serial_test
+    endclass : axi_write_paired_serial_test
 
     // The DUT lane's master sends one burst more mid-run, among the others:
     // the model lane holds that pick, with its later AWs behind it, until
     // the end.
-    class axi_write_mode_b_dut_mid_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_dut_mid_test)
+    class axi_write_paired_dut_mid_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_dut_mid_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_MID;
         endfunction
-    endclass : axi_write_mode_b_dut_mid_test
+    endclass : axi_write_paired_dut_mid_test
 
     // Both masters keep sending, and the model lane's skips one burst
     // mid-run. The drain cuts the run past that burst, and the slave still
     // reports the held pick, which the cut keeps.
-    class axi_write_mode_b_skip_cut_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_skip_cut_test)
+    class axi_write_paired_skip_cut_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_skip_cut_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SKIP_CUT;
         endfunction
-    endclass : axi_write_mode_b_skip_cut_test
+    endclass : axi_write_paired_skip_cut_test
 
     // The agent is the master of a port that binds no id_t: it sends every
     // burst on both lanes with ID 0.
-    class axi_write_mode_b_master_id_unbound_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_id_unbound_test)
+    class axi_write_paired_master_id_unbound_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_id_unbound_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             id_unbound = 1;
         endfunction
-    endclass : axi_write_mode_b_master_id_unbound_test
+    endclass : axi_write_paired_master_id_unbound_test
 
     // The agent is the master, and the model lane's slave never answers.
     // The model lane dies lane_skew clocks after the DUT lane's first B, and
     // the DUT lane serves the rest.
-    class axi_write_mode_b_master_mute_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_mute_test)
+    class axi_write_paired_master_mute_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_mute_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MUTE;
         endfunction
-    endclass : axi_write_mode_b_master_mute_test
+    endclass : axi_write_paired_master_mute_test
 
     // The agent is the master, and the model lane's slave takes no AW. The
     // model lane dies lane_skew clocks after the DUT lane took the first,
     // with its awvalid held, and the DUT lane serves every burst.
-    class axi_write_mode_b_master_deaf_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_deaf_test)
+    class axi_write_paired_master_deaf_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_deaf_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DEAF;
         endfunction
-    endclass : axi_write_mode_b_master_deaf_test
+    endclass : axi_write_paired_master_deaf_test
 
     // The agent is the master, and the model lane's slave takes AWs and no W
     // beat. The model lane dies lane_skew clocks after the DUT lane took the
     // first W beat, with its wvalid held, and the DUT lane serves every
     // burst.
-    class axi_write_mode_b_master_deaf_w_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_deaf_w_test)
+    class axi_write_paired_master_deaf_w_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_deaf_w_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DEAF_W;
         endfunction
-    endclass : axi_write_mode_b_master_deaf_w_test
+    endclass : axi_write_paired_master_deaf_w_test
 
-    // As axi_write_mode_b_master_mute_test with the joint stall bound below
+    // As axi_write_paired_master_mute_test with the joint stall bound below
     // the skew bound: the model lane trails on a B.
-    class axi_write_mode_b_master_mute_joint_under_test extends axi_write_mode_b_master_mute_test;
-        `uvm_component_utils(axi_write_mode_b_master_mute_joint_under_test)
+    class axi_write_paired_master_mute_joint_under_test extends axi_write_paired_master_mute_test;
+        `uvm_component_utils(axi_write_paired_master_mute_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             joint_under = 1;
         endfunction
-    endclass : axi_write_mode_b_master_mute_joint_under_test
+    endclass : axi_write_paired_master_mute_joint_under_test
 
-    // As axi_write_mode_b_master_deaf_test with the joint stall bound below
+    // As axi_write_paired_master_deaf_test with the joint stall bound below
     // the skew bound: the model lane trails on the AW.
-    class axi_write_mode_b_master_deaf_joint_under_test extends axi_write_mode_b_master_deaf_test;
-        `uvm_component_utils(axi_write_mode_b_master_deaf_joint_under_test)
+    class axi_write_paired_master_deaf_joint_under_test extends axi_write_paired_master_deaf_test;
+        `uvm_component_utils(axi_write_paired_master_deaf_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             joint_under = 1;
         endfunction
-    endclass : axi_write_mode_b_master_deaf_joint_under_test
+    endclass : axi_write_paired_master_deaf_joint_under_test
 
-    // As axi_write_mode_b_master_deaf_w_test with the joint stall bound
+    // As axi_write_paired_master_deaf_w_test with the joint stall bound
     // below the skew bound: the model lane trails on its W beats.
-    class axi_write_mode_b_master_deaf_w_joint_under_test extends axi_write_mode_b_master_deaf_w_test;
-        `uvm_component_utils(axi_write_mode_b_master_deaf_w_joint_under_test)
+    class axi_write_paired_master_deaf_w_joint_under_test extends axi_write_paired_master_deaf_w_test;
+        `uvm_component_utils(axi_write_paired_master_deaf_w_joint_under_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             joint_under = 1;
         endfunction
-    endclass : axi_write_mode_b_master_deaf_w_joint_under_test
+    endclass : axi_write_paired_master_deaf_w_joint_under_test
 
     // The DUT lane answers one burst past the bound and dies, and the model
     // lane serves that burst and the rest.
-    class axi_write_mode_b_master_dut_late_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_dut_late_test)
+    class axi_write_paired_master_dut_late_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_dut_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_DUT_LATE;
         endfunction
-    endclass : axi_write_mode_b_master_dut_late_test
+    endclass : axi_write_paired_master_dut_late_test
 
     // The model lane answers one burst and the next past the bound. It dies
     // on the first, and raises no second A2C_SKEW error on the next.
-    class axi_write_mode_b_master_model_late_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_model_late_test)
+    class axi_write_paired_master_model_late_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_model_late_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_MODEL_LATE;
         endfunction
-    endclass : axi_write_mode_b_master_model_late_test
+    endclass : axi_write_paired_master_model_late_test
 
     // The model lane's slave stops taking AWs and W beats for a while. The
     // model lane dies on the AW or W beat it missed, and takes each of them
     // once, with its valid low after it, when its slave resumes.
-    class axi_write_mode_b_master_stall_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_stall_test)
+    class axi_write_paired_master_stall_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_STALL;
         endfunction
-    endclass : axi_write_mode_b_master_stall_test
+    endclass : axi_write_paired_master_stall_test
 
     // The model lane answers every burst lag clocks late, under the bound,
     // so no burst is an A2C_SKEW error.
-    class axi_write_mode_b_master_lag_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_lag_test)
+    class axi_write_paired_master_lag_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LAG;
         endfunction
-    endclass : axi_write_mode_b_master_lag_test
+    endclass : axi_write_paired_master_lag_test
 
     // As the lag test with the model throttle bound at 20 clocks: the
     // model lane's late answers fill its outstanding slots and hold the
     // next burst back for that long, which raises one
     // A2C_MODEL_THROTTLE.
-    class axi_write_mode_b_master_throttle_test extends axi_write_mode_b_master_lag_test;
+    class axi_write_paired_master_throttle_test extends axi_write_paired_master_lag_test;
         a2c_expected_error throttle_err;
 
-        `uvm_component_utils(axi_write_mode_b_master_throttle_test)
+        `uvm_component_utils(axi_write_paired_master_throttle_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3250,105 +3250,105 @@
             throttle_err.id   = "A2C_MODEL_THROTTLE";
             throttle_err.text = "axw: the master has held its next burst back for the model lane for 20 clocks (model_throttle_cycles, +a2c_model_throttle_cycles)";
         endfunction
-    endclass : axi_write_mode_b_master_throttle_test
+    endclass : axi_write_paired_master_throttle_test
 
     // As the lag test with lane_skew_cycles 0, which turns the bound off.
-    class axi_write_mode_b_master_skew_off_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_skew_off_test)
+    class axi_write_paired_master_skew_off_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_skew_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_SKEW_OFF;
         endfunction
-    endclass : axi_write_mode_b_master_skew_off_test
+    endclass : axi_write_paired_master_skew_off_test
 
     // The model lane's slave takes the AW and some W beats of one burst,
     // stops taking W beats past the bound and then takes them again. The
     // model lane dies holding half a burst, takes the beat its wvalid held
     // once when its slave resumes, and the DUT lane serves every burst.
-    class axi_write_mode_b_master_half_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_half_test)
+    class axi_write_paired_master_half_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_half_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_HALF;
         endfunction
-    endclass : axi_write_mode_b_master_half_test
+    endclass : axi_write_paired_master_half_test
 
     // The model lane takes no AW and dies, and later the DUT lane's slave
     // stops answering, so the DUT lane dies too and the sequence gets the
     // rest of its bursts back with no beats.
-    class axi_write_mode_b_master_both_dead_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_both_dead_test)
+    class axi_write_paired_master_both_dead_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_both_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_BOTH_DEAD;
         endfunction
-    endclass : axi_write_mode_b_master_both_dead_test
+    endclass : axi_write_paired_master_both_dead_test
 
     // Both lanes' slaves stop answering at one burst, so neither lane
     // trails: the joint stall bound declares both dead in one
     // A2C_JOINT_STALL.
-    class axi_write_mode_b_master_joint_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_joint_test)
+    class axi_write_paired_master_joint_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_JOINT;
         endfunction
-    endclass : axi_write_mode_b_master_joint_test
+    endclass : axi_write_paired_master_joint_test
 
     // The model lane dies on an AW while the DUT lane returns the B of three
     // bursts of one ID around the death, and the sequence must get them
     // back in order.
-    class axi_write_mode_b_master_order_aw_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_aw_test)
+    class axi_write_paired_master_order_aw_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_order_aw_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_ORDER_A;
         endfunction
-    endclass : axi_write_mode_b_master_order_aw_test
+    endclass : axi_write_paired_master_order_aw_test
 
     // As the order_aw test, with the model lane's slave returning the B of
     // burst 0 on the clock of the death, on which the DUT lane completes
     // burst 1.
-    class axi_write_mode_b_master_order_aw_m0_test extends axi_write_mode_b_master_order_aw_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_aw_m0_test)
+    class axi_write_paired_master_order_aw_m0_test extends axi_write_paired_master_order_aw_test;
+        `uvm_component_utils(axi_write_paired_master_order_aw_m0_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             order_model = 1;
         endfunction
-    endclass : axi_write_mode_b_master_order_aw_m0_test
+    endclass : axi_write_paired_master_order_aw_m0_test
 
     // As the order_aw test, with both lanes completing burst 1 on the clock
     // of the death.
-    class axi_write_mode_b_master_order_aw_both_test extends axi_write_mode_b_master_order_aw_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_aw_both_test)
+    class axi_write_paired_master_order_aw_both_test extends axi_write_paired_master_order_aw_test;
+        `uvm_component_utils(axi_write_paired_master_order_aw_both_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             order_model = 2;
         endfunction
-    endclass : axi_write_mode_b_master_order_aw_both_test
+    endclass : axi_write_paired_master_order_aw_both_test
 
     // As the order_aw test, with the death on a W beat.
-    class axi_write_mode_b_master_order_w_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_w_test)
+    class axi_write_paired_master_order_w_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_order_w_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_ORDER_W;
         endfunction
-    endclass : axi_write_mode_b_master_order_w_test
+    endclass : axi_write_paired_master_order_w_test
 
     // As the order_aw_m0 test, with the death on a W beat. Xcelium and VCS
     // both take the Bs of the death's edge before run_w() declares the
     // death, so the master takes them late, which gives the other order.
-    class axi_write_mode_b_master_order_w_m0_test extends axi_write_mode_b_master_order_w_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_w_m0_test)
+    class axi_write_paired_master_order_w_m0_test extends axi_write_paired_master_order_w_test;
+        `uvm_component_utils(axi_write_paired_master_order_w_m0_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3359,151 +3359,151 @@
             super.connect_phase(phase);
             probe().late_take = 1;
         endfunction
-    endclass : axi_write_mode_b_master_order_w_m0_test
+    endclass : axi_write_paired_master_order_w_m0_test
 
     // As the order_aw_both test, with the death on a W beat and the Bs
     // taken late, as in the order_w_m0 test.
-    class axi_write_mode_b_master_order_w_both_test extends axi_write_mode_b_master_order_w_m0_test;
-        `uvm_component_utils(axi_write_mode_b_master_order_w_both_test)
+    class axi_write_paired_master_order_w_both_test extends axi_write_paired_master_order_w_m0_test;
+        `uvm_component_utils(axi_write_paired_master_order_w_both_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             order_model = 2;
         endfunction
-    endclass : axi_write_mode_b_master_order_w_both_test
+    endclass : axi_write_paired_master_order_w_both_test
 
     // The model lane dies, and the DUT lane, alone, then waits lane_skew +
     // 150 clocks for four Bs, under the default lone lane bound.
-    class axi_write_mode_b_master_lone_stall_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_lone_stall_test)
+    class axi_write_paired_master_lone_stall_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_lone_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LONE_STALL;
         endfunction
-    endclass : axi_write_mode_b_master_lone_stall_test
+    endclass : axi_write_paired_master_lone_stall_test
 
     // As the lone stall test with a2c_lone_lane_cycles 0, which turns the
     // rule off.
-    class axi_write_mode_b_master_lone_off_test extends axi_write_mode_b_master_test;
-        `uvm_component_utils(axi_write_mode_b_master_lone_off_test)
+    class axi_write_paired_master_lone_off_test extends axi_write_paired_master_test;
+        `uvm_component_utils(axi_write_paired_master_lone_off_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = AXB_LONE_OFF;
         endfunction
-    endclass : axi_write_mode_b_master_lone_off_test
+    endclass : axi_write_paired_master_lone_off_test
 
     // The DUT lane's master sends one burst the model lane's never does,
     // and 20 clocks into the drain a master elsewhere declares the model
     // lane dead: the drain still waits to its deadline, and its A2C_DRAIN
     // report names the death. The slave held the pick before the death, so
     // its report of the pick names none.
-    class axi_write_mode_b_dead_drain_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_dead_drain_test)
+    class axi_write_paired_dead_drain_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_dead_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant    = AXB_DEAD_DRAIN;
             dead_after = 20;
         endfunction
-    endclass : axi_write_mode_b_dead_drain_test
+    endclass : axi_write_paired_dead_drain_test
 
-    // As axi_write_mode_b_dead_drain_test with the death on the first
+    // As axi_write_paired_dead_drain_test with the death on the first
     // clock, before the pick, so the report of the pick names it too.
-    class axi_write_mode_b_dead_early_drain_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_dead_early_drain_test)
+    class axi_write_paired_dead_early_drain_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_dead_early_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant    = AXB_DEAD_DRAIN;
             dead_early = 1;
         endfunction
-    endclass : axi_write_mode_b_dead_early_drain_test
+    endclass : axi_write_paired_dead_early_drain_test
 
-    // As axi_write_mode_b_busy_lag_test, and a master elsewhere declares the
+    // As axi_write_paired_busy_lag_test, and a master elsewhere declares the
     // model lane dead while the lanes catch up with the cut. The drain ends
     // once they reach it, as without the death. The death came after the
     // cut, so the A2C_CUT report does not name it.
-    class axi_write_mode_b_busy_dead_test extends axi_write_mode_b_busy_lag_test;
-        `uvm_component_utils(axi_write_mode_b_busy_dead_test)
+    class axi_write_paired_busy_dead_test extends axi_write_paired_busy_lag_test;
+        `uvm_component_utils(axi_write_paired_busy_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_in_catchup = 1;
         endfunction
-    endclass : axi_write_mode_b_busy_dead_test
+    endclass : axi_write_paired_busy_dead_test
 
-    // As axi_write_mode_b_busy_lag_test with a death on the first clock, so
+    // As axi_write_paired_busy_lag_test with a death on the first clock, so
     // the A2C_CUT report names it.
-    class axi_write_mode_b_busy_dead_early_test extends axi_write_mode_b_busy_lag_test;
-        `uvm_component_utils(axi_write_mode_b_busy_dead_early_test)
+    class axi_write_paired_busy_dead_early_test extends axi_write_paired_busy_lag_test;
+        `uvm_component_utils(axi_write_paired_busy_dead_early_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_write_mode_b_busy_dead_early_test
+    endclass : axi_write_paired_busy_dead_early_test
 
-    // As axi_write_mode_b_master_mute_test after a death on another port, so
+    // As axi_write_paired_master_mute_test after a death on another port, so
     // the master's A2C_SKEW report names that death.
-    class axi_write_mode_b_master_mute_cascade_test extends axi_write_mode_b_master_mute_test;
-        `uvm_component_utils(axi_write_mode_b_master_mute_cascade_test)
+    class axi_write_paired_master_mute_cascade_test extends axi_write_paired_master_mute_test;
+        `uvm_component_utils(axi_write_paired_master_mute_cascade_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             dead_early = 1;
         endfunction
-    endclass : axi_write_mode_b_master_mute_cascade_test
+    endclass : axi_write_paired_master_mute_cascade_test
 
-    // A passive Mode B agent watches the port of a master whose model lane
+    // A passive paired-mode agent watches the port of a master whose model lane
     // dies: its monitors and model_cmp learn of the death, so they raise
     // no A2C_PROTO or A2C_MODEL_CMP error.
-    class axi_write_mode_b_master_late_passive_test extends axi_write_mode_b_master_model_late_test;
-        `uvm_component_utils(axi_write_mode_b_master_late_passive_test)
+    class axi_write_paired_master_late_passive_test extends axi_write_paired_master_model_late_test;
+        `uvm_component_utils(axi_write_paired_master_late_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_write_mode_b_master_late_passive_test
+    endclass : axi_write_paired_master_late_passive_test
 
-    // A passive Mode B agent watches a port the drain cuts: its model_cmp
+    // A passive paired-mode agent watches a port the drain cuts: its model_cmp
     // is cut with the slave's, and its monitors learn of the cut.
-    class axi_write_mode_b_busy_passive_test extends axi_write_mode_b_busy_lag_test;
-        `uvm_component_utils(axi_write_mode_b_busy_passive_test)
+    class axi_write_paired_busy_passive_test extends axi_write_paired_busy_lag_test;
+        `uvm_component_utils(axi_write_paired_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_write_mode_b_busy_passive_test
+    endclass : axi_write_paired_busy_passive_test
 
-    // A passive Mode B agent watches the port beside the slave under test.
-    class axi_write_mode_b_passive_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_passive_test)
+    // A passive paired-mode agent watches the port beside the slave under test.
+    class axi_write_paired_passive_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : axi_write_mode_b_passive_test
+    endclass : axi_write_paired_passive_test
 
     // Two IDs, so two bursts of one ID wait for B at once, and the reorder
     // must answer the older first.
-    class axi_write_mode_b_same_id_test extends axi_write_mode_b_test;
-        `uvm_component_utils(axi_write_mode_b_same_id_test)
+    class axi_write_paired_same_id_test extends axi_write_paired_test;
+        `uvm_component_utils(axi_write_paired_same_id_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             same_id = 1;
         endfunction
-    endclass : axi_write_mode_b_same_id_test
+    endclass : axi_write_paired_same_id_test
 
     // ------------------------------------------------------------ two ports
 
-    // Two Mode B ports: axw, on clk2, whose agent is the master, and axr, on
-    // clk, whose agent is the slave. axw's model lane slave never answers,
+    // Two paired-mode ports: axw, on clk2, whose agent is the master, and axr,
+    // on clk, whose agent is the slave. axw's model lane slave never answers,
     // so the master declares that lane dead early in the run. axr's model
     // lane master starts 50 clocks after the DUT lane's has finished, so it
     // trails at the drop, and the drain must wait for it as if nothing had
@@ -3518,7 +3518,7 @@
     // for the records never replayed and the pick the model lane never
     // issued, are dated by events after the model lane began to trail and
     // before its death, and both must name the death.
-    class axi_mode_b_two_port_test extends lb_mode_b_base;
+    class axi_paired_two_port_test extends lb_paired_base;
         int unsigned       n = 30;
         bit                trail;
         virtual a2c_clk_if clk2_vif;
@@ -3539,7 +3539,7 @@
         lb_recording_demoter     replays;
         realtime                 first_b_at;
 
-        `uvm_component_utils(axi_mode_b_two_port_test)
+        `uvm_component_utils(axi_paired_two_port_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3701,14 +3701,14 @@
             string            ids[3] = '{"A2C_DRAIN", "A2C_REPLAY", "A2C_CUT"};
             super.check_phase(phase);
             `uvm_info("LB_STATS", $sformatf("axr pairs %0d, axw pairs %0d", rd.model_cmp.get_pairs(), wr.model_cmp.get_pairs()), UVM_NONE)
-            if (!wr.model_cmp.stopped()) `uvm_error("LB_MODE_B", "axw's model lane did not die")
+            if (!wr.model_cmp.stopped()) `uvm_error("LB_PAIRED", "axw's model lane did not die")
             if (trail) begin
                 check_trail();
                 return;
             end
-            if (rd.model_cmp.stopped()) `uvm_error("LB_MODE_B", "axr's model_cmp stopped on axw's death")
-            if (rd.model_cmp.get_pairs() != n) `uvm_error("LB_MODE_B", $sformatf("axr's model_cmp paired %0d bursts, expected %0d", rd.model_cmp.get_pairs(), n))
-            foreach (ids[i]) if (srv.get_id_count(ids[i]) != 0) `uvm_error("LB_MODE_B", $sformatf("%0d %s reports, expected none", srv.get_id_count(ids[i]), ids[i]))
+            if (rd.model_cmp.stopped()) `uvm_error("LB_PAIRED", "axr's model_cmp stopped on axw's death")
+            if (rd.model_cmp.get_pairs() != n) `uvm_error("LB_PAIRED", $sformatf("axr's model_cmp paired %0d bursts, expected %0d", rd.model_cmp.get_pairs(), n))
+            foreach (ids[i]) if (srv.get_id_count(ids[i]) != 0) `uvm_error("LB_PAIRED", $sformatf("%0d %s reports, expected none", srv.get_id_count(ids[i]), ids[i]))
         endfunction
 
         protected function void check_trail();
@@ -3716,17 +3716,17 @@
             string   clause = $sformatf("; the model lane of axw (uvm_test_top.wr.drv) began to trail at %0t and was declared dead at %0t (A2C_SKEW), which may be related",
                                         first_b_at, died);
             if (rd_arrivals.items.size() != n || rd_arrivals.at[n - 1] >= died) begin
-                `uvm_error("LB_MODE_B", $sformatf("axr's DUT lane completed %0d of %0d bursts before axw's model lane died at %0t, so the reports went untested",
+                `uvm_error("LB_PAIRED", $sformatf("axr's DUT lane completed %0d of %0d bursts before axw's model lane died at %0t, so the reports went untested",
                                                   rd_arrivals.items.size(), n, died))
             end
             if (replays.demoted != 2 || replays.count(clause) != 2) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected two A2C_REPLAY errors, each ending '%s': %p", clause, replays.messages))
+                `uvm_error("LB_PAIRED", $sformatf("expected two A2C_REPLAY errors, each ending '%s': %p", clause, replays.messages))
             end
         endfunction
-    endclass : axi_mode_b_two_port_test
+    endclass : axi_paired_two_port_test
 
-    class axi_mode_b_two_port_trail_test extends axi_mode_b_two_port_test;
-        `uvm_component_utils(axi_mode_b_two_port_trail_test)
+    class axi_paired_two_port_trail_test extends axi_paired_two_port_test;
+        `uvm_component_utils(axi_paired_two_port_trail_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3738,11 +3738,11 @@
             uvm_config_db#(bit)::set(this, "rd.model_cmp", "a2c_allow_no_pairs", 1'b1);
             super.build_phase(phase);
         endfunction
-    endclass : axi_mode_b_two_port_trail_test
+    endclass : axi_paired_two_port_trail_test
 
     // ------------------------------------------------- passive agents alone
 
-    // Builds a passive Mode B agent of AGENT_T named port under parent, on
+    // Builds a passive paired-mode agent of AGENT_T named port under parent, on
     // the pin sets pins and pins_model, by default those of port.
     class lb_passive #(type AGENT_T = uvm_agent, type CFG_T = uvm_object, type VIF_T = int);
         static function AGENT_T make(uvm_component parent, string port, a2c_role_e role, virtual a2c_clk_if clk_vif, string pins = "");
@@ -3760,8 +3760,8 @@
         endfunction
     endclass : lb_passive
 
-    // A passive Mode B agent of each family whose passive agents learn of a
-    // cut or a death, each on its port with no active agent, as on an
+    // A passive paired-mode agent of each family whose passive agents learn of
+    // a cut or a death, each on its port with no active agent, as on an
     // internal port of a top design: each raises one A2C_PASSIVE info that
     // names its port and cfg.vif. A passive A2C_SRC agent of pop_ack,
     // req_ack and memory, the families that build a model_cmp in that role,
@@ -3772,14 +3772,14 @@
     // AXI agents' monitors
     // keep the replay log the test gives them in connect_phase, as a
     // hand-written env may.
-    class mode_b_unowned_passive_test extends lb_mode_b_base;
+    class paired_unowned_passive_test extends lb_paired_base;
         string                ports[13] = '{"pa", "na", "ra", "po", "mem", "er", "apb", "axr", "axw", "rv", "axis", "ra_src", "po_src"};
         axr_agent_t           axr;
         axw_agent_t           axw;
         a2c_replay_log #(bit) kept;
         lb_id_texts           notes;
 
-        `uvm_component_utils(mode_b_unowned_passive_test)
+        `uvm_component_utils(paired_unowned_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -3830,17 +3830,17 @@
 
         virtual function void start_of_simulation_phase(uvm_phase phase);
             if (axr.mon.replay != kept || axr.model_mon.replay != kept || axw.mon.replay != kept || axw.model_mon.replay != kept) begin
-                `uvm_error("LB_MODE_B", "a passive AXI agent dropped the replay log the test gave its monitors")
+                `uvm_error("LB_PAIRED", "a passive AXI agent dropped the replay log the test gave its monitors")
             end
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
             foreach (ports[i]) begin
-                if (notes.count({ports[i], ": no active Mode B agent has the interface instance in this agent's cfg.vif as its own"}) != 1) begin
-                    `uvm_error("LB_MODE_B", $sformatf("expected one A2C_PASSIVE info for %s: %p", ports[i], notes.messages))
+                if (notes.count({ports[i], ": no active paired-mode agent has the interface instance in this agent's cfg.vif as its own"}) != 1) begin
+                    `uvm_error("LB_PAIRED", $sformatf("expected one A2C_PASSIVE info for %s: %p", ports[i], notes.messages))
                 end
             end
             `uvm_info("LB_STATS", $sformatf("%p", notes.messages), UVM_NONE)
             super.report_phase(phase);
         endfunction
-    endclass : mode_b_unowned_passive_test
+    endclass : paired_unowned_passive_test

@@ -7,7 +7,7 @@ either, before or after the summary. The command passes when both runs pass,
 both print A2C_DIGEST lines with a transaction on at least one port and the
 same item count on both lanes of every port that reports two with paired=1,
 and the lines are the same in both runs. A port prints paired=1 when its
-Mode B comparator paired every item of one lane with one of the other; one
+paired-mode comparator paired every item of one lane with one of the other; one
 that compares only some items, such as a status port under the stable
 policy, or whose comparator an end-of-test cut left holding items, may see
 more items on one lane in a correct run.

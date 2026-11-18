@@ -18,7 +18,7 @@ value a test sets in its constructor stands until a plusarg overrides it,
 the drain's included: only a drain window or deadline left at -1 takes the
 quiet window or output deadline, and a catch-up left at -1 is not set, so
 each replay log takes its own deadline. In
-Mode B, which the env reads from a2c_dual_dut, each return of
+paired mode, which the env reads from a2c_dual_dut, each return of
 wait_for_outputs() is a stable point for the model comparators. At its
 check_phase a run whose input agents sent no item, through their sequencers
 or a status input's driver, and whose counters were declared no transaction
@@ -38,8 +38,8 @@ rt_on_model the same way. The fail test
 adds the missing transactions to the first counted output after the smoke
 stimulus, turns the real-time rules off with a2c_rt_off, because
 the missing transaction never closes its unit, and passes only on exactly one A2C_TXN_COUNT error, or one per lane
-in Mode B, with each lane's pending count equal to the missing count, and only
-when the smoke test sent data-path stimulus, since a dead data path also
+in paired mode, with each lane's pending count equal to the missing count, and
+only when the smoke test sent data-path stimulus, since a dead data path also
 misses the transactions. It clears expect_from_model and its config key, whose
 model lane would absorb the missing count. The rt-fire test sets rt_lag_cycles to 1 on the smoke
 stimulus, demotes A2C_RT_DEADLINE, and passes only when env holds a checker
@@ -47,7 +47,7 @@ that is not off, each such checker failed every unit it paired once, and
 the demoted errors are those of the checkers that judge. A block
 with a model, and so a both DUT, also gets `<block>_model_mismatch_test`,
 which injects a mismatch on that output's model comparator, stops with A2C_CFG
-outside Mode B, demotes only the A2C_MODEL_CMP that carries the injection
+outside paired mode, demotes only the A2C_MODEL_CMP that carries the injection
 marker, and passes only on exactly one of those with at least mismatch_at
 pairs compared. make gen rewrites only the generated sections, so a user
 edit in either span survives it.
@@ -59,8 +59,8 @@ rdM, so it has no counted output: its test package has no fail, rt-fire or
 model mismatch test, waits on no output, and still takes the stable point. A third
 copy gives ubDut no model, so it keeps the fail and rt-fire tests and has no model mismatch
 test. A fourth copy gives ubDut an apb master port, mst. The apb slave agent
-drains its replay log itself, so that copy's wait_for_outputs() ends in Mode B
-with the stable point alone, as every copy's does.
+drains its replay log itself, so that copy's wait_for_outputs() ends in paired
+mode with the stable point alone, as every copy's does.
 
 The loopback simulates the template's base test too:
 common/systemVerilog/uvm/loopback/a2c_gen_base_test_lb_tests.svh holds
@@ -245,8 +245,8 @@ STIMULUS_SENT = [
 OUTPUT_WORK = ['n += env.out_counter.declared();']
 WORK_END = ['return n;', 'endfunction', 'endclass : ubDut_base_test']
 
-# The Mode B tail of wait_for_outputs(), whole and in order.
-MODE_B_TAIL = ['if (env.dual_dut) begin', 'env.model_stable_point();', 'end', 'endtask']
+# The paired-mode tail of wait_for_outputs(), whole and in order.
+PAIRED_TAIL = ['if (env.dual_dut) begin', 'env.model_stable_point();', 'end', 'endtask']
 
 SPAN_2 = [
     'class ubDut_smoke_test extends ubDut_base_test;',
@@ -384,9 +384,9 @@ def check_layout(path, hasOutput, hasModel=True):
         problems.append(f"{name} declares a model mismatch test, and the block has no model or no counted output")
     if any('ubRegs_agent' in line for line in data_stimulus_body(tests)):
         problems.append(f"{name} counts the register bus in data_stimulus_sent(): {data_stimulus_body(tests)}")
-    start = tests.index(MODE_B_TAIL[0]) if MODE_B_TAIL[0] in tests else -1
-    if start < 0 or tests[start:start + len(MODE_B_TAIL)] != MODE_B_TAIL:
-        problems.append(f"{name} tests section is\n    {tests}\n  expected the Mode B tail\n    {MODE_B_TAIL}")
+    start = tests.index(PAIRED_TAIL[0]) if PAIRED_TAIL[0] in tests else -1
+    if start < 0 or tests[start:start + len(PAIRED_TAIL)] != PAIRED_TAIL:
+        problems.append(f"{name} tests section is\n    {tests}\n  expected the paired-mode tail\n    {PAIRED_TAIL}")
     return problems
 
 

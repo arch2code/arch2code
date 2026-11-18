@@ -1,16 +1,16 @@
-// Tests of how a Mode B run completes: a counter that takes the model
+// Tests of how a paired-mode run completes: a counter that takes the model
 // lane's count as the DUT lane's expectation, and a comparator that
 // compared no pair. Included in a2c_uvm_loopback_pkg after the agents'
 // tests, whose typedefs they use.
 
-    // Mode B on rv and rv_model, the agent the A2C_DST side, with no count
-    // declared: the counter has expect_from_model set, so the model lane's
-    // count is the DUT lane's expectation. The model lane's peer runs with
-    // longer gaps, so wait_for_count() must hold until the model lane's last
-    // beat and a quiet window after it. With dut_short set the DUT lane's
-    // peer sends two beats fewer, which the counter reports as two missing
-    // on the DUT lane.
-    class lb_expect_from_model_test extends lb_mode_b_base;
+    // Paired mode on rv and rv_model, the agent the A2C_DST side, with no
+    // count declared: the counter has expect_from_model set, so the model
+    // lane's count is the DUT lane's expectation. The model lane's peer runs
+    // with longer gaps, so wait_for_count() must hold until the model lane's
+    // last beat and a quiet window after it. With dut_short set the DUT
+    // lane's peer sends two beats fewer, which the counter reports as two
+    // missing on the DUT lane.
+    class lb_expect_from_model_test extends lb_paired_base;
         bit                       dut_short = 0;
         rv_agent_t                agent;
         rv_agent_t                peer;
@@ -128,11 +128,11 @@
         endfunction
     endclass : lb_expect_from_model_short_test
 
-    // Mode B on rv and rv_model with the agent the A2C_DST side and idle
-    // sources on both lanes: its model_cmp compares no pair, which check_phase reports
+    // Paired mode on rv and rv_model with the agent the A2C_DST side and
+    // idle sources on both lanes: its model_cmp compares no pair, which check_phase reports
     // as one A2C_NO_PAIRS error. With waive set the test sets
     // a2c_allow_no_pairs on the comparator, and no error comes.
-    class lb_no_pairs_test extends lb_mode_b_base;
+    class lb_no_pairs_test extends lb_paired_base;
         bit        waive = 0;
         rv_agent_t agent;
         rv_agent_t peer;
@@ -198,7 +198,7 @@
     // A counter with a2c_expect_from_model set and dual clear has no model
     // lane to take its count from, and would pass an output that delivered
     // nothing: one A2C_CFG error says so.
-    class lb_expect_from_model_single_test extends lb_mode_b_base;
+    class lb_expect_from_model_single_test extends lb_paired_base;
         rv_counter_t counter;
 
         `uvm_component_utils(lb_expect_from_model_single_test)

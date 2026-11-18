@@ -153,24 +153,24 @@
     // window and clock stop in its constructor; +a2c_output_deadline_cycles,
     // +a2c_quiet_cycles and +a2c_clock_stop_cycles override them. A clock
     // with no edge for clock_stop_cycles of its periods has stopped. In
-    // Mode B the drain at the end of the run phase has its own window,
+    // paired mode the drain at the end of the run phase has its own window,
     // deadline and catch-up after a cut, which a test may set in its
     // constructor too, and +a2c_drain_quiet_cycles,
     // +a2c_drain_deadline_cycles and +a2c_drain_catchup_cycles override.
     // Left at -1, the window and deadline take quiet_cycles and
     // output_deadline_cycles, and the catch-up takes each replay log's
     // deadline. +a2c_drain_cut_expected=1 reports the drain's cuts as
-    // UVM_INFO. A master in Mode B declares a lane dead when it trails
+    // UVM_INFO. A master in paired mode declares a lane dead when it trails
     // the other by lane_skew_cycles clocks, and the other lane dead too
     // when, left alone, it makes no progress for lone_lane_cycles
     // clocks. In either mode a master that holds an item while no port
     // makes a handshake for joint_stall_cycles clocks raises one
-    // A2C_JOINT_STALL. In Mode B the masters then declare every live
-    // lane dead, and in Mode A the run ends there, as at the run
+    // A2C_JOINT_STALL. In paired mode the masters then declare every live
+    // lane dead, and in single mode the run ends there, as at the run
     // timeout. Left at -1 each keeps the master's own
     // 200000, +a2c_lane_skew_cycles, +a2c_lone_lane_cycles and
     // +a2c_joint_stall_cycles override them, and 0 turns a rule off. A
-    // Mode B master that holds its next item back for the model lane,
+    // paired-mode master that holds its next item back for the model lane,
     // with the DUT lane ready for it, for model_throttle_cycles clocks in a
     // row raises A2C_MODEL_THROTTLE; left at -1 it keeps the master's
     // own bound, +a2c_model_throttle_cycles overrides it, and 0 turns the
@@ -195,7 +195,7 @@
     // +a2c_rt_gap_cycles, +a2c_rt_latency_cycles, +a2c_rt_lag_cycles,
     // +a2c_rt_refusal_cycles and +a2c_rt_on_model override them. With
     // expect_from_model (+a2c_expect_from_model=1) set, an output needs no
-    // expect_count() in Mode B: the model lane's count is the DUT lane's
+    // expect_count() in paired mode: the model lane's count is the DUT lane's
     // expectation, and wait_for_outputs() returns once the outputs have
     // been quiet for quiet_cycles. A run with one DUT has no model lane,
     // so build_phase clears expect_from_model there and the test declares
@@ -333,8 +333,8 @@
         endtask
 
         // Each output waits on its own clock. A test may call this between
-        // frames too. In Mode B its return is a stable point for the model
-        // comparators.
+        // frames too. In paired mode its return is a stable point for the
+        // model comparators.
         task wait_for_outputs();
             fork
                 env.lb_out_counter.wait_for_count(env.clk_vif, output_deadline_cycles, quiet_cycles);
@@ -366,9 +366,9 @@
         // Warns about a run that sent nothing on any input but the register
         // bus and declared no transaction on any output, as the scaffolded
         // smoke test does until its run_body() sends stimulus, since register
-        // writes alone leave the data path unexercised. A Mode B comparator or
-        // a check of the test's own may still have run, so the warning claims
-        // no more.
+        // writes alone leave the data path unexercised. A paired-mode
+        // comparator or a check of the test's own may still have run, so the
+        // warning claims no more.
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
             if (no_stimulus_expected || data_stimulus_sent() != 0) return;
@@ -737,7 +737,7 @@
         endfunction
     endclass : gen_base_output_declared_test
 
-    // reset_dut() in a run that holds the model, as lb_gen_env's Mode B
+    // reset_dut() in a run that holds the model, as lb_gen_env's paired mode
     // does: one A2C_RESET error and no reset. With rtl_only set, the test
     // clears dual_dut around the call as an RTL run would have it, and
     // reset_dut() pulses clk's reset and returns once clk samples it
@@ -797,7 +797,7 @@
     // a2c_items_sent::of() given no agent, an agent whose sequencer sends
     // another item type, or a component with neither a sequencer nor a
     // counting driver: one A2C_CFG error each, and a count of 0.
-    class a2c_items_sent_cfg_test extends lb_mode_b_base;
+    class a2c_items_sent_cfg_test extends lb_paired_base;
         `uvm_component_utils(a2c_items_sent_cfg_test)
 
         lb_gen_in_agent in_agent;
@@ -975,8 +975,8 @@
     endclass : lb_info_recorder
 
     // lb_gen_env with a rdy_vld master, rv_agent, on the rv pin set, and on
-    // rv_model too in Mode B (lb_mode_b), that nothing ever makes ready, and
-    // holder.
+    // rv_model too in paired mode (lb_paired), that nothing ever makes ready,
+    // and holder.
     class lb_gen_hang_env extends lb_gen_env;
         rv_agent_t    rv_agent;
         lb_gen_holder holder;
@@ -989,13 +989,13 @@
 
         virtual function void build_phase(uvm_phase phase);
             rv_config_t cfg;
-            bit         mode_b;
+            bit         paired;
             super.build_phase(phase);
-            void'(uvm_config_db#(bit)::get(this, "", "lb_mode_b", mode_b));
-            dual_dut = mode_b;
+            void'(uvm_config_db#(bit)::get(this, "", "lb_paired", paired));
+            dual_dut = paired;
             cfg = rv_config_t::type_id::create("rv_cfg");
             if (!uvm_config_db#(rv_vif_t)::get(null, "uvm_test_top", "rv", cfg.vif)) `uvm_fatal("LB_CFG", "no virtual rdy_vld_if 'rv'")
-            if (mode_b && !uvm_config_db#(rv_vif_t)::get(null, "uvm_test_top", "rv_model", cfg.model_vif)) begin
+            if (paired && !uvm_config_db#(rv_vif_t)::get(null, "uvm_test_top", "rv_model", cfg.model_vif)) begin
                 `uvm_fatal("LB_CFG", "no virtual rdy_vld_if 'rv_model'")
             end
             cfg.clk_vif   = clk_vif;
@@ -1009,7 +1009,7 @@
 
     // The run timeout. A test of the base test on lb_gen_hang_env whose
     // run_body() declares n_declared transactions on lb_out, and with
-    // n_extra above 0 receives that many more than it declared, in Mode B
+    // n_extra above 0 receives that many more than it declared, in paired mode
     // records n_recorded responses in the replay log, which the model lane
     // never replays, sends n_sent items on lb_in, gap clocks apart, which
     // its sink takes at once, and then sends n_items on rv, which never
@@ -1029,12 +1029,12 @@
     //     n_extra the A2C_TXN_COUNT of the extra transactions, which does
     //     not name it;
     //   - with want_joint, one A2C_JOINT_STALL before the timeout;
-    //   - with joint_end, the Mode A joint stall's end of the run instead:
+    //   - with joint_end, the single-mode joint stall's end of the run instead:
     //     no A2C_RUN_TIMEOUT, check_phase in the stall's time step, and the
     //     reports and infos above naming the joint stall rule.
     // This test fixes the budget at 500 clocks.
-    class gen_base_run_timeout_mode_a_test extends lb_gen_base;
-        bit                  mode_b;
+    class gen_base_run_timeout_single_test extends lb_gen_base;
+        bit                  paired;
         bit                  hold;
         bit                  hold_main;
         int unsigned         n_sent;
@@ -1074,7 +1074,7 @@
         int unsigned         extracts;
         int unsigned         checks;
 
-        `uvm_component_utils(gen_base_run_timeout_mode_a_test)
+        `uvm_component_utils(gen_base_run_timeout_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1084,7 +1084,7 @@
 
         // A derived budget of floor + factor x the work, which the test
         // expects to be want_work, want_sent of it sent on the inputs. Of
-        // the two progress bounds in Mode A, the output deadline is kept
+        // the two progress bounds in single mode, the output deadline is kept
         // below the floor, with a quiet window below it, and the joint
         // stall rule, which counts while rv waits, is off, so the budget
         // alone ends the run.
@@ -1119,7 +1119,7 @@
             infos    = lb_info_recorder::type_id::create("infos");
             infos.id = a2c_select_str(joint_end, "A2C_JOINT_STALL", "A2C_RUN_TIMEOUT");
             uvm_report_cb::add(null, infos);
-            uvm_config_db#(bit)::set(this, "env", "lb_mode_b", mode_b);
+            uvm_config_db#(bit)::set(this, "env", "lb_paired", paired);
             super.build_phase(phase);
         endfunction
 
@@ -1255,30 +1255,30 @@
             foreach (want_cmp[i]) if (cmps.count(want_cmp[i]) != 1) `uvm_error("LB_GEN", $sformatf("no A2C_MODEL_CMP reads '%s': %p", want_cmp[i], cmps.messages))
             if (srv.get_severity_count(UVM_ERROR) + srv.get_severity_count(UVM_FATAL) == 0) `uvm_info("LB_PASS", get_type_name(), UVM_NONE)
         endfunction
-    endclass : gen_base_run_timeout_mode_a_test
+    endclass : gen_base_run_timeout_single_test
 
-    // Mode B: both lanes wait, and the joint stall bound, at its default,
+    // Paired mode: both lanes wait, and the joint stall bound, at its default,
     // is far off.
-    class gen_base_run_timeout_mode_b_test extends gen_base_run_timeout_mode_a_test;
-        `uvm_component_utils(gen_base_run_timeout_mode_b_test)
+    class gen_base_run_timeout_paired_test extends gen_base_run_timeout_single_test;
+        `uvm_component_utils(gen_base_run_timeout_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b     = 1;
+            paired     = 1;
             n_recorded = 2;
             want_ports = "rv (uvm_test_top.env.rv_agent.drv), both lanes waiting for the transfer of ";
         endfunction
-    endclass : gen_base_run_timeout_mode_b_test
+    endclass : gen_base_run_timeout_paired_test
 
-    // Mode B: the joint stall declares both lanes of rv dead, its item
+    // Paired mode: the joint stall declares both lanes of rv dead, its item
     // completes, and run_body() then waits for nothing that comes. rv's
     // lanes waited on its last clock but are dead, so no port is named.
-    class gen_base_run_timeout_dead_port_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_dead_port_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_dead_port_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b             = 1;
+            paired             = 1;
             joint_stall_cycles = 100;
             want_joint         = 1;
             want_ports         = "none";
@@ -1288,7 +1288,7 @@
     // The base test returns from wait_for_outputs(), and holder's objection
     // keeps the run phase going: the timeout counts on, names holder alone
     // and no port.
-    class gen_base_run_timeout_objection_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_objection_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_objection_test)
 
         function new(string name, uvm_component parent);
@@ -1305,7 +1305,7 @@
 
     // +a2c_run_timeout_cycles=300 overrides the 500 the constructor sets.
     // LB_PLUSARGS gen_base_run_timeout_plusarg_test +a2c_run_timeout_cycles=300
-    class gen_base_run_timeout_plusarg_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_plusarg_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_plusarg_test)
 
         function new(string name, uvm_component parent);
@@ -1333,7 +1333,7 @@
 
     // The derived budget: 2 items sent on lb_in and 3 transactions declared
     // on lb_out make the work 5, so the timeout comes at 200 + 10 x 5.
-    class gen_base_run_timeout_derived_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_derived_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_derived_test)
 
         function new(string name, uvm_component parent);
@@ -1361,7 +1361,7 @@
     // apart, then rv blocks. The floor's 200 clocks see 20 items, so the
     // budget becomes 400; by then all 30 are sent, so it becomes 500, where
     // the timeout comes.
-    class gen_base_run_timeout_grow_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_grow_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_grow_test)
 
         function new(string name, uvm_component parent);
@@ -1375,7 +1375,7 @@
 
     // A test that fixes the budget from run_body() overrides the derived
     // one, here lowering it from 1000 + 10 x 5 to 300.
-    class gen_base_run_timeout_fix_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_fix_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_fix_test)
 
         function new(string name, uvm_component parent);
@@ -1394,8 +1394,8 @@
     endclass : gen_base_run_timeout_fix_test
 
     // fix() from run_body() overrides run_timeout_cycles, 500, which
-    // mode_a's constructor sets.
-    class gen_base_run_timeout_fix_knob_test extends gen_base_run_timeout_mode_a_test;
+    // gen_base_run_timeout_single_test's constructor sets.
+    class gen_base_run_timeout_fix_knob_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_fix_knob_test)
 
         function new(string name, uvm_component parent);
@@ -1424,7 +1424,7 @@
 
     // fix() from build_phase, after super.build_phase() has read the knobs,
     // still fixes the budget.
-    class gen_base_run_timeout_fix_build_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_fix_build_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_fix_build_test)
 
         function new(string name, uvm_component parent);
@@ -1445,7 +1445,7 @@
     // holder holds main_phase as well as run_body() waiting: the timeout
     // names main_phase's objector, ends main_phase too, and extract_phase
     // and check_phase run once each.
-    class gen_base_run_timeout_main_phase_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_main_phase_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_main_phase_test)
 
         function new(string name, uvm_component parent);
@@ -1457,7 +1457,7 @@
 
     // A runtime phase of another domain: holder2 holds the main_phase of
     // lb_domain as well, and both main phases end at the timeout.
-    class gen_base_run_timeout_domain_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_domain_test extends gen_base_run_timeout_single_test;
         lb_gen_holder holder2;
 
         `uvm_component_utils(gen_base_run_timeout_domain_test)
@@ -1481,7 +1481,7 @@
     // ends, and main_phase, which begins after it, ends as it begins
     // although holder objects in it for 1 us, so check_phase runs at the
     // timeout.
-    class gen_base_run_timeout_reset_phase_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_reset_phase_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_reset_phase_test)
 
         function new(string name, uvm_component parent);
@@ -1508,7 +1508,7 @@
 
     // holder holds main_phase, which the timeout ends, and then
     // shutdown_phase for ever, which ends as it begins.
-    class gen_base_run_timeout_shutdown_phase_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_shutdown_phase_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_shutdown_phase_test)
 
         function new(string name, uvm_component parent);
@@ -1532,7 +1532,7 @@
     // lb_func_phase, follows it, which the timeout leaves to run: UVM
     // reports each phase it ends as a PH_JUMP info, which names custom and
     // not func.
-    class gen_base_run_timeout_custom_phase_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_custom_phase_test extends gen_base_run_timeout_single_test;
         lb_info_recorder jumps;
 
         `uvm_component_utils(gen_base_run_timeout_custom_phase_test)
@@ -1576,7 +1576,7 @@
     // A user-defined task phase of the common schedule, lb_late_phase,
     // after the run phase, which holder holds: the timeout ends it as it
     // begins, as it would a runtime phase.
-    class gen_base_run_timeout_common_phase_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_common_phase_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_common_phase_test)
 
         function new(string name, uvm_component parent);
@@ -1593,14 +1593,14 @@
         endfunction
     endclass : gen_base_run_timeout_common_phase_test
 
-    // Mode A: rv's one lane waits, with a joint stall bound of 100 below
+    // Single mode: rv's one lane waits, with a joint stall bound of 100 below
     // the fixed budget of 500. The A2C_JOINT_STALL ends the run in its own
     // time step as the timeout would, together with main_phase, which
     // holder holds: no A2C_RUN_TIMEOUT, extract_phase and check_phase once,
     // and the A2C_TXN_COUNT of the 3 missing transactions names the joint
     // stall rule.
-    class gen_base_joint_end_mode_a_test extends gen_base_run_timeout_mode_a_test;
-        `uvm_component_utils(gen_base_joint_end_mode_a_test)
+    class gen_base_joint_end_single_test extends gen_base_run_timeout_single_test;
+        `uvm_component_utils(gen_base_joint_end_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1616,12 +1616,12 @@
             end
             super.report_phase(phase);
         endfunction
-    endclass : gen_base_joint_end_mode_a_test
+    endclass : gen_base_joint_end_single_test
 
     // joint_end with lb_late_phase of the common schedule after the run
     // phase, which holder holds: the stall ends it as it begins, and its
     // info names the joint stall rule.
-    class gen_base_joint_end_common_phase_test extends gen_base_joint_end_mode_a_test;
+    class gen_base_joint_end_common_phase_test extends gen_base_joint_end_single_test;
         `uvm_component_utils(gen_base_joint_end_common_phase_test)
 
         function new(string name, uvm_component parent);
@@ -1638,16 +1638,16 @@
         endfunction
     endclass : gen_base_joint_end_common_phase_test
 
-    // Mode B: the timeout comes while the drain waits for the model lane to
-    // replay the 2 responses the DUT lane recorded. The drain's objection
+    // Paired mode: the timeout comes while the drain waits for the model lane
+    // to replay the 2 responses the DUT lane recorded. The drain's objection
     // is named, the drain ends with the run phase and drops nothing after,
     // and A2C_REPLAY names the timeout.
-    class gen_base_run_timeout_drain_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_drain_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b               = 1;
+            paired               = 1;
             n_recorded           = 2;
             n_items              = 0;
             n_declared           = 0;
@@ -1697,7 +1697,7 @@
     //     the rule's first error, which ended the run;
     //   - that extract_phase and check_phase run once each.
     class lb_gen_defer_base extends lb_gen_base;
-        bit                    mode_b;
+        bit                    paired;
         bit                    hold;
         string                 rule_id;
         int unsigned           want_rule_errors = 1;
@@ -1751,7 +1751,7 @@
             infos    = lb_timed_info_recorder::type_id::create("infos");
             infos.id = "A2C_RUN_TIMEOUT";
             uvm_report_cb::add(null, infos);
-            uvm_config_db#(bit)::set(this, "env", "lb_mode_b", mode_b);
+            uvm_config_db#(bit)::set(this, "env", "lb_paired", paired);
             super.build_phase(phase);
         endfunction
 
@@ -1903,15 +1903,15 @@
         endfunction
     endclass : gen_base_run_timeout_defer_stopped_test
 
-    // Scenario (a) for a lane rule: in Mode B rv's lanes both wait, and the
-    // joint stall bound of 300, set on rv's master through the config_db,
+    // Scenario (a) for a lane rule: in paired mode rv's lanes both wait, and
+    // the joint stall bound of 300, set on rv's master through the config_db,
     // runs past the budget of 100. The joint stall reports first.
     class gen_base_run_timeout_defer_joint_test extends lb_gen_defer_base;
         `uvm_component_utils(gen_base_run_timeout_defer_joint_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b               = 1;
+            paired               = 1;
             no_stimulus_expected = 1;
             rule_id              = "A2C_JOINT_STALL";
             want_rule            = "the joint stall rule (joint_stall_cycles) of rv (uvm_test_top.env.rv_agent.drv)";
@@ -1956,7 +1956,7 @@
     endclass : gen_base_run_timeout_defer_clk2_test
 
     // Scenario (a) for the lane skew rule on rdy_vld, a master that counts
-    // its lanes' steps: in Mode B the model lane takes rv's one item and
+    // its lanes' steps: in paired mode the model lane takes rv's one item and
     // the DUT lane never does, so the DUT lane trails until the skew
     // bound of 300, set on rv's master through the config_db, declares it
     // dead, past the budget of 100.
@@ -1965,7 +1965,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b               = 1;
+            paired               = 1;
             no_stimulus_expected = 1;
             rule_id              = "A2C_SKEW";
             want_rule            = "the lane skew rule (lane_skew_cycles) of rv (uvm_test_top.env.rv_agent.drv)";
@@ -1984,7 +1984,7 @@
         endtask
     endclass : gen_base_run_timeout_defer_skew_test
 
-    // Scenario (a) for the lone lane rule on rdy_vld: in Mode B the model
+    // Scenario (a) for the lone lane rule on rdy_vld: in paired mode the model
     // lane takes rv's first item and the DUT lane, 20 clocks behind, is
     // declared dead by the skew bound before the budget of 100. The model
     // lane, alone, never takes the second item, so the lone lane bound of
@@ -1995,7 +1995,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b               = 1;
+            paired               = 1;
             no_stimulus_expected = 1;
             rule_id              = "A2C_SKEW";
             want_rule_errors     = 2;
@@ -2174,46 +2174,46 @@
         endfunction
     endclass : gen_base_run_timeout_defer_dog_stop_short_test
 
-    // Mode A: rv's one lane waits, and the joint stall rule, the one lane
-    // rule of Mode A, counts toward the bound of 300 past the budget of 100
-    // and reports first. The stall ends the run, so the timeout, deferred
+    // Single mode: rv's one lane waits, and the joint stall rule, the one lane
+    // rule of single mode, counts toward the bound of 300 past the budget of
+    // 100 and reports first. The stall ends the run, so the timeout, deferred
     // to it, never expires.
-    class gen_base_run_timeout_defer_joint_mode_a_test extends gen_base_run_timeout_defer_joint_test;
-        `uvm_component_utils(gen_base_run_timeout_defer_joint_mode_a_test)
+    class gen_base_run_timeout_defer_joint_single_test extends gen_base_run_timeout_defer_joint_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_joint_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b           = 0;
+            paired           = 0;
             want_timeout     = 0;
             want_end_at_rule = 1;
         endfunction
-    endclass : gen_base_run_timeout_defer_joint_mode_a_test
+    endclass : gen_base_run_timeout_defer_joint_single_test
 
-    // defer_dog_paused in Mode A: the deferral's clock-stop allowance
+    // defer_dog_paused in single mode: the deferral's clock-stop allowance
     // covers the pause of the one lane's clock, and the stall ends the run.
-    class gen_base_run_timeout_defer_dog_paused_mode_a_test extends gen_base_run_timeout_defer_dog_paused_test;
-        `uvm_component_utils(gen_base_run_timeout_defer_dog_paused_mode_a_test)
+    class gen_base_run_timeout_defer_dog_paused_single_test extends gen_base_run_timeout_defer_dog_paused_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_paused_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b           = 0;
+            paired           = 0;
             want_timeout     = 0;
             want_end_at_rule = 1;
         endfunction
-    endclass : gen_base_run_timeout_defer_dog_paused_mode_a_test
+    endclass : gen_base_run_timeout_defer_dog_paused_single_test
 
-    // defer_dog_stopped in Mode A: the joint stall rule of a lane whose
+    // defer_dog_stopped in single mode: the joint stall rule of a lane whose
     // clock has stopped is left out.
-    class gen_base_run_timeout_defer_dog_stopped_mode_a_test extends gen_base_run_timeout_defer_dog_stopped_test;
-        `uvm_component_utils(gen_base_run_timeout_defer_dog_stopped_mode_a_test)
+    class gen_base_run_timeout_defer_dog_stopped_single_test extends gen_base_run_timeout_defer_dog_stopped_test;
+        `uvm_component_utils(gen_base_run_timeout_defer_dog_stopped_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 0;
+            paired = 0;
         endfunction
-    endclass : gen_base_run_timeout_defer_dog_stopped_mode_a_test
+    endclass : gen_base_run_timeout_defer_dog_stopped_single_test
 
-    // Scenario (a) for the drain: in Mode B the model lane never replays
+    // Scenario (a) for the drain: in paired mode the model lane never replays
     // the 2 responses the DUT lane recorded, so the drain runs to its
     // deadline of 300, past the budget of 100, and gives up. The run phase
     // then ends with no timeout, and A2C_REPLAY reports the responses
@@ -2223,7 +2223,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b                 = 1;
+            paired                 = 1;
             no_stimulus_expected   = 1;
             quiet_cycles           = 20;
             output_deadline_cycles = 300;
@@ -2297,7 +2297,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b                 = 1;
+            paired                 = 1;
             no_stimulus_expected   = 1;
             quiet_cycles           = 20;
             output_deadline_cycles = 300;
@@ -2639,7 +2639,7 @@
     // The counter receives one transaction more than it expects; its
     // A2C_TXN_COUNT of the extra one does not name the timeout, which cannot
     // have caused it.
-    class gen_base_run_timeout_over_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_over_test extends gen_base_run_timeout_single_test;
         `uvm_component_utils(gen_base_run_timeout_over_test)
 
         function new(string name, uvm_component parent);
@@ -2649,16 +2649,16 @@
         endfunction
     endclass : gen_base_run_timeout_over_test
 
-    // Mode B: a comparator holds a DUT item the model lane never matched,
+    // Paired mode: a comparator holds a DUT item the model lane never matched,
     // and its end-of-test report names the timeout.
-    class gen_base_run_timeout_unpaired_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_unpaired_test extends gen_base_run_timeout_single_test;
         a2c_in_order_comparator #(rv_item_t) cmp;
 
         `uvm_component_utils(gen_base_run_timeout_unpaired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b     = 1;
+            paired     = 1;
             want_ports = "rv (uvm_test_top.env.rv_agent.drv), both lanes waiting for the transfer of ";
             want_cmp   = '{"uvm_test_top.cmp: end of test with 1 DUT items unpaired after 0 pairs"};
         endfunction
@@ -2677,16 +2677,16 @@
         endtask
     endclass : gen_base_run_timeout_unpaired_test
 
-    // Mode B: a memory comparator holds a read of X that no access
+    // Paired mode: a memory comparator holds a read of X that no access
     // followed, and its end-of-test report names the timeout.
-    class gen_base_run_timeout_xread_test extends gen_base_run_timeout_mode_a_test;
+    class gen_base_run_timeout_xread_test extends gen_base_run_timeout_single_test;
         memory_comparator #(lb_mem_addr_t, lb_data_t) mem_cmp;
 
         `uvm_component_utils(gen_base_run_timeout_xread_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b     = 1;
+            paired     = 1;
             want_ports = "rv (uvm_test_top.env.rv_agent.drv), both lanes waiting for the transfer of ";
             want_cmp   = '{"uvm_test_top.mem_cmp: end of test with a read of X or Z that no access followed"};
         endfunction

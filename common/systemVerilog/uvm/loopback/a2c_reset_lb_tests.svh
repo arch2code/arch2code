@@ -11,8 +11,8 @@
     // Sends items over and over until a reset, then once more from the
     // first and stops. The item the driver held at the reset completes
     // there, and the first item the driver takes after the release is
-    // items[0], so the two lanes of a Mode B port send the same items from
-    // the release whatever each had sent before. Responses are taken and
+    // items[0], so the two lanes of a paired-mode port send the same items
+    // from the release whatever each had sent before. Responses are taken and
     // dropped.
     class lb_reset_seq #(type T = uvm_sequence_item) extends uvm_sequence #(T);
         T              items[$];
@@ -47,7 +47,7 @@
         endtask
     endclass : lb_reset_seq
 
-    // One Mode B port of lb_reset_mode_b_test: the agent under test on
+    // One paired-mode port of lb_reset_paired_test: the agent under test on
     // both lanes, and a peer on each lane in the opposite role. The side
     // that sends runs an lb_reset_seq per sequencer, the model lane's
     // items with other gaps. A dual counter counts the agent's monitors.
@@ -285,22 +285,22 @@
         endfunction
     endclass : lb_reset_axr_port
 
-    // Three Mode B ports on clk run until each has paired some items, the
-    // test resets clk's domain with items in flight, and each port sends
+    // Three paired-mode ports on clk run until each has paired some items,
+    // the test resets clk's domain with items in flight, and each port sends
     // its list again from the release. Every lane recovers: each
     // comparator pairs exactly the items sent after the release, the
     // counters see each lane's full list after it, and nothing in flight
     // at the reset is reported as missing, extra or unpaired. At least two
     // ports must have had an item in flight at the reset, push_ack's replay
     // log or a lane ahead of the other.
-    class lb_reset_mode_b_test extends lb_mode_b_base;
+    class lb_reset_paired_test extends lb_paired_base;
         lb_reset_epoch    epoch;
         lb_reset_rv_port  rv_port;
         lb_reset_pa_port  pa_port;
         lb_reset_axr_port axr_port;
         realtime          reset_at;
 
-        `uvm_component_utils(lb_reset_mode_b_test)
+        `uvm_component_utils(lb_reset_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -366,7 +366,7 @@
             busy += axr_port.in_flight() != "";
             if (busy < 2) `uvm_error("LB_RESET", $sformatf("only %0d ports had an item in flight at the reset at %0t", busy, reset_at))
         endfunction
-    endclass : lb_reset_mode_b_test
+    endclass : lb_reset_paired_test
 
     // Requests a reset of clk_vif's domain lead drive points after the one
     // it is called at, and returns at once. Called at the drive point at

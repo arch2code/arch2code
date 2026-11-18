@@ -1910,8 +1910,8 @@ class projectOpen:
                     'maxTransferBytes': maxTransferBytes,
                     # A DUT src port of a type with no handshake, on a block
                     # with a model: its responder's model lane waits on the
-                    # port's credit pins in Mode B. validateUvmBlocks reserves
-                    # the pin names under the same hasMdl rule.
+                    # port's credit pins in paired mode. validateUvmBlocks
+                    # reserves the pin names under the same hasMdl rule.
                     'modelCredit': (bool(intfDef['uvmModelCredit']) and portData['direction'] == 'src'
                                     and bool(ret['blockInfo']['hasMdl'])),
                     # A DUT src port whose BFM, the model's dst BFM, keeps
@@ -4230,7 +4230,7 @@ class projectOpen:
             port = uvmPorts[pin['port']]
             pins.append(dict(pin, kind='port', direction=inverse[pin['direction']], type=pinType,
                              interfaceType=port['interfaceType'], role=port['role']))
-        # A credited port's Mode B rendezvous pins, toward the model's BFM
+        # A credited port's paired-mode rendezvous pins, toward the model's BFM
         # (section 9.12 of specs/SIMULATOR_INTEGRATION.md).
         for port in ret['uvm']['ports']:
             if not port['modelCredit']:
@@ -6137,7 +6137,7 @@ class projectCreate:
                     # memoryConnections and registerConnections rows give
                     # carry none; only a src port uses them.
                     if self.flatData['interface_defs'][typeKey]['uvmModelCredit']:
-                        tbNames.update({f"{portName}_{suffix}": f"the Mode B {what} '{portName}_{suffix}' of port '{portName}'"
+                        tbNames.update({f"{portName}_{suffix}": f"the paired-mode {what} '{portName}_{suffix}' of port '{portName}'"
                                         for suffix, what in (('model_credit', 'credit pin'), ('model_held', 'held pin'),
                                                              ('credit', 'a2c_credit_if instance'))})
             named = ([('port', name) for name in boundary]

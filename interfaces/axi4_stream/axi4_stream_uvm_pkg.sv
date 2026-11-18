@@ -9,7 +9,7 @@
 // interface sizes them. Pin timing follows a2c_clk_if: drive at drive_edge(),
 // sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
 // each beat on both lanes at one drive point, and each lane drops tvalid once
 // its own beat has transferred; the next beat starts when both have. A lane of
@@ -303,7 +303,7 @@ package axi4_stream_uvm_pkg;
         axi4_stream_driver#(tdata_t, tid_t, tdest_t, tuser_t)  drv;
         uvm_sequencer #(item_t)                                sqr;
         axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t) mon;
-        // Mode B only. model_cmp exists on the A2C_DST role.
+        // Paired mode only. model_cmp exists on the A2C_DST role.
         axi4_stream_monitor#(tdata_t, tid_t, tdest_t, tuser_t) model_mon;
         a2c_in_order_comparator #(item_t)                      model_cmp;
 

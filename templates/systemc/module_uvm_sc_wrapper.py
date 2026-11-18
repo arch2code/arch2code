@@ -129,7 +129,8 @@ def render_class(args, prj, data):
                       f"{bfm}->clk({portData['domainClock']});",
                       f"{bfm}->rst_n({portData['domainReset']});"]
             if portData['name'] in credited:
-                # Only Mode B has a DUT lane for the model lane to wait for.
+                # Only paired mode has a DUT lane for the model lane to wait
+                # for.
                 model += [f'if ({run}::rtlDut) {{',
                           f"    {bfm}->setModelCredit(&{portData['name']}_model_credit, &{portData['name']}_model_held);",
                           '}']

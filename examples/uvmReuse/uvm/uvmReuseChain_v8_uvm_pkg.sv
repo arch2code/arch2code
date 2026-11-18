@@ -153,9 +153,9 @@ package uvmReuseChain_v8_uvm_pkg;
         uvmReuseChain_reg_block regmodel;
         apb_reg_adapter adapter;
         uvm_reg_predictor #(apbReg_item_t) predictor;
-        // Mode B, set from a2c_dual_dut: each agent also drives and monitors
-        // the model DUT's <port>_model pins, and comparators lists the agents'
-        // model_cmp comparators.
+        // Paired mode, set from a2c_dual_dut: each agent also drives and
+        // monitors the model DUT's <port>_model pins, and comparators lists the
+        // agents' model_cmp comparators.
         bit dual_dut;
         a2c_uvm_pkg::a2c_comparator_base comparators[$];
         a2c_uvm_pkg::a2c_midstream_guard guard;
@@ -298,9 +298,9 @@ package uvmReuseChain_v8_uvm_pkg;
         endfunction
 
         // The register model's mirror follows the DUT lane's bus through the
-        // explicit predictor, not the register calls' own prediction. In Mode B
-        // the guard sees every write on the DUT lane's bus, and the bus agent's
-        // comparator asks it about each read.
+        // explicit predictor, not the register calls' own prediction. In paired
+        // mode the guard sees every write on the DUT lane's bus, and the bus
+        // agent's comparator asks it about each read.
         virtual function void connect_phase(uvm_phase phase);
             out_agent.mon.ap.connect(out_counter.analysis_export);
             in_digest.watch(in_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);
@@ -344,7 +344,7 @@ package uvmReuseChain_v8_uvm_pkg;
             end
         endfunction
 
-        // The base test calls this in Mode B each time wait_for_outputs()
+        // The base test calls this in paired mode each time wait_for_outputs()
         // returns. A comparator with auto_stable cleared takes its stable
         // points from the user region instead.
         function void model_stable_point();

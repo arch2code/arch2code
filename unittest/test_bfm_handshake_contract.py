@@ -47,9 +47,9 @@ for the RTL, with bfmContractCheck::toUvm set as in a UVM run, and expects:
 - a model reader that waits on the clock between reads is logged once with a
   fix-the-model message and never queued, so it does not fail a UVM run.
   Behind a rdy_vld src BFM such a reader leaves rdy low for one clock after
-  each transfer, the hold Mode B reports as A2C_MODEL_THROTTLE. A writer that
-  waits on the clock between writes moves one beat per clock behind a dst
-  BFM and is not reported, and a model that a memory BFM wakes at each edge
+  each transfer, the hold paired mode reports as A2C_MODEL_THROTTLE. A
+  writer that waits on the clock between writes moves one beat per clock
+  behind a dst BFM and is not reported, and a model that a memory BFM wakes at each edge
   is paced by the HDL and is not reported.
 """
 

@@ -188,9 +188,9 @@
         endtask
     endclass : external_reg_level_test
 
-    // Mode B on er and er_model. agent has er as its DUT lane and er_model as
-    // its model lane; each lane has a single-lane peer of the other role,
-    // and every dst loads its writes.
+    // Paired mode on er and er_model. agent has er as its DUT lane and
+    // er_model as its model lane; each lane has a single-lane peer of the
+    // other role, and every dst loads its writes.
     //
     // As A2C_SRC the agent sends n_writes writes, each followed by four quiet
     // clocks and a call to model_cmp.stable_point(), which pairs the two
@@ -201,7 +201,7 @@
     // gaps. model_cmp must pair every write, and each lane's rdata must take
     // its own lane's words in order. After the writes the test sets
     // cfg.value once, and both lanes must take that level.
-    class external_reg_mode_b_test extends lb_mode_b_base;
+    class external_reg_paired_test extends lb_paired_base;
         a2c_role_e                role = A2C_SRC;
         int unsigned              n_writes = 40;
         int unsigned              mismatch_at;
@@ -217,7 +217,7 @@
         lb_scoreboard#(er_item_t) model_level_sb;
         lb_data_t                 last_value = lb_data_t'(24'h12_3456);
 
-        `uvm_component_utils(external_reg_mode_b_test)
+        `uvm_component_utils(external_reg_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -352,15 +352,15 @@
             `uvm_info("LB_STATS", $sformatf("%0d writes; model_cmp paired %0d; %0d and %0d rdata levels on the DUT and model lanes",
                                             n_writes, agent.model_cmp.get_pairs(), level_sb.matched, model_level_sb.matched), UVM_NONE)
             if (agent.model_cmp.get_pairs() != want) begin
-                `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d, expected %0d", agent.model_cmp.get_pairs(), want))
+                `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d, expected %0d", agent.model_cmp.get_pairs(), want))
             end
         endfunction
-    endclass : external_reg_mode_b_test
+    endclass : external_reg_paired_test
 
     // The model lane's register changes once after a write, so the next
     // stable point pairs different levels: one A2C_MODEL_CMP.
-    class external_reg_mode_b_mismatch_test extends external_reg_mode_b_test;
-        `uvm_component_utils(external_reg_mode_b_mismatch_test)
+    class external_reg_paired_mismatch_test extends external_reg_paired_test;
+        `uvm_component_utils(external_reg_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -371,22 +371,22 @@
             want_errors = 1;
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT ", mismatch_at + 1));
         endfunction
-    endclass : external_reg_mode_b_mismatch_test
+    endclass : external_reg_paired_mismatch_test
 
-    class external_reg_mode_b_dst_test extends external_reg_mode_b_test;
-        `uvm_component_utils(external_reg_mode_b_dst_test)
+    class external_reg_paired_dst_test extends external_reg_paired_test;
+        `uvm_component_utils(external_reg_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : external_reg_mode_b_dst_test
+    endclass : external_reg_paired_dst_test
 
     // The model lane's peer sends different data in one write: one
     // A2C_MODEL_CMP, and the model lane's rdata takes that data where the
     // DUT lane's takes its own.
-    class external_reg_mode_b_dst_mismatch_test extends external_reg_mode_b_dst_test;
-        `uvm_component_utils(external_reg_mode_b_dst_mismatch_test)
+    class external_reg_paired_dst_mismatch_test extends external_reg_paired_dst_test;
+        `uvm_component_utils(external_reg_paired_dst_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -402,17 +402,17 @@
             want_errors = 1;
             want_text.push_back($sformatf("uvm_test_top.agent.model_cmp: pair %0d: DUT ", k + 1));
         endfunction
-    endclass : external_reg_mode_b_dst_mismatch_test
+    endclass : external_reg_paired_dst_mismatch_test
 
-    // As external_reg_mode_b_dst_test, with the model lane's last write 60
+    // As external_reg_paired_dst_test, with the model lane's last write 60
     // clocks late and the drop as soon as the DUT lane's peer is done, with
     // no wait for the model lane. The drain must hold the run phase until
     // the model lane has made that write: every write paired, each lane's
     // levels as sent, and no error.
-    class external_reg_mode_b_dst_drain_test extends external_reg_mode_b_dst_test;
+    class external_reg_paired_dst_drain_test extends external_reg_paired_dst_test;
         int unsigned pending_at_drop;
 
-        `uvm_component_utils(external_reg_mode_b_dst_drain_test)
+        `uvm_component_utils(external_reg_paired_dst_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -442,9 +442,9 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (pending_at_drop == 0) `uvm_error("LB_MODE_B", "the model lane had made every write at the drop, so the drain went untested")
+            if (pending_at_drop == 0) `uvm_error("LB_PAIRED", "the model lane had made every write at the drop, so the drain went untested")
         endfunction
-    endclass : external_reg_mode_b_dst_drain_test
+    endclass : external_reg_paired_dst_drain_test
 
     // Both peers keep writing after the DUT lane has made n_writes writes
     // and the test drops, with idle clocks repeating 0 to 2 and the model
@@ -452,8 +452,8 @@
     // the model lane catches up. The drain must cut the run at its deadline
     // and end once both lanes have made the writes the cut keeps, which
     // model_cmp pairs exactly: no error. The levels go unchecked.
-    class external_reg_mode_b_dst_drain_busy_test extends external_reg_mode_b_dst_test;
-        `uvm_component_utils(external_reg_mode_b_dst_drain_busy_test)
+    class external_reg_paired_dst_drain_busy_test extends external_reg_paired_dst_test;
+        `uvm_component_utils(external_reg_paired_dst_drain_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -494,17 +494,17 @@
             `uvm_info("LB_STATS", $sformatf("cut after %0d; %0d and %0d writes on the DUT and model lanes; %0d pairs", agent.drv.replay.get_cut(),
                                             dut, model, agent.model_cmp.get_pairs()), UVM_NONE)
             check_cut(agent.drv.replay, n_writes, agent.model_cmp.get_pairs(), dut, model);
-            if (dut >= seq.items.size()) `uvm_error("LB_MODE_B", "the DUT lane's peer ran out of writes, so the port paused")
+            if (dut >= seq.items.size()) `uvm_error("LB_PAIRED", "the DUT lane's peer ran out of writes, so the port paused")
         endfunction
-    endclass : external_reg_mode_b_dst_drain_busy_test
+    endclass : external_reg_paired_dst_drain_busy_test
 
-    // As external_reg_mode_b_dst_drain_busy_test, with a passive Mode B
+    // As external_reg_paired_dst_drain_busy_test, with a passive paired-mode
     // agent watching the port: the drain's cut must cut its model_cmp too,
     // so it pairs what the agent pairs and reports no unpaired write.
-    class external_reg_mode_b_dst_busy_passive_test extends external_reg_mode_b_dst_drain_busy_test;
+    class external_reg_paired_dst_busy_passive_test extends external_reg_paired_dst_drain_busy_test;
         er_agent_t watcher;
 
-        `uvm_component_utils(external_reg_mode_b_dst_busy_passive_test)
+        `uvm_component_utils(external_reg_paired_dst_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -522,10 +522,10 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (watcher.drv != null) `uvm_error("LB_PAIRED", "the passive agent built a driver")
             if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
-                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                `uvm_error("LB_PAIRED", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
                                                   agent.model_cmp.get_pairs()))
             end
         endfunction
-    endclass : external_reg_mode_b_dst_busy_passive_test
+    endclass : external_reg_paired_dst_busy_passive_test

@@ -9,8 +9,8 @@
     typedef a2c_mem_model #(lb_data_t) lb_word_mem_t;
 
     // A model lane's peer that keeps the contract of a model's memory BFM in
-    // Mode B: it holds access n until cfg.credit_vif.credit exceeds n, and
-    // drives held while it waits. A held access goes out in the time step
+    // paired mode: it holds access n until cfg.credit_vif.credit exceeds n,
+    // and drives held while it waits. A held access goes out in the time step
     // the A2C_DST driver's credit update lands, one clock after the DUT
     // lane's, as the SystemC BFM's does.
     class lb_credit_mem_driver extends memory_driver #(lb_mem_addr_t, lb_data_t);
@@ -79,8 +79,9 @@
         endtask
     endclass : lb_credit_mem_driver
 
-    // Gives a Mode B memory responder its credit pins, and its model lane's
-    // peer the driver that honours them unless the test has it ignore credit.
+    // Gives a paired-mode memory responder its credit pins, and its model
+    // lane's peer the driver that honours them unless the test has it ignore
+    // credit.
     function automatic void lb_credit(uvm_component test, string port, mem_config_t agent_cfg, mem_config_t model_peer_cfg,
                                       string model_peer, bit honour);
         virtual a2c_credit_if credit_vif;
@@ -407,8 +408,8 @@
         endtask
     endclass : memory_shared_model_test
 
-    // Mode B on mem and mem_model. agent, the agent under test, has mem as
-    // its DUT lane and mem_model as its model lane, and each lane has a
+    // Paired mode on mem and mem_model. agent, the agent under test, has mem
+    // as its DUT lane and mem_model as its model lane, and each lane has a
     // single-lane peer of the other role.
     //
     // As A2C_SRC the agent sends n_items random accesses over 64 words, and
@@ -427,7 +428,7 @@
     // must pair every access, and each of the model lane's accesses must
     // come after the DUT lane's. With split set, writes go to words 32 to 63
     // and reads to words 0 to 31.
-    class memory_mode_b_test extends lb_mode_b_base;
+    class memory_paired_test extends lb_paired_base;
         a2c_role_e               role = A2C_SRC;
         lb_variant_e             variant = LB_MATCH;
         bit                      split = 1;
@@ -457,7 +458,7 @@
         int unsigned             tail;
         bit                      done[2];
 
-        `uvm_component_utils(memory_mode_b_test)
+        `uvm_component_utils(memory_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -634,7 +635,7 @@
             if (!honour_credit) return;
             for (int unsigned i = 0; i < n; i++) begin
                 if (model.at[i] <= dut.at[i]) begin
-                    `uvm_error("LB_MODE_B", $sformatf("the model lane made access %0d at %0t, not after the DUT lane's at %0t", i + 1,
+                    `uvm_error("LB_PAIRED", $sformatf("the model lane made access %0d at %0t, not after the DUT lane's at %0t", i + 1,
                                                       model.at[i], dut.at[i]))
                 end
             end
@@ -661,13 +662,13 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             if (seq.expected.size() != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the DUT lane's sequence left %0d reads unanswered", seq.expected.size()))
+                `uvm_error("LB_PAIRED", $sformatf("the DUT lane's sequence left %0d reads unanswered", seq.expected.size()))
             end
-            if (pairs != n) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
+            if (pairs != n) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
             if (role == A2C_SRC) begin
                 for (int unsigned i = 0; i < n; i++) begin
                     if (arrivals.at[i] != model_arrivals.at[i] || !arrivals.items[i].compare(model_arrivals.items[i])) begin
-                        `uvm_error("LB_MODE_B", $sformatf("access %0d: DUT lane %s at %0t, model lane %s at %0t", i,
+                        `uvm_error("LB_PAIRED", $sformatf("access %0d: DUT lane %s at %0t, model lane %s at %0t", i,
                                                           arrivals.items[i].convert2string(), arrivals.at[i],
                                                           model_arrivals.items[i].convert2string(), model_arrivals.at[i]))
                     end
@@ -675,13 +676,13 @@
                 return;
             end
             if (model_seq.expected.size() != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the model lane's sequence left %0d reads unanswered", model_seq.expected.size()))
+                `uvm_error("LB_PAIRED", $sformatf("the model lane's sequence left %0d reads unanswered", model_seq.expected.size()))
             end
             check_memory();
             check_after(arrivals, model_arrivals, n);
             check_held();
             if (variant == LB_MODEL_LEADS && (model_led == 0 || agent.drv.held_clock_count() == 0)) begin
-                `uvm_error("LB_MODE_B", $sformatf("the model lane never waited for its credit: it led %0d times, with held high at %0d sample edges",
+                `uvm_error("LB_PAIRED", $sformatf("the model lane never waited for its credit: it led %0d times, with held high at %0d sample edges",
                                                   model_led, agent.drv.held_clock_count()))
             end
         endfunction
@@ -692,18 +693,18 @@
             lb_credit_mem_driver credit_drv;
             int unsigned holds = $cast(credit_drv, model_peer.drv) ? credit_drv.holds : 0;
             if (agent.drv.held_access_count() != holds) begin
-                `uvm_error("LB_MODE_B", $sformatf("the driver counted %0d held accesses, the model lane's peer held %0d",
+                `uvm_error("LB_PAIRED", $sformatf("the driver counted %0d held accesses, the model lane's peer held %0d",
                                                   agent.drv.held_access_count(), holds))
             end
         endfunction
-    endclass : memory_mode_b_test
+    endclass : memory_paired_test
 
     // The model lane's peer memory holds a different word at an address the
     // agent reads before writing: one A2C_MODEL_CMP per read of it before
     // the write, and each read response still carries the DUT lane's word,
     // which seq checks.
-    class memory_mode_b_mismatch_test extends memory_mode_b_test;
-        `uvm_component_utils(memory_mode_b_mismatch_test)
+    class memory_paired_mismatch_test extends memory_paired_test;
+        `uvm_component_utils(memory_paired_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -733,9 +734,9 @@
         endfunction
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
-            if (pairs != n) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
+            if (pairs != n) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
         endfunction
-    endclass : memory_mode_b_mismatch_test
+    endclass : memory_paired_mismatch_test
 
     // The DUT lane's peer memory returns X for every word nothing wrote, as
     // memory_sp does, and the model lane's peer memory returns zero. After
@@ -743,8 +744,8 @@
     // its address, which passes; a read of another address; a write of
     // another address; a read of its address; and nothing, at the end of
     // the run. One A2C_MODEL_CMP for each of the last four.
-    class memory_mode_b_xz_test extends memory_mode_b_test;
-        `uvm_component_utils(memory_mode_b_xz_test)
+    class memory_paired_xz_test extends memory_paired_test;
+        `uvm_component_utils(memory_paired_xz_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -796,36 +797,36 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             // The read at the end of the run is held, not paired.
-            if (pairs != n - 1) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n - 1))
+            if (pairs != n - 1) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n - 1))
         endfunction
-    endclass : memory_mode_b_xz_test
+    endclass : memory_paired_xz_test
 
-    class memory_mode_b_dst_test extends memory_mode_b_test;
-        `uvm_component_utils(memory_mode_b_dst_test)
+    class memory_paired_dst_test extends memory_paired_test;
+        `uvm_component_utils(memory_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role = A2C_DST;
         endfunction
-    endclass : memory_mode_b_dst_test
+    endclass : memory_paired_dst_test
 
     // The model lane's peer would issue every access on the first clock it
     // can and the DUT lane's peer one to three clocks later, so the model
     // lane waits for its credit.
-    class memory_mode_b_dst_model_leads_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_model_leads_test)
+    class memory_paired_dst_model_leads_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_model_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             variant = LB_MODEL_LEADS;
         endfunction
-    endclass : memory_mode_b_dst_model_leads_test
+    endclass : memory_paired_dst_model_leads_test
 
     // Reads and writes over all 64 words, with the model lane four clocks
     // behind the DUT lane, so every read of a word the DUT lane wrote gets
     // that word replayed.
-    class memory_mode_b_dst_dut_leads_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_dut_leads_test)
+    class memory_paired_dst_dut_leads_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_dut_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -839,18 +840,18 @@
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             super.check_streams(n, pairs);
             if (model_led != 0 || agent.drv.held_access_count() != 0 || agent.drv.held_clock_count() != 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("the model lane led %0d accesses, %0d held, with held high at %0d sample edges", model_led,
+                `uvm_error("LB_PAIRED", $sformatf("the model lane led %0d accesses, %0d held, with held high at %0d sample edges", model_led,
                                                   agent.drv.held_access_count(), agent.drv.held_clock_count()))
             end
         endfunction
-    endclass : memory_mode_b_dst_dut_leads_test
+    endclass : memory_paired_dst_dut_leads_test
 
     // The model lane's peer writes different data in one write: one
     // A2C_MODEL_CMP, and the agent's memory holds the DUT lane's data. The
     // write is the last to its address, made while the model lane lags, so
     // a model lane that applied it would leave its data in the memory.
-    class memory_mode_b_dst_mismatch_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_mismatch_test)
+    class memory_paired_dst_mismatch_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_mismatch_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -874,29 +875,29 @@
         endfunction
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
-            if (pairs != n) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
+            if (pairs != n) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
             check_memory();
         endfunction
-    endclass : memory_mode_b_dst_mismatch_test
+    endclass : memory_paired_dst_mismatch_test
 
-    // As memory_mode_b_dst_test with reads and writes over all 64 words, so
+    // As memory_paired_dst_test with reads and writes over all 64 words, so
     // a model lane that read ahead would read words the DUT lane has yet to
     // write, some of them words the model lane wrote first.
-    class memory_mode_b_dst_unsplit_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_unsplit_test)
+    class memory_paired_dst_unsplit_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_unsplit_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             split = 0;
         endfunction
-    endclass : memory_mode_b_dst_unsplit_test
+    endclass : memory_paired_dst_unsplit_test
 
     // The lanes run in step, then the model lane's peer would write word 33
     // and read it back 8 clocks before the DUT lane makes either access. It
     // waits for its credit, and its read must return the word written, as
     // the DUT lane's does, with no A2C_REPLAY.
-    class memory_mode_b_dst_write_read_ahead_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_write_read_ahead_test)
+    class memory_paired_dst_write_read_ahead_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_write_read_ahead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -913,16 +914,16 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             super.check_streams(n, pairs);
-            if (model_led == 0) `uvm_error("LB_MODE_B", "the model lane never waited for its credit, so the hold went untested")
+            if (model_led == 0) `uvm_error("LB_PAIRED", "the model lane never waited for its credit, so the hold went untested")
         endfunction
-    endclass : memory_mode_b_dst_write_read_ahead_test
+    endclass : memory_paired_dst_write_read_ahead_test
 
-    // As memory_mode_b_dst_write_read_ahead_test, with the model lane's peer
+    // As memory_paired_dst_write_read_ahead_test, with the model lane's peer
     // writing word 33 twice and reading it, each access sent before the DUT
     // lane's. Held for its credit, the read must come after the DUT lane's
     // second write and return its word.
-    class memory_mode_b_dst_rewrite_ahead_test extends memory_mode_b_dst_write_read_ahead_test;
-        `uvm_component_utils(memory_mode_b_dst_rewrite_ahead_test)
+    class memory_paired_dst_rewrite_ahead_test extends memory_paired_dst_write_read_ahead_test;
+        `uvm_component_utils(memory_paired_dst_rewrite_ahead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -936,17 +937,17 @@
             void'(add(1, 6'd33, 6, 0));
             void'(add(0, 6'd33, 0, 4));
         endfunction
-    endclass : memory_mode_b_dst_rewrite_ahead_test
+    endclass : memory_paired_dst_rewrite_ahead_test
 
-    // As memory_mode_b_dst_write_read_ahead_test with a model lane peer
+    // As memory_paired_dst_write_read_ahead_test with a model lane peer
     // that ignores its credit, as a model whose BFM does not hold its
     // accesses. Its write and read of word 33 come before the DUT lane's:
     // the driver answers the read from cfg.mem, which holds the word from
     // before the write, and reports both accesses in one A2C_REPLAY.
     // model_cmp reports the read, and the agent's memory holds the DUT
     // lane's word.
-    class memory_mode_b_dst_uncredited_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_uncredited_test)
+    class memory_paired_dst_uncredited_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_uncredited_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -983,7 +984,7 @@
                     forever begin
                         clk_vif.drive_edge();
                         if (agent.drv.owed_count() > 0 && agent.drv.replay.model_waiting() && flagged++ == 0) begin
-                            `uvm_error("LB_MODE_B", $sformatf("the model lane waits for a record while %0d uncredited accesses are owed",
+                            `uvm_error("LB_PAIRED", $sformatf("the model lane waits for a record while %0d uncredited accesses are owed",
                                                               agent.drv.owed_count()))
                         end
                     end
@@ -994,18 +995,18 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             uvm_report_server srv = uvm_report_server::get_server();
-            if (pairs != n) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
+            if (pairs != n) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n))
             if (srv.get_id_count("A2C_MODEL_CMP") != 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected one A2C_MODEL_CMP, for the read, got %0d", srv.get_id_count("A2C_MODEL_CMP")))
+                `uvm_error("LB_PAIRED", $sformatf("expected one A2C_MODEL_CMP, for the read, got %0d", srv.get_id_count("A2C_MODEL_CMP")))
             end
             check_memory();
         endfunction
-    endclass : memory_mode_b_dst_uncredited_test
+    endclass : memory_paired_dst_uncredited_test
 
-    // As memory_mode_b_dst_uncredited_test after a master elsewhere declared
+    // As memory_paired_dst_uncredited_test after a master elsewhere declared
     // the model lane dead on the first clock, so the report names the death.
-    class memory_mode_b_dst_uncredited_dead_test extends memory_mode_b_dst_uncredited_test;
-        `uvm_component_utils(memory_mode_b_dst_uncredited_dead_test)
+    class memory_paired_dst_uncredited_dead_test extends memory_paired_dst_uncredited_test;
+        `uvm_component_utils(memory_paired_dst_uncredited_dead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1023,12 +1024,12 @@
             join_none
             super.run_phase(phase);
         endtask
-    endclass : memory_mode_b_dst_uncredited_dead_test
+    endclass : memory_paired_dst_uncredited_dead_test
 
-    // As memory_mode_b_dst_uncredited_test with the death after the run,
+    // As memory_paired_dst_uncredited_test with the death after the run,
     // which the report therefore does not name.
-    class memory_mode_b_dst_uncredited_dead_after_test extends memory_mode_b_dst_uncredited_test;
-        `uvm_component_utils(memory_mode_b_dst_uncredited_dead_after_test)
+    class memory_paired_dst_uncredited_dead_after_test extends memory_paired_dst_uncredited_test;
+        `uvm_component_utils(memory_paired_dst_uncredited_dead_after_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1039,15 +1040,15 @@
             super.run_phase(phase);
             a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top");
         endtask
-    endclass : memory_mode_b_dst_uncredited_dead_after_test
+    endclass : memory_paired_dst_uncredited_dead_after_test
 
-    // As memory_mode_b_dst_uncredited_test with a death declared after the
+    // As memory_paired_dst_uncredited_test with a death declared after the
     // run that dates the lane's trailing from the first clock, before the
     // accesses. The report waits for check_phase, so it names that death.
-    class memory_mode_b_dst_uncredited_late_death_test extends memory_mode_b_dst_uncredited_test;
+    class memory_paired_dst_uncredited_late_death_test extends memory_paired_dst_uncredited_test;
         realtime first_clock;
 
-        `uvm_component_utils(memory_mode_b_dst_uncredited_late_death_test)
+        `uvm_component_utils(memory_paired_dst_uncredited_late_death_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1066,14 +1067,14 @@
             super.run_phase(phase);
             a2c_replay_drain::lane_dead(A2C_MODEL_LANE, "uvm_test_top", first_clock);
         endtask
-    endclass : memory_mode_b_dst_uncredited_late_death_test
+    endclass : memory_paired_dst_uncredited_late_death_test
 
     // The model lane's peer has one access more, which the DUT lane never
     // makes, so the peer holds it with held high and it never reaches the
     // pins: the drain runs to its deadline, and the replay log reports the
     // wait in one A2C_REPLAY.
-    class memory_mode_b_dst_model_extra_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_model_extra_test)
+    class memory_paired_dst_model_extra_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_model_extra_test)
 
         // UVM ends the run phase after 20 rounds of phase_ready_to_end(), so
         // a deadline beyond 20 quiet windows tells a drain that waits for
@@ -1097,10 +1098,10 @@
         endfunction
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
-            if (pairs != n_items) `uvm_error("LB_MODE_B", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n_items))
+            if (pairs != n_items) `uvm_error("LB_PAIRED", $sformatf("model_cmp paired %0d accesses, expected %0d", pairs, n_items))
             // The clock counter races the drain on each edge, so it may be one off.
             if (drain_clocks() + 1 < drain_deadline || drain_clocks() > drain_deadline + 1) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected its deadline of %0d", drain_clocks(), drain_deadline))
+                `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected its deadline of %0d", drain_clocks(), drain_deadline))
             end
         endfunction
 
@@ -1109,13 +1110,13 @@
             super.connect_phase(phase);
             agent.model_cmp.counted = 1;
         endfunction
-    endclass : memory_mode_b_dst_model_extra_test
+    endclass : memory_paired_dst_model_extra_test
 
     // The test drops its objection when the DUT lane is done, 60 clocks
     // before the model lane's last access: the drain must hold the run phase
     // until the model lane has made it, with no A2C_REPLAY.
-    class memory_mode_b_dst_drain_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_test)
+    class memory_paired_dst_drain_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1134,31 +1135,31 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             super.check_streams(n, pairs);
-            if (pending_at_drop == 0) `uvm_error("LB_MODE_B", "the model lane had replayed every access at the drop, so the drain went untested")
+            if (pending_at_drop == 0) `uvm_error("LB_PAIRED", "the model lane had replayed every access at the drop, so the drain went untested")
         endfunction
-    endclass : memory_mode_b_dst_drain_test
+    endclass : memory_paired_dst_drain_test
 
-    // As memory_mode_b_dst_drain_test with a quiet window of one clock, and
+    // As memory_paired_dst_drain_test with a quiet window of one clock, and
     // the model lane's last access a read. The clock that samples that read
     // finds nothing pending, so only the model lane's access in progress
     // keeps the window from closing before the read data is driven.
-    class memory_mode_b_dst_drain_short_quiet_test extends memory_mode_b_dst_drain_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_short_quiet_test)
+    class memory_paired_dst_drain_short_quiet_test extends memory_paired_dst_drain_test;
+        `uvm_component_utils(memory_paired_dst_drain_short_quiet_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             drain_quiet = 1;
             last_read   = 1;
         endfunction
-    endclass : memory_mode_b_dst_drain_short_quiet_test
+    endclass : memory_paired_dst_drain_short_quiet_test
 
     // Both peers keep accessing the memory after the test drops its
     // objection, the model lane a clock behind with the same gaps, so the
     // drain's quiet window never comes. It must cut the run at its
     // deadline, after the accesses the DUT lane has made then, and end once
     // both lanes have made them, with no A2C_REPLAY.
-    class memory_mode_b_dst_drain_busy_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_test)
+    class memory_paired_dst_drain_busy_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_drain_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1175,17 +1176,17 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             check_cut(agent.drv.replay, n_items, pairs, arrivals.items.size(), model_arrivals.items.size());
-            if (arrivals.items.size() <= n_items) `uvm_error("LB_MODE_B", "the DUT lane's peer stopped at the drop, so the busy port went untested")
-            if (arrivals.items.size() >= seq.items.size()) `uvm_error("LB_MODE_B", "the DUT lane's peer ran out of accesses, so the port paused")
+            if (arrivals.items.size() <= n_items) `uvm_error("LB_PAIRED", "the DUT lane's peer stopped at the drop, so the busy port went untested")
+            if (arrivals.items.size() >= seq.items.size()) `uvm_error("LB_PAIRED", "the DUT lane's peer ran out of accesses, so the port paused")
             check_cut_time(drain_clocks(), drain_quiet, drain_deadline);
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_test
+    endclass : memory_paired_dst_drain_busy_test
 
-    // As memory_mode_b_dst_drain_busy_test with no gaps on either lane, so
+    // As memory_paired_dst_drain_busy_test with no gaps on either lane, so
     // both lanes access the memory on every clock from the start of the
     // test to its end.
-    class memory_mode_b_dst_drain_busy_zero_test extends memory_mode_b_dst_drain_busy_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_zero_test)
+    class memory_paired_dst_drain_busy_zero_test extends memory_paired_dst_drain_busy_test;
+        `uvm_component_utils(memory_paired_dst_drain_busy_zero_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1197,17 +1198,17 @@
                 model_seq.items[i].gap = 0;
             end
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_zero_test
+    endclass : memory_paired_dst_drain_busy_zero_test
 
-    // As memory_mode_b_dst_drain_busy_zero_test, with a passive Mode B agent
-    // watching the port: the drain's cut must cut its model_cmp too, so it
-    // pairs what the agent pairs and reports no unpaired access. The model
+    // As memory_paired_dst_drain_busy_zero_test, with a passive paired-mode
+    // agent watching the port: the drain's cut must cut its model_cmp too, so
+    // it pairs what the agent pairs and reports no unpaired access. The model
     // lane pauses 10 clocks after the drop, so the DUT lane makes accesses
     // past the cut while the model lane catches up.
-    class memory_mode_b_dst_busy_passive_test extends memory_mode_b_dst_drain_busy_zero_test;
+    class memory_paired_dst_busy_passive_test extends memory_paired_dst_drain_busy_zero_test;
         mem_agent_t watcher;
 
-        `uvm_component_utils(memory_mode_b_dst_busy_passive_test)
+        `uvm_component_utils(memory_paired_dst_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1230,21 +1231,21 @@
 
         virtual function void check_phase(uvm_phase phase);
             super.check_phase(phase);
-            if (watcher.drv != null) `uvm_error("LB_MODE_B", "the passive agent built a driver")
+            if (watcher.drv != null) `uvm_error("LB_PAIRED", "the passive agent built a driver")
             if (agent.model_cmp.get_pairs() == 0 || watcher.model_cmp.get_pairs() != agent.model_cmp.get_pairs()) begin
-                `uvm_error("LB_MODE_B", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
+                `uvm_error("LB_PAIRED", $sformatf("the passive agent's model_cmp paired %0d transfers, the agent's %0d", watcher.model_cmp.get_pairs(),
                                                   agent.model_cmp.get_pairs()))
             end
             if (arrivals.items.size() <= agent.drv.replay.get_cut()) begin
-                `uvm_error("LB_MODE_B", "the DUT lane made no access past the cut, so the passive agent's cut went untested")
+                `uvm_error("LB_PAIRED", "the DUT lane made no access past the cut, so the passive agent's cut went untested")
             end
         endfunction
-    endclass : memory_mode_b_dst_busy_passive_test
+    endclass : memory_paired_dst_busy_passive_test
 
-    // As memory_mode_b_dst_drain_busy_zero_test with the model lane two
+    // As memory_paired_dst_drain_busy_zero_test with the model lane two
     // clocks behind, so on no clock do the lanes make the same access.
-    class memory_mode_b_dst_drain_busy_lag_test extends memory_mode_b_dst_drain_busy_zero_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_lag_test)
+    class memory_paired_dst_drain_busy_lag_test extends memory_paired_dst_drain_busy_zero_test;
+        `uvm_component_utils(memory_paired_dst_drain_busy_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1254,15 +1255,15 @@
             super.build_streams();
             model_seq.items[0].gap = 2;
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_lag_test
+    endclass : memory_paired_dst_drain_busy_lag_test
 
-    // As memory_mode_b_dst_drain_busy_zero_test with the model lane two
+    // As memory_paired_dst_drain_busy_zero_test with the model lane two
     // clocks ahead, so it makes each access before the DUT lane has
     // recorded it. The model lane has completed the cut's last access, a
     // read, by the clock of the cut, and the DUT lane completes it at the
     // drive point after, so the drain must wait for the DUT lane too.
-    class memory_mode_b_dst_drain_busy_lead_test extends memory_mode_b_dst_drain_busy_zero_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_lead_test)
+    class memory_paired_dst_drain_busy_lead_test extends memory_paired_dst_drain_busy_zero_test;
+        `uvm_component_utils(memory_paired_dst_drain_busy_lead_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1275,20 +1276,20 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             super.check_streams(n, pairs);
-            if (model_led == 0) `uvm_error("LB_MODE_B", "the model lane never led, so the lead went untested")
+            if (model_led == 0) `uvm_error("LB_PAIRED", "the model lane never led, so the lead went untested")
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_lead_test
+    endclass : memory_paired_dst_drain_busy_lead_test
 
-    // As memory_mode_b_dst_drain_busy_lag_test with the model lane 45
+    // As memory_paired_dst_drain_busy_lag_test with the model lane 45
     // clocks behind, more than the quiet window of 30, as a DMA model with
     // a long latency may run. The drain cuts the run at its deadline, and
     // the model lane must have the default catch-up, the deadline of 300
     // clocks, to complete the accesses the cut keeps: no A2C_REPLAY, and
     // the drain ends about 45 clocks after the cut.
-    class memory_mode_b_dst_drain_busy_far_lag_test extends memory_mode_b_dst_drain_busy_zero_test;
+    class memory_paired_dst_drain_busy_far_lag_test extends memory_paired_dst_drain_busy_zero_test;
         int unsigned lag = 45;
 
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_far_lag_test)
+        `uvm_component_utils(memory_paired_dst_drain_busy_far_lag_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1304,18 +1305,18 @@
             // The clock counter races the drain on each edge, so it may be
             // a clock off.
             if (drain_clocks() + 1 < drain_deadline + lag || drain_clocks() > drain_deadline + lag + 2) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end %0d clocks later",
+                `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and an end %0d clocks later",
                                                   drain_clocks(), drain_deadline, lag))
             end
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_far_lag_test
+    endclass : memory_paired_dst_drain_busy_far_lag_test
 
-    // As memory_mode_b_dst_drain_busy_far_lag_test with a catch-up of 20
+    // As memory_paired_dst_drain_busy_far_lag_test with a catch-up of 20
     // clocks, set as uvm_config_int, the type +uvm_set_config_int uses. The
     // model lane is 45 clocks behind at the cut, so the drain gives the log
     // up 20 clocks after the cut: one A2C_REPLAY naming the catch-up.
-    class memory_mode_b_dst_drain_catchup_cfg_test extends memory_mode_b_dst_drain_busy_far_lag_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_catchup_cfg_test)
+    class memory_paired_dst_drain_catchup_cfg_test extends memory_paired_dst_drain_busy_far_lag_test;
+        `uvm_component_utils(memory_paired_dst_drain_catchup_cfg_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1335,13 +1336,13 @@
         endfunction
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
-            if (agent.drv.replay.get_cut() == 0) `uvm_error("LB_MODE_B", "the drain did not cut the run")
+            if (agent.drv.replay.get_cut() == 0) `uvm_error("LB_PAIRED", "the drain did not cut the run")
             if (drain_clocks() + 1 < drain_deadline + 20 || drain_clocks() > drain_deadline + 22) begin
-                `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and the give-up 20 clocks later",
+                `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, expected a cut at its deadline of %0d and the give-up 20 clocks later",
                                                   drain_clocks(), drain_deadline))
             end
         endfunction
-    endclass : memory_mode_b_dst_drain_catchup_cfg_test
+    endclass : memory_paired_dst_drain_catchup_cfg_test
 
     // The model lane's second-to-last access is 40 clocks late, so the first
     // drain, with a deadline of 10 clocks, expires with it pending. On the
@@ -1351,14 +1352,14 @@
     // clocks behind, and drops when the DUT lane has made it. The model lane
     // started an access after the expiry, so only a second drain keeps the
     // run phase alive until it replays the last: no A2C_REPLAY.
-    class memory_mode_b_dst_after_expiry_test extends memory_mode_b_dst_test;
+    class memory_paired_dst_after_expiry_test extends memory_paired_dst_test;
         mem_seq      last;
         mem_seq      model_last;
         int unsigned ready_calls;
         int unsigned resumed_at;
         int unsigned pending_at_second_drop;
 
-        `uvm_component_utils(memory_mode_b_dst_after_expiry_test)
+        `uvm_component_utils(memory_paired_dst_after_expiry_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1415,25 +1416,25 @@
             super.check_streams(n, pairs);
             `uvm_info("LB_STATS", $sformatf("%0d phase_ready_to_end calls; the first drain took %0d clocks; %0d unreplayed at the second drop",
                                             ready_calls, resumed_at - dropped_at, pending_at_second_drop), UVM_NONE)
-            if (n != n_items) `uvm_error("LB_MODE_B", $sformatf("%0d accesses on both lanes, expected %0d", n, n_items))
-            if (last.expected.size() != 0 || model_last.expected.size() != 0) `uvm_error("LB_MODE_B", "the last read went unanswered")
-            if (ready_calls < 2) `uvm_error("LB_MODE_B", "the first drain never dropped, so the second round never ran")
+            if (n != n_items) `uvm_error("LB_PAIRED", $sformatf("%0d accesses on both lanes, expected %0d", n, n_items))
+            if (last.expected.size() != 0 || model_last.expected.size() != 0) `uvm_error("LB_PAIRED", "the last read went unanswered")
+            if (ready_calls < 2) `uvm_error("LB_PAIRED", "the first drain never dropped, so the second round never ran")
             // The clock counter races the drain on each edge, so it may be one off.
             if (resumed_at - dropped_at + 1 < 10 || resumed_at - dropped_at > 11) begin
-                `uvm_error("LB_MODE_B", $sformatf("the first drain took %0d clocks, expected its deadline of 10", resumed_at - dropped_at))
+                `uvm_error("LB_PAIRED", $sformatf("the first drain took %0d clocks, expected its deadline of 10", resumed_at - dropped_at))
             end
             if (pending_at_second_drop == 0) begin
-                `uvm_error("LB_MODE_B", "the model lane had replayed the last access at the second drop, so the second drain went untested")
+                `uvm_error("LB_PAIRED", "the model lane had replayed the last access at the second drop, so the second drain went untested")
             end
         endfunction
-    endclass : memory_mode_b_dst_after_expiry_test
+    endclass : memory_paired_dst_after_expiry_test
 
-    // As memory_mode_b_dst_drain_busy_test with one idle clock before every
+    // As memory_paired_dst_drain_busy_test with one idle clock before every
     // access on both lanes and the model lane a clock behind, so the lanes
     // take turns: on no clock do both make an access. The drain must still
     // cut the run at its deadline.
-    class memory_mode_b_dst_drain_busy_interleave_test extends memory_mode_b_dst_drain_busy_test;
-        `uvm_component_utils(memory_mode_b_dst_drain_busy_interleave_test)
+    class memory_paired_dst_drain_busy_interleave_test extends memory_paired_dst_drain_busy_test;
+        `uvm_component_utils(memory_paired_dst_drain_busy_interleave_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1445,13 +1446,13 @@
                 model_seq.items[i].gap = 1 + (i == 0);
             end
         endfunction
-    endclass : memory_mode_b_dst_drain_busy_interleave_test
+    endclass : memory_paired_dst_drain_busy_interleave_test
 
     // Both peers make 60 accesses more after the drop with no gaps, the
     // model lane a clock behind, and stop well before the deadline. The
     // drain must wait out the tail and check all of it, with no cut.
-    class memory_mode_b_dst_tail_test extends memory_mode_b_dst_test;
-        `uvm_component_utils(memory_mode_b_dst_tail_test)
+    class memory_paired_dst_tail_test extends memory_paired_dst_test;
+        `uvm_component_utils(memory_paired_dst_tail_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1467,14 +1468,14 @@
 
         virtual function void check_streams(int unsigned n, int unsigned pairs);
             super.check_streams(n, pairs);
-            if (agent.drv.replay.get_cut() != 0) `uvm_error("LB_MODE_B", "the drain cut a port that paused before its deadline")
-            if (n != n_items + 60) `uvm_error("LB_MODE_B", $sformatf("%0d accesses on both lanes, expected %0d", n, n_items + 60))
-            if (drain_clocks() >= drain_deadline) `uvm_error("LB_MODE_B", $sformatf("the drain took %0d clocks, its whole deadline", drain_clocks()))
+            if (agent.drv.replay.get_cut() != 0) `uvm_error("LB_PAIRED", "the drain cut a port that paused before its deadline")
+            if (n != n_items + 60) `uvm_error("LB_PAIRED", $sformatf("%0d accesses on both lanes, expected %0d", n, n_items + 60))
+            if (drain_clocks() >= drain_deadline) `uvm_error("LB_PAIRED", $sformatf("the drain took %0d clocks, its whole deadline", drain_clocks()))
         endfunction
-    endclass : memory_mode_b_dst_tail_test
+    endclass : memory_paired_dst_tail_test
 
     // Both lanes access the memory on every clock of clk3, in step, as in
-    // memory_mode_b_dst_drain_busy_zero_test, and clk3 stops low at the
+    // memory_paired_dst_drain_busy_zero_test, and clk3 stops low at the
     // sample edge after the DUT lane's 400th access, with enable high on
     // both lanes: a DUT that stops its clock with an access presented. A
     // memory port has no handshake, so only lane_busy() tells the drain
@@ -1483,13 +1484,13 @@
     // The model lane's peer ignores its credit, which keeps the lanes on the
     // same clock; held for credit, the model lane would trail by two
     // accesses that the stop leaves unreplayed.
-    class memory_mode_b_dst_clock_stop_busy_test extends memory_mode_b_dst_test;
+    class memory_paired_dst_clock_stop_busy_test extends memory_paired_dst_test;
         virtual a2c_clk_if clk3_vif;
         lb_id_counter      drains;
         bit                enabled[2];
         bit                busy_at_end[2];
 
-        `uvm_component_utils(memory_mode_b_dst_clock_stop_busy_test)
+        `uvm_component_utils(memory_paired_dst_clock_stop_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1533,13 +1534,13 @@
             foreach (busy_at_end[l]) busy_at_end[l] = agent.drv.lane_busy(a2c_lane_e'(l));
             `uvm_info("LB_STATS", $sformatf("enable %p and lanes busy %p at the stop; %0d A2C_DRAIN: %p", enabled, busy_at_end, drains.warnings,
                                             drains.messages), UVM_NONE)
-            if (!enabled[A2C_DUT_LANE] || !enabled[A2C_MODEL_LANE]) `uvm_error("LB_MODE_B", "clk3 stopped with enable low on a lane")
-            if (!busy_at_end[A2C_DUT_LANE] || !busy_at_end[A2C_MODEL_LANE]) `uvm_error("LB_MODE_B", "a lane was not inside an access at the end")
+            if (!enabled[A2C_DUT_LANE] || !enabled[A2C_MODEL_LANE]) `uvm_error("LB_PAIRED", "clk3 stopped with enable low on a lane")
+            if (!busy_at_end[A2C_DUT_LANE] || !busy_at_end[A2C_MODEL_LANE]) `uvm_error("LB_PAIRED", "a lane was not inside an access at the end")
             if (drains.warnings != 1 || !a2c_contains(drains.messages[0], "the clock stopped before the log settled")) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected one A2C_DRAIN for clk3's stop: %p", drains.messages))
+                `uvm_error("LB_PAIRED", $sformatf("expected one A2C_DRAIN for clk3's stop: %p", drains.messages))
             end
         endfunction
-    endclass : memory_mode_b_dst_clock_stop_busy_test
+    endclass : memory_paired_dst_clock_stop_busy_test
 
     // Two ports, mem and mem2, of one memory: two A2C_DST agents share one
     // a2c_mem_model. In each of 16 rounds the DUT lanes write word k on
@@ -1547,7 +1548,7 @@
     // would make both accesses before the DUT lane's write, the read a clock
     // after the write, and each holds its accesses for its port's credit.
     // Each read must return the word written, with no A2C_REPLAY.
-    class memory_mode_b_dst_two_port_test extends lb_mode_b_base;
+    class memory_paired_dst_two_port_test extends lb_paired_base;
         int unsigned  rounds = 16;
         mem_agent_t   agent[2];
         mem_agent_t   peer[2];
@@ -1558,7 +1559,7 @@
         lb_word_mem_t shared;
         bit           done[4];
 
-        `uvm_component_utils(memory_mode_b_dst_two_port_test)
+        `uvm_component_utils(memory_paired_dst_two_port_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1658,23 +1659,23 @@
             super.check_phase(phase);
             for (int p = 0; p < 2; p++) begin
                 if (agent[p].model_cmp.get_pairs() != rounds) begin
-                    `uvm_error("LB_MODE_B", $sformatf("%s: model_cmp paired %0d accesses, expected %0d", agent_cfg[p].port_name,
+                    `uvm_error("LB_PAIRED", $sformatf("%s: model_cmp paired %0d accesses, expected %0d", agent_cfg[p].port_name,
                                                       agent[p].model_cmp.get_pairs(), rounds))
                 end
             end
             if (seq[0].checked != rounds || model_seq[0].checked != rounds) begin
-                `uvm_error("LB_MODE_B", $sformatf("%0d and %0d reads answered on the DUT and model lanes, expected %0d",
+                `uvm_error("LB_PAIRED", $sformatf("%0d and %0d reads answered on the DUT and model lanes, expected %0d",
                                                   seq[0].checked, model_seq[0].checked, rounds))
             end
         endfunction
-    endclass : memory_mode_b_dst_two_port_test
+    endclass : memory_paired_dst_two_port_test
 
     // The two-port test with mem2's DUT lane rewriting word k on the clock
     // mem's DUT lane reads it, so the read returns the old word while
     // cfg.mem holds the new one by the time mem's model lane reads, a clock
     // later. The model lane must return the DUT lane's word.
-    class memory_mode_b_dst_rewrite_between_test extends memory_mode_b_dst_two_port_test;
-        `uvm_component_utils(memory_mode_b_dst_rewrite_between_test)
+    class memory_paired_dst_rewrite_between_test extends memory_paired_dst_two_port_test;
+        `uvm_component_utils(memory_paired_dst_rewrite_between_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1696,10 +1697,10 @@
                 model_seq[0].expected[k] = old;
             end
         endfunction
-    endclass : memory_mode_b_dst_rewrite_between_test
+    endclass : memory_paired_dst_rewrite_between_test
 
     // A model that reads memory earlier in its input than the RTL
-    // (SIMULATOR_INTEGRATION.md section 9.12, input coupling). A Mode B
+    // (SIMULATOR_INTEGRATION.md section 9.12, input coupling). A paired-mode
     // A2C_SRC master on rv sends items to both lanes, and the test plays
     // both lanes' receivers. The DUT lane takes every item and reads word 5
     // through mem after its third. The model lane reads word 5 after its
@@ -1709,7 +1710,7 @@
     // The master declares the model lane dead in one A2C_SKEW, which must
     // name the memory responder whose model lane waits and tell the user to
     // fix the model.
-    class memory_mode_b_d1_stall_test extends lb_mode_b_base;
+    class memory_paired_d1_stall_test extends lb_paired_base;
         rv_agent_t      rv_agent;
         mem_agent_t     agent;
         mem_agent_t     peer;
@@ -1724,7 +1725,7 @@
         int unsigned    taken[2];
         bit             hold[2];
 
-        `uvm_component_utils(memory_mode_b_d1_stall_test)
+        `uvm_component_utils(memory_paired_d1_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1853,17 +1854,17 @@
                                             taken[A2C_DUT_LANE], taken[A2C_MODEL_LANE], a2c_select_str(seq.checked != 0, "returned", "never went out")),
                       UVM_NONE)
         endfunction
-    endclass : memory_mode_b_d1_stall_test
+    endclass : memory_paired_d1_stall_test
 
-    // As memory_mode_b_d1_stall_test with the lane skew rule off, so nothing
+    // As memory_paired_d1_stall_test with the lane skew rule off, so nothing
     // moves until the joint stall rule fires, and its A2C_JOINT_STALL names
     // the held memory port. The stall kills both lanes of rv, so the DUT
     // lane never reads and the model lane's read waits to the end, one
     // A2C_REPLAY.
-    class memory_mode_b_d1_joint_stall_test extends memory_mode_b_d1_stall_test;
+    class memory_paired_d1_joint_stall_test extends memory_paired_d1_stall_test;
         lb_recording_demoter replay_demoter;
 
-        `uvm_component_utils(memory_mode_b_d1_joint_stall_test)
+        `uvm_component_utils(memory_paired_d1_joint_stall_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -1888,8 +1889,8 @@
             super.report_phase(phase);
             if (replay_demoter.demoted != 1
                 || replay_demoter.count("the model lane waited for transaction 1, which the DUT lane never recorded") == 0) begin
-                `uvm_error("LB_MODE_B", $sformatf("expected one A2C_REPLAY for the model lane's held read, got %0d: %p",
+                `uvm_error("LB_PAIRED", $sformatf("expected one A2C_REPLAY for the model lane's held read, got %0d: %p",
                                                   replay_demoter.demoted, replay_demoter.messages))
             end
         endfunction
-    endclass : memory_mode_b_d1_joint_stall_test
+    endclass : memory_paired_d1_joint_stall_test

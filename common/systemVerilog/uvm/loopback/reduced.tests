@@ -2,9 +2,9 @@
 # the seedRepro checks. It is the pre-commit run on the simulator that did not
 # run the full loopback, so it is chosen to meet each vendor's handling of
 # every part of the library at least once:
-#  - every agent package in each role it has: Mode A, Mode B source or master,
-#    Mode B destination or slave, passive, monitor protocol checks and a Mode B
-#    mismatch;
+#  - every agent package in each role it has: single mode, paired-mode source
+#    or master, paired-mode destination or slave, passive, monitor protocol
+#    checks and a paired-mode mismatch;
 #  - at least one test of every *_lb_tests.svh file;
 #  - every report call site of the library that prints in the full loopback,
 #    and every branch of an a2c_select_str() or a2c_lane_name() call that the
@@ -38,26 +38,26 @@ gen_base_run_timeout_defer_once_test
 js_rv_two_ports_test
 
 # a2c_lane_watchdog_lb_tests.svh
-req_ack_mode_b_model_late_test
+req_ack_paired_model_late_test
 joint_stall_lone_lane_test
-push_ack_mode_b_same_clock_test
-rdy_vld_mode_b_same_clock_test
+push_ack_paired_same_clock_test
+rdy_vld_paired_same_clock_test
 
 # a2c_mem_model_lb_tests.svh
 a2c_mem_model_test
 
-# a2c_mode_b_contract_lb_tests.svh
-mode_b_foreign_agent_no_watchdog_test
-mode_b_contract_not_agent_test
-mode_b_contract_same_ap_test
-mode_b_contract_mislabelled_test
-mode_b_contract_unstepped_test
-mode_b_contract_unconfigured_test
-mode_b_contract_log_no_driver_test
-mode_b_foreign_lane_driver_test
-mode_b_foreign_model_death_test
-mode_b_foreign_handshake_test
-mode_b_foreign_joint_watch_off_test
+# a2c_paired_contract_lb_tests.svh
+paired_foreign_agent_no_watchdog_test
+paired_contract_not_agent_test
+paired_contract_same_ap_test
+paired_contract_mislabelled_test
+paired_contract_unstepped_test
+paired_contract_unconfigured_test
+paired_contract_log_no_driver_test
+paired_foreign_lane_driver_test
+paired_foreign_model_death_test
+paired_foreign_handshake_test
+paired_foreign_joint_watch_off_test
 
 # a2c_model_cmp_lb_tests.svh
 model_cmp_dut_leftover_test
@@ -79,7 +79,7 @@ reg_read_pins_stride_hier_test
 # a2c_ready_policy_lb_tests.svh
 push_ack_dst_same_clock_test
 notify_ack_dst_same_clock_test
-push_ack_mode_b_dst_same_clock_test
+push_ack_paired_dst_same_clock_test
 rdy_vld_ready_pattern_test
 push_ack_delay_pattern_test
 a2c_rand_knobs_test
@@ -89,7 +89,7 @@ drain_busy_wording_test
 drain_catchup_stop_death_test
 
 # a2c_reset_lb_tests.svh
-lb_reset_mode_b_test
+lb_reset_paired_test
 lb_reset_held_test
 
 # a2c_rt_checker_lb_tests.svh
@@ -114,7 +114,7 @@ txn_digest_test
 vid_defect_crop_test
 vid_unspecified_const_test
 vid_unspecified_clocked_test
-vid_mode_b_trail_test
+vid_paired_trail_test
 vid_pass_markers_test
 vid_reject_cut_last_test
 vid_reject_no_model_mon_test
@@ -124,39 +124,39 @@ vid_edit_plan_empty_test
 # apb_lb_tests.svh
 apb_random_test
 apb_monitor_checks_test
-apb_mode_b_test
-apb_mode_b_mismatch_test
-apb_mode_b_slave_test
-apb_mode_b_slave_busy_passive_test
+apb_paired_test
+apb_paired_mismatch_test
+apb_paired_slave_test
+apb_paired_slave_busy_passive_test
 
 # axi4_stream_lb_tests.svh
 axi4_stream_test
-axi4_stream_mode_b_test
-axi4_stream_mode_b_dst_test
-axi4_stream_mode_b_mismatch_test
+axi4_stream_paired_test
+axi4_stream_paired_dst_test
+axi4_stream_paired_mismatch_test
 
-# axi_mode_b_lb_tests.svh
-axi_read_mode_b_test
-axi_read_mode_b_mismatch_test
-axi_read_mode_b_model_extra_test
-axi_read_mode_b_master_test
-axi_read_mode_b_skip_cut_test
-axi_read_mode_b_master_model_late_test
-axi_read_mode_b_master_both_dead_test
-axi_read_mode_b_master_joint_test
-axi_read_mode_b_master_order_test
-axi_read_mode_b_passive_test
-axi_write_mode_b_test
-axi_write_mode_b_mismatch_test
-axi_write_mode_b_model_extra_test
-axi_write_mode_b_master_test
-axi_write_mode_b_skip_cut_test
-axi_write_mode_b_master_dut_late_test
-axi_write_mode_b_master_both_dead_test
-axi_write_mode_b_master_order_w_test
-axi_write_mode_b_passive_test
-axi_mode_b_two_port_test
-mode_b_unowned_passive_test
+# axi_paired_lb_tests.svh
+axi_read_paired_test
+axi_read_paired_mismatch_test
+axi_read_paired_model_extra_test
+axi_read_paired_master_test
+axi_read_paired_skip_cut_test
+axi_read_paired_master_model_late_test
+axi_read_paired_master_both_dead_test
+axi_read_paired_master_joint_test
+axi_read_paired_master_order_test
+axi_read_paired_passive_test
+axi_write_paired_test
+axi_write_paired_mismatch_test
+axi_write_paired_model_extra_test
+axi_write_paired_master_test
+axi_write_paired_skip_cut_test
+axi_write_paired_master_dut_late_test
+axi_write_paired_master_both_dead_test
+axi_write_paired_master_order_w_test
+axi_write_paired_passive_test
+axi_paired_two_port_test
+paired_unowned_passive_test
 
 # axi_read_lb_tests.svh
 axi_read_random_test
@@ -171,22 +171,22 @@ axi_write_monitor_checks_test
 # external_reg_lb_tests.svh
 external_reg_strobe_test
 external_reg_level_test
-external_reg_mode_b_test
-external_reg_mode_b_mismatch_test
-external_reg_mode_b_dst_test
-external_reg_mode_b_dst_busy_passive_test
+external_reg_paired_test
+external_reg_paired_mismatch_test
+external_reg_paired_dst_test
+external_reg_paired_dst_busy_passive_test
 
 # memory_lb_tests.svh
 memory_random_test
 memory_write_read_test
-memory_mode_b_test
-memory_mode_b_mismatch_test
-memory_mode_b_xz_test
-memory_mode_b_dst_test
-memory_mode_b_dst_uncredited_test
-memory_mode_b_dst_busy_passive_test
-memory_mode_b_d1_stall_test
-memory_mode_b_d1_joint_stall_test
+memory_paired_test
+memory_paired_mismatch_test
+memory_paired_xz_test
+memory_paired_dst_test
+memory_paired_dst_uncredited_test
+memory_paired_dst_busy_passive_test
+memory_paired_d1_stall_test
+memory_paired_d1_joint_stall_test
 
 # no_backpressure_lb_tests.svh
 no_backpressure_test
@@ -195,64 +195,64 @@ monitor_checks_test
 # notify_ack_lb_tests.svh
 notify_ack_random_test
 notify_ack_monitor_checks_test
-notify_ack_mode_b_test
-notify_ack_mode_b_dst_test
-notify_ack_mode_b_dst_busy_passive_test
+notify_ack_paired_test
+notify_ack_paired_dst_test
+notify_ack_paired_dst_busy_passive_test
 
 # pop_ack_lb_tests.svh
 pop_ack_random_test
 pop_ack_config_db_responder_test
 pop_ack_monitor_checks_test
-pop_ack_mode_b_test
-pop_ack_mode_b_mismatch_test
-pop_ack_mode_b_dst_test
-pop_ack_mode_b_dst_busy_passive_test
+pop_ack_paired_test
+pop_ack_paired_mismatch_test
+pop_ack_paired_dst_test
+pop_ack_paired_dst_busy_passive_test
 
 # push_ack_lb_tests.svh
 push_ack_random_test
 push_ack_monitor_checks_test
-push_ack_mode_b_test
-push_ack_mode_b_dst_test
-push_ack_mode_b_dst_busy_passive_test
-push_ack_mode_b_dst_cut_resume_test
-push_ack_mode_b_dst_mismatch_test
-push_ack_mode_b_dst_cut_expected_test
-push_ack_mode_b_dst_cfg_no_clock_test
-push_ack_mode_b_dst_cfg_types_test
+push_ack_paired_test
+push_ack_paired_dst_test
+push_ack_paired_dst_busy_passive_test
+push_ack_paired_dst_cut_resume_test
+push_ack_paired_dst_mismatch_test
+push_ack_paired_dst_cut_expected_test
+push_ack_paired_dst_cfg_no_clock_test
+push_ack_paired_dst_cfg_types_test
 
 # raw_lb_tests.svh
 raw_test
-raw_mode_b_test
-raw_mode_b_dst_test
+raw_paired_test
+raw_paired_dst_test
 
 # rdy_vld_lb_tests.svh
 rdy_vld_random_test
-rdy_vld_mode_b_test
-rdy_vld_mode_b_dst_test
-rdy_vld_mode_b_mismatch_test
+rdy_vld_paired_test
+rdy_vld_paired_dst_test
+rdy_vld_paired_mismatch_test
 
 # req_ack_lb_tests.svh
 req_ack_random_test
 req_ack_config_db_responder_test
 req_ack_monitor_checks_test
-req_ack_mode_b_test
-req_ack_mode_b_mismatch_test
-req_ack_mode_b_dst_test
-req_ack_mode_b_dst_busy_passive_test
+req_ack_paired_test
+req_ack_paired_mismatch_test
+req_ack_paired_dst_test
+req_ack_paired_dst_busy_passive_test
 
 # status_lb_tests.svh
 status_test
-status_mode_b_test
-status_mode_b_dst_test
-status_mode_b_mismatch_test
-status_mode_b_bounds_xz_test
+status_paired_test
+status_paired_dst_test
+status_paired_mismatch_test
+status_paired_bounds_xz_test
 # The model throttle rule: one A2C_MODEL_THROTTLE per lock-step master family and both AXI masters.
-apb_mode_b_throttle_test
-axi4_stream_mode_b_throttle_test
-notify_ack_mode_b_throttle_test
-pop_ack_mode_b_throttle_test
-push_ack_mode_b_throttle_test
-rdy_vld_mode_b_throttle_test
-req_ack_mode_b_throttle_test
-axi_read_mode_b_master_throttle_test
-axi_write_mode_b_master_throttle_test
+apb_paired_throttle_test
+axi4_stream_paired_throttle_test
+notify_ack_paired_throttle_test
+pop_ack_paired_throttle_test
+push_ack_paired_throttle_test
+rdy_vld_paired_throttle_test
+req_ack_paired_throttle_test
+axi_read_paired_master_throttle_test
+axi_write_paired_master_throttle_test

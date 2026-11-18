@@ -40,7 +40,7 @@ A2C_SRC, and the env sets no agent passive. The AXI port rdM binds no id_t,
 so its config sets id_unbound. rdS binds one, and no other port's config sets
 it.
 
-In Mode B, which the env reads from the testbench's a2c_dual_dut, the env
+In paired mode, which the env reads from the testbench's a2c_dual_dut, the env
 also fetches every port's <port>_model interface into its config's model_vif,
 gives each counter and each digest the model monitor's stream, lists every
 agent's model_cmp
@@ -51,10 +51,10 @@ midstream guard over the counters and comparators. The guard hears every
 write on the DUT lane's register bus through a2c_reg_write_subscriber, which
 resolves it against the register map. The guard gets the map, and the bus
 agent's comparator gets the guard, which judges each read it compares. None
-of this happens outside Mode B:
+of this happens outside paired mode:
 the vif fetches, the guard and everything connect_phase adds sit under
-dual_dut, so a Mode A or rtl run builds and connects what it did before. The
-env's model_stable_point() calls stable_point() on each listed comparator
+dual_dut, so a single-mode or rtl run builds and connects what it did before.
+The env's model_stable_point() calls stable_point() on each listed comparator
 with auto_stable set.
 
 Each register samples its fields at the bits the decoder serves them on, and
@@ -266,8 +266,8 @@ ENV_LINES = [
     f'{port}_digest.watch({port}_agent.mon, a2c_uvm_pkg::A2C_DUT_LANE);')]
 
 
-# connect_phase's Mode B branch, whole and in order.
-MODE_B_CONNECT = [
+# connect_phase's paired-mode branch, whole and in order.
+PAIRED_CONNECT = [
     'out_agent.model_mon.ap.connect(out_counter.model_export);',
     'rdM_agent.model_mon.ap.connect(rdM_counter.model_export);',
 ] + [f'{port}_digest.watch({port}_agent.model_mon, a2c_uvm_pkg::A2C_MODEL_LANE);' for port in PORTS] + [
@@ -287,7 +287,7 @@ MODE_B_CONNECT = [
     'guard.comparators = comparators;',
 ]
 
-MODE_B_MEMBERS = [
+PAIRED_MEMBERS = [
     'bit dual_dut;',
     'a2c_uvm_pkg::a2c_comparator_base comparators[$];',
     'a2c_uvm_pkg::a2c_midstream_guard guard;',
@@ -323,12 +323,12 @@ def block_after(lines, start, opener):
     raise ValueError(f"no end for {opener!r} at line {i}")
 
 
-def check_mode_b(pkg, lines):
-    problems = [f"{pkg}.sv lacks the line {line!r}" for line in MODE_B_MEMBERS if line not in lines]
+def check_paired(pkg, lines):
+    problems = [f"{pkg}.sv lacks the line {line!r}" for line in PAIRED_MEMBERS if line not in lines]
     connect = lines.index('virtual function void connect_phase(uvm_phase phase);')
     branch = block_after(lines, connect, 'if (dual_dut) begin')
-    if branch != MODE_B_CONNECT:
-        problems.append(f"{pkg}.sv connect_phase's dual_dut branch is\n    {branch}\n  expected\n    {MODE_B_CONNECT}")
+    if branch != PAIRED_CONNECT:
+        problems.append(f"{pkg}.sv connect_phase's dual_dut branch is\n    {branch}\n  expected\n    {PAIRED_CONNECT}")
     # Each model vif fetch, and the guard and its feeder, exist only under dual_dut.
     build = lines.index('virtual function void build_phase(uvm_phase phase);')
     for port, intf in (('in', 'rdy_vld'), ('out', 'rdy_vld'), ('rdM', 'axi_read'), ('rdS', 'axi_read'),
@@ -414,7 +414,7 @@ def check(project):
                       if re.match(r'(in|ubRegs|mst)_counter\b|.*_cfg\.ready_pct\b|(ubRegs|mst)_cfg\.no_backpressure\b'
                                   r'|.*_cfg\.is_active\b|(in|out|rdS|ubRegs|mst)_cfg\.id_unbound\b', line)]
         problems += [f"{pkg}.sv has the line {line!r}" for line in unexpected]
-        problems += check_mode_b(pkg, lines)
+        problems += check_paired(pkg, lines)
         rootBuild = class_build(lines, 'class ubDut_reg_block extends uvm_reg_block;')
         if rootBuild != expected_root_build(variant, offsets):
             problems.append(f"{pkg}.sv's register block build() is\n    " + "\n    ".join(rootBuild)
@@ -491,7 +491,7 @@ def run_all_tests():
     print("  PASS: the leaf register block's whole build(), with no submap and no overlap check")
     print("  PASS: agent typedefs with and without bound parameters")
     print("  PASS: env agents with their roles, the output transaction counter, a digest per port and the register predictor")
-    print("  PASS: env Mode B wiring under dual_dut: model vifs, counter and digest model streams, comparators, digest pairing, guard")
+    print("  PASS: env paired-mode wiring under dual_dut: model vifs, counter and digest model streams, comparators, digest pairing, guard")
     print("\nPASS: the variant packages hold the register model and the env")
     return 0
 

@@ -128,7 +128,7 @@
 
     // What every rv checker test shares. A src agent on rv_in drives the
     // pipe u_rt_rv, a dst agent on rv_out takes its output, and rt judges
-    // it; with mode_b set each agent's model lane is the u_rt_rv_model pipe.
+    // it; with paired set each agent's model lane is the u_rt_rv_model pipe.
     // configure() sets the pipe, the sequence and the checker; check()
     // checks what the test is about. The run ends drain clocks after
     // rv_out has delivered out_beats(), or at max_clocks. report_phase
@@ -144,7 +144,7 @@
         lb_rt_rv_seq            seq;
         lb_arrivals#(rv_item_t) in_seen;
         lb_arrivals#(rv_item_t) out_seen;
-        bit                     mode_b;
+        bit                     paired;
         int unsigned            want[string];
         int unsigned            drain = 100;
         int unsigned            max_clocks = 20000;
@@ -171,7 +171,7 @@
         protected function rv_config_t lane_cfg(string name, string pins, a2c_role_e role);
             rv_config_t cfg = rv_config_t::type_id::create(name);
             if (!uvm_config_db#(rv_vif_t)::get(this, "", pins, cfg.vif)) `uvm_fatal("LB_CFG", {"no interface ", pins})
-            if (mode_b && !uvm_config_db#(rv_vif_t)::get(this, "", {pins, "_model"}, cfg.model_vif)) `uvm_fatal("LB_CFG", {"no interface ", pins, "_model"})
+            if (paired && !uvm_config_db#(rv_vif_t)::get(this, "", {pins, "_model"}, cfg.model_vif)) `uvm_fatal("LB_CFG", {"no interface ", pins, "_model"})
             cfg.clk_vif   = clk_vif;
             cfg.role      = role;
             cfg.port_name = pins;
@@ -188,7 +188,7 @@
             demoter = lb_rt_demoter::type_id::create("demoter");
             uvm_report_cb::add(null, demoter);
             seq = lb_rt_rv_seq::type_id::create("seq");
-            if (mode_b) uvm_config_db#(bit)::set(this, "rt", "a2c_dual_dut", 1'b1);
+            if (paired) uvm_config_db#(bit)::set(this, "rt", "a2c_dual_dut", 1'b1);
             src_cfg = lane_cfg("src_cfg", "rv_in", A2C_SRC);
             dst_cfg = lane_cfg("dst_cfg", "rv_out", A2C_DST);
             rt      = new_checker();
@@ -1393,17 +1393,17 @@
         endfunction
     endclass : rt_rv_next_unit_stall_test
 
-    // Mode B. The model pipe takes 20 clocks and refuses every second
+    // Paired mode. The model pipe takes 20 clocks and refuses every second
     // clock, so the source, which starts a beat only once both lanes took
     // the last, withholds the DUT lane's input often. The DUT lane is
     // judged alone, and the lag, gap and refusal bounds of a pipe that is
     // only fed slowly hold.
-    class rt_rv_mode_b_slow_model_test extends lb_rt_rv_base;
-        `uvm_component_utils(rt_rv_mode_b_slow_model_test)
+    class rt_rv_paired_slow_model_test extends lb_rt_rv_base;
+        `uvm_component_utils(rt_rv_paired_slow_model_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
 
         virtual function void configure();
@@ -1424,16 +1424,16 @@
             if (rt.units_checked() != 3) `uvm_error("LB_RT", $sformatf("%0d units checked, expected 3", rt.units_checked()))
             if (rt.worst_lag() != 5) `uvm_error("LB_RT", $sformatf("worst lag %0d, expected the DUT pipe's 5", rt.worst_lag()))
         endfunction
-    endclass : rt_rv_mode_b_slow_model_test
+    endclass : rt_rv_paired_slow_model_test
 
-    // Mode B with a fast model pipe and a DUT pipe 1% too slow: the DUT lane
-    // is judged and fails its deadline, named as the DUT lane.
-    class rt_rv_mode_b_slow_dut_test extends rt_rv_slow_test;
-        `uvm_component_utils(rt_rv_mode_b_slow_dut_test)
+    // Paired mode with a fast model pipe and a DUT pipe 1% too slow: the DUT
+    // lane is judged and fails its deadline, named as the DUT lane.
+    class rt_rv_paired_slow_dut_test extends rt_rv_slow_test;
+        `uvm_component_utils(rt_rv_paired_slow_dut_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
 
         virtual function void configure();
@@ -1447,7 +1447,7 @@
                 `uvm_error("LB_RT", $sformatf("the deadline error does not name the DUT lane: %p", demoter.msgs))
             end
         endfunction
-    endclass : rt_rv_mode_b_slow_dut_test
+    endclass : rt_rv_paired_slow_dut_test
 
     // The checker raises at most max_reported failures, here 2 of 5 units
     // late, and check_phase one more error for the other 3.
@@ -1826,16 +1826,16 @@
         endfunction
     endclass : rt_rv_defer_stopped_test
 
-    // Mode B: the DUT pipe hangs after 20 beats and fills, so the source's
-    // DUT lane trails and is declared dead at the 50-clock skew bound. The
-    // checker stops judging then: the gap of 300 the hang reaches later on
-    // the DUT lane raises nothing, and the summary says why.
+    // Paired mode: the DUT pipe hangs after 20 beats and fills, so the
+    // source's DUT lane trails and is declared dead at the 50-clock skew
+    // bound. The checker stops judging then: the gap of 300 the hang reaches
+    // later on the DUT lane raises nothing, and the summary says why.
     class rt_rv_lane_death_test extends lb_rt_rv_base;
         `uvm_component_utils(rt_rv_lane_death_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 1;
+            paired = 1;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);

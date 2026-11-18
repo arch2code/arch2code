@@ -43,11 +43,11 @@ module uvmMem_uvm_tb
     input clk,
     input rst_n,
 
-    // Mode B credit of wr, between its agent and the model's BFM
+    // Paired-mode credit of wr, between its agent and the model's BFM
     output bit [31:0] wr_model_credit,
     input  bit wr_model_held,
 
-    // Mode B credit of rd, between its agent and the model's BFM
+    // Paired-mode credit of rd, between its agent and the model's BFM
     output bit [31:0] rd_model_credit,
     input  bit rd_model_held,
 

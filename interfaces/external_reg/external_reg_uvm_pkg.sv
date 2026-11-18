@@ -17,9 +17,9 @@
 // rdata trails the write by up to two clocks, where an RTL register's trails
 // it by one.
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
-// beside the DUT's and monitors it with model_mon. The A2C_SRC driver puts
-// each write strobe on both lanes on the same clock. Its model_cmp, an
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin
+// set beside the DUT's and monitors it with model_mon. The A2C_SRC driver
+// puts each write strobe on both lanes on the same clock. Its model_cmp, an
 // external_reg_comparator, checks the two lanes' rdata under its status
 // policy, stable by default, because the model's rdata trails a write by a
 // clock more than the RTL's. The A2C_DST driver holds a level per lane: the
@@ -103,13 +103,13 @@ package external_reg_uvm_pkg;
 
     class external_reg_driver #(type data_t = logic [31:0])
         extends a2c_lane_driver #(external_reg_item#(data_t), virtual external_reg_if #(.data_t(data_t)), external_reg_config#(data_t));
-        // dst role in Mode B: the model lane's level, and the last value of
-        // cfg.value the driver set or saw, so a test's change is told apart
-        // from the DUT lane's writes.
+        // dst role in paired mode: the model lane's level, and the last value
+        // of cfg.value the driver set or saw, so a test's change is told
+        // apart from the DUT lane's writes.
         protected data_t       model_value;
         protected data_t       seen_value;
-        // dst role in Mode B: the model lane's writes the DUT lane has yet
-        // to make.
+        // dst role in paired mode: the model lane's writes the DUT lane has
+        // yet to make.
         protected int unsigned ahead;
 
         `uvm_component_param_utils(external_reg_driver#(data_t))
@@ -270,10 +270,10 @@ package external_reg_uvm_pkg;
         endtask
     endclass : external_reg_monitor
 
-    // The A2C_SRC role's Mode B comparator, on the monitors' rdata items.
-    // value() reads rdata, so the bounds policy needs no subclass; an rdata
-    // wider than 64 bits is bounded on its low 64 bits. has_xz() checks every
-    // bit of rdata.
+    // The A2C_SRC role's paired-mode comparator, on the monitors' rdata
+    // items. value() reads rdata, so the bounds policy needs no subclass; an
+    // rdata wider than 64 bits is bounded on its low 64 bits. has_xz() checks
+    // every bit of rdata.
     class external_reg_comparator #(type data_t = logic [31:0]) extends a2c_status_comparator #(external_reg_item#(data_t));
         `uvm_component_param_utils(external_reg_comparator#(data_t))
 
@@ -299,7 +299,7 @@ package external_reg_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(external_reg_item#(data_t)) sqr;
         external_reg_monitor#(data_t)             mon;
-        // Mode B only. On the A2C_SRC role model_cmp is an
+        // Paired mode only. On the A2C_SRC role model_cmp is an
         // external_reg_comparator on rdata, on the A2C_DST role an
         // a2c_in_order_comparator on the writes.
         external_reg_monitor#(data_t)             model_mon;

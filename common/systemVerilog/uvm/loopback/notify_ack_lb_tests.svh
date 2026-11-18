@@ -253,11 +253,11 @@
         endfunction
     endclass : notify_ack_monitor_checks_test
 
-    // Mode B on na and na_model; lb_hs_mode_b has the checks. As A2C_SRC
+    // Paired mode on na and na_model; lb_hs_paired has the checks. As A2C_SRC
     // the DUT lane's peer acks after 0 to 1 extra clocks and the model
     // lane's after 0 to 3; as A2C_DST the agent acks after 0 to 2. An event
     // has no payload, so model_cmp checks only the count.
-    class na_mode_b extends lb_hs_mode_b #(na_agent_t, na_item_t, na_config_t, na_vif_t);
+    class na_paired extends lb_hs_paired #(na_agent_t, na_item_t, na_config_t, na_vif_t);
         function new(string name, uvm_component parent);
             super.new(name, parent);
             port = "na";
@@ -272,84 +272,84 @@
             model_peer_cfg.ack_delay_max = 3;
             agent_cfg.ack_delay_max      = 2;
         endfunction
-    endclass : na_mode_b
+    endclass : na_paired
 
     // The agent notifies each item on both lanes.
-    class notify_ack_mode_b_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_test)
+    class notify_ack_paired_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_SRC;
             variant = LB_MATCH;
         endfunction
-    endclass : notify_ack_mode_b_test
+    endclass : notify_ack_paired_test
 
     // The agent acks both lanes, replaying the DUT lane's delays.
-    class notify_ack_mode_b_dst_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_test)
+    class notify_ack_paired_dst_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MATCH;
         endfunction
-    endclass : notify_ack_mode_b_dst_test
+    endclass : notify_ack_paired_dst_test
 
     // The model lane reaches every event first and waits for the DUT lane.
-    class notify_ack_mode_b_dst_model_leads_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_model_leads_test)
+    class notify_ack_paired_dst_model_leads_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_model_leads_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MODEL_LEADS;
         endfunction
-    endclass : notify_ack_mode_b_dst_model_leads_test
+    endclass : notify_ack_paired_dst_model_leads_test
 
     // The DUT lane makes one event more: the drain runs to its deadline and
     // the replay log reports the record the model lane never replayed.
-    class notify_ack_mode_b_dst_dut_extra_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_dut_extra_test)
+    class notify_ack_paired_dst_dut_extra_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_dut_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_DUT_EXTRA;
         endfunction
-    endclass : notify_ack_mode_b_dst_dut_extra_test
+    endclass : notify_ack_paired_dst_dut_extra_test
 
     // The model lane makes one event more, which it waits for until the
     // drain's deadline: one A2C_REPLAY.
-    class notify_ack_mode_b_dst_model_extra_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_model_extra_test)
+    class notify_ack_paired_dst_model_extra_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_model_extra_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_MODEL_EXTRA;
         endfunction
-    endclass : notify_ack_mode_b_dst_model_extra_test
+    endclass : notify_ack_paired_dst_model_extra_test
 
     // The test drops its objection when the DUT lane is done, before the model
     // lane starts its last event: the drain must hold the run phase until
     // the model lane has replayed it.
-    class notify_ack_mode_b_dst_drain_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_drain_test)
+    class notify_ack_paired_dst_drain_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_drain_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_DRAIN;
         endfunction
-    endclass : notify_ack_mode_b_dst_drain_test
+    endclass : notify_ack_paired_dst_drain_test
 
-    // As notify_ack_mode_b_dst_drain_test with a quiet window of one clock
+    // As notify_ack_paired_dst_drain_test with a quiet window of one clock
     // and every ack 3 clocks late, and the drop once the DUT lane is idle.
     // Once the model lane has replayed its last event, only its wait for
     // that ack keeps the window from closing before the event completes.
-    class notify_ack_mode_b_dst_drain_short_quiet_test extends notify_ack_mode_b_dst_drain_test;
-        `uvm_component_utils(notify_ack_mode_b_dst_drain_short_quiet_test)
+    class notify_ack_paired_dst_drain_short_quiet_test extends notify_ack_paired_dst_drain_test;
+        `uvm_component_utils(notify_ack_paired_dst_drain_short_quiet_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -366,52 +366,52 @@
             super.wait_drop();
             repeat (2) clk_vif.sample_edge();
         endtask
-    endclass : notify_ack_mode_b_dst_drain_short_quiet_test
+    endclass : notify_ack_paired_dst_drain_short_quiet_test
 
     // Both peers keep sending after the test drops its objection, so the
     // drain's quiet window never comes: it must cut the run at its deadline
     // and end once both lanes have completed what the cut keeps, with no
     // A2C_REPLAY.
-    class notify_ack_mode_b_dst_drain_busy_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_drain_busy_test)
+    class notify_ack_paired_dst_drain_busy_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_drain_busy_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_BUSY;
         endfunction
-    endclass : notify_ack_mode_b_dst_drain_busy_test
+    endclass : notify_ack_paired_dst_drain_busy_test
 
-    // As notify_ack_mode_b_dst_drain_busy_test, with a passive Mode B agent watching the port: the drain's
+    // As notify_ack_paired_dst_drain_busy_test, with a passive paired-mode agent watching the port: the drain's
     // cut must cut its model_cmp too, so it pairs what the agent pairs and
     // reports no unpaired transfer.
-    class notify_ack_mode_b_dst_busy_passive_test extends notify_ack_mode_b_dst_drain_busy_test;
-        `uvm_component_utils(notify_ack_mode_b_dst_busy_passive_test)
+    class notify_ack_paired_dst_busy_passive_test extends notify_ack_paired_dst_drain_busy_test;
+        `uvm_component_utils(notify_ack_paired_dst_busy_passive_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             watch_passive = 1;
         endfunction
-    endclass : notify_ack_mode_b_dst_busy_passive_test
+    endclass : notify_ack_paired_dst_busy_passive_test
 
     // The first drain expires with the model lane's late event pending,
     // and the test sends the last event after it: the model lane's start
     // since the expiry must bring a second drain that replays it. One more
     // event, sent after the second drain and late on the model lane, must
     // bring a third.
-    class notify_ack_mode_b_dst_after_expiry_test extends na_mode_b;
-        `uvm_component_utils(notify_ack_mode_b_dst_after_expiry_test)
+    class notify_ack_paired_dst_after_expiry_test extends na_paired;
+        `uvm_component_utils(notify_ack_paired_dst_after_expiry_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
             role    = A2C_DST;
             variant = LB_AFTER_EXPIRY;
         endfunction
-    endclass : notify_ack_mode_b_dst_after_expiry_test
+    endclass : notify_ack_paired_dst_after_expiry_test
 
     // lb_withdraw_waiting on a notify_ack port.
-    class notify_ack_mode_b_dst_withdraw_waiting_test extends lb_withdraw_waiting #(na_agent_t, na_config_t, na_vif_t);
-        `uvm_component_utils(notify_ack_mode_b_dst_withdraw_waiting_test)
+    class notify_ack_paired_dst_withdraw_waiting_test extends lb_withdraw_waiting #(na_agent_t, na_config_t, na_vif_t);
+        `uvm_component_utils(notify_ack_paired_dst_withdraw_waiting_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
@@ -426,4 +426,4 @@
         virtual function bit acked(na_vif_t v);
             return v.ack === 1'b1;
         endfunction
-    endclass : notify_ack_mode_b_dst_withdraw_waiting_test
+    endclass : notify_ack_paired_dst_withdraw_waiting_test

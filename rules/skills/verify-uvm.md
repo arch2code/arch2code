@@ -4,7 +4,7 @@ description: Guide for writing and running tests on a generated arch2code UVM te
 ---
 # Skill: Verify with the UVM testbench
 
-A block with `hasUvm: true` gets a generated UVM testbench that runs its SystemC model, its RTL, or both side by side (Mode B). `specs/SIMULATOR_INTEGRATION.md` section 9 is the reference. Its "Terms" table defines Mode A, Mode B, lane, pair, unit and the other words this skill uses, and its "A first test" walks `examples/uvmMem` from generation to a new test. Read both before writing a first bench.
+A block with `hasUvm: true` gets a generated UVM testbench that runs its SystemC model, its RTL, or both side by side (paired mode). `specs/SIMULATOR_INTEGRATION.md` section 9 is the reference. Its "Terms" table defines single mode, paired mode, lane, pair, unit and the other words this skill uses, and its "A first test" walks `examples/uvmMem` from generation to a new test. Read both before writing a first bench.
 
 ## Where code goes
 1.  The block needs `hasVl: true` as well as `hasUvm: true`. Run `make newmodule`, then `make gen`; see `manage-build`. `make db` names any rule the block breaks (spec section 9.1).
@@ -67,7 +67,7 @@ class blk_burst_test extends blk_base_test;
 endclass
 ```
 
-*   An output whose count depends on the data: in Mode B set `expect_from_model` and the model lane's count becomes the expectation. In Mode A the test computes the count from its stimulus.
+*   An output whose count depends on the data: in paired mode set `expect_from_model` and the model lane's count becomes the expectation. In single mode the test computes the count from its stimulus.
 *   A long test, such as one sending whole frames, fixes its budget with `run_timeout.fix(<clocks>)` in `run_body()` before it sends (spec section 9.6, "The run timeout").
 *   Timing knobs are `rand` on each agent config. Constrain them with `randomize() with {...}` in `connect_phase`. For a directed stall pattern, override the driver's `a2c_ready_policy` with `a2c_pattern_ready_policy` (spec section 9.10, "Constrained-random knobs and the ready policy").
 *   A reset during the test: call `reset_dut()`. It works only with `--uvmDut rtl`; a run that holds the model refuses it with `A2C_RESET`.
@@ -88,13 +88,13 @@ endclass
 ```
 
     Override `run_body()` around `super.run_body()` to add checks. `examples/uvmRegs` (`uvmRegs_reg_test`) adds a reset check of one child block.
-*   In Mode B, program registers only while the datapath is quiescent: configure, stream, call `wait_for_outputs()`, then configure again. A write, or a read of a volatile register, while outputs are pending is an `A2C_MIDSTREAM` error. List registers that can never compare, such as a free-running counter, with `skip_reg()` on the bus agent's `model_cmp`, under `if (dual_dut)` (spec section 9.12).
+*   In paired mode, program registers only while the datapath is quiescent: configure, stream, call `wait_for_outputs()`, then configure again. A write, or a read of a volatile register, while outputs are pending is an `A2C_MIDSTREAM` error. List registers that can never compare, such as a free-running counter, with `skip_reg()` on the bus agent's `model_cmp`, under `if (dual_dut)` (spec section 9.12).
 
 ## Add a scoreboard
 1.  Write the scoreboard in user span 1 and create it in `<block>_tb_env`'s `build_phase`, after `super.build_phase(phase)`.
 2.  In `connect_phase`, connect `<port>_agent.mon.ap` of each input and output it needs. Declare several imports with `` `uvm_analysis_imp_decl ``. `uvmMem_scoreboard` in `examples/uvmMem/uvm/uvmMem_uvm_test_pkg.sv` is the reference.
-3.  Predict from the stimulus and the register mirror, never from the model. Mode B already compares the RTL with the model; it misses an error both make.
-4.  Run the check in every mode. In Mode B, also connect `<port>_agent.model_mon.ap` to a second instance, so a model error fails on the model lane as well.
+3.  Predict from the stimulus and the register mirror, never from the model. Paired mode already compares the RTL with the model; it misses an error both make.
+4.  Run the check in every mode. In paired mode, also connect `<port>_agent.model_mon.ap` to a second instance, so a model error fails on the model lane as well.
 5.  Nothing warns about an output with no such check. Decide per output, and say in the bench why an output has none.
 6.  To share one memory between two `memory` ports, create one `a2c_mem_model` in `build_phase` and set `cfg.mem` on both ports' configs (spec section 9.10, "`a2c_mem_model`").
 

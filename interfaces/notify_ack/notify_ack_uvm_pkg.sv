@@ -9,7 +9,7 @@
 // sequence item; the A2C_DST driver only acks, so it has no sequencer. Pin
 // timing follows a2c_clk_if: drive at drive_edge(), sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon. The A2C_SRC driver raises
 // notify on both lanes at one drive point, and each lane drops it once its own
 // event has completed; the next item starts when both have. A lane of the
@@ -207,7 +207,7 @@ package notify_ack_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(notify_ack_item) sqr;
         notify_ack_monitor               mon;
-        // Mode B only. model_cmp exists on the A2C_DST role.
+        // Paired mode only. model_cmp exists on the A2C_DST role.
         notify_ack_monitor                         model_mon;
         a2c_in_order_comparator #(notify_ack_item) model_cmp;
 

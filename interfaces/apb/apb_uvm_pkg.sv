@@ -9,7 +9,7 @@
 // data; addr_t and data_t are the interface's packed types. Pin timing
 // follows a2c_clk_if: drive at drive_edge(), sample at sample_edge().
 //
-// Mode B. With cfg.model_vif set the agent drives the model DUT's pin set
+// Paired mode. With cfg.model_vif set the agent drives the model DUT's pin set
 // beside the DUT's and monitors it with model_mon, and model_cmp compares the
 // transfers the two lanes report, in order: write, addr, data (prdata on a
 // read) and slverr. The master starts each transfer on both lanes at one drive
@@ -130,10 +130,10 @@ package apb_uvm_pkg;
         // Returns at the drive point after the last live lane's access
         // phase ended, with the DUT lane's read data and PSLVERR in req, or
         // the model lane's once the DUT lane is dead. Each lane returns to
-        // idle at the drive point after its own pready. In Mode B wd bounds
-        // how long one lane may trail the other and how long the lanes may
-        // stall (a2c_lane_watchdog), and a lane it declares dead drops out of
-        // the wait.
+        // idle at the drive point after its own pready. In paired mode wd
+        // bounds how long one lane may trail the other and how long the lanes
+        // may stall (a2c_lane_watchdog), and a lane it declares dead drops out
+        // of the wait.
         protected task wait_access();
             bit        pending[2];
             bit        ended[2];
@@ -195,7 +195,7 @@ package apb_uvm_pkg;
     // data are taken in the setup phase; the monitor reports a master that
     // changes them later. The slave applies the transfer to cfg.mem at that
     // setup sample, so a change to cfg.mem during the wait states is not seen.
-    // In Mode B the DUT lane always applies and the model lane follows: a
+    // In paired mode the DUT lane always applies and the model lane follows: a
     // model lane waiting on transfer n replays it on the clock the DUT lane
     // applies it. pready is high for the one clock that ends the transfer,
     // and the sample point after it can see the next setup phase, so
@@ -233,7 +233,7 @@ package apb_uvm_pkg;
             return 0;
         endfunction
 
-        // In Mode B this is the only place the model lane's response and
+        // In paired mode this is the only place the model lane's response and
         // wait clocks are drawn.
         protected virtual task respond(output logic [$bits(data_t):0] r, output int unsigned delay, output bit at_edge);
             bit [31:0]                addr  = 32'(lane[A2C_DUT_LANE].paddr);
@@ -406,7 +406,7 @@ package apb_uvm_pkg;
         // A2C_SRC only.
         uvm_sequencer #(apb_item)    sqr;
         apb_monitor#(addr_t, data_t) mon;
-        // Mode B only.
+        // Paired mode only.
         apb_monitor#(addr_t, data_t) model_mon;
         apb_comparator               model_cmp;
 

@@ -1,15 +1,15 @@
-// Loopback tests of register reads in Mode B: a2c_midstream_guard's rule
+// Loopback tests of register reads in paired mode: a2c_midstream_guard's rule
 // for volatile reads, and a2c_reg_comparator's skip list through the apb
 // agent's apb_comparator. The reg_read_* tests write synthetic apb items
 // into a comparator by hand; the reg_read_pins_* tests read through a
-// register model and the apb agent on the apb pin sets, in Mode B and in
-// Mode A, and reg_read_pins_stride_test moves a2c_reg_map memory rows over
-// them; reg_read_stride_cfg_test checks a2c_reg_map's fatals and submap
+// register model and the apb agent on the apb pin sets, in paired mode and in
+// single mode, and reg_read_pins_stride_test moves a2c_reg_map memory rows
+// over them; reg_read_stride_cfg_test checks a2c_reg_map's fatals and submap
 // rules, and reg_read_pins_stride_hier_test runs a2c_reg_map submaps three
 // blocks deep. reg_read_child_block_catcher_test checks which
 // UVM/RSRC/NOREGEX warnings a2c_child_block_catcher demotes. Included in
 // a2c_uvm_loopback_pkg after
-// a2c_joint_stall_lb_tests.svh, and uses the rdy_vld, apb and Mode B
+// a2c_joint_stall_lb_tests.svh, and uses the rdy_vld, apb and paired-mode
 // classes of the files before it.
 
     // A read-only register the hardware updates: its field is volatile, as
@@ -138,11 +138,11 @@
     endclass : lb_id_recorder
 
     // A guard over a dual-lane rv counter, an rv comparator and an
-    // apb_comparator, wired as a generated env wires them in Mode B. The
+    // apb_comparator, wired as a generated env wires them in paired mode. The
     // test writes apb items into the apb_comparator's exports, and rv items
     // into the counter and the rv comparator. recorders[id] keeps the
     // messages of each ID in record_ids.
-    class lb_reg_read_base extends lb_mode_b_base;
+    class lb_reg_read_base extends lb_paired_base;
         a2c_midstream_guard            guard;
         a2c_txn_counter #(rv_item_t)   counter;
         lb_cmp_t                       data_cmp;
@@ -833,14 +833,14 @@
         endfunction
     endclass : reg_read_skip_mem_unmapped_test
 
-    // The apb agent as master on the apb pin set and, in Mode B, on
+    // The apb agent as master on the apb pin set and, in paired mode, on
     // apb_model too, each served by a slave peer. status reads 'h11 on the
     // DUT lane and dut_status ^ model_xor on the model lane. A register
     // model on the agent's sequencer, an rv counter with one output pending
-    // throughout, and in Mode B a guard wired as a generated env wires it.
-    // The test reads status through the register model.
-    class lb_reg_read_pins_base extends lb_mode_b_base;
-        bit                 mode_b = 1;
+    // throughout, and in paired mode a guard wired as a generated env wires
+    // it. The test reads status through the register model.
+    class lb_reg_read_pins_base extends lb_paired_base;
+        bit                 paired = 1;
         bit [31:0]          dut_status = 'h11;
         bit [31:0]          model_xor = 0;
         apb_agent_t         agent;
@@ -874,7 +874,7 @@
             for (int unsigned b = 0; b < 4; b++) peer_cfg.mem.write(b, dut_status[8 * b +: 8]);
             uvm_config_db#(apb_config_t)::set(this, "peer", "cfg", peer_cfg);
             peer = apb_agent_t::type_id::create("peer", this);
-            if (mode_b) begin
+            if (paired) begin
                 bit [31:0] word = dut_status ^ model_xor;
                 if (!uvm_config_db#(apb_vif_t)::get(this, "", "apb_model", model_vif)) `uvm_fatal("LB_CFG", "no virtual apb_if 'apb_model'")
                 agent_cfg.model_vif = model_vif;
@@ -892,7 +892,7 @@
             adapter = apb_reg_adapter::type_id::create("adapter");
             counter = a2c_txn_counter#(rv_item_t)::type_id::create("counter", this);
             counter.port_name = "rv";
-            counter.dual      = mode_b;
+            counter.dual      = paired;
             rv_dut_ap   = new("rv_dut_ap", this);
             rv_model_ap = new("rv_model_ap", this);
         endfunction
@@ -901,7 +901,7 @@
             regs.default_map.set_sequencer(agent.sqr, adapter);
             regs.default_map.set_auto_predict(1);
             rv_dut_ap.connect(counter.analysis_export);
-            if (!mode_b) return;
+            if (!paired) return;
             rv_model_ap.connect(counter.model_export);
             guard.map = regs.default_map;
             guard.counters.push_back(counter);
@@ -918,15 +918,15 @@
                 `uvm_error("LB_REG_READ", $sformatf("status read 'h%0h (%s), the DUT lane holds 'h%0h", value, status.name(), dut_status))
             end
             rv_dut_ap.write(lb_rv_item(lb_data_t'(0)));
-            if (mode_b) rv_model_ap.write(lb_rv_item(lb_data_t'(0)));
+            if (paired) rv_model_ap.write(lb_rv_item(lb_data_t'(0)));
             repeat (2) clk_vif.sample_edge();
             phase.drop_objection(this);
         endtask
     endclass : lb_reg_read_pins_base
 
-    // Mode B: the read of status while the rv output is pending reaches the
-    // guard through the agent's model_cmp and raises one A2C_MIDSTREAM. The
-    // lanes agree, so the pair matches.
+    // Paired mode: the read of status while the rv output is pending reaches
+    // the guard through the agent's model_cmp and raises one A2C_MIDSTREAM.
+    // The lanes agree, so the pair matches.
     class reg_read_pins_test extends lb_reg_read_pins_base;
         `uvm_component_utils(reg_read_pins_test)
 
@@ -944,9 +944,9 @@
         endfunction
     endclass : reg_read_pins_test
 
-    // Mode B with status on model_cmp's skip list through skip_reg(): the
-    // lanes return different words while the rv output is pending, and the
-    // run raises nothing but the A2C_REG_SKIP info.
+    // Paired mode with status on model_cmp's skip list through skip_reg():
+    // the lanes return different words while the rv output is pending, and
+    // the run raises nothing but the A2C_REG_SKIP info.
     class reg_read_pins_skip_test extends lb_reg_read_pins_base;
         lb_id_recorder skip_infos;
 
@@ -978,22 +978,22 @@
         endfunction
     endclass : reg_read_pins_skip_test
 
-    // Mode A: the agent has no model_cmp and there is no guard, so the same
-    // read while the rv output is pending raises nothing.
-    class reg_read_pins_mode_a_test extends lb_reg_read_pins_base;
-        `uvm_component_utils(reg_read_pins_mode_a_test)
+    // Single mode: the agent has no model_cmp and there is no guard, so the
+    // same read while the rv output is pending raises nothing.
+    class reg_read_pins_single_test extends lb_reg_read_pins_base;
+        `uvm_component_utils(reg_read_pins_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 0;
+            paired = 0;
         endfunction
 
         virtual function void report_phase(uvm_phase phase);
-            if (agent.model_cmp != null) `uvm_error("LB_REG_READ", "the Mode A agent has a model_cmp")
+            if (agent.model_cmp != null) `uvm_error("LB_REG_READ", "the single-mode agent has a model_cmp")
             if (uvm_report_server::get_server().get_id_count("A2C_MIDSTREAM") != 0) `uvm_error("LB_REG_READ", "an A2C_MIDSTREAM report")
             super.report_phase(phase);
         endfunction
-    endclass : reg_read_pins_mode_a_test
+    endclass : reg_read_pins_single_test
 
     // In default_map, an a2c_reg_map: narrow, four 20-bit rows on an 8-byte
     // stride at 0x200, and wide, four 40-bit rows on a 16-byte stride at
@@ -1090,10 +1090,11 @@
         endfunction
     endclass : lb_reg_stride_base
 
-    // Mode A: full-width rows written through narrow by one burst and through
-    // wide row by row land on the slave at the row stride, in the row's own
-    // words only, and read back whole. Each map finds a memory at every word
-    // of its rows, unused words of the last row included, and none past it.
+    // Single mode: full-width rows written through narrow by one burst and
+    // through wide row by row land on the slave at the row stride, in the
+    // row's own words only, and read back whole. Each map finds a memory at
+    // every word of its rows, unused words of the last row included, and none
+    // past it.
     class reg_read_pins_stride_test extends lb_reg_stride_base;
         lb_stride_block strides;
 
@@ -1101,7 +1102,7 @@
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b = 0;
+            paired = 0;
         endfunction
 
         virtual function void build_phase(uvm_phase phase);
@@ -1611,11 +1612,11 @@
         endfunction
     endclass : reg_read_child_block_catcher_test
 
-    // Mode B over lb_hier, wired as a generated env wires a register model,
-    // with every lookup through the root map. Writes, reads and lookups in
-    // both lb_hier_ip siblings and the plain child while quiescent, then
-    // reads and writes of ip while the rv output is pending, against the
-    // guard and model_cmp's skip list.
+    // Paired mode over lb_hier, wired as a generated env wires a register
+    // model, with every lookup through the root map. Writes, reads and
+    // lookups in both lb_hier_ip siblings and the plain child while
+    // quiescent, then reads and writes of ip while the rv output is pending,
+    // against the guard and model_cmp's skip list.
     class reg_read_pins_stride_hier_test extends lb_reg_stride_base;
         lb_hier                              hier;
         uvm_reg_predictor #(apb_item)        predictor;
@@ -1642,7 +1643,7 @@
         function void preload(bit [31:0] addr, bit [31:0] dut, bit [31:0] model);
             for (int unsigned b = 0; b < 4; b++) begin
                 peer_cfg.mem.write(addr + b, dut[8 * b +: 8]);
-                if (mode_b) model_peer_cfg.mem.write(addr + b, model[8 * b +: 8]);
+                if (paired) model_peer_cfg.mem.write(addr + b, model[8 * b +: 8]);
             end
         endfunction
 
@@ -1660,7 +1661,7 @@
             hier = lb_hier::type_id::create("lb_hier");
             hier.build();
             predictor = uvm_reg_predictor#(apb_item)::type_id::create("predictor", this);
-            if (mode_b) writes = a2c_reg_write_subscriber#(apb_item)::type_id::create("writes", this);
+            if (paired) writes = a2c_reg_write_subscriber#(apb_item)::type_id::create("writes", this);
             skip_infos = lb_id_recorder::type_id::create("skip_infos");
             skip_infos.id = "A2C_REG_SKIP";
             uvm_report_cb::add(null, skip_infos);
@@ -1681,7 +1682,7 @@
             predictor.map     = hier.default_map;
             predictor.adapter = adapter;
             agent.mon.ap.connect(predictor.bus_in);
-            if (!mode_b) return;
+            if (!paired) return;
             writes.map     = hier.default_map;
             writes.adapter = adapter;
             agent.mon.ap.connect(writes.analysis_export);
@@ -1774,7 +1775,7 @@
             expect_mem(hier.default_map, 'h300000, null);
             maps = '{null, hier.plain.default_map, hier.default_map};
             foreach (maps[i]) expect_reg_addresses(hier.plain.ctrl, maps[i], {'h300000});
-            if (mode_b) begin
+            if (paired) begin
                 // The lanes then disagree on deep, which only the skip list keeps quiet.
                 preload('h101040, 'h1c, 'h99);
                 preload('h101050, 'h1d, 'h66);
@@ -1796,7 +1797,7 @@
         endtask
 
         virtual function void report_phase(uvm_phase phase);
-            if (mode_b) begin
+            if (paired) begin
                 string want[$] = '{"\n  lb_hier.ip.stat 0x100000: 1", "\n  lb_hier.ip.sub.deep 0x101040..0x101050: 4"};
                 foreach (want[i]) if (skip_infos.count(want[i]) != 1) `uvm_error("LB_REG_STRIDE", $sformatf("expected one A2C_REG_SKIP line '%s': %p", want[i], skip_infos.messages))
             end
@@ -1805,15 +1806,15 @@
         endfunction
     endclass : reg_read_pins_stride_hier_test
 
-    // reg_read_pins_stride_hier_test in Mode A: no model_cmp, guard or skip
-    // list, so only the quiescent writes, reads, mirrors and lookups.
-    class reg_read_pins_stride_hier_mode_a_test extends reg_read_pins_stride_hier_test;
-        `uvm_component_utils(reg_read_pins_stride_hier_mode_a_test)
+    // reg_read_pins_stride_hier_test in single mode: no model_cmp, guard or
+    // skip list, so only the quiescent writes, reads, mirrors and lookups.
+    class reg_read_pins_stride_hier_single_test extends reg_read_pins_stride_hier_test;
+        `uvm_component_utils(reg_read_pins_stride_hier_single_test)
 
         function new(string name, uvm_component parent);
             super.new(name, parent);
-            mode_b      = 0;
+            paired      = 0;
             want_errors = 0;
             want_text.delete();
         endfunction
-    endclass : reg_read_pins_stride_hier_mode_a_test
+    endclass : reg_read_pins_stride_hier_single_test
