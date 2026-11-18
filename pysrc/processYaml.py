@@ -576,6 +576,8 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.tandemStatusPolicy = self.config.getConfig('TANDEMSTATUSPOLICY')
+        self.tandemRegisterReads = self.config.getConfig('TANDEMREGISTERREADS')
         self.vlTops = self.config.getConfig('VLTOPS')
         self.pairFactoryProjects = self.config.getConfig('PAIRFACTORYPROJECTS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
@@ -1323,6 +1325,7 @@ class projectOpen:
                         if value['enum']:
                             enums[key] = value
                             enums[key]['descSpaces'] = max(0, 20-len(value['type']))
+                            enums[key]['realwidth'] = self.resolveTypeWidth(value)
                             for myEnum in value['enum']:
                                 enumLen = len(myEnum['enumName'])+len(str(myEnum['value']))
                                 myEnum['descSpaces'] = max(0, 20-enumLen)
@@ -1477,6 +1480,8 @@ class projectOpen:
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
         ret['qualBlock'] = qualBlock
         ret['blockInfo'] = self.data['blocks'][qualBlock]
+        # Tandem status-compare policy by port name, for the ports that set one
+        ret['tandemStatusPolicy'] = self.tandemStatusPolicy.get(qualBlock, dict())
         ret['temp'] = dict()
         ret['temp']['structs'] = dict()
         ret['temp']['typeContexts'] = dict()
@@ -1499,6 +1504,7 @@ class projectOpen:
         self.getBDAddressDecode(ret)
         # address bus info
         self.getBDAddressBus(ret)
+        self.getBDTandemRegisterReads(ret)
         # memory connections
         self.getBDMemoryConnections(ret)
         # register connections
@@ -1642,12 +1648,18 @@ class projectOpen:
 
     def getBDClocksResets(self, ret):
         # The block's declared clocks then resets, in declaration order, from
-        # the blockClocksResets table. Every block has at least one clock row.
+        # the blockClocksResets table. A block declaring clocks: {} has no row
+        # and no register-bus role.
         ret['clocks'] = list()
         ret['resets'] = list()
         ret['defaultClock'] = None
         ret['defaultReset'] = None
-        for row in self.data['blockClocksResets'][ret['qualBlock']]:
+        ret['registerClock'] = None
+        ret['registerReset'] = None
+        ret['registerBusPort'] = None
+        ret['busClockPort'] = None
+        ret['busResetPort'] = None
+        for row in self.data['blockClocksResets'].get(ret['qualBlock'], []):
             # The register-bus fields are block-level, repeated on every row.
             ret['registerClock'] = row['registerClock']
             ret['registerReset'] = row['registerReset']
@@ -1673,6 +1685,23 @@ class projectOpen:
                                       'clock': row['clock'] or ret['defaultClock'],
                                       'async': bool(row['async']),
                                       'releaseCycles': row['releaseCycles']})
+        # The clocks and resets the co-simulation wrapper declares and drives.
+        # A block with no clock gets the default testbench clock and reset of
+        # its own project, which only its BFMs sample.
+        if ret['clocks']:
+            ret['wrapperClocks'] = ret['clocks']
+            ret['wrapperResets'] = ret['resets']
+        else:
+            owner = self.contextOwningProject[ret['blockInfo']['_context']]
+            clockRow = next(row for row in self.data['clocks'].values()
+                            if row['_context'] == owner and row['default'])
+            resetRow = next(row for row in self.data['resets'].values()
+                            if row['_context'] == owner and row['default'])
+            ret['wrapperClocks'] = [{'clock': clockRow['clock'], 'direction': 'input',
+                                     'period': clockRow['period'], 'timeUnit': clockRow['timeUnit']}]
+            ret['wrapperResets'] = [{'reset': resetRow['reset'], 'direction': 'input',
+                                     'clock': clockRow['clock'],
+                                     'releaseCycles': resetRow['releaseCycles']}]
 
     def getBDBusClockReset(self, ret):
         # Called for every block. busClock is the block's register-bus
@@ -2458,20 +2487,35 @@ class projectOpen:
             ret['addressDecode']['addressBits'] = (self.data['blocks'][decodeBlock]['maxAddress']).bit_length()
             ret['addressDecode']['addressGroup'] = addressGroup
 
+    def getBDTandemRegisterReads(self, ret):
+        # The registers whose firmware reads a Tandem run compares by their
+        # tandem: policy, at the offsets and address mask the block's register
+        # handler decodes (blockRegs.py), or None when the block has none.
+        policies = self.tandemRegisterReads.get(ret['qualBlock'])
+        if policies is None:
+            ret['tandemRegisterReads'] = None
+            return
+        ret['tandemRegisterReads'] = {
+            'port': ret['addressDecode']['registerBusPort'],
+            'addressMask': (1 << ret['addressDecode']['addressBits']) - 1,
+            'registers': [{'register': reg['register'], 'offset': reg['offset'], 'size': reg['maxBytes'],
+                           'policy': policies[reg['register']]}
+                          for reg in ret['registers'].values() if reg['register'] in policies]}
+
     def getBDAddressDecode(self, ret):
         # Is this block an apbDecode router that performs APB bus routing?
         # The router's own block row carries `addressBlock:`. The router
         # instance is resolved by post-parse container-locality (see
         # postParseRegisterPorts.py) and is the single instance of this
         # block type, so any element of ret['instances'] identifies it.
-        isApbRouter = False
+        isRegBusRouter = False
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
         if addressBlock:
             qualDecoder = next(iter(ret['instances']))
             instanceWithRegApb = self.config.getConfig('INSTANCES_WITH_REGAPB')
-            isApbRouter = True
+            isRegBusRouter = True
             ret['addressDecode']['addressGroupData'] = dict(addressBlock)
             ret['addressDecode']['addressGroup'] = addressBlock['addressGroup']
             ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
@@ -2498,7 +2542,7 @@ class projectOpen:
             # A referenced child project's standalone harness router is outside
             # this build's tree; its view renders with no channels.
             ret['addressDecode']['routedInstances'] = routed
-        ret['addressDecode']['isApbRouter'] = isApbRouter
+        ret['addressDecode']['isRegBusRouter'] = isRegBusRouter
 
     # memory connections
     def getBDMemoryConnections(self, ret):
@@ -3266,12 +3310,15 @@ class projectOpen:
         one of its ports takes busClockPort/busResetPort, which honour an
         addressBlock: reset: that differs from the clock's selected reset.
         """
-        if ret['addressDecode']['isApbRouter']:
+        if ret['addressDecode']['isRegBusRouter']:
             portRow['domainClock'] = ret['busClockPort']
             portRow['domainReset'] = ret['busResetPort']
         elif portRow['name'] == ret['registerBusPort']:
             portRow['domainClock'] = ret['registerClock']
             portRow['domainReset'] = ret['registerReset']
+        elif not ret['clocks']:
+            portRow['domainClock'] = ret['wrapperClocks'][0]['clock']
+            portRow['domainReset'] = ret['wrapperResets'][0]['reset']
         else:
             portRow['domainClock'] = domainClock
             portRow['domainReset'] = self.getBDPortDomainReset(ret, domainClock)
@@ -3386,7 +3433,7 @@ class projectOpen:
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
 
-        if ret['addressDecode']['isApbRouter'] and addressBlock:
+        if ret['addressDecode']['isRegBusRouter'] and addressBlock:
             port = addressBlock['upstreamPort']
             interface = self._resolveRouterUpstreamInterface(blockRow, port)
             return interface, port
@@ -3453,15 +3500,15 @@ class projectOpen:
         blockRow = self.data['blocks'][qualBlock]
 
         # Router blocks expose their authored addressBlock through this view;
-        # isApbRouter is true only when the block authors addressBlock:.
+        # isRegBusRouter is true only when the block authors addressBlock:.
         # Non-router blocks see no addressBlock.
-        if not ret['addressDecode'].get('isApbRouter'):
+        if not ret['addressDecode'].get('isRegBusRouter'):
             return
 
         ret['addressBlock'] = dict(blockRow['addressBlock'])
 
     def getBDAddressBus(self, ret):
-        if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
+        if ret['addressDecode']['isRegBusRouter'] or ret['addressDecode']['hasDecoder']:
             ret['addressDecode']['registerBusStructs'] = dict()
             (interfaceName, portName) = self._registerBusInterfacePort(ret)
             # registerBusInterface names the interface definition used
@@ -3479,6 +3526,11 @@ class projectOpen:
                     ret['addressDecode']['registerBusStructs'].update(
                         { item['structureType'] :
                           {'structure': item['structure'], 'structureKey': item['structureKey']} } )
+                # The protocol facts the router and handler templates need:
+                # the SystemC channel name prefix and the SV front end.
+                intfDef = self.data['interface_defs'][regIf['interfaceTypeKey']]
+                ret['addressDecode']['registerBusChannelType'] = intfDef['sc_channel']['type']
+                ret['addressDecode']['registerBusSvFrontEnd'] = intfDef['svRegBusFrontEnd']
 
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
@@ -3566,7 +3618,7 @@ class projectOpen:
                 for payload in crossBind['thunker']['payloads']:
                     addStructOrTypeKey(payload['kind'], payload['structureKey'])
 
-        if ret['addressDecode'].get('isApbRouter') or ret['addressDecode'].get('hasDecoder'):
+        if ret['addressDecode'].get('isRegBusRouter') or ret['addressDecode'].get('hasDecoder'):
             # The router's upstream interface determines the register-bus
             # structures pulled into the class declaration. Walk the resolved
             # interface rather than the global table directly.
@@ -4431,13 +4483,13 @@ class projectCreate:
         # deriveParameterizedDeclSets and ValueResolver override evaluation.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
-        # Blocks whose resets: was authored as an explicitly empty {} or [],
-        # keyed by (yamlFile, block name) the same way _evalNodes is.
-        # Populated by _normalizeClockResetShortForm and consumed by
-        # clockTree.build(), which is the only reader of "no resets at
-        # all" versus "resets: omitted"; transient to this
-        # projectCreate.
+        # Blocks whose resets: or clocks: was authored as an explicitly empty
+        # {} or [], keyed by (yamlFile, block name) the same way _evalNodes
+        # is. Populated by _normalizeClockResetShortForm and consumed by
+        # clockTree.build(), which is the only reader of "none at all"
+        # versus "omitted"; transient to this projectCreate.
         self._blocksDeclaringNoResets = set()
+        self._blocksDeclaringNoClocks = set()
         # Per referenced child project file, its raw content and the absolute
         # directory of the child project file (so its dirs: resolve relative to
         # the child file, mirroring the root's relative-to-project-file rule).
@@ -4516,6 +4568,7 @@ class projectCreate:
             self.topInstance = self.proj['topInstance']
         self.projectDirs()
         self.validateLayout()
+        self.validateRegBusErrorResponses()
         self.buildLayout()
         self.configTemplates()
         #anything except for specific keys in the project file are all saved to the config for later use
@@ -4614,7 +4667,7 @@ class projectCreate:
              for key, row in self.flatData['memoryConnections'].items()},
             {key: memoryChannelName(row['memory'], 'reg') for key, row in self.flatData['memories'].items()},
             registerBusPassthroughs,
-            self._blocksDeclaringNoResets,
+            self._blocksDeclaringNoResets, self._blocksDeclaringNoClocks,
             self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName],
             self.contextOwningProject, rootProjectName, self)
         # a memory of a block with no default clock must name its own clock
@@ -4668,6 +4721,7 @@ class projectCreate:
         self.runCreateArtifacts()
         # save the schema as well to the config
         self.validatePorts()
+        self.calcTandemStatusPolicy()
         self.schema.save()
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
@@ -5480,6 +5534,13 @@ class projectCreate:
                 self.logError(
                     f"fileGeneration.layout must be one of {self.LAYOUT_MODES}, "
                     f"got '{mode}'")
+
+    def validateRegBusErrorResponses(self):
+        # The base config supplies the default, so the merged config carries it.
+        value = self.proj['fileGeneration']['regBusErrorResponses']
+        if not isinstance(value, bool):
+            self.logError(f"In {self.projFile}, fileGeneration.regBusErrorResponses must be true or false, "
+                          f"got '{value}'")
 
     # Keys in hierarchicalDirs that locate project-scope artifacts rather than a
     # fileMap basePath segment: the authored-YAML subdir of a node (yaml), the
@@ -8731,12 +8792,15 @@ class projectCreate:
         into several clocks with none marked default, which clockTree rejects.
 
         An explicitly empty `resets:` means "no reset", distinct from omitting
-        it (implicit rst_n). Generic field processing treats both as falsy, so
-        the distinction is recorded in parse-time state keyed by
-        (yamlFile, block name).
+        it (implicit rst_n), and an explicitly empty `clocks:` means "no clock",
+        distinct from omitting it (implicit clk). Generic field processing
+        treats both as falsy, so the distinction is recorded in parse-time
+        state keyed by (yamlFile, block name).
         """
         if 'resets' in item and not item['resets']:
             self._blocksDeclaringNoResets.add((yamlFile, anchor))
+        if 'clocks' in item and not item['clocks']:
+            self._blocksDeclaringNoClocks.add((yamlFile, anchor))
         for field in ('clocks', 'resets'):
             value = item.get(field)
             if isinstance(value, list):
@@ -9944,6 +10008,9 @@ class projectCreate:
 
         if computedWidth == 0:
             self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
+        elif enum and computedWidth < int(enumMax).bit_length():
+            self.logError(f"In {self.diagnosticLocation(yamlFile, item.get('lc'))}, type '{itemkey}' {widthField} resolves to a {computedWidth}-bit width, "
+                          f"but its largest enum value {enumMax} needs {int(enumMax).bit_length()} bits")
 
         # Parameterizable type propagation.
         # Two paths to be parameterizable:
@@ -10598,6 +10665,167 @@ class projectCreate:
                 f"its child instances; name an instance declared with container: "
                 f"{connMap['block']}, or join sibling instances with a connections: "
                 f"entry instead.")
+
+    TANDEM_STATUS_POLICIES = ('fatal', 'warn', 'final', 'off')
+
+    def _tandemPolicy(self, value, label):
+        # A policy word, a level window in ns as a float, or None when unset.
+        if value == '':
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if value > 0 and math.isfinite(value):
+                return float(value)
+            self.logError(f"{label} sets tandem: {value}. A level window must be a positive number of ns.")
+        if isinstance(value, str) and value in self.TANDEM_STATUS_POLICIES:
+            return str(value)
+        self.logError(f"{label} sets tandem: {value}, which is not a tandem status-compare policy. "
+                      f"Use one of {', '.join(self.TANDEM_STATUS_POLICIES)}, or a positive level window in ns.")
+
+    def calcTandemStatusPolicy(self):
+        """A Tandem run compares each status output of a leaf block by the
+        policy the tandem: key of the row defining that port names. The
+        Tandem wrapper is generated once per block, so every row that defines
+        one port of a block, across instances and fan-out, must agree, set or
+        unset. Persists {blockKey: {portName: policy}} for the ports that set
+        one.
+        """
+        flat = self.flatData
+        blocks = flat['blocks']
+        children = dict()
+        for row in flat['instances'].values():
+            if row['container'] == '_topInstance' or self.isComposedChildRootRow(row):
+                continue
+            if not blocks[row['instanceTypeKey']]['isRegHandler']:
+                children.setdefault(row['containerKey'], []).append(row['instance'])
+
+        def notTandem(blockKey):
+            # Why the block never runs in Tandem, or None when it can.
+            row = blocks[blockKey]
+            if not (row['hasMdl'] and row['hasRtl']):
+                return "it does not have both hasMdl and hasRtl"
+            if blockKey in children:
+                return f"it contains instances ({', '.join(children[blockKey])}), and Tandem runs leaf blocks only"
+            return None
+
+        def isStatus(interfaceKey):
+            return flat['interfaces'][interfaceKey]['interfaceType'] == 'status'
+
+        def where(row):
+            return self.diagnosticLocation(row['_context'], row.get('lc'))
+
+        # (blockKey, portName) -> [(policy, row label)] for every row that
+        # defines a status output of a block that can run in Tandem
+        ports = dict()
+
+        for conn in flat['connections'].values():
+            label = (f"In {where(conn)}, connection {conn['interface']} from '{conn['src']}' to '{conn['dst']}'"
+                     + (f" named '{conn['name']}'" if conn['name'] else ""))
+            policy = self._tandemPolicy(conn['tandem'], label)
+            src = next(end for end in conn['ends'].values() if end['direction'] == 'src')
+            why = notTandem(src['instanceTypeKey'])
+            if policy is not None:
+                if not isStatus(conn['interfaceKey']):
+                    self.logError(f"{label} sets tandem:, but interface {conn['interface']} is of type "
+                                  f"{flat['interfaces'][conn['interfaceKey']]['interfaceType']}. tandem: sets "
+                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but its src '{conn['src']}' is an instance of block "
+                                  f"'{src['instanceType']}', and {why}. tandem: sets how a Tandem run compares "
+                                  f"a leaf block's status output, and the dst end is a status input, which is not "
+                                  f"compared. For an output a container forwards from a child, set it on the "
+                                  f"connectionMaps row that names the child.")
+            if isStatus(conn['interfaceKey']) and not why:
+                ports.setdefault((src['instanceTypeKey'], src['portName']), []).append((policy, label))
+
+        for connMap in flat['connectionMaps'].values():
+            label = (f"In {where(connMap)}, connectionMaps entry for port '{connMap['portName']}' of block "
+                     f"'{connMap['block']}' to instance '{connMap['instance']}'")
+            policy = self._tandemPolicy(connMap['tandem'], label)
+            child = flat['instances'][connMap['instanceKey']]
+            why = notTandem(child['instanceTypeKey'])
+            if policy is not None:
+                if not isStatus(connMap['interfaceKey']):
+                    self.logError(f"{label} sets tandem:, but interface {connMap['interface']} is of type "
+                                  f"{flat['interfaces'][connMap['interfaceKey']]['interfaceType']}. tandem: sets "
+                                  f"how a Tandem run compares a status output; other interfaces always compare.")
+                if connMap['direction'] != 'src':
+                    self.logError(f"{label} sets tandem:, but the entry has direction: dst, so the port of "
+                                  f"'{connMap['instance']}' is a status input, which a Tandem run does not compare.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but '{connMap['instance']}' is an instance of block "
+                                  f"'{child['instanceType']}', and {why}.")
+            if isStatus(connMap['interfaceKey']) and connMap['direction'] == 'src' and not why:
+                ports.setdefault((child['instanceTypeKey'], connMap['instancePortName']), []).append((policy, label))
+
+        registerLabels = dict()
+        registerPolicies = dict()
+        for regKey, reg in flat['registers'].items():
+            label = f"In {where(reg)}, register '{reg['register']}' of block '{reg['block']}'"
+            registerLabels[regKey] = label
+            registerPolicies[regKey] = self._tandemPolicy(reg['tandem'], label)
+            if registerPolicies[regKey] is not None and reg['regType'] != 'ro':
+                self.logError(f"{label} sets tandem:, but it is regType: {reg['regType']}. Only an ro register "
+                              f"reaches a leaf as a status output; an rw register reaches it as a status input, "
+                              f"and ext and memory registers are not status ports.")
+        # An ro register no registerConnections row connects is driven by its own
+        # block, so its value reaches a Tandem run only through firmware reads on
+        # the block's register bus. The key sets how the register-bus tee
+        # compares those reads.
+        connectedRegisters = {rc['registerBlockKey'] for rc in flat['registerConnections'].values()}
+        registerReads = dict()
+        for regKey, policy in registerPolicies.items():
+            if policy is None or regKey in connectedRegisters:
+                continue
+            reg = flat['registers'][regKey]
+            why = notTandem(reg['blockKey'])
+            if why:
+                self.logError(f"{registerLabels[regKey]} sets tandem:, but block '{reg['block']}' owns it, and "
+                              f"{why}. On a register no registerConnections row connects, tandem: sets how a "
+                              f"Tandem run of the owning block compares firmware reads of it.")
+            elif reg['regType'] == 'ro':
+                registerReads.setdefault(reg['blockKey'], dict())[reg['register']] = policy
+        self.config.setConfig('TANDEMREGISTERREADS', registerReads, bin=True)
+
+        for rc in flat['registerConnections'].values():
+            label = (f"In {where(rc)}, registerConnections entry for register '{rc['register']}' of block "
+                     f"'{rc['block']}' to instance '{rc['instance']}'")
+            policy = self._tandemPolicy(rc['tandem'], label)
+            reg = flat['registers'][rc['registerBlockKey']]
+            regPolicy = registerPolicies[rc['registerBlockKey']]
+            if policy is not None and regPolicy is not None and policy != regPolicy:
+                self.logError(f"{label} sets tandem: {rc['tandem']}, but {registerLabels[rc['registerBlockKey']]} "
+                              f"sets tandem: {reg['tandem']}. Set it in one place, or give both the same value.")
+            if policy is None:
+                policy, label = regPolicy, (label if regPolicy is None else
+                                            f"{label} (tandem: from register '{reg['register']}')")
+            instance = flat['instances'][rc['instanceKey']]
+            why = notTandem(instance['instanceTypeKey'])
+            if policy is not None:
+                if reg['regType'] != 'ro':
+                    self.logError(f"{label} sets tandem:, but register '{reg['register']}' is regType: "
+                                  f"{reg['regType']}. Only an ro register reaches a leaf as a status output; an rw "
+                                  f"register reaches it as a status input, and ext and memory registers are not "
+                                  f"status ports.")
+                if why:
+                    self.logError(f"{label} sets tandem:, but '{rc['instance']}' is an instance of block "
+                                  f"'{instance['instanceType']}', and {why}.")
+            if reg['regType'] == 'ro' and not why:
+                ports.setdefault((instance['instanceTypeKey'], reg['register']), []).append((policy, label))
+
+        policies = dict()
+        for (blockKey, portName), rows in ports.items():
+            values = {policy for policy, _ in rows}
+            if values == {None}:
+                continue
+            if len(values) > 1:
+                listing = '\n'.join(f"  {label}: tandem: {'unset' if policy is None else f'{policy:g}' if isinstance(policy, float) else policy}"
+                                    for policy, label in rows)
+                self.logError(f"Port '{portName}' of block '{blocks[blockKey]['block']}' is defined by rows that "
+                              f"disagree on tandem:. A block's Tandem wrapper is shared by all its instances, so "
+                              f"every row defining the port must give it the same value, or all leave it unset:\n"
+                              f"{listing}")
+            policies.setdefault(blockKey, dict())[portName] = values.pop()
+        self.config.setConfig('TANDEMSTATUSPOLICY', policies, bin=True)
 
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be

@@ -18,15 +18,15 @@ Write the RTL a routed leaf needs behind its registers. The generator writes the
 ## Instructions
 
 ### 1. What is generated
-*   **Router.** The `addressBlock:` block's RTL comes from the `apbDecodeModule` template. The module is named after the router block.
-*   **Register handler.** Each routed leaf gets a handler instance in its generated region. The handler module is named `<block>` plus the suffix in `project.yaml` `fileGeneration: regBlockNaming: blockSuffix`. The default is `_regs`, and the examples set `Regs` (`blockARegs`). Every access completes without PSLVERR. The handler takes the leaf's `params:` and inherits the leaf instance's variant, so a parameterized leaf's handler module carries the same parameters as the leaf.
+*   **Router.** The `addressBlock:` block's RTL comes from the `regBusDecodeModule` template. The module is named after the router block.
+*   **Register handler.** Each routed leaf gets a handler instance in its generated region. The handler module is named `<block>` plus the suffix in `project.yaml` `fileGeneration: regBlockNaming: blockSuffix`. The default is `_regs`, and the examples set `Regs` (`blockARegs`). Every access completes without PSLVERR unless the project sets `fileGeneration: regBusErrorResponses: true` (`design-register-decode.md` §7). The handler takes the leaf's `params:` and inherits the leaf instance's variant, so a parameterized leaf's handler module carries the same parameters as the leaf.
 *   **Register ports.** The generated region declares one interface instance per register and binds it to the handler. Your RTL uses these instances by register name.
 
 | `regType` | Interface instance | Your RTL |
 | :--- | :--- | :--- |
 | `ro` | `status_if` | drives `<reg>.data` |
 | `rw` | `status_if` | reads `<reg>.data` |
-| `ext` | `external_reg_if` | reads `<reg>.write` and `<reg>.wdata`, drives `<reg>.rdata` |
+| `ext` | `external_reg_if` | reads `<reg>.write` and `<reg>.wdata`, drives `<reg>.rdata`, and with `regBusErrorResponses` drives `<reg>.pslverr` |
 
 `external_reg_if` has no read strobe, so reading an `ext` register cannot trigger logic such as clear-on-read.
 
@@ -70,6 +70,20 @@ assign extA.rdata = extAReg;
 `un0ExtRegSt` is the register's YAML `structure:`. The generator writes it into the context package under the same name and declares `extA` as `external_reg_if #(.data_t(un0ExtRegSt))`. The reset value is yours to write, as `EXTA_RESET` is here. The handler applies `defaultValue:` to `rw` registers only.
 
 Put side effects of the write, such as starting a command, in the same `if (|extA.write)` branch.
+
+In a project that sets `fileGeneration: regBusErrorResponses: true`, the handler
+returns `<reg>.pslverr` as PSLVERR for each write to the register, or as the
+ERROR response on an AHB register bus. Drive it
+combinationally, valid in the cycle `<reg>.write` is set. Drive it low if the
+register never refuses a write. Without the option the handler never reads it,
+so leave it undriven.
+
+```systemverilog
+assign extA.pslverr = (extA.wdata.fa == 8'hEE); // refuse this value
+```
+
+The model returns the same error from a handler set on the register, for
+example `extA.setWriteErrorHandler([](uint64_t, uint32_t v) { return (v >> 24) == 0xEE; });`.
 
 ### 6. Unused memory ports
 A block-side memory port your RTL does not use, such as the read port of a table only firmware touches, still needs driving. Tie it off after the generated region:

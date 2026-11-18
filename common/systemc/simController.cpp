@@ -14,6 +14,11 @@ std::string simController::vlType;
 bool simController::vlTandem; 
 bool simController::vlTrace; 
 bool simController::tandemStatusFatal;
+// Margin the status tee level window adds to --delay. Nothing at run time gives
+// the tee a clock period, so this is a fixed allowance for a registered RTL
+// output that lands a clock after the model's write: one clock at 10 MHz or faster.
+static constexpr uint64_t TANDEM_LEVEL_MARGIN_NS = 100;
+uint64_t simController::tandemLevelWindowNs = TANDEM_LEVEL_MARGIN_NS;
 sc_time simController::scMaxRunTime;  
 sc_time simController::startupDelay = sc_time(1, SC_NS);
 uint64_t simController::startupDelayns;
@@ -67,6 +72,8 @@ bool simController::handleProgramOptions(po::variables_map &vm)
 
     uint64_t nsec = 0;
     if (vm.count("delay")) nsec = vm["delay"].as<uint64_t>();
+    // --delay skews the primary's outputs by up to the delay, so the window covers it
+    if (!vm.count("tandemLevelWindow")) tandemLevelWindowNs = nsec + TANDEM_LEVEL_MARGIN_NS;
     if (vlInst != "" ) {
         if (vlTandem) {
             instanceFactory::registerInstance(vlInst, "tandem");
@@ -96,6 +103,7 @@ bool simController::addProgramOptions(po::options_description &options)
         ("vlTandem", po::bool_switch(&vlTandem), "Primary instance in tandem mode")
         ("vlTrace", po::bool_switch(&vlTrace)->default_value(false), "Enable VCD trace dump")
         ("tandemStatusFatal", po::bool_switch(&tandemStatusFatal), "Fail the run on a status tee data mismatch")
+        ("tandemLevelWindow", po::value<uint64_t>(&tandemLevelWindowNs), "Longest time in nsec a status tee's two sides may differ (default: --delay plus 100)")
         ("delay", po::value<uint64_t>(&delayNSec), "Set delay in nsec for named instance or all")
         ("delayMode", po::value<std::string>(), "Set delay mode for named instance [fixedInit, randInit, randFull]")
         ("scTimeLimit", po::value<float>(&maxRuntimeUS)->default_value(0.0), "SystemC time limit (in microseconds)")

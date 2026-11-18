@@ -47,7 +47,7 @@ These hold for every arch2code design. When a design choice is unclear, prefer t
 | `addressBlock` | Makes the block a register-bus router. | |
 | `registerPorts` | The block's own register-bus port. | |
 
-*   A router's RTL is generated from the `apbDecodeModule` template. A router owns no registers or `regAccess` memories and declares no `registerPorts:`. `design-register-decode.md` lists the `addressBlock:` fields.
+*   A router's RTL is generated from the `regBusDecodeModule` template. A router owns no registers or `regAccess` memories and declares no `registerPorts:`. `design-register-decode.md` lists the `addressBlock:` fields.
 *   `registerPorts:` has at most one row, for example `registerPorts: { regs: { interface: ipReg } }`. A block with no `ports:` may omit it. Its register port is then inferred from what feeds it, the serving router or an enclosing passthrough container. See "Inferring the register bus" in `design-register-decode.md`, which also says when a block with `ports:` needs it.
 *   A `hasRtl: true` block may contain only `hasRtl: true` blocks. A model-only child (`hasRtl: false`) needs a model-only parent.
 *   A block that owns registers, `regAccess` memories or `registerPorts:` is a register consumer, and a router outside the block must serve it. `design-register-decode.md` says where the router goes and which instances carry `addressGroup:`.
@@ -144,6 +144,7 @@ A connection joins two sibling instances, both with the same `container`. To lin
 | `srcport`, `dstport` | Port name at each end. |
 | `interfaceName` | Channel name in the container. |
 | `clock` | A container clock that sets the domain of both ends. See [Clocks and resets](#7-clocks-and-resets). |
+| `tandem` | How a Tandem run compares the `src` end's status output. See [Tandem status compare](#tandem-status-compare). |
 
 ```yaml
 connections:
@@ -164,6 +165,7 @@ A connection map joins a port of `block` to a port of one of its child instances
 | `port` | The parent's port name. |
 | `instancePort` | The child instance's port name. |
 | `name` | Used for whichever of `port` and `instancePort` is not given. |
+| `tandem` | With `direction: src`, how a Tandem run compares the child's status output. See [Tandem status compare](#tandem-status-compare). |
 
 To reach a child port named `in_data` while keeping the parent's port named after the interface, set `instancePort: in_data`. `port: in_data` would rename the parent's port instead.
 
@@ -195,6 +197,7 @@ connectionMaps:
 | `desc` | Required. |
 | `defaultValue` | Reset value. Default `0`. |
 | `offset` | Manual offset. Default `0`, auto-assigned. |
+| `tandem` | On an `ro` register, the default for every `registerConnections` row of it. On an `ro` register no `registerConnections` row connects, how a Tandem run compares firmware reads of it. See [Tandem status compare](#tandem-status-compare). |
 
 ### Memories (`memories:`)
 
@@ -239,6 +242,55 @@ registerConnections:
   - {register: rwD, block: blockB, instance: uBlockF0}
 ```
 
+A row of an `ro` register takes `tandem:` for the status output it gives the child. See [Tandem status compare](#tandem-status-compare).
+
+### Tandem status compare
+
+A Tandem run (see `run-tandem.md`) compares each status output of the leaf block it runs. By default `--tandemStatusFatal` decides whether a mismatch fails the run, and `--tandemLevelWindow` sets how long the two sides may differ. The `tandem:` key on the row that defines one status output sets its own policy:
+
+| Value | Compare |
+| :--- | :--- |
+| `fatal` | A mismatch always fails the run. Run window. |
+| `warn` | A mismatch is counted and logged, and never fails the run. Run window. |
+| `final` | Only the values left at the end of the run are compared. A mismatch fails the run under `--tandemStatusFatal`. |
+| `off` | Not compared. The tee still forwards the primary's value. |
+| a positive number | A level window in ns for this port, in place of the run window. A mismatch always fails the run. |
+
+Rows that define a leaf's status output:
+
+*   A `connections:` row with a `status` interface. The key applies to its `src` end.
+*   A `connectionMaps:` row with a `status` interface and `direction: src`. The key applies to the child's port.
+*   A `registerConnections:` row of an `ro` register. A `registers:` row of an `ro` register sets the default for all of its rows. If both set it, the values must match.
+
+`make db` rejects any other value, and the key on any other row. That covers a non-status interface, a `src` or child block that is not a leaf with both `hasMdl` and `hasRtl`, a `direction: dst` map, and an `rw`, `ext` or `memory` register. A container cannot run in Tandem, so to set the policy of an output that a container forwards from a child, put the key on the `connectionMaps` row that names the child.
+
+#### Register reads
+
+An `ro` register that no `registerConnections` row connects is written by its own block, and a Tandem run of that block sees it only when firmware reads it over the register bus. Its value is a level, so if the two sides change it a little apart, a read in the gap returns different data from each side. The `tandem:` key on its `registers:` row sets what the register-bus tee does with a read data mismatch at that register's address:
+
+| Value | Read data mismatch |
+| :--- | :--- |
+| unset or `fatal` | Fails the run. |
+| `warn` or a positive number | Logged as `register read level mismatch ... (not asserted)` and counted in `Status tee mismatches`. The run goes on. A number is not fatal here, because a read has no window to wait out. |
+| `final` or `off` | Not compared. |
+
+Firmware always gets the primary's data and error response. A PSLVERR or HRESP mismatch, and a write, compare as before. The block must be a leaf with both `hasMdl` and `hasRtl`. `make db` rejects the key on a register owned by a block that cannot run in Tandem.
+
+```yaml
+registers:
+  - {register: dmaStatus, regType: ro, block: dma, structure: dmaStatusSt, desc: "Engine state", tandem: warn}
+```
+
+Do not carry a free-running signal on a `status` interface. That means a counter, a timer, or anything else that never settles to a value both sides reach, because the two sides never agree on it. If one must be a status output, mark its port `tandem: off`.
+
+One Tandem wrapper serves every instance of a block. So every row that defines a given port of a block must give the same value, or all of them must leave it unset. `make db` lists the rows when they disagree.
+
+```yaml
+connections:
+  - {interface: irq_if, src: u_ctl, dst: u_cpu, tandem: final}   # RTL settles a cycle late, then agrees
+  - {interface: dbg_if, src: u_ctl, dst: u_mon, tandem: off}     # free-running debug counter
+```
+
 ## 7. Clocks and resets
 
 A block declares its clocks and resets completely. Nothing is inferred from its connections or its children, so a container whose children use two clocks declares both itself. `clocks:` and `resets:` are maps keyed by port name:
@@ -257,6 +309,7 @@ blocks:
 *   `direction` is `input` (the default) or `output`.
 *   On a clock, `default: true` marks the block default clock. A block with one input clock does not need it. On a reset, `default: true` marks the selected reset of its clock. A clock with one candidate reset does not need it.
 *   A reset's `clock:` defaults to the block default clock. `resets: {}` means the block has no reset.
+*   `clocks: {}` makes a combinational block with no clock and no reset. `make db` rejects one that declares resets, registers, memories, `addressBlock:` or `registerPorts:`, that accesses a memory or register, or that contains a clocked child.
 *   `async: true` marks a reset input that the block samples in none of its own clocks, such as a synchroniser's raw input. It may bind to any container reset.
 *   `period` and `timeUnit` (`ps`, `ns` or `us`) on an input clock set the rate for a standalone build of the block. A declared `period` wins. Without one, the clock takes the period of the testbench clock that every instance of the block resolves it to. A `hasVl` block must declare `period` when its clock comes from another block's output, resolves to two testbench clocks, or has no instance in its own project. An odd `period` in `ps` is rejected.
 

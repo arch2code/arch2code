@@ -60,8 +60,8 @@ def _assert_leaf_interface_scoping(prj):
     for router, group in (('apbDecode', 'top'), ('bridgeApbDecode', 'bridge')):
         key, _ = find_block(prj, router)
         ad = prj.getBlockData(key)['addressDecode']
-        assert bool(ad.get('isApbRouter')), \
-            f"{router} expected isApbRouter truthy, got {ad.get('isApbRouter')!r}"
+        assert bool(ad.get('isRegBusRouter')), \
+            f"{router} expected isRegBusRouter truthy, got {ad.get('isRegBusRouter')!r}"
         assert ad.get('registerBusInterface') == 'apbReg', \
             f"{router} registerBusInterface expected 'apbReg', got {ad.get('registerBusInterface')}"
         assert ad.get('registerBusPort') == 'apbReg', \
@@ -72,8 +72,8 @@ def _assert_leaf_interface_scoping(prj):
     # The leaf resolves its own scoped interface and authored port name.
     ip_key, _ = find_block(prj, 'ip')
     lad = prj.getBlockData(ip_key)['addressDecode']
-    assert not bool(lad.get('isApbRouter')), \
-        f"ip leaf expected isApbRouter falsy, got {lad.get('isApbRouter')!r}"
+    assert not bool(lad.get('isRegBusRouter')), \
+        f"ip leaf expected isRegBusRouter falsy, got {lad.get('isRegBusRouter')!r}"
     assert bool(lad.get('hasDecoder')), \
         f"ip leaf expected hasDecoder truthy, got {lad.get('hasDecoder')!r}"
     assert lad.get('registerBusInterface') == 'ipReg', \

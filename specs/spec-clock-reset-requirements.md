@@ -231,6 +231,11 @@ Rules:
   clock and no `resets:` has no resets. An empty `resets: {}` declares that
   the block has no reset; the implicit `rst_n` is for a block that says
   nothing.
+- An empty `clocks: {}` declares a combinational block with no clock and no
+  reset. It may not declare a reset, registers, memories, `addressBlock:` or
+  `registerPorts:`, and no instance of it may access a memory or a register.
+  Its ports lie in no clock domain, and a container binds it no clock or
+  reset.
 - The **block default clock** is the `input` clock marked `default: true`. A
   block with exactly one `input` clock need not mark it; a block with several
   marks exactly one (V18). Declaration order carries no meaning, so reordering

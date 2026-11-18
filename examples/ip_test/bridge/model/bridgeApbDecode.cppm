@@ -7,7 +7,7 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "apb_channel.h"
-#include "apbBusDecode.h"
+#include "regBusDecode.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -22,7 +22,7 @@ export SC_MODULE(bridgeApbDecode), public blockBase, public bridgeApbDecodeBase
 {
 private:
     void routerDecode(void);
-    abpBusDecode< apbAddrSt, apbDataSt > decoder;
+    regBusDecode< apbAddrSt, apbDataSt, apb_in_if, apb_out_if > decoder;
 
 public:
 

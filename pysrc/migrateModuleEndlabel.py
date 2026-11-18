@@ -10,7 +10,7 @@ a project that predates file-stem module names.
 
 DB-backed, because the name depends on the owning project's prefix, so this
 runs in the `migrateYaml.py --sweep` phase. A fully generated RTL block
-(`moduleRegs` / `apbDecodeModule`) closes its module inside the generated
+(`moduleRegs` / `regBusDecodeModule`) closes its module inside the generated
 region, carries no user label and is left alone. Idempotent, and owner-gated:
 a composed build never rewrites a referenced child's file.
 """

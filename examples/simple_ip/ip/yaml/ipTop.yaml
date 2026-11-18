@@ -4,7 +4,7 @@
 # registers/memories must be served by a register-bus router. For the
 # standalone build we supply a minimal self-contained decode harness:
 #   ipStdTop     - top container
-#   ipStdDecode  - APB register-bus router (generated apbDecodeModule)
+#   ipStdDecode  - APB register-bus router (generated regBusDecodeModule)
 #   uIp          - the ip DUT (variant0)
 # The router reuses ip's own ipReg apb interface for both its upstream feed
 # and its downstream register bus, so the ip project stays self-contained

@@ -34,7 +34,7 @@ The entry key is the interface type name. The sections are:
   - The generator never reads `thunker:`. Leave it out.
 - `socket:` is keyed by modport. Each entry sets `kind: drive` or `kind: observe`. `observe: true` adds an `_obs` observe connection, and `lockstep: true` adds the `pysocket_sync` connection. Leave out an end that has no socket shell.
 - `multiDst: true` allows a connection of this type to have more than two ends.
-- `addressBus: true` marks a register or address bus meta-protocol.
+- `addressBus: true` marks a register or address bus meta-protocol. Such a definition also sets `svRegBusFrontEnd:`, naming the module under `builder/base/templates/systemVerilog/regBus/` that spells the protocol in the generated router and register handler RTL. `regBus/apb.py` is the example. The SystemC router and handler take the channel's `<type>_in_if` and `<type>_out_if`, so its channel provides `reqReceive`, `complete(data, error)` and `receivedWantsResponse` on the completer side and `request` and `requestWithResponse` on the requester side.
 - `mappedFrom:` lists the register and memory type aliases, such as `reg_ro` and `reg_rw`, that resolve to this definition.
 
 ## Companion files
@@ -79,5 +79,6 @@ python3 builder/base/unittest/test_interface_def_contracts.py
 7. **Every signal type resolves to a width.** A signal's type must be `bool`, a parameter, an `isEval` hdlparam, or a type in scope. The SV boundary port and the simulator boundary pin both take their width from it, so a literal SV spelling such as `bit [7:0]` leaves the pin with no width.
 8. **Every `isEval` hdlparam types at least one signal.** The Verilated bridge takes one type per `isEval` hdlparam and reads it from a signal of that type. An `isEval` hdlparam that types no signal stops generation with a bare `KeyError` that names neither the interface nor its file.
 9. **`backpressure:` is declared exactly when `timing: elastic`.** A fixed interface has no handshake to stall, so a group there misleads the reader. An elastic definition without one stops generation with a bare `TypeError` at the first channel or port of that type. The schema requires `timing:` and both group fields, but not the pairing.
+10. **An `addressBus: true` definition names an existing `svRegBusFrontEnd:`, and no other definition sets one.** Without it, generation stops with a bare import error at the first router or handler.
 
-The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 9 by hand.
+The schema check covers a project-local definition, so rule 5 applies to it. The test walks only the shipped trees, so check a project-local definition against rules 1 to 4 and 6 to 10 by hand.

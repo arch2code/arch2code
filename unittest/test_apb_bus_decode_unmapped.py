@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""abpBusDecode routes each address space to its port; an empty one reads 0xBADDC0DE.
+"""regBusDecode routes each address space to its port; an empty one reads 0xBADDC0DE.
 
-abpBusDecode is built with a number of address spaces and the ports of the
+regBusDecode is built with a number of address spaces and the ports of the
 blocks that fill them, and a design may leave the top spaces empty, so there can
 be fewer ports than spaces. An access to an empty space, past the end of the
 port list or a null slot inside it, behaves as the generated RTL decoder does:
@@ -18,7 +18,12 @@ generated design now passes it.
 
 The probe builds the shipped decoder with eight spaces and two ports, or with 24
 spaces and ports at slots 0 and 16. Each scenario issues an optional write, then
-one read. Each port answers a read with the last value written to it.
+one read. Each port answers a read with the last value written to it, and
+refuses a write of 0xbad with PSLVERR.
+
+Response-aware, the decoder forwards a port's PSLVERR in either mode. An
+access to an empty space completes with PSLVERR only when decodeThread is
+given errorResponses.
 """
 
 import os
@@ -35,7 +40,8 @@ PROBE_SRC = """
 #include "systemc.h"
 #include "logging.h"
 #include "q_assert.h"
-#include "apbBusDecode.h"
+#include "apb_channel.h"
+#include "regBusDecode.h"
 #include <cstdint>
 #include <format>
 #include <iostream>
@@ -75,13 +81,17 @@ SC_MODULE( decodeHarness )
     sc_port<apb_in_if<decodeAddrSt, decodeDataSt>> in;
     sc_port<apb_out_if<decodeAddrSt, decodeDataSt>> out0;
     sc_port<apb_out_if<decodeAddrSt, decodeDataSt>> out1;
-    abpBusDecode<decodeAddrSt, decodeDataSt> decoder;
+    regBusDecode<decodeAddrSt, decodeDataSt, apb_in_if, apb_out_if> decoder;
     std::uint32_t slot;
     std::int32_t writeSlot;
+    std::uint32_t writeValue;
+    bool responseAware;
+    bool errorResponses;
 
     SC_HAS_PROCESS( decodeHarness );
     // sparse puts out1 at slot 16 of the address spaces instead of slot 1
-    decodeHarness( sc_module_name n, std::uint32_t spaces, bool sparse, std::int32_t writeSlot_, std::uint32_t slot_ )
+    decodeHarness( sc_module_name n, std::uint32_t spaces, bool sparse, std::int32_t writeSlot_, std::uint32_t slot_,
+                   std::uint32_t writeValue_, bool responseAware_, bool errorResponses_ )
       : sc_module( n ), upChan( "upChan", "tb" ), chan0( "chan0", "tb" ), chan1( "chan1", "tb" ),
         in( "in" ), out0( "out0" ), out1( "out1" ),
         decoder( spaces, ADDRESS_SHIFT, in,
@@ -89,7 +99,8 @@ SC_MODULE( decodeHarness )
                                                               nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
                                                               nullptr, nullptr, nullptr, nullptr, &out1 }
                         : std::initializer_list<decodePort*>{ &out0, &out1 } ),
-        slot( slot_ ), writeSlot( writeSlot_ )
+        slot( slot_ ), writeSlot( writeSlot_ ), writeValue( writeValue_ ),
+        responseAware( responseAware_ ), errorResponses( errorResponses_ )
     {
         in( upChan );
         out0( chan0 );
@@ -100,7 +111,14 @@ SC_MODULE( decodeHarness )
         SC_THREAD( respond1 );
     }
 
-    void decode() { decoder.decodeThread(); }
+    void decode()
+    {
+        if (errorResponses) {
+            decoder.decodeThread( true );
+        } else {
+            decoder.decodeThread();
+        }
+    }
 
     void drive()
     {
@@ -108,12 +126,21 @@ SC_MODULE( decodeHarness )
         decodeDataSt data;
         if (writeSlot >= 0) {
             addr.value = writeSlot << ADDRESS_SHIFT;
-            data.value = 0xdead;
-            upChan.request( true, addr, data );
+            data.value = writeValue;
+            if (responseAware) {
+                std::cout << std::format( "writeSlverr={}\\n", upChan.requestWithResponse( true, addr, data ) );
+            } else {
+                upChan.request( true, addr, data );
+            }
         }
         addr.value = slot << ADDRESS_SHIFT;
         data.value = 0xffff;
-        upChan.request( false, addr, data );
+        if (responseAware) {
+            const bool slverr = upChan.requestWithResponse( false, addr, data );
+            std::cout << std::format( "readSlverr={}\\n", slverr );
+        } else {
+            upChan.request( false, addr, data );
+        }
         std::cout << std::format( "readData=0x{:x}\\n", data.value );
         sc_stop();
     }
@@ -126,7 +153,11 @@ SC_MODULE( decodeHarness )
             decodeDataSt data;
             chan.reqReceive( isWrite, addr, data );
             if (isWrite) {
-                value = data.value;
+                const bool refused = data.value == 0xbad;
+                if (!refused) {
+                    value = data.value;
+                }
+                chan.complete( data, refused );
             } else {
                 decodeDataSt resp;
                 resp.value = value;
@@ -141,18 +172,22 @@ SC_MODULE( decodeHarness )
 
 int sc_main( int argc, char* argv[] )
 {
-    // scenario -> address spaces, sparse port list, slot written (-1 for none), slot read
-    const std::map<std::string, std::tuple<std::uint32_t, bool, std::int32_t, std::uint32_t>> scenarios = {
-        { "mapped", { 8, false, -1, 1 } },
-        { "pastLastPort", { 8, false, -1, 7 } },
-        { "writePastLastPort", { 8, false, 7, 1 } },
-        { "nullSlot", { 24, true, -1, 5 } },
-        { "writeNullSlot", { 24, true, 5, 16 } },
-        { "slotPastPowerOfTwo", { 24, true, -1, 16 } },
-        { "pastLastSpace", { 24, true, -1, 24 } },
+    // scenario -> address spaces, sparse port list, slot written (-1 for none), slot read, value written
+    const std::map<std::string, std::tuple<std::uint32_t, bool, std::int32_t, std::uint32_t, std::uint32_t>> scenarios = {
+        { "mapped", { 8, false, -1, 1, 0 } },
+        { "pastLastPort", { 8, false, -1, 7, 0 } },
+        { "writePastLastPort", { 8, false, 7, 1, 0xdead } },
+        { "nullSlot", { 24, true, -1, 5, 0 } },
+        { "writeNullSlot", { 24, true, 5, 16, 0xdead } },
+        { "slotPastPowerOfTwo", { 24, true, -1, 16, 0 } },
+        { "pastLastSpace", { 24, true, -1, 24, 0 } },
+        { "writeMapped", { 8, false, 1, 1, 0xdead } },
+        { "writeRefused", { 8, false, 1, 1, 0xbad } },
     };
-    auto [spaces, sparse, writeSlot, slot] = scenarios.at( argv[1] );
-    decodeHarness harness( "harness", spaces, sparse, writeSlot, slot );
+    // mode: posted (the default), response or errors
+    const std::string mode = argc > 2 ? argv[2] : "posted";
+    auto [spaces, sparse, writeSlot, slot, writeValue] = scenarios.at( argv[1] );
+    decodeHarness harness( "harness", spaces, sparse, writeSlot, slot, writeValue, mode != "posted", mode == "errors" );
     sc_start();
     int code = errorCode::getExitCode();
     std::cout << "exitCode=" << code << "\\n";
@@ -171,6 +206,21 @@ SCENARIOS = {
                       ('readData=0xdead',)),
     'slotPastPowerOfTwo': (0, ('readData=0x101',), ('readData=0x100', 'unmapped')),
     'pastLastSpace': (1, ('out of range, block 18', 'exitCode=1'), ('readData=',)),
+    'writeMapped': (0, ('readData=0xdead',), ('unmapped',)),
+}
+
+# (scenario, mode) -> (output that must be present, output that must be absent)
+RESPONSE_SCENARIOS = {
+    ('writeMapped', 'response'): (('writeSlverr=false', 'readSlverr=false', 'readData=0xdead'), ()),
+    ('writeRefused', 'response'): (('writeSlverr=true', 'readSlverr=false', 'readData=0x101'), ()),
+    ('writePastLastPort', 'response'): (('writeSlverr=false', 'readSlverr=false', 'readData=0x101'), ()),
+    ('pastLastPort', 'response'): (('readSlverr=false', 'readData=0xbaddc0de'), ()),
+    ('writeMapped', 'errors'): (('writeSlverr=false', 'readSlverr=false', 'readData=0xdead'), ()),
+    ('writeRefused', 'errors'): (('writeSlverr=true', 'readSlverr=false', 'readData=0x101'), ()),
+    ('writePastLastPort', 'errors'): (('writeSlverr=true', 'readSlverr=false', 'readData=0x101'), ()),
+    ('writeNullSlot', 'errors'): (('writeSlverr=true', 'readSlverr=false', 'readData=0x101'), ()),
+    ('pastLastPort', 'errors'): (('readSlverr=true', 'readData=0xbaddc0de'), ()),
+    ('nullSlot', 'errors'): (('readSlverr=true', 'readData=0xbaddc0de'), ()),
 }
 
 FAILURES = []
@@ -204,6 +254,23 @@ def test_apb_bus_decode_slot_routing():
                 check(needle in output, f"{scenario} prints {needle!r}")
             for needle in absent:
                 check(needle not in output, f"{scenario} does not print {needle!r}")
+            if len(FAILURES) > before:
+                print(output)
+        for (scenario, mode), (present, absent) in RESPONSE_SCENARIOS.items():
+            label = f"{scenario} {mode}"
+            try:
+                run = subprocess.run([binPath, scenario, mode], capture_output=True, text=True, timeout=60,
+                                     env=dict(os.environ, LD_LIBRARY_PATH=scLibdir))
+            except subprocess.TimeoutExpired:
+                check(False, f"{label} finishes within 60 s")
+                continue
+            output = run.stdout + run.stderr
+            before = len(FAILURES)
+            check(run.returncode == 0, f"{label} exits with status 0 (got {run.returncode})")
+            for needle in present:
+                check(needle in output, f"{label} prints {needle!r}")
+            for needle in absent:
+                check(needle not in output, f"{label} does not print {needle!r}")
             if len(FAILURES) > before:
                 print(output)
     finally:

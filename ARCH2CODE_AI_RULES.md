@@ -962,7 +962,7 @@ instances:
 - Set `addressGroup` on each instance a router dispatches to, as Rule 6 describes
 - Do not write `addressID` or `offset`. Address generation assigns them in instance order
 - Use hierarchical instances to mirror the physical design hierarchy
-- **The register-bus decoder/router is a generated block** — declare it as a block with a populated `addressBlock:` and instance it in the container of the leaves it serves; its RTL comes from the `apbDecodeModule` template (`make newmodule` selects it automatically). Do not hand-author a top-level decoder.
+- **The register-bus decoder/router is a generated block** — declare it as a block with a populated `addressBlock:` and instance it in the container of the leaves it serves; its RTL comes from the `regBusDecodeModule` template (`make newmodule` selects it automatically). Do not hand-author a top-level decoder.
 - **Block-level register handlers** (e.g., `u_<blockname>_regs`, suffix from `fileGeneration.regBlockNaming.blockSuffix`) are generated. Do not create them.
 - A routed leaf instance names the serving router's address group via `addressGroup:`; the register-bus fan-out below the primary router is synthesized. See the "Register/Memory Decode" skill (`design-register-decode.md`).
 
@@ -1263,7 +1263,7 @@ hand-written. You declare it; the framework synthesises its RTL and the
 register-bus fan-out below it.
 
 1. **Router Block**: declare a block with a populated `addressBlock:` section.
-   Its RTL is emitted by the `apbDecodeModule` template, which `make newmodule`
+   Its RTL is emitted by the `regBusDecodeModule` template, which `make newmodule`
    selects automatically because the block carries `addressBlock:`. Never
    hand-write decode/demux logic.
 
@@ -1286,7 +1286,7 @@ skill (`design-register-decode.md`).
 ```yaml
 blocks:
   apb_decode:
-    desc: "APB register decoder (RTL generated from apbDecodeModule)"
+    desc: "APB register decoder (RTL generated from regBusDecodeModule)"
     hasRtl: true
     hasMdl: true
     addressBlock:
@@ -1309,7 +1309,7 @@ instances:
 # In your architecture YAML
 # ============================================
 
-# 1. Declare the GENERATED router block (RTL from apbDecodeModule)
+# 1. Declare the GENERATED router block (RTL from regBusDecodeModule)
 blocks:
   apb_decode:
     desc: "APB decoder routing to multiple blocks"
@@ -1371,7 +1371,7 @@ blocks:
 ```
 
 **Key Points:**
-- **Generated (you declare)**: the `apb_decode` router (`addressBlock:`); RTL from `apbDecodeModule`.
+- **Generated (you declare)**: the `apb_decode` router (`addressBlock:`); RTL from `regBusDecodeModule`.
 - **Auto-generated (you do nothing)**: `dma_controller_regs` handler + the router→leaf dispatch.
 - **Authored by hand**: only the upstream feed into the primary router (master→DUT connection, plus a DUT-boundary connectionMap when the master is outside the router's container).
 - The router serves its **siblings** (and nested routers); it never decodes its own container block.
@@ -1548,7 +1548,7 @@ the framework synthesises the RTL and the bus fan-out.
 ```
 CPU → [Router (addressBlock:)] → [Block-Level Handler] → Registers/Memories
       (GENERATED block,            (AUTO-GENERATED,
-       apbDecodeModule RTL)         <blockname> + blockSuffix)
+       regBusDecodeModule RTL)         <blockname> + blockSuffix)
 
       apb_decode                   dma_controller_regs
       (you DECLARE addressBlock:)  (arch2code creates this)
@@ -1563,7 +1563,7 @@ synthesized.
 - **Role**: Routes the register bus to the correct served instance based on
   high-order address bits.
 - **What it is**: a block with a populated `addressBlock:`; its RTL is emitted by
-  the `apbDecodeModule` template, auto-selected by `make newmodule`.
+  the `regBusDecodeModule` template, auto-selected by `make newmodule`.
 - **You declare**:
   - the router block with its `addressBlock:` section, and
   - an instance of it in the **same container** as the routed leaves it serves.
@@ -1588,7 +1588,7 @@ synthesized.
 #### Complete Flow Example
 
 ```yaml
-# YOU DECLARE: the GENERATED router (RTL from apbDecodeModule)
+# YOU DECLARE: the GENERATED router (RTL from regBusDecodeModule)
 blocks:
   apb_decode:
     desc: "System APB decoder"
@@ -2099,7 +2099,7 @@ interfaces:
       - {structure: apb_addr_t, structureType: addr_t}
       - {structure: apb_data_t, structureType: data_t}
 
-# 3. DECLARE the GENERATED router (RTL from apbDecodeModule)
+# 3. DECLARE the GENERATED router (RTL from regBusDecodeModule)
 blocks:
   apb_decode:
     desc: "APB decoder for system bus"
@@ -2919,7 +2919,7 @@ instances:
 # ✅ GOOD - declare the GENERATED router and co-locate it with the leaf
 blocks:
   apb_decode:
-    desc: "APB router (RTL generated from apbDecodeModule)"
+    desc: "APB router (RTL generated from regBusDecodeModule)"
     hasRtl: true
     hasMdl: true
     addressBlock:
@@ -2966,7 +2966,7 @@ include:
 - Ensure each `addressGroup` an instance names is declared by an `addressBlock:` router in the same project
 - Use consistent naming conventions throughout
 - Remember: blocks default to `hasRtl: true` and `hasMdl: true` (only specify if different)
-- **Declare the register-bus router as a generated `addressBlock:` block** and instance it in the container of the leaves it serves - its RTL (`apbDecodeModule`) and the bus fan-out below it are synthesized
+- **Declare the register-bus router as a generated `addressBlock:` block** and instance it in the container of the leaves it serves - its RTL (`regBusDecodeModule`) and the bus fan-out below it are synthesized
 - **Never manually create block-level register handlers** (e.g., `<blockname>_regs`) - these are auto-generated
 - Author only the upstream feed into the primary router; tag routed leaves with `addressGroup:`. See `design-register-decode.md`
 - Do not write `addressID` or `offset`. Address generation assigns them
@@ -3013,7 +3013,7 @@ Key templates in `builder/base/templates/systemVerilog/`:
 | `constantsTypesEnumsStructures.py` | Package contents | Embedded in packages |
 | `moduleInterfacesInstances.py` | Module ports & instances | Module skeletons |
 | `moduleRegs.py` | Register blocks | Register decode logic |
-| `apbDecodeModule.py` | APB decoder | Address decoder modules |
+| `regBusDecodeModule.py` | APB decoder | Address decoder modules |
 | `encoder.py` | Encoding logic | Encode/decode functions |
 
 ### SystemC Templates
@@ -3345,7 +3345,7 @@ container, or the upstream feed is missing.
 # 1. DECLARE the router as a generated addressBlock: block
 blocks:
   apb_decode:
-    desc: "APB router (RTL generated from apbDecodeModule)"
+    desc: "APB router (RTL generated from regBusDecodeModule)"
     hasRtl: true
     hasMdl: true
     addressBlock:

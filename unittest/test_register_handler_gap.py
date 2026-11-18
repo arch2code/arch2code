@@ -9,10 +9,16 @@ data bus narrower than 32 bits. A write to a gap is dropped and leaves every
 register unchanged. The model prints a warning naming the block and the address
 for each, as the decoder does for an empty slot.
 
+A response-aware access returns PSLVERR. Without errorResponses every access
+completes without it, including a write the register's write-error handler
+refuses. With errorResponses, gap reads and writes and the refused write
+complete with PSLVERR, and accesses to the registers do not.
+
 The probe serves two 4-byte registers at offsets 0x0 and 0x8, so 0x4 is a gap
 between them and 0xc is a gap past the last one. It writes both registers,
 writes both gaps, then reads all four addresses. The 16-bit scenario runs the
-same sequence over a 16-bit data bus.
+same sequence over a 16-bit data bus. The response and errors scenarios run it
+response-aware, then write 0xbad to r0, which r0 refuses.
 """
 
 import os
@@ -27,6 +33,7 @@ PROBE_SRC = """
 #include "systemc.h"
 #include "logging.h"
 #include "q_assert.h"
+#include "apb_channel.h"
 #include "addressMap.h"
 #include <cstdint>
 #include <format>
@@ -57,6 +64,11 @@ struct gapDataSt {
 
 struct stubReg : public addressBase {
     void cpu_write( std::uint64_t, std::uint32_t val ) override { value = val; }
+    bool cpu_write_with_error( std::uint64_t address, std::uint32_t val ) override
+    {
+        cpu_write( address, val );
+        return val == 0xbad;
+    }
     std::uint32_t cpu_read( std::uint64_t ) override { return value; }
     std::uint32_t value = 0;
 };
@@ -70,10 +82,13 @@ struct gapHarness : public sc_module
     logBlock log;
     addressMap regs;
     stubReg r0, r2;
+    bool responseAware;
+    bool errorResponses;
 
     SC_HAS_PROCESS( gapHarness );
-    gapHarness( sc_module_name n )
-      : sc_module( n ), chan( "chan", "tb" ), in( "in" ), log( "gapHarness" ), regs( log )
+    gapHarness( sc_module_name n, bool responseAware_, bool errorResponses_ )
+      : sc_module( n ), chan( "chan", "tb" ), in( "in" ), log( "gapHarness" ), regs( log ),
+        responseAware( responseAware_ ), errorResponses( errorResponses_ )
     {
         in( chan );
         regs.addRegister( 0x0, 4, "r0", &r0 );
@@ -82,7 +97,14 @@ struct gapHarness : public sc_module
         SC_THREAD( drive );
     }
 
-    void handle() { registerHandler<gapAddrSt, dataT>( regs, in, 0xff ); }
+    void handle()
+    {
+        if (errorResponses) {
+            registerHandler<gapAddrSt, dataT>( regs, in, 0xff, true );
+        } else {
+            registerHandler<gapAddrSt, dataT>( regs, in, 0xff );
+        }
+    }
 
     void write( std::uint32_t address, std::uint32_t value )
     {
@@ -90,7 +112,12 @@ struct gapHarness : public sc_module
         dataT data;
         addr.value = address;
         data.value = value;
-        chan.request( true, addr, data );
+        if (responseAware) {
+            const bool slverr = chan.requestWithResponse( true, addr, data );
+            std::cout << std::format( "write 0x{:x} slverr={}\\n", address, slverr );
+        } else {
+            chan.request( true, addr, data );
+        }
     }
 
     void read( std::uint32_t address )
@@ -99,8 +126,13 @@ struct gapHarness : public sc_module
         dataT data;
         addr.value = address;
         data.value = 0x5555;
-        chan.request( false, addr, data );
-        std::cout << std::format( "read 0x{:x}=0x{:x}\\n", address, data.value );
+        if (responseAware) {
+            const bool slverr = chan.requestWithResponse( false, addr, data );
+            std::cout << std::format( "read 0x{:x}=0x{:x} slverr={}\\n", address, data.value, slverr );
+        } else {
+            chan.request( false, addr, data );
+            std::cout << std::format( "read 0x{:x}=0x{:x}\\n", address, data.value );
+        }
     }
 
     void drive()
@@ -113,17 +145,22 @@ struct gapHarness : public sc_module
         read( 0xc );
         read( 0x0 );
         read( 0x8 );
+        if (responseAware) {
+            std::cout << "refused ";
+            write( 0x0, 0xbad );
+        }
         sc_stop();
     }
 };
 
 int sc_main( int argc, char* argv[] )
 {
-    if (std::string( argv[1] ) == "wide") {
-        gapHarness<32> harness( "harness" );
+    std::string scenario = argv[1];
+    if (scenario == "narrow") {
+        gapHarness<16> harness( "harness", false, false );
         sc_start();
     } else {
-        gapHarness<16> harness( "harness" );
+        gapHarness<32> harness( "harness", scenario != "wide", scenario == "errors" );
         sc_start();
     }
     int code = errorCode::getExitCode();
@@ -139,6 +176,15 @@ SCENARIOS = {
               'harness: firmware write to unmapped address 0xc dropped'),
              ('0xdead', '0xbeef')),
     'narrow': (('read 0x4=0xc0de', 'read 0xc=0xc0de', 'read 0x0=0x1111', 'read 0x8=0x2222'),
+               ('0xdead', '0xbeef')),
+    'response': (('write 0x0 slverr=false', 'write 0x4 slverr=false', 'write 0xc slverr=false',
+                  'read 0x4=0xbaddc0de slverr=false', 'read 0x0=0x1111 slverr=false',
+                  'refused write 0x0 slverr=false'),
+                 ('slverr=true',)),
+    'errors': (('write 0x0 slverr=false', 'write 0x8 slverr=false', 'write 0x4 slverr=true',
+                'write 0xc slverr=true', 'read 0x4=0xbaddc0de slverr=true',
+                'read 0xc=0xbaddc0de slverr=true', 'read 0x0=0x1111 slverr=false',
+                'read 0x8=0x2222 slverr=false', 'refused write 0x0 slverr=true'),
                ('0xdead', '0xbeef')),
 }
 

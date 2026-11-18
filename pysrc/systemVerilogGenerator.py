@@ -10,7 +10,7 @@ import re
 # RTL module-body templates emit `module <blockName>`; the generated file is
 # expected to be named after that block. The consistency warning lives here,
 # out of the template render path, so templates never inspect the output filename.
-_MODULE_BODY_TEMPLATES = {'moduleInterfacesInstances', 'apbDecodeModule'}
+_MODULE_BODY_TEMPLATES = {'moduleInterfacesInstances', 'regBusDecodeModule', 'apbDecodeModule'}
 class systemVerilogGenerator:
     renderer = None
     instances = None

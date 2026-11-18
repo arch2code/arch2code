@@ -213,6 +213,7 @@ PROBE_SRC = """
 #include "systemc.h"
 #include "logging.h"
 #include "q_assert.h"
+#include "apb_channel.h"
 #include "addressMap.h"
 #include <cstdint>
 #include <format>

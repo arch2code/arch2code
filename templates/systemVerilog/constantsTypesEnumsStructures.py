@@ -29,7 +29,8 @@ def render(args, prj, data):
     # Generate enums
     out += f"\n// enums\n"
     for unusedKey, value in data['enums'].items():
-        out += f"typedef enum logic[{value['width']}-1:0] {{ {' '*value['descSpaces']}//{value['desc']}\n"
+        widthExpr = typeWidthExpression_sv(value, prj['constants'])
+        out += f"typedef enum logic[{widthExpr}-1:0] {{ {' '*value['descSpaces']}//{value['desc']}\n"
         # below loop processes enums and puts a comma after them for all in the list but the last one
         for enumData in value['enum'][:-1]:
             out += f"{indent}{enumData['enumName']} = {enumData['value']}, {' '*enumData['descSpaces']}// {enumData['desc']}\n"

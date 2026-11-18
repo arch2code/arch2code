@@ -7,7 +7,7 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "apb_channel.h"
-#include "apbBusDecode.h"
+#include "regBusDecode.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -29,7 +29,7 @@ SC_MODULE(xpRtNestDecode), public blockBase, public xpRtNestDecodeBase<Config>
 {
 private:
     void routerDecode(void);
-    abpBusDecode< apbAddrSt, apbDataSt > decoder;
+    regBusDecode< apbAddrSt, apbDataSt, apb_in_if, apb_out_if > decoder;
 
 public:
     SC_HAS_PROCESS(xpRtNestDecode);

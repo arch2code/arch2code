@@ -22,7 +22,7 @@ def getParentStructures(prj, d):
 # prj object
 # data set dict
 def render(args, prj, data):
-    global regs_intf, regs_addr_t, regs_data_t, regs_clk, regs_rst
+    global regs_intf, regs_addr_t, regs_data_t, regs_clk, regs_rst, bus_addr, bus_wdata
 
     # <block>_regs is a register-bus endpoint whose clock/reset ports are
     # named after the leaf nets they bind to. Every flop runs on the declared
@@ -35,8 +35,18 @@ def render(args, prj, data):
         printError("In your address Config file registerBusPort is not defined")
         exit(warningAndErrorReport())
 
+    error_responses = prj.config.getConfig('FILEGENERATION')['regBusErrorResponses']
+
     regs_addr_t = data['addressDecode']['registerBusStructs']['addr_t']['structure']
     regs_data_t = data['addressDecode']['registerBusStructs']['data_t']['structure']
+
+    # The front end spells the bus protocol; the sections below decode its
+    # neutral access: bus_addr, bus_wdata, wr_select and rd_select.
+    front_end = intf_gen_utils.sv_reg_bus_front_end(data)
+    access = front_end.handlerAccess(regs_intf, regs_addr_t, section_address_mask(prj, data),
+                                     regs_clk, regs_rst, error_responses)
+    bus_addr = access['addr']
+    bus_wdata = access['wdata']
 
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
@@ -96,16 +106,23 @@ def render(args, prj, data):
         clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(data),
         regs_clk=regs_clk,
         regs_rst=regs_rst,
-        address_mask=section_address_mask(prj, data),
         address_constants=section_address_constants(data),
-        regs_intf=regs_intf,
-        regs_addr_t=regs_addr_t,
+        access_addr_lines=string_joiner(access['addrLines']),
+        access_select_lines=string_joiner(access['selectLines']),
+        ready_ws_param=access['readyWaitStateParam'],
+        bus_addr=bus_addr,
+        bus_name=front_end.BUS_NAME,
+        error_name=front_end.ERROR_NAME,
+        response_lines=string_joiner(front_end.handlerResponse(
+            regs_intf, 'rd_ready | wr_ready', 'rd_data',
+            'wr_slverr | rd_slverr' if error_responses else "1'b0")),
         regs_data_t=regs_data_t,
         section_01=section_01(data),
         section_02a=section_02a(data),
-        section_02b=section_02b(data),
+        section_02b=section_02b(data, error_responses),
         section_03a=section_03a(data),
-        section_03b=section_03b(data)
+        section_03b=section_03b(data),
+        error_responses=error_responses
     ))
 
 def address_const_name(data, entry, name_field):
@@ -264,7 +281,7 @@ def section_01_regs_param(reg_data):
         s += [ f"assign {reg_intf}.data = {reg_local};" ]
         rst_words = [d for (o, u, l, w, d) in reg_data['segments']]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, 'DFFREN',
-                                 f"{regs_intf}.pwdata", reg_local, rst_words=rst_words)
+                                 bus_wdata, reg_local, rst_words=rst_words)
     else: # ro
         s += [ f"assign {reg_local} = {reg_intf}.data;" ]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, None,
@@ -300,7 +317,7 @@ def section_01_regs(reg_data):
         update_sig = f"{reg_local}_update_{n}"
         if reg_data['regType'] == 'rw':
             s_3 += [ f"logic {update_sig};" ]
-            s_4 += [ f"`DFFREN_DOM({regs_clk}, {regs_rst}, {reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
+            s_4 += [ f"`DFFREN_DOM({regs_clk}, {regs_rst}, {reg_local}[{u}:{l}], {bus_wdata}[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
 
     return string_joiner(s_1 + s_3 + s_2 + s_4, '\n')
 
@@ -334,7 +351,7 @@ def section_01_mem_param(mem_intf, mem_data, mode):
     if writes:
         s += [ f"logic {mem_intf}_wr_enable;" ]
     s += [ "" ]
-    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'((apb_addr - {mem_data['addr_const_name']}) >> {rowwidth}))" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'(({bus_addr} - {mem_data['addr_const_name']}) >> {rowwidth}))" ]
     if writes:
         s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_wr_enable, {mem_intf}_update[{top_lp}])" ]
     if reads:
@@ -343,7 +360,7 @@ def section_01_mem_param(mem_intf, mem_data, mode):
     s += [ "" ]
     s += param_word_generate(mem_intf, struct, width_lp, max_words,
                              'DFFEN' if writes else None,
-                             f"{regs_intf}.pwdata" if writes else None,
+                             bus_wdata if writes else None,
                              f"{mem_intf}.read_data" if reads else None)
     s += [ "" ]
     enables = [f"{mem_intf}_rd_enable"] * reads + [f"{mem_intf}_wr_enable"] * writes
@@ -374,6 +391,7 @@ def section_01_memregs(reg_data):
         seg_last = len(reg_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
+        bus_addr=bus_addr,
         reads=True,
         writes=True
     ))
@@ -394,6 +412,7 @@ def section_01_mems(mem_data):
         seg_last = len(mem_data['segments']) - 1,
         regs_clk=regs_clk,
         regs_rst=regs_rst,
+        bus_addr=bus_addr,
         reads=mem_data['regAccess'] != 'wo',
         writes=mem_data['regAccess'] != 'ro'
     ))
@@ -479,36 +498,39 @@ def section_02a_mems(mem_data):
     return string_joiner(s_1, '\n')
 
 # write comb case core
-def section_02b(data):
+def section_02b(data, error_responses):
     # Separate regular registers from memory registers
     regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
     memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
     
     return (string_joiner(
-            [section_02b_regs(reg_data) for _, reg_data in regular_regs.items()] +
+            [section_02b_regs(reg_data, error_responses) for _, reg_data in regular_regs.items()] +
             [section_02b_mems(mem_data) for _, mem_data in data['memories'].items()] +
             [section_02b_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n')
     )
 
-def section_02b_regs(reg_data):
+def section_02b_regs(reg_data, error_responses):
     reg_intf = reg_data['register']
     reg_local = reg_data['register'] + '_reg'
 
     segments_enum = list(enumerate(reg_data['segments']))
 
     if reg_data['isParameterizable']:
-        # rw only writes; ro has no write strobes (a write falls through to the
-        # always-ACK global default and is silently ignored). One top-level case
+        # rw only writes; ro has no write strobes, so a write is silently
+        # dropped, by its own empty arm when the default arm raises PSLVERR
+        # and by the default arm otherwise. One top-level case
         # entry per worst-case word drives the _update vector; the flop it
         # gates is elaborated away for absent words, so the strobe is harmless.
         s_1 = []
-        if reg_data['regType'] == 'rw':
-            for seg in segments_enum:
-                n, (o, _u, _l, _w, _) = seg
-                addr_expr = segment_addr_expr(reg_data['addr_const_name'], reg_data['offset'], o)
+        for seg in segments_enum:
+            n, (o, _u, _l, _w, _) = seg
+            addr_expr = segment_addr_expr(reg_data['addr_const_name'], reg_data['offset'], o)
+            if reg_data['regType'] == 'rw':
                 s_1 += [ f"{addr_expr} : begin" ]
                 s_1 += [ f"    {reg_intf}_update[{n}] = 1'b1;" ]
                 s_1 += [ "end" ]
+            elif reg_data['regType'] == 'ro' and error_responses:
+                s_1 += [ f"{addr_expr} : ; // read-only: the write is dropped" ]
         return string_joiner(s_1, '\n')
 
     s_1 = []
@@ -522,25 +544,29 @@ def section_02b_regs(reg_data):
         elif reg_data['regType'] == 'ext':
             s_1 += [ f"{addr_expr} : begin" ]
             s_1 += [ f"    {reg_intf}.write = {1<<n};" ]
+            if error_responses:
+                s_1 += [ f"    nxt_wr_slverr = {reg_intf}.pslverr;" ]
             for s_seg in segments_enum:
                 _, (_, s_u, s_l, _, _) = s_seg
                 if s_seg == seg:
-                    s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+                    s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {bus_wdata}[{w-1}:0];" ]
                 else:
                     s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {reg_intf}.rdata[{s_u}:{s_l}];" ]
             s_1 += [ "end" ]
+        elif reg_data['regType'] == 'ro' and error_responses:
+            s_1 += [ f"{addr_expr} : ; // read-only: the write is dropped" ]
 
     return string_joiner(s_1, '\n')
 
 def section_02b_mem_param(mem_intf, mem_data):
     """Parameterizable memory write decode: the variant-width data flop reads
-    pwdata directly inside the generate, so the write case only drives the
+    the bus write data directly inside the generate, so the write case only drives the
     per-word _update strobe vector. Absent words ACK via the always-on ready."""
     addr_l, _ = mem_data['address_range']
     rowwidth = mem_data['rowwidth']
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({rowwidth}'({bus_addr} - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -566,13 +592,13 @@ def section_02b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({rowwidth}'({bus_addr} - {reg_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o_rel = o - addr_l  # offset relative to base of mem mod bus width
         s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
         s_1 += [ f"            {mem_intf}_update_{n} = 1'b1;" ]
-        s_1 += [ f"            {data_local}[{u}:{l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+        s_1 += [ f"            {data_local}[{u}:{l}] = {bus_wdata}[{w-1}:0];" ]
         s_1 += [ f"        end" ]
     s_1 +=     [ f"        default: ;" ]
     s_1 += [ f"    endcase" ]
@@ -597,13 +623,13 @@ def section_02b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'({bus_addr} - {mem_data['addr_const_name']}))" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
         s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
         s_1 += [ f"            {mem_intf}_update_{n} = 1'b1;" ]
-        s_1 += [ f"            {data_local}[{u}:{l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+        s_1 += [ f"            {data_local}[{u}:{l}] = {bus_wdata}[{w-1}:0];" ]
         s_1 += [ f"        end" ]
     s_1 +=     [ f"        default: ;" ]
     s_1 += [ f"    endcase" ]
@@ -692,7 +718,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     word_offsets = []
     s_1 = []
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({rowwidth}'({bus_addr} - {mem_data['addr_const_name']}))" ]
     for seg in list(enumerate(mem_data['segments'])):
         n, (o, _u, _l, _w, _) = seg
         o_rel = o - addr_l
@@ -708,7 +734,7 @@ def section_03b_mem_param(mem_intf, mem_data):
     s_1 += [ f"            nxt_rd_data = '0;" ]
     s_1 += [ f"        end" ]
     s_1 += [ f"    endcase" ]
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'({bus_addr} - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     return string_joiner(s_1, '\n')
 
@@ -732,7 +758,7 @@ def section_03b_mems(mem_data):
     s_1 = []
 
     s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({mem_data['rowwidth']}'({bus_addr} - {mem_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -751,7 +777,7 @@ def section_03b_mems(mem_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({mem_data['rowwidth']}'(apb_addr - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({mem_data['rowwidth']}'({bus_addr} - {mem_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
 
     return string_joiner(s_1, '\n')
@@ -772,7 +798,7 @@ def section_03b_memregs(reg_data):
     s_1 = []
 
     s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
-    s_1 += [ f"    case ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}))" ]
+    s_1 += [ f"    case ({rowwidth}'({bus_addr} - {reg_data['addr_const_name']}))" ]
     word_offsets = []
     for seg in segments_enum:
         _, (o, u, l, w, _) = seg
@@ -791,7 +817,7 @@ def section_03b_memregs(reg_data):
     s_1 += [ f"    endcase" ]
     # An offset that is no word of the row completes without a memory read,
     # so no stray rd_capture reaches the next access.
-    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'(apb_addr - {reg_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ({rowwidth}'({bus_addr} - {reg_data['addr_const_name']}) inside {{{', '.join(word_offsets)}}}) & ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
     
     return string_joiner(s_1, '\n')
@@ -833,7 +859,7 @@ module {{ modulename }}
         {%- if module_params %}
         {{ module_params | indent(8) }}
         {%- endif %}
-        parameter bit APB_READY_1WS = 0
+        parameter bit {{ ready_ws_param }} = 0
     )
     (
         {{ interfaces_ports | indent(8) }}
@@ -846,8 +872,7 @@ module {{ modulename }}
     {{ param_decls | indent(4) }}
     {%- endif %}
 
-    {{regs_addr_t}} apb_addr;
-    assign apb_addr = {{regs_addr_t}}'({{regs_intf}}.paddr) & {{ address_mask }};
+    {{ access_addr_lines | indent(4) }}
 
     {%- if address_constants %}
     // Register/memory address offsets for decode documentation
@@ -861,19 +886,26 @@ module {{ modulename }}
 
     {{ section_01 | indent(4) }}
 
-    logic wr_select;
-    logic rd_select;
-    assign wr_select = {{regs_intf}}.psel & {{regs_intf}}.penable & {{regs_intf}}.pwrite & {{regs_rst}};
-    assign rd_select = {{regs_intf}}.psel & {{regs_intf}}.penable & !{{regs_intf}}.pwrite & {{regs_rst}};
+    {{ access_select_lines | indent(4) }}
 
     logic nxt_wr_ready, wr_ready;
+{%- if error_responses %}
+    logic nxt_wr_slverr, wr_slverr;
+{%- endif %}
     always_comb begin
         nxt_wr_ready = 1'b0;
+{%- if error_responses %}
+        nxt_wr_slverr = 1'b0;
+{%- endif %}
         {{ section_02a | indent(8) }}
         if (wr_select) begin
-            case (apb_addr) inside
+            case ({{ bus_addr }}) inside
                 {{ section_02b | indent(16) }}
+{%- if error_responses %}
+                default: nxt_wr_slverr = 1'b1; // unmapped write: dropped, completes with {{ error_name }}
+{%- else %}
                 default: ; // unmapped/ro write: silently ignored (ACK below)
+{%- endif %}
             endcase
             nxt_wr_ready = 1'b1;
         end
@@ -881,42 +913,67 @@ module {{ modulename }}
 
     logic nxt_rd_ready, rd_ready;
     {{regs_data_t}} nxt_rd_data, rd_data;
+{%- if error_responses %}
+    logic nxt_rd_slverr, rd_slverr;
+{%- endif %}
     always_comb begin
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
+{%- if error_responses %}
+        nxt_rd_slverr = 1'b0;
+{%- endif %}
         {%- if section_03a %}
         {{ section_03a | indent(8) }}
         {%- endif %}
         if (rd_select) begin
-            case (apb_addr) inside
+            case ({{ bus_addr }}) inside
                 {{ section_03b | indent(16) }}
+{%- if error_responses %}
+                default: begin // unmapped read: ACK with 32'hBADD_C0DE and {{ error_name }}
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = {{regs_data_t}}'(32'hBADD_C0DE);
+                    nxt_rd_slverr = 1'b1;
+                end
+{%- else %}
                 default: begin // unmapped read: ACK with 32'hBADD_C0DE (never stall, never error)
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = {{regs_data_t}}'(32'hBADD_C0DE);
                 end
+{%- endif %}
             endcase
         end
     end
-
-    // Update APB ready and read data. The bus is never stalled and slave
-    // error is never asserted: every access ACKs, unmapped reads return
+{% if error_responses %}
+    // Update {{ bus_name }} ready, read data and error. Every access completes,
+    // though the front end may add wait states. An unmapped access, or an ext
+    // register write its owner refuses, returns {{ error_name }}; unmapped reads
+    // also return 32'hBADD_C0DE.
+{%- else %}
+    // Update {{ bus_name }} ready and read data. Every access completes without
+    // error, though the front end may add wait states. Unmapped reads return
     // 32'hBADD_C0DE.
-    generate if (APB_READY_1WS)
+{%- endif %}
+    generate if ({{ ready_ws_param }})
         begin
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_ready,   nxt_rd_ready,   '0)
             `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_data,    nxt_rd_data,    '0)
+{%- if error_responses %}
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_slverr,  nxt_wr_slverr,  '0)
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_slverr,  nxt_rd_slverr,  '0)
+{%- endif %}
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
+{%- if error_responses %}
+            assign wr_slverr  = nxt_wr_slverr;
+            assign rd_slverr  = nxt_rd_slverr;
+{%- endif %}
         end
     endgenerate
 
-    // Update the APB interface
-    assign {{regs_intf}}.prdata  = rd_data;
-    assign {{regs_intf}}.pready  = rd_ready | wr_ready;
-    assign {{regs_intf}}.pslverr = 1'b0;
+    {{ response_lines | indent(4) }}
 
 endmodule : {{ modulename }}
 """
@@ -940,7 +997,7 @@ logic nxt_{{mem_intf}}_rd_enable, {{mem_intf}}_rd_enable, {{mem_intf}}_rd_captur
 {% if writes -%}
 logic {{mem_intf}}_wr_enable;
 {% endif %}
-`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'((apb_addr - {{addr_const_name}}) >> {{paddr_l}}))
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'(({{bus_addr}} - {{addr_const_name}}) >> {{paddr_l}}))
 {% if writes -%}
 `DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_wr_enable, {{mem_intf}}_update_{{seg_last}})
 {% endif -%}

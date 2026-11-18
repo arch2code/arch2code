@@ -1,6 +1,8 @@
 +libext+.sv
 +incdir+../../interfaces/apb
 -y ../../interfaces/apb
++incdir+../../interfaces/ahb
+-y ../../interfaces/ahb
 +incdir+../../interfaces/status
 -y ../../interfaces/status
 +incdir+../../interfaces/rdy_vld

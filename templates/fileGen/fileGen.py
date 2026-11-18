@@ -27,9 +27,9 @@ class TemplateCustom(Template):
 def render(args, prj, data):
     isRegHandler = True if 'block' in data and next(filter(lambda x: x['block'] == data['block'] and x['isRegHandler'] == 1, prj['blocks'].values()), None) else False
     # An APB-router block declares an addressBlock: section; its RTL is fully
-    # emitted by the apbDecodeModule template (module header through endmodule),
+    # emitted by the regBusDecodeModule template (module header through endmodule),
     # so it scaffolds without the trailing endmodule rtlModule adds.
-    isApbRouter = True if 'block' in data and next(filter(lambda x: x['block'] == data['block'] and x.get('addressBlock'), prj['blocks'].values()), None) else False
+    isRegBusRouter = True if 'block' in data and next(filter(lambda x: x['block'] == data['block'] and x.get('addressBlock'), prj['blocks'].values()), None) else False
     match data['target']:
         case 'blockBase_cppm':
             return(blockBase_cppm(args, prj, data))
@@ -64,7 +64,7 @@ def render(args, prj, data):
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
-            elif isApbRouter:
+            elif isRegBusRouter:
                 return(rtlModuleApbDecode(args, prj, data))
             else:
                 return(rtlModule(args, prj, data))
@@ -370,7 +370,7 @@ def rtlModuleApbDecode(args, prj, data):
     out = list()
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
-    out.append('// GENERATED_CODE_BEGIN --template=apbDecodeModule\n')
+    out.append('// GENERATED_CODE_BEGIN --template=regBusDecodeModule\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 

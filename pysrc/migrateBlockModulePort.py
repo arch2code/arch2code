@@ -616,7 +616,7 @@ def portBlockModules(prj, write=False):
         # than transplanting (nothing to move) or flagging (nothing to hand-port).
         # A reg-handler stays a reg-handler even when parameterized, so this
         # precedes the hasOwnParams flag. addressBlock is the router's own schema
-        # field, the same signal getBDAddressDecode reads to set isApbRouter.
+        # field, the same signal getBDAddressDecode reads to set isRegBusRouter.
         isDecoder = bool(blockRow.get("addressBlock"))
         if blockRow["isRegHandler"] or isDecoder:
             if not cppmReady:

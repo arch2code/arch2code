@@ -59,8 +59,8 @@ def _run():
         router_key, _ = find_block(prj, 'apbDecode')
         router_view = prj.getBlockData(router_key)
         ad = router_view['addressDecode']
-        assert bool(ad.get('isApbRouter')), \
-            f"router isApbRouter expected truthy, got {ad.get('isApbRouter')!r}"
+        assert bool(ad.get('isRegBusRouter')), \
+            f"router isRegBusRouter expected truthy, got {ad.get('isRegBusRouter')!r}"
         assert ad.get('registerBusInterface') == 'apbReg', \
             f"router registerBusInterface expected 'apbReg', got {ad.get('registerBusInterface')}"
         assert ad.get('registerBusPort') == 'apbReg', \
@@ -72,8 +72,8 @@ def _run():
         leaf_key, _ = find_block(prj, 'leaf')
         leaf_view = prj.getBlockData(leaf_key)
         lad = leaf_view['addressDecode']
-        assert not bool(lad.get('isApbRouter')), \
-            f"leaf isApbRouter expected falsy, got {lad.get('isApbRouter')!r}"
+        assert not bool(lad.get('isRegBusRouter')), \
+            f"leaf isRegBusRouter expected falsy, got {lad.get('isRegBusRouter')!r}"
         assert bool(lad.get('hasDecoder')), \
             f"leaf hasDecoder expected truthy (one register), got {lad.get('hasDecoder')!r}"
         assert lad.get('registerBusInterface') == 'apbReg', \

@@ -154,9 +154,10 @@ class BlockDomains:
         self.resolvedReleaseCycles = dict()
 
     @classmethod
-    def build(cls, blockKey, blockRow, memories, resetsDeclaredEmpty, diag):
+    def build(cls, blockKey, blockRow, memories, resetsDeclaredEmpty, clocksDeclaredEmpty, diag):
         """Materialise one block's clocks:/resets: and check the block-level
-        declaration rules: default-clock marking, one default reset per clock,
+        declaration rules: what a block with no clock may not have,
+        default-clock marking, one default reset per clock,
         async resets, name uniqueness, explicit clocks on a block with no default
         clock, that an input reset belongs to an input clock, and that a router's
         addressBlock: clock: and reset: are inputs, the reset synchronous. That a
@@ -168,6 +169,9 @@ class BlockDomains:
         declaredClocks = blockRow.get('clocks')
         if declaredClocks:
             clocks = OrderedDict(declaredClocks)
+        elif clocksDeclaredEmpty:
+            clocks = OrderedDict()
+            _checkClocklessBlock(block, blockRow, memories, diag)
         else:
             clocks = OrderedDict()
             clocks['clk'] = {'clock': 'clk', 'desc': '', 'direction': 'input',
@@ -223,7 +227,7 @@ class BlockDomains:
         # no default clock (every declared clock direction: output) does not
         # have, so such a block must name every port's clock explicitly.
         def checkPortClock(label, name, row):
-            if not row['clock'] and defaultClock is None:
+            if not row['clock'] and defaultClock is None and clocks:
                 diag.logError(
                     f"Block '{block}' has no default clock (every declared "
                     f"clock is direction: output) "
@@ -549,7 +553,7 @@ class ClockTree:
 def build(blocks, instances, connections, memories, registers, memoryConnections,
           registerConnections, connectionMaps, channelNames, memoryChannelNames,
           memoryRegisterChannelNames, registerBusPassthroughs,
-          blocksDeclaringNoResets,
+          blocksDeclaringNoResets, blocksDeclaringNoClocks,
           testbenchClocks, testbenchResets, contextOwningProject, rootProjectName, diag):
     """Build the project's ClockTree from parsed flatData tables.
 
@@ -558,7 +562,8 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     of each memoryConnections row and of each memory's register handler port.
     `registerBusPassthroughs` is the `REGAPB_PASSTHROUGH` blob from
     config/postParseRegisterPorts.py, keyed by passthrough container blockKey.
-    `blocksDeclaringNoResets` is a parser-recorded fact from projectCreate.
+    `blocksDeclaringNoResets` and `blocksDeclaringNoClocks` are parser-recorded
+    facts from projectCreate.
     `testbenchClocks`/`testbenchResets` are the root project's own entries and
     become the root container's nets.
     `contextOwningProject` and `rootProjectName` limit standalone-attribute
@@ -593,9 +598,12 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
     domains = dict()
     for blockKey, blockRow in blocks.items():
         resetsDeclaredEmpty = (blockRow['_context'], blockRow['block']) in blocksDeclaringNoResets
+        clocksDeclaredEmpty = (blockRow['_context'], blockRow['block']) in blocksDeclaringNoClocks
         domains[blockKey] = BlockDomains.build(
             blockKey, blockRow, memoriesByBlock.get(blockKey, []),
-            resetsDeclaredEmpty, diag)
+            resetsDeclaredEmpty, clocksDeclaredEmpty, diag)
+    _checkClocklessAccess(domains, instances, registers, memoryConnections,
+                          registerConnections, diag)
 
     # A register is a net of its owning block (its handler channel), and a
     # registerConnections or memoryConnections row gives the accessing block
@@ -1439,6 +1447,9 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             if (declaredPortRow(blocks[end['instanceTypeKey']], end['portName']) is not None
                     or (end['instanceTypeKey'], end['portName']) in connMapByBoundary):
                 continue
+            # A port of a block with no clock lies in no domain.
+            if not domains[end['instanceTypeKey']].clocks:
+                continue
             if not clockName:
                 if domains[end['instanceTypeKey']].defaultClock is None:
                     diag.logError(
@@ -1537,6 +1548,20 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
         innerDomain = domains[innerBlockKey]
         innerPortName = connMap['instancePortName']
         innerPort = f"{innerInstance}.{innerPortName}"
+        if not innerDomain.clocks:
+            # An inner block with no clock sets no domain, so the boundary
+            # port keeps its own: its declared clock, else the outer default.
+            ownClock = (_declaredPortClock(blocks, domains, outerBlockKey, boundaryPortName)
+                        or domains[outerBlockKey].defaultClock)
+            if ownClock is None and domains[outerBlockKey].clocks:
+                diag.logError(
+                    f"Boundary port '{boundaryPortName}' of block '{outerBlock}' "
+                    f"is bridged by connectionMaps: to inner port '{innerPort}' "
+                    f"of block '{innerDomain.block}', which has no clock, and "
+                    f"'{outerBlock}' has no default clock (every declared clock "
+                    f"is direction: output). Declare port '{boundaryPortName}' "
+                    f"on block '{outerBlock}' with a clock:.")
+            return (ownClock, innerPort)
         if (innerBlockKey, innerPortName) in connMapByBoundary:
             innerClockName = deriveBoundary((innerBlockKey, innerPortName))[0]
         else:
@@ -1644,6 +1669,8 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
             instRow = instances[instanceKey]
             containerKey = instRow['containerKey']
             endBlockKey = end['instanceTypeKey']
+            if not domains[endBlockKey].clocks:
+                continue
             portName = end['portName']
             declaredClock = _declaredPortClock(blocks, domains, endBlockKey, portName)
             boundary = boundaryDomains.get((endBlockKey, portName))
@@ -1795,9 +1822,12 @@ def build(blocks, instances, connections, memories, registers, memoryConnections
         objectPortsByBlock.setdefault(
             instances[regConnRow['instanceKey']]['instanceTypeKey'], []).append(regConnRow['register'])
     for blockKey, blockRow in blocks.items():
-        if not blockRow['hasVl'] or contextOwningProject[blockRow['_context']] != rootProjectName:
-            continue
         domain = domains[blockKey]
+        # The wrapper of a block with no clock times its BFMs on its own
+        # sampling clock and reset (projectOpen.getBDClocksResets).
+        if (not blockRow['hasVl'] or not domain.clocks
+                or contextOwningProject[blockRow['_context']] != rootProjectName):
+            continue
         portsByClock = OrderedDict()
         # A declared port's own clock (its clock:, else the block default),
         # which for a boundary port equals its derived clock; then each
@@ -2124,6 +2154,61 @@ def _bindTopInstance(root, instances, domains, blocks, testbenchClocks, testbenc
 
 def _diagLoc(diag, row):
     return diag.diagnosticLocation(row['_context'], row.get('lc'))
+
+
+def _checkClocklessBlock(block, blockRow, memories, diag):
+    """A block declaring `clocks: {}` is combinational. Reject what it declares
+    that needs a clock: a reset, a register bus or a memory.
+    """
+    needsClock = list()
+    if blockRow.get('resets'):
+        needsClock.append((f"resets ({', '.join(blockRow['resets'])})",
+                           "a reset belongs to a clock", "its resets:"))
+    if blockRow.get('addressBlock'):
+        needsClock.append(("an addressBlock:", "a router runs on its bus clock",
+                           "its addressBlock:"))
+    if blockRow.get('registerPorts'):
+        needsClock.append((f"registerPorts: ({', '.join(blockRow['registerPorts'])})",
+                           "a register port runs on a clock", "its registerPorts:"))
+    if memories:
+        needsClock.append((f"memories ({', '.join(m.memory for m in memories)})",
+                           "a memory is clocked", "its memories"))
+    for what, why, remove in needsClock:
+        diag.logError(
+            f"Block '{block}' declares clocks: {{}}, so it has no clock, but it "
+            f"declares {what}, and {why}. Remove {remove}, or give '{block}' a "
+            f"clock. {_diagLoc(diag, blockRow)}")
+
+
+def _checkClocklessAccess(domains, instances, registers, memoryConnections,
+                          registerConnections, diag):
+    """A block with no clock may not own registers, and none of its instances
+    may access a memory or a register, since each access port runs on the
+    accessor block's default clock.
+    """
+    for regRow in registers.values():
+        domain = domains[regRow['blockKey']]
+        if not domain.clocks:
+            diag.logError(
+                f"Block '{domain.block}' declares clocks: {{}}, so it has no "
+                f"clock, but it owns register '{regRow['register']}', and a "
+                f"register handler runs on a clock. Move the register to a "
+                f"clocked block, or give '{domain.block}' a clock. "
+                f"{_diagLoc(diag, regRow)}")
+    accessRows = [(row, 'memory', row['memory']) for row in memoryConnections.values()
+                  if row['instanceKey']]
+    accessRows += [(row, 'register', row['register']) for row in registerConnections.values()]
+    for row, kind, name in accessRows:
+        instRow = instances[row['instanceKey']]
+        domain = domains[instRow['instanceTypeKey']]
+        if not domain.clocks:
+            diag.logError(
+                f"Instance '{instRow['instance']}' of block '{domain.block}' "
+                f"accesses {kind} '{name}' of block '{row['block']}', but "
+                f"'{domain.block}' declares clocks: {{}}, so it has no clock, "
+                f"and a {kind} access port runs on the accessor's default "
+                f"clock. Remove the access, or give '{domain.block}' a clock. "
+                f"{_diagLoc(diag, row)}")
 
 
 def _selectedReset(domain, container, clockNet, domains, instances):

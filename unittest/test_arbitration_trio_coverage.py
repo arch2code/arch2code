@@ -11,7 +11,10 @@ the concrete channel override must both be complete, never partial.
 
 This suite discovers every `*_channel.h` under interfaces/ rather than
 listing channel families by name, so a family authored tomorrow that opts
-into the trio is checked without anyone updating this file. It also pins the
+into the trio is checked without anyone updating this file. A family's text
+includes the shared base headers its channel inherits from (see
+channel_sources), so a trio implemented once in a common base counts for
+every family built on it. It also pins the
 set of families that support the trio today, because the discovery-based
 all-or-nothing check above cannot catch a family silently losing the trio
 entirely (e.g. a future edit that removes both the pure-virtual declaration
@@ -67,7 +70,7 @@ def check(condition, message):
 # setExternalEvent and never trip that check, but they also never claimed
 # full trio support).
 REQUIRED_FAMILIES = {
-    'rdy_vld', 'axi_read', 'axi_write', 'axi4_stream', 'apb', 'memory',
+    'rdy_vld', 'axi_read', 'axi_write', 'axi4_stream', 'apb', 'ahb', 'memory',
 }
 
 PURE_VIRTUAL_RE = {
@@ -99,14 +102,47 @@ def discover_channel_headers():
     return found
 
 
+QUOTED_INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
+
+
+def channel_sources(header_path):
+    """The channel header plus every header it pulls in by a quoted
+    #include that resolves in common/systemc or the family's own directory,
+    followed transitively.
+
+    A family's channel can inherit the trio from a shared base class (apb and
+    ahb both derive from regBusChannel), so the family header alone does not
+    show what the channel implements. Another family's directory is not
+    searched: axi_read includes rdy_vld_channel.h, and rdy_vld's trio must not
+    stand in for axi_read's.
+    """
+    search_dirs = [os.path.dirname(header_path),
+                   os.path.join(base_dir, 'common', 'systemc')]
+    sources = [header_path]
+    for path in sources:
+        with open(path, 'r') as f:
+            text = f.read()
+        for name in QUOTED_INCLUDE_RE.findall(text):
+            for d in search_dirs:
+                candidate = os.path.join(d, name)
+                if os.path.isfile(candidate):
+                    if candidate not in sources:
+                        sources.append(candidate)
+                    break
+    return sources
+
+
 def test_trio_is_all_or_nothing(headers):
     """A family that declares any one trio method must declare and
     implement all three; a partial family is a silent arbitration-pattern
     break for whichever caller reaches the missing piece."""
     trio_complete_families = set()
     for family, path in headers.items():
-        with open(path, 'r') as f:
-            text = f.read()
+        sources = channel_sources(path)
+        text = ''
+        for source in sources:
+            with open(source, 'r') as f:
+                text += f.read()
 
         declared = {name: bool(rx.search(text)) for name, rx in PURE_VIRTUAL_RE.items()}
         if not (declared['isActive'] or declared['isNotActive']):
@@ -123,7 +159,9 @@ def test_trio_is_all_or_nothing(headers):
                   f"{family}_channel.h declares '{name}' as pure virtual")
         for name in OVERRIDE_RE:
             check(implemented[name],
-                  f"{family}_channel.h provides a concrete '{name}' override")
+                  f"{family}_channel.h provides a concrete '{name}' override, "
+                  f"in its own text or a header it #includes from "
+                  f"common/systemc or interfaces/{family}/")
 
         if all(declared.values()) and all(implemented.values()):
             trio_complete_families.add(family)
@@ -137,7 +175,7 @@ def test_required_families_are_trio_complete(trio_complete_families):
           f"every family that must support the arbitration trio still does "
           f"(missing: {sorted(missing)})" if missing else
           "every family that must support the arbitration trio (rdy_vld, "
-          "axi_read, axi_write, axi4_stream, apb, memory) still does")
+          "axi_read, axi_write, axi4_stream, apb, ahb, memory) still does")
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +190,8 @@ def test_required_families_are_trio_complete(trio_complete_families):
 # trio-complete family, cribbed from real instantiations in the shipped
 # examples (axiDemo for axi_read/axi_write/axi4_stream, helloWorld for
 # rdy_vld, apbDecode for apb, mixed for memory) or, where no example
-# instantiates the family, from its own channel header (notify_ack, pop_ack,
-# push_ack, req_ack). A family that reaches trio-complete status without an
+# instantiates the family, from its own channel header (ahb, notify_ack,
+# pop_ack, push_ack, req_ack). A family that reaches trio-complete status without an
 # entry here fails loudly below instead of silently skipping its compile
 # check, so a new family cannot join the trio without also joining the real
 # compile contract. ctor_args holds any required constructor arguments after
@@ -176,6 +214,11 @@ FAMILY_COMPILE_SPECS = {
         'channel': 'apb_channel<dummyPayload<32>, dummyPayload<32>>',
         'ctor_args': '',
         'in_if': 'apb_in_if<dummyPayload<32>, dummyPayload<32>>',
+    },
+    'ahb': {
+        'channel': 'ahb_channel<dummyPayload<32>, dummyPayload<32>>',
+        'ctor_args': '',
+        'in_if': 'ahb_in_if<dummyPayload<32>, dummyPayload<32>>',
     },
     'memory': {
         'channel': 'memory_channel<dummyPayload<32>, dummyPayload<32>>',

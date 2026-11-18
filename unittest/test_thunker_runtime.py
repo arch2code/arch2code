@@ -91,14 +91,15 @@ DEFINES = ['-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES']
 LIBS = ['-ldl', '-lrt', '-lsystemc', '-pthread']
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses,
-# twelve notification-semantics and unfilled-read-data harnesses, eight
+# twelve notification-semantics and unfilled-read-data harnesses, two APB
+# posted-write harnesses, eight
 # external_reg mirror-publisher harnesses (four shapes, two verdicts), eight
 # status initial-value harnesses in the channel and up-port shapes, four chained
 # status initial-value harnesses, four status time-zero write harnesses, and
 # two axi_read/axi_write harnesses with the optional parameters. Pinned so a
 # harness that stopped being constructed fails here rather than reducing the
 # evidence silently.
-EXPECTED_CHECKS = 877
+EXPECTED_CHECKS = 943
 # Twenty-eight axi_read and fifty axi_write cases, each with its direct-connection
 # control run.
 AXI_EXPECTED_CASES = 78

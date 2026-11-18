@@ -167,7 +167,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 
 ### K36. A router with no upstream feed crashes the decoder templates
 
-- A router block with no authored register-bus connection or boundary connectionMap into it passes `make db`. Then `templates/systemVerilog/apbDecodeModule.py` and `templates/systemc/constructor.py` both raise UnboundLocalError, because each scans connection rows for the parent port. The view's `addressDecode['registerBusPort']` cannot replace that scan, because for a router it holds the interface name (`apbReg`), not the port name (`cpu_main` in examples/mixed).
+- A router block with no authored register-bus connection or boundary connectionMap into it passes `make db`. Then `templates/systemVerilog/regBusDecodeModule.py` and `templates/systemc/constructor.py` both raise UnboundLocalError, because each scans connection rows for the parent port. The view's `addressDecode['registerBusPort']` cannot replace that scan, because for a router it holds the interface name (`apbReg`), not the port name (`cpu_main` in examples/mixed).
 - Only an authoring mistake reaches this, for example running `make gen` before wiring the CPU.
 - A fix was drafted on branch 155 and not landed. It had three parts:
   - a `make db` rejection of a reachable router that has neither a register-bus connection into it nor a boundary connectionMap feeding it. It must run after `validatePorts` and the block-scope name check. If it runs at the end of `postParseRegisterPorts.postProcess`, it takes over the messages of five existing error tests: block-scope name collision, addrgroup vartype collision, nested decoder overflow, register interface type mismatch and register packed form;
@@ -414,7 +414,7 @@ Known defects and feature requests that are not scheduled. Each entry says what 
 - With no `reset:`, the register handler uses its clock's selected reset (`pysrc/clockTree.py:2366`). `_checkRegisterPortsOnBus` (`:2504`) checks the clock binding on every instance, and the reset binding only when `reset:` is authored (`:2527`). Its docstring states the same.
 - Scenario: a leaf whose `rst_n` binds to `rstB` sits under a router whose bus reset is `rstA`. `make db` accepts it, and the handler resets on `rstB`.
 - From reading the code. Not run.
-- Consequence in the generated RTL: while `rstB` is asserted and `rstA` is not, the router forwards a firmware access to the handler. The handler ANDs its read and write selects with its own reset (`templates/systemVerilog/moduleRegs.py:866-867`), so its `pready` (`:918`) stays 0 while `rstB` is asserted. The router has no timeout and returns the child's `pready` (`templates/systemVerilog/apbDecodeModule.py:151`, `:156`), so the access stalls until `rstB` releases.
+- Consequence in the generated RTL: while `rstB` is asserted and `rstA` is not, the router forwards a firmware access to the handler. The handler ANDs its read and write selects with its own reset (`templates/systemVerilog/moduleRegs.py:866-867`), so its `pready` (`:918`) stays 0 while `rstB` is asserted. The router has no timeout and returns the child's `pready` (`templates/systemVerilog/regBusDecodeModule.py:151`, `:156`), so the access stalls until `rstB` releases.
 - Possible fix: needs a decision. Check the selected reset against the bus reset the same way, or document that an unauthored `reset:` may differ from the bus reset.
 - Source: found on branch 155 during the skill review (2026-10-07).
 

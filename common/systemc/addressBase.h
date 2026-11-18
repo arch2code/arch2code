@@ -19,6 +19,11 @@ class addressBase {
 public:
     addressBase() {};
     virtual void cpu_write(uint64_t address, uint32_t val) = 0;  //virtual methods to be overridden in template
+    virtual bool cpu_write_with_error(uint64_t address, uint32_t val)
+    {
+        cpu_write(address, val);
+        return false;
+    }
     virtual uint32_t cpu_read(uint64_t address) = 0;
 private:
 };

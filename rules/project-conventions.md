@@ -38,7 +38,7 @@ Before suggesting YAML changes, verify against `builder/base/config/schema.yaml`
 
 ### Design checklist
 -   [ ] **Widths**: Give each non-enum type exactly one of `width`, `widthLog2` or `widthLog2minus1`.
--   [ ] **Decoders**: The register-bus router is a **generated** block. Declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves. Its RTL comes from `apbDecodeModule`, which `make newmodule` selects. NEVER hand-author a top-level decoder. See `design-register-decode.md`.
+-   [ ] **Decoders**: The register-bus router is a **generated** block. Declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves. Its RTL comes from `regBusDecodeModule`, which `make newmodule` selects. NEVER hand-author a top-level decoder. See `design-register-decode.md`.
 -   [ ] **Reg handlers**: NEVER create a register handler block (`<block>` plus `fileGeneration.regBlockNaming.blockSuffix`). The generator creates it.
 -   [ ] **Connections**: Connections are for the SAME container. Use `connectionMaps` for hierarchy.
 -   [ ] **References**: Verify all types, structures, and instances exist before using them.

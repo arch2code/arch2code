@@ -100,25 +100,26 @@ def render(args, prj, data):
             inst_params += ') '
 
         out.append(f"{value['instanceTypeSvModuleName']}{inst_params}{value['instance']} (")
+        binds = []
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):
-                out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),")
+                binds.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']})")
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
-                out.append(f"{indent}.{memValue['memory']} ({intf_gen_utils.get_channel_name(memValue)}),")
+                binds.append(f"{indent}.{memValue['memory']} ({intf_gen_utils.get_channel_name(memValue)})")
         # loop through the register connections that connect to this instance
         for sourceType in data['connectDouble']:
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
-                        out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
+                        binds.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)})")
         # clockResetBinds (from the projectOpen view) pairs each of the child's own
         # clock/reset port names with the parent signal driving it, already in the
-        # child's port-list order.
-        out.append(",\n".join(f"{indent}.{bind['port']} ({bind['signal']})"
-                              for bind in value['clockResetBinds']) + "\n);\n")
+        # child's port-list order. A child with no clock has none.
+        binds += [f"{indent}.{bind['port']} ({bind['signal']})" for bind in value['clockResetBinds']]
+        out.append(",\n".join(binds) + "\n);\n")
 
     #// Memory Instances if they exist
     if data['memories']:

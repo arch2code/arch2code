@@ -7,6 +7,7 @@ LEGACY_COMPAT_MODE = False
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import pysrc.processYaml as processYaml
 import pysrc.emissionUtils as emissionUtils
+import importlib
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
@@ -248,15 +249,24 @@ def sv_default_domain_aliases(block_data):
         out.append(f"wire rst_n = {defaultReset};")
     return out
 
+def sv_reg_bus_front_end(data):
+    """The front end module that spells the block's register-bus protocol in
+    the generated router and register handler RTL."""
+    return importlib.import_module(
+        f"templates.systemVerilog.regBus.{data['addressDecode']['registerBusSvFrontEnd']}")
+
 def sv_gen_ports(data, prj, indent):
-    out = []
+    entries = []
     for sourceType in data['ports']:
         for port, port_data in data['ports'][sourceType].items():
             connectionData = port_data.get('connection', {})
             intf_data = get_intf_data(connectionData, prj)
             intf_type = get_intf_type(intf_data['interfaceType'], data)
-            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
-    out.append(f"{indent}{sv_clock_reset_input(data)}")
+            entries.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']}")
+    # A block with no clock has no clock/reset entry.
+    if data['clocks']:
+        entries.append(f"{indent}{sv_clock_reset_input(data)}")
+    out = [entry + ',' for entry in entries[:-1]] + entries[-1:]
     out.append(");\n")
     return out
 
@@ -732,7 +742,7 @@ def sc_class_dependency_includes(prj, data):
     # Two rendering contexts share this set so they cannot drift:
     #   * classDecl (classic mode) emits the lines inline, in order, ahead of
     #     the class, interleaving the context imports between the config-policy
-    #     includes and apbBusDecode.h.
+    #     includes and regBusDecode.h.
     #   * the block-module GMF scaffold (moduleScaffold.blockModuleHeader)
     #     splits them: 'include' lines go in the global module fragment, the
     #     'import' lines after `export module`.
@@ -787,8 +797,8 @@ def sc_class_dependency_includes(prj, data):
         if context in data['includeFiles'].get('include_cppm', {}):
             for line in cpp_context_include_lines(prj, context):
                 out.append(('import', line))
-    if data['addressDecode']['isApbRouter']:
-        out.append(('include', '#include "apbBusDecode.h"'))
+    if data['addressDecode']['isRegBusRouter']:
+        out.append(('include', '#include "regBusDecode.h"'))
     return out
 
 def sc_class_module_usings(prj, data):
