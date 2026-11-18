@@ -101,8 +101,9 @@ def run_probe():
         binPath = os.path.join(tmpdir, 'probe')
         with open(srcPath, 'w') as fh:
             fh.write(PROBE_SRC)
+        # The build's compiler (include/make/a2c-common.mk): A2C_CLANG, else clang++.
         build = subprocess.run(
-            ['g++', '-std=c++23', '-DSC_CPLUSPLUS=201703L',
+            [os.environ.get('A2C_CLANG') or 'clang++', '-std=c++23', '-DSC_CPLUSPLUS=201703L',
              f'-I{scInclude}', f'-I{SYSTEMC_COMMON}', srcPath, '-o', binPath,
              f'-L{scLibdir}', '-lsystemc', '-pthread'],
             capture_output=True, text=True)
